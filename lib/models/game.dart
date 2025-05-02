@@ -1,4 +1,7 @@
 // lib/models/game.dart
+import 'package:chessever2/models/evaluation.dart';
+import 'package:chessever2/services/lichess_api_service.dart';
+import 'package:chessever2/services/stockfish_evaluator.dart';
 import 'package:flutter/foundation.dart';
 
 @immutable
@@ -54,97 +57,69 @@ class GamePlayers {
   }
 }
 
-// @immutable
-// class Game {
-//   final String id;
-//   final bool rated;
-//   final String variantKey;
-//   final String speed;
-//   final String perf;
-//   final DateTime? createdAt;
-//   final String status;
-//   final GamePlayers players;
-//   final String? winner;
-//   final String moves;
-
-//   const Game({
-//     required this.id,
-//     required this.rated,
-//     required this.variantKey,
-//     required this.speed,
-//     required this.perf,
-//     this.createdAt,
-//     required this.status,
-//     required this.players,
-//     this.winner,
-//     required this.moves,
-//   });
-
-//   factory Game.fromJson(Map<String, dynamic> json) {
-//     // Safely parse date
-//     final createdDate = json['createdAt'] != null
-//         ? DateTime.tryParse(json['createdAt'] as String)
-//         : null;
-
-//     // Handle variant being either a String or an object
-//     late final String variantKey;
-//     if (json['variant'] is String) {
-//       variantKey = json['variant'] as String;
-//     } else if (json['variant'] is Map<String, dynamic>) {
-//       variantKey = (json['variant']['key'] as String?) ?? 'unknown';
-//     } else {
-//       variantKey = 'unknown';
-//     }
-
-//     return Game(
-//       id: (json['id'] as String?) ?? 'unknown_id',
-//       rated: (json['rated'] as bool?) ?? false,
-//       variantKey: variantKey,
-//       speed: (json['speed'] as String?) ?? 'unknown',
-//       perf: (json['perf'] as String?) ?? 'unknown',
-//       createdAt: createdDate,
-//       status: (json['status'] as String?) ?? 'unknown',
-//       players: GamePlayers.fromJson(
-//         (json['players'] as Map<String, dynamic>?) ?? <String, dynamic>{},
-//       ),
-//       winner: json['winner'] as String?, // may be null
-//       moves: (json['moves'] as String?) ?? '', // default to empty if missing
-//     );
-//   }
-
-//   @override
-//   bool operator ==(Object other) =>
-//       identical(this, other) ||
-//       other is Game && runtimeType == other.runtimeType && id == other.id;
-
-//   @override
-//   int get hashCode => id.hashCode;
-
-//   String get playerVsText =>
-//       '${players.white.user.name} vs ${players.black.user.name}';
-// }
-
-
-
 class BroadcastGame {
   final List<String> players;
   final String fen;
+  final String id;
+  final String lastMove;
+  final String status;
 
-  BroadcastGame({
-    required this.players,
-    required this.fen,
-  });
+  /// Immediately kicks off a call to Lichess cloud eval.
+  final CloudEval evaluation;
+
+  BroadcastGame(this.id, this.lastMove, this.status, {required this.players, required this.fen})
+    : evaluation = CloudEval(fen: fen, multiPv: 2);
 
   factory BroadcastGame.fromJson(Map<String, dynamic> json) {
-    // json['players'] is a List of { name, title, rating, … }
-    final players = (json['players'] as List<dynamic>)
-        .map((p) => (p as Map<String, dynamic>)['name'] as String)
-        .toList();
+    try {
+      final players =
+          (json['players'] as List<dynamic>)
+              .map((p) => (p as Map<String, dynamic>)['name'] as String)
+              .toList();
+      final fen =
+          json.containsKey('fen')
+              ? json['fen'] as String
+              : 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+      final lastMove = json.containsKey('lastMove') ? json['lastMove'] as String : '';
+      final status = json.containsKey('status') ? json['status'] as String : '';
+      final id = json.containsKey('id') ? json['id'] as String : '';
+      return BroadcastGame(id, lastMove, status, players: players, fen: fen);
+    } catch (e) {
+      rethrow;
+    }
+  }
+}
 
-    return BroadcastGame(
-      players: players,
-      fen: json['fen'] as String,
+class GameExport {
+  final String id;
+  final String pgn;
+  final List<String> moves;
+  // add more fields as needed (clocks, evals, etc.)
+
+  GameExport({
+    required this.id,
+    required this.pgn,
+    required this.moves,
+  });
+
+  factory GameExport.fromJson(Map<String, dynamic> json) {
+    return GameExport(
+      id: json['id'] as String,
+      pgn: json['pgn'] as String,
+      moves: (json['moves'] as List<dynamic>).cast<String>(),
     );
   }
 }
 
+class DetailedGame {
+  final BroadcastGame broadcastGame;
+
+  DetailedGame({required this.broadcastGame});
+
+  /// As soon as you call `DetailedGame(...)`, this Future
+  /// begins fetching the full export.
+  //final Future<GameExport> export;
+//
+  //DetailedGame(this.broadcastGame)
+  //    : export = LichessApiService.instance.fetchGameExport(broadcastGame.id);
+}

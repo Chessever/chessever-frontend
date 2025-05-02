@@ -1,4 +1,3 @@
-// lib/views/game_list_view.dart
 import 'package:chessever2/models/tournament.dart';
 import 'package:flutter/material.dart';
 import '../models/game.dart';
@@ -8,18 +7,8 @@ import 'in_game_view.dart';
 
 class GameListView extends StatefulWidget {
   final Tournament tournament;
-  // final String tournamentId;
-  // final String tournamentName;
-  // final String roundSlug;
-  // final String roundID;
-  // final bool isSwiss;
 
-  const GameListView({
-    super.key,
-    required this.tournament
-    // required this.tournamentId,
-    // required this.tournamentName,
-  });
+  const GameListView({super.key, required this.tournament});
 
   @override
   State<GameListView> createState() => _GameListViewState();
@@ -27,11 +16,11 @@ class GameListView extends StatefulWidget {
 
 class _GameListViewState extends State<GameListView> {
   final TextEditingController _searchController = TextEditingController();
-  final LichessApiService _apiService = LichessApiService();
+  final LichessApiService _apiService = LichessApiService.instance;
 
   late Future<List<BroadcastGame>> _gamesFuture;
-  List<BroadcastGame> _allGames = [];       // Initialized to empty list
-  List<BroadcastGame> _filteredGames = [];  // Initialized to empty list
+  List<BroadcastGame> _allGames = [];
+  List<BroadcastGame> _filteredGames = [];
 
   @override
   void initState() {
@@ -42,16 +31,12 @@ class _GameListViewState extends State<GameListView> {
 
   Future<List<BroadcastGame>> _fetchAndSetGames() async {
     try {
-      final games = await _apiService.fetchBroadcastRoundGames(
-        broadcastTournamentSlug:widget.tournament.slug,
-        broadcastRoundSlug:widget.tournament.rounds[0].slug,
-        broadcastRoundId:widget.tournament.rounds[0].id
-      );
+      final games = await _apiService.fetchBroadcastRoundGames(widget.tournament.slug, widget.tournament.rounds[0].slug, widget.tournament.rounds[0].id);
       _allGames = games;
       _updateFilteredList();
       return games;
     } catch (e) {
-      print("Error fetching games: $e");
+      debugPrint('Error fetching games: $e');
       rethrow;
     }
   }
@@ -62,13 +47,8 @@ class _GameListViewState extends State<GameListView> {
       _filteredGames = List.from(_allGames);
     } else {
       _filteredGames = _allGames.where((game) {
-        final whiteMatch = game.players[0]
-            .toLowerCase()
-            .contains(query);
-        final blackMatch = game.players[1]
-            .toLowerCase()
-            .contains(query);
-        // Use || for boolean OR
+        final whiteMatch = game.players[0].toLowerCase().contains(query);
+        final blackMatch = game.players[1].toLowerCase().contains(query);
         return whiteMatch || blackMatch;
       }).toList();
     }
@@ -86,13 +66,11 @@ class _GameListViewState extends State<GameListView> {
   }
 
   void _navigateToGameView(BroadcastGame game) {
-    // if (game.moves.isNotEmpty) {
-    if (false) { // todo
+    if (game.fen.isNotEmpty) {
+      final detailedGame = DetailedGame(broadcastGame: game);
       Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (_) => InGameView(game: game),
-        ),
+        MaterialPageRoute(builder: (_) => InGameView(game: detailedGame)),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -114,10 +92,7 @@ class _GameListViewState extends State<GameListView> {
       appBar: AppBar(
         title: Text(widget.tournament.name),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _refreshGames,
-          ),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _refreshGames),
         ],
       ),
       body: FutureBuilder<List<BroadcastGame>>(
@@ -126,7 +101,6 @@ class _GameListViewState extends State<GameListView> {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           } else if (snapshot.hasError) {
-            // Error state
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
@@ -144,7 +118,6 @@ class _GameListViewState extends State<GameListView> {
               ),
             );
           } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            // No-data state
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -159,18 +132,57 @@ class _GameListViewState extends State<GameListView> {
               ),
             );
           } else {
-            // Data loaded, show searchable list
             return SearchableListViewLayout<BroadcastGame>(
               searchController: _searchController,
               onSearchChanged: (_) => _filterGames(),
               searchHintText: 'Search Games by Player Name…',
               items: _filteredGames,
               itemBuilder: (context, index, game) {
-                return ListTile(
-                  title: Text(game.players[0]),
-                  // title: Text(game.playerVsText),
-                  // trailing: Text(game.status),
-                  trailing: Text(game.fen),
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    ListTile(
+                      title: Text('${game.players[0]} vs ${game.players[1]}'),
+                    ),
+                    FutureBuilder<String>(
+                      future: game.evaluation.evalString,
+                      builder: (ctx, snap) {
+                        final isReady =
+                            snap.connectionState == ConnectionState.done && !snap.hasError;
+                        final rawEval =
+                            isReady ? double.tryParse(snap.data!) ?? 0 : null;
+                        const double maxCp = 7;
+                        final normalized = isReady
+                            ? ((rawEval! + maxCp) / (2 * maxCp)).clamp(0.0, 1.0)
+                            : 0.5;
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            SizedBox(
+                              height: 4,
+                              child: LinearProgressIndicator(
+                                value: normalized,
+                                backgroundColor: Colors.black,
+                                valueColor:
+                                    const AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              isReady
+                                  ? '${rawEval!.toStringAsFixed(2)}'
+                                  : '–',
+                              textAlign: TextAlign.right,
+                              style: const TextStyle(
+                                  fontSize: 12, fontWeight: FontWeight.w500),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                    const Divider(height: 1),
+                  ],
                 );
               },
               onItemTap: _navigateToGameView,
