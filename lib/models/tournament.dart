@@ -58,6 +58,11 @@ class Tournament {
   final String name;
   final String slug;
   final List<Round> rounds;
+  
+  final List<String> players = const ['player1', 'player2', 'player3', 'player4', 'player5'];
+  final String description = 'description of tournament';
+  final String imageUrl = 'https://t3.ftcdn.net/jpg/13/67/90/12/360_F_1367901267_J9ZdpJ6ZpJ2d0rLJSfP0q8qEsWvVdUq7.jpg';
+
 
   const Tournament({
     required this.id,

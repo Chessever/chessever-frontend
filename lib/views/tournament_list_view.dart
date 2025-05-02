@@ -1,4 +1,5 @@
 import 'package:chessever2/views/game_list_view.dart';
+import 'package:chessever2/views/in_tournament_view.dart';
 import 'package:flutter/material.dart';
 import '../models/tournament.dart';
 import '../services/lichess_api_service.dart';
@@ -90,14 +91,13 @@ class _TournamentListViewState extends State<TournamentListView>
     });
   }
 
-  void _navigateToGameList(Tournament tournament) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => GameListView(tournament: tournament),
-      ),
-    );
-  }
+void _navigateToTournamentDetail(Tournament t) {
+  Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => InTournamentView(tournament: t)),
+  );
+}
+
 
   @override
   void dispose() {
@@ -191,7 +191,7 @@ class _TournamentListViewState extends State<TournamentListView>
                         ),
                       );
                     },
-                    onItemTap: _navigateToGameList,
+                    onItemTap: _navigateToTournamentDetail,
                   );
                 }).toList(),
               );

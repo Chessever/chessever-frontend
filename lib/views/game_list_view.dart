@@ -31,7 +31,7 @@ class _GameListViewState extends State<GameListView> {
 
   Future<List<BroadcastGame>> _fetchAndSetGames() async {
     try {
-      final games = await _apiService.fetchBroadcastRoundGames(widget.tournament.slug, widget.tournament.rounds[0].slug, widget.tournament.rounds[0].id);
+      final games = await _apiService.fetchBroadcastRoundGames(widget.tournament.slug, widget.tournament.rounds[widget.tournament.rounds.length-1].slug, widget.tournament.rounds[widget.tournament.rounds.length-1].id);
       _allGames = games;
       _updateFilteredList();
       return games;
@@ -89,12 +89,6 @@ class _GameListViewState extends State<GameListView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.tournament.name),
-        actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _refreshGames),
-        ],
-      ),
       body: FutureBuilder<List<BroadcastGame>>(
         future: _gamesFuture,
         builder: (context, snapshot) {
