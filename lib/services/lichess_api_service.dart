@@ -29,6 +29,8 @@ class ParsingException extends ApiException {
 }
 
 class LichessApiService {
+  // LichessApiService._(this._client);
+  static final LichessApiService instance = LichessApiService();
   final String _baseUrl = 'https://lichess.org/api';
   final http.Client _client;
 
@@ -37,8 +39,7 @@ class LichessApiService {
 
   // --- Tournament Fetching ---
 
-  // Fetches Arena tournaments and parses them
-  Future<Map<String, List<Tournament>>> fetchArenaTournamentsParsed() async {
+  Future<Map<String, List<Tournament>>> fetchBroadcasts() async {
     final url = Uri.parse('$_baseUrl/broadcast');
     try {
       final response = await _client
@@ -53,18 +54,40 @@ class LichessApiService {
             lines.map((l) => jsonDecode(l) as Map<String, dynamic>).toList();
 
         Map<String, List<Tournament>> tournamentsByCategory = {
-          'created': [],
+          'upcoming': [],
           'started': [],
           'finished': [],
         };
 
+        final now = DateTime.now();
+
         for (var entry in tournaments) {
-          // final type = entry['type'] as String? ?? 'unknown';
-          final type = 'started';
-          if (tournamentsByCategory.containsKey(type)) {
-            tournamentsByCategory[type]!.add(
-              Tournament.fromJson(entry, 'arena'),
-            );
+          // Dates are milliseconds since epoch
+          int startMillis, endMillis;
+          try {
+            startMillis = entry["tour"]["dates"][0] as int;
+            endMillis = entry["tour"]["dates"][1] as int;
+          } catch (e) {
+            startMillis = 0;
+            endMillis = 0;
+          }
+
+          final start = DateTime.fromMillisecondsSinceEpoch(startMillis);
+          final end = DateTime.fromMillisecondsSinceEpoch(endMillis);
+
+          // Determine category
+          String category;
+          if (now.isBefore(start)) {
+            category = 'upcoming';
+          } else if (now.isAfter(end)) {
+            category = 'finished';
+          } else {
+            category = 'started';
+          }
+
+          // Add if bucket exists
+          if (tournamentsByCategory.containsKey(category)) {
+            tournamentsByCategory[category]!.add(Tournament.fromJson(entry));
           }
         }
 
@@ -90,15 +113,15 @@ class LichessApiService {
     }
   }
 
-
   // --- Game Fetching ---
-  Future<List<BroadcastGame>> fetchBroadcastRoundGames({
-    required String broadcastTournamentSlug,
-    required String broadcastRoundSlug,
-    required String broadcastRoundId,
-  }) async {
+  Future<List<BroadcastGame>> fetchBroadcastRoundGames(
+    broadcastTournamentSlug,
+    broadcastRoundSlug,
+    broadcastRoundId) async {
+    // final url = Uri.parse('$_baseUrl/broadcast');
     final url = Uri.parse(
-      'https://lichess.org/api/broadcast/'
+      '$_baseUrl/'
+      'broadcast/'
       '$broadcastTournamentSlug/'
       '$broadcastRoundSlug/'
       '$broadcastRoundId',
@@ -111,9 +134,8 @@ class LichessApiService {
 
       switch (response.statusCode) {
         case 200:
-          final Map<String, dynamic> decoded = jsonDecode(
-            utf8.decode(response.bodyBytes),
-          );
+          final String decodedUtf8 = utf8.decode(response.bodyBytes);
+          final Map<String, dynamic> decoded = jsonDecode(decodedUtf8);
           final gamesJson = decoded['games'] as List<dynamic>;
 
           return gamesJson
@@ -143,46 +165,6 @@ class LichessApiService {
       throw ApiException('Unexpected error: $e');
     }
   }
-  // Fetches games for a tournament (Arena or Swiss) and parses ND-JSON
-  // Future<List<Game>> fetchTournamentGamesParsed(String tournamentId, bool isSwiss) async {
-  //   final endpoint = isSwiss? 'swiss/$tournamentId/games' : 'tournament/$tournamentId/games';
-  //   final url = Uri.parse('$_baseUrl/$endpoint');
-
-  //   try {
-  //     final response = await _client.get(
-  //       url,
-  //       headers: {'Accept': 'application/x-ndjson'}, // Request ND-JSON
-  //     ).timeout(const Duration(seconds: 20)); // Longer timeout for potentially large game lists
-
-  //     if (response.statusCode == 200) {
-  //       final rawNdJson = utf8.decode(response.bodyBytes);
-  //       final lines = rawNdJson.split('\n').where((line) => line.trim().isNotEmpty);
-  //       List<Game> games = [];
-  //       for (var line in lines) {
-  //         try {
-  //            final Map<String, dynamic> jsonMap = jsonDecode(line);
-  //            games.add(Game.fromJson(jsonMap));
-  //         } catch (e) {
-  //            print("Warning: Skipping invalid game JSON line: $line - Error: $e");
-  //            // Optionally log this error more formally
-  //         }
-  //       }
-  //       return games;
-  //     } else if (response.statusCode == 429) {
-  //       throw RateLimitException('API rate limit exceeded (429) fetching games. Please wait and retry.');
-  //     } else if (response.statusCode == 404) {
-  //        throw NotFoundException('Games not found for tournament $tournamentId (404).');
-  //     } else {
-  //       throw ApiException('Failed to load games for tournament $tournamentId: ${response.statusCode}');
-  //     }
-  //   } on http.ClientException catch (e) {
-  //      throw NetworkException('Network error fetching games: $e');
-  //   } on FormatException catch (e) {
-  //      throw ParsingException('Failed to parse game data for tournament $tournamentId: $e');
-  //   } catch (e) {
-  //     throw ApiException('An unexpected error occurred fetching games: $e');
-  //   }
-  // }
 
   // Close the client when the service is no longer needed
   void dispose() {

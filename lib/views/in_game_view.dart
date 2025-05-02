@@ -20,12 +20,18 @@ class _InGameViewState extends State<InGameView> {
   int _prevIndex = 0;
   List<String> _moves = [];
 
+  // Cached evaluation
+  String _evalString = '?';
+  double _evalNormalized = 0.5;
+  bool _evalReady = false;
+
   @override
   void initState() {
     super.initState();
     _initializeEngine();
     _loadInitialPosition();
     _loadMoves();
+    _loadEvaluation();
   }
 
   void _initializeEngine() {
@@ -38,13 +44,6 @@ class _InGameViewState extends State<InGameView> {
       _controller.loadFen(widget.game.broadcastGame.fen);
     } catch (e) {
       debugPrint('Error loading FEN: $e');
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not load game position.')),
-          );
-        }
-      });
     }
   }
 
@@ -58,14 +57,30 @@ class _InGameViewState extends State<InGameView> {
     }).catchError((_) {});
   }
 
+  void _loadEvaluation() async {
+    try {
+      final s = await widget.game.broadcastGame.evaluation.evalString;
+      final raw = double.tryParse(s) ?? 0;
+      const maxCp = 7.0;
+      final norm = ((raw + maxCp) / (2 * maxCp)).clamp(0.0, 1.0);
+      setState(() {
+        _evalString = s;
+        _evalNormalized = norm;
+        _evalReady = true;
+      });
+    } catch (_) {
+      // keep defaults
+    }
+  }
+
   void _resetEngine() {
     _engine = chess_logic.Chess.fromFEN(widget.game.broadcastGame.fen);
+    _prevIndex = 0;
   }
 
   void _onSliderChangeStart(double value) {
     _resetEngine();
     setState(() {
-      _prevIndex = 0;
       _sliderValue = 0.0;
     });
   }
@@ -94,6 +109,8 @@ class _InGameViewState extends State<InGameView> {
   @override
   Widget build(BuildContext context) {
     final players = widget.game.broadcastGame.players;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final maxBoardDim = screenHeight * 0.5;
 
     return Scaffold(
       appBar: AppBar(
@@ -103,37 +120,70 @@ class _InGameViewState extends State<InGameView> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Chess board with max half-screen height
             Padding(
               padding: const EdgeInsets.all(8.0),
-              child: ChessBoard(
-                controller: _controller,
-                boardColor: BoardColor.brown,
-                boardOrientation: PlayerColor.white,
-                enableUserMoves: false,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: maxBoardDim,
+                    maxWidth: maxBoardDim,
+                  ),
+                  child: AspectRatio(
+                    aspectRatio: 1.0,
+                    child: ChessBoard(
+                      controller: _controller,
+                      boardColor: BoardColor.brown,
+                      boardOrientation: PlayerColor.white,
+                      enableUserMoves: false,
+                    ),
+                  ),
+                ),
               ),
             ),
+
+            // Evaluation bar (black-to-white)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(
+                    height: 4,
+                    child: LinearProgressIndicator(
+                      value: _evalNormalized,
+                      backgroundColor: Colors.black,
+                      valueColor: AlwaysStoppedAnimation(Colors.white),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _evalReady ? _evalString : '…',
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
+            ),
+
+            // Principal variation slider
             if (_moves.isNotEmpty) ...[
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
                 child: Text(
                   'Principal Variation:',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                 ),
               ),
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
                 child: Text(
                   _moves.join(' '),
                   style: const TextStyle(fontSize: 14),
                 ),
               ),
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                 child: Slider(
                   min: 0,
                   max: _moves.length.toDouble(),
@@ -147,8 +197,7 @@ class _InGameViewState extends State<InGameView> {
                 ),
               ),
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16.0, vertical: 0),
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
                 child: Text(
                   'Move ${_sliderValue.toInt()} of ${_moves.length}',
                   textAlign: TextAlign.center,

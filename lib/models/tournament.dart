@@ -67,9 +67,7 @@ class Tournament {
   });
 
   factory Tournament.fromJson(
-    Map<String, dynamic> json,
-    String feedType,
-  ) {
+    Map<String, dynamic> json) {
     final tour = json['tour'] as Map<String, dynamic>;
 
     // Parse rounds (if missing or null, fall back to empty list)
