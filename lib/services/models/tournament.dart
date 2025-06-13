@@ -1,4 +1,3 @@
-// lib/models/tournament.dart
 import 'package:flutter/foundation.dart';
 
 @immutable
@@ -22,11 +21,7 @@ class Variant {
   final String name;
   final String short;
 
-  const Variant({
-    required this.key,
-    required this.name,
-    required this.short,
-  });
+  const Variant({required this.key, required this.name, required this.short});
 
   factory Variant.fromJson(Map<String, dynamic> json) {
     return Variant(
@@ -58,11 +53,17 @@ class Tournament {
   final String name;
   final String slug;
   final List<Round> rounds;
-  
-  final List<String> players = const ['player1', 'player2', 'player3', 'player4', 'player5'];
-  final String description = 'description of tournament';
-  final String imageUrl = 'https://t3.ftcdn.net/jpg/13/67/90/12/360_F_1367901267_J9ZdpJ6ZpJ2d0rLJSfP0q8qEsWvVdUq7.jpg';
 
+  final List<String> players = const [
+    'player1',
+    'player2',
+    'player3',
+    'player4',
+    'player5',
+  ];
+  final String description = 'description of tournament';
+  final String imageUrl =
+      'https://t3.ftcdn.net/jpg/13/67/90/12/360_F_1367901267_J9ZdpJ6ZpJ2d0rLJSfP0q8qEsWvVdUq7.jpg';
 
   const Tournament({
     required this.id,
@@ -71,15 +72,15 @@ class Tournament {
     required this.rounds,
   });
 
-  factory Tournament.fromJson(
-    Map<String, dynamic> json) {
+  factory Tournament.fromJson(Map<String, dynamic> json) {
     final tour = json['tour'] as Map<String, dynamic>;
 
     // Parse rounds (if missing or null, fall back to empty list)
     final roundsJson = json['rounds'] as List<dynamic>? ?? [];
-    final rounds = roundsJson
-        .map((r) => Round.fromJson(r as Map<String, dynamic>))
-        .toList();
+    final rounds =
+        roundsJson
+            .map((r) => Round.fromJson(r as Map<String, dynamic>))
+            .toList();
 
     return Tournament(
       id: tour['id'] as String,
@@ -90,8 +91,7 @@ class Tournament {
   }
 
   @override
-  String toString() =>
-      'Tournament($id, $name, rounds: ${rounds.length})';
+  String toString() => 'Tournament($id, $name, rounds: ${rounds.length})';
 }
 
 @immutable
@@ -99,42 +99,33 @@ class Round {
   final String id;
   final String slug;
 
-  const Round({
-    required this.id,
-    required this.slug,
-  });
+  const Round({required this.id, required this.slug});
 
   factory Round.fromJson(Map<String, dynamic> json) {
-    return Round(
-      id: json['id'] as String,
-      slug: json['slug'] as String,
-    );
+    return Round(id: json['id'] as String, slug: json['slug'] as String);
   }
 
   @override
   String toString() => 'Round($id, $slug)';
+
+  static String _parseArenaStatus(int status) {
+    switch (status) {
+      case 10:
+        return 'created';
+      case 20:
+        return 'started';
+      case 30:
+        return 'finished';
+      default:
+        return 'unknown ($status)';
+    }
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Tournament && runtimeType == other.runtimeType && id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
-
-//   static String _parseArenaStatus(int status) {
-//     switch (status) {
-//       case 10:
-//         return 'created';
-//       case 20:
-//         return 'started';
-//       case 30:
-//         return 'finished';
-//       default:
-//         return 'unknown ($status)';
-//     }
-//   }
-
-//   @override
-//   bool operator ==(Object other) =>
-//       identical(this, other) ||
-//       other is Tournament &&
-//           runtimeType == other.runtimeType &&
-//           id == other.id;
-
-//   @override
-//   int get hashCode => id.hashCode;
-// }

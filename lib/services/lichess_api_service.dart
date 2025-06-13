@@ -1,13 +1,14 @@
-// lib/services/lichess_api_service.dart
+import 'package:chessever2/services/models/game.dart';
+import 'package:chessever2/services/models/tournament.dart';
 import 'package:http/http.dart' as http;
-import 'dart:convert'; // For jsonDecode and utf8
-import '../models/tournament.dart';
-import '../models/game.dart';
+import 'dart:convert';
 
 // Define custom exception classes for better error handling
 class ApiException implements Exception {
   final String message;
+
   ApiException(this.message);
+
   @override
   String toString() => message;
 }
@@ -117,7 +118,8 @@ class LichessApiService {
   Future<List<BroadcastGame>> fetchBroadcastRoundGames(
     broadcastTournamentSlug,
     broadcastRoundSlug,
-    broadcastRoundId) async {
+    broadcastRoundId,
+  ) async {
     // final url = Uri.parse('$_baseUrl/broadcast');
     final url = Uri.parse(
       '$_baseUrl/'
