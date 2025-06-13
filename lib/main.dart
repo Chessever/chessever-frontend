@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_provider.dart';
@@ -7,7 +8,10 @@ import 'screens/splash_auth_screen.dart';
 import 'screens/tournament_list_screen.dart';
 
 void main() {
+  WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+  FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
   runApp(const ProviderScope(child: MyApp()));
+  FlutterNativeSplash.remove();
 }
 
 class MyApp extends ConsumerWidget {
