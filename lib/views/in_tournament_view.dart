@@ -1,14 +1,13 @@
-// import 'package:chessever2/views/standings_view';
+import 'package:chessever2/services/models/tournament.dart';
 import 'standings_view.dart';
 import 'package:flutter/material.dart';
-import '../models/tournament.dart';
 import 'game_list_view.dart';
 
 /// This widget shows the tournament detail with tabs for About, Games, and Standings
 class InTournamentView extends StatelessWidget {
   final Tournament tournament;
 
-  const InTournamentView({Key? key, required this.tournament}) : super(key: key);
+  const InTournamentView({super.key, required this.tournament});
 
   @override
   Widget build(BuildContext context) {

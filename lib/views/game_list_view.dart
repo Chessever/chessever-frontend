@@ -1,8 +1,8 @@
-import 'package:chessever2/models/tournament.dart';
+import 'package:chessever2/services/lichess_api_service.dart';
+import 'package:chessever2/services/models/game.dart';
+import 'package:chessever2/services/models/tournament.dart';
+import 'package:chessever2/widgets/searchable_list_layout.dart';
 import 'package:flutter/material.dart';
-import '../models/game.dart';
-import '../services/lichess_api_service.dart';
-import '../widgets/searchable_list_layout.dart';
 import 'in_game_view.dart';
 
 class GameListView extends StatefulWidget {
@@ -31,7 +31,11 @@ class _GameListViewState extends State<GameListView> {
 
   Future<List<BroadcastGame>> _fetchAndSetGames() async {
     try {
-      final games = await _apiService.fetchBroadcastRoundGames(widget.tournament.slug, widget.tournament.rounds[widget.tournament.rounds.length-1].slug, widget.tournament.rounds[widget.tournament.rounds.length-1].id);
+      final games = await _apiService.fetchBroadcastRoundGames(
+        widget.tournament.slug,
+        widget.tournament.rounds[widget.tournament.rounds.length - 1].slug,
+        widget.tournament.rounds[widget.tournament.rounds.length - 1].id,
+      );
       _allGames = games;
       _updateFilteredList();
       return games;
@@ -46,11 +50,12 @@ class _GameListViewState extends State<GameListView> {
     if (query.isEmpty) {
       _filteredGames = List.from(_allGames);
     } else {
-      _filteredGames = _allGames.where((game) {
-        final whiteMatch = game.players[0].toLowerCase().contains(query);
-        final blackMatch = game.players[1].toLowerCase().contains(query);
-        return whiteMatch || blackMatch;
-      }).toList();
+      _filteredGames =
+          _allGames.where((game) {
+            final whiteMatch = game.players[0].toLowerCase().contains(query);
+            final blackMatch = game.players[1].toLowerCase().contains(query);
+            return whiteMatch || blackMatch;
+          }).toList();
     }
   }
 
@@ -142,13 +147,18 @@ class _GameListViewState extends State<GameListView> {
                       future: game.evaluation.evalString,
                       builder: (ctx, snap) {
                         final isReady =
-                            snap.connectionState == ConnectionState.done && !snap.hasError;
+                            snap.connectionState == ConnectionState.done &&
+                            !snap.hasError;
                         final rawEval =
                             isReady ? double.tryParse(snap.data!) ?? 0 : null;
                         const double maxCp = 7;
-                        final normalized = isReady
-                            ? ((rawEval! + maxCp) / (2 * maxCp)).clamp(0.0, 1.0)
-                            : 0.5;
+                        final normalized =
+                            isReady
+                                ? ((rawEval! + maxCp) / (2 * maxCp)).clamp(
+                                  0.0,
+                                  1.0,
+                                )
+                                : 0.5;
 
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -158,18 +168,19 @@ class _GameListViewState extends State<GameListView> {
                               child: LinearProgressIndicator(
                                 value: normalized,
                                 backgroundColor: Colors.black,
-                                valueColor:
-                                    const AlwaysStoppedAnimation<Color>(Colors.white),
+                                valueColor: const AlwaysStoppedAnimation<Color>(
+                                  Colors.white,
+                                ),
                               ),
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              isReady
-                                  ? '${rawEval!.toStringAsFixed(2)}'
-                                  : '–',
+                              isReady ? '${rawEval!.toStringAsFixed(2)}' : '–',
                               textAlign: TextAlign.right,
                               style: const TextStyle(
-                                  fontSize: 12, fontWeight: FontWeight.w500),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
                           ],
                         );

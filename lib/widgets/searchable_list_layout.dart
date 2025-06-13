@@ -1,4 +1,3 @@
-// lib/widgets/searchable_list_layout.dart
 import 'package:flutter/material.dart';
 
 class SearchableListViewLayout<T> extends StatelessWidget {
