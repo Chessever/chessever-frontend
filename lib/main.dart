@@ -1,3 +1,6 @@
+import 'package:chessever2/screens/chessever_screen.dart';
+import 'package:device_preview_plus/device_preview_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -10,7 +13,12 @@ import 'screens/tournament_list_screen.dart';
 void main() {
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
-  runApp(const ProviderScope(child: MyApp()));
+  runApp(
+    DevicePreview(
+      enabled: kDebugMode, // Changed to use kDebugMode
+      builder: (context) => const ProviderScope(child: MyApp()),
+    ),
+  );
   FlutterNativeSplash.remove();
 }
 
@@ -21,6 +29,8 @@ class MyApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
     return MaterialApp(
+      locale: DevicePreview.locale(context),
+      builder: DevicePreview.appBuilder,
       debugShowCheckedModeBanner: false,
       title: 'ChessEver',
       theme: AppTheme.lightTheme,
@@ -28,7 +38,8 @@ class MyApp extends ConsumerWidget {
       themeMode: themeMode,
       initialRoute: '/',
       routes: {
-        '/': (context) => const InputDesignScreen(),
+        '/': (context) => const ChesseverScreen(),
+        '/input_screen': (context) => const InputDesignScreen(),
         '/splash_auth': (context) => const SplashAuthScreen(),
         '/tournaments': (context) => const TournamentListScreen(),
       },
