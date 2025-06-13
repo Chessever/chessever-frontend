@@ -1,10 +1,20 @@
 import 'package:flutter/material.dart';
 
 // Color constants
-const Color kPrimaryColor = Color(0xFF673AB7);
-const Color kDarkAppBarColor = Color(0xFF232136);
-const Color kDarkScaffoldBackground = Color(0xFF181825);
-const Color kLightScaffoldBackground = Color(0xFFF5F5FA);
+const Color kPrimaryColor = Color(0xFF0FB4E5); // PRIMARY COLOR
+const Color kBackgroundColor = Color(0xFF0C0C0E); // BACKGROUND
+const Color kWhiteColor = Color(0xFFFFFFFF); // WHITE
+const Color kBlack2Color = Color(0xFF1A1A1C); // BLACK#2
+const LinearGradient kAppLinearGradient = LinearGradient(
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+  colors: [
+    Color(0xFFFFFFFF), // #FFF
+    Color(0xFF999999), // #999
+  ],
+  stops: [0.0, 1.0],
+  transform: GradientRotation(75 * 3.1415927 / 180),
+);
 
 class AppTheme {
   static final ThemeData darkTheme = ThemeData(
@@ -12,13 +22,18 @@ class AppTheme {
     colorScheme: ColorScheme.fromSeed(
       seedColor: kPrimaryColor,
       brightness: Brightness.dark,
+      background: kBackgroundColor,
+      primary: kPrimaryColor,
+      onPrimary: kWhiteColor,
+      surface: kBlack2Color,
+      onSurface: kWhiteColor,
     ),
     appBarTheme: const AppBarTheme(
-      backgroundColor: kDarkAppBarColor,
-      foregroundColor: Colors.white,
+      backgroundColor: kBackgroundColor,
+      foregroundColor: kWhiteColor,
       elevation: 0,
     ),
-    scaffoldBackgroundColor: kDarkScaffoldBackground,
+    scaffoldBackgroundColor: kBackgroundColor,
     useMaterial3: true,
   );
 
@@ -27,13 +42,18 @@ class AppTheme {
     colorScheme: ColorScheme.fromSeed(
       seedColor: kPrimaryColor,
       brightness: Brightness.light,
+      background: kWhiteColor,
+      primary: kPrimaryColor,
+      onPrimary: kWhiteColor,
+      surface: kWhiteColor,
+      onSurface: kBlack2Color,
     ),
     appBarTheme: const AppBarTheme(
       backgroundColor: kPrimaryColor,
-      foregroundColor: Colors.white,
+      foregroundColor: kWhiteColor,
       elevation: 4,
     ),
-    scaffoldBackgroundColor: kLightScaffoldBackground,
+    scaffoldBackgroundColor: kWhiteColor,
     useMaterial3: true,
   );
 }
