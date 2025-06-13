@@ -1,7 +1,6 @@
+import 'package:chessever2/services/models/game.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_chess_board/flutter_chess_board.dart';
-import 'package:chessever2/models/evaluation.dart';
-import '../models/game.dart';
 import 'package:chess/chess.dart' as chess_logic;
 
 class InGameView extends StatefulWidget {
@@ -48,13 +47,15 @@ class _InGameViewState extends State<InGameView> {
   }
 
   void _loadMoves() {
-    widget.game.broadcastGame.evaluation.variations.then((list) {
-      if (list.isNotEmpty) {
-        setState(() {
-          _moves = list.first.moves;
-        });
-      }
-    }).catchError((_) {});
+    widget.game.broadcastGame.evaluation.variations
+        .then((list) {
+          if (list.isNotEmpty) {
+            setState(() {
+              _moves = list.first.moves;
+            });
+          }
+        })
+        .catchError((_) {});
   }
 
   void _loadEvaluation() async {
@@ -113,9 +114,7 @@ class _InGameViewState extends State<InGameView> {
     final maxBoardDim = screenHeight * 0.5;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('${players[0]} vs ${players[1]}'),
-      ),
+      appBar: AppBar(title: Text('${players[0]} vs ${players[1]}')),
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -144,7 +143,10 @@ class _InGameViewState extends State<InGameView> {
 
             // Evaluation bar (black-to-white)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16.0,
+                vertical: 8.0,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -160,7 +162,10 @@ class _InGameViewState extends State<InGameView> {
                   Text(
                     _evalReady ? _evalString : '…',
                     textAlign: TextAlign.right,
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ],
               ),
@@ -172,26 +177,36 @@ class _InGameViewState extends State<InGameView> {
                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
                 child: Text(
                   'Principal Variation:',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16.0,
+                  vertical: 4.0,
+                ),
                 child: Text(
                   _moves.join(' '),
                   style: const TextStyle(fontSize: 14),
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16.0,
+                  vertical: 8.0,
+                ),
                 child: Slider(
                   min: 0,
                   max: _moves.length.toDouble(),
                   divisions: _moves.length,
                   value: _sliderValue,
-                  label: _sliderValue > 0
-                      ? _moves[_sliderValue.toInt() - 1]
-                      : 'Start',
+                  label:
+                      _sliderValue > 0
+                          ? _moves[_sliderValue.toInt() - 1]
+                          : 'Start',
                   onChangeStart: _onSliderChangeStart,
                   onChanged: _onSliderChanged,
                 ),

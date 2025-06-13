@@ -1,9 +1,8 @@
-import 'package:chessever2/views/game_list_view.dart';
+import 'package:chessever2/services/lichess_api_service.dart';
+import 'package:chessever2/services/models/tournament.dart';
 import 'package:chessever2/views/in_tournament_view.dart';
+import 'package:chessever2/widgets/searchable_list_layout.dart';
 import 'package:flutter/material.dart';
-import '../models/tournament.dart';
-import '../services/lichess_api_service.dart';
-import '../widgets/searchable_list_layout.dart';
 
 class TournamentListView extends StatefulWidget {
   const TournamentListView({super.key});
@@ -66,9 +65,7 @@ class _TournamentListViewState extends State<TournamentListView>
     var list = List<Tournament>.from(_allTournaments[currentKey] ?? []);
 
     if (query.isNotEmpty) {
-      list = list
-          .where((t) => t.name.toLowerCase().contains(query))
-          .toList();
+      list = list.where((t) => t.name.toLowerCase().contains(query)).toList();
     }
 
     list.sort((a, b) {
@@ -91,13 +88,12 @@ class _TournamentListViewState extends State<TournamentListView>
     });
   }
 
-void _navigateToTournamentDetail(Tournament t) {
-  Navigator.push(
-    context,
-    MaterialPageRoute(builder: (_) => InTournamentView(tournament: t)),
-  );
-}
-
+  void _navigateToTournamentDetail(Tournament t) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => InTournamentView(tournament: t)),
+    );
+  }
 
   @override
   void dispose() {
@@ -117,9 +113,13 @@ void _navigateToTournamentDetail(Tournament t) {
           title: const Text('Chess Tournaments'),
           bottom: TabBar(
             controller: _tabController,
-            tabs: _categories
-                .map((cat) => Tab(text: cat[0].toUpperCase() + cat.substring(1)))
-                .toList(),
+            tabs:
+                _categories
+                    .map(
+                      (cat) =>
+                          Tab(text: cat[0].toUpperCase() + cat.substring(1)),
+                    )
+                    .toList(),
           ),
         ),
         body: FutureBuilder<Map<String, List<Tournament>>>(
@@ -146,7 +146,8 @@ void _navigateToTournamentDetail(Tournament t) {
               );
             } else if (!snapshot.hasData ||
                 _categories.every(
-                    (key) => (snapshot.data![key]?.isEmpty ?? true))) {
+                  (key) => (snapshot.data![key]?.isEmpty ?? true),
+                )) {
               return Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -163,37 +164,38 @@ void _navigateToTournamentDetail(Tournament t) {
             } else {
               return TabBarView(
                 controller: _tabController,
-                children: _categories.map((_) {
-                  return SearchableListViewLayout<Tournament>(
-                    searchController: _searchController,
-                    onSearchChanged: (_) => _filterTournaments(),
-                    searchHintText: 'Search Tournaments by Name…',
-                    items: _filteredTournaments,
-                    itemBuilder: (context, index, tournament) {
-                      final isFavorite = _favoriteTournamentIds.contains(
-                        tournament.id,
-                      );
-                      return ListTile(
-                        title: Text(tournament.name),
-                        subtitle: Text('Round ${tournament.rounds.length}'),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: Icon(
-                                isFavorite ? Icons.star : Icons.star_border,
-                                color: isFavorite ? Colors.amber : null,
-                              ),
-                              onPressed: () => _toggleFavorite(tournament),
+                children:
+                    _categories.map((_) {
+                      return SearchableListViewLayout<Tournament>(
+                        searchController: _searchController,
+                        onSearchChanged: (_) => _filterTournaments(),
+                        searchHintText: 'Search Tournaments by Name…',
+                        items: _filteredTournaments,
+                        itemBuilder: (context, index, tournament) {
+                          final isFavorite = _favoriteTournamentIds.contains(
+                            tournament.id,
+                          );
+                          return ListTile(
+                            title: Text(tournament.name),
+                            subtitle: Text('Round ${tournament.rounds.length}'),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: Icon(
+                                    isFavorite ? Icons.star : Icons.star_border,
+                                    color: isFavorite ? Colors.amber : null,
+                                  ),
+                                  onPressed: () => _toggleFavorite(tournament),
+                                ),
+                                const Icon(Icons.chevron_right),
+                              ],
                             ),
-                            const Icon(Icons.chevron_right),
-                          ],
-                        ),
+                          );
+                        },
+                        onItemTap: _navigateToTournamentDetail,
                       );
-                    },
-                    onItemTap: _navigateToTournamentDetail,
-                  );
-                }).toList(),
+                    }).toList(),
               );
             }
           },

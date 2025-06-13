@@ -1,5 +1,3 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:chessever2/services/stockfish_evaluator.dart';
 
 /// Represents a single principal variation (PV) line from Lichess cloud-eval.
@@ -69,20 +67,17 @@ class CloudEval {
     required this.fen,
     this.multiPv = 3,
   }) {
-    _dataFuture = LichessCloudEvaluator.instance.fetchData(fen, multiPv);
+    // Use the Riverpod provider for the evaluator instead of the singleton
+    _dataFuture = LichessCloudEvaluator().fetchData(fen, multiPv);
   }
 
   /// Returns the top-line evaluation string (e.g. "#3" or "0.45").
   Future<String> get evalString async {
     final data = await _dataFuture;
     final pvsData = data['pvs'];
-    if (pvsData is! List || pvsData.isEmpty) {
-      return '?';
-    }
-
+    if (pvsData is! List || pvsData.isEmpty) return '?';
     final firstPv = pvsData.first;
     if (firstPv is! Map<String, dynamic>) return '?';
-
     if (firstPv.containsKey('mate')) {
       return '#${firstPv['mate']}';
     } else if (firstPv.containsKey('cp')) {
@@ -98,12 +93,10 @@ class CloudEval {
   Future<List<PrincipalVariation>> get variations async {
     final data = await _dataFuture;
     final pvsData = data['pvs'];
-    if (pvsData is! List) {
-      return [];
-    }
+    if (pvsData is! List) return [];
     return pvsData
         .whereType<Map<String, dynamic>>()
-        .map((json) => PrincipalVariation.fromJson(json))
+        .map(PrincipalVariation.fromJson)
         .toList();
   }
 }

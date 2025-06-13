@@ -1,33 +1,39 @@
-// lib/theme/app_theme.dart
 import 'package:flutter/material.dart';
+
+// Color constants
+const Color kPrimaryColor = Color(0xFF673AB7);
+const Color kDarkAppBarColor = Color(0xFF232136);
+const Color kDarkScaffoldBackground = Color(0xFF181825);
+const Color kLightScaffoldBackground = Color(0xFFF5F5FA);
 
 class AppTheme {
   static final ThemeData darkTheme = ThemeData(
     brightness: Brightness.dark,
     colorScheme: ColorScheme.fromSeed(
-      seedColor: Colors.deepPurple, // Example seed color
+      seedColor: kPrimaryColor,
       brightness: Brightness.dark,
     ),
-    // Optional: Customize specific components for dark theme
-    appBarTheme: AppBarTheme(
-      backgroundColor: Colors.grey, // Slightly custom AppBar color for dark
-      elevation: 0, // Flat AppBar
+    appBarTheme: const AppBarTheme(
+      backgroundColor: kDarkAppBarColor,
+      foregroundColor: Colors.white,
+      elevation: 0,
     ),
-    // Ensure Material 3 is enabled (default in recent Flutter versions)
+    scaffoldBackgroundColor: kDarkScaffoldBackground,
     useMaterial3: true,
   );
 
-  static final ThemeData lightTheme = ThemeData( // Define a light theme too (good practice)
-     brightness: Brightness.light,
-     colorScheme: ColorScheme.fromSeed(
-       seedColor: Colors.deepPurple, // Use the same seed
-       brightness: Brightness.light,
-     ),
-     appBarTheme: AppBarTheme(
-        backgroundColor: Colors.deepPurple, // Custom AppBar for light
-        foregroundColor: Colors.white, // Ensure text/icons are visible
-        elevation: 4,
-     ),
-     useMaterial3: true,
+  static final ThemeData lightTheme = ThemeData(
+    brightness: Brightness.light,
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: kPrimaryColor,
+      brightness: Brightness.light,
+    ),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: kPrimaryColor,
+      foregroundColor: Colors.white,
+      elevation: 4,
+    ),
+    scaffoldBackgroundColor: kLightScaffoldBackground,
+    useMaterial3: true,
   );
 }
