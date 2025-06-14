@@ -1,6 +1,6 @@
-import 'package:chessever2/services/lichess_api_service.dart';
-import 'package:chessever2/services/models/game.dart';
-import 'package:chessever2/services/models/tournament.dart';
+import 'package:chessever2/repository/lichess_api_service.dart';
+import 'package:chessever2/repository/models/game.dart';
+import 'package:chessever2/repository/models/tournament.dart';
 import 'package:chessever2/widgets/searchable_list_layout.dart';
 import 'package:flutter/material.dart';
 import 'in_game_view.dart';

@@ -2,13 +2,16 @@ import 'package:chessever2/screens/chessever_screen.dart';
 import 'package:device_preview_plus/device_preview_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_provider.dart';
+import 'providers/locale_provider.dart';
 import 'screens/input_design_screen.dart';
 import 'screens/splash_auth_screen.dart';
 import 'screens/tournament_list_screen.dart';
+import 'l10n/app_localizations.dart';
 
 void main() {
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
@@ -28,8 +31,17 @@ class MyApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
+    final locale = ref.watch(localeProvider);
+
     return MaterialApp(
-      locale: DevicePreview.locale(context),
+      locale: locale,
+      supportedLocales: SupportedLocales.values,
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       builder: DevicePreview.appBuilder,
       debugShowCheckedModeBanner: false,
       title: 'ChessEver',

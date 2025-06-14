@@ -1,4 +1,4 @@
-import 'package:chessever2/services/models/evaluation.dart';
+import 'package:chessever2/repository/models/evaluation.dart';
 import 'package:flutter/foundation.dart';
 
 @immutable

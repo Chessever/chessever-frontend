@@ -31,7 +31,9 @@ To generate or update the native splash screen for this project, run the followi
 
 ```bash
 flutter pub run flutter_native_splash:create
+flutter gen-l10n
 ```
 
-This command uses the `flutter_native_splash` package configuration defined in `pubspec.yaml` to create splash screens for Android and iOS.
+This command uses the `flutter_native_splash` package configuration defined in `pubspec.yaml` 
+to create splash screens for Android and iOS. And also generates localization utils.
 
