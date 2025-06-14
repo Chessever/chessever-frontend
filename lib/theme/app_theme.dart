@@ -42,7 +42,7 @@ class AppTheme {
     colorScheme: ColorScheme.fromSeed(
       seedColor: kPrimaryColor,
       brightness: Brightness.light,
-      background: kWhiteColor,
+      background: kBackgroundColor,
       primary: kPrimaryColor,
       onPrimary: kWhiteColor,
       surface: kWhiteColor,
@@ -53,7 +53,7 @@ class AppTheme {
       foregroundColor: kWhiteColor,
       elevation: 4,
     ),
-    scaffoldBackgroundColor: kWhiteColor,
+    scaffoldBackgroundColor: kBackgroundColor,
     useMaterial3: true,
   );
 }
