@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-class AppTextStyles {
+class Typography {
   static const String _fontFamily = 'InterDisplay';
 
   // Display Styles
