@@ -3,7 +3,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 // StateNotifier to manage ThemeMode
 class ThemeModeNotifier extends StateNotifier<ThemeMode> {
-  ThemeModeNotifier() : super(ThemeMode.system);
+  // Changed default from ThemeMode.system to ThemeMode.dark
+  ThemeModeNotifier() : super(ThemeMode.dark);
 
   void setTheme(ThemeMode mode) => state = mode;
 
