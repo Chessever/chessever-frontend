@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:chessever2/repository/api_utils/api_exceptions.dart';
 import 'package:http/http.dart' as http;
-import 'package:chessever2/services/api_utils/api_exceptions.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 abstract class ILichessCloudEvaluator {

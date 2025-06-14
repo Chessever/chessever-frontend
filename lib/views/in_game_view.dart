@@ -1,4 +1,4 @@
-import 'package:chessever2/services/models/game.dart';
+import 'package:chessever2/repository/models/game.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_chess_board/flutter_chess_board.dart';
 import 'package:chess/chess.dart' as chess_logic;

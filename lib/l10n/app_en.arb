@@ -1,0 +1,47 @@
+ {
+  "appTitle": "ChessEver",
+  "@appTitle": {
+    "description": "The title of the application"
+  },
+  "homePageTitle": "Home",
+  "@homePageTitle": {
+    "description": "Title for the home page"
+  },
+  "tournaments": "Tournaments",
+  "@tournaments": {
+    "description": "Title for tournaments section"
+  },
+  "profile": "Profile",
+  "@profile": {
+    "description": "Title for profile section"
+  },
+  "settings": "Settings",
+  "@settings": {
+    "description": "Title for settings section"
+  },
+  "language": "Language",
+  "@language": {
+    "description": "Label for language selection"
+  },
+  "theme": "Theme",
+  "@theme": {
+    "description": "Label for theme selection"
+  },
+  "darkMode": "Dark Mode",
+  "@darkMode": {
+    "description": "Label for dark mode option"
+  },
+  "lightMode": "Light Mode",
+  "@lightMode": {
+    "description": "Label for light mode option"
+  },
+  "systemDefault": "System Default",
+  "@systemDefault": {
+    "description": "Label for system default option"
+  },
+  "english": "English",
+  "@english": {
+    "description": "Name of English language"
+  }
+}
+

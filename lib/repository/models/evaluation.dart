@@ -1,4 +1,4 @@
-import 'package:chessever2/services/stockfish_evaluator.dart';
+import 'package:chessever2/repository/stockfish_evaluator.dart';
 
 /// Represents a single principal variation (PV) line from Lichess cloud-eval.
 class PrincipalVariation {

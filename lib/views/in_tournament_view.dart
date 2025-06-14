@@ -1,4 +1,5 @@
-import 'package:chessever2/services/models/tournament.dart';
+import 'package:chessever2/repository/models/tournament.dart';
+
 import 'standings_view.dart';
 import 'package:flutter/material.dart';
 import 'game_list_view.dart';

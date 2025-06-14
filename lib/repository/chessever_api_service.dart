@@ -1,9 +1,9 @@
-import 'package:chessever2/services/models/game.dart';
-import 'package:chessever2/services/models/tournament.dart';
+import 'package:chessever2/repository/api_utils/api_exceptions.dart';
+import 'package:chessever2/repository/models/game.dart';
+import 'package:chessever2/repository/models/tournament.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart' show Provider;
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:chessever2/services/api_utils/api_exceptions.dart';
 
 /// Interface for Chessever repository
 abstract class IChesseverRepository {

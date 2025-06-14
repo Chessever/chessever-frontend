@@ -30,6 +30,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  intl: ^0.20.2
   flutter_chess_board: any
   chess: any
   http: ^1.2.1 # Or latest version (e.g., ^1.2.1)
@@ -58,11 +61,12 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
-
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  generate: true # Added for localization
 
   # To add assets to your application, add an assets section, like this:
   assets:
