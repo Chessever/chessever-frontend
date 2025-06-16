@@ -1,6 +1,8 @@
 import 'package:chessever2/l10n/app_localizations.dart';
 import 'package:chessever2/localization/locale_provider.dart';
 import 'package:chessever2/screens/chessever_screen.dart';
+import 'package:chessever2/screens/settings_screen.dart';
+import 'package:chessever2/services/settings_manager.dart';
 import 'package:device_preview_plus/device_preview_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -24,11 +26,25 @@ void main() {
   FlutterNativeSplash.remove();
 }
 
-class MyApp extends ConsumerWidget {
+class MyApp extends ConsumerStatefulWidget {
   const MyApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends ConsumerState<MyApp> {
+  @override
+  void initState() {
+    super.initState();
+    // Initialize settings from persistent storage
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      SettingsManager.initializeSettings(ref);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final themeMode = ref.watch(themeModeProvider);
     final locale = ref.watch(localeProvider);
 
@@ -48,6 +64,7 @@ class MyApp extends ConsumerWidget {
         '/input_screen': (context) => const InputDesignScreen(),
         '/splash_auth': (context) => const SplashAuthScreen(),
         '/tournaments': (context) => const TournamentListScreen(),
+        '/settings': (context) => const SettingsScreen(),
       },
     );
   }
