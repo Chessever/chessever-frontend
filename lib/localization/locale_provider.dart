@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import '../services/settings_service.dart';
 
 // Define supported locales
 class SupportedLocales {
@@ -11,10 +12,25 @@ class SupportedLocales {
 
 // Create a state notifier for locale management
 class LocaleNotifier extends StateNotifier<Locale> {
-  LocaleNotifier() : super(SupportedLocales.english);
+  LocaleNotifier() : super(SupportedLocales.english) {
+    // Load saved locale when initialized
+    _loadSavedLocale();
+  }
+
+  Future<void> _loadSavedLocale() async {
+    final savedLocale = await SettingsService.loadLocale();
+    if (savedLocale != null) {
+      state = savedLocale;
+    }
+  }
 
   void setLocale(Locale locale) {
     state = locale;
+    _saveLocale();
+  }
+
+  Future<void> _saveLocale() async {
+    await SettingsService.saveLocale(state);
   }
 }
 

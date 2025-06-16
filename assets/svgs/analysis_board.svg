@@ -1,0 +1,6 @@
+<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect width="10" height="10" fill="#6B939F"/>
+<rect width="10" height="10" transform="translate(10)" fill="#D1E9E9"/>
+<rect width="10" height="10" transform="translate(0 10)" fill="#D1E9E9"/>
+<rect width="10" height="10" transform="translate(10 10)" fill="#6B939F"/>
+</svg>

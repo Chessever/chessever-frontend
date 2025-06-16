@@ -58,7 +58,19 @@ dependencies:
   flutter_native_splash: ^2.4.6
   #for icons library
   font_awesome_flutter: ^10.8.0
+  #render svg icons
+  flutter_svg: ^2.1.0
 
+#for custom dropdown button and country picker and flags
+  country_flags: ^3.3.0
+  dropdown_button2: ^2.3.9
+  country_picker: ^2.0.25
+  
+  riverpod_annotation: ^2.6.1
+
+
+  #for settings persistence
+  shared_preferences: ^2.2.1
 
 dev_dependencies:
   flutter_test:
@@ -70,6 +82,8 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
+  build_runner: ^2.4.15
+  riverpod_generator: ^2.6.5
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -89,6 +103,7 @@ flutter:
     - assets/fonts/Inter-Medium.otf
     - assets/fonts/Inter-Regular.otf
     - assets/splash_screen.png
+    - assets/svgs/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
@@ -101,7 +116,15 @@ flutter:
   # "family" key with the font family name, and a "fonts" key with a
   # list giving the asset and other descriptors for the font. For
   # example:
-  # fonts:
+  fonts:
+    - family: InterDisplay
+      fonts:
+        - asset: assets/fonts/Inter-Regular.otf
+          weight: 400
+        - asset: assets/fonts/Inter-Medium.otf
+          weight: 500
+        - asset: assets/fonts/Inter-Bold.otf
+          weight: 700
   #   - family: Schyler
   #     fonts:
   #       - asset: fonts/Schyler-Regular.ttf
