@@ -22,4 +22,13 @@
 -> add: persistent settings storage using SharedPreferences
 -> fix: responsive design for all settings screens
 -> fix: language settings dialog type safety issues
--> add: search bar functionality added
+-> add: search bar functionality 
+
+##16th June 2025
+-> update: replaced icons in hamburger menu with SVG assets
+-> update: improved analysis board menu item appearance
+-> fix: consistent icon sizing in hamburger menu
+-> update: semantic labels added to SVG assets for accessibility
+-> add: apple signin button added
+-> fix: standardized height of premium item to match other menu items
+-> fix: the search bar was made according to the design

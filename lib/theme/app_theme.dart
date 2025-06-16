@@ -6,6 +6,7 @@ const Color kBackgroundColor = Color(0xFF0C0C0E); // BACKGROUND
 const Color kWhiteColor = Color(0xFFFFFFFF); // WHITE
 const Color kBlack2Color = Color(0xFF1A1A1C); // BLACK#2
 const Color kDarkGreyColor = Color(0xFF333333);
+const Color kLightBlack = Color(0xFF222222);
 const LinearGradient kAppLinearGradient = LinearGradient(
   begin: Alignment.topLeft,
   end: Alignment.bottomRight,
