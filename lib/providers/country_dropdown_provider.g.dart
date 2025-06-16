@@ -7,7 +7,7 @@ part of 'country_dropdown_provider.dart';
 // **************************************************************************
 
 String _$countryDropdownNotifierHash() =>
-    r'1e4cc6dda5dace10ffebe454e440a994b929373d';
+    r'8adc6f35021736d4ad666ee35fd319383ade9301';
 
 /// Copied from Dart SDK
 class _SystemHash {
