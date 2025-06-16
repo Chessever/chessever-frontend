@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/apple_sign_in_button.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../widgets/rounded_search_bar.dart';
@@ -61,24 +62,9 @@ class ChesseverScreen extends ConsumerWidget {
           },
         ),
         title: const Text(
-          'ChessEver',
+          'Tournaments',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.search, color: Colors.white),
-            onPressed: () {
-              // Show search bar dialog/sheet
-              showModalBottomSheet(
-                context: context,
-                isScrollControlled: true,
-                backgroundColor: Colors.transparent,
-                builder:
-                    (context) => _buildSearchSheet(context, searchController),
-              );
-            },
-          ),
-        ],
       ),
       body: Stack(
         children: [
@@ -116,8 +102,7 @@ class ChesseverScreen extends ConsumerWidget {
                           ),
                         );
                       },
-                      profileInitials:
-                          "VD", // You can customize this or get it from user data
+                      profileInitials: "VD", // Match what's shown in the design
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -151,6 +136,8 @@ class ChesseverScreen extends ConsumerWidget {
                     padding: EdgeInsets.symmetric(horizontal: 12),
                     child: CountryDropdown(onChanged: (value) {}),
                   ),
+                  SizedBox(height: 24),
+                  AppleSignInButton(),
                 ],
               ),
             ),
