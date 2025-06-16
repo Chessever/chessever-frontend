@@ -1,8 +1,11 @@
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/icons/analysis_board_icon.dart';
+import 'package:chessever2/widgets/svg_widget.dart';
+import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 class HamburgerMenu extends StatelessWidget {
   final VoidCallback? onSettingsPressed;
@@ -29,7 +32,7 @@ class HamburgerMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 240, // Set fixed width for hamburger menu
+      width: 260, // Set fixed width for hamburger menu
       child: Drawer(
         backgroundColor: Colors.black,
         child: SafeArea(
@@ -41,58 +44,72 @@ class HamburgerMenu extends StatelessWidget {
                   children: [
                     _buildMenuItem(
                       icon: Icons.settings,
-                      customIcon: SvgPicture.asset(
+                      customIcon: SvgWidget(
                         SvgAsset.settingsIcon,
                         semanticsLabel: 'Settings Icon',
+                        height: 24,
+                        width: 24,
                       ),
                       title: 'Settings',
                       onPressed: onSettingsPressed,
                       showChevron: true,
                     ),
+                    SizedBox(height: 12),
                     _buildMenuItem(
-                      icon: Icons.group,
+                      customIcon: SvgWidget(
+                        SvgAsset.playersIcon,
+                        semanticsLabel: 'Players Icon',
+                        height: 24,
+                        width: 24,
+                      ),
                       title: 'Players',
                       onPressed: onPlayersPressed,
                       showChevron: false,
                     ),
+                    SizedBox(height: 12),
                     _buildMenuItem(
-                      customIcon: SvgPicture.asset(
+                      customIcon: SvgWidget(
                         SvgAsset.favouriteIcon,
                         semanticsLabel: 'Fav Icon',
+                        height: 24,
+                        width: 24,
                       ),
                       title: 'Favorites',
                       onPressed: onFavoritesPressed,
                       showChevron: false,
                     ),
+                    SizedBox(height: 12),
                     _buildMenuItem(
-                      customIcon: const Text(
-                        '🇺🇸',
-                        style: TextStyle(fontSize: 18),
+                      customIcon: CountryFlag.fromCurrencyCode(
+                        'USD',
+                        height: 12,
+                        width: 24,
+                        shape: RoundedRectangle(0),
                       ),
                       title: 'Countryman',
                       onPressed: onCountrymanPressed,
                       showChevron: false,
                     ),
+                    SizedBox(height: 12),
                     _buildMenuItem(
-                      customIcon: const Icon(
-                        Icons.grid_view,
-                        color: Color(0xFFADD8E6), // Light blue color
-                        size: 24,
-                      ),
+                      customIcon: AnalysisBoardIcon(size: 20),
                       title: 'Analysis Board',
                       onPressed: onAnalysisBoardPressed,
                       showChevron: false,
                     ),
+                    SizedBox(height: 12),
                     _buildMenuItem(
-                      customIcon: const Icon(
-                        Icons.headset_mic,
-                        color: Colors.white,
-                        size: 24,
+                      customIcon: SvgWidget(
+                        SvgAsset.headsetIcon,
+                        semanticsLabel: 'Support Icon',
+                        height: 24,
+                        width: 24,
                       ),
                       title: 'Support',
                       onPressed: onSupportPressed,
                       showChevron: false,
                     ),
+                    SizedBox(height: 12),
                     _buildPremiumItem(onPressed: onPremiumPressed),
                   ],
                 ),
@@ -113,25 +130,23 @@ class HamburgerMenu extends StatelessWidget {
     VoidCallback? onPressed,
   }) {
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      minLeadingWidth: 40, // Set to 40px as requested
+      contentPadding: const EdgeInsets.only(left: 12),
+      minLeadingWidth: 40,
       horizontalTitleGap: 4,
-      leading: SizedBox(
-        width: 40, // Set fixed width for each item icon
-        child: Center(
-          child: customIcon ?? Icon(icon, color: kWhiteColor, size: 24),
-        ),
-      ),
+      leading: customIcon ?? Icon(icon, color: kWhiteColor, size: 24),
       title: Text(
         title,
         style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
       ),
       trailing:
           showChevron
-              ? const Icon(
-                Icons.chevron_right_outlined,
-                color: kWhiteColor,
-                size: 24,
+              ? Padding(
+                padding: EdgeInsets.only(right: 12),
+                child: const Icon(
+                  Icons.chevron_right_outlined,
+                  color: kWhiteColor,
+                  size: 24,
+                ),
               )
               : null,
       onTap: onPressed,
@@ -140,22 +155,18 @@ class HamburgerMenu extends StatelessWidget {
 
   Widget _buildPremiumItem({VoidCallback? onPressed}) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
-      decoration: const BoxDecoration(color: Color(0xFF222222)),
+      alignment: Alignment.centerLeft,
+      width: 260,
+      decoration: BoxDecoration(color: kLightBlack),
       child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        minLeadingWidth: 40, // Set to 40px as requested
-        leading: SizedBox(
-          width: 40, // Fixed width for premium icon
-          child: Center(
-            child: SvgPicture.asset(
-              SvgAsset.premiumIcon,
-              semanticsLabel: 'Premium Icon',
-              width: 24,
-              height: 24,
-              fit: BoxFit.contain,
-            ),
-          ),
+        contentPadding: const EdgeInsets.only(left: 12),
+        minLeadingWidth: 40,
+        horizontalTitleGap: 4,
+        leading: Image.asset(
+          PngAsset.premiumIcon,
+          width: 28,
+          height: 28,
+          fit: BoxFit.contain,
         ),
         title: Text(
           'Try Premium for free',
@@ -167,31 +178,15 @@ class HamburgerMenu extends StatelessWidget {
   }
 
   Widget _buildLogoutButton({VoidCallback? onPressed}) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12.0),
-      alignment: Alignment.centerLeft,
-      child: InkWell(
-        onTap: onPressed,
-        child: Row(
-          children: [
-            SizedBox(
-              width: 40, // Fixed width for logout icon
-              child: Center(
-                child: const Icon(Icons.logout, color: Colors.white, size: 24),
-              ),
-            ),
-            Text(
-              'Log out',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+      leading: Icon(Icons.logout, color: Colors.white, size: 24),
+      horizontalTitleGap: 24,
+      title: Text(
+        'Log out',
+        style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
       ),
+      onTap: onPressed,
     );
   }
 }
