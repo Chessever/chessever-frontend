@@ -1,10 +1,12 @@
 import 'package:chessever2/providers/notifications_settings_provider.dart';
 import 'package:chessever2/providers/timezone_provider.dart';
+import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/blur_background.dart';
 import 'package:chessever2/widgets/board_settings_dialog.dart';
 import 'package:chessever2/widgets/language_settings_dialog.dart';
 import 'package:chessever2/widgets/notifications_settings_dialog.dart';
 import 'package:chessever2/widgets/settings_menu.dart';
+import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/widgets/timezone_settings_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -71,6 +73,21 @@ class SettingsScreen extends ConsumerWidget {
                     timezoneSubtitle: timezone.display,
                     isSmallScreen: isSmallScreen,
                     isLargeScreen: isLargeScreen,
+                    boardSettingsIcon: SvgWidget(
+                      SvgAsset.boardSettings,
+                      height: isSmallScreen ? 20 : (isLargeScreen ? 28 : 24),
+                      width: isSmallScreen ? 20 : (isLargeScreen ? 28 : 24),
+                    ),
+                    languageIcon: SvgWidget(
+                      SvgAsset.languageIcon,
+                      height: isSmallScreen ? 20 : (isLargeScreen ? 28 : 24),
+                      width: isSmallScreen ? 20 : (isLargeScreen ? 28 : 24),
+                    ),
+                    timezoneIcon: SvgWidget(
+                      SvgAsset.timezoneIcon,
+                      height: isSmallScreen ? 20 : (isLargeScreen ? 28 : 24),
+                      width: isSmallScreen ? 20 : (isLargeScreen ? 28 : 24),
+                    ),
                     onBoardSettingsPressed: () {
                       showDialog(
                         context: context,

@@ -4,7 +4,6 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:flutter/material.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
-import 'package:country_picker/country_picker.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class CountryDropdown extends ConsumerWidget {
@@ -52,10 +51,10 @@ class CountryDropdown extends ConsumerWidget {
       borderRadius: borderRadius,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
+        height: 40, // Set fixed height to 40px
         decoration: BoxDecoration(
           color: kBackgroundColor,
           borderRadius: borderRadius,
-
           border:
               state.isDropdownOpen
                   ? null
@@ -64,27 +63,55 @@ class CountryDropdown extends ConsumerWidget {
         child: DropdownButtonHideUnderline(
           child: DropdownButton2<String>(
             isExpanded: true,
+            customButton: Container(
+              height: 40, // Match container height
+              padding: const EdgeInsets.symmetric(horizontal: 12), // Proper padding
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      // Find the country name using the selected code
+                      state.countries.firstWhere(
+                        (country) => country.countryCode == state.selectedCountryCode,
+                        orElse: () => state.countries.first,
+                      ).name,
+                      style: AppTypography.textXsMedium.copyWith(
+                        color: kWhiteColor,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 12), // 12px gap
+                  if (state.selectedCountryCode != null)
+                    CountryFlag.fromCountryCode(
+                      state.selectedCountryCode!,
+                      width: 16,
+                      height: 12,
+                    ),
+                  const SizedBox(width: 8),
+                  Icon(
+                    state.isDropdownOpen
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                    color: kWhiteColor,
+                    size: 20,
+                  ),
+                ],
+              ),
+            ),
             dropdownStyleData: DropdownStyleData(
               padding: EdgeInsets.zero,
               offset: const Offset(0, -4),
               decoration: BoxDecoration(
-                color: kBlack2Color, // Use theme color
+                color: kBlack2Color,
                 borderRadius: dropDownBorderRadius,
                 border: Border.all(color: kDarkGreyColor),
               ),
               maxHeight: 240,
             ),
-            buttonStyleData: const ButtonStyleData(height: 40),
-            iconStyleData: IconStyleData(
-              icon: Padding(
-                padding: EdgeInsets.only(right: 16),
-                child: Icon(
-                  state.isDropdownOpen
-                      ? Icons.keyboard_arrow_up
-                      : Icons.keyboard_arrow_down,
-                  color: kWhiteColor, // Use theme color
-                ),
-              ),
+            buttonStyleData: const ButtonStyleData(
+              height: 40,
+              padding: EdgeInsets.zero,
             ),
             menuItemStyleData: const MenuItemStyleData(
               height: 40,
@@ -121,7 +148,7 @@ class CountryDropdown extends ConsumerWidget {
                         width: 16,
                         height: 12,
                       ),
-                      SizedBox(width: 4),
+                      SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           country.name,
@@ -135,33 +162,6 @@ class CountryDropdown extends ConsumerWidget {
                 ),
               );
             }),
-            selectedItemBuilder: (context) {
-              return state.countries.map((Country country) {
-                if (country.countryCode == state.selectedCountryCode) {
-                  return Row(
-                    mainAxisAlignment: MainAxisAlignment.start,
-                    children: [
-                      SizedBox(width: 16),
-                      Text(
-                        country.name,
-                        style: AppTypography.textXsMedium.copyWith(
-                          color: kWhiteColor,
-                        ),
-                      ),
-                      Spacer(),
-                      CountryFlag.fromCountryCode(
-                        country.countryCode,
-                        width: 16,
-                        height: 12,
-                      ),
-                      SizedBox(width: 4),
-                    ],
-                  );
-                } else {
-                  return SizedBox.shrink();
-                }
-              }).toList();
-            },
           ),
         ),
       ),

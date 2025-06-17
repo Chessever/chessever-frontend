@@ -1,3 +1,5 @@
+import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import '../utils/app_typography.dart';
 
@@ -42,19 +44,17 @@ class EventCard extends StatelessWidget {
         margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
         child: Padding(
           padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center, // Center vertically in the entire container
             children: [
-              // First row with title and icon
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start, // Align to top
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // Title and status section
-                  Expanded(
-                    child: Row(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start, // Align to top
+              // Main content column (title, status, details)
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // First row with title and status
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Flexible(
                           child: Text(
@@ -69,58 +69,61 @@ class EventCard extends StatelessWidget {
                         if (isLive) _buildLiveTag() else statusWidget,
                       ],
                     ),
-                  ),
 
-                  // Star or three dots icon
-                  isLive
-                      ? InkWell(
-                        onTap: onFavoritePressed,
-                        child: Icon(
-                          isFavorite ? Icons.star : Icons.star_border,
-                          color: isFavorite ? Colors.amber : Colors.grey,
-                          size: 24,
-                        ),
-                      )
-                      : onMorePressed != null
-                      ? InkWell(
-                        onTap: onMorePressed,
-                        child: const Icon(
-                          Icons.more_vert,
-                          color: Colors.grey,
-                          size: 24,
-                        ),
-                      )
-                      : Container(), // Empty container if no icon needed
-                ],
-              ),
+                    // Small vertical spacing
+                    const SizedBox(height: 4),
 
-              // Small vertical spacing
-              const SizedBox(height: 4),
-
-              // Second row with details
-              DefaultTextStyle(
-                style: AppTypography.textXsMedium.copyWith(color: Colors.grey),
-                child: Row(
-                  children: [
-                    Flexible(
-                      child: Wrap(
-                        spacing: 6,
-                        runSpacing: 4,
-                        crossAxisAlignment: WrapCrossAlignment.center,
+                    // Second row with details
+                    DefaultTextStyle(
+                      style: AppTypography.textXsMedium.copyWith(color: Colors.grey),
+                      child: Row(
                         children: [
-                          Text(dates),
-                          _buildDot(),
-                          Text(location),
-                          _buildDot(),
-                          Text("$playerCount players"),
-                          _buildDot(),
-                          Text("ELO $elo"),
+                          Flexible(
+                            child: Wrap(
+                              spacing: 6,
+                              runSpacing: 4,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                Text(dates),
+                                _buildDot(),
+                                Text(location),
+                                _buildDot(),
+                                Text("$playerCount players"),
+                                _buildDot(),
+                                Text("ELO $elo"),
+                              ],
+                            ),
+                          ),
                         ],
                       ),
                     ),
                   ],
                 ),
               ),
+              
+              // Star or three dots icon - now aligned to the center of the entire card
+              const SizedBox(width: 16),
+              isLive
+                  ? InkWell(
+                    onTap: onFavoritePressed,
+                    child: SvgWidget(
+                      SvgAsset.starIcon,
+                      semanticsLabel: 'Favorite Icon',
+                      height: 24,
+                      width: 24,
+                    ),
+                  )
+                  : onMorePressed != null
+                  ? InkWell(
+                    onTap: onMorePressed,
+                    child: SvgWidget(
+                      SvgAsset.threeDots,
+                      semanticsLabel: 'More Options',
+                      height: 24,
+                      width: 24,
+                    ),
+                  )
+                  : Container(), // Empty container if no icon needed
             ],
           ),
         ),
