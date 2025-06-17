@@ -26,7 +26,12 @@ class AppleSignInButton extends StatelessWidget {
       height: height,
       width: width ?? MediaQuery.of(context).size.width,
       child: ElevatedButton(
-        onPressed: onPressed,
+        onPressed:
+            onPressed ??
+            () {
+              // Navigate to the player list screen when the button is pressed
+              Navigator.of(context).pushNamed('/playerList');
+            },
         style: ButtonStyle(
           backgroundColor: MaterialStateProperty.all<Color>(kWhiteColor),
           // Pure white with no opacity
