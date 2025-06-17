@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/theme/app_theme.dart';
 import '../localization/locale_provider.dart';
-import 'settings_card.dart';
-import 'settings_dialog.dart';
-import 'settings_item.dart';
 
 // Create a model class for language options to ensure type safety
 class LanguageOption {
@@ -33,127 +32,77 @@ class LanguageSettingsDialog extends ConsumerWidget {
         isAvailable: true,
       ),
       const LanguageOption(
-        name: 'French',
-        locale: Locale('fr'),
-        isAvailable: false,
-      ),
-      const LanguageOption(
-        name: 'German',
+        name: 'Deutsch',
         locale: Locale('de'),
-        isAvailable: false,
+        isAvailable: true,
       ),
       const LanguageOption(
-        name: 'Spanish',
-        locale: Locale('es'),
-        isAvailable: false,
-      ),
-      const LanguageOption(
-        name: 'Italian',
-        locale: Locale('it'),
-        isAvailable: false,
-      ),
-      const LanguageOption(
-        name: 'Russian',
-        locale: Locale('ru'),
-        isAvailable: false,
-      ),
-      const LanguageOption(
-        name: 'Chinese',
+        name: '中文',
         locale: Locale('zh'),
-        isAvailable: false,
+        isAvailable: true,
+      ),
+      const LanguageOption(
+        name: 'Español',
+        locale: Locale('es'),
+        isAvailable: true,
+      ),
+      const LanguageOption(
+        name: 'Français',
+        locale: Locale('fr'),
+        isAvailable: true,
       ),
     ];
 
-    return SettingsDialog(
-      title: 'Language',
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SettingsCard(
-            children:
-                supportedLanguages.map((language) {
-                  final isSelected =
-                      currentLocale.languageCode ==
-                      language.locale.languageCode;
-
-                  return SettingsItem(
-                    icon: _getLanguageIcon(language.locale),
-                    title: language.name,
-                    trailing:
-                        language.isAvailable
-                            ? (isSelected
-                                ? const Icon(
-                                  Icons.check_circle,
-                                  color: Colors.cyan,
-                                  size: 20,
-                                )
-                                : null)
-                            : const Text(
-                              'Coming soon',
-                              style: TextStyle(
-                                color: Colors.grey,
-                                fontSize: 12,
-                                fontStyle: FontStyle.italic,
-                              ),
-                            ),
-                    onTap:
-                        language.isAvailable
-                            ? () {
-                              ref
-                                  .read(localeProvider.notifier)
-                                  .setLocale(language.locale);
-                              Navigator.of(context).pop();
-                            }
-                            : null,
-                    showDivider: language != supportedLanguages.last,
-                  );
-                }).toList(),
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 24.0),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.black,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: supportedLanguages.length,
+          separatorBuilder: (context, index) => const Divider(
+            height: 1,
+            thickness: 0.5,
+            color: Color(0xFF2C2C2E),
           ),
-
-          const SizedBox(height: 16),
-
-          // Button to close dialog without changing language
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.white,
-                side: const BorderSide(color: Colors.grey),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+          itemBuilder: (context, index) {
+            final language = supportedLanguages[index];
+            final isSelected = currentLocale.languageCode == language.locale.languageCode;
+            
+            return ListTile(
+              contentPadding: const EdgeInsets.only(left: 12),
+              minLeadingWidth: 40,
+              horizontalTitleGap: 4,
+              title: Text(
+                language.name,
+                style: AppTypography.textSmMedium.copyWith(
+                  color: isSelected ? kPrimaryColor : kWhiteColor,
                 ),
               ),
-              child: const Text('Cancel', style: TextStyle(fontSize: 16)),
-            ),
-          ),
-        ],
+              trailing: isSelected 
+                ? const Padding(
+                    padding: EdgeInsets.only(right: 12),
+                    child: Icon(
+                      Icons.check,
+                      color: kPrimaryColor,
+                      size: 24,
+                    ),
+                  )
+                : null,
+              onTap: () {
+                // UI selection - you'll handle the logic later
+                ref.read(localeProvider.notifier).setLocale(language.locale);
+                Navigator.of(context).pop();
+              },
+            );
+          },
+        ),
       ),
     );
-  }
-
-  // Helper method to get appropriate icon for each language
-  IconData _getLanguageIcon(Locale locale) {
-    switch (locale.languageCode) {
-      case 'en':
-        return Icons.language;
-      case 'fr':
-        return Icons.language;
-      case 'de':
-        return Icons.language;
-      case 'es':
-        return Icons.language;
-      case 'it':
-        return Icons.language;
-      case 'ru':
-        return Icons.language;
-      case 'zh':
-        return Icons.language;
-      default:
-        return Icons.language;
-    }
   }
 }

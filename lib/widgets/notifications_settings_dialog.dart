@@ -29,8 +29,8 @@ class NotificationsSettingsDialog extends ConsumerWidget {
                         .read(notificationsSettingsProvider.notifier)
                         .toggleEnabled();
                   },
-                  activeColor: Colors.cyan,
-                  activeTrackColor: Colors.cyan.withOpacity(0.3),
+                  activeColor: const Color(0xFF0FB4E5),
+                  activeTrackColor: const Color(0xFF0FB4E5).withOpacity(0.3),
                 ),
                 showDivider: true,
               ),
@@ -53,8 +53,8 @@ class NotificationsSettingsDialog extends ConsumerWidget {
                                 .toggleGameInvites();
                           }
                           : null,
-                  activeColor: Colors.cyan,
-                  activeTrackColor: Colors.cyan.withOpacity(0.3),
+                  activeColor: const Color(0xFF0FB4E5),
+                  activeTrackColor: const Color(0xFF0FB4E5).withOpacity(0.3),
                 ),
                 showDivider: true,
               ),
@@ -71,8 +71,8 @@ class NotificationsSettingsDialog extends ConsumerWidget {
                                 .toggleTournamentReminders();
                           }
                           : null,
-                  activeColor: Colors.cyan,
-                  activeTrackColor: Colors.cyan.withOpacity(0.3),
+                  activeColor: const Color(0xFF0FB4E5),
+                  activeTrackColor: const Color(0xFF0FB4E5).withOpacity(0.3),
                 ),
                 showDivider: true,
               ),
@@ -89,8 +89,8 @@ class NotificationsSettingsDialog extends ConsumerWidget {
                                 .toggleFriendActivity();
                           }
                           : null,
-                  activeColor: Colors.cyan,
-                  activeTrackColor: Colors.cyan.withOpacity(0.3),
+                  activeColor: const Color(0xFF0FB4E5),
+                  activeTrackColor: const Color(0xFF0FB4E5).withOpacity(0.3),
                 ),
                 showDivider: false,
               ),
@@ -107,7 +107,7 @@ class NotificationsSettingsDialog extends ConsumerWidget {
                 Navigator.of(context).pop();
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.cyan,
+                backgroundColor: const Color(0xFF0FB4E5),
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 shape: RoundedRectangleBorder(

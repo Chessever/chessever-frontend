@@ -1,3 +1,5 @@
+import 'package:chessever2/providers/board_settings_provider.dart';
+
 class SvgAsset {
   static const settingsIcon = 'assets/svgs/settings.svg';
   static const favouriteIcon = 'assets/svgs/favorites.svg';
@@ -7,4 +9,12 @@ class SvgAsset {
   static const headsetIcon = 'assets/svgs/headset.svg';
   static const appleIcon = 'assets/svgs/apple_logo.svg';
   static const playersIcon = 'assets/svgs/players.svg';
+  static const threeDots = 'assets/svgs/three_dots.svg';
+  static const boardSettings = 'assets/svgs/board_settings.svg';
+  static const languageIcon = 'assets/svgs/language.svg';
+  static const timezoneIcon = 'assets/svgs/timezone.svg';
+  static const boardColorDefault = 'assets/svgs/board_color_default.svg';
+  static const boardColorBrown = 'assets/svgs/board_color_brown.svg';
+  static const boardColorGreen = 'assets/svgs/board_color_green.svg';
+  static const boardColorGrey = 'assets/svgs/board_color_grey.svg';
 }

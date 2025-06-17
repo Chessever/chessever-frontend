@@ -32,3 +32,15 @@
 -> add: apple signin button added
 -> fix: standardized height of premium item to match other menu items
 -> fix: the search bar was made according to the design
+
+##17th June 2025
+-> star and three dots png fixed
+-> fix: vertical alignment of star and three dots icons in event cards
+-> update: restructured EventCard widget for improved layout consistency
+-> finalized search bar
+-> filter widget added with design accuracy
+-> board color added
+-> player card and list screen
+
+
+

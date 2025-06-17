@@ -1,6 +1,7 @@
 import 'package:chessever2/l10n/app_localizations.dart';
 import 'package:chessever2/localization/locale_provider.dart';
 import 'package:chessever2/screens/chessever_screen.dart';
+import 'package:chessever2/screens/player_list_screen.dart';
 import 'package:chessever2/screens/settings_screen.dart';
 import 'package:chessever2/services/settings_manager.dart';
 import 'package:device_preview_plus/device_preview_plus.dart';
@@ -65,6 +66,7 @@ class _MyAppState extends ConsumerState<MyApp> {
         '/splash_auth': (context) => const SplashAuthScreen(),
         '/tournaments': (context) => const TournamentListScreen(),
         '/settings': (context) => const SettingsScreen(),
+        '/playerList': (context) => const PlayerListScreen(),
       },
     );
   }
