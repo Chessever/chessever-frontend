@@ -31,6 +31,11 @@ class AppleSignInButton extends StatelessWidget {
             () {
               // Navigate to the player list screen when the button is pressed
               Navigator.of(context).pushNamed('/playerList');
+              // Navigator.of(context).push(
+              //   MaterialPageRoute(
+              //     builder: (context) => SegmentedSwitcherExample(),
+              //   ),
+              // );
             },
         style: ButtonStyle(
           backgroundColor: MaterialStateProperty.all<Color>(kWhiteColor),

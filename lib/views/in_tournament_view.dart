@@ -4,7 +4,7 @@ import 'standings_view.dart';
 import 'package:flutter/material.dart';
 import 'game_list_view.dart';
 
-/// This widget shows the tournament detail with tabs for About, Games, and Standings
+/// This widget shows the tournaments detail with tabs for About, Games, and Standings
 class InTournamentView extends StatelessWidget {
   final Tournament tournament;
 

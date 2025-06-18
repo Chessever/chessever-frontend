@@ -42,9 +42,18 @@
 -> board color added
 -> player card and list screen
 
+
 #18th June
 -> Configure Supabase,
 -> Add Apple and google Sign in Methods,
+-> upcoming events card
+-> add: reusable segmented switcher widget with customizable styling
+-> added the segmented switchbar
+-> added the tournament screen
+-> player screen
+-> favourites screen
+-> refactored player, tournaments, favourite screens
+
 
 
 

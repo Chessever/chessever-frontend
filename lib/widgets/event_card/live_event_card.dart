@@ -12,7 +12,7 @@ class LiveEventCard extends StatelessWidget {
   final VoidCallback? onFavoriteToggle;
 
   const LiveEventCard({
-    Key? key,
+    super.key,
     required this.title,
     required this.dates,
     required this.location,
@@ -21,7 +21,7 @@ class LiveEventCard extends StatelessWidget {
     this.onTap,
     this.isFavorite = false,
     this.onFavoriteToggle,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

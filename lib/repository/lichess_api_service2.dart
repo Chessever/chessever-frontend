@@ -46,7 +46,7 @@ class LichessRepository implements ILichessRepository {
 
   @override
   Future<List<Tournament>> fetchArenaTournaments() async {
-    final uri = Uri.parse('$_baseUrl/tournament');
+    final uri = Uri.parse('$_baseUrl/tournaments');
     try {
       final resp = await _client.get(uri);
       if (resp.statusCode != 200) {
@@ -67,7 +67,7 @@ class LichessRepository implements ILichessRepository {
 
   @override
   Future<List<GameExport>> fetchTournamentGames(String tournamentId) async {
-    final uri = Uri.parse('$_baseUrl/tournament/$tournamentId/games');
+    final uri = Uri.parse('$_baseUrl/tournaments/$tournamentId/games');
     try {
       final resp = await _client.get(uri);
       if (resp.statusCode != 200) {

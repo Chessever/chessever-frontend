@@ -1,24 +1,24 @@
+// filepath: /Users/p1/Desktop/chessever/lib/screens/favorites/widgets/favorite_card.dart
 import 'package:flutter/material.dart';
-import '../utils/app_typography.dart';
+import '../../../utils/app_typography.dart';
+import '../../../theme/app_theme.dart';
 
-class PlayerCard extends StatelessWidget {
+class FavoriteCard extends StatelessWidget {
   final int rank;
   final String playerName;
   final String countryCode;
   final int elo;
   final int age;
-  final bool isFavorite;
-  final VoidCallback? onFavoriteToggle;
+  final VoidCallback? onRemoveFavorite;
 
-  const PlayerCard({
+  const FavoriteCard({
     Key? key,
     required this.rank,
     required this.playerName,
     required this.countryCode,
     required this.elo,
     required this.age,
-    this.isFavorite = false,
-    this.onFavoriteToggle,
+    this.onRemoveFavorite,
   }) : super(key: key);
 
   @override
@@ -26,10 +26,10 @@ class PlayerCard extends StatelessWidget {
     return Container(
       height: 48,
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1C),
+        color: kBlack2Color,
         borderRadius: BorderRadius.zero,
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(
         children: [
           // Rank number
@@ -37,11 +37,7 @@ class PlayerCard extends StatelessWidget {
             width: 24,
             child: Text(
               '$rank.',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
+              style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
             ),
           ),
 
@@ -53,23 +49,20 @@ class PlayerCard extends StatelessWidget {
 
           // GM prefix and player name
           Expanded(
+            flex: 3,
             child: RichText(
               text: TextSpan(
                 children: [
-                  const TextSpan(
+                  TextSpan(
                     text: 'GM ',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: kWhiteColor,
                     ),
                   ),
                   TextSpan(
                     text: playerName,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: kWhiteColor,
                     ),
                   ),
                 ],
@@ -77,44 +70,32 @@ class PlayerCard extends StatelessWidget {
             ),
           ),
 
-          // ELO rating - exactly matching the header width
-          Container(
-            width: 60,
+          // ELO rating - using Expanded to match header
+          Expanded(
+            flex: 1,
             child: Text(
               elo.toString(),
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
+              style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
             ),
           ),
 
-          // Age - exactly matching the header width
-          Container(
-            width: 50,
+          // Age - using Expanded to match header
+          Expanded(
+            flex: 1,
             child: Text(
               age.toString(),
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
+              style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
             ),
           ),
 
-          // Favorite icon
-          Container(
-            width: 30,
-            child: GestureDetector(
-              onTap: onFavoriteToggle,
-              child: Icon(
-                isFavorite ? Icons.favorite : Icons.favorite_border,
-                color: isFavorite ? Colors.red : Colors.white,
-                size: 20,
-              ),
+          // Remove favorite icon
+          GestureDetector(
+            onTap: onRemoveFavorite,
+            child: SizedBox(
+              width: 30,
+              child: Icon(Icons.favorite, color: Colors.red, size: 20),
             ),
           ),
         ],
@@ -165,7 +146,7 @@ class PlayerCard extends StatelessWidget {
       default:
         return Text(
           countryCode,
-          style: TextStyle(fontSize: 12, color: Colors.white),
+          style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
         );
     }
   }
