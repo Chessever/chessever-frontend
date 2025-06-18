@@ -4,9 +4,15 @@ import 'package:flutter/material.dart';
 const Color kPrimaryColor = Color(0xFF0FB4E5); // PRIMARY COLOR
 const Color kBackgroundColor = Color(0xFF0C0C0E); // BACKGROUND
 const Color kWhiteColor = Color(0xFFFFFFFF); // WHITE
+const Color kWhiteColor70 = Color(
+  0xB3FFFFFF,
+); // WHITE with 70% opacity (B3 = 70%)
 const Color kBlack2Color = Color(0xFF1A1A1C); // BLACK#2
 const Color kDarkGreyColor = Color(0xFF333333);
 const Color kLightBlack = Color(0xFF222222);
+const Color kInactiveTabColor = Color(
+  0x669D9D9D,
+); // #9D9D9D with 40% opacity (66 = 40%)
 const LinearGradient kAppLinearGradient = LinearGradient(
   begin: Alignment.topLeft,
   end: Alignment.bottomRight,
@@ -16,6 +22,17 @@ const LinearGradient kAppLinearGradient = LinearGradient(
   ],
   stops: [0.0, 1.0],
   transform: GradientRotation(75 * 3.1415927 / 180),
+);
+
+// Profile initials gradient
+const LinearGradient kProfileInitialsGradient = LinearGradient(
+  begin: Alignment.topCenter,
+  end: Alignment.bottomCenter,
+  colors: [
+    Color(0xFF0FB4E5), // 0FB4E5 (0%)
+    Color(0xFF08647F), // 08647F (100%)
+  ],
+  stops: [0.0, 1.0],
 );
 
 class AppTheme {

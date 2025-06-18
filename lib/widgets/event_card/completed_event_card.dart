@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'event_card.dart';
-import '../utils/app_typography.dart';
+import '../../utils/app_typography.dart';
 
 class CompletedEventCard extends StatelessWidget {
   final String title;

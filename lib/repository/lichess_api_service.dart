@@ -107,7 +107,7 @@ class LichessApiService {
     } on http.ClientException catch (e) {
       throw NetworkException('Network error fetching arenas: $e');
     } on FormatException catch (e) {
-      throw ParsingException('Failed to parse Arena tournament data: $e');
+      throw ParsingException('Failed to parse Arena tournaments data: $e');
     } catch (e) {
       // Catch any other unexpected errors
       throw ApiException('An unexpected error occurred fetching arenas: $e');

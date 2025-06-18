@@ -1,8 +1,15 @@
 import 'package:chessever2/l10n/app_localizations.dart';
 import 'package:chessever2/localization/locale_provider.dart';
+
+// import 'package:chessever2/screens/chess_players_navigation.dart';
 import 'package:chessever2/screens/chessever_screen.dart';
-import 'package:chessever2/screens/player_list_screen.dart';
+
+// import 'package:chessever2/screens/player_list_screen.dart';
+import 'package:chessever2/screens/players/player_screen.dart';
 import 'package:chessever2/screens/settings_screen.dart';
+import 'package:chessever2/screens/favorites/favorite_screen.dart'; // Updated import for our new FavoriteScreen
+import 'package:chessever2/screens/countryman_screen.dart';
+import 'package:chessever2/screens/tournaments/tournament_screen.dart';
 import 'package:chessever2/services/settings_manager.dart';
 import 'package:device_preview_plus/device_preview_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -53,8 +60,17 @@ class _MyAppState extends ConsumerState<MyApp> {
     // Initialize settings from persistent storage
     WidgetsBinding.instance.addPostFrameCallback((_) {
       SettingsManager.initializeSettings(ref);
+      // Initialize the favorites service
+      // _initializeFavoritesService();
     });
   }
+
+  // Initialize the favorites service
+  // Future<void> _initializeFavoritesService() async {
+  //   import('package:chessever2/services/favorites_service.dart').then((module) {
+  //     module.FavoritesService.initialize();
+  //   });
+  // }
 
   @override
   Widget build(BuildContext context) {
@@ -73,12 +89,20 @@ class _MyAppState extends ConsumerState<MyApp> {
       themeMode: themeMode,
       initialRoute: '/',
       routes: {
-        '/': (context) => const ChesseverScreen(),
+        // '/': (context) => const ChesseverScreen(),
+        '/': (context) => const TournamentScreen(),
         '/input_screen': (context) => const InputDesignScreen(),
         '/splash_auth': (context) => const SplashAuthScreen(),
-        '/tournaments': (context) => const TournamentListScreen(),
+        // '/tournaments': (context) => const TournamentListScreen(),
+        // '/tournament_screen': (context) => const TournamentScreen(),
         '/settings': (context) => const SettingsScreen(),
-        '/playerList': (context) => const PlayerListScreen(),
+        '/playerList':
+            (context) =>
+                const PlayerScreen(), // Updated to use the navigation component
+        '/favorites':
+            (context) =>
+                const FavoriteScreen(), // Updated to use the new FavoriteScreen
+        '/countryman_screen': (context) => const CountrymanScreen(),
       },
     );
   }
