@@ -50,7 +50,7 @@ class ChesseverRepository implements IChesseverRepository {
                   if (e is Map<String, dynamic>) {
                     return Tournament.fromJson(e);
                   } else {
-                    throw ParsingException('Invalid tournament entry: $e');
+                    throw ParsingException('Invalid tournaments entry: $e');
                   }
                 }).toList();
           } else {

@@ -5,7 +5,7 @@ class TournamentDetailsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Example tournament data, you may want to pass this as arguments
+    // Example tournaments data, you may want to pass this as arguments
     final tournament = {
       'name': 'Norway Chess 2025',
       'status': 'LIVE',
@@ -14,7 +14,7 @@ class TournamentDetailsScreen extends StatelessWidget {
       'players': 12,
       'elo': 2714,
       'description':
-          'The most prestigious annual chess tournament in the world. Watch top grandmasters compete for glory!',
+          'The most prestigious annual chess tournaments in the world. Watch top grandmasters compete for glory!',
     };
 
     return Scaffold(

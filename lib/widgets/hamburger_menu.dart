@@ -51,7 +51,16 @@ class HamburgerMenu extends StatelessWidget {
                         width: 24,
                       ),
                       title: 'Settings',
-                      onPressed: onSettingsPressed,
+                      onPressed: () {
+                        // Close the drawer first
+                        Navigator.pop(context);
+                        // Navigate to settings page
+                        Navigator.of(context).pushNamed('/settings');
+                        // Still call the original callback if provided
+                        if (onSettingsPressed != null) {
+                          onSettingsPressed!();
+                        }
+                      },
                       showChevron: true,
                     ),
                     SizedBox(height: 12),
@@ -63,7 +72,16 @@ class HamburgerMenu extends StatelessWidget {
                         width: 24,
                       ),
                       title: 'Players',
-                      onPressed: onPlayersPressed,
+                      onPressed: () {
+                        // Close the drawer first
+                        Navigator.pop(context);
+                        // Navigate using the correct route name
+                        Navigator.of(context).pushNamed('/playerList');
+                        // Still call the original callback if provided
+                        if (onPlayersPressed != null) {
+                          onPlayersPressed!();
+                        }
+                      },
                       showChevron: false,
                     ),
                     SizedBox(height: 12),
@@ -75,7 +93,16 @@ class HamburgerMenu extends StatelessWidget {
                         width: 24,
                       ),
                       title: 'Favorites',
-                      onPressed: onFavoritesPressed,
+                      onPressed: () {
+                        // Close the drawer first
+                        Navigator.pop(context);
+                        // Navigate to favorites screen
+                        Navigator.of(context).pushNamed('/favorites');
+                        // Still call the original callback if provided
+                        if (onFavoritesPressed != null) {
+                          onFavoritesPressed!();
+                        }
+                      },
                       showChevron: false,
                     ),
                     SizedBox(height: 12),
