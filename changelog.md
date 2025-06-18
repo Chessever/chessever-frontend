@@ -42,5 +42,9 @@
 -> board color added
 -> player card and list screen
 
+#18th June
+-> Configure Supabase,
+-> Add Apple and google Sign in Methods,
+
 
 
