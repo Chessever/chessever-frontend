@@ -3,7 +3,7 @@ import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import '../utils/app_typography.dart';
 
-class AuthButton extends StatelessWidget {
+class AuthButton extends StatefulWidget {
   final String svgIconPath;
   final String signInTitle;
   final VoidCallback onPressed;
@@ -24,47 +24,99 @@ class AuthButton extends StatelessWidget {
   });
 
   @override
+  State<AuthButton> createState() => _AuthButtonState();
+}
+
+class _AuthButtonState extends State<AuthButton>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  bool _isPressed = false;
+
+  @override
+  void initState() {
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 100),
+      upperBound: 0.05,
+    );
+    super.initState();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  void onTapDown(TapDownDetails _) {
+    _isPressed = true;
+    _animationController.forward().then((value) {
+      if (_isPressed) return;
+      _animationController.reverse();
+    });
+  }
+
+  void onTapUp(TapUpDetails _) {
+    _isPressed = false;
+    if (_animationController.isAnimating) return;
+    _animationController.reverse();
+  }
+
+  void onTapCancel() {
+    _isPressed = false;
+    _animationController.reverse();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: height,
-      width: width ?? MediaQuery.of(context).size.width,
-      child: ElevatedButton(
-        onPressed: onPressed,
-        style: ButtonStyle(
-          backgroundColor: MaterialStateProperty.all<Color>(kWhiteColor),
-          // Pure white with no opacity
-          foregroundColor: MaterialStateProperty.all<Color>(kBackgroundColor),
-          elevation: MaterialStateProperty.all<double>(0),
-          padding: MaterialStateProperty.all<EdgeInsetsGeometry>(padding),
-          shape: MaterialStateProperty.all<RoundedRectangleBorder>(
-            RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(borderRadius),
-            ),
-          ),
-          // Ensure the button doesn't change colors when pressed
-          overlayColor: MaterialStateProperty.all<Color>(Colors.transparent),
+    return AnimatedBuilder(
+      animation: _animationController,
+      builder: (cxt, child) {
+        return Transform.scale(
+          scale: 1 - _animationController.value,
+          child: child,
+        );
+      },
+      child: Container(
+        height: widget.height,
+        width: widget.width ?? MediaQuery.of(context).size.width,
+        padding: widget.padding,
+        decoration: BoxDecoration(
+          color: kWhiteColor, // Pure white background
+          borderRadius: BorderRadius.circular(widget.borderRadius),
+          boxShadow: [],
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SvgWidget(
-              svgIconPath,
-              height: 24,
-              width: 24,
-              colorFilter: ColorFilter.mode(
-                Colors.black, // Black Apple logo
-                BlendMode.srcIn,
+        child: InkWell(
+          onTap: () {
+            Future.delayed(
+              Duration(milliseconds: 100),
+            ).then((_) => widget.onPressed());
+          },
+          onTapDown: onTapDown,
+          onTapCancel: onTapCancel,
+          onTapUp: onTapUp,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SvgWidget(
+                widget.svgIconPath,
+                height: 24,
+                width: 24,
+                colorFilter: ColorFilter.mode(
+                  Colors.black, // Black Apple logo
+                  BlendMode.srcIn,
+                ),
+                fallback: Icon(Icons.apple, size: 24, color: kBackgroundColor),
               ),
-              fallback: Icon(Icons.apple, size: 24, color: kBackgroundColor),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              signInTitle,
-              style: AppTypography.textLgMedium.copyWith(
-                color: kBackgroundColor, // Black text
+              const SizedBox(width: 12),
+              Text(
+                widget.signInTitle,
+                style: AppTypography.textLgMedium.copyWith(
+                  color: kBackgroundColor, // Black text
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -10,6 +10,10 @@ const Color kWhiteColor70 = Color(
 const Color kBlack2Color = Color(0xFF1A1A1C); // BLACK#2
 const Color kDarkGreyColor = Color(0xFF333333);
 const Color kLightBlack = Color(0xFF222222);
+const Color kGreenColor = Color(0xFF009C42); // GREEN
+const Color kRedColor = Color(0xFFF5453A); // RED
+const Color kActiveCalendarColor = Color(0xff68D3FF);
+
 const Color kInactiveTabColor = Color(
   0x669D9D9D,
 ); // #9D9D9D with 40% opacity (66 = 40%)
@@ -22,6 +26,10 @@ const LinearGradient kAppLinearGradient = LinearGradient(
   ],
   stops: [0.0, 1.0],
   transform: GradientRotation(75 * 3.1415927 / 180),
+);
+
+RadialGradient radialOverlayGradient = RadialGradient(
+  colors: [kWhiteColor.withAlpha(20), kLightBlack.withAlpha(20)],
 );
 
 // Profile initials gradient

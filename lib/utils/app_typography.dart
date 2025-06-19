@@ -29,6 +29,7 @@ class AppTypography {
     fontSize: 48,
     height: 52 / 48,
   );
+
   static const displayLgMedium = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w500,
@@ -67,6 +68,9 @@ class AppTypography {
     fontSize: 32,
     height: 40 / 32,
   );
+
+
+
   static const displaySmMedium = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w500,

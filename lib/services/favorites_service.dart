@@ -2,11 +2,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
 class FavoritesService {
-  // Storage key for favorites
-  static const String _favoritesKey = 'favorite_players';
+  // Storage keys for favorites
+  static const String _favoritePlayersKey = 'favorite_players';
+  static const String _favoriteTournamentsKey = 'favorite_tournaments';
 
   // In-memory storage for favorites
   static final List<Map<String, dynamic>> _favoritePlayers = [];
+  static final List<Map<String, dynamic>> _favoriteTournaments = [];
   static bool _isInitialized = false;
 
   // Initialize the service
@@ -15,12 +17,21 @@ class FavoritesService {
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      final favoritesJson = prefs.getString(_favoritesKey);
 
-      if (favoritesJson != null) {
-        final List<dynamic> decoded = jsonDecode(favoritesJson);
+      // Load player favorites
+      final playersJson = prefs.getString(_favoritePlayersKey);
+      if (playersJson != null) {
+        final List<dynamic> decoded = jsonDecode(playersJson);
         _favoritePlayers.clear();
         _favoritePlayers.addAll(decoded.cast<Map<String, dynamic>>());
+      }
+
+      // Load tournament favorites
+      final tournamentsJson = prefs.getString(_favoriteTournamentsKey);
+      if (tournamentsJson != null) {
+        final List<dynamic> decoded = jsonDecode(tournamentsJson);
+        _favoriteTournaments.clear();
+        _favoriteTournaments.addAll(decoded.cast<Map<String, dynamic>>());
       }
 
       _isInitialized = true;
@@ -29,6 +40,7 @@ class FavoritesService {
     }
   }
 
+  // PLAYER FAVORITES METHODS
   // Get all favorite players
   static Future<List<Map<String, dynamic>>> getAllFavoritePlayers() async {
     await initialize();
@@ -58,13 +70,13 @@ class FavoritesService {
           final favoritePlayer = Map<String, dynamic>.from(player);
           favoritePlayer['isFavorite'] = true;
           _favoritePlayers.add(favoritePlayer);
-          await _persistFavorites();
+          await _persistPlayerFavorites();
         }
       }
     } else {
       // Remove from favorites
       _favoritePlayers.removeWhere((player) => player['name'] == playerName);
-      await _persistFavorites();
+      await _persistPlayerFavorites();
     }
   }
 
@@ -109,7 +121,7 @@ class FavoritesService {
       }
     }
 
-    await _persistFavorites();
+    await _persistPlayerFavorites();
   }
 
   // Update favorite status in a list of players
@@ -135,14 +147,82 @@ class FavoritesService {
     return updatedPlayers;
   }
 
-  // Persist favorites to storage
-  static Future<void> _persistFavorites() async {
+  // TOURNAMENT FAVORITES METHODS
+  // Get all favorite tournaments
+  static Future<List<Map<String, dynamic>>> getAllFavoriteTournaments() async {
+    await initialize();
+    return List<Map<String, dynamic>>.from(_favoriteTournaments);
+  }
+
+  // Check if a tournament is in favorites
+  static Future<bool> isTournamentFavorite(String tournamentTitle) async {
+    await initialize();
+    return _favoriteTournaments.any(
+      (tournament) => tournament['title'] == tournamentTitle,
+    );
+  }
+
+  // Toggle tournament favorite status
+  static Future<bool> toggleTournamentFavorite(
+    String title,
+    String dates,
+    String location,
+    int playerCount,
+    int elo,
+  ) async {
+    await initialize();
+
+    // Check if tournament is already a favorite
+    final index = _favoriteTournaments.indexWhere(
+      (tournament) => tournament['title'] == title,
+    );
+
+    if (index != -1) {
+      // Remove from favorites
+      _favoriteTournaments.removeAt(index);
+      await _persistTournamentFavorites();
+      return false; // Not a favorite anymore
+    } else {
+      // Add to favorites
+      final tournament = {
+        'title': title,
+        'dates': dates,
+        'location': location,
+        'playerCount': playerCount,
+        'elo': elo,
+      };
+
+      _favoriteTournaments.add(tournament);
+      await _persistTournamentFavorites();
+      return true; // Now a favorite
+    }
+  }
+
+  // Persist player favorites to storage
+  static Future<void> _persistPlayerFavorites() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final favoritesJson = jsonEncode(_favoritePlayers);
-      await prefs.setString(_favoritesKey, favoritesJson);
+      await prefs.setString(_favoritePlayersKey, favoritesJson);
     } catch (e) {
-      print('Error persisting favorites: $e');
+      print('Error persisting player favorites: $e');
     }
+  }
+
+  // Persist tournament favorites to storage
+  static Future<void> _persistTournamentFavorites() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final favoritesJson = jsonEncode(_favoriteTournaments);
+      await prefs.setString(_favoriteTournamentsKey, favoritesJson);
+    } catch (e) {
+      print('Error persisting tournament favorites: $e');
+    }
+  }
+
+  // Persist all favorites to storage
+  static Future<void> _persistFavorites() async {
+    await _persistPlayerFavorites();
+    await _persistTournamentFavorites();
   }
 }

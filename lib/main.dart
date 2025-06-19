@@ -1,16 +1,17 @@
 import 'package:chessever2/l10n/app_localizations.dart';
 import 'package:chessever2/localization/locale_provider.dart';
 import 'package:chessever2/screens/authentication/auth_screen.dart';
-
-// import 'package:chessever2/screens/chess_players_navigation.dart';
-
+import 'package:chessever2/screens/home_screen.dart';
+import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/players/player_screen.dart';
-import 'package:chessever2/screens/select_country_screen.dart';
 import 'package:chessever2/screens/settings_screen.dart';
-import 'package:chessever2/screens/favorites/favorite_screen.dart'; // Updated import for our new FavoriteScreen
+import 'package:chessever2/screens/favorites/favorite_screen.dart';
 import 'package:chessever2/screens/countryman_screen.dart';
 import 'package:chessever2/screens/splash_screen.dart';
+import 'package:chessever2/screens/standings_screen.dart';
 import 'package:chessever2/screens/tournaments/tournament_screen.dart';
+import 'package:chessever2/screens/calendar_screen.dart';
+import 'package:chessever2/screens/tournament_details_screen.dart';
 import 'package:chessever2/services/settings_manager.dart';
 import 'package:device_preview_plus/device_preview_plus.dart';
 import 'package:flutter/material.dart';
@@ -20,7 +21,6 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_provider.dart';
-import 'screens/input_design_screen.dart';
 
 Future<void> main() async {
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
@@ -42,7 +42,6 @@ Future<void> main() async {
     //   builder: (context) => const ProviderScope(child: MyApp()),
     // ),
   );
-  FlutterNativeSplash.remove();
 }
 
 class MyApp extends ConsumerStatefulWidget {
@@ -92,20 +91,23 @@ class _MyAppState extends ConsumerState<MyApp> {
         '/': (context) => const SplashScreen(),
         '/splash': (context) => const SplashScreen(),
         '/auth_screen': (context) => const AuthScreen(),
-        '/select_country_screen': (context) => const SelectCountryScreen(),
+        '/home_screen': (context) => const HomeScreen(),
         '/tournament_screen': (context) => const TournamentScreen(),
+        '/calendar_screen': (context) => const CalendarScreen(),
+        '/library_screen': (context) => const LibraryScreen(),
 
-        '/input_screen': (context) => const InputDesignScreen(),
+        // New route for Calendar screen
+        // '/input_screen': (context) => const InputDesignScreen(),
         // '/tournaments': (context) => const TournamentListScreen(),
-
         '/settings': (context) => const SettingsScreen(),
-        '/playerList':
-            (context) =>
-                const PlayerScreen(), // Updated to use the navigation component
-        '/favorites':
-            (context) =>
-                const FavoriteScreen(), // Updated to use the new FavoriteScreen
+        '/playerList': (context) => const PlayerScreen(),
+        // Updated to use the navigation component
+        '/favorites': (context) => const FavoriteScreen(),
+        // Updated to use the new FavoriteScreen
         '/countryman_screen': (context) => const CountrymanScreen(),
+        '/standings': (context) => const StandingsScreen(),
+        '/tournament_details': (context) => const TournamentDetailsScreen(),
+        // New route for Tournament Details screen
       },
     );
   }

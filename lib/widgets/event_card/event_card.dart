@@ -37,7 +37,6 @@ class EventCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        // height: 56, // Fixed height for the card
         decoration: BoxDecoration(
           color: kBlack2Color,
           borderRadius: BorderRadius.only(
@@ -46,94 +45,105 @@ class EventCard extends StatelessWidget {
           ),
         ),
         padding: const EdgeInsets.only(top: 6, bottom: 6, left: 8, right: 8),
-        child: Row(
-          crossAxisAlignment:
-              CrossAxisAlignment
-                  .center, // Center vertically in the entire container
+        child: Stack(
+          alignment: Alignment.centerRight,
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+            Row(
+              crossAxisAlignment:
+                  CrossAxisAlignment
+                      .center, // Center vertically in the entire container
+              mainAxisAlignment: MainAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Flexible(
-                        child: Text(
-                          title,
-                          style: AppTypography.textXsBold.copyWith(
-                            color: kWhiteColor,
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              title,
+                              style: AppTypography.textXsBold.copyWith(
+                                color: kWhiteColor,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                          overflow: TextOverflow.ellipsis,
+                          const SizedBox(width: 4),
+                          if (isLive) _buildLiveTag() else statusWidget,
+                        ],
+                      ),
+
+                      // Small vertical spacing
+                      const SizedBox(height: 2),
+
+                      // Second row with details
+                      DefaultTextStyle(
+                        style: AppTypography.textXsMedium.copyWith(
+                          color: Colors.grey,
+                        ),
+                        child: Row(
+                          children: [
+                            Flexible(
+                              child: Wrap(
+                                spacing: 6,
+                                runSpacing: 4,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  Text(dates),
+                                  _buildDot(),
+                                  Text(location),
+                                  _buildDot(),
+                                  Text("$playerCount players"),
+                                  _buildDot(),
+                                  Text("ELO $elo"),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(width: 4),
-                      if (isLive) _buildLiveTag() else statusWidget,
                     ],
                   ),
-
-                  // Small vertical spacing
-                  const SizedBox(height: 2),
-
-                  // Second row with details
-                  DefaultTextStyle(
-                    style: AppTypography.textXsMedium.copyWith(
-                      color: Colors.grey,
-                    ),
-                    child: Row(
-                      children: [
-                        Flexible(
-                          child: Wrap(
-                            spacing: 6,
-                            runSpacing: 4,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: [
-                              Text(dates),
-                              _buildDot(),
-                              Text(location),
-                              _buildDot(),
-                              Text("$playerCount players"),
-                              _buildDot(),
-                              Text("ELO $elo"),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
+                ),
+              ],
+            ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: InkWell(
+                onTap:
+                    (statusWidget is Text &&
+                            (statusWidget as Text).data == "Completed")
+                        ? onMorePressed
+                        : onFavoritePressed,
+                child: Container(
+                  margin: EdgeInsets.only(
+                    left: 12,
+                    right: 2,
+                    top: 6,
+                    bottom: 6,
                   ),
-                ],
+                  child:
+                      (statusWidget is Text &&
+                              (statusWidget as Text).data == "Completed")
+                          ? SvgWidget(
+                            SvgAsset.threeDots,
+                            semanticsLabel: 'More Options',
+                            height: 24,
+                            width: 24,
+                          )
+                          : SvgWidget(
+                            isFavorite
+                                ? SvgAsset.starFilledIcon
+                                : SvgAsset.starIcon,
+                            semanticsLabel: 'Favorite Icon',
+                            height: 20,
+                            width: 20,
+                          ),
+                ),
               ),
             ),
-
-            // Star or three dots icon - now aligned to the center of the entire card
-            const SizedBox(width: 16),
-            // Show three dots for completed events, star for live/upcoming events
-            if (statusWidget is Text &&
-                (statusWidget as Text).data == "Completed")
-              InkWell(
-                onTap: onMorePressed,
-                child: SvgWidget(
-                  SvgAsset.threeDots,
-                  semanticsLabel: 'More Options',
-                  height: 24,
-                  width: 24,
-                ),
-              )
-            else
-              InkWell(
-                onTap: onFavoritePressed,
-                child: SvgWidget(
-                  SvgAsset.starIcon,
-                  semanticsLabel: 'Favorite Icon',
-                  height: 20,
-                  width: 20,
-                  colorFilter: ColorFilter.mode(
-                    isFavorite ? kPrimaryColor : kDarkGreyColor,
-                    BlendMode.srcIn,
-                  ),
-                ),
-              ),
-            // Empty container if no icon needed
           ],
         ),
       ),

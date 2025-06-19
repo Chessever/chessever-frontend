@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 
 class BlurBackground extends StatelessWidget {
   const BlurBackground({super.key});
@@ -6,8 +7,41 @@ class BlurBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      size: const Size(393, 700),
+      size: Size(
+        MediaQuery.of(context).size.width,
+        MediaQuery.of(context).size.height,
+      ),
       painter: BlurPainter(context),
+    );
+  }
+}
+
+class AnimatedBlurBackground extends HookWidget {
+  const AnimatedBlurBackground({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final animationController = useAnimationController(
+      duration: Duration(seconds: 1),
+    );
+
+    animationController.forward();
+
+
+    final fadeAnimation = useAnimation(
+      CurvedAnimation(parent: animationController, curve: Curves.easeInOut),
+    );
+
+    return AnimatedOpacity(
+      opacity: fadeAnimation,
+      duration: Duration(seconds: 1),
+      child: CustomPaint(
+        size: Size(
+          MediaQuery.of(context).size.width,
+          MediaQuery.of(context).size.height,
+        ),
+        painter: BlurPainter(context),
+      ),
     );
   }
 }
