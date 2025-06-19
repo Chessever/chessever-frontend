@@ -14,7 +14,7 @@ class UpcomingEventCard extends StatelessWidget {
   final VoidCallback? onAddToFavorites;
 
   const UpcomingEventCard({
-    Key? key,
+    super.key,
     required this.title,
     required this.dates,
     required this.location,
@@ -24,7 +24,7 @@ class UpcomingEventCard extends StatelessWidget {
     this.onTap,
     this.isFavorite = false,
     this.onAddToFavorites,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

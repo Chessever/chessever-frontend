@@ -1,18 +1,18 @@
 import 'package:chessever2/l10n/app_localizations.dart';
 import 'package:chessever2/localization/locale_provider.dart';
+import 'package:chessever2/screens/authentication/auth_screen.dart';
 
 // import 'package:chessever2/screens/chess_players_navigation.dart';
-import 'package:chessever2/screens/chessever_screen.dart';
 
-// import 'package:chessever2/screens/player_list_screen.dart';
 import 'package:chessever2/screens/players/player_screen.dart';
+import 'package:chessever2/screens/select_country_screen.dart';
 import 'package:chessever2/screens/settings_screen.dart';
 import 'package:chessever2/screens/favorites/favorite_screen.dart'; // Updated import for our new FavoriteScreen
 import 'package:chessever2/screens/countryman_screen.dart';
+import 'package:chessever2/screens/splash_screen.dart';
 import 'package:chessever2/screens/tournaments/tournament_screen.dart';
 import 'package:chessever2/services/settings_manager.dart';
 import 'package:device_preview_plus/device_preview_plus.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
@@ -21,8 +21,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_provider.dart';
 import 'screens/input_design_screen.dart';
-import 'screens/splash_auth_screen.dart';
-import 'screens/tournament_list_screen.dart';
 
 Future<void> main() async {
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
@@ -38,10 +36,11 @@ Future<void> main() async {
   );
 
   runApp(
-    DevicePreview(
-      enabled: kDebugMode, // Changed to use kDebugMode
-      builder: (context) => const ProviderScope(child: MyApp()),
-    ),
+    ProviderScope(child: MyApp()),
+    // DevicePreview(
+    //   enabled: kDebugMode, // Changed to use kDebugMode
+    //   builder: (context) => const ProviderScope(child: MyApp()),
+    // ),
   );
   FlutterNativeSplash.remove();
 }
@@ -90,11 +89,15 @@ class _MyAppState extends ConsumerState<MyApp> {
       initialRoute: '/',
       routes: {
         // '/': (context) => const ChesseverScreen(),
-        '/': (context) => const TournamentScreen(),
+        '/': (context) => const SplashScreen(),
+        '/splash': (context) => const SplashScreen(),
+        '/auth_screen': (context) => const AuthScreen(),
+        '/select_country_screen': (context) => const SelectCountryScreen(),
+        '/tournament_screen': (context) => const TournamentScreen(),
+
         '/input_screen': (context) => const InputDesignScreen(),
-        '/splash_auth': (context) => const SplashAuthScreen(),
         // '/tournaments': (context) => const TournamentListScreen(),
-        // '/tournament_screen': (context) => const TournamentScreen(),
+
         '/settings': (context) => const SettingsScreen(),
         '/playerList':
             (context) =>

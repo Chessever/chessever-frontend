@@ -1,4 +1,4 @@
-import 'package:chessever2/widgets/apple_sign_in_button.dart';
+import 'package:chessever2/widgets/auth_button.dart';
 import 'package:chessever2/widgets/event_card/upcoming_event_card.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -177,7 +177,6 @@ class ChesseverScreen extends ConsumerWidget {
                     child: CountryDropdown(onChanged: (value) {}),
                   ),
                   SizedBox(height: 24),
-                  AppleSignInButton(),
                 ],
               ),
             ),

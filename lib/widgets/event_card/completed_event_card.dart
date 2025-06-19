@@ -1,3 +1,4 @@
+import 'package:chessever2/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'event_card.dart';
 import '../../utils/app_typography.dart';
@@ -13,7 +14,7 @@ class CompletedEventCard extends StatelessWidget {
   final VoidCallback? onAddToLibrary;
 
   const CompletedEventCard({
-    Key? key,
+    super.key,
     required this.title,
     required this.dates,
     required this.location,
@@ -22,7 +23,7 @@ class CompletedEventCard extends StatelessWidget {
     this.onTap,
     this.onDownloadTournament,
     this.onAddToLibrary,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -48,8 +49,8 @@ class CompletedEventCard extends StatelessWidget {
       backgroundColor: Colors.transparent,
       builder:
           (context) => Container(
-            decoration: const BoxDecoration(
-              color: Color(0xFF0C0C0E),
+            decoration: BoxDecoration(
+              color: kBackgroundColor,
               borderRadius: BorderRadius.only(
                 topLeft: Radius.circular(16),
                 topRight: Radius.circular(16),
@@ -59,10 +60,10 @@ class CompletedEventCard extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 ListTile(
-                  leading: const Icon(Icons.download, color: Colors.white),
+                  leading: const Icon(Icons.download, color: kWhiteColor),
                   title: const Text(
                     'Download Tournament PGN',
-                    style: TextStyle(color: Colors.white),
+                    style: TextStyle(color: kWhiteColor),
                   ),
                   onTap: () {
                     Navigator.pop(context);
@@ -70,10 +71,10 @@ class CompletedEventCard extends StatelessWidget {
                   },
                 ),
                 ListTile(
-                  leading: const Icon(Icons.library_add, color: Colors.white),
+                  leading: const Icon(Icons.library_add, color: kWhiteColor),
                   title: const Text(
                     'Add to Library',
-                    style: TextStyle(color: Colors.white),
+                    style: TextStyle(color: kWhiteColor),
                   ),
                   onTap: () {
                     Navigator.pop(context);
