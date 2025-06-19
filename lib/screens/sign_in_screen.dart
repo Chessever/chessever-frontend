@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'tournament_list_screen.dart';
 
 class SignInScreen extends StatelessWidget {
-  const SignInScreen({Key? key}) : super(key: key);
+  const SignInScreen({super.key});
 
   void _continue(BuildContext context) {
     Navigator.of(context).pushReplacement(

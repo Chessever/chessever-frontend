@@ -1,19 +1,22 @@
 import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import '../utils/app_typography.dart';
 
-class AppleSignInButton extends StatelessWidget {
-  final VoidCallback? onPressed;
+class AuthButton extends StatelessWidget {
+  final String svgIconPath;
+  final String signInTitle;
+  final VoidCallback onPressed;
   final double height;
   final double? width;
   final double borderRadius;
   final EdgeInsetsGeometry padding;
 
-  const AppleSignInButton({
+  const AuthButton({
     super.key,
-    this.onPressed,
+    required this.svgIconPath,
+    required this.signInTitle,
+    required this.onPressed,
     this.height = 48, // 48px height as specified
     this.width,
     this.borderRadius = 12,
@@ -26,17 +29,7 @@ class AppleSignInButton extends StatelessWidget {
       height: height,
       width: width ?? MediaQuery.of(context).size.width,
       child: ElevatedButton(
-        onPressed:
-            onPressed ??
-            () {
-              // Navigate to the player list screen when the button is pressed
-              Navigator.of(context).pushNamed('/playerList');
-              // Navigator.of(context).push(
-              //   MaterialPageRoute(
-              //     builder: (context) => SegmentedSwitcherExample(),
-              //   ),
-              // );
-            },
+        onPressed: onPressed,
         style: ButtonStyle(
           backgroundColor: MaterialStateProperty.all<Color>(kWhiteColor),
           // Pure white with no opacity
@@ -55,7 +48,7 @@ class AppleSignInButton extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             SvgWidget(
-              SvgAsset.appleIcon,
+              svgIconPath,
               height: 24,
               width: 24,
               colorFilter: ColorFilter.mode(
@@ -66,7 +59,7 @@ class AppleSignInButton extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             Text(
-              'Continue with Apple',
+              signInTitle,
               style: AppTypography.textLgMedium.copyWith(
                 color: kBackgroundColor, // Black text
               ),

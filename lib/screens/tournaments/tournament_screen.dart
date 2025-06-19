@@ -37,7 +37,6 @@ class TournamentScreen extends ConsumerWidget {
     final selectedTabIndex = ref.watch(selectedTabIndexProvider);
     final tournamentAsync = ref.watch(tournamentNotifierProvider);
 
-    searchController.text = ref.watch(searchQueryProvider);
 
     return Scaffold(
       key: _scaffoldKey,
@@ -58,7 +57,7 @@ class TournamentScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Add top padding
-              const SizedBox(height: 49),
+              SizedBox(height: 48 + MediaQuery.of(context).viewPadding.top),
               // Search bar
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20.0),
@@ -78,7 +77,7 @@ class TournamentScreen extends ConsumerWidget {
                 ),
               ),
 
-              const SizedBox(height: 16),
+              const SizedBox(height: 24),
 
               // Segmented switcher for "All Events" and "Upcoming Events"
               Padding(
