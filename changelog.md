@@ -54,6 +54,18 @@
 -> favourites screen
 -> refactored player, tournaments, favourite screens
 
+#19 June
+-> calendar screen added
+-> standings screen added
+-> tournament details screen
+-> design accuracy and refactoring
+-> refine Tournament Screen,
+-> add Bottom Navigation View,
+-> add animations for button click,
+-> add country picker overlay screen,
+-> add library screen UI,
+
+
 
 
 
