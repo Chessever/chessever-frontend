@@ -8,6 +8,7 @@ class SvgAsset {
   static const searchIcon = 'assets/svgs/search.svg';
   static const headsetIcon = 'assets/svgs/headset.svg';
   static const appleIcon = 'assets/svgs/apple_logo.svg';
+  static const googleIcon = 'assets/svgs/google_logo.svg';
   static const playersIcon = 'assets/svgs/players.svg';
   static const threeDots = 'assets/svgs/three_dots.svg';
   static const boardSettings = 'assets/svgs/board_settings.svg';

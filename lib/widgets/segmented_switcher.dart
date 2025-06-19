@@ -15,7 +15,7 @@ class SegmentedSwitcher extends StatefulWidget {
   final TextStyle? selectedTextStyle;
 
   const SegmentedSwitcher({
-    Key? key,
+    super.key,
     required this.options,
     this.initialSelection = 0,
     required this.onSelectionChanged,
@@ -29,8 +29,7 @@ class SegmentedSwitcher extends StatefulWidget {
   }) : assert(
          initialSelection >= 0 && initialSelection < options.length,
          'initialSelection must be within options range',
-       ),
-       super(key: key);
+       );
 
   @override
   State<SegmentedSwitcher> createState() => _SegmentedSwitcherState();
@@ -65,7 +64,6 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
 
     return Container(
       height: 40,
-      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: backgroundColor,
         borderRadius: BorderRadius.circular(borderRadius),
@@ -73,6 +71,12 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
       child: Row(
         children: List.generate(widget.options.length, (index) {
           final isSelected = index == _selectedIndex;
+          final isFirst = index == 0;
+          final isLast = widget.options.length - 1 == index;
+
+          final leftSize = isFirst ? 12.0 : 0.0;
+          final rightSize = isLast ? 12.0 : 0.0;
+
           return Expanded(
             child: GestureDetector(
               onTap: () {
@@ -84,9 +88,13 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
               child: Container(
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color:
-                      isSelected ? selectedBackgroundColor : Colors.transparent,
-                  borderRadius: BorderRadius.circular(borderRadius),
+                  color: selectedBackgroundColor,
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(leftSize),
+                    bottomLeft: Radius.circular(leftSize),
+                    bottomRight: Radius.circular(rightSize),
+                    topRight: Radius.circular(rightSize),
+                  ),
                 ),
                 child: Text(
                   widget.options[index],

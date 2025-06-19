@@ -128,7 +128,7 @@ class EventCard extends StatelessWidget {
                   height: 20,
                   width: 20,
                   colorFilter: ColorFilter.mode(
-                    isFavorite ? kPrimaryColor : Colors.grey,
+                    isFavorite ? kPrimaryColor : kDarkGreyColor,
                     BlendMode.srcIn,
                   ),
                 ),
