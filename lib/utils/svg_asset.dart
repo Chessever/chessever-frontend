@@ -1,9 +1,8 @@
-import 'package:chessever2/providers/board_settings_provider.dart';
-
 class SvgAsset {
   static const settingsIcon = 'assets/svgs/settings.svg';
   static const favouriteIcon = 'assets/svgs/favorites.svg';
   static const starIcon = 'assets/svgs/star.svg';
+  static const starFilledIcon = 'assets/svgs/filled_star.svg';
   static const listFilterIcon = 'assets/svgs/list-filter.svg';
   static const searchIcon = 'assets/svgs/search.svg';
   static const headsetIcon = 'assets/svgs/headset.svg';
@@ -18,4 +17,7 @@ class SvgAsset {
   static const boardColorBrown = 'assets/svgs/board_color_brown.svg';
   static const boardColorGreen = 'assets/svgs/board_color_green.svg';
   static const boardColorGrey = 'assets/svgs/board_color_grey.svg';
+  static const bookIcon = 'assets/svgs/book.svg';
+  static const calendarIcon = 'assets/svgs/calendar.svg';
+  static const tournamentIcon = 'assets/svgs/tournament.svg';
 }

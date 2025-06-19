@@ -44,8 +44,8 @@ class RoundedSearchBar extends StatelessWidget {
             width: 32,
             height: 32,
             decoration: BoxDecoration(
+              shape: BoxShape.circle,
               gradient: kProfileInitialsGradient,
-              borderRadius: BorderRadius.circular(16),
             ),
             child: Center(
               child: Text(
@@ -60,30 +60,22 @@ class RoundedSearchBar extends StatelessWidget {
           ),
         ),
         const SizedBox(
-          width: 21,
+          width: 20,
         ), // Adjusted spacing to match Figma design (was 8)
         // Search bar container - starts after the profile avatar
         Expanded(
           child: Container(
-            height: 40,
             decoration: BoxDecoration(
-              color:
-                  kBlack2Color, // Using theme constant instead of hardcoded 0xFF1A1A1C
+              color: kBlack2Color,
+              // Using theme constant instead of hardcoded 0xFF1A1A1C
               borderRadius: BorderRadius.circular(
                 4,
               ), // Changed to 4 as requested
             ),
-            padding: const EdgeInsets.only(
-              left: 6,
-              right: 6,
-              top: 4,
-              bottom: 4,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
             child: Row(
-              crossAxisAlignment:
-                  CrossAxisAlignment.center, // Ensure vertical centering
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Search icon aligned with text
                 Padding(
                   padding: const EdgeInsets.only(left: 6),
                   child: SvgWidget(SvgAsset.searchIcon, height: 16, width: 16),
@@ -96,24 +88,18 @@ class RoundedSearchBar extends StatelessWidget {
                     controller: controller,
                     onChanged: onChanged,
                     autofocus: autofocus,
-                    textAlignVertical:
-                        TextAlignVertical
-                            .center, // Added to center text vertically
+                    textAlignVertical: TextAlignVertical.center,
                     style: AppTypography.textXsRegular.copyWith(
                       color: kWhiteColor,
                     ),
                     decoration: InputDecoration(
                       hintText: hintText,
                       hintStyle: AppTypography.textXsRegular.copyWith(
-                        color:
-                            kWhiteColor70, // Using kWhiteColor70 instead of white with opacity
+                        color: kWhiteColor70,
                       ),
                       border: InputBorder.none,
-
-                      isDense: true, // Makes the input field more compact
-                      contentPadding:
-                          EdgeInsets
-                              .zero, // Removed padding to allow proper centering
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
                     ),
                   ),
                 ),

@@ -1,150 +1,254 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+import '../theme/app_theme.dart';
+import '../utils/app_typography.dart';
+import '../widgets/event_card/completed_event_card.dart';
+import '../widgets/event_card/upcoming_event_card.dart';
+import '../widgets/event_card/live_event_card.dart';
+import '../widgets/simple_search_bar.dart';
+import '../widgets/filter_popup.dart';
+import '../providers/favorites/tournament_favorites_provider.dart';
 
-class TournamentDetailsScreen extends StatelessWidget {
+class TournamentDetailsScreen extends ConsumerWidget {
   const TournamentDetailsScreen({Key? key}) : super(key: key);
 
   @override
-  Widget build(BuildContext context) {
-    // Example tournaments data, you may want to pass this as arguments
-    final tournament = {
-      'name': 'Norway Chess 2025',
-      'status': 'LIVE',
-      'date': 'Feb 27 - 29, 2025',
-      'country': 'Netherlands',
-      'players': 12,
-      'elo': 2714,
-      'description':
-          'The most prestigious annual chess tournaments in the world. Watch top grandmasters compete for glory!',
-    };
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Get the arguments passed from the calendar screen
+    final Map<String, dynamic> args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
+        {'month': 'May', 'year': 2025}; // Default values if no args passed
+
+    final String month = args['month'] as String;
+    final int year = args['year'] as int;
+
+    // Watch the tournament favorites provider
+    final tournamentFavoritesAsync = ref.watch(
+      tournamentFavoritesNotifierProvider,
+    );
 
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // AppBar Row
-          Padding(
-            padding: const EdgeInsets.only(left: 16, top: 28, right: 16, bottom: 12),
-            child: Row(
-              children: [
-                GestureDetector(
-                  onTap: () => Navigator.of(context).pop(),
-                  child: const Icon(Icons.arrow_back, color: Colors.white, size: 28),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  tournament['name'] as String,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 26,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                if (tournament['status'] == 'LIVE')
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Color(0xFF20B3D6),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Text(
-                      'LIVE',
-                      style: TextStyle(
-                        color: Colors.black,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          // Card with tournament details
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFF232325),
-                borderRadius: BorderRadius.circular(14),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 33),
+              // Search bar
+              SimpleSearchBar(
+                controller: TextEditingController(),
+                hintText: 'Search tournaments or players',
+                onChanged: (value) {
+                  // Handle search
+                },
+                onFilterTap: () {
+                  // Show filter popup
+                  showDialog(
+                    context: context,
+                    builder: (BuildContext context) {
+                      return const FilterPopup();
+                    },
+                  );
+                },
+                onMenuTap: () {
+                  // Handle menu tap
+                },
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Date and country
-                  Row(
-                    children: [
-                      const Icon(Icons.calendar_today, color: Colors.white60, size: 18),
-                      const SizedBox(width: 8),
-                      Text(
-                        tournament['date'] as String,
-                        style: const TextStyle(color: Colors.white, fontSize: 16),
-                      ),
-                      const SizedBox(width: 14),
-                      const Icon(Icons.place, color: Colors.white60, size: 18),
-                      const SizedBox(width: 6),
-                      Text(
-                        tournament['country'] as String,
-                        style: const TextStyle(color: Colors.white, fontSize: 16),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  // Players and ELO
-                  Row(
-                    children: [
-                      const Icon(Icons.people_alt, color: Colors.white60, size: 18),
-                      const SizedBox(width: 8),
-                      Text(
-                        '${tournament['players']} players',
-                        style: const TextStyle(color: Colors.white, fontSize: 16),
-                      ),
-                      const SizedBox(width: 14),
-                      const Icon(Icons.star, color: Colors.white60, size: 18),
-                      const SizedBox(width: 6),
-                      Text(
-                        'ELO ${tournament['elo']}',
-                        style: const TextStyle(color: Colors.white, fontSize: 16),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  // Description
-                  Text(
-                    tournament['description'] as String,
-                    style: const TextStyle(color: Colors.white70, fontSize: 15.5),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          // Spacer for pushing button to the bottom
-          const Spacer(),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            child: SizedBox(
-              width: double.infinity,
-              height: 54,
-              child: ElevatedButton(
-                onPressed: () {},
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF20B3D6),
-                  foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  elevation: 0,
-                ),
-                child: const Text(
-                  'Watch Live',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              const SizedBox(height: 33),
+              // Title - Tournaments in Month Year
+              Text(
+                'Tournaments in $month $year',
+                style: AppTypography.displayXsMedium.copyWith(
+                  color: kWhiteColor,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
-            ),
+              const SizedBox(height: 20),
+              // List of tournaments
+              Expanded(
+                child: tournamentFavoritesAsync.when(
+                  loading:
+                      () => const Center(child: CircularProgressIndicator()),
+                  error:
+                      (error, stack) => Center(
+                        child: Text(
+                          'Error loading favorites: $error',
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                  data: (favoriteTournaments) {
+                    // Create a map for quick lookup of favorite status
+                    final favoritesMap = {
+                      for (var tournament in favoriteTournaments)
+                        tournament.title: true,
+                    };
+
+                    return ListView(
+                      children: [
+                        // All tournaments in a single list without section headers
+                        CompletedEventCard(
+                          title: 'Polish Chess Championship 2025',
+                          dates: 'May 5-12, 2025',
+                          location: 'Warsaw',
+                          playerCount: 12,
+                          elo: 2590,
+                          onTap: () {
+                            // Navigate to tournament details
+                          },
+                          onDownloadTournament: () {
+                            // Download tournament PGN
+                          },
+                          onAddToLibrary: () {
+                            // Add to library
+                          },
+                        ),
+                        const SizedBox(height: 24),
+                        CompletedEventCard(
+                          title: 'Women World Chess Championship 2025',
+                          dates: 'May 8-20, 2025',
+                          location: 'China',
+                          playerCount: 2,
+                          elo: 2590,
+                          onTap: () {
+                            // Navigate to tournament details
+                          },
+                          onDownloadTournament: () {
+                            // Download tournament PGN
+                          },
+                          onAddToLibrary: () {
+                            // Add to library
+                          },
+                        ),
+                        const SizedBox(height: 24),
+                        LiveEventCard(
+                          title: 'European Championship 2025',
+                          dates: 'May 15-25, 2025',
+                          location: 'Prague',
+                          playerCount: 8,
+                          elo: 2680,
+                          isFavorite:
+                              favoritesMap['European Championship 2025'] ??
+                              false,
+                          onTap: () {
+                            // Navigate to tournament details
+                          },
+                          onFavoriteToggle: () {
+                            _toggleFavorite(
+                              ref,
+                              'European Championship 2025',
+                              'May 15-25, 2025',
+                              'Prague',
+                              8,
+                              2680,
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 24),
+                        UpcomingEventCard(
+                          title: 'Superbet Championship 2025',
+                          dates: 'May 26-30, 2025',
+                          location: 'Warsaw',
+                          playerCount: 12,
+                          elo: 2590,
+                          timeUntilStart: 'Starts in 3 days',
+                          isFavorite:
+                              favoritesMap['Superbet Championship 2025'] ??
+                              false,
+                          onTap: () {
+                            // Navigate to tournament details
+                          },
+                          onAddToFavorites: () {
+                            _toggleFavorite(
+                              ref,
+                              'Superbet Championship 2025',
+                              'May 26-30, 2025',
+                              'Warsaw',
+                              12,
+                              2590,
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 24),
+                        UpcomingEventCard(
+                          title: 'Dutch Chess Championship 2025',
+                          dates: 'May 26-30, 2025',
+                          location: 'Amsterdam',
+                          playerCount: 12,
+                          elo: 2590,
+                          timeUntilStart: 'Starts in 9 days',
+                          isFavorite:
+                              favoritesMap['Dutch Chess Championship 2025'] ??
+                              false,
+                          onTap: () {
+                            // Navigate to tournament details
+                          },
+                          onAddToFavorites: () {
+                            _toggleFavorite(
+                              ref,
+                              'Dutch Chess Championship 2025',
+                              'May 26-30, 2025',
+                              'Amsterdam',
+                              12,
+                              2590,
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 24),
+                        UpcomingEventCard(
+                          title: 'Qatar Masters',
+                          dates: 'May 26-June 5, 2025',
+                          location: 'Doha',
+                          playerCount: 12,
+                          elo: 2590,
+                          timeUntilStart: 'Starts in 27 days',
+                          isFavorite: favoritesMap['Qatar Masters'] ?? false,
+                          onTap: () {
+                            // Navigate to tournament details
+                          },
+                          onAddToFavorites: () {
+                            _toggleFavorite(
+                              ref,
+                              'Qatar Masters',
+                              'May 26-June 5, 2025',
+                              'Doha',
+                              12,
+                              2590,
+                            );
+                          },
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
+  }
+
+  void _toggleFavorite(
+    WidgetRef ref,
+    String title,
+    String dates,
+    String location,
+    int playerCount,
+    int elo,
+  ) {
+    final tournament = Tournament(
+      title: title,
+      dates: dates,
+      location: location,
+      playerCount: playerCount,
+      elo: elo,
+    );
+
+    ref
+        .read(tournamentFavoritesNotifierProvider.notifier)
+        .toggleFavorite(tournament);
   }
 }

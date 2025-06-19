@@ -24,90 +24,97 @@ class PlayerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 48,
-      decoration: BoxDecoration(
-        color:
-            kBlack2Color, // Using theme color instead of hardcoded Color(0xFF1A1A1C)
-        borderRadius: BorderRadius.zero,
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      child: Row(
-        children: [
-          // Rank number
-          SizedBox(
-            width: 24,
-            child: Text(
-              '$rank.',
-              style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
-            ),
-          ),
-
-          // Country flag
-          Container(
-            margin: const EdgeInsets.only(right: 8),
-            child: getCountryFlag(countryCode),
-          ),
-
-          // GM prefix and player name
-          Expanded(
-            flex: 3,
-            child: RichText(
-              text: TextSpan(
-                children: [
-                  TextSpan(
-                    text: 'GM ',
-                    style: AppTypography.textXsMedium.copyWith(
-                      color: kWhiteColor,
-                    ),
-                  ),
-                  TextSpan(
-                    text: playerName,
-                    style: AppTypography.textXsMedium.copyWith(
-                      color: kWhiteColor,
-                    ),
-                  ),
-                ],
+    return GestureDetector(
+      onTap: () {
+        // Navigate to standings screen when the card is tapped
+        Navigator.pushNamed(context, '/standings');
+      },
+      child: Container(
+        height: 48,
+        decoration: BoxDecoration(
+          color:
+              kBlack2Color, // Using theme color instead of hardcoded Color(0xFF1A1A1C)
+          borderRadius: BorderRadius.zero,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            // Rank number
+            SizedBox(
+              width: 24,
+              child: Text(
+                '$rank.',
+                style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
               ),
             ),
-          ),
 
-          // ELO rating - using Expanded to match header
-          Expanded(
-            flex: 1,
-            child: Text(
-              elo.toString(),
-              textAlign: TextAlign.center,
-              style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+            // Country flag
+            Container(
+              margin: const EdgeInsets.only(right: 8),
+              child: getCountryFlag(countryCode),
             ),
-          ),
 
-          // Age - using Expanded to match header
-          Expanded(
-            flex: 1,
-            child: Text(
-              age.toString(),
-              textAlign: TextAlign.center,
-              style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
-            ),
-          ),
-
-          // Favorite icon
-          GestureDetector(
-            onTap: onFavoriteToggle,
-            child: SizedBox(
-              width: 30,
-              child: Icon(
-                isFavorite ? Icons.favorite : Icons.favorite_border,
-                color:
-                    isFavorite
-                        ? Colors.red
-                        : kWhiteColor, // Using theme color for unfilled state
-                size: 20,
+            // GM prefix and player name
+            Expanded(
+              flex: 3,
+              child: RichText(
+                text: TextSpan(
+                  children: [
+                    TextSpan(
+                      text: 'GM ',
+                      style: AppTypography.textXsMedium.copyWith(
+                        color: kWhiteColor,
+                      ),
+                    ),
+                    TextSpan(
+                      text: playerName,
+                      style: AppTypography.textXsMedium.copyWith(
+                        color: kWhiteColor,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+
+            // ELO rating - using Expanded to match header
+            Expanded(
+              flex: 1,
+              child: Text(
+                elo.toString(),
+                textAlign: TextAlign.center,
+                style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+              ),
+            ),
+
+            // Age - using Expanded to match header
+            Expanded(
+              flex: 1,
+              child: Text(
+                age.toString(),
+                textAlign: TextAlign.center,
+                style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+              ),
+            ),
+
+            // Favorite icon
+            GestureDetector(
+              onTap: onFavoriteToggle,
+              behavior: HitTestBehavior.opaque,
+              child: SizedBox(
+                width: 30,
+                child: Icon(
+                  isFavorite ? Icons.favorite : Icons.favorite_border,
+                  color:
+                      isFavorite
+                          ? Colors.red
+                          : kWhiteColor, // Using theme color for unfilled state
+                  size: 20,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
