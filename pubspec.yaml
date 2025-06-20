@@ -157,7 +157,7 @@ flutter:
 #setting up splash screen settings
 flutter_native_splash:
   color: "#0C0C0E"
-  image: assets/launch.jpg
+  image: assets/splash_screen.jpg
   android: true
   ios: true
   web: false
