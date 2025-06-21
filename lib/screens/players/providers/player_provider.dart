@@ -20,11 +20,11 @@ class PlayerNotifier extends _$PlayerNotifier {
     return controller.searchPlayers(query);
   }
 
-  // Toggle favorite status for a player
+  // Toggle starred_repository status for a player
   Future<void> toggleFavorite(String playerName) async {
     final controller = ref.read(playerControllerProvider);
     await controller.toggleFavorite(playerName);
-    ref.invalidateSelf(); // Refresh the provider after toggling favorite
+    ref.invalidateSelf(); // Refresh the provider after toggling starred_repository
   }
 }
 

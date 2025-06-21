@@ -3,18 +3,34 @@ import 'dart:math';
 import 'package:chessever2/repository/authentication/model/app_user.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+
+part 'auth_repository.g.dart';
+
+@riverpod
+AuthRepository authRepository(AuthRepositoryRef ref) {
+  return AuthRepository(ref);
+}
 
 class AuthRepository {
-  final SupabaseClient _supabase;
-  final GoogleSignIn _googleSignIn;
+  late final SupabaseClient _supabase;
+  late final GoogleSignIn _googleSignIn;
+  final Ref ref;
 
-  AuthRepository({required SupabaseClient supabase, GoogleSignIn? googleSignIn})
-    : _supabase = supabase,
-      _googleSignIn =
-          googleSignIn ?? GoogleSignIn(scopes: ['email', 'profile']);
+  AuthRepository(this.ref) {
+    // Initialize Supabase client directly
+    _supabase = SupabaseClient(
+      dotenv.env['SUPABASE_URL']!,
+      dotenv.env['SUPABASE_ANON_KEY']!,
+    );
+
+    _googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
+  }
 
   // Current user stream
   Stream<AppUser?> get authStateChanges {

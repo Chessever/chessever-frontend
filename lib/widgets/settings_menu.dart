@@ -35,7 +35,7 @@ class SettingsMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Fixed height of 144px (36px × 4 menu items)
-    return Container(
+    return SizedBox(
       height: 144,
       child: Column(
         children: [

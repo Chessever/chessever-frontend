@@ -15,7 +15,7 @@ class FavoriteNotifier extends _$FavoriteNotifier {
     return controller.getFavoritePlayers();
   }
 
-  // Get filtered favorite players based on search query
+  // Get filtered starred_repository players based on search query
   List<Map<String, dynamic>> getFilteredFavoritePlayers(String query) {
     final controller = ref.read(favoriteControllerProvider);
     return controller.searchFavoritePlayers(query);

@@ -44,7 +44,7 @@ class Tournament {
 class TournamentFavoritesNotifier extends _$TournamentFavoritesNotifier {
   @override
   Future<List<Tournament>> build() async {
-    // Initialize and load favorite tournaments when provider is created
+    // Initialize and load starred_repository tournaments when provider is created
     final favoriteTournaments =
         await FavoritesService.getAllFavoriteTournaments();
 
@@ -68,14 +68,14 @@ class TournamentFavoritesNotifier extends _$TournamentFavoritesNotifier {
     return state.any((tournament) => tournament.title == title);
   }
 
-  // Toggle tournament favorite status
+  // Toggle tournament starred_repository status
   Future<void> toggleFavorite(Tournament tournament) async {
     final currentState = await future;
 
     // Check if tournament is already in favorites
     final isFavorite = currentState.any((t) => t.title == tournament.title);
 
-    // Create new state with updated favorite status (optimistic update)
+    // Create new state with updated starred_repository status (optimistic update)
     final updatedState = currentState.toList();
 
     if (isFavorite) {

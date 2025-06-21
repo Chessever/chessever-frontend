@@ -4,12 +4,12 @@ import '../../../services/favorites_service.dart';
 class FavoriteController {
   List<Map<String, dynamic>> _favoritePlayers = [];
 
-  // Get all favorite players
+  // Get all starred_repository players
   List<Map<String, dynamic>> getFavoritePlayers() {
     return _favoritePlayers;
   }
 
-  // Search favorite players by name
+  // Search starred_repository players by name
   List<Map<String, dynamic>> searchFavoritePlayers(String query) {
     if (query.isEmpty) {
       return _favoritePlayers;
@@ -40,12 +40,12 @@ class FavoriteController {
     }
   }
 
-  // Fetch all favorite players
+  // Fetch all starred_repository players
   Future<void> fetchFavoritePlayers() async {
     // Simulate API call delay
     await Future.delayed(const Duration(milliseconds: 500));
 
-    // Get all favorite players from the service
+    // Get all starred_repository players from the service
     _favoritePlayers = await FavoritesService.getAllFavoritePlayers();
   }
 }
