@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../utils/app_typography.dart';
 import '../../../theme/app_theme.dart';
 
-class FavoriteCard extends StatelessWidget {
+class FavoriteCard extends StatefulWidget {
   final int rank;
   final String playerName;
   final String countryCode;
@@ -22,6 +22,11 @@ class FavoriteCard extends StatelessWidget {
   }) : super(key: key);
 
   @override
+  State<FavoriteCard> createState() => _FavoriteCardState();
+}
+
+class _FavoriteCardState extends State<FavoriteCard> {
+  @override
   Widget build(BuildContext context) {
     return Container(
       height: 48,
@@ -36,7 +41,7 @@ class FavoriteCard extends StatelessWidget {
           SizedBox(
             width: 24,
             child: Text(
-              '$rank.',
+              '${widget.rank}.',
               style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
             ),
           ),
@@ -44,7 +49,7 @@ class FavoriteCard extends StatelessWidget {
           // Country flag
           Container(
             margin: const EdgeInsets.only(right: 8),
-            child: getCountryFlag(countryCode),
+            child: getCountryFlag(widget.countryCode),
           ),
 
           // GM prefix and player name
@@ -60,7 +65,7 @@ class FavoriteCard extends StatelessWidget {
                     ),
                   ),
                   TextSpan(
-                    text: playerName,
+                    text: widget.playerName,
                     style: AppTypography.textXsMedium.copyWith(
                       color: kWhiteColor,
                     ),
@@ -74,7 +79,7 @@ class FavoriteCard extends StatelessWidget {
           Expanded(
             flex: 1,
             child: Text(
-              elo.toString(),
+              widget.elo.toString(),
               textAlign: TextAlign.center,
               style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
             ),
@@ -84,7 +89,7 @@ class FavoriteCard extends StatelessWidget {
           Expanded(
             flex: 1,
             child: Text(
-              age.toString(),
+              widget.age.toString(),
               textAlign: TextAlign.center,
               style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
             ),
@@ -92,10 +97,15 @@ class FavoriteCard extends StatelessWidget {
 
           // Remove favorite icon
           GestureDetector(
-            onTap: onRemoveFavorite,
+            onTap: () {
+              if (widget.onRemoveFavorite != null) {
+                // No need for setState here as the card will be removed from the list
+                widget.onRemoveFavorite!();
+              }
+            },
             child: SizedBox(
               width: 30,
-              child: Icon(Icons.favorite, color: Colors.red, size: 20),
+              child: Icon(Icons.favorite, color: kRedColor, size: 20),
             ),
           ),
         ],

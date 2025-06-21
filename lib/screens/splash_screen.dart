@@ -26,26 +26,30 @@ class _SplashScreenState extends State<SplashScreen> {
   Widget build(BuildContext context) {
     return ScreenWrapper(
       child: Scaffold(
-        body: Stack(
-          alignment: Alignment.center,
-          fit: StackFit.expand,
-          children: [
-            Align(
-              alignment: Alignment.center,
-              child: Hero(tag: 'blur', child: AnimatedBlurBackground()),
-            ),
-            Align(
-              alignment: Alignment.center,
-              child: Hero(
-                tag: 'premium-icon',
-                child: Image.asset(
-                  PngAsset.premiumIcon,
-                  height: 120,
-                  width: 120,
+        body: SizedBox(
+          height: MediaQuery.of(context).size.height,
+          width: MediaQuery.of(context).size.width,
+          child: Stack(
+            alignment: Alignment.center,
+            fit: StackFit.expand,
+            children: [
+              Align(
+                alignment: Alignment.center,
+                child: Hero(tag: 'blur', child: AnimatedBlurBackground()),
+              ),
+              Align(
+                alignment: Alignment.center,
+                child: Hero(
+                  tag: 'premium-icon',
+                  child: Image.asset(
+                    PngAsset.premiumIcon,
+                    height: 120,
+                    width: 120,
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
