@@ -6,7 +6,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/board_settings_dialog.dart';
-import 'package:chessever2/widgets/hamburger_menu.dart';
+import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
 import 'package:chessever2/widgets/language_settings_dialog.dart';
 import 'package:chessever2/widgets/notifications_settings_dialog.dart';
 import 'package:chessever2/widgets/settings_menu.dart';

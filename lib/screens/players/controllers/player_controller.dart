@@ -74,7 +74,7 @@ class PlayerController {
         .toList();
   }
 
-  // Toggle favorite status for a player
+  // Toggle starred_repository status for a player
   Future<void> toggleFavorite(String playerName) async {
     final index = _players.indexWhere((player) => player['name'] == playerName);
 
@@ -92,12 +92,12 @@ class PlayerController {
     // Simulate API call delay
     await Future.delayed(const Duration(milliseconds: 500));
 
-    // Load player data and update with favorite status
+    // Load player data and update with starred_repository status
     final updatedPlayers = await FavoritesService.updateFavoritesStatus(
       _players,
     );
 
-    // Update the players list with the updated favorite status
+    // Update the players list with the updated starred_repository status
     for (int i = 0; i < _players.length; i++) {
       final updatedIndex = updatedPlayers.indexWhere(
         (player) => player['name'] == _players[i]['name'],

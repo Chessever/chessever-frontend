@@ -1,21 +1,11 @@
-import 'package:chessever2/localization/locale_provider.dart';
-import 'package:chessever2/providers/notifications_settings_provider.dart';
-import 'package:chessever2/providers/timezone_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/svg_asset.dart';
-import 'package:chessever2/widgets/board_settings_dialog.dart';
 import 'package:chessever2/widgets/icons/analysis_board_icon.dart';
-import 'package:chessever2/widgets/language_settings_dialog.dart';
-import 'package:chessever2/widgets/notifications_settings_dialog.dart';
-import 'package:chessever2/widgets/settings_dialog.dart';
-import 'package:chessever2/widgets/settings_menu.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
-import 'package:chessever2/widgets/timezone_settings_dialog.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
-import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class HamburgerMenu extends StatelessWidget {
   final VoidCallback onSettingsPressed;

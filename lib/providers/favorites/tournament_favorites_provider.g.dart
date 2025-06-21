@@ -7,7 +7,7 @@ part of 'tournament_favorites_provider.dart';
 // **************************************************************************
 
 String _$tournamentFavoritesNotifierHash() =>
-    r'0aa9c8c09bfc9354b5a676db04d7ece629ef7a9a';
+    r'f301aa32e5b56af74057454b3cfd3969d323c86f';
 
 /// See also [TournamentFavoritesNotifier].
 @ProviderFor(TournamentFavoritesNotifier)

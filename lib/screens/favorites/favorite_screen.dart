@@ -7,7 +7,7 @@ import '../../widgets/rounded_search_bar.dart';
 import 'providers/favorite_provider.dart';
 import 'widgets/favorite_card.dart';
 
-// Provider for filtered favorite players
+// Provider for filtered starred_repository players
 final filteredFavoritesProvider = Provider<List<Map<String, dynamic>>>((ref) {
   final searchQuery = ref.watch(_searchQueryProvider);
   final favoriteNotifier = ref.watch(favoriteNotifierProvider.notifier);
@@ -125,7 +125,7 @@ class FavoriteScreen extends ConsumerWidget {
     if (filteredFavorites.isEmpty) {
       return Center(
         child: Text(
-          'No favorite players found',
+          'No starred_repository players found',
           style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
         ),
       );

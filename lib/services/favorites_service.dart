@@ -41,7 +41,7 @@ class FavoritesService {
   }
 
   // PLAYER FAVORITES METHODS
-  // Get all favorite players
+  // Get all starred_repository players
   static Future<List<Map<String, dynamic>>> getAllFavoritePlayers() async {
     await initialize();
     return List<Map<String, dynamic>>.from(_favoritePlayers);
@@ -53,7 +53,7 @@ class FavoritesService {
     return _favoritePlayers.any((player) => player['name'] == playerName);
   }
 
-  // Update favorite status for a player
+  // Update starred_repository status for a player
   static Future<void> updatePlayerFavoriteStatus(
     String playerName,
     bool isFavorite,
@@ -124,7 +124,7 @@ class FavoritesService {
     await _persistPlayerFavorites();
   }
 
-  // Update favorite status in a list of players
+  // Update starred_repository status in a list of players
   static Future<List<Map<String, dynamic>>> updateFavoritesStatus(
     List<Map<String, dynamic>> players,
   ) async {
@@ -148,7 +148,7 @@ class FavoritesService {
   }
 
   // TOURNAMENT FAVORITES METHODS
-  // Get all favorite tournaments
+  // Get all starred_repository tournaments
   static Future<List<Map<String, dynamic>>> getAllFavoriteTournaments() async {
     await initialize();
     return List<Map<String, dynamic>>.from(_favoriteTournaments);
@@ -162,7 +162,7 @@ class FavoritesService {
     );
   }
 
-  // Toggle tournament favorite status
+  // Toggle tournament starred_repository status
   static Future<bool> toggleTournamentFavorite(
     String title,
     String dates,
@@ -172,7 +172,7 @@ class FavoritesService {
   ) async {
     await initialize();
 
-    // Check if tournament is already a favorite
+    // Check if tournament is already a starred_repository
     final index = _favoriteTournaments.indexWhere(
       (tournament) => tournament['title'] == title,
     );
@@ -181,7 +181,7 @@ class FavoritesService {
       // Remove from favorites
       _favoriteTournaments.removeAt(index);
       await _persistTournamentFavorites();
-      return false; // Not a favorite anymore
+      return false; // Not a starred_repository anymore
     } else {
       // Add to favorites
       final tournament = {
@@ -194,7 +194,7 @@ class FavoritesService {
 
       _favoriteTournaments.add(tournament);
       await _persistTournamentFavorites();
-      return true; // Now a favorite
+      return true; // Now a starred_repository
     }
   }
 

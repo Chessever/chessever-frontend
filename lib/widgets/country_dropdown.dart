@@ -6,32 +6,36 @@ import 'package:country_flags/country_flags.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-class CountryDropdown extends ConsumerWidget {
-  final String? selectedCountry;
+class CountryDropdown extends ConsumerStatefulWidget {
+  final String selectedCountryCode;
   final ValueChanged<String> onChanged;
   final String? hintText;
 
   const CountryDropdown({
     super.key,
-    this.selectedCountry,
+    required this.selectedCountryCode,
     required this.onChanged,
     this.hintText,
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final notifier = ref.watch(
-      countryDropdownNotifierProvider(
-        initialCountry: selectedCountry ?? "US",
-      ).notifier,
-    );
+  ConsumerState<CountryDropdown> createState() => _CountryDropdownState();
+}
 
-    final state = ref.watch(
-      countryDropdownNotifierProvider(initialCountry: selectedCountry ?? "US"),
-    );
+class _CountryDropdownState extends ConsumerState<CountryDropdown> {
+  var isDropDownOpen = false;
+  var selectedCountryCode = 'US';
 
+  @override
+  void initState() {
+    selectedCountryCode = widget.selectedCountryCode;
+    super.initState();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final borderRadius =
-        state.isDropdownOpen
+        isDropDownOpen
             ? const BorderRadius.only(
               topLeft: Radius.circular(8),
               topRight: Radius.circular(8),
@@ -47,6 +51,9 @@ class CountryDropdown extends ConsumerWidget {
       topRight: Radius.zero,
     );
 
+    final allCountries =
+        ref.read(countryDropdownProvider.notifier).getAllCountries();
+
     return ClipRRect(
       borderRadius: borderRadius,
       child: AnimatedContainer(
@@ -56,7 +63,7 @@ class CountryDropdown extends ConsumerWidget {
           color: kBackgroundColor,
           borderRadius: borderRadius,
           border:
-              state.isDropdownOpen
+              isDropDownOpen
                   ? null
                   : Border.all(color: kDarkGreyColor, width: 1),
         ),
@@ -73,14 +80,9 @@ class CountryDropdown extends ConsumerWidget {
                   Expanded(
                     child: Text(
                       // Find the country name using the selected code
-                      state.countries
-                          .firstWhere(
-                            (country) =>
-                                country.countryCode ==
-                                state.selectedCountryCode,
-                            orElse: () => state.countries.first,
-                          )
-                          .name,
+                      ref
+                          .read(countryDropdownProvider.notifier)
+                          .getCountryName(selectedCountryCode),
                       style: AppTypography.textXsMedium.copyWith(
                         color: kWhiteColor,
                       ),
@@ -88,15 +90,14 @@ class CountryDropdown extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(width: 12), // 12px gap
-                  if (state.selectedCountryCode != null)
-                    CountryFlag.fromCountryCode(
-                      state.selectedCountryCode!,
-                      width: 16,
-                      height: 12,
-                    ),
+                  CountryFlag.fromCountryCode(
+                    selectedCountryCode,
+                    width: 16,
+                    height: 12,
+                  ),
                   const SizedBox(width: 8),
                   Icon(
-                    state.isDropdownOpen
+                    isDropDownOpen
                         ? Icons.keyboard_arrow_up
                         : Icons.keyboard_arrow_down,
                     color: kWhiteColor,
@@ -123,18 +124,19 @@ class CountryDropdown extends ConsumerWidget {
               height: 40,
               padding: EdgeInsets.zero,
             ),
-            value: state.selectedCountryCode,
+            value: selectedCountryCode,
             onChanged: (value) {
               if (value != null) {
-                notifier.selectCountry(value);
-                onChanged(value);
+                selectedCountryCode = value;
+                widget.onChanged(value);
               }
             },
             onMenuStateChange: (isOpen) {
-              notifier.setDropdownState(isOpen);
+              isDropDownOpen = isOpen;
+              setState(() {});
             },
-            items: List.generate(state.countries.length, (index) {
-              final country = state.countries[index];
+            items: List.generate(allCountries.length, (index) {
+              final country = allCountries[index];
 
               return DropdownMenuItem<String>(
                 value: country.countryCode,

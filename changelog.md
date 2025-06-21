@@ -10,7 +10,6 @@
 -> Add Localization,
 -> Add Typography,
 
-
 ##15th June 2025
 -> add: country picker and dropdown
 -> add: live event and completed event
@@ -22,7 +21,7 @@
 -> add: persistent settings storage using SharedPreferences
 -> fix: responsive design for all settings screens
 -> fix: language settings dialog type safety issues
--> add: search bar functionality 
+-> add: search bar functionality
 
 ##16th June 2025
 -> update: replaced icons in hamburger menu with SVG assets
@@ -41,7 +40,6 @@
 -> filter widget added with design accuracy
 -> board color added
 -> player card and list screen
-
 
 #18th June
 -> Configure Supabase,
@@ -64,6 +62,24 @@
 -> add animations for button click,
 -> add country picker overlay screen,
 -> add library screen UI,
+
+#20 June
+-> Fix the Alert and Modal flow for settings,
+-> Add Tournament Details Screen,
+-> Create Models for Tournament, Game and Round based on schema,
+-> Setup Repository and API for Tournament, Game and Round,
+
+
+#21 June 
+-> Connect Tournament screen with Supabase,
+-> Connect Favorite with local repository,
+-> Connect Filter option and search to supabase,
+-> Create models for repository and Layout Data parsing and conversion for Tour,
+-> Cleanup Twisted widgets,
+
+#22 June
+
+
 
 
 

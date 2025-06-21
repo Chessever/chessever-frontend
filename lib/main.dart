@@ -6,7 +6,7 @@ import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/players/player_screen.dart';
 import 'package:chessever2/screens/favorites/favorite_screen.dart';
 import 'package:chessever2/screens/countryman_screen.dart';
-import 'package:chessever2/screens/splash_screen.dart';
+import 'package:chessever2/screens/splash/splash_screen.dart';
 import 'package:chessever2/screens/standings_screen.dart';
 import 'package:chessever2/screens/tournaments/tournament_screen.dart';
 import 'package:chessever2/screens/calendar_screen.dart';

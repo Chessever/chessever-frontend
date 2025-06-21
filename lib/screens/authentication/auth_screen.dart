@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/screens/authentication/auth_screen_state.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/svg_asset.dart';
@@ -9,13 +11,45 @@ import 'package:chessever2/widgets/blur_background.dart';
 import 'package:chessever2/widgets/country_dropdown.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'auth_screen_provider.dart';
 
-class AuthScreen extends StatelessWidget {
+class AuthScreen extends ConsumerStatefulWidget {
   const AuthScreen({super.key});
 
   @override
+  ConsumerState<AuthScreen> createState() => _AuthScreenState();
+}
+
+class _AuthScreenState extends ConsumerState<AuthScreen> {
+  @override
   Widget build(BuildContext context) {
-    final isApple = Platform.isIOS;
+    final isIos = Platform.isIOS;
+    final state = ref.watch(authScreenProvider);
+    final notifier = ref.read(authScreenProvider.notifier);
+
+    // Listen for state changes
+    ref.listen<AuthScreenState>(authScreenProvider, (previous, current) {
+      // Show country selection modal after successful sign in
+      if (current.showCountrySelection && !current.isLoading) {
+        _showCountrySelectionModal();
+      }
+
+      // Show error message if there's an error
+      if (current.errorMessage != null) {
+        _showErrorDialog(current.errorMessage!);
+      }
+
+      //todo: setup country code Here
+      String? countryCode = null;
+      // Navigate to home if user has country selected
+      if (current.user != null &&
+          countryCode != null &&
+          countryCode.isNotEmpty) {
+        Navigator.pushReplacementNamed(context, '/home_screen');
+      }
+    });
+
     return ScreenWrapper(
       child: Scaffold(
         body: Stack(
@@ -38,82 +72,128 @@ class AuthScreen extends StatelessWidget {
                 ],
               ),
             ),
-            Align(
-              alignment: Alignment.bottomCenter,
-              child: Container(
-                padding: EdgeInsets.only(
-                  bottom: MediaQuery.of(context).viewPadding.bottom + 28,
-                  left: 28,
-                  right: 28,
+            if (!state.isLoading)
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: Container(
+                  padding: EdgeInsets.only(
+                    bottom: MediaQuery.of(context).viewPadding.bottom + 28,
+                    left: 28,
+                    right: 28,
+                  ),
+                  child: AuthButton(
+                    signInTitle:
+                        isIos ? 'Continue with Apple' : 'Continue with Google',
+                    svgIconPath:
+                        isIos ? SvgAsset.appleIcon : SvgAsset.googleIcon,
+                    onPressed: () async {
+                      if (state.isLoading) {
+                      } else {
+                        if (isIos) {
+                          await notifier.signInWithApple();
+                        } else {
+                          await notifier.signInWithGoogle();
+                        }
+                      }
+                    },
+                  ),
                 ),
-                child:
-                    isApple
-                        ? AuthButton(
-                          signInTitle: 'Continue with Apple',
-                          svgIconPath: SvgAsset.appleIcon,
-                          onPressed: () {
-                            showAlertModal(
-                              context: context,
-                              child: _CountryDropdownWidget(),
-                            );
-                          },
-                        )
-                        : AuthButton(
-                          signInTitle: 'Continue with Google',
-                          svgIconPath: SvgAsset.googleIcon,
-                          onPressed: () {
-                            showAlertModal(
-                              context: context,
-                              child: _CountryDropdownWidget(),
-                            );
-                          },
-                        ),
               ),
-            ),
+            // Loading overlay
+            if (state.isLoading)
+              Container(
+                color: Colors.black.withOpacity(0.3),
+                child: const Center(child: CircularProgressIndicator()),
+              ),
           ],
         ),
       ),
     );
   }
+
+  void _showCountrySelectionModal() {
+    showAlertModal(
+      context: context,
+      barrierDismissible: false,
+      horizontalPadding: 0,
+      verticalPadding: 0,
+      child: _AuthCountryDropdownWidget(),
+    );
+  }
+
+  void _showErrorDialog(String errorMessage) {
+    //todo: Error Dialod
+    // showDialog(
+    //   context: context,
+    //   builder:
+    //       (cxt) => AlertDialog(
+    //         backgroundColor: kBackgroundColor,
+    //         title: Text(
+    //           'Sign In Error',
+    //           style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+    //         ),
+    //         content: Text(
+    //           errorMessage,
+    //           style: AppTypography.textXsMedium.copyWith(color: kRedColor),
+    //         ),
+    //         actions: [
+    //           TextButton(
+    //             onPressed: () {
+    //               Navigator.of(context).pop();
+    //               ref.read(authScreenProvider.notifier).clearError();
+    //             },
+    //             child: const Text('OK'),
+    //           ),
+    //         ],
+    //       ),
+    // );
+  }
 }
 
-class _CountryDropdownWidget extends StatelessWidget {
-  const _CountryDropdownWidget({super.key});
+class _AuthCountryDropdownWidget extends ConsumerWidget {
+  const _AuthCountryDropdownWidget({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(authScreenProvider);
+    final notifier = ref.read(authScreenProvider.notifier);
+
     return Stack(
       alignment: Alignment.center,
       children: [
         BackDropFilterWidget(),
-        Positioned(
-          top: MediaQuery.of(context).size.height / 2 - 60,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: 48),
-                child: Text(
-                  'Select Your Country',
-                  style: AppTypography.textSmBold,
-                ),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 48),
+              child: Text(
+                'Select Your Country',
+                style: AppTypography.textSmBold,
               ),
-              SizedBox(height: 4),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 48),
-                width: MediaQuery.of(context).size.width,
-                child: CountryDropdown(
-                  onChanged: (_) {
-                    Navigator.of(context).pop();
-                    Navigator.pushReplacementNamed(
-                      context,
-                      '/home_screen',
-                    );
-                  },
-                ),
+            ),
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 48),
+              width: MediaQuery.of(context).size.width,
+              //todo: Get and Set CountryCode here
+              child: CountryDropdown(
+                selectedCountryCode: 'US',
+                onChanged: (countryCode) async {
+                  ref
+                      .read(countryDropdownProvider.notifier)
+                      .selectCountry(countryCode);
+                  // Hide country selection modal
+                  notifier.hideCountrySelection();
+
+                  // Close modal and navigate to home
+                  Navigator.of(context).pop();
+                  Navigator.pushReplacementNamed(context, '/home_screen');
+                },
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ],
     );

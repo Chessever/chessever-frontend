@@ -98,7 +98,7 @@ class PlayerService {
     return player.id == '-1' ? null : player;
   }
 
-  // Toggle favorite status for a player
+  // Toggle starred_repository status for a player
   Future<void> toggleFavorite(String playerId) async {
     // Simulate network delay
     await Future.delayed(const Duration(milliseconds: 300));
