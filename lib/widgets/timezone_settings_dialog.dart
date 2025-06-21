@@ -8,13 +8,13 @@ class TimezoneOption {
   final String name;
   final String utcOffset;
   final TimeZone timezone;
-  
+
   const TimezoneOption({
     required this.name,
     required this.utcOffset,
     required this.timezone,
   });
-  
+
   String get display => '$name $utcOffset';
 }
 
@@ -56,25 +56,37 @@ class TimezoneSettingsDialog extends ConsumerWidget {
 
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 24.0),
+      insetPadding: const EdgeInsets.symmetric(
+        horizontal: 24.0,
+        vertical: 24.0,
+      ),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.black,
-          borderRadius: BorderRadius.circular(16),
+          color: kPopUpColor.withOpacity(0.95),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.3),
+              blurRadius: 10,
+              spreadRadius: 1,
+            ),
+          ],
         ),
         child: ListView.separated(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           itemCount: timezoneOptions.length,
-          separatorBuilder: (context, index) => const Divider(
-            height: 1,
-            thickness: 0.5,
-            color: Color(0xFF2C2C2E),
-          ),
+          separatorBuilder:
+              (context, index) => const Divider(
+                height: 1,
+                thickness: 0.5,
+                color: Color(0xFF2C2C2E),
+              ),
           itemBuilder: (context, index) {
             final timezoneOption = timezoneOptions[index];
-            final isSelected = timezoneOption.timezone.offset == selectedTimezone.offset;
-            
+            final isSelected =
+                timezoneOption.timezone.offset == selectedTimezone.offset;
+
             return ListTile(
               contentPadding: const EdgeInsets.only(left: 12),
               minLeadingWidth: 0,
@@ -86,7 +98,9 @@ class TimezoneSettingsDialog extends ConsumerWidget {
                 ),
               ),
               onTap: () {
-                ref.read(timezoneProvider.notifier).setTimezone(timezoneOption.timezone);
+                ref
+                    .read(timezoneProvider.notifier)
+                    .setTimezone(timezoneOption.timezone);
                 Navigator.of(context).pop();
               },
             );

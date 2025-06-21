@@ -36,11 +36,7 @@ class LanguageSettingsDialog extends ConsumerWidget {
         locale: Locale('de'),
         isAvailable: true,
       ),
-      const LanguageOption(
-        name: '中文',
-        locale: Locale('zh'),
-        isAvailable: true,
-      ),
+      const LanguageOption(name: '中文', locale: Locale('zh'), isAvailable: true),
       const LanguageOption(
         name: 'Español',
         locale: Locale('es'),
@@ -55,25 +51,42 @@ class LanguageSettingsDialog extends ConsumerWidget {
 
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 24.0),
+      insetPadding: const EdgeInsets.symmetric(
+        horizontal: 24.0,
+        vertical: 24.0,
+      ),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.black,
-          borderRadius: BorderRadius.circular(16),
+          color: kPopUpColor.withOpacity(0.95),
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
+            bottomLeft: Radius.circular(20),
+            bottomRight: Radius.circular(20),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.3),
+              blurRadius: 10,
+              spreadRadius: 1,
+            ),
+          ],
         ),
         child: ListView.separated(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           itemCount: supportedLanguages.length,
-          separatorBuilder: (context, index) => const Divider(
-            height: 1,
-            thickness: 0.5,
-            color: Color(0xFF2C2C2E),
-          ),
+          separatorBuilder:
+              (context, index) => const Divider(
+                height: 1,
+                thickness: 0.5,
+                color: Color(0xFF2C2C2E),
+              ),
           itemBuilder: (context, index) {
             final language = supportedLanguages[index];
-            final isSelected = currentLocale.languageCode == language.locale.languageCode;
-            
+            final isSelected =
+                currentLocale.languageCode == language.locale.languageCode;
+
             return ListTile(
               contentPadding: const EdgeInsets.only(left: 12),
               minLeadingWidth: 40,
@@ -84,16 +97,17 @@ class LanguageSettingsDialog extends ConsumerWidget {
                   color: isSelected ? kPrimaryColor : kWhiteColor,
                 ),
               ),
-              trailing: isSelected 
-                ? const Padding(
-                    padding: EdgeInsets.only(right: 12),
-                    child: Icon(
-                      Icons.check,
-                      color: kPrimaryColor,
-                      size: 24,
-                    ),
-                  )
-                : null,
+              trailing:
+                  isSelected
+                      ? const Padding(
+                        padding: EdgeInsets.only(right: 12),
+                        child: Icon(
+                          Icons.check,
+                          color: kPrimaryColor,
+                          size: 24,
+                        ),
+                      )
+                      : null,
               onTap: () {
                 // UI selection - you'll handle the logic later
                 ref.read(localeProvider.notifier).setLocale(language.locale);

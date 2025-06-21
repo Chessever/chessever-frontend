@@ -5,6 +5,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../providers/board_settings_provider.dart';
 import '../utils/svg_asset.dart';
 import '../widgets/settings_dialog.dart';
+import '../theme/app_theme.dart';
 
 class BoardColorDialog extends ConsumerWidget {
   const BoardColorDialog({Key? key}) : super(key: key);
@@ -12,13 +13,13 @@ class BoardColorDialog extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final boardSettings = ref.watch(boardSettingsProvider);
-    
+
     // Define board colors
     final Color defaultColor = const Color(0xFF0FB4E5); // Teal/Default
     final Color brownColor = Colors.brown;
     final Color greyColor = Colors.grey;
     final Color greenColor = Colors.green;
-    
+
     // Check which color is currently selected
     String selectedColor = 'default';
     if (boardSettings.boardColor == brownColor) {
@@ -84,7 +85,7 @@ class BoardColorDialog extends ConsumerWidget {
   }) {
     // Specific green color for the check mark as requested
     const Color checkMarkColor = Color(0xFF247435);
-    
+
     return GestureDetector(
       onTap: () {
         ref.read(boardSettingsProvider.notifier).setBoardColor(color);
@@ -96,18 +97,12 @@ class BoardColorDialog extends ConsumerWidget {
           SizedBox(
             width: 58,
             height: 88,
-            child: SvgPicture.asset(
-              svgAsset,
-              fit: BoxFit.contain,
-            ),
+            child: SvgPicture.asset(svgAsset, fit: BoxFit.contain),
           ),
           const SizedBox(height: 8),
           Text(
             label,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-            ),
+            style: const TextStyle(color: Colors.white, fontSize: 16),
           ),
           const SizedBox(height: 8),
           // Selection indicator
@@ -116,19 +111,13 @@ class BoardColorDialog extends ConsumerWidget {
             height: 30,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.white,
-                width: 2,
-              ),
+              border: Border.all(color: Colors.white, width: 2),
               color: isSelected ? checkMarkColor : Colors.transparent,
             ),
-            child: isSelected
-                ? const Icon(
-                    Icons.check,
-                    color: Colors.white,
-                    size: 20,
-                  )
-                : null,
+            child:
+                isSelected
+                    ? const Icon(Icons.check, color: Colors.white, size: 20)
+                    : null,
           ),
         ],
       ),

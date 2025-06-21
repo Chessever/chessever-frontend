@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../utils/app_typography.dart';
-import '../../../theme/app_theme.dart'; // Import app theme
+import '../../../theme/app_theme.dart';
 
-class PlayerCard extends StatelessWidget {
+class PlayerCard extends StatefulWidget {
   final int rank;
   final String playerName;
   final String countryCode;
@@ -23,6 +23,36 @@ class PlayerCard extends StatelessWidget {
   }) : super(key: key);
 
   @override
+  State<PlayerCard> createState() => _PlayerCardState();
+}
+
+class _PlayerCardState extends State<PlayerCard> {
+  late bool _isFavorite;
+
+  @override
+  void initState() {
+    super.initState();
+    _isFavorite = widget.isFavorite;
+  }
+
+  @override
+  void didUpdateWidget(PlayerCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isFavorite != widget.isFavorite) {
+      _isFavorite = widget.isFavorite;
+    }
+  }
+
+  void _toggleFavorite() {
+    if (widget.onFavoriteToggle != null) {
+      setState(() {
+        _isFavorite = !_isFavorite;
+      });
+      widget.onFavoriteToggle!();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
@@ -32,8 +62,7 @@ class PlayerCard extends StatelessWidget {
       child: Container(
         height: 48,
         decoration: BoxDecoration(
-          color:
-              kBlack2Color, // Using theme color instead of hardcoded Color(0xFF1A1A1C)
+          color: kBlack2Color,
           borderRadius: BorderRadius.zero,
         ),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -43,7 +72,7 @@ class PlayerCard extends StatelessWidget {
             SizedBox(
               width: 24,
               child: Text(
-                '$rank.',
+                '${widget.rank}.',
                 style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
               ),
             ),
@@ -51,7 +80,7 @@ class PlayerCard extends StatelessWidget {
             // Country flag
             Container(
               margin: const EdgeInsets.only(right: 8),
-              child: getCountryFlag(countryCode),
+              child: getCountryFlag(widget.countryCode),
             ),
 
             // GM prefix and player name
@@ -67,7 +96,7 @@ class PlayerCard extends StatelessWidget {
                       ),
                     ),
                     TextSpan(
-                      text: playerName,
+                      text: widget.playerName,
                       style: AppTypography.textXsMedium.copyWith(
                         color: kWhiteColor,
                       ),
@@ -81,7 +110,7 @@ class PlayerCard extends StatelessWidget {
             Expanded(
               flex: 1,
               child: Text(
-                elo.toString(),
+                widget.elo.toString(),
                 textAlign: TextAlign.center,
                 style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
               ),
@@ -91,7 +120,7 @@ class PlayerCard extends StatelessWidget {
             Expanded(
               flex: 1,
               child: Text(
-                age.toString(),
+                widget.age.toString(),
                 textAlign: TextAlign.center,
                 style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
               ),
@@ -99,16 +128,13 @@ class PlayerCard extends StatelessWidget {
 
             // Favorite icon
             GestureDetector(
-              onTap: onFavoriteToggle,
+              onTap: _toggleFavorite,
               behavior: HitTestBehavior.opaque,
               child: SizedBox(
                 width: 30,
                 child: Icon(
-                  isFavorite ? Icons.favorite : Icons.favorite_border,
-                  color:
-                      isFavorite
-                          ? Colors.red
-                          : kWhiteColor, // Using theme color for unfilled state
+                  _isFavorite ? Icons.favorite : Icons.favorite_border,
+                  color: _isFavorite ? kRedColor : kWhiteColor,
                   size: 20,
                 ),
               ),

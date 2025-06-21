@@ -43,7 +43,7 @@ class TournamentScreen extends ConsumerWidget {
             child: Hero(
               tag: 'search_bar',
               child: RoundedSearchBar(
-                profileInitials: 'Vinode'.substring(0, 2),
+                profileInitials: 'Vi'.substring(0, 2),
                 controller: searchController,
                 hintText: 'Search tournaments or players',
                 onChanged: (value) {

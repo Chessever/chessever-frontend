@@ -32,7 +32,7 @@ class FavoriteController {
     );
 
     if (index != -1) {
-      // Remove from the local list
+      // Remove from the local list immediately to update UI
       _favoritePlayers.removeAt(index);
 
       // Update the favorites status through the service
