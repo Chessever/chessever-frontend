@@ -65,16 +65,22 @@ class CountryDropdown extends ConsumerWidget {
             isExpanded: true,
             customButton: Container(
               height: 40, // Match container height
-              padding: const EdgeInsets.symmetric(horizontal: 12), // Proper padding
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+              ), // Proper padding
               child: Row(
                 children: [
                   Expanded(
                     child: Text(
                       // Find the country name using the selected code
-                      state.countries.firstWhere(
-                        (country) => country.countryCode == state.selectedCountryCode,
-                        orElse: () => state.countries.first,
-                      ).name,
+                      state.countries
+                          .firstWhere(
+                            (country) =>
+                                country.countryCode ==
+                                state.selectedCountryCode,
+                            orElse: () => state.countries.first,
+                          )
+                          .name,
                       style: AppTypography.textXsMedium.copyWith(
                         color: kWhiteColor,
                       ),

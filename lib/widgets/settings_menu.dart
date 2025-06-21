@@ -34,109 +34,158 @@ class SettingsMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Determine appropriate font sizes based on screen size
-    final double headerFontSize =
-        isSmallScreen ? 16 : (isLargeScreen ? 22 : 18);
-    final double sectionPadding = isSmallScreen ? 8 : (isLargeScreen ? 24 : 16);
-
-    return ListView(
-      padding: EdgeInsets.zero,
-      children: [
-        _buildMenuItem(
-          customIcon: boardSettingsIcon ?? Icon(Icons.grid_4x4, color: Colors.white, size: 24),
-          title: 'Board Settings',
-          subtitle: 'Piece style, board theme, move highlighting',
-          onPressed: onBoardSettingsPressed,
-          showChevron: true,
-        ),
-        SizedBox(height: 12),
-        _buildMenuItem(
-          customIcon: languageIcon ?? Icon(Icons.language, color: Colors.white, size: 24),
-          title: 'Language',
-          subtitle: languageSubtitle,
-          onPressed: onLanguagePressed,
-          showChevron: true,
-        ),
-        SizedBox(height: 12),
-        _buildMenuItem(
-          customIcon: timezoneIcon ?? Icon(Icons.access_time, color: Colors.white, size: 24),
-          title: 'Timezone',
-          subtitle: timezoneSubtitle,
-          onPressed: onTimezonePressed,
-          showChevron: true,
-        ),
-        SizedBox(height: 12),
-        _buildSwitchItem(
-          icon: Icons.notifications,
-          title: 'Notifications',
-          subtitle: notificationsEnabled ? 'Enabled' : 'Disabled',
-          value: notificationsEnabled,
-          onChanged: (value) {
-            onNotificationsPressed?.call();
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMenuItem({
-    IconData? icon,
-    Widget? customIcon,
-    required String title,
-    String? subtitle,
-    required bool showChevron,
-    VoidCallback? onPressed,
-  }) {
-    return ListTile(
-      contentPadding: const EdgeInsets.only(left: 12),
-      minLeadingWidth: 40,
-      horizontalTitleGap: 4,
-      leading: customIcon ?? Icon(icon!, color: Colors.white, size: 24),
-      title: Text(
-        title,
-        style: AppTypography.textSmMedium.copyWith(color: Colors.white),
-      ),
-      subtitle: subtitle != null 
-          ? Text(
-              subtitle,
-              style: TextStyle(color: Colors.grey, fontSize: isSmallScreen ? 12 : 14),
-            ) 
-          : null,
-      trailing: showChevron
-          ? const Padding(
-              padding: EdgeInsets.only(right: 12),
-              child: Icon(
-                Icons.chevron_right_outlined,
-                color: Colors.white,
-                size: 24,
+    // Fixed height of 144px (36px × 4 menu items)
+    return Container(
+      height: 144,
+      child: Column(
+        children: [
+          // Board settings
+          InkWell(
+            onTap: onBoardSettingsPressed,
+            child: Container(
+              height: 36,
+              padding: EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(
+                    color: Colors.grey.shade800.withOpacity(0.3),
+                    width: 1,
+                  ),
+                ),
               ),
-            )
-          : null,
-      onTap: onPressed,
-    );
-  }
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 36,
+                    child:
+                        boardSettingsIcon ??
+                        Icon(Icons.grid_4x4, color: Colors.white, size: 24),
+                  ),
+                  SizedBox(width: 4), // Changed from 8px to 4px
+                  Expanded(
+                    child: Text(
+                      'Board settings',
+                      style: AppTypography.textMdRegular.copyWith(
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
 
-  Widget _buildSwitchItem({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
-    return SwitchListTile(
-      contentPadding: const EdgeInsets.only(left: 12, right: 12),
-      secondary: null, // Removed the icon to match the requirement
-      title: Text(
-        title,
-        style: AppTypography.textSmMedium.copyWith(color: Colors.white),
+          // Language
+          InkWell(
+            onTap: onLanguagePressed,
+            child: Container(
+              height: 36,
+              padding: EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(
+                    color: Colors.grey.shade800.withOpacity(0.3),
+                    width: 1,
+                  ),
+                ),
+              ),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 36,
+                    child:
+                        languageIcon ??
+                        Icon(Icons.language, color: Colors.white, size: 24),
+                  ),
+                  SizedBox(width: 4), // Changed from 8px to 4px
+                  Expanded(
+                    child: Text(
+                      'Language',
+                      style: AppTypography.textXsRegular.copyWith(
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Set timezone
+          InkWell(
+            onTap: onTimezonePressed,
+            child: Container(
+              height: 36,
+              padding: EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(
+                    color: Colors.grey.shade800.withOpacity(0.3),
+                    width: 1,
+                  ),
+                ),
+              ),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 36,
+                    child:
+                        timezoneIcon ??
+                        Icon(Icons.public, color: Colors.white, size: 24),
+                  ),
+                  SizedBox(width: 4), // Changed from 8px to 4px
+                  Expanded(
+                    child: Text(
+                      'Set timezone',
+                      style: AppTypography.textXsRegular.copyWith(
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Notifications toggle
+          Container(
+            height: 36,
+            padding: EdgeInsets.symmetric(horizontal: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // Text aligned with icons (no spacers)
+                Text(
+                  'Notifications',
+                  style: AppTypography.textXsRegular.copyWith(
+                    color: Colors.white,
+                  ),
+                ),
+                // Custom sized switch
+                SizedBox(
+                  width: 28,
+                  height: 17,
+                  child: FittedBox(
+                    fit: BoxFit.fill,
+                    child: Switch(
+                      value: notificationsEnabled,
+                      onChanged: (value) {
+                        onNotificationsPressed?.call();
+                      },
+                      activeColor: kWhiteColor, // Circle color is white
+                      activeTrackColor:
+                          kPrimaryColor, // Track uses app primary color
+                      inactiveThumbColor: kWhiteColor,
+                      inactiveTrackColor: Colors.grey.withOpacity(0.5),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
-      subtitle: Text(
-        subtitle,
-        style: TextStyle(color: Colors.grey, fontSize: isSmallScreen ? 12 : 14),
-      ),
-      value: value,
-      activeColor: const Color(0xFF0FB4E5),
-      onChanged: onChanged,
     );
   }
 }

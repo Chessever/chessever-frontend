@@ -91,18 +91,21 @@ class SettingsScreen extends ConsumerWidget {
                     onBoardSettingsPressed: () {
                       showDialog(
                         context: context,
+                        barrierColor: Colors.transparent,
                         builder: (context) => const BoardSettingsDialog(),
                       );
                     },
                     onLanguagePressed: () {
                       showDialog(
                         context: context,
+                        barrierColor: Colors.transparent,
                         builder: (context) => const LanguageSettingsDialog(),
                       );
                     },
                     onTimezonePressed: () {
                       showDialog(
                         context: context,
+                        barrierColor: Colors.transparent,
                         builder: (context) => const TimezoneSettingsDialog(),
                       );
                     },
@@ -110,6 +113,7 @@ class SettingsScreen extends ConsumerWidget {
                       // Show notifications settings dialog for detailed options
                       showDialog(
                         context: context,
+                        barrierColor: Colors.transparent,
                         builder:
                             (context) => const NotificationsSettingsDialog(),
                       );

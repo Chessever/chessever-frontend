@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 const Color kPrimaryColor = Color(0xFF0FB4E5); // PRIMARY COLOR
 const Color kBackgroundColor = Color(0xFF0C0C0E); // BACKGROUND
 const Color kWhiteColor = Color(0xFFFFFFFF); // WHITE
+const Color kPopUpColor = Color(0xff111111);
 const Color kWhiteColor70 = Color(
   0xB3FFFFFF,
 ); // WHITE with 70% opacity (B3 = 70%)

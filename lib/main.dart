@@ -4,7 +4,6 @@ import 'package:chessever2/screens/authentication/auth_screen.dart';
 import 'package:chessever2/screens/home_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/players/player_screen.dart';
-import 'package:chessever2/screens/settings_screen.dart';
 import 'package:chessever2/screens/favorites/favorite_screen.dart';
 import 'package:chessever2/screens/countryman_screen.dart';
 import 'package:chessever2/screens/splash_screen.dart';
@@ -99,7 +98,6 @@ class _MyAppState extends ConsumerState<MyApp> {
         // New route for Calendar screen
         // '/input_screen': (context) => const InputDesignScreen(),
         // '/tournaments': (context) => const TournamentListScreen(),
-        '/settings': (context) => const SettingsScreen(),
         '/playerList': (context) => const PlayerScreen(),
         // Updated to use the navigation component
         '/favorites': (context) => const FavoriteScreen(),

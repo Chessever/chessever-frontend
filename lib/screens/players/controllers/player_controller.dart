@@ -79,6 +79,7 @@ class PlayerController {
     final index = _players.indexWhere((player) => player['name'] == playerName);
 
     if (index != -1) {
+      // Update local state immediately for UI responsiveness
       _players[index]['isFavorite'] = !_players[index]['isFavorite'];
 
       // Persist the changes

@@ -26,10 +26,10 @@ class AnimatedBlurBackground extends HookWidget {
     );
 
     animationController.forward();
-
+    animationController.repeat();
 
     final fadeAnimation = useAnimation(
-      CurvedAnimation(parent: animationController, curve: Curves.easeInOut),
+      CurvedAnimation(parent: animationController, curve: Curves.bounceInOut),
     );
 
     return AnimatedOpacity(

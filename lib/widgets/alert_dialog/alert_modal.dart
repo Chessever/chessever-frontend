@@ -1,17 +1,23 @@
 import 'package:flutter/material.dart';
 
-void showAlertModal({required BuildContext context, required Widget child}) =>
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      isDismissible: false,
-      enableDrag: false,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return SizedBox(
-          height: MediaQuery.of(ctx).size.height,
-          width: MediaQuery.of(ctx).size.width,
-          child: child,
-        );
-      },
+void showAlertModal({
+  required BuildContext context,
+  required Widget child,
+  Color? backgroundColor,
+  bool barrierDismissible = true,
+  Color barrierColor = Colors.transparent, // Default to transparent
+}) => showDialog(
+  context: context,
+  barrierDismissible: barrierDismissible,
+  barrierColor: barrierColor,
+  builder: (ctx) {
+    return Dialog(
+      backgroundColor: backgroundColor ?? Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(
+        horizontal: 24.0,
+        vertical: 24.0,
+      ),
+      child: child,
     );
+  },
+);

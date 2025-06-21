@@ -1,4 +1,3 @@
-import 'package:chessever2/widgets/auth_button.dart';
 import 'package:chessever2/widgets/event_card/upcoming_event_card.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -22,7 +21,6 @@ class ChesseverScreen extends ConsumerWidget {
       drawer: HamburgerMenu(
         onSettingsPressed: () {
           Navigator.pop(context);
-          Navigator.pushNamed(context, '/settings');
         },
         onPlayersPressed: () {
           Navigator.pop(context);

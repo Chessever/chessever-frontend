@@ -1,40 +1,50 @@
+import 'package:chessever2/localization/locale_provider.dart';
+import 'package:chessever2/providers/notifications_settings_provider.dart';
+import 'package:chessever2/providers/timezone_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/board_settings_dialog.dart';
 import 'package:chessever2/widgets/icons/analysis_board_icon.dart';
+import 'package:chessever2/widgets/language_settings_dialog.dart';
+import 'package:chessever2/widgets/notifications_settings_dialog.dart';
+import 'package:chessever2/widgets/settings_dialog.dart';
+import 'package:chessever2/widgets/settings_menu.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
+import 'package:chessever2/widgets/timezone_settings_dialog.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class HamburgerMenu extends StatelessWidget {
-  final VoidCallback? onSettingsPressed;
-  final VoidCallback? onPlayersPressed;
-  final VoidCallback? onFavoritesPressed;
-  final VoidCallback? onCountrymanPressed;
-  final VoidCallback? onAnalysisBoardPressed;
-  final VoidCallback? onSupportPressed;
-  final VoidCallback? onPremiumPressed;
-  final VoidCallback? onLogoutPressed;
+  final VoidCallback onSettingsPressed;
+  final VoidCallback onPlayersPressed;
+  final VoidCallback onFavoritesPressed;
+  final VoidCallback onCountrymanPressed;
+  final VoidCallback onAnalysisBoardPressed;
+  final VoidCallback onSupportPressed;
+  final VoidCallback onPremiumPressed;
+  final VoidCallback onLogoutPressed;
 
   const HamburgerMenu({
     super.key,
-    this.onSettingsPressed,
-    this.onPlayersPressed,
-    this.onFavoritesPressed,
-    this.onCountrymanPressed,
-    this.onAnalysisBoardPressed,
-    this.onSupportPressed,
-    this.onPremiumPressed,
-    this.onLogoutPressed,
+    required this.onSettingsPressed,
+    required this.onPlayersPressed,
+    required this.onFavoritesPressed,
+    required this.onCountrymanPressed,
+    required this.onAnalysisBoardPressed,
+    required this.onSupportPressed,
+    required this.onPremiumPressed,
+    required this.onLogoutPressed,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SizedBox(
       width: 260, // Set fixed width for hamburger menu
       child: Drawer(
-        backgroundColor: Colors.black,
+        backgroundColor: kBackgroundColor,
         child: SafeArea(
           child: Column(
             children: [
@@ -51,16 +61,7 @@ class HamburgerMenu extends StatelessWidget {
                         width: 24,
                       ),
                       title: 'Settings',
-                      onPressed: () {
-                        // Close the drawer first
-                        Navigator.pop(context);
-                        // Navigate to settings page
-                        Navigator.of(context).pushNamed('/settings');
-                        // Still call the original callback if provided
-                        if (onSettingsPressed != null) {
-                          onSettingsPressed!();
-                        }
-                      },
+                      onPressed: onSettingsPressed,
                       showChevron: true,
                     ),
                     SizedBox(height: 12),
@@ -72,16 +73,7 @@ class HamburgerMenu extends StatelessWidget {
                         width: 24,
                       ),
                       title: 'Players',
-                      onPressed: () {
-                        // Close the drawer first
-                        Navigator.pop(context);
-                        // Navigate using the correct route name
-                        Navigator.of(context).pushNamed('/playerList');
-                        // Still call the original callback if provided
-                        if (onPlayersPressed != null) {
-                          onPlayersPressed!();
-                        }
-                      },
+                      onPressed: onPlayersPressed,
                       showChevron: false,
                     ),
                     SizedBox(height: 12),
@@ -93,16 +85,7 @@ class HamburgerMenu extends StatelessWidget {
                         width: 24,
                       ),
                       title: 'Favorites',
-                      onPressed: () {
-                        // Close the drawer first
-                        Navigator.pop(context);
-                        // Navigate to favorites screen
-                        Navigator.of(context).pushNamed('/favorites');
-                        // Still call the original callback if provided
-                        if (onFavoritesPressed != null) {
-                          onFavoritesPressed!();
-                        }
-                      },
+                      onPressed: onFavoritesPressed,
                       showChevron: false,
                     ),
                     SizedBox(height: 12),
@@ -114,7 +97,7 @@ class HamburgerMenu extends StatelessWidget {
                         shape: RoundedRectangle(0),
                       ),
                       title: 'Countryman',
-                      onPressed: onCountrymanPressed,
+                      onPressed: onFavoritesPressed,
                       showChevron: false,
                     ),
                     SizedBox(height: 12),
@@ -137,11 +120,32 @@ class HamburgerMenu extends StatelessWidget {
                       showChevron: false,
                     ),
                     SizedBox(height: 12),
-                    _buildPremiumItem(onPressed: onPremiumPressed),
+                    _buildMenuItem(
+                      color: kBlack2Color,
+                      // Premium color
+                      customIcon: Image.asset(
+                        PngAsset.premiumIcon,
+                        width: 28,
+                        height: 28,
+                        fit: BoxFit.contain,
+                      ),
+                      title: 'Try Premium for free',
+                      onPressed: onPremiumPressed,
+                      showChevron: false,
+                    ),
                   ],
                 ),
               ),
-              _buildLogoutButton(onPressed: onLogoutPressed),
+              _buildLogoutButton(
+                onPressed: () {
+                  // Close the drawer first
+                  Navigator.pop(context);
+                  // Still call the original callback if provided
+                  if (onLogoutPressed != null) {
+                    onLogoutPressed!();
+                  }
+                },
+              ),
             ],
           ),
         ),
@@ -155,65 +159,56 @@ class HamburgerMenu extends StatelessWidget {
     required String title,
     required bool showChevron,
     VoidCallback? onPressed,
+    Color? color,
   }) {
-    return ListTile(
-      contentPadding: const EdgeInsets.only(left: 12),
-      minLeadingWidth: 40,
-      horizontalTitleGap: 4,
-      leading: customIcon ?? Icon(icon, color: kWhiteColor, size: 24),
-      title: Text(
-        title,
-        style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
-      ),
-      trailing:
-          showChevron
-              ? Padding(
-                padding: EdgeInsets.only(right: 12),
-                child: const Icon(
-                  Icons.chevron_right_outlined,
-                  color: kWhiteColor,
-                  size: 24,
-                ),
-              )
-              : null,
+    return InkWell(
       onTap: onPressed,
-    );
-  }
-
-  Widget _buildPremiumItem({VoidCallback? onPressed}) {
-    return Container(
-      alignment: Alignment.centerLeft,
-      width: 260,
-      decoration: BoxDecoration(color: kLightBlack),
-      child: ListTile(
-        contentPadding: const EdgeInsets.only(left: 12),
-        minLeadingWidth: 40,
-        horizontalTitleGap: 4,
-        leading: Image.asset(
-          PngAsset.premiumIcon,
-          width: 28,
-          height: 28,
-          fit: BoxFit.contain,
+      child: Container(
+        color: color,
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        height: 40,
+        child: Row(
+          children: [
+            customIcon ?? Icon(icon, color: kWhiteColor, size: 24),
+            SizedBox(width: 4),
+            Text(
+              title,
+              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            ),
+            Spacer(),
+            showChevron
+                ? Padding(
+                  padding: EdgeInsets.only(right: 12),
+                  child: const Icon(
+                    Icons.chevron_right_outlined,
+                    color: kWhiteColor,
+                    size: 24,
+                  ),
+                )
+                : SizedBox.shrink(),
+          ],
         ),
-        title: Text(
-          'Try Premium for free',
-          style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
-        ),
-        onTap: onPressed,
       ),
     );
   }
 
   Widget _buildLogoutButton({VoidCallback? onPressed}) {
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-      leading: Icon(Icons.logout, color: Colors.white, size: 24),
-      horizontalTitleGap: 24,
-      title: Text(
-        'Log out',
-        style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
-      ),
+    return InkWell(
       onTap: onPressed,
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        height: 48,
+        child: Row(
+          children: [
+            Icon(Icons.logout, color: Colors.white, size: 24),
+            SizedBox(width: 12),
+            Text(
+              'Log out',
+              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
