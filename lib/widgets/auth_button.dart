@@ -102,10 +102,6 @@ class _AuthButtonState extends State<AuthButton>
                 widget.svgIconPath,
                 height: 24,
                 width: 24,
-                colorFilter: ColorFilter.mode(
-                  Colors.black, // Black Apple logo
-                  BlendMode.srcIn,
-                ),
                 fallback: Icon(Icons.apple, size: 24, color: kBackgroundColor),
               ),
               const SizedBox(width: 12),

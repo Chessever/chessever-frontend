@@ -1,35 +1,34 @@
 import 'package:chessever2/screens/home_screen.dart';
+import 'package:chessever2/screens/tournaments/providers/tournament_screen_provider.dart';
+import 'package:chessever2/screens/tournaments/tour_event_card_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/widgets/event_card/event_card.dart';
+import 'package:chessever2/widgets/event_card/starred_provider.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../widgets/rounded_search_bar.dart';
 import '../../widgets/segmented_switcher.dart';
-import '../../widgets/event_card/live_event_card.dart';
 import '../../widgets/event_card/completed_event_card.dart';
-import '../../widgets/event_card/upcoming_event_card.dart';
-import 'providers/tournament_provider.dart';
 
-// Create providers for UI state
-final searchQueryProvider = StateProvider<String>((ref) => '');
-final selectedTabIndexProvider = StateProvider<int>((ref) => 0);
+enum TournamentCategory { all, upcoming }
 
-// Provider for filtered tournaments
-final filteredTournamentsProvider = Provider<List<Map<String, dynamic>>>((ref) {
-  final tournamentNotifier = ref.watch(tournamentNotifierProvider.notifier);
-  final searchQuery = ref.watch(searchQueryProvider);
-  final isUpcomingTab = ref.watch(selectedTabIndexProvider) == 1;
+final _mappedName = {
+  TournamentCategory.all: 'All Events',
+  TournamentCategory.upcoming: 'Upcoming Events',
+};
 
-  return tournamentNotifier.getFilteredTournaments(searchQuery, isUpcomingTab);
-});
+final selectedTourEventProvider = StateProvider<TournamentCategory>(
+  (ref) => TournamentCategory.all,
+);
 
-class TournamentScreen extends ConsumerWidget {
+class TournamentScreen extends HookConsumerWidget {
   const TournamentScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final searchController = TextEditingController();
-    final selectedTabIndex = ref.watch(selectedTabIndexProvider);
-    final tournamentAsync = ref.watch(tournamentNotifierProvider);
+    final searchController = useTextEditingController();
+    final selectedTourEvent = ref.watch(selectedTourEventProvider);
     return Material(
       color: kBackgroundColor,
       child: Column(
@@ -47,7 +46,9 @@ class TournamentScreen extends ConsumerWidget {
                 controller: searchController,
                 hintText: 'Search tournaments or players',
                 onChanged: (value) {
-                  ref.read(searchQueryProvider.notifier).state = value;
+                  ref
+                      .read(tournamentNotifierProvider.notifier)
+                      .searchForTournament(value, selectedTourEvent);
                 },
                 onFilterTap: () {
                   // Show filter popup
@@ -66,32 +67,35 @@ class TournamentScreen extends ConsumerWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20.0),
             child: SegmentedSwitcher(
-              options: const ['All Events', 'Upcoming Events'],
-              initialSelection: selectedTabIndex,
+              options: _mappedName.values.toList(),
+              initialSelection: _mappedName.values.toList().indexOf(
+                _mappedName[selectedTourEvent]!,
+              ),
               onSelectionChanged: (index) {
-                ref.read(selectedTabIndexProvider.notifier).state = index;
+                ref.read(selectedTourEventProvider.notifier).state =
+                    TournamentCategory.values[index];
               },
             ),
           ),
 
           const SizedBox(height: 12),
+
           // Tournament list
           Expanded(
-            child: tournamentAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error:
-                  (error, stack) => Center(
-                    child: Text(
-                      'Error loading tournaments: $error',
-                      style: const TextStyle(color: Colors.white70),
-                    ),
-                  ),
-              data:
-                  (_) =>
-                      selectedTabIndex == 0
-                          ? const AllEventsTabWidget()
-                          : const UpcomingEventsTabWidget(),
-            ),
+            child: ref
+                .watch(tournamentNotifierProvider)
+                .when(
+                  data: (filteredEvents) {
+                    return AllEventsTabWidget(
+                      filteredEvents: filteredEvents,
+                    );
+                  },
+                  loading:
+                      () => const Center(child: CircularProgressIndicator()),
+                  error:
+                      (error, stackTrace) =>
+                          Center(child: Text('Error: $error')),
+                ),
           ),
         ],
       ),
@@ -100,12 +104,15 @@ class TournamentScreen extends ConsumerWidget {
 }
 
 class AllEventsTabWidget extends ConsumerWidget {
-  const AllEventsTabWidget({super.key});
+  const AllEventsTabWidget({
+    required this.filteredEvents,
+    super.key,
+  });
+
+  final List<TourEventCardModel> filteredEvents;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final filteredEvents = ref.watch(filteredTournamentsProvider);
-
     if (filteredEvents.isEmpty) {
       return const Center(
         child: Text(
@@ -114,83 +121,48 @@ class AllEventsTabWidget extends ConsumerWidget {
         ),
       );
     }
-
     return ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: 20.0),
+      padding: EdgeInsets.only(
+        left: 20.0,
+        right: 20,
+        bottom: MediaQuery.of(context).viewPadding.bottom + 12,
+      ),
       itemCount: filteredEvents.length,
       separatorBuilder: (context, index) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
-        final event = filteredEvents[index];
-        final type = event['type'] as String;
+        final tourEventCardModel = filteredEvents[index];
 
-        if (type == 'live') {
-          return LiveEventCard(
-            title: event['title'] as String,
-            dates: event['dates'] as String,
-            location: event['location'] as String,
-            playerCount: event['playerCount'] as int,
-            elo: event['elo'] as int,
-            onTap: () {
-              // Navigate to event details
-            },
-            onFavoriteToggle: () {},
-          );
-        } else {
-          return CompletedEventCard(
-            title: event['title'] as String,
-            dates: event['dates'] as String,
-            location: event['location'] as String,
-            playerCount: event['playerCount'] as int,
-            elo: event['elo'] as int,
-            onTap: () {
-              // Navigate to event details
-            },
-            onDownloadTournament: () {
-              // Download tournament
-            },
-            onAddToLibrary: () {
-              // Add to library
-            },
-          );
+        switch (tourEventCardModel.tourEventCategory) {
+          case TourEventCategory.live:
+            return EventCard(
+              tourEventCardModel: tourEventCardModel,
+              //todo:
+              onTap: () {
+                // Navigate to event details
+              },
+            );
+          case TourEventCategory.upcoming:
+            return EventCard(
+              tourEventCardModel: tourEventCardModel,
+              //todo:
+              onTap: () {
+                // Navigate to event details
+              },
+            );
+          case TourEventCategory.completed:
+            return CompletedEventCard(
+              tourEventCardModel: tourEventCardModel,
+              onTap: () {
+                // Navigate to event details
+              },
+              onDownloadTournament: () {
+                // Download tournament
+              },
+              onAddToLibrary: () {
+                // Add to library
+              },
+            );
         }
-      },
-    );
-  }
-}
-
-class UpcomingEventsTabWidget extends ConsumerWidget {
-  const UpcomingEventsTabWidget({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final filteredEvents = ref.watch(filteredTournamentsProvider);
-
-    if (filteredEvents.isEmpty) {
-      return const Center(
-        child: Text(
-          'No upcoming tournaments found',
-          style: TextStyle(color: Colors.white70),
-        ),
-      );
-    }
-
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: 20.0),
-      itemCount: filteredEvents.length,
-      separatorBuilder: (context, index) => const SizedBox(height: 12),
-      itemBuilder: (context, index) {
-        final event = filteredEvents[index];
-        return UpcomingEventCard(
-          title: event['title'] as String,
-          dates: event['dates'] as String,
-          location: event['location'] as String,
-          playerCount: event['playerCount'] as int,
-          elo: event['elo'] as int,
-          timeUntilStart: event['timeUntilStart'] as String,
-          onTap: () {
-            // Navigate to event details
-          },
-        );
       },
     );
   }

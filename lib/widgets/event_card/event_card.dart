@@ -1,35 +1,26 @@
+import 'package:chessever2/screens/tournaments/tour_event_card_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/event_card/starred_provider.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
-import '../../utils/app_typography.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class EventCard extends StatelessWidget {
-  final String title;
-  final String dates;
-  final String location;
-  final int playerCount;
-  final int elo;
-  final Widget statusWidget;
+  final TourEventCardModel tourEventCardModel;
   final VoidCallback? onTap;
-  final bool isLive;
   final bool isFavorite;
   final VoidCallback? onFavoritePressed;
   final VoidCallback? onMorePressed;
 
   const EventCard({
-    super.key,
-    required this.title,
-    required this.dates,
-    required this.location,
-    required this.playerCount,
-    required this.elo,
-    required this.statusWidget,
+    required this.tourEventCardModel,
     this.onTap,
-    this.isLive = false,
     this.isFavorite = false,
     this.onFavoritePressed,
     this.onMorePressed,
+    super.key,
   });
 
   @override
@@ -63,15 +54,16 @@ class EventCard extends StatelessWidget {
                         children: [
                           Flexible(
                             child: Text(
-                              title,
+                              tourEventCardModel.title,
                               style: AppTypography.textXsBold.copyWith(
                                 color: kWhiteColor,
                               ),
                               overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
                             ),
                           ),
                           const SizedBox(width: 4),
-                          if (isLive) _buildLiveTag() else statusWidget,
+                          _ShowStatus(tourEventCardModel: tourEventCardModel),
                         ],
                       ),
 
@@ -79,28 +71,22 @@ class EventCard extends StatelessWidget {
                       const SizedBox(height: 2),
 
                       // Second row with details
-                      DefaultTextStyle(
-                        style: AppTypography.textXsMedium.copyWith(
-                          color: Colors.grey,
-                        ),
-                        child: Row(
+                      RichText(
+                        maxLines: 1,
+                        text: TextSpan(
+                          style: AppTypography.textXsMedium.copyWith(
+                            color: kWhiteColor70,
+                          ),
                           children: [
-                            Flexible(
-                              child: Wrap(
-                                spacing: 6,
-                                runSpacing: 4,
-                                crossAxisAlignment: WrapCrossAlignment.center,
-                                children: [
-                                  Text(dates),
-                                  _buildDot(),
-                                  Text(location),
-                                  _buildDot(),
-                                  Text("$playerCount players"),
-                                  _buildDot(),
-                                  Text("ELO $elo"),
-                                ],
-                              ),
+                            TextSpan(text: tourEventCardModel.dates),
+                            _buildDot(),
+                            TextSpan(text: tourEventCardModel.location),
+                            _buildDot(),
+                            TextSpan(
+                              text: "${tourEventCardModel.playerCount} players",
                             ),
+                            _buildDot(),
+                            TextSpan(text: "ELO ${tourEventCardModel.elo}"),
                           ],
                         ),
                       ),
@@ -109,39 +95,12 @@ class EventCard extends StatelessWidget {
                 ),
               ],
             ),
+
             Align(
               alignment: Alignment.centerRight,
-              child: InkWell(
-                onTap:
-                    (statusWidget is Text &&
-                            (statusWidget as Text).data == "Completed")
-                        ? onMorePressed
-                        : onFavoritePressed,
-                child: Container(
-                  margin: EdgeInsets.only(
-                    left: 12,
-                    right: 2,
-                    top: 6,
-                    bottom: 6,
-                  ),
-                  child:
-                      (statusWidget is Text &&
-                              (statusWidget as Text).data == "Completed")
-                          ? SvgWidget(
-                            SvgAsset.threeDots,
-                            semanticsLabel: 'More Options',
-                            height: 24,
-                            width: 24,
-                          )
-                          : SvgWidget(
-                            isFavorite
-                                ? SvgAsset.starFilledIcon
-                                : SvgAsset.starIcon,
-                            semanticsLabel: 'Favorite Icon',
-                            height: 20,
-                            width: 20,
-                          ),
-                ),
+              child: _BuildTrailingButton(
+                tourEventCardModel: tourEventCardModel,
+                onMorePressed: onMorePressed,
               ),
             ),
           ],
@@ -150,23 +109,152 @@ class EventCard extends StatelessWidget {
     );
   }
 
-  Widget _buildDot() {
-    return Container(
-      width: 6,
-      height: 6,
-      decoration: const BoxDecoration(
-        shape: BoxShape.circle,
-        color: Colors.grey,
+  WidgetSpan _buildDot() {
+    const fontStyle = TextStyle(fontWeight: FontWeight.w900, fontSize: 12);
+    return WidgetSpan(
+      alignment: PlaceholderAlignment.middle,
+      child: Text(" ● ", style: fontStyle.copyWith(color: kWhiteColor70)),
+    );
+  }
+}
+
+class _ShowStatus extends StatelessWidget {
+  const _ShowStatus({required this.tourEventCardModel, super.key});
+
+  final TourEventCardModel tourEventCardModel;
+
+  @override
+  Widget build(BuildContext context) {
+    switch (tourEventCardModel.tourEventCategory) {
+      case TourEventCategory.live:
+        return _LiveTag();
+      case TourEventCategory.upcoming:
+        return _UpcomingTag(tourEventCardModel: tourEventCardModel);
+      case TourEventCategory.completed:
+        return _CompletedTag();
+    }
+  }
+}
+
+class _UpcomingTag extends StatelessWidget {
+  const _UpcomingTag({required this.tourEventCardModel, super.key});
+
+  final TourEventCardModel tourEventCardModel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      tourEventCardModel.timeUntilStart,
+      style: AppTypography.textXsMedium.copyWith(
+        color: kWhiteColor.withOpacity(0.7),
       ),
     );
   }
+}
 
-  Widget _buildLiveTag() {
+class _CompletedTag extends StatelessWidget {
+  const _CompletedTag({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      "Completed",
+      style: AppTypography.textXsMedium.copyWith(color: Colors.grey),
+    );
+  }
+}
+
+class _LiveTag extends StatelessWidget {
+  const _LiveTag({super.key});
+
+  @override
+  Widget build(BuildContext context) {
     return Text(
       'LIVE',
       style: AppTypography.textXsBold.copyWith(
         color: kPrimaryColor,
         fontFamily: 'InterDisplay',
+      ),
+    );
+  }
+}
+
+class _BuildTrailingButton extends StatelessWidget {
+  const _BuildTrailingButton({
+    required this.tourEventCardModel,
+    this.onMorePressed,
+    super.key,
+  });
+
+  final TourEventCardModel tourEventCardModel;
+  final VoidCallback? onMorePressed;
+
+  @override
+  Widget build(BuildContext context) {
+    switch (tourEventCardModel.tourEventCategory) {
+      case TourEventCategory.upcoming:
+        return _StarWidget(tourEventCardModel: tourEventCardModel);
+
+      case TourEventCategory.live:
+        return _StarWidget(tourEventCardModel: tourEventCardModel);
+      case TourEventCategory.completed:
+        return InkWell(
+          onTap: onMorePressed,
+          child: Container(
+            alignment: Alignment.centerRight,
+            width: 30,
+            height: 40,
+            child: SvgWidget(
+              SvgAsset.threeDots,
+              semanticsLabel: 'More Options',
+              height: 24,
+              width: 24,
+            ),
+          ),
+        );
+    }
+  }
+}
+
+class _StarWidget extends ConsumerStatefulWidget {
+  const _StarWidget({required this.tourEventCardModel, super.key});
+
+  final TourEventCardModel tourEventCardModel;
+
+  @override
+  ConsumerState<_StarWidget> createState() => _StarWidgetState();
+}
+
+class _StarWidgetState extends ConsumerState<_StarWidget> {
+  var isFav = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final starredList = ref.watch(starredProvider);
+
+    final isStarred = starredList.contains(widget.tourEventCardModel.id);
+
+    isFav = isStarred;
+
+    return InkWell(
+      onTap: () {
+        setState(() {
+          isFav = !isFav;
+        });
+        ref
+            .read(starredProvider.notifier)
+            .toggleStarred(widget.tourEventCardModel.id);
+      },
+      child: Container(
+        alignment: Alignment.centerRight,
+        width: 30,
+        height: 40,
+        child: SvgWidget(
+          isStarred ? SvgAsset.starFilledIcon : SvgAsset.starIcon,
+          semanticsLabel: 'Favorite Icon',
+          height: 20,
+          width: 20,
+        ),
       ),
     );
   }
