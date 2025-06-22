@@ -35,12 +35,15 @@ class TournamentDetailView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedTourMode = ref.watch(selectedTourModeProvider);
 
+    final title = ref.read(aboutTourModelProvider)!.name;
     return ScreenWrapper(
       child: Scaffold(
         body: Column(
           children: [
             SizedBox(height: MediaQuery.of(context).viewPadding.top + 24),
-            ChessEverAppBar(title: ref.read(aboutTourModelProvider)!.name),
+            ChessEverAppBar(
+              title: title.substring(0, title.length > 20 ? 20 : title.length),
+            ),
             SizedBox(height: 36),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20.0),
