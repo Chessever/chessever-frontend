@@ -1,9 +1,8 @@
 import 'package:chessever2/screens/home_screen.dart';
 import 'package:chessever2/screens/tournaments/providers/tournament_screen_provider.dart';
-import 'package:chessever2/screens/tournaments/tour_event_card_model.dart';
+import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
-import 'package:chessever2/widgets/event_card/starred_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -86,9 +85,7 @@ class TournamentScreen extends HookConsumerWidget {
                 .watch(tournamentNotifierProvider)
                 .when(
                   data: (filteredEvents) {
-                    return AllEventsTabWidget(
-                      filteredEvents: filteredEvents,
-                    );
+                    return AllEventsTabWidget(filteredEvents: filteredEvents);
                   },
                   loading:
                       () => const Center(child: CircularProgressIndicator()),
@@ -104,10 +101,7 @@ class TournamentScreen extends HookConsumerWidget {
 }
 
 class AllEventsTabWidget extends ConsumerWidget {
-  const AllEventsTabWidget({
-    required this.filteredEvents,
-    super.key,
-  });
+  const AllEventsTabWidget({required this.filteredEvents, super.key});
 
   final List<TourEventCardModel> filteredEvents;
 
@@ -136,9 +130,13 @@ class AllEventsTabWidget extends ConsumerWidget {
           case TourEventCategory.live:
             return EventCard(
               tourEventCardModel: tourEventCardModel,
-              //todo:
               onTap: () {
-                // Navigate to event details
+                ref
+                    .read(tournamentNotifierProvider.notifier)
+                    .onSelectTournament(
+                      context: context,
+                      id: tourEventCardModel.id,
+                    );
               },
             );
           case TourEventCategory.upcoming:
@@ -146,14 +144,24 @@ class AllEventsTabWidget extends ConsumerWidget {
               tourEventCardModel: tourEventCardModel,
               //todo:
               onTap: () {
-                // Navigate to event details
+                ref
+                    .read(tournamentNotifierProvider.notifier)
+                    .onSelectTournament(
+                      context: context,
+                      id: tourEventCardModel.id,
+                    );
               },
             );
           case TourEventCategory.completed:
             return CompletedEventCard(
               tourEventCardModel: tourEventCardModel,
               onTap: () {
-                // Navigate to event details
+                ref
+                    .read(tournamentNotifierProvider.notifier)
+                    .onSelectTournament(
+                      context: context,
+                      id: tourEventCardModel.id,
+                    );
               },
               onDownloadTournament: () {
                 // Download tournament

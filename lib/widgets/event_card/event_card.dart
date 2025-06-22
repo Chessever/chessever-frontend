@@ -1,4 +1,4 @@
-import 'package:chessever2/screens/tournaments/tour_event_card_model.dart';
+import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/svg_asset.dart';
