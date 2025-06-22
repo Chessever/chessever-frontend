@@ -66,6 +66,8 @@ class TournamentScreen extends HookConsumerWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20.0),
             child: SegmentedSwitcher(
+              backgroundColor: kBlackColor,
+              selectedBackgroundColor: kBlackColor,
               options: _mappedName.values.toList(),
               initialSelection: _mappedName.values.toList().indexOf(
                 _mappedName[selectedTourEvent]!,

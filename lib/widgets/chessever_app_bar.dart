@@ -13,6 +13,8 @@ class ChessEverAppBar extends StatelessWidget {
       children: [
         SizedBox(width: 20),
         IconButton(
+          iconSize: 24,
+          padding: EdgeInsets.zero,
           onPressed: () {
             Navigator.of(context).pop();
           },
