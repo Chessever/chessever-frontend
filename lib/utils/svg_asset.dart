@@ -20,4 +20,5 @@ class SvgAsset {
   static const bookIcon = 'assets/svgs/book.svg';
   static const calendarIcon = 'assets/svgs/calendar.svg';
   static const tournamentIcon = 'assets/svgs/tournament.svg';
+  static const websiteIcon = 'assets/svgs/website.svg';
 }

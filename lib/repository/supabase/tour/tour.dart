@@ -173,15 +173,38 @@ class Tour {
     return DateFormat('MMM d').format(dates.first);
   }
 
-  // Format date range as "Jun 21 - Jun 23"
   String get dateRangeFormatted {
     if (dates.isEmpty) return '';
     if (dates.length == 1) {
-      return DateFormat('MMM d').format(dates.first);
+      return DateFormat('MMM d, yyyy').format(dates.first);
     }
-    final start = DateFormat('MMM d').format(dates.first);
-    final end = DateFormat('MMM d').format(dates.last);
-    return '$start - $end';
+
+    final startDate = dates.first;
+    final endDate = dates.last;
+
+    // Same year
+    if (startDate.year == endDate.year) {
+      // Same month
+      if (startDate.month == endDate.month) {
+        final startDay = DateFormat('MMM d').format(startDate);
+        final endDay = DateFormat('d').format(endDate);
+        final year = DateFormat('yyyy').format(startDate);
+        return '$startDay - $endDay, $year';
+      }
+      // Different month, same year
+      else {
+        final start = DateFormat('MMM d').format(startDate);
+        final end = DateFormat('MMM d').format(endDate);
+        final year = DateFormat('yyyy').format(startDate);
+        return '$start - $end, $year';
+      }
+    }
+    // Different year
+    else {
+      final start = DateFormat('MMM d, yyyy').format(startDate);
+      final end = DateFormat('MMM d, yyyy').format(endDate);
+      return '$start - $end';
+    }
   }
 
   // Get tournament duration in days

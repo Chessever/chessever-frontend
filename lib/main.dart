@@ -8,9 +8,9 @@ import 'package:chessever2/screens/favorites/favorite_screen.dart';
 import 'package:chessever2/screens/countryman_screen.dart';
 import 'package:chessever2/screens/splash/splash_screen.dart';
 import 'package:chessever2/screens/standings_screen.dart';
+import 'package:chessever2/screens/tournaments/tournament_detail_view.dart';
 import 'package:chessever2/screens/tournaments/tournament_screen.dart';
 import 'package:chessever2/screens/calendar_screen.dart';
-import 'package:chessever2/screens/tournament_details_screen.dart';
 import 'package:chessever2/services/settings_manager.dart';
 import 'package:device_preview_plus/device_preview_plus.dart';
 import 'package:flutter/material.dart';
@@ -86,25 +86,22 @@ class _MyAppState extends ConsumerState<MyApp> {
       themeMode: themeMode,
       initialRoute: '/',
       routes: {
-        // '/': (context) => const ChesseverScreen(),
         '/': (context) => const SplashScreen(),
         '/splash': (context) => const SplashScreen(),
         '/auth_screen': (context) => const AuthScreen(),
         '/home_screen': (context) => const HomeScreen(),
         '/tournament_screen': (context) => const TournamentScreen(),
+        '/tournament_detail_screen': (context) => const TournamentDetailView(),
         '/calendar_screen': (context) => const CalendarScreen(),
         '/library_screen': (context) => const LibraryScreen(),
 
-        // New route for Calendar screen
-        // '/input_screen': (context) => const InputDesignScreen(),
-        // '/tournaments': (context) => const TournamentListScreen(),
+        // New Screen
         '/playerList': (context) => const PlayerScreen(),
         // Updated to use the navigation component
         '/favorites': (context) => const FavoriteScreen(),
         // Updated to use the new FavoriteScreen
         '/countryman_screen': (context) => const CountrymanScreen(),
         '/standings': (context) => const StandingsScreen(),
-        '/tournament_details': (context) => const TournamentDetailsScreen(),
         // New route for Tournament Details screen
       },
     );
