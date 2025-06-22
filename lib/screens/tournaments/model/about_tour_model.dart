@@ -1,6 +1,7 @@
 import 'package:chessever2/repository/supabase/tour/tour.dart';
+import 'package:equatable/equatable.dart';
 
-class AboutTourModel {
+class AboutTourModel extends Equatable{
   final String id;
   final String name;
   final String description;
@@ -11,7 +12,7 @@ class AboutTourModel {
   final String location;
   final String websiteUrl;
 
-  AboutTourModel({
+  const AboutTourModel({
     required this.id,
     required this.name,
     required this.description,
@@ -61,4 +62,17 @@ class AboutTourModel {
       return '';
     }
   }
+
+  @override
+  List<Object?> get props => [
+    id,
+    name,
+    description,
+    imageUrl,
+    players,
+    timeControl,
+    date,
+    location,
+    websiteUrl,
+  ];
 }
