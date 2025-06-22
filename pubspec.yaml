@@ -84,9 +84,14 @@ dependencies:
   #for settings persistence
   shared_preferences: ^2.5.3
 
+  #for class origin
   equatable: ^2.0.7
 
+  #for late action for frequent calls
   easy_debounce: ^2.0.3
+
+  #for launching url
+  url_launcher: ^6.3.1
 
 dev_dependencies:
   flutter_test:

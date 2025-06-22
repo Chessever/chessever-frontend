@@ -23,15 +23,20 @@
 		<key>CFBundleVersion</key>
 		<string>$(FLUTTER_BUILD_NUMBER)</string>
 		<key>CFBundleURLTypes</key>
+		<array>
+			<dict>
+				<key>CFBundleURLName</key>
+				<string>com.example.chessever2</string>
+				<key>CFBundleURLSchemes</key>
+				<array>
+					<string>com.example.chessever2</string>
+				</array>
+			</dict>
+		</array>
+		<key>LSApplicationQueriesSchemes</key>
         <array>
-            <dict>
-                <key>CFBundleURLName</key>
-                <string>com.example.chessever2</string>
-                <key>CFBundleURLSchemes</key>
-                <array>
-                    <string>com.example.chessever2</string>
-                </array>
-            </dict>
+          <string>sms</string>
+          <string>tel</string>
         </array>
 		<key>LSRequiresIPhoneOS</key>
 		<true/>
