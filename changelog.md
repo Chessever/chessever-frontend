@@ -78,7 +78,9 @@
 -> Cleanup Twisted widgets,
 
 #22 June
-
+-> Connect Tournament Details with Selected Tournament,
+-> Create new view model for Tournament Details,
+-> Add Url Launcher for Tournament Website,
 
 
 
