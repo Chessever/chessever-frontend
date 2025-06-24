@@ -1,5 +1,7 @@
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'event_card.dart';
 
@@ -43,7 +45,16 @@ class CompletedEventCard extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 ListTile(
-                  leading: const Icon(Icons.download, color: kWhiteColor),
+                  leading: SvgWidget(
+                    SvgAsset.tournamentPgnIcon,
+                    semanticsLabel: 'Download Tournament PGN',
+                    height: 20,
+                    width: 20,
+                    colorFilter: const ColorFilter.mode(
+                      kWhiteColor,
+                      BlendMode.srcIn,
+                    ),
+                  ),
                   title: const Text(
                     'Download Tournament PGN',
                     style: TextStyle(color: kWhiteColor),
@@ -54,7 +65,16 @@ class CompletedEventCard extends StatelessWidget {
                   },
                 ),
                 ListTile(
-                  leading: const Icon(Icons.library_add, color: kWhiteColor),
+                  leading: SvgWidget(
+                    SvgAsset.addToLibraryIcon,
+                    semanticsLabel: 'Add to Library',
+                    height: 20,
+                    width: 20,
+                    colorFilter: const ColorFilter.mode(
+                      kWhiteColor,
+                      BlendMode.srcIn,
+                    ),
+                  ),
                   title: const Text(
                     'Add to Library',
                     style: TextStyle(color: kWhiteColor),

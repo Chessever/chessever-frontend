@@ -3,6 +3,8 @@ import 'package:chessever2/screens/tournaments/providers/tournament_screen_provi
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
+import 'package:chessever2/widgets/generic_error_widget.dart';
+import 'package:chessever2/widgets/generic_loading_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -31,7 +33,8 @@ class TournamentScreen extends HookConsumerWidget {
     return Material(
       color: kBackgroundColor,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
         children: [
           // Add top padding
           SizedBox(height: 24 + MediaQuery.of(context).viewPadding.top),
@@ -82,20 +85,17 @@ class TournamentScreen extends HookConsumerWidget {
           const SizedBox(height: 12),
 
           // Tournament list
-          Expanded(
-            child: ref
-                .watch(tournamentNotifierProvider)
-                .when(
-                  data: (filteredEvents) {
-                    return AllEventsTabWidget(filteredEvents: filteredEvents);
-                  },
-                  loading:
-                      () => const Center(child: CircularProgressIndicator()),
-                  error:
-                      (error, stackTrace) =>
-                          Center(child: Text('Error: $error')),
-                ),
-          ),
+          ref
+              .watch(tournamentNotifierProvider)
+              .when(
+                data: (filteredEvents) {
+                  return Expanded(
+                    child: AllEventsTabWidget(filteredEvents: filteredEvents),
+                  );
+                },
+                loading: () => GenericLoadingWidget(),
+                error: (error, stackTrace) => GenericErrorWidget(),
+              ),
         ],
       ),
     );

@@ -82,6 +82,14 @@
 -> Create new view model for Tournament Details,
 -> Add Url Launcher for Tournament Website,
 
+#23 June
+-> Games Screen added,
+-> background blur during popup,
+-> dismissable popup when clicked anywhere except the popup,
+-> settings completed with saving the selected options in local storage,
+
+
+
 
 
 

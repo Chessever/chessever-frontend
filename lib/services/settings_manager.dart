@@ -1,39 +1,16 @@
-import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../localization/locale_provider.dart';
-import '../providers/board_settings_provider.dart';
-import '../providers/notifications_settings_provider.dart';
-import '../providers/timezone_provider.dart';
-import '../services/settings_service.dart';
 
 /// A manager class to handle initialization of all settings
 class SettingsManager {
   /// Initialize all settings at app startup
   static Future<void> initializeSettings(WidgetRef ref) async {
-    // Load saved board settings if available
-    final savedBoardSettings = await SettingsService.loadBoardSettings();
-    if (savedBoardSettings != null) {
-      ref.read(boardSettingsProvider.notifier).state = savedBoardSettings;
-    }
+    // Board settings are now loaded automatically by the notifier
 
-    // Load saved notifications settings if available
-    final savedNotificationsSettings =
-        await SettingsService.loadNotificationsSettings();
-    if (savedNotificationsSettings != null) {
-      ref.read(notificationsSettingsProvider.notifier).state =
-          savedNotificationsSettings;
-    }
+    // Load saved notifications settings if available - the notifier will handle this itself
+    // Load saved timezone if available - the notifier will handle this itself
+    // Load saved locale if available - the notifier will handle this itself
 
-    // Load saved timezone if available
-    final savedTimezone = await SettingsService.loadTimezone();
-    if (savedTimezone != null) {
-      ref.read(timezoneProvider.notifier).state = savedTimezone;
-    }
-
-    // Load saved locale if available
-    final savedLocale = await SettingsService.loadLocale();
-    if (savedLocale != null) {
-      ref.read(localeProvider.notifier).state = savedLocale;
-    }
+    // All settings providers now follow the repository pattern and load their settings
+    // automatically when initialized
   }
 }

@@ -7,12 +7,15 @@ final locationServiceProvider = AutoDisposeProvider<LocationService>((ref) {
 
 class LocationService {
   String getCountryCode(String location) {
-    // Extract country name from location (assuming it's the last part after comma)
-    String countryName = location.split(',').last.trim();
+    try {
+      // Extract country name from location (assuming it's the last part after comma)
+      String countryName = location.split(',').last.trim();
 
-    Country country = Country.parse(countryName);
+      Country country = Country.parse(countryName);
 
-    return country.countryCode;
+      return country.countryCode;
+    } catch (error, _) {
+      return 'US';
+    }
   }
-
 }

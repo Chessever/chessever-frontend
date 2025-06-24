@@ -38,15 +38,23 @@ class _TournamentScreenController
 
   Future<void> _int() async {
     try {
-      final tour = await ref.read(tourRepositoryProvider).getTours(limit: 10);
+      final tour = await ref.read(tourRepositoryProvider).getTours(limit: 20);
       if (tour.isNotEmpty) {
         _tours = tour;
         final tourEventCardModel =
             tour.map((t) {
-              print(t.toJson());
               return TourEventCardModel.fromTour(t);
             }).toList();
-        state = AsyncValue.data(tourEventCardModel);
+        final matchingTours =
+            tourEventCardModel.where((e) {
+              switch (tourEventCategory) {
+                case TournamentCategory.all:
+                  return true;
+                case TournamentCategory.upcoming:
+                  return e.tourEventCategory == TourEventCategory.upcoming;
+              }
+            }).toList();
+        state = AsyncValue.data(matchingTours);
       }
     } catch (error, _) {
       print(error);

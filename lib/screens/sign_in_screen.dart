@@ -1,6 +1,6 @@
 import 'package:chessever2/screens/tournaments/tournament_screen.dart';
 import 'package:flutter/material.dart';
-import 'tournament_list_screen.dart';
+// import 'tournament_list_screen.dart';
 
 class SignInScreen extends StatelessWidget {
   const SignInScreen({super.key});

@@ -44,29 +44,33 @@ class SettingsMenu extends StatelessWidget {
             onTap: onBoardSettingsPressed,
             child: Container(
               height: 36,
-              padding: EdgeInsets.symmetric(horizontal: 8),
               decoration: BoxDecoration(
                 border: Border(
                   bottom: BorderSide(
-                    color: Colors.grey.shade800.withOpacity(0.3),
+                    color: Colors.grey.shade800.withOpacity(0.1),
                     width: 1,
                   ),
                 ),
               ),
               child: Row(
+                mainAxisAlignment: MainAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   SizedBox(
                     width: 36,
                     child:
                         boardSettingsIcon ??
-                        Icon(Icons.grid_4x4, color: Colors.white, size: 24),
+                        Icon(Icons.grid_4x4, color: Colors.white, size: 20),
                   ),
                   SizedBox(width: 4), // Changed from 8px to 4px
                   Expanded(
                     child: Text(
                       'Board settings',
-                      style: AppTypography.textMdRegular.copyWith(
-                        color: Colors.white,
+                      style: TextStyle(
+                        fontFamily: 'InterDisplay',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
+                        color: kWhiteColor,
                       ),
                     ),
                   ),
@@ -80,22 +84,25 @@ class SettingsMenu extends StatelessWidget {
             onTap: onLanguagePressed,
             child: Container(
               height: 36,
-              padding: EdgeInsets.symmetric(horizontal: 8),
               decoration: BoxDecoration(
                 border: Border(
                   bottom: BorderSide(
-                    color: Colors.grey.shade800.withOpacity(0.3),
+                    color: Colors.grey.shade800.withOpacity(
+                      0.15,
+                    ), // Reduced opacity from 0.3 to 0.15
                     width: 1,
                   ),
                 ),
               ),
               child: Row(
+                mainAxisAlignment: MainAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   SizedBox(
                     width: 36,
                     child:
                         languageIcon ??
-                        Icon(Icons.language, color: Colors.white, size: 24),
+                        Icon(Icons.language, color: kWhiteColor, size: 20),
                   ),
                   SizedBox(width: 4), // Changed from 8px to 4px
                   Expanded(
@@ -116,22 +123,25 @@ class SettingsMenu extends StatelessWidget {
             onTap: onTimezonePressed,
             child: Container(
               height: 36,
-              padding: EdgeInsets.symmetric(horizontal: 8),
               decoration: BoxDecoration(
                 border: Border(
                   bottom: BorderSide(
-                    color: Colors.grey.shade800.withOpacity(0.3),
+                    color: Colors.grey.shade800.withOpacity(
+                      0.15,
+                    ), // Reduced opacity from 0.3 to 0.15
                     width: 1,
                   ),
                 ),
               ),
               child: Row(
+                mainAxisAlignment: MainAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   SizedBox(
                     width: 36,
                     child:
                         timezoneIcon ??
-                        Icon(Icons.public, color: Colors.white, size: 24),
+                        Icon(Icons.public, color: Colors.white, size: 20),
                   ),
                   SizedBox(width: 4), // Changed from 8px to 4px
                   Expanded(
@@ -150,9 +160,10 @@ class SettingsMenu extends StatelessWidget {
           // Notifications toggle
           Container(
             height: 36,
-            padding: EdgeInsets.symmetric(horizontal: 8),
+            padding: EdgeInsets.symmetric(horizontal: 12),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 // Text aligned with icons (no spacers)
                 Text(
@@ -163,8 +174,8 @@ class SettingsMenu extends StatelessWidget {
                 ),
                 // Custom sized switch
                 SizedBox(
-                  width: 28,
-                  height: 17,
+                  width: 34,
+                  height: 20,
                   child: FittedBox(
                     fit: BoxFit.fill,
                     child: Switch(

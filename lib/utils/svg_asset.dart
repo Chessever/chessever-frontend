@@ -18,7 +18,10 @@ class SvgAsset {
   static const boardColorGreen = 'assets/svgs/board_color_green.svg';
   static const boardColorGrey = 'assets/svgs/board_color_grey.svg';
   static const bookIcon = 'assets/svgs/book.svg';
+  static const addToLibraryIcon = 'assets/svgs/add_to_library.svg';
+  static const tournamentPgnIcon = 'assets/svgs/pgn.svg';
   static const calendarIcon = 'assets/svgs/calendar.svg';
   static const tournamentIcon = 'assets/svgs/tournament.svg';
   static const websiteIcon = 'assets/svgs/website.svg';
+  static const infoIcon = 'assets/svgs/info.svg';
 }

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../services/settings_service.dart';
+import '../repository/local_storage/timezone_repository/timezone_repository.dart';
 
 enum TimeZone {
   utcMinus12('UTC-12:00', Duration(hours: -12)),
@@ -27,7 +27,8 @@ enum TimeZone {
   utcPlus9('UTC+09:00', Duration(hours: 9)),
   utcPlus10('UTC+10:00', Duration(hours: 10)),
   utcPlus11('UTC+11:00', Duration(hours: 11)),
-  utcPlus12('UTC+12:00', Duration(hours: 12));
+  utcPlus12('UTC+12:00', Duration(hours: 12)),
+  local('Local Time', Duration.zero);
 
   final String display;
   final Duration offset;
@@ -36,15 +37,19 @@ enum TimeZone {
 }
 
 class TimezoneNotifier extends StateNotifier<TimeZone> {
-  TimezoneNotifier() : super(TimeZone.utc) {
+  TimezoneNotifier(this.ref) : super(TimeZone.utc) {
     // Load saved timezone when initialized
     _loadSavedTimezone();
   }
 
+  final Ref ref;
+
   Future<void> _loadSavedTimezone() async {
-    final savedTimezone = await SettingsService.loadTimezone();
-    if (savedTimezone != null) {
+    try {
+      final savedTimezone = await ref.read(timezoneRepository).loadTimezone();
       state = savedTimezone;
+    } catch (error, _) {
+      // Keep default timezone on error
     }
   }
 
@@ -54,12 +59,16 @@ class TimezoneNotifier extends StateNotifier<TimeZone> {
   }
 
   Future<void> _saveTimezone() async {
-    await SettingsService.saveTimezone(state);
+    try {
+      await ref.read(timezoneRepository).saveTimezone(state);
+    } catch (error, _) {
+      // Handle error if needed
+    }
   }
 }
 
 final timezoneProvider = StateNotifierProvider<TimezoneNotifier, TimeZone>((
   ref,
 ) {
-  return TimezoneNotifier();
+  return TimezoneNotifier(ref);
 });
