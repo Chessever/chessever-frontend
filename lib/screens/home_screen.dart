@@ -34,6 +34,9 @@ class HomeScreen extends StatelessWidget {
           showAlertModal(
             context: context,
             backgroundColor: kPopUpColor,
+            barrierColor: Colors.black.withOpacity(
+              0.3,
+            ), // Semi-transparent black for blur
             child: Consumer(
               builder: (context, ref, _) {
                 final notificationsSettings = ref.watch(
@@ -42,69 +45,75 @@ class HomeScreen extends StatelessWidget {
                 final localeName = ref.watch(localeNameProvider);
                 final timezone = ref.watch(timezoneProvider);
 
-                return SettingsMenu(
-                  notificationsEnabled: notificationsSettings.enabled,
-                  languageSubtitle: localeName,
-                  timezoneSubtitle: timezone.display,
-                  boardSettingsIcon: SvgWidget(SvgAsset.boardSettings),
-                  languageIcon: SvgWidget(SvgAsset.languageIcon),
-                  timezoneIcon: SvgWidget(SvgAsset.timezoneIcon),
-                  onBoardSettingsPressed: () {
-                    Navigator.pop(context); // Close settings menu
-                    // Add a small delay before showing the next dialog
-                    Future.delayed(Duration(milliseconds: 100), () {
-                      showAlertModal(
-                        context: context,
-                        backgroundColor: kPopUpColor,
-                        barrierColor:
-                            Colors
-                                .transparent, // Use transparent barrier for nested dialogs
-                        child: BoardSettingsDialog(),
-                      );
-                    });
-                  },
-                  onLanguagePressed: () {
-                    Navigator.pop(context); // Close settings menu
-                    // Add a small delay before showing the next dialog
-                    Future.delayed(Duration(milliseconds: 100), () {
-                      showAlertModal(
-                        context: context,
-                        backgroundColor: kPopUpColor,
-                        barrierColor:
-                            Colors
-                                .transparent, // Use transparent barrier for nested dialogs
-                        child: LanguageSettingsDialog(),
-                      );
-                    });
-                  },
-                  onTimezonePressed: () {
-                    Navigator.pop(context); // Close settings menu
-                    // Add a small delay before showing the next dialog
-                    Future.delayed(Duration(milliseconds: 100), () {
-                      showAlertModal(
-                        context: context,
-                        backgroundColor: kPopUpColor,
-                        barrierColor:
-                            Colors
-                                .transparent, // Use transparent barrier for nested dialogs
-                        child: TimezoneSettingsDialog(),
-                      );
-                    });
-                  },
-                  onNotificationsPressed: () {
-                    Navigator.pop(context); // Close settings menu
-                    // Add a small delay before showing the next dialog
-                    Future.delayed(Duration(milliseconds: 100), () {
-                      showAlertModal(
-                        context: context,
-                        backgroundColor: kPopUpColor,
-                        barrierColor:
-                            Colors
-                                .transparent, // Use transparent barrier for nested dialogs
-                        child: NotificationsSettingsDialog(),
-                      );
-                    });
-                  },
+                return Center(
+                  child: Container(
+                    width: MediaQuery.of(context).size.width * 0.85,
+                    decoration: BoxDecoration(
+                      color: kPopUpColor,
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(12),
+                        topRight: Radius.circular(12),
+                        bottomLeft: Radius.circular(20),
+                        bottomRight: Radius.circular(20),
+                      ),
+                    ),
+                    margin: EdgeInsets.all(24),
+                    child: SettingsMenu(
+                      notificationsEnabled: notificationsSettings.enabled,
+                      languageSubtitle: localeName,
+                      timezoneSubtitle: timezone.display,
+                      boardSettingsIcon: SvgWidget(SvgAsset.boardSettings),
+                      languageIcon: SvgWidget(SvgAsset.languageIcon),
+                      timezoneIcon: SvgWidget(SvgAsset.timezoneIcon),
+                      onBoardSettingsPressed: () {
+                        Navigator.pop(context); // Close settings menu
+                        // Add a small delay before showing the next dialog
+                        Future.delayed(Duration(milliseconds: 100), () {
+                          showAlertModal(
+                            context: context,
+                            backgroundColor: kPopUpColor,
+                            barrierColor: Colors.black.withOpacity(
+                              0.3,
+                            ), // Semi-transparent black for blur
+                            child: BoardSettingsDialog(),
+                          );
+                        });
+                      },
+                      onLanguagePressed: () {
+                        Navigator.pop(context); // Close settings menu
+                        // Add a small delay before showing the next dialog
+                        Future.delayed(Duration(milliseconds: 100), () {
+                          showAlertModal(
+                            context: context,
+                            backgroundColor: kPopUpColor,
+                            barrierColor: Colors.black.withOpacity(
+                              0.3,
+                            ), // Semi-transparent black for blur
+                            child: LanguageSettingsDialog(),
+                          );
+                        });
+                      },
+                      onTimezonePressed: () {
+                        Navigator.pop(context); // Close settings menu
+                        // Add a small delay before showing the next dialog
+                        Future.delayed(Duration(milliseconds: 100), () {
+                          showAlertModal(
+                            context: context,
+                            backgroundColor: kPopUpColor,
+                            barrierColor: Colors.black.withOpacity(
+                              0.3,
+                            ), // Semi-transparent black for blur
+                            child: TimezoneSettingsDialog(),
+                          );
+                        });
+                      },
+                      onNotificationsPressed: () {
+                        ref
+                            .read(notificationsSettingsProvider.notifier)
+                            .toggleEnabled();
+                      },
+                    ),
+                  ),
                 );
               },
             ),

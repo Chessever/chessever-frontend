@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../services/settings_service.dart';
+import '../repository/local_storage/board_settings_repository/board_settings_repository.dart';
 
 enum PieceStyle {
   standard('Standard'),
@@ -17,12 +17,14 @@ class BoardSettings {
   final Color boardColor;
   final bool showEvaluationBar;
   final bool soundEnabled;
+  final bool chatEnabled;
   final PieceStyle pieceStyle;
 
   const BoardSettings({
     required this.boardColor,
     required this.showEvaluationBar,
     required this.soundEnabled,
+    required this.chatEnabled,
     required this.pieceStyle,
   });
 
@@ -30,35 +32,49 @@ class BoardSettings {
     Color? boardColor,
     bool? showEvaluationBar,
     bool? soundEnabled,
+    bool? chatEnabled,
     PieceStyle? pieceStyle,
   }) {
     return BoardSettings(
       boardColor: boardColor ?? this.boardColor,
       showEvaluationBar: showEvaluationBar ?? this.showEvaluationBar,
       soundEnabled: soundEnabled ?? this.soundEnabled,
+      chatEnabled: chatEnabled ?? this.chatEnabled,
       pieceStyle: pieceStyle ?? this.pieceStyle,
     );
   }
 }
 
-class BoardSettingsNotifier extends StateNotifier<BoardSettings> {
-  BoardSettingsNotifier()
+final boardSettingsProvider =
+    StateNotifierProvider<_BoardSettingsNotifier, BoardSettings>((ref) {
+      return _BoardSettingsNotifier(ref: ref);
+    });
+
+class _BoardSettingsNotifier extends StateNotifier<BoardSettings> {
+  _BoardSettingsNotifier({required this.ref})
     : super(
         const BoardSettings(
           boardColor: Colors.brown,
           showEvaluationBar: true,
           soundEnabled: true,
+          chatEnabled: true,
           pieceStyle: PieceStyle.standard,
         ),
       ) {
-    // Load saved settings when initialized
-    _loadSavedSettings();
+    init();
   }
 
-  Future<void> _loadSavedSettings() async {
-    final savedSettings = await SettingsService.loadBoardSettings();
-    if (savedSettings != null) {
-      state = savedSettings;
+  final Ref ref;
+
+  Future<void> init() async {
+    try {
+      final savedSettings =
+          await ref.read(boardSettingsRepository).loadBoardSettings();
+      if (savedSettings != null) {
+        state = savedSettings;
+      }
+    } catch (error, _) {
+      rethrow;
     }
   }
 
@@ -77,17 +93,21 @@ class BoardSettingsNotifier extends StateNotifier<BoardSettings> {
     _saveSettings();
   }
 
+  void toggleChat() {
+    state = state.copyWith(chatEnabled: !state.chatEnabled);
+    _saveSettings();
+  }
+
   void setPieceStyle(PieceStyle style) {
     state = state.copyWith(pieceStyle: style);
     _saveSettings();
   }
 
   Future<void> _saveSettings() async {
-    await SettingsService.saveBoardSettings(state);
+    try {
+      await ref.read(boardSettingsRepository).saveBoardSettings(state);
+    } catch (error, _) {
+      rethrow;
+    }
   }
 }
-
-final boardSettingsProvider =
-    StateNotifierProvider<BoardSettingsNotifier, BoardSettings>(
-      (ref) => BoardSettingsNotifier(),
-    );
