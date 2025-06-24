@@ -1,6 +1,8 @@
 class SvgAsset {
   static const settingsIcon = 'assets/svgs/settings.svg';
   static const favouriteIcon = 'assets/svgs/favorites.svg';
+  static const favouriteIcon2 = 'assets/svgs/heart.svg';
+  static const favouriteRedIcon = 'assets/svgs/heart_red.svg';
   static const starIcon = 'assets/svgs/star.svg';
   static const starFilledIcon = 'assets/svgs/filled_star.svg';
   static const listFilterIcon = 'assets/svgs/list-filter.svg';
@@ -24,4 +26,7 @@ class SvgAsset {
   static const tournamentIcon = 'assets/svgs/tournament.svg';
   static const websiteIcon = 'assets/svgs/website.svg';
   static const infoIcon = 'assets/svgs/info.svg';
+
+  static const premiumSelected = 'assets/svgs/selected.svg';
+  static const premiumUnselected = 'assets/svgs/unselected.svg';
 }

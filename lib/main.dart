@@ -4,6 +4,7 @@ import 'package:chessever2/screens/authentication/auth_screen.dart';
 import 'package:chessever2/screens/home_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/players/player_screen.dart';
+import 'package:chessever2/screens/players/providers/player_providers.dart'; // Added import for player providers
 import 'package:chessever2/screens/favorites/favorite_screen.dart';
 import 'package:chessever2/screens/countryman_screen.dart';
 import 'package:chessever2/screens/splash/splash_screen.dart';
@@ -58,16 +59,16 @@ class _MyAppState extends ConsumerState<MyApp> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       SettingsManager.initializeSettings(ref);
       // Initialize the favorites service
-      // _initializeFavoritesService();
+      _initializeFavoritesService();
     });
   }
 
   // Initialize the favorites service
-  // Future<void> _initializeFavoritesService() async {
-  //   import('package:chessever2/services/favorites_service.dart').then((module) {
-  //     module.FavoritesService.initialize();
-  //   });
-  // }
+  Future<void> _initializeFavoritesService() async {
+    // Initialize player favorites
+    final playerViewModel = ref.read(playerViewModelProvider);
+    await playerViewModel.initialize();
+  }
 
   @override
   Widget build(BuildContext context) {

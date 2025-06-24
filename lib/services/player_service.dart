@@ -19,7 +19,7 @@ class PlayerService {
       countryCode: 'NO',
       elo: 2830,
       age: 34,
-      isFavorite: true,
+      isFavorite: false,
     ),
     Player(
       id: '2',

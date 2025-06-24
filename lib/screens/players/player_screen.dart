@@ -4,24 +4,61 @@ import '../../utils/app_typography.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/rounded_search_bar.dart';
 import 'widgets/player_card.dart';
-import 'providers/player_provider.dart';
+import 'providers/player_providers.dart';
 
-// Provider for filtered players
-final filteredPlayersProvider = Provider<List<Map<String, dynamic>>>((ref) {
-  final searchQuery = ref.watch(_searchQueryProvider);
-  final playerNotifier = ref.watch(playerNotifierProvider.notifier);
-  return playerNotifier.getFilteredPlayers(searchQuery);
-});
-
-// Provider to track search query
-final _searchQueryProvider = StateProvider<String>((ref) => '');
-
-class PlayerScreen extends ConsumerWidget {
+class PlayerScreen extends ConsumerStatefulWidget {
   const PlayerScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final playerAsync = ref.watch(playerNotifierProvider);
+  ConsumerState<PlayerScreen> createState() => _PlayerScreenState();
+}
+
+class _PlayerScreenState extends ConsumerState<PlayerScreen>
+    with WidgetsBindingObserver {
+  // Add a persistent TextEditingController
+  late final TextEditingController _searchController;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController = TextEditingController();
+    _searchController.addListener(_onSearchChanged);
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    ref.read(playerSearchQueryProvider.notifier).state = _searchController.text;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshData();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _refreshData();
+  }
+
+  void _refreshData() {
+    // Invalidate providers to refresh data
+    ref.invalidate(playerProvider);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final playerAsync = ref.watch(playerProvider);
 
     return Scaffold(
       backgroundColor: kBackgroundColor,
@@ -46,9 +83,9 @@ class PlayerScreen extends ConsumerWidget {
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 16.0),
                 child: RoundedSearchBar(
-                  controller: TextEditingController(),
+                  controller: _searchController,
                   onChanged: (value) {
-                    ref.read(_searchQueryProvider.notifier).state = value;
+                    // onChanged is handled by the controller listener now
                   },
                   hintText: 'Search players',
                   onFilterTap: () {
@@ -69,19 +106,17 @@ class PlayerScreen extends ConsumerWidget {
                     color: kWhiteColor,
                   ),
                   child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // const SizedBox(width: 24), // Space for rank number
-                      // const SizedBox(width: 28), // Space for flag
-                      // Player header
                       const Expanded(flex: 3, child: Text('Player')),
 
-                      // Elo header
-                      const Expanded(
+                      // Elo header - right aligned to match player card
+                      Expanded(
                         flex: 1,
                         child: Text('Elo', textAlign: TextAlign.center),
                       ),
 
-                      // Age header
+                      // Age header - center aligned to match player card
                       const Expanded(
                         flex: 1,
                         child: Text('Age', textAlign: TextAlign.center),
@@ -139,18 +174,23 @@ class PlayerScreen extends ConsumerWidget {
         final player = filteredPlayers[index];
         return PlayerCard(
           rank: index + 1,
+          playerId: player['id'],
           playerName: player['name'],
           countryCode: player['countryCode'],
           elo: player['elo'],
           age: player['age'],
           isFavorite: player['isFavorite'],
-          onFavoriteToggle: () => _toggleFavorite(ref, player['name']),
+          onFavoriteToggle: () => _toggleFavorite(ref, player['id']),
         );
       },
     );
   }
 
-  void _toggleFavorite(WidgetRef ref, String playerName) {
-    ref.read(playerNotifierProvider.notifier).toggleFavorite(playerName);
+  void _toggleFavorite(WidgetRef ref, String playerId) {
+    final viewModel = ref.read(playerViewModelProvider);
+    viewModel.toggleFavorite(playerId).then((_) {
+      // Refresh the UI by invalidating the provider
+      ref.invalidate(playerProvider);
+    });
   }
 }

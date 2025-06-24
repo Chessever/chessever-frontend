@@ -4,25 +4,65 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/app_typography.dart';
 import '../../widgets/rounded_search_bar.dart';
-import 'providers/favorite_provider.dart';
+import '../players/providers/player_providers.dart';
 import 'widgets/favorite_card.dart';
 
-// Provider for filtered starred_repository players
-final filteredFavoritesProvider = Provider<List<Map<String, dynamic>>>((ref) {
-  final searchQuery = ref.watch(_searchQueryProvider);
-  final favoriteNotifier = ref.watch(favoriteNotifierProvider.notifier);
-  return favoriteNotifier.getFilteredFavoritePlayers(searchQuery);
-});
+final _favoriteSearchQueryProvider = StateProvider<String>((ref) => '');
 
-// Provider to track search query
-final _searchQueryProvider = StateProvider<String>((ref) => '');
-
-class FavoriteScreen extends ConsumerWidget {
+class FavoriteScreen extends ConsumerStatefulWidget {
   const FavoriteScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final favoritesAsync = ref.watch(favoriteNotifierProvider);
+  ConsumerState<FavoriteScreen> createState() => _FavoriteScreenState();
+}
+
+class _FavoriteScreenState extends ConsumerState<FavoriteScreen>
+    with WidgetsBindingObserver {
+  // Add a persistent TextEditingController
+  late final TextEditingController _searchController;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController = TextEditingController();
+    _searchController.addListener(_onSearchChanged);
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    ref.read(_favoriteSearchQueryProvider.notifier).state =
+        _searchController.text;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshData();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _refreshData();
+  }
+
+  void _refreshData() {
+    // Invalidate providers to refresh data
+    ref.invalidate(favoritePlayersProvider);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final favoritesAsync = ref.watch(favoritePlayersProvider);
 
     return Scaffold(
       backgroundColor: kBackgroundColor,
@@ -47,9 +87,9 @@ class FavoriteScreen extends ConsumerWidget {
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 16.0),
                 child: RoundedSearchBar(
-                  controller: TextEditingController(),
+                  controller: _searchController,
                   onChanged: (value) {
-                    ref.read(_searchQueryProvider.notifier).state = value;
+                    // onChanged is handled by the controller listener now
                   },
                   hintText: 'Search favorites',
                   onFilterTap: () {
@@ -70,17 +110,18 @@ class FavoriteScreen extends ConsumerWidget {
                     color: kWhiteColor,
                   ),
                   child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Player header
+                      // Player header - left-aligned
                       const Expanded(flex: 3, child: Text('Player')),
 
-                      // Elo header
-                      const Expanded(
+                      // Elo header - center-aligned to match player screen
+                      Expanded(
                         flex: 1,
                         child: Text('Elo', textAlign: TextAlign.center),
                       ),
 
-                      // Age header
+                      // Age header - center-aligned
                       const Expanded(
                         flex: 1,
                         child: Text('Age', textAlign: TextAlign.center),
@@ -109,7 +150,9 @@ class FavoriteScreen extends ConsumerWidget {
                           ),
                         ),
                       ),
-                  data: (_) => _buildFavoritesList(ref),
+                  data:
+                      (favoritePlayers) =>
+                          _buildFavoritesList(ref, favoritePlayers),
                 ),
               ),
             ],
@@ -119,13 +162,26 @@ class FavoriteScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildFavoritesList(WidgetRef ref) {
-    final filteredFavorites = ref.watch(filteredFavoritesProvider);
+  Widget _buildFavoritesList(
+    WidgetRef ref,
+    List<Map<String, dynamic>> favoritePlayers,
+  ) {
+    final searchQuery = ref.watch(_favoriteSearchQueryProvider);
+
+    // Filter favorites by search query
+    final filteredFavorites =
+        searchQuery.isEmpty
+            ? favoritePlayers
+            : favoritePlayers.where((player) {
+              return player['name'].toString().toLowerCase().contains(
+                searchQuery.toLowerCase(),
+              );
+            }).toList();
 
     if (filteredFavorites.isEmpty) {
       return Center(
         child: Text(
-          'No starred_repository players found',
+          'No favorite players found',
           style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
         ),
       );
@@ -142,13 +198,18 @@ class FavoriteScreen extends ConsumerWidget {
           countryCode: player['countryCode'],
           elo: player['elo'],
           age: player['age'],
-          onRemoveFavorite: () => _removeFromFavorites(ref, player['name']),
+          onRemoveFavorite: () => _toggleFavorite(ref, player['id']),
         );
       },
     );
   }
 
-  void _removeFromFavorites(WidgetRef ref, String playerName) {
-    ref.read(favoriteNotifierProvider.notifier).removeFromFavorites(playerName);
+  void _toggleFavorite(WidgetRef ref, String playerId) {
+    final viewModel = ref.read(playerViewModelProvider);
+    viewModel.toggleFavorite(playerId).then((_) {
+      // Refresh providers to update UI
+      ref.invalidate(favoritePlayersProvider);
+      ref.invalidate(playerProvider);
+    });
   }
 }
