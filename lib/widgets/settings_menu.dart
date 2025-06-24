@@ -183,9 +183,10 @@ class SettingsMenu extends StatelessWidget {
                       onChanged: (value) {
                         onNotificationsPressed?.call();
                       },
-                      activeColor: kWhiteColor, // Circle color is white
-                      activeTrackColor:
-                          kPrimaryColor, // Track uses app primary color
+                      activeColor: kWhiteColor,
+                      // Circle color is white
+                      activeTrackColor: kPrimaryColor,
+                      // Track uses app primary color
                       inactiveThumbColor: kWhiteColor,
                       inactiveTrackColor: Colors.grey.withOpacity(0.5),
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,

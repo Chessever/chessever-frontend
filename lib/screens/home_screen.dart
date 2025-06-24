@@ -2,11 +2,13 @@ import 'package:chessever2/screens/calendar_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/providers/notifications_settings_provider.dart';
 import 'package:chessever2/providers/timezone_provider.dart';
+import 'package:chessever2/screens/premium/premium_screen.dart'; // Import premium screen
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/board_settings_dialog.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
+import 'package:chessever2/widgets/hamburger_menu/hamburger_menu_dialogs.dart';
 import 'package:chessever2/widgets/language_settings_dialog.dart';
 import 'package:chessever2/widgets/notifications_settings_dialog.dart';
 import 'package:chessever2/widgets/settings_menu.dart';
@@ -17,6 +19,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../localization/locale_provider.dart';
 import 'tournaments/tournament_screen.dart';
 import 'tournaments/widget/bottom_nav_bar.dart';
+import 'players/player_screen.dart'; // Import PlayerScreen
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -29,103 +32,42 @@ class HomeScreen extends StatelessWidget {
     return Scaffold(
       key: scaffoldKey,
       drawer: HamburgerMenu(
-        onSettingsPressed: () {
-          Navigator.pop(context); // Close the drawer first
-          showAlertModal(
-            context: context,
-            backgroundColor: kPopUpColor,
-            barrierColor: Colors.black.withOpacity(
-              0.3,
-            ), // Semi-transparent black for blur
-            child: Consumer(
-              builder: (context, ref, _) {
-                final notificationsSettings = ref.watch(
-                  notificationsSettingsProvider,
-                );
-                final localeName = ref.watch(localeNameProvider);
-                final timezone = ref.watch(timezoneProvider);
-
-                return Center(
-                  child: Container(
-                    width: MediaQuery.of(context).size.width * 0.85,
-                    decoration: BoxDecoration(
-                      color: kPopUpColor,
-                      borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(12),
-                        topRight: Radius.circular(12),
-                        bottomLeft: Radius.circular(20),
-                        bottomRight: Radius.circular(20),
-                      ),
-                    ),
-                    margin: EdgeInsets.all(24),
-                    child: SettingsMenu(
-                      notificationsEnabled: notificationsSettings.enabled,
-                      languageSubtitle: localeName,
-                      timezoneSubtitle: timezone.display,
-                      boardSettingsIcon: SvgWidget(SvgAsset.boardSettings),
-                      languageIcon: SvgWidget(SvgAsset.languageIcon),
-                      timezoneIcon: SvgWidget(SvgAsset.timezoneIcon),
-                      onBoardSettingsPressed: () {
-                        Navigator.pop(context); // Close settings menu
-                        // Add a small delay before showing the next dialog
-                        Future.delayed(Duration(milliseconds: 100), () {
-                          showAlertModal(
-                            context: context,
-                            backgroundColor: kPopUpColor,
-                            barrierColor: Colors.black.withOpacity(
-                              0.3,
-                            ), // Semi-transparent black for blur
-                            child: BoardSettingsDialog(),
-                          );
-                        });
-                      },
-                      onLanguagePressed: () {
-                        Navigator.pop(context); // Close settings menu
-                        // Add a small delay before showing the next dialog
-                        Future.delayed(Duration(milliseconds: 100), () {
-                          showAlertModal(
-                            context: context,
-                            backgroundColor: kPopUpColor,
-                            barrierColor: Colors.black.withOpacity(
-                              0.3,
-                            ), // Semi-transparent black for blur
-                            child: LanguageSettingsDialog(),
-                          );
-                        });
-                      },
-                      onTimezonePressed: () {
-                        Navigator.pop(context); // Close settings menu
-                        // Add a small delay before showing the next dialog
-                        Future.delayed(Duration(milliseconds: 100), () {
-                          showAlertModal(
-                            context: context,
-                            backgroundColor: kPopUpColor,
-                            barrierColor: Colors.black.withOpacity(
-                              0.3,
-                            ), // Semi-transparent black for blur
-                            child: TimezoneSettingsDialog(),
-                          );
-                        });
-                      },
-                      onNotificationsPressed: () {
-                        ref
-                            .read(notificationsSettingsProvider.notifier)
-                            .toggleEnabled();
-                      },
-                    ),
-                  ),
-                );
-              },
-            ),
-          );
-        },
-        onPlayersPressed: () {},
-        onFavoritesPressed: () {},
-        onCountrymanPressed: () {},
-        onAnalysisBoardPressed: () {},
-        onSupportPressed: () {},
-        onPremiumPressed: () {},
-        onLogoutPressed: () {},
+        callbacks: HamburgerMenuCallbacks(
+          onPlayersPressed: () {
+            // Navigate to players screen
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const PlayerScreen()),
+            );
+          },
+          onFavoritesPressed: () {
+            // Navigate to favorites screen
+            Navigator.pushNamed(context, '/favorites');
+          },
+          onCountrymanPressed: () {
+            // Navigate to countryman screen
+            Navigator.pushNamed(context, '/countryman');
+          },
+          onAnalysisBoardPressed: () {
+            // Navigate to analysis board
+            Navigator.pushNamed(context, '/analysisBoard');
+          },
+          onSupportPressed: () {
+            // Handle support action
+            // e.g., open support form or chat
+          },
+          onPremiumPressed: () {
+            // Navigate to premium screen
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const PremiumScreen()),
+            );
+          },
+          onLogoutPressed: () {
+            // Handle logout
+            // e.g., clear session and navigate to login
+          },
+        ),
       ),
       bottomNavigationBar: BottomNavBar(),
       body: BottomNavBarView(),

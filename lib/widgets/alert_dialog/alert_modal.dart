@@ -20,8 +20,8 @@ void showAlertModal({
     return Material(
       color: Colors.transparent,
       child: GestureDetector(
-        // Close dialog when tapping outside
-        onTap: barrierDismissible ? () => Navigator.pop(context) : null,
+        // Close dialog when tapping outside - using ctx instead of context
+        onTap: barrierDismissible ? () => Navigator.pop(ctx) : null,
         child: Stack(
           children: [
             // Backdrop filter for blur effect

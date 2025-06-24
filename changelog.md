@@ -88,6 +88,15 @@
 -> dismissable popup when clicked anywhere except the popup,
 -> settings completed with saving the selected options in local storage,
 
+#24 june
+-> hamburger cleanup
+-> players screen and favourite screen added
+-> premium screen added
+-> search functionality in players and favourites screen
+
+
+
+
 
 
 
