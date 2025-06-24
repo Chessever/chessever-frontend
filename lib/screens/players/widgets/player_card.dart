@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../../utils/app_typography.dart';
 import '../../../theme/app_theme.dart';
+import '../../../utils/svg_asset.dart';
+import '../../../widgets/svg_widget.dart';
 
 class PlayerCard extends StatefulWidget {
   final int rank;
+  final String playerId;
   final String playerName;
   final String countryCode;
   final int elo;
@@ -14,6 +17,7 @@ class PlayerCard extends StatefulWidget {
   const PlayerCard({
     Key? key,
     required this.rank,
+    required this.playerId,
     required this.playerName,
     required this.countryCode,
     required this.elo,
@@ -26,21 +30,42 @@ class PlayerCard extends StatefulWidget {
   State<PlayerCard> createState() => _PlayerCardState();
 }
 
-class _PlayerCardState extends State<PlayerCard> {
+class _PlayerCardState extends State<PlayerCard>
+    with SingleTickerProviderStateMixin {
   late bool _isFavorite;
+  late AnimationController _animationController;
+  late Animation<double> _scaleAnimation;
 
   @override
   void initState() {
     super.initState();
     _isFavorite = widget.isFavorite;
+
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 1.2).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
   }
 
   @override
   void didUpdateWidget(PlayerCard oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // This ensures the _isFavorite state is always updated when widget.isFavorite changes
     if (oldWidget.isFavorite != widget.isFavorite) {
-      _isFavorite = widget.isFavorite;
+      setState(() {
+        _isFavorite = widget.isFavorite;
+      });
     }
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
   }
 
   void _toggleFavorite() {
@@ -48,6 +73,14 @@ class _PlayerCardState extends State<PlayerCard> {
       setState(() {
         _isFavorite = !_isFavorite;
       });
+
+      // Animate heart icon
+      if (_isFavorite) {
+        _animationController.forward().then((_) {
+          _animationController.reverse();
+        });
+      }
+
       widget.onFavoriteToggle!();
     }
   }
@@ -57,7 +90,7 @@ class _PlayerCardState extends State<PlayerCard> {
     return GestureDetector(
       onTap: () {
         // Navigate to standings screen when the card is tapped
-        Navigator.pushNamed(context, '/standings');
+        // Navigator.pushNamed(context, '/standings');
       },
       child: Container(
         height: 48,
@@ -86,7 +119,9 @@ class _PlayerCardState extends State<PlayerCard> {
             // GM prefix and player name
             Expanded(
               flex: 3,
+
               child: RichText(
+                textAlign: TextAlign.start,
                 text: TextSpan(
                   children: [
                     TextSpan(
@@ -106,7 +141,7 @@ class _PlayerCardState extends State<PlayerCard> {
               ),
             ),
 
-            // ELO rating - using Expanded to match header
+            // ELO rating with right alignment - using Expanded to match header position
             Expanded(
               flex: 1,
               child: Text(
@@ -116,7 +151,7 @@ class _PlayerCardState extends State<PlayerCard> {
               ),
             ),
 
-            // Age - using Expanded to match header
+            // Age - using Expanded to match header and center alignment
             Expanded(
               flex: 1,
               child: Text(
@@ -126,16 +161,22 @@ class _PlayerCardState extends State<PlayerCard> {
               ),
             ),
 
-            // Favorite icon
+            // Favorite icon with animated scale effect
             GestureDetector(
               onTap: _toggleFavorite,
               behavior: HitTestBehavior.opaque,
               child: SizedBox(
                 width: 30,
-                child: Icon(
-                  _isFavorite ? Icons.favorite : Icons.favorite_border,
-                  color: _isFavorite ? kRedColor : kWhiteColor,
-                  size: 20,
+                child: ScaleTransition(
+                  scale: _scaleAnimation,
+                  child: SvgWidget(
+                    _isFavorite
+                        ? SvgAsset.favouriteRedIcon
+                        : SvgAsset.favouriteIcon2,
+                    semanticsLabel: 'Favorite Icon',
+                    height: 12,
+                    width: 14,
+                  ),
                 ),
               ),
             ),

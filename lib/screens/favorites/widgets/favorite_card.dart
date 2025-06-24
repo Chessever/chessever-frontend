@@ -56,6 +56,7 @@ class _FavoriteCardState extends State<FavoriteCard> {
           Expanded(
             flex: 3,
             child: RichText(
+              textAlign: TextAlign.left,
               text: TextSpan(
                 children: [
                   TextSpan(
@@ -75,7 +76,7 @@ class _FavoriteCardState extends State<FavoriteCard> {
             ),
           ),
 
-          // ELO rating - using Expanded to match header
+          // ELO rating - center aligned to match header
           Expanded(
             flex: 1,
             child: Text(
