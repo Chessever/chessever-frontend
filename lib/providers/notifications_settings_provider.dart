@@ -1,54 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../services/settings_service.dart';
+import '../repository/local_storage/notifications_repository/notifications_repository.dart';
 
 class NotificationsSettings {
   final bool enabled;
-  final bool gameInvites;
-  final bool tournamentReminders;
-  final bool friendActivity;
 
-  const NotificationsSettings({
-    required this.enabled,
-    required this.gameInvites,
-    required this.tournamentReminders,
-    required this.friendActivity,
-  });
+  const NotificationsSettings({required this.enabled});
 
-  NotificationsSettings copyWith({
-    bool? enabled,
-    bool? gameInvites,
-    bool? tournamentReminders,
-    bool? friendActivity,
-  }) {
-    return NotificationsSettings(
-      enabled: enabled ?? this.enabled,
-      gameInvites: gameInvites ?? this.gameInvites,
-      tournamentReminders: tournamentReminders ?? this.tournamentReminders,
-      friendActivity: friendActivity ?? this.friendActivity,
-    );
+  NotificationsSettings copyWith({bool? enabled}) {
+    return NotificationsSettings(enabled: enabled ?? this.enabled);
   }
 }
 
 class NotificationsSettingsNotifier
     extends StateNotifier<NotificationsSettings> {
-  NotificationsSettingsNotifier()
-    : super(
-        const NotificationsSettings(
-          enabled: false,
-          gameInvites: true,
-          tournamentReminders: true,
-          friendActivity: false,
-        ),
-      ) {
+  NotificationsSettingsNotifier(this.ref)
+    : super(const NotificationsSettings(enabled: false)) {
     // Load saved settings when initialized
     _loadSavedSettings();
   }
 
+  final Ref ref;
+
   Future<void> _loadSavedSettings() async {
-    final savedSettings = await SettingsService.loadNotificationsSettings();
-    if (savedSettings != null) {
+    try {
+      final savedSettings =
+          await ref.read(notificationsRepository).loadNotificationsSettings();
       state = savedSettings;
+    } catch (error, _) {
+      // Keep default settings on error
     }
   }
 
@@ -57,27 +37,16 @@ class NotificationsSettingsNotifier
     _saveSettings();
   }
 
-  void toggleGameInvites() {
-    state = state.copyWith(gameInvites: !state.gameInvites);
-    _saveSettings();
-  }
-
-  void toggleTournamentReminders() {
-    state = state.copyWith(tournamentReminders: !state.tournamentReminders);
-    _saveSettings();
-  }
-
-  void toggleFriendActivity() {
-    state = state.copyWith(friendActivity: !state.friendActivity);
-    _saveSettings();
-  }
-
   Future<void> _saveSettings() async {
-    await SettingsService.saveNotificationsSettings(state);
+    try {
+      await ref.read(notificationsRepository).saveNotificationsSettings(state);
+    } catch (error, _) {
+      // Handle error if needed
+    }
   }
 }
 
 final notificationsSettingsProvider =
     StateNotifierProvider<NotificationsSettingsNotifier, NotificationsSettings>(
-      (ref) => NotificationsSettingsNotifier(),
+      (ref) => NotificationsSettingsNotifier(ref),
     );

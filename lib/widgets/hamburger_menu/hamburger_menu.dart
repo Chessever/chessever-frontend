@@ -42,6 +42,7 @@ class HamburgerMenu extends StatelessWidget {
                 child: ListView(
                   padding: EdgeInsets.zero,
                   children: [
+                    SizedBox(height: 24),
                     _buildMenuItem(
                       icon: Icons.settings,
                       customIcon: SvgWidget(

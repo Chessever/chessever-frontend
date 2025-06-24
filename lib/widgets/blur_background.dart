@@ -55,8 +55,13 @@ class BlurPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final Paint paint =
         Paint()
-          ..color = const Color(0xFF0FB4E5)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 100);
+          ..color = const Color(0xFF000000).withOpacity(
+            0.7,
+          ) // Changed to black with opacity
+          ..maskFilter = const MaskFilter.blur(
+            BlurStyle.normal,
+            80,
+          ); // Reduced blur radius
 
     // Left circle
     canvas.drawCircle(

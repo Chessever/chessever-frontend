@@ -20,7 +20,7 @@ class NotificationsSettingsDialog extends ConsumerWidget {
           SettingsCard(
             children: [
               SettingsItem(
-                title: 'All notifications',
+                title: 'Notifications',
                 subtitle: notificationsSettings.enabled ? 'On' : 'Off',
                 trailing: Switch(
                   value: notificationsSettings.enabled,
@@ -29,66 +29,6 @@ class NotificationsSettingsDialog extends ConsumerWidget {
                         .read(notificationsSettingsProvider.notifier)
                         .toggleEnabled();
                   },
-                  activeColor: const Color(0xFF0FB4E5),
-                  activeTrackColor: const Color(0xFF0FB4E5).withOpacity(0.3),
-                ),
-                showDivider: true,
-              ),
-            ],
-          ),
-
-          SettingsCard(
-            title: 'TYPES',
-            children: [
-              SettingsItem(
-                title: 'Game invites',
-                subtitle: 'Notifications for new game invites',
-                trailing: Switch(
-                  value: notificationsSettings.gameInvites,
-                  onChanged:
-                      notificationsSettings.enabled
-                          ? (value) {
-                            ref
-                                .read(notificationsSettingsProvider.notifier)
-                                .toggleGameInvites();
-                          }
-                          : null,
-                  activeColor: const Color(0xFF0FB4E5),
-                  activeTrackColor: const Color(0xFF0FB4E5).withOpacity(0.3),
-                ),
-                showDivider: true,
-              ),
-              SettingsItem(
-                title: 'Tournament reminders',
-                subtitle: 'Notifications for upcoming tournaments',
-                trailing: Switch(
-                  value: notificationsSettings.tournamentReminders,
-                  onChanged:
-                      notificationsSettings.enabled
-                          ? (value) {
-                            ref
-                                .read(notificationsSettingsProvider.notifier)
-                                .toggleTournamentReminders();
-                          }
-                          : null,
-                  activeColor: const Color(0xFF0FB4E5),
-                  activeTrackColor: const Color(0xFF0FB4E5).withOpacity(0.3),
-                ),
-                showDivider: true,
-              ),
-              SettingsItem(
-                title: 'Friend activity',
-                subtitle: "Notifications about friends' games and results",
-                trailing: Switch(
-                  value: notificationsSettings.friendActivity,
-                  onChanged:
-                      notificationsSettings.enabled
-                          ? (value) {
-                            ref
-                                .read(notificationsSettingsProvider.notifier)
-                                .toggleFriendActivity();
-                          }
-                          : null,
                   activeColor: const Color(0xFF0FB4E5),
                   activeTrackColor: const Color(0xFF0FB4E5).withOpacity(0.3),
                 ),

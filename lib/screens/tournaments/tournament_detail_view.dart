@@ -34,6 +34,7 @@ class TournamentDetailView extends ConsumerWidget {
     return ScreenWrapper(
       child: Scaffold(
         body: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(height: MediaQuery.of(context).viewPadding.top + 24),
             ChessEverAppBar(
@@ -56,16 +57,11 @@ class TournamentDetailView extends ConsumerWidget {
               ),
             ),
             SizedBox(height: 12),
-            Expanded(
-              child: IndexedStack(
-                index: selectedTourMode.index,
-                children: const [
-                  AboutTourScreen(),
-                  GamesTourScreen(),
-                  _StandingsView(),
-                ],
-              ),
-            ),
+            selectedTourMode == _TournamentDetailScreenMode.about
+                ? Expanded(child: const AboutTourScreen())
+                : selectedTourMode == _TournamentDetailScreenMode.games
+                ? const GamesTourScreen()
+                : const _StandingsView(),
           ],
         ),
       ),

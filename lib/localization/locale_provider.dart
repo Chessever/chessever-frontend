@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../services/settings_service.dart';
+import '../repository/local_storage/language_repository/language_repository.dart';
 
 // Define supported locales
 class SupportedLocales {
@@ -12,41 +12,50 @@ class SupportedLocales {
 
 // Create a state notifier for locale management
 class LocaleNotifier extends StateNotifier<Locale> {
-  LocaleNotifier() : super(SupportedLocales.english) {
+  LocaleNotifier(this.ref) : super(SupportedLocales.english) {
     // Load saved locale when initialized
     _loadSavedLocale();
   }
 
+  final Ref ref;
+
   Future<void> _loadSavedLocale() async {
-    final savedLocale = await SettingsService.loadLocale();
-    if (savedLocale != null) {
+    try {
+      final savedLocale = await ref.read(languageRepository).loadLanguage();
       state = savedLocale;
+    } catch (error, _) {
+      // Keep default locale on error
+      print('Error loading saved locale: $error');
     }
   }
 
   void setLocale(Locale locale) {
-    state = locale;
-    _saveLocale();
+    if (state.languageCode != locale.languageCode) {
+      state = locale;
+      _saveLocale();
+    }
   }
 
   Future<void> _saveLocale() async {
-    await SettingsService.saveLocale(state);
+    try {
+      await ref.read(languageRepository).saveLanguage(state);
+      print('Locale saved successfully: ${state.languageCode}');
+    } catch (error, _) {
+      print('Error saving locale: $error');
+    }
   }
 }
 
 // Create a provider for Locale state
 final localeProvider = StateNotifierProvider<LocaleNotifier, Locale>((ref) {
-  return LocaleNotifier();
+  return LocaleNotifier(ref);
 });
 
 // Create a provider that exposes Locale name
 final localeNameProvider = Provider<String>((ref) {
   final locale = ref.watch(localeProvider);
+  final repository = ref.read(languageRepository);
 
-  switch (locale.languageCode) {
-    case 'en':
-      return 'English';
-    default:
-      return 'English';
-  }
+  final language = repository.getLanguageFromLocale(locale);
+  return language.name;
 });
