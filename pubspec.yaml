@@ -92,6 +92,9 @@ dependencies:
 
   #for launching url
   url_launcher: ^6.3.1
+  squares: ^1.2.1
+  bishop: ^1.4.4
+  square_bishop: ^0.3.0
 
 dev_dependencies:
   flutter_test:

@@ -97,6 +97,9 @@
 -> Update android package name and label, [ com.chessever.app ]
 -> Update bundle identifier to [ com.chessever.app  ],
 -> Add release config,
+-> chessboard
+-> moves' PGN on chessboard
+-> demo chessboard with hardcoded pgn added
 
 
 

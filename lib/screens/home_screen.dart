@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/calendar_screen.dart';
+import 'package:chessever2/screens/chessboard/chess_board_analysis.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/providers/notifications_settings_provider.dart';
 import 'package:chessever2/providers/timezone_provider.dart';
@@ -50,7 +51,11 @@ class HomeScreen extends StatelessWidget {
           },
           onAnalysisBoardPressed: () {
             // Navigate to analysis board
-            Navigator.pushNamed(context, '/analysisBoard');
+            // Navigator.pushNamed(context, '/analysisBoard');
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const ChessScreen()),
+            );
           },
           onSupportPressed: () {
             // Handle support action
