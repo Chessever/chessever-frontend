@@ -3,6 +3,7 @@ import 'dart:convert';
 
 class PlayerViewModel {
   static const String _favoritePlayerIdsKey = 'favorite_player_ids';
+
   final List<Map<String, dynamic>> _players = [
     {
       'id': '1',
@@ -52,6 +53,13 @@ class PlayerViewModel {
       'countryCode': 'IN',
       'elo': 2766,
       'age': 20,
+    },
+    {
+      'id': '8',
+      'name': 'Simmons, R',
+      'countryCode': 'NP',
+      'elo': 2766,
+      'age': 22,
     },
   ];
 
