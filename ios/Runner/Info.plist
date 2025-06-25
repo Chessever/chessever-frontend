@@ -26,10 +26,10 @@
 		<array>
 			<dict>
 				<key>CFBundleURLName</key>
-				<string>com.example.chessever2</string>
+				<string>com.chessever.app</string>
 				<key>CFBundleURLSchemes</key>
 				<array>
-					<string>com.example.chessever2</string>
+					<string>com.chessever.app</string>
 				</array>
 			</dict>
 		</array>
