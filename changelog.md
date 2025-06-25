@@ -69,8 +69,7 @@
 -> Create Models for Tournament, Game and Round based on schema,
 -> Setup Repository and API for Tournament, Game and Round,
 
-
-#21 June 
+#21 June
 -> Connect Tournament screen with Supabase,
 -> Connect Favorite with local repository,
 -> Connect Filter option and search to supabase,
@@ -93,6 +92,9 @@
 -> players screen and favourite screen added
 -> premium screen added
 -> search functionality in players and favourites screen
+
+#25 june
+-> Update android package name and label, [ com.chessever.app ]
 
 
 
