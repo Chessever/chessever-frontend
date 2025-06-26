@@ -69,7 +69,8 @@
 -> Create Models for Tournament, Game and Round based on schema,
 -> Setup Repository and API for Tournament, Game and Round,
 
-#21 June
+
+#21 June 
 -> Connect Tournament screen with Supabase,
 -> Connect Favorite with local repository,
 -> Connect Filter option and search to supabase,
@@ -93,6 +94,7 @@
 -> premium screen added
 -> search functionality in players and favourites screen
 
+
 #25 june
 -> Update android package name and label, [ com.chessever.app ]
 -> Update bundle identifier to [ com.chessever.app  ],
@@ -102,11 +104,8 @@
 -> demo chessboard with hardcoded pgn added
 
 
-
-
-
-
-
-
-
+#26 june
+-> board color update with the selection from board settings
+-> custom board icons
+-> simulating PGN moves
 

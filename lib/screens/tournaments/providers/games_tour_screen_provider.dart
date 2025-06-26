@@ -20,11 +20,13 @@ class GamesTourScreenProvider
     final aboutTourModel = ref.read(aboutTourModelProvider)!;
     final games = await ref
         .read(gameRepositoryProvider)
-        .getGamesByTourId(aboutTourModel.id);
+        .getGamesByTourId('5LW5RS0a');
+    print(games.map((e) => print(e.toJson())));
     final gamesTourModels = List.generate(
       games.length,
-      (index) => GamesTourModel.fromGames(games[index]),
+      (index) => GamesTourModel.fromGame(games[index]),
     );
+
     state = AsyncValue.data(gamesTourModels);
   }
 }

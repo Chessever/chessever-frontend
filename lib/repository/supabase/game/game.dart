@@ -7,7 +7,7 @@ class Game {
   final String tourSlug;
   final String? name;
   final String? fen;
-  final List<Map<String, dynamic>>? players;
+  final List<Player>? players;
   final String? lastMove;
   final int? thinkTime;
   final String? status;
@@ -39,11 +39,13 @@ class Game {
       fen: json['fen'] as String?,
       players: json['players'] != null
           ? (json['players'] as List)
-          .map((player) => player as Map<String, dynamic>)
+          .map((player) => Player.fromJson(player as Map<String, dynamic>))
           .toList()
           : null,
       lastMove: json['last_move'] as String?,
-      thinkTime: json['think_time'] as int?,
+      thinkTime: json['think_time'] != null
+          ? (json['think_time'] as num).toInt()
+          : null,
       status: json['status'] as String?,
       pgn: json['pgn'] as String?,
     );
@@ -58,11 +60,52 @@ class Game {
       'tour_slug': tourSlug,
       'name': name,
       'fen': fen,
-      'players': players,
+      'players': players?.map((player) => player.toJson()).toList(),
       'last_move': lastMove,
       'think_time': thinkTime,
       'status': status,
       'pgn': pgn,
+    };
+  }
+}
+
+// models/player.dart
+class Player {
+  final String fed;
+  final String name;
+  final int clock;
+  final String title;
+  final int fideId;
+  final int rating;
+
+  Player({
+    required this.fed,
+    required this.name,
+    required this.clock,
+    required this.title,
+    required this.fideId,
+    required this.rating,
+  });
+
+  factory Player.fromJson(Map<String, dynamic> json) {
+    return Player(
+      fed: json['fed'] as String,
+      name: json['name'] as String,
+      clock: (json['clock'] as num).toInt(),
+      title: json['title'] as String,
+      fideId: (json['fideId'] as num).toInt(),
+      rating: (json['rating'] as num).toInt(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'fed': fed,
+      'name': name,
+      'clock': clock,
+      'title': title,
+      'fideId': fideId,
+      'rating': rating,
     };
   }
 }
