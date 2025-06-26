@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/standings_screen.dart';
 import 'package:chessever2/screens/tournaments/about_tour_screen.dart';
 import 'package:chessever2/screens/tournaments/games_tour_screen.dart';
 import 'package:chessever2/screens/tournaments/model/about_tour_model.dart';
@@ -61,19 +62,10 @@ class TournamentDetailView extends ConsumerWidget {
                 ? Expanded(child: const AboutTourScreen())
                 : selectedTourMode == _TournamentDetailScreenMode.games
                 ? const GamesTourScreen()
-                : const _StandingsView(),
+                : Expanded(child: const StandingsScreen()),
           ],
         ),
       ),
     );
-  }
-}
-
-class _StandingsView extends StatelessWidget {
-  const _StandingsView({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Placeholder();
   }
 }
