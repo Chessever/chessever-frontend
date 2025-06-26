@@ -98,4 +98,6 @@ class _BoardSettingsRepository {
       rethrow;
     }
   }
+
+  
 }
