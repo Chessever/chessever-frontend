@@ -12,14 +12,14 @@ class ScoreCard extends StatelessWidget {
   final String matchScore; // Match score (e.g., "2.5/3")
 
   const ScoreCard({
-    Key? key,
+    super.key,
     required this.countryCode,
     this.title, // Changed to optional parameter
     required this.name,
     required this.score,
     this.scoreChange,
     required this.matchScore,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
