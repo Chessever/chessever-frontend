@@ -133,6 +133,20 @@ flutter:
     - assets/pngs/
     - .env
 
+    ## pieces svg
+    - assets/svgs/pieces/bB.svg
+    - assets/svgs/pieces/bK.svg
+    - assets/svgs/pieces/bN.svg
+    - assets/svgs/pieces/bP.svg
+    - assets/svgs/pieces/bQ.svg
+    - assets/svgs/pieces/bR.svg
+    - assets/svgs/pieces/wB.svg
+    - assets/svgs/pieces/wK.svg
+    - assets/svgs/pieces/wN.svg
+    - assets/svgs/pieces/wP.svg
+    - assets/svgs/pieces/wQ.svg
+    - assets/svgs/pieces/wR.svg
+
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
 

@@ -6,6 +6,7 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/generic_loading_widget.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
+import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -14,36 +15,39 @@ class GamesTourScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(height: 12),
-        ref
-            .watch(gamesTourScreenProvider)
-            .when(
-              data: (data) {
-                if (data.isEmpty) {
-                  return _NoGamesFoundWidget();
-                }
-                return ListView.builder(
-                  padding: EdgeInsets.zero,
-                  shrinkWrap: true,
-                  itemCount: data.length,
-                  itemBuilder: (cxt, index) {
-                    return _GameCard(gamesTourModel: data[index]);
-                  },
-                );
-              },
-              error: (error, _) {
-                return GenericErrorWidget();
-              },
-              loading: () {
-                return GenericLoadingWidget();
-              },
-            ),
-        SizedBox(height: MediaQuery.of(context).viewPadding.bottom),
-      ],
-    );
+    return ref
+        .watch(gamesTourScreenProvider)
+        .when(
+          data: (data) {
+            if (data.isEmpty) {
+              return _NoGamesFoundWidget();
+            }
+            return Expanded(
+              child: ListView.builder(
+                padding: EdgeInsets.only(
+                  left: 20,
+                  right: 20,
+                  top: 24,
+                  bottom: MediaQuery.of(context).viewPadding.bottom,
+                ),
+                shrinkWrap: true,
+                itemCount: data.length,
+                itemBuilder: (cxt, index) {
+                  return Padding(
+                    padding: EdgeInsets.only(bottom: 12),
+                    child: _GameCard(gamesTourModel: data[index]),
+                  );
+                },
+              ),
+            );
+          },
+          error: (error, _) {
+            return GenericErrorWidget();
+          },
+          loading: () {
+            return GenericLoadingWidget();
+          },
+        );
   }
 }
 
@@ -91,17 +95,19 @@ class _GameCard extends StatelessWidget {
           child: Row(
             children: [
               _GamesRound(
-                playerName: 'Player 1',
-                playerRank: 'Rank 1',
-                countryName: 'Country 1',
+                playerName: gamesTourModel.whitePlayer.name,
+                playerRank: gamesTourModel.whitePlayer.displayTitle,
+                countryCode: gamesTourModel.whitePlayer.countryCode,
               ),
               Spacer(),
-              _ProgressWidget(progress: 0.5),
+              _ProgressWidget(
+                progress: gamesTourModel.whitePlayer.rating / 100,
+              ),
               Spacer(),
               _GamesRound(
-                playerName: 'Player 2',
-                playerRank: 'Rank 2',
-                countryName: 'Country 2',
+                playerName: gamesTourModel.blackPlayer.name,
+                playerRank: gamesTourModel.blackPlayer.displayTitle,
+                countryCode: gamesTourModel.blackPlayer.countryCode,
               ),
             ],
           ),
@@ -118,9 +124,9 @@ class _GameCard extends StatelessWidget {
           ),
           child: Row(
             children: [
-              _TimerWidget(turn: true, time: '00 : 40'),
+              _TimerWidget(turn: true, time: gamesTourModel.whiteTimeDisplay),
               Spacer(),
-              _TimerWidget(turn: false, time: '1 : 40'),
+              _TimerWidget(turn: false, time: gamesTourModel.blackTimeDisplay),
             ],
           ),
         ),
@@ -133,13 +139,13 @@ class _GamesRound extends StatelessWidget {
   const _GamesRound({
     required this.playerName,
     required this.playerRank,
-    required this.countryName,
+    required this.countryCode,
     super.key,
   });
 
   final String playerName;
   final String playerRank;
-  final String countryName;
+  final String countryCode;
 
   @override
   Widget build(BuildContext context) {
@@ -151,9 +157,15 @@ class _GamesRound extends StatelessWidget {
           playerName,
           style: AppTypography.textXsMedium.copyWith(color: kBlackColor),
         ),
-        Text(
-          playerRank,
-          style: AppTypography.textXsMedium.copyWith(color: kBlack2Color),
+        Row(
+          children: [
+            CountryFlag.fromCountryCode(countryCode, height: 12, width: 16),
+            SizedBox(width: 4),
+            Text(
+              playerRank,
+              style: AppTypography.textXsMedium.copyWith(color: kBlack2Color),
+            ),
+          ],
         ),
       ],
     );
