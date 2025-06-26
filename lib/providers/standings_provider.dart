@@ -106,9 +106,3 @@ final standingsProvider =
     StateNotifierProvider<StandingsNotifier, List<PlayerStanding>>((ref) {
       return StandingsNotifier();
     });
-
-// Provider for the current round
-final currentRoundProvider = StateProvider<int>((ref) => 4);
-
-// Provider for the total rounds
-final totalRoundsProvider = Provider<int>((ref) => 13);

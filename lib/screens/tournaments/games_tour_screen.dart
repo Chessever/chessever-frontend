@@ -20,7 +20,10 @@ class GamesTourScreen extends ConsumerWidget {
         .when(
           data: (data) {
             if (data.isEmpty) {
-              return _NoGamesFoundWidget();
+              return EmptyWidget(
+                title:
+                    "No games available yet. Check back soon or set a\nreminder for updates.",
+              );
             }
             return Expanded(
               child: ListView.builder(
@@ -51,8 +54,10 @@ class GamesTourScreen extends ConsumerWidget {
   }
 }
 
-class _NoGamesFoundWidget extends StatelessWidget {
-  const _NoGamesFoundWidget({super.key});
+class EmptyWidget extends StatelessWidget {
+  const EmptyWidget({required this.title, super.key});
+
+  final String title;
 
   @override
   Widget build(BuildContext context) {
@@ -63,7 +68,7 @@ class _NoGamesFoundWidget extends StatelessWidget {
         SvgWidget(SvgAsset.infoIcon, height: 24, width: 24),
         SizedBox(height: 12),
         Text(
-          "No games available yet. Check back soon or set a\nreminder for updates.",
+          title,
           style: AppTypography.textXsRegular.copyWith(color: kWhiteColor70),
           textAlign: TextAlign.center,
         ),
@@ -100,9 +105,7 @@ class _GameCard extends StatelessWidget {
                 countryCode: gamesTourModel.whitePlayer.countryCode,
               ),
               Spacer(),
-              _ProgressWidget(
-                progress: gamesTourModel.whitePlayer.rating / 100,
-              ),
+              _ProgressWidget(progress: gamesTourModel.gameStatus.index / 100),
               Spacer(),
               _GamesRound(
                 playerName: gamesTourModel.blackPlayer.name,
