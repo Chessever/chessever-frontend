@@ -2,8 +2,9 @@ import 'package:chessever2/screens/standings_screen.dart';
 import 'package:chessever2/screens/tournaments/about_tour_screen.dart';
 import 'package:chessever2/screens/tournaments/games_tour_screen.dart';
 import 'package:chessever2/screens/tournaments/model/about_tour_model.dart';
+import 'package:chessever2/screens/tournaments/widget/games_app_bar_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/widgets/chessever_app_bar.dart';
+import 'package:chessever2/widgets/app_bar_with_title.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:flutter/material.dart';
@@ -38,9 +39,22 @@ class TournamentDetailView extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(height: MediaQuery.of(context).viewPadding.top + 24),
-            ChessEverAppBar(
-              title: title.substring(0, title.length > 20 ? 20 : title.length),
-            ),
+
+            selectedTourMode == _TournamentDetailScreenMode.about
+                ? AppBarWithTitle(
+                  title: title.substring(
+                    0,
+                    title.length > 20 ? 20 : title.length,
+                  ),
+                )
+                : selectedTourMode == _TournamentDetailScreenMode.games
+                ? GamesAppBarWidget()
+                : AppBarWithTitle(
+                  title: title.substring(
+                    0,
+                    title.length > 20 ? 20 : title.length,
+                  ),
+                ),
             SizedBox(height: 36),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20.0),

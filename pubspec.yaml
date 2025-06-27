@@ -99,6 +99,8 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  
+  vector_graphics_compiler: ^1.1.17
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -134,18 +136,18 @@ flutter:
     - .env
 
     ## pieces svg
-    - assets/svgs/pieces/bB.svg
-    - assets/svgs/pieces/bK.svg
-    - assets/svgs/pieces/bN.svg
-    - assets/svgs/pieces/bP.svg
-    - assets/svgs/pieces/bQ.svg
-    - assets/svgs/pieces/bR.svg
-    - assets/svgs/pieces/wB.svg
-    - assets/svgs/pieces/wK.svg
-    - assets/svgs/pieces/wN.svg
-    - assets/svgs/pieces/wP.svg
-    - assets/svgs/pieces/wQ.svg
-    - assets/svgs/pieces/wR.svg
+    - assets/pngs/pieces/bB.png
+    - assets/pngs/pieces/bK.png
+    - assets/pngs/pieces/bN.png
+    - assets/pngs/pieces/bP.png
+    - assets/pngs/pieces/bQ.png
+    - assets/pngs/pieces/bR.png
+    - assets/pngs/pieces/wB.png
+    - assets/pngs/pieces/wK.png
+    - assets/pngs/pieces/wN.png
+    - assets/pngs/pieces/wP.png
+    - assets/pngs/pieces/wQ.png
+    - assets/pngs/pieces/wR.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

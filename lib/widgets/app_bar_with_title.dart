@@ -2,8 +2,8 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:flutter/material.dart';
 
-class ChessEverAppBar extends StatelessWidget {
-  const ChessEverAppBar({required this.title, super.key});
+class AppBarWithTitle extends StatelessWidget {
+  const AppBarWithTitle({required this.title, super.key});
 
   final String title;
 

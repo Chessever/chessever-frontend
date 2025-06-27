@@ -1,4 +1,6 @@
 // models/round.dart
+import 'dart:developer' as developer;
+
 class Round {
   final String id;
   final String slug;
@@ -23,19 +25,81 @@ class Round {
   });
 
   factory Round.fromJson(Map<String, dynamic> json) {
-    return Round(
-      id: json['id'] as String,
-      slug: json['slug'] as String,
-      tourId: json['tour_id'] as String,
-      tourSlug: json['tour_slug'] as String,
-      name: json['name'] as String,
-      createdAt: DateTime.parse(json['created_at'] as String),
-      ongoing: json['ongoing'] as bool,
-      startsAt: json['starts_at'] != null
-          ? DateTime.parse(json['starts_at'] as String)
-          : null,
-      url: json['url'] as String,
-    );
+    try {
+      // Debug logging
+      developer.log('Parsing Round from JSON: $json', name: 'Round.fromJson');
+
+      // Validate required fields
+      if (json['id'] == null) throw Exception('Missing required field: id');
+      if (json['slug'] == null) throw Exception('Missing required field: slug');
+      if (json['tour_id'] == null)
+        throw Exception('Missing required field: tour_id');
+      if (json['tour_slug'] == null)
+        throw Exception('Missing required field: tour_slug');
+      if (json['name'] == null) throw Exception('Missing required field: name');
+      if (json['created_at'] == null)
+        throw Exception('Missing required field: created_at');
+      if (json['ongoing'] == null)
+        throw Exception('Missing required field: ongoing');
+      if (json['url'] == null) throw Exception('Missing required field: url');
+
+      return Round(
+        id: json['id'].toString(),
+        slug: json['slug'].toString(),
+        tourId: json['tour_id'].toString(),
+        tourSlug: json['tour_slug'].toString(),
+        name: json['name'].toString(),
+        createdAt: _parseDateTime(json['created_at']),
+        ongoing: _parseBool(json['ongoing']),
+        startsAt:
+            json['starts_at'] != null
+                ? _parseDateTime(json['starts_at'])
+                : null,
+        url: json['url'].toString(),
+      );
+    } catch (e, stackTrace) {
+      developer.log(
+        'Error parsing Round from JSON: $e',
+        name: 'Round.fromJson',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      rethrow;
+    }
+  }
+
+  // Helper method to safely parse DateTime
+  static DateTime _parseDateTime(dynamic dateValue) {
+    if (dateValue == null) {
+      throw Exception('DateTime value is null');
+    }
+
+    if (dateValue is String) {
+      try {
+        return DateTime.parse(dateValue);
+      } catch (e) {
+        throw Exception('Invalid DateTime format: $dateValue');
+      }
+    }
+
+    throw Exception('DateTime value must be a string: $dateValue');
+  }
+
+  // Helper method to safely parse bool
+  static bool _parseBool(dynamic boolValue) {
+    if (boolValue == null) {
+      throw Exception('Boolean value is null');
+    }
+
+    if (boolValue is bool) {
+      return boolValue;
+    }
+
+    if (boolValue is String) {
+      return boolValue.toLowerCase() == 'true';
+    }
+
+    throw Exception('Boolean value must be bool or string: $boolValue');
   }
 
   Map<String, dynamic> toJson() {
