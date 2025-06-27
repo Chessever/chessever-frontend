@@ -29,4 +29,5 @@ class SvgAsset {
 
   static const premiumSelected = 'assets/svgs/selected.svg';
   static const premiumUnselected = 'assets/svgs/unselected.svg';
+  static const selectedSvg = 'assets/svgs/selected.svg';
 }

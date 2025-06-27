@@ -11,7 +11,8 @@ import 'package:chessever2/widgets/board_settings_dialog.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu_dialogs.dart';
 import 'package:chessever2/widgets/language_settings_dialog.dart';
-import 'package:chessever2/widgets/notifications_settings_dialog.dart';
+
+// import 'package:chessever2/widgets/notifications_settings_dialog.dart';
 import 'package:chessever2/widgets/settings_menu.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/widgets/timezone_settings_dialog.dart';

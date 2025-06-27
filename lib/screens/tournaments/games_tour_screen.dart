@@ -30,7 +30,7 @@ class GamesTourScreen extends ConsumerWidget {
                 padding: EdgeInsets.only(
                   left: 20,
                   right: 20,
-                  top: 24,
+                  top: 12,
                   bottom: MediaQuery.of(context).viewPadding.bottom,
                 ),
                 shrinkWrap: true,
