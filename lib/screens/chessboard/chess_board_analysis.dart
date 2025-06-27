@@ -1,189 +1,213 @@
 import 'package:chessever2/screens/chessboard/view_model/chess_viewmodel.dart';
+import 'package:chessever2/screens/chessboard/widgets/chess_appbar.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_widget.dart';
 import 'package:chessever2/providers/board_settings_provider.dart';
 import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
+import 'package:chessever2/screens/chessboard/widgets/player_info_widget.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:chessever2/screens/chessboard/widgets/bottom_nav_bar.dart'; // Add this import
 
-class ChessScreen extends HookConsumerWidget {
+class ChessScreen extends ConsumerWidget {
   const ChessScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final viewModel = useMemoized(() => ChessViewModel());
-    final forceRebuild = useState(0); // Keep for forcing rebuilds
-    final flipBoard = useState(false);
-
-    // Create a proper update callback
-    void updateUI() {
-      forceRebuild.value = forceRebuild.value + 1;
-    }
-
-    useEffect(() {
-      viewModel.resetGame();
-      return () {
-        // Cleanup timer when widget is disposed
-        viewModel.stopSimulation();
-      };
-    }, []);
+    final chessState = ref.watch(chessViewModelProvider);
+    final boardSettingsValue = ref.watch(boardSettingsProvider);
+    final boardColorEnum = ref
+        .read(boardSettingsRepository)
+        .getBoardColorEnum(boardSettingsValue.boardColor);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Chess Game'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () {
-              // Settings navigation
-            },
-          ),
-        ],
-      ),
-      body: Consumer(
-        builder: (context, ref, child) {
-          final boardSettingsValue = ref.watch(boardSettingsProvider);
-
-          if (boardSettingsValue == null) {
-            return const Center(child: CircularProgressIndicator());
-          } else {
-            final settings = boardSettingsValue as BoardSettings;
-            final boardColorEnum = ref
-                .read(boardSettingsRepository)
-                .getBoardColorEnum(settings.boardColor);
-            return _buildChessBoard(
-              context,
-              viewModel,
-              updateUI,
-              flipBoard,
-              boardColorEnum,
-              settings,
-            );
-          }
+      appBar: ChessMatchAppBar(
+        title: 'Magnus vs Nakamura',
+        onBackPressed: () {
+          Navigator.pop(context);
+        },
+        onSettingsPressed: () {
+          // Handle settings button press
+        },
+        onMoreOptionsPressed: () {
+          // Handle share button press
         },
       ),
-    );
-  }
-
-  Widget _buildChessBoard(
-    BuildContext context,
-    ChessViewModel viewModel,
-    VoidCallback updateUI,
-    ValueNotifier<bool> flipBoard,
-    BoardColor boardColor,
-    BoardSettings settings,
-  ) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 10,
-                    spreadRadius: 2,
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: ChessBoardWidget(
-                  viewModel: viewModel,
-                  setState: updateUI, // Pass the callback directly
-                  flipBoard: flipBoard.value,
-                  boardColor: boardColor,
-                  pieceStyle: settings.pieceStyle.toString(),
+      body: Scaffold(
+        body: SingleChildScrollView(
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Player information - Top (Black)
+                PlayerInfoWidget(
+                  name: 'GM Nakamura, Hikaru',
+                  rating: '2804',
+                  time: '01:04:11',
+                  isTop: true,
                 ),
-              ),
+
+                const SizedBox(height: 8),
+
+                // Chess board
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 10,
+                          spreadRadius: 2,
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: ChessBoardWidget(
+                        boardColor: boardColorEnum,
+                        pieceStyle: boardSettingsValue.pieceStyle.toString(),
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                // Player information - Bottom (White)
+                PlayerInfoWidget(
+                  name: 'GM Carlsen, Magnus',
+                  rating: '2837',
+                  time: '00:45:36',
+                  isTop: false,
+                ),
+
+                const SizedBox(height: 16),
+
+                // Moves section
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.outline.withOpacity(0.2),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Moves display
+                      _buildMovesText(context, chessState),
+                    ],
+                  ),
+                ),
+
+                // Add bottom padding to ensure content doesn't get hidden behind bottom buttons
+                const SizedBox(height: 100),
+              ],
             ),
           ),
-          const SizedBox(height: 16),
-          if (viewModel.simulatingPgn)
-            Text(
-              'Simulating PGN... Move ${viewModel.currentMoveIndex}/${viewModel.pgnMoves.length}',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            alignment: WrapAlignment.center,
-            children: [
-              _buildActionButton(
-                context,
-                icon: Icons.refresh,
-                label: 'New Game',
-                onPressed: () {
-                  viewModel.resetGame();
-                  updateUI();
-                },
-              ),
-              _buildActionButton(
-                context,
-                icon: viewModel.simulatingPgn ? Icons.stop : Icons.play_arrow,
-                label: viewModel.simulatingPgn ? 'Stop' : 'Simulate',
-                onPressed: viewModel.simulatingPgn
-                    ? () {
-                        viewModel.stopSimulation();
-                        updateUI();
-                      }
-                    : () async {
-                        await viewModel.simulatePgnMoves(
-                          notifyUpdate: updateUI, // Pass the callback
-                        );
-                        updateUI();
-                      },
-              ),
-              _buildActionButton(
-                context,
-                icon: Icons.rotate_left,
-                label: 'Flip Board',
-                onPressed: () {
-                  flipBoard.value = !flipBoard.value;
-                  updateUI();
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceVariant,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              'Theme: ${boardColor.toString().split('.').last}',
-              style: Theme.of(context).textTheme.labelLarge,
-            ),
-          ),
-        ],
+        ),
+        // Bottom navigation bar with action buttons
+        bottomNavigationBar:
+            const ChessBottomNavBar(), // Use the new component here
       ),
     );
   }
 
-  Widget _buildActionButton(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    required VoidCallback onPressed,
-  }) {
-    return SizedBox(
-      width: 120,
-      child: ElevatedButton.icon(
-        style: ElevatedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+  Widget _buildMovesText(BuildContext context, ChessGameState chessState) {
+    if (chessState.pgnMoves.isEmpty) {
+      return Text(
+        'No moves loaded',
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
         ),
-        icon: Icon(icon, size: 20),
-        label: Text(label),
-        onPressed: onPressed,
-      ),
-    );
+        textAlign: TextAlign.center,
+      );
+    }
+
+    final moves = chessState.pgnMoves;
+    final currentMoveIndex = chessState.currentMoveIndex;
+
+    List<InlineSpan> spans = [];
+
+    for (int i = 0; i < moves.length; i += 2) {
+      final moveNumber = (i ~/ 2) + 1;
+      final whiteMove = moves[i];
+      final blackMove = i + 1 < moves.length ? moves[i + 1] : null;
+
+      // Move number
+      spans.add(
+        TextSpan(
+          text: '$moveNumber. ',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      );
+
+      // White move
+      spans.add(
+        TextSpan(
+          text: '$whiteMove ',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color:
+                i < currentMoveIndex
+                    ? Theme.of(context).colorScheme.primary
+                    : (i == currentMoveIndex
+                        ? Theme.of(context).colorScheme.error
+                        : Theme.of(context).colorScheme.onSurface),
+            fontWeight:
+                i == currentMoveIndex ? FontWeight.bold : FontWeight.normal,
+            backgroundColor:
+                i == currentMoveIndex
+                    ? Theme.of(
+                      context,
+                    ).colorScheme.errorContainer.withOpacity(0.3)
+                    : null,
+          ),
+        ),
+      );
+
+      // Black move (if exists)
+      if (blackMove != null) {
+        spans.add(
+          TextSpan(
+            text: '$blackMove ',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color:
+                  i + 1 < currentMoveIndex
+                      ? Theme.of(context).colorScheme.primary
+                      : (i + 1 == currentMoveIndex
+                          ? Theme.of(context).colorScheme.error
+                          : Theme.of(context).colorScheme.onSurface),
+              fontWeight:
+                  i + 1 == currentMoveIndex
+                      ? FontWeight.bold
+                      : FontWeight.normal,
+              backgroundColor:
+                  i + 1 == currentMoveIndex
+                      ? Theme.of(
+                        context,
+                      ).colorScheme.errorContainer.withOpacity(0.3)
+                      : null,
+            ),
+          ),
+        );
+      }
+
+      // Add new line after every 4 move pairs for better readability
+      if (i > 0 && (i ~/ 2) % 4 == 0) {
+        spans.add(const TextSpan(text: '\n'));
+      }
+    }
+
+    return RichText(text: TextSpan(children: spans), textAlign: TextAlign.left);
   }
 }

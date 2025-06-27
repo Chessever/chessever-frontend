@@ -109,3 +109,9 @@
 -> custom board icons
 -> simulating PGN moves
 
+#27 june
+-> refactor chessboard logic
+-> Add new bottom nav bar in board view
+-> Add app bar in board view,
+-> replace custom board icons with .png
+

@@ -1,276 +1,322 @@
-// import 'dart:math';
-// import 'package:bishop/bishop.dart' as bishop;
-// import 'package:square_bishop/square_bishop.dart';
-// import 'package:squares/squares.dart';
-
-// class ChessViewModel {
-//   late bishop.Game game;
-//   late SquaresState state;
-//   int player = Squares.white;
-//   bool aiThinking = false;
-//   bool flipBoard = false;
-//   bool simulatingPgn = false;
-//   int currentMoveIndex = 0;
-//   late List<String> pgnMoves;
-
-//   void resetGame([bool notify = true]) {
-//     const samplePgn = '''
-//   [Event "Example Game"]
-//   [Site "?"]
-//   [Date "2024.06.25"]
-//   [Round "?"]
-//   [White "White"]
-//   [Black "Black"]
-//   [Result "*"]
-
-//   1. e4 f5 2. Nh3 Nc6 3. Bb5 a6 b7
-//   ''';
-
-//     game = bishop.Game.fromPgn(samplePgn);
-//     _extractPgnMoves(samplePgn);
-//     state = game.squaresState(player);
-//     currentMoveIndex = 0;
-//     simulatingPgn = false;
-//   }
-
-//   void _extractPgnMoves(String pgn) {
-//     String movesSection = pgn.replaceAll(RegExp(r'\[.*?\]'), '');
-//     movesSection = movesSection.replaceAll(RegExp(r'\{.*?\}'), '');
-
-//     final movePattern = RegExp(
-//       r'\b([KQRBN]?[a-h]?[1-8]?x?[a-h][1-8](?:=[QRBN])?[+#]?|O-O(?:-O)?)[+#]?\b',
-//     );
-
-//     pgnMoves =
-//         movePattern
-//             .allMatches(movesSection)
-//             .map((m) => m.group(1))
-//             .where((move) => move != null && move != '*' && !move.contains('.'))
-//             .cast<String>()
-//             .toList();
-//   }
-
-//   Future<void> simulatePgnMoves(Function(void Function()) setState) async {
-//     if (simulatingPgn) return;
-
-//     setState(() {
-//       simulatingPgn = true;
-//       currentMoveIndex = 0;
-//     });
-
-//     resetGame(false);
-
-//     for (int i = 0; i < pgnMoves.length; i++) {
-//       if (!simulatingPgn) break;
-
-//       try {
-//         final legalMoves = game.generateLegalMoves();
-//         bishop.Move? targetMove;
-
-//         for (final move in legalMoves) {
-//           if (game.toAlgebraic(move) == pgnMoves[i]) {
-//             targetMove = move;
-//             break;
-//           }
-//         }
-
-//         if (targetMove != null) {
-//           bool success = game.makeMove(targetMove);
-//           if (success) {
-//             setState(() {
-//               state = game.squaresState(player);
-//               currentMoveIndex = i + 1;
-//             });
-
-//             await Future.delayed(const Duration(milliseconds: 500));
-//           } else {
-//             break;
-//           }
-//         } else {
-//           break;
-//         }
-//       } catch (e) {
-//         break;
-//       }
-//     }
-
-//     setState(() => simulatingPgn = false);
-//   }
-
-//   void stopSimulation(Function(void Function()) setState) {
-//     setState(() => simulatingPgn = false);
-//   }
-
-//   void toggleBoard(Function(void Function()) setState) {
-//     setState(() => flipBoard = !flipBoard);
-//   }
-
-//   Future<void> makeMove(Move move, Function(void Function()) setState) async {
-//     if (simulatingPgn) return;
-
-//     bool result = game.makeSquaresMove(move);
-//     if (result) {
-//       setState(() => state = game.squaresState(player));
-//     }
-//     if (state.state == PlayState.theirTurn && !aiThinking) {
-//       setState(() => aiThinking = true);
-//       await Future.delayed(
-//         Duration(milliseconds: Random().nextInt(4750) + 250),
-//       );
-//       game.makeRandomMove();
-//       setState(() {
-//         aiThinking = false;
-//         state = game.squaresState(player);
-//       });
-//     }
-//   }
-// }
-
 import 'dart:async';
 import 'dart:convert';
 import 'package:bishop/bishop.dart' as bishop;
 import 'package:flutter/services.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:square_bishop/square_bishop.dart';
 import 'package:squares/squares.dart';
 
-class ChessViewModel {
-  late bishop.Game game;
-  late SquaresState state;
-  int player = Squares.white;
-  bool simulatingPgn = false;
-  int currentMoveIndex = 0;
-  List<String> pgnMoves = [];
+// State classes
+class ChessGameState {
+  final bishop.Game game;
+  final SquaresState squaresState;
+  final int player;
+  final bool simulatingPgn;
+  final int currentMoveIndex;
+  final List<String> pgnMoves;
+  final bool isLoading;
+  final String? error;
+
+  const ChessGameState({
+    required this.game,
+    required this.squaresState,
+    this.player = Squares.white,
+    this.simulatingPgn = false,
+    this.currentMoveIndex = 0,
+    this.pgnMoves = const [],
+    this.isLoading = false,
+    this.error,
+  });
+
+  ChessGameState copyWith({
+    bishop.Game? game,
+    SquaresState? squaresState,
+    int? player,
+    bool? simulatingPgn,
+    int? currentMoveIndex,
+    List<String>? pgnMoves,
+    bool? isLoading,
+    String? error,
+  }) {
+    return ChessGameState(
+      game: game ?? this.game,
+      squaresState: squaresState ?? this.squaresState,
+      player: player ?? this.player,
+      simulatingPgn: simulatingPgn ?? this.simulatingPgn,
+      currentMoveIndex: currentMoveIndex ?? this.currentMoveIndex,
+      pgnMoves: pgnMoves ?? this.pgnMoves,
+      isLoading: isLoading ?? this.isLoading,
+      error: error,
+    );
+  }
+}
+
+// Chess ViewModel as a StateNotifier
+class ChessViewModel extends StateNotifier<ChessGameState> {
   Timer? _simulationTimer;
 
-  ChessViewModel() {
-    resetGame();
+  ChessViewModel() : super(_createInitialState()) {
     _loadMockMoves();
   }
 
-  Future<void> _loadMockMoves() async {
-    try {
-      final jsonString = await rootBundle.loadString(
-        'lib/screens/chessboard/utils/moves.json',
+  static ChessGameState _createInitialState() {
+    final game = bishop.Game();
+    return ChessGameState(
+      game: game,
+      squaresState: game.squaresState(Squares.white),
+    );
+  }
+
+  // Add these methods to your ChessViewModel class
+
+  void goToNextMove() {
+    if (state.simulatingPgn ||
+        state.currentMoveIndex >= state.pgnMoves.length) {
+      return;
+    }
+
+    final currentMove = state.pgnMoves[state.currentMoveIndex];
+    final move = _findMove(currentMove);
+
+    if (move != null && state.game.makeMove(move)) {
+      state = state.copyWith(
+        squaresState: state.game.squaresState(state.player),
+        currentMoveIndex: state.currentMoveIndex + 1,
       );
+    }
+  }
+
+  void goToPreviousMove() {
+    if (state.simulatingPgn || state.currentMoveIndex <= 0) {
+      return;
+    }
+
+    // Rebuild the game state up to the previous move
+    final game = bishop.Game();
+    final targetIndex = state.currentMoveIndex - 1;
+
+    for (int i = 0; i < targetIndex; i++) {
+      final moveStr = state.pgnMoves[i];
+      final move = _findMoveForGame(game, moveStr);
+      if (move != null) {
+        game.makeMove(move);
+      }
+    }
+
+    state = state.copyWith(
+      game: game,
+      squaresState: game.squaresState(state.player),
+      currentMoveIndex: targetIndex,
+    );
+  }
+
+  // Helper method to find moves for any game state
+  bishop.Move? _findMoveForGame(bishop.Game game, String algebraic) {
+    try {
+      var moves = game.generateLegalMoves();
+
+      // Try using the bishop library's built-in parsing
+      try {
+        var parsedMove = game.getMove(algebraic);
+        if (parsedMove != null && moves.contains(parsedMove)) {
+          return parsedMove;
+        }
+      } catch (e) {
+        // Silent fail, try coordinate conversion
+      }
+
+      // Use the same coordinate conversion logic
+      return _convertAlgebraicToCoordinateForGame(game, algebraic, moves);
+    } catch (e) {
+      print('Error in _findMoveForGame: $e');
+      return null;
+    }
+  }
+
+  bishop.Move? _convertAlgebraicToCoordinateForGame(
+    bishop.Game game,
+    String algebraic,
+    List<bishop.Move> moves,
+  ) {
+    // Simple pawn moves like "e4"
+    if (algebraic.length == 2 &&
+        algebraic[0].toLowerCase().contains(RegExp(r'[a-h]')) &&
+        algebraic[1].contains(RegExp(r'[1-8]'))) {
+      String targetFile = algebraic[0].toLowerCase();
+      String targetRank = algebraic[1];
+
+      for (var move in moves) {
+        String moveStr = game.toAlgebraic(move);
+        if (moveStr.length >= 4) {
+          String toFile = moveStr[2];
+          String toRank = moveStr[3];
+          String fromFile = moveStr[0];
+
+          if (toFile == targetFile &&
+              toRank == targetRank &&
+              fromFile == targetFile) {
+            return move;
+          }
+        }
+      }
+    }
+    // Handle piece moves like "Nf3"
+    else if (algebraic.length == 3) {
+      String targetFile = algebraic[1].toLowerCase();
+      String targetRank = algebraic[2];
+
+      for (var move in moves) {
+        String moveStr = game.toAlgebraic(move);
+        if (moveStr.length >= 4) {
+          String toFile = moveStr[2];
+          String toRank = moveStr[3];
+
+          if (toFile == targetFile && toRank == targetRank) {
+            return move;
+          }
+        }
+      }
+    }
+    // Handle castling
+    else if (algebraic == "O-O" || algebraic == "0-0") {
+      for (var move in moves) {
+        String moveStr = game.toAlgebraic(move);
+        if (moveStr == "e1g1" || moveStr == "e8g8") {
+          return move;
+        }
+      }
+    } else if (algebraic == "O-O-O" || algebraic == "0-0-0") {
+      for (var move in moves) {
+        String moveStr = game.toAlgebraic(move);
+        if (moveStr == "e1c1" || moveStr == "e8c8") {
+          return move;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  Future<void> _loadMockMoves() async {
+    state = state.copyWith(isLoading: true);
+
+    try {
+      final jsonString = await rootBundle.loadString('../utils/moves.json');
       final jsonData = jsonDecode(jsonString);
-      pgnMoves = List<String>.from(jsonData['pgnMoves']);
-      print('Successfully loaded ${pgnMoves.length} moves from JSON');
+      final moves = List<String>.from(jsonData['pgnMoves']);
+
+      state = state.copyWith(pgnMoves: moves, isLoading: false, error: null);
+
+      print('Successfully loaded ${moves.length} moves from JSON');
     } catch (e) {
       print('Error loading mock moves: $e');
-      pgnMoves = [
-        "e4",
-        "e5",
-        "Nf3",
-        "Nc6",
-        "Bb5",
-        "a6",
-        "Ba4",
-        "Nf6",
-        "O-O",
-        "Be7",
-        "Re1",
-        "b5",
-        "Bb3",
-        "d6",
-        "c3",
-        "O-O",
-        "h3",
-        "Nb8",
-        "d4",
-        "Nbd7",
+
+      final defaultMoves = [
+        "e4", // 1. e4
+        "e5", // 1... e5
+        "f3", // 2. Nf3
+        "Nc6", // 2... Nc6
+        "Bb5", // 3. Bb5 (Ruy Lopez)
+        "a6", // 3... a6
       ];
+
+      state = state.copyWith(
+        pgnMoves: defaultMoves,
+        isLoading: false,
+        error: null,
+      );
+
       print('Using default moves instead');
     }
   }
 
   void resetGame([List<String>? moves]) {
-    game = bishop.Game();
-    state = game.squaresState(player);
-    currentMoveIndex = 0;
-    simulatingPgn = false;
-    if (moves != null) pgnMoves = moves;
     _simulationTimer?.cancel();
+
+    final game = bishop.Game();
+    state = ChessGameState(
+      game: game,
+      squaresState: game.squaresState(state.player),
+      player: state.player,
+      pgnMoves: moves ?? state.pgnMoves,
+    );
   }
 
   Future<void> simulatePgnMoves({
-    required void Function() notifyUpdate, // Changed parameter
-    Duration moveDelay = const Duration(
-      milliseconds: 1000,
-    ), // Slower for visibility
+    Duration moveDelay = const Duration(milliseconds: 1000),
   }) async {
-    if (simulatingPgn || pgnMoves.isEmpty) {
+    if (state.simulatingPgn || state.pgnMoves.isEmpty) {
       print(
-        'Simulation not started: ${simulatingPgn ? "Already simulating" : "No moves"}',
+        'Simulation not started: ${state.simulatingPgn ? "Already simulating" : "No moves"}',
       );
       return;
     }
 
-    simulatingPgn = true;
-    currentMoveIndex = 0;
-
-    // Reset the game but keep the current moves
-    game = bishop.Game();
-    state = game.squaresState(player);
-    notifyUpdate(); // Notify UI immediately
+    // Reset the game and start simulation
+    final game = bishop.Game();
+    state = state.copyWith(
+      game: game,
+      squaresState: game.squaresState(state.player),
+      simulatingPgn: true,
+      currentMoveIndex: 0,
+    );
 
     _simulationTimer = Timer.periodic(moveDelay, (timer) {
-      if (currentMoveIndex >= pgnMoves.length || !simulatingPgn) {
+      if (state.currentMoveIndex >= state.pgnMoves.length ||
+          !state.simulatingPgn) {
         timer.cancel();
-        simulatingPgn = false;
-        notifyUpdate();
+        state = state.copyWith(simulatingPgn: false);
         print('Simulation completed or stopped');
         return;
       }
 
-      final currentMove = pgnMoves[currentMoveIndex];
-      print('Attempting move ${currentMoveIndex + 1}: $currentMove');
+      final currentMove = state.pgnMoves[state.currentMoveIndex];
+      print('Attempting move ${state.currentMoveIndex + 1}: $currentMove');
 
       try {
         final move = _findMove(currentMove);
         if (move != null) {
-          print('Found move: ${game.toAlgebraic(move)}');
-          bool success = game.makeMove(move);
+          print('Found move: ${state.game.toAlgebraic(move)}');
+          bool success = state.game.makeMove(move);
           if (success) {
             print('Move successful');
-            // Update state immediately
-            state = game.squaresState(player);
-            currentMoveIndex++;
-            notifyUpdate(); // Notify UI of update
+            state = state.copyWith(
+              squaresState: state.game.squaresState(state.player),
+              currentMoveIndex: state.currentMoveIndex + 1,
+            );
           } else {
             print('Move failed to execute');
             timer.cancel();
-            simulatingPgn = false;
-            notifyUpdate();
+            state = state.copyWith(simulatingPgn: false);
           }
         } else {
           print('Could not find matching move for: $currentMove');
           print(
-            'Available moves: ${game.generateLegalMoves().map((m) => game.toAlgebraic(m)).toList()}',
+            'Available moves: ${state.game.generateLegalMoves().map((m) => state.game.toAlgebraic(m)).toList()}',
           );
           timer.cancel();
-          simulatingPgn = false;
-          notifyUpdate();
+          state = state.copyWith(simulatingPgn: false);
         }
       } catch (e) {
         print('Error during move execution: $e');
         timer.cancel();
-        simulatingPgn = false;
-        notifyUpdate();
+        state = state.copyWith(simulatingPgn: false);
       }
     });
   }
 
   bishop.Move? _findMove(String algebraic) {
     try {
-      var moves = game.generateLegalMoves();
-
+      var moves = state.game.generateLegalMoves();
       print('Looking for move: "$algebraic"');
 
       // First try using the bishop library's built-in parsing
       try {
-        var parsedMove = game.getMove(algebraic);
+        var parsedMove = state.game.getMove(algebraic);
         if (parsedMove != null && moves.contains(parsedMove)) {
-          print('Found via bishop parsing: ${game.toAlgebraic(parsedMove)}');
+          print(
+            'Found via bishop parsing: ${state.game.toAlgebraic(parsedMove)}',
+          );
           return parsedMove;
         }
       } catch (e) {
@@ -278,11 +324,10 @@ class ChessViewModel {
       }
 
       // The library returns coordinate notation, so we need to convert
-      // Standard algebraic to coordinate notation mapping
       bishop.Move? foundMove = _convertAlgebraicToCoordinate(algebraic, moves);
       if (foundMove != null) {
         print(
-          'Found via coordinate conversion: ${game.toAlgebraic(foundMove)}',
+          'Found via coordinate conversion: ${state.game.toAlgebraic(foundMove)}',
         );
         return foundMove;
       }
@@ -309,7 +354,7 @@ class ChessViewModel {
       String targetRank = algebraic[1];
 
       for (var move in moves) {
-        String moveStr = game.toAlgebraic(move);
+        String moveStr = state.game.toAlgebraic(move);
         if (moveStr.length >= 4) {
           String toFile = moveStr[2];
           String toRank = moveStr[3];
@@ -332,14 +377,13 @@ class ChessViewModel {
       String targetRank = algebraic[2];
 
       for (var move in moves) {
-        String moveStr = game.toAlgebraic(move);
+        String moveStr = state.game.toAlgebraic(move);
         if (moveStr.length >= 4) {
           String toFile = moveStr[2];
           String toRank = moveStr[3];
 
           if (toFile == targetFile && toRank == targetRank) {
             // Check if this could be the right piece type
-            // This is a simple heuristic - you might need to refine this
             return move;
           }
         }
@@ -349,7 +393,7 @@ class ChessViewModel {
     else if (algebraic == "O-O" || algebraic == "0-0") {
       // Look for king-side castling (e1g1 for white, e8g8 for black)
       for (var move in moves) {
-        String moveStr = game.toAlgebraic(move);
+        String moveStr = state.game.toAlgebraic(move);
         if (moveStr == "e1g1" || moveStr == "e8g8") {
           return move;
         }
@@ -357,7 +401,7 @@ class ChessViewModel {
     } else if (algebraic == "O-O-O" || algebraic == "0-0-0") {
       // Look for queen-side castling
       for (var move in moves) {
-        String moveStr = game.toAlgebraic(move);
+        String moveStr = state.game.toAlgebraic(move);
         if (moveStr == "e1c1" || moveStr == "e8c8") {
           return move;
         }
@@ -369,15 +413,31 @@ class ChessViewModel {
 
   void stopSimulation() {
     _simulationTimer?.cancel();
-    simulatingPgn = false;
+    state = state.copyWith(simulatingPgn: false);
   }
 
-  Future<void> makeMove(Move move, void Function() notifyUpdate) async {
-    if (simulatingPgn) return;
+  Future<void> makeMove(Move move) async {
+    if (state.simulatingPgn) return;
 
-    if (game.makeSquaresMove(move)) {
-      state = game.squaresState(player);
-      notifyUpdate();
+    if (state.game.makeSquaresMove(move)) {
+      state = state.copyWith(
+        squaresState: state.game.squaresState(state.player),
+      );
     }
   }
+
+  @override
+  void dispose() {
+    _simulationTimer?.cancel();
+    super.dispose();
+  }
 }
+
+// Provider
+final chessViewModelProvider =
+    StateNotifierProvider<ChessViewModel, ChessGameState>((ref) {
+      return ChessViewModel();
+    });
+
+// UI State Providers
+final flipBoardProvider = StateProvider<bool>((ref) => false);
