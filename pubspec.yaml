@@ -193,18 +193,27 @@ flutter_native_splash:
   image: assets/launch.jpg
   color_dark: "#1a1a1c"
   image_dark: assets/launch.jpg
+
+  # Android 12+ configuration
   android_12:
     image: assets/launch.jpg
     color: "#1a1a1c"
     image_dark: assets/launch.jpg
     color_dark: "#1a1a1c"
+    icon_background_color: "#1a1a1c"
+    icon_background_color_dark: "#1a1a1c"
 
-  # platform.
+  # Platform settings
   android: true
   ios: true
   web: false
+
+  # Fullscreen settings
   fullscreen: true
 
+  # Additional settings for better fullscreen experience
+  android_gravity: fill
+  ios_content_mode: aspectFill
 
 flutter_launcher_icons:
   android: "launcher_icon"
