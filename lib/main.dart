@@ -1,7 +1,7 @@
 import 'package:chessever2/l10n/app_localizations.dart';
 import 'package:chessever2/localization/locale_provider.dart';
 import 'package:chessever2/screens/authentication/auth_screen.dart';
-import 'package:chessever2/screens/chessboard/chess_board_analysis.dart';
+import 'package:chessever2/screens/chessboard/ChessBoardScreen.dart';
 import 'package:chessever2/screens/home_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/players/player_screen.dart';
