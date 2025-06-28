@@ -39,8 +39,8 @@ class _ChessBoardWidgetState extends ConsumerState<ChessBoardWidget> {
 
   @override
   void initState() {
-    super.initState();
     _initializePieceSet();
+    super.initState();
   }
 
   Future<void> _initializePieceSet() async {

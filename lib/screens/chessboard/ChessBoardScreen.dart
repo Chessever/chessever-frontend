@@ -6,7 +6,7 @@ import 'package:chessever2/repository/local_storage/board_settings_repository/bo
 import 'package:chessever2/screens/chessboard/widgets/player_info_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:chessever2/screens/chessboard/widgets/bottom_nav_bar.dart'; // Add this import
+import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart'; // Add this import
 
 class ChessScreen extends ConsumerWidget {
   const ChessScreen({super.key});
@@ -32,91 +32,84 @@ class ChessScreen extends ConsumerWidget {
           // Handle share button press
         },
       ),
-      body: Scaffold(
-        body: SingleChildScrollView(
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Player information - Top (Black)
-                PlayerInfoWidget(
-                  name: 'GM Nakamura, Hikaru',
-                  rating: '2804',
-                  time: '01:04:11',
-                  isTop: true,
-                ),
+      body: SingleChildScrollView(
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Player information - Top (Black)
+              PlayerInfoWidget(
+                name: 'GM Nakamura, Hikaru',
+                rating: '2804',
+                time: '01:04:11',
+                isTop: true,
+              ),
 
-                const SizedBox(height: 8),
+              const SizedBox(height: 8),
 
-                // Chess board
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(8),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
-                          blurRadius: 10,
-                          spreadRadius: 2,
-                        ),
-                      ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: ChessBoardWidget(
-                        boardColor: boardColorEnum,
-                        pieceStyle: boardSettingsValue.pieceStyle.toString(),
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 8),
-
-                // Player information - Bottom (White)
-                PlayerInfoWidget(
-                  name: 'GM Carlsen, Magnus',
-                  rating: '2837',
-                  time: '00:45:36',
-                  isTop: false,
-                ),
-
-                const SizedBox(height: 16),
-
-                // Moves section
-                Container(
-                  width: double.infinity,
-                  margin: const EdgeInsets.symmetric(horizontal: 16),
-                  padding: const EdgeInsets.all(16),
+              // Chess board
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                child: Container(
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.outline.withOpacity(0.2),
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Moves display
-                      _buildMovesText(context, chessState),
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 10,
+                        spreadRadius: 2,
+                      ),
                     ],
                   ),
+                  child: ChessBoardWidget(
+                    boardColor: boardColorEnum,
+                    pieceStyle: boardSettingsValue.pieceStyle.toString(),
+                  ),
                 ),
+              ),
 
-                // Add bottom padding to ensure content doesn't get hidden behind bottom buttons
-                const SizedBox(height: 100),
-              ],
-            ),
+              const SizedBox(height: 8),
+
+              // Player information - Bottom (White)
+              PlayerInfoWidget(
+                name: 'GM Carlsen, Magnus',
+                rating: '2837',
+                time: '00:45:36',
+                isTop: false,
+              ),
+
+              const SizedBox(height: 16),
+
+              // Moves section
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.outline.withOpacity(0.2),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Moves display
+                    _buildMovesText(context, chessState),
+                  ],
+                ),
+              ),
+
+              // Add bottom padding to ensure content doesn't get hidden behind bottom buttons
+              const SizedBox(height: 100),
+            ],
           ),
         ),
-        // Bottom navigation bar with action buttons
-        bottomNavigationBar:
-            const ChessBottomNavBar(), // Use the new component here
       ),
+      bottomNavigationBar: const ChessBoardBottomNavBar(),
     );
   }
 

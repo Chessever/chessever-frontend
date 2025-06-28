@@ -21,7 +21,7 @@ class NetworkImageWidget extends StatelessWidget {
         imageUrl,
         height: height,
         width: double.infinity,
-        fit: BoxFit.contain,
+        fit: BoxFit.fitHeight,
         loadingBuilder: (context, child, loadingProgress) {
           if (loadingProgress == null) {
             return child;

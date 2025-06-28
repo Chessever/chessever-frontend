@@ -213,11 +213,15 @@ class ChessViewModel extends StateNotifier<ChessGameState> {
 
       final defaultMoves = [
         "e4", // 1. e4
-        "e5", // 1... e5
-        "f3", // 2. Nf3
-        "Nc6", // 2... Nc6
-        "Bb5", // 3. Bb5 (Ruy Lopez)
-        "a6", // 3... a6
+        "e6", // 1... e6
+        "d4", // 2. d4
+        "d5", // 2... d5
+        "c3", // 3. Nc3
+        "Qf6", // 3... Nf6
+        "Bg5", // 4. Bg5
+        "Ke7", // 4... Be7
+        "e5", // 5. e5
+        "c5", // 5... Nfd7
       ];
 
       state = state.copyWith(
