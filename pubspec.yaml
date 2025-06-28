@@ -65,6 +65,7 @@ dependencies:
   country_flags: ^3.3.0
   dropdown_button2: ^2.3.9
   country_picker: ^2.0.25
+  shimmer: ^3.0.0
 
 
   #supabase

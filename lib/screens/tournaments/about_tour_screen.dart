@@ -50,6 +50,7 @@ class AboutTourScreen extends ConsumerWidget {
         child: SingleChildScrollView(
           padding: EdgeInsets.zero,
           child: Column(
+            mainAxisAlignment: MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               ClipRRect(
