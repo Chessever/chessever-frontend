@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:chessever2/screens/home_screen.dart';
 import 'package:chessever2/screens/tournaments/providers/tournament_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
@@ -5,6 +7,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/generic_loading_widget.dart';
+import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -93,7 +96,25 @@ class TournamentScreen extends HookConsumerWidget {
                     child: AllEventsTabWidget(filteredEvents: filteredEvents),
                   );
                 },
-                loading: () => GenericLoadingWidget(),
+                loading: () {
+                  final mockData = TourEventCardModel(
+                    id: 'tour_001',
+                    title: 'World Chess Championship 2025',
+                    dates: 'Mar 15 - 25,2025',
+                    location: 'London, UK',
+                    playerCount: 16,
+                    elo: 2800,
+                    timeUntilStart: 'Starts in 8 months',
+                    tourEventCategory: TourEventCategory.live,
+                  );
+                  return Expanded(
+                    child: SkeletonWidget(
+                      child: AllEventsTabWidget(
+                        filteredEvents: List.generate(10, (index) => mockData),
+                      ),
+                    ),
+                  );
+                },
                 error: (error, stackTrace) => GenericErrorWidget(),
               ),
         ],
