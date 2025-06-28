@@ -1,17 +1,18 @@
 {
   "images" : [
     {
-      "filename" : "background.jpg",
-      "idiom" : "universal",
-      "scale" : "1x"
+      "filename" : "background.png",
+      "idiom" : "universal"
     },
     {
-      "idiom" : "universal",
-      "scale" : "2x"
-    },
-    {
-      "idiom" : "universal",
-      "scale" : "3x"
+      "appearances" : [
+        {
+          "appearance" : "luminosity",
+          "value" : "dark"
+        }
+      ],
+      "filename" : "darkbackground.png",
+      "idiom" : "universal"
     }
   ],
   "info" : {
