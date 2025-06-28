@@ -3,8 +3,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_viewmodel.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 
-class ChessBottomNavBar extends ConsumerWidget {
-  const ChessBottomNavBar({super.key});
+class ChessBoardBottomNavBar extends ConsumerWidget {
+  const ChessBoardBottomNavBar({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -12,7 +12,7 @@ class ChessBottomNavBar extends ConsumerWidget {
     final flipBoard = ref.watch(flipBoardProvider);
 
     return Container(
-      height: 150, // Reduced height for better proportions with 24px icons
+      padding: EdgeInsets.symmetric(vertical: 8),
       width: MediaQuery.of(context).size.width,
       decoration: const BoxDecoration(color: Colors.black),
       child: SafeArea(
@@ -81,8 +81,8 @@ class ChessBottomNavBar extends ConsumerWidget {
             // More Options Button
             _buildBottomNavButton(
               context,
-              svgPath:
-                  'assets/svgs/dots_three.svg', // Fixed path (was svgs_dots_three.svg)
+              svgPath: 'assets/svgs/dots_three.svg',
+              // Fixed path (was svgs_dots_three.svg)
               onPressed: () {
                 _showMoreOptions(context, ref, flipBoard);
               },
