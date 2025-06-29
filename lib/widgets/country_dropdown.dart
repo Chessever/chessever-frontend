@@ -1,6 +1,7 @@
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
@@ -36,17 +37,17 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
   Widget build(BuildContext context) {
     final borderRadius =
         isDropDownOpen
-            ? const BorderRadius.only(
-              topLeft: Radius.circular(8),
-              topRight: Radius.circular(8),
+            ? BorderRadius.only(
+              topLeft: Radius.circular(8.br),
+              topRight: Radius.circular(8.br),
               bottomLeft: Radius.zero,
               bottomRight: Radius.zero,
             )
             : BorderRadius.circular(8);
 
-    final dropDownBorderRadius = const BorderRadius.only(
-      bottomLeft: Radius.circular(8),
-      bottomRight: Radius.circular(8),
+    final dropDownBorderRadius = BorderRadius.only(
+      bottomLeft: Radius.circular(8.br),
+      bottomRight: Radius.circular(8.br),
       topLeft: Radius.zero,
       topRight: Radius.zero,
     );
@@ -58,23 +59,21 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
       borderRadius: borderRadius,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        height: 40, // Set fixed height to 40px
+        height: 40.h, // Set fixed height to 40px
         decoration: BoxDecoration(
           color: kBackgroundColor,
           borderRadius: borderRadius,
           border:
               isDropDownOpen
                   ? null
-                  : Border.all(color: kDarkGreyColor, width: 1),
+                  : Border.all(color: kDarkGreyColor, width: 1.w),
         ),
         child: DropdownButtonHideUnderline(
           child: DropdownButton2<String>(
             isExpanded: true,
             customButton: Container(
-              height: 40, // Match container height
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12,
-              ), // Proper padding
+              height: 40.h, // Match container height
+              padding: EdgeInsets.symmetric(horizontal: 12.sp), // Proper padding
               child: Row(
                 children: [
                   Expanded(
@@ -89,19 +88,19 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  const SizedBox(width: 12), // 12px gap
+                  SizedBox(width: 12.w), // 12px gap
                   CountryFlag.fromCountryCode(
                     selectedCountryCode,
-                    width: 16,
-                    height: 12,
+                    width: 16.w,
+                    height: 12.h,
                   ),
-                  const SizedBox(width: 8),
+                  SizedBox(width: 8.w),
                   Icon(
                     isDropDownOpen
                         ? Icons.keyboard_arrow_up
                         : Icons.keyboard_arrow_down,
                     color: kWhiteColor,
-                    size: 20,
+                    size: 20.ic,
                   ),
                 ],
               ),
@@ -114,14 +113,14 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
                 borderRadius: dropDownBorderRadius,
                 border: Border.all(color: kDarkGreyColor),
               ),
-              maxHeight: 240,
+              maxHeight: 240.h,
             ),
-            buttonStyleData: const ButtonStyleData(
-              height: 40,
+            buttonStyleData: ButtonStyleData(
+              height: 40.h,
               padding: EdgeInsets.zero,
             ),
-            menuItemStyleData: const MenuItemStyleData(
-              height: 40,
+            menuItemStyleData: MenuItemStyleData(
+              height: 40.h,
               padding: EdgeInsets.zero,
             ),
             value: selectedCountryCode,
@@ -143,20 +142,20 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
                 child: Container(
                   decoration: BoxDecoration(
                     border: Border(
-                      bottom: BorderSide(color: kDarkGreyColor, width: 1),
+                      bottom: BorderSide(color: kDarkGreyColor, width: 1.w),
                     ),
                   ),
-                  height: 40,
+                  height: 40.h,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.start,
                     children: [
-                      SizedBox(width: 16),
+                      SizedBox(width: 16.w),
                       CountryFlag.fromCountryCode(
                         country.countryCode,
-                        width: 16,
-                        height: 12,
+                        width: 16.w,
+                        height: 12.h,
                       ),
-                      SizedBox(width: 8),
+                      SizedBox(width: 8.w),
                       Expanded(
                         child: Text(
                           country.name,

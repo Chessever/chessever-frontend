@@ -1,5 +1,6 @@
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/filter_popup.dart';
 import 'package:chessever2/widgets/icons/analysis_board_icon.dart';
@@ -24,9 +25,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox(height: 24 + MediaQuery.of(context).viewPadding.top),
+          SizedBox(height: 24.h + MediaQuery.of(context).viewPadding.top),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: EdgeInsets.symmetric(horizontal: 16.sp),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -49,7 +50,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                         // Show the filter popup
                         showDialog(
                           context: context,
-                          barrierColor: Colors.black.withOpacity(0.5),
+                          barrierColor: kLightBlack,
                           builder: (context) => const FilterPopup(),
                         );
                       },
@@ -58,13 +59,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 ),
 
                 // Small spacing between search bar and dropdown
-                const SizedBox(width: 16),
+                SizedBox(width: 16.w),
                 Container(
-                  padding: EdgeInsets.all(8),
+                  padding: EdgeInsets.all(8.br),
                   decoration: _boxDecoration,
-                  child: AnalysisBoardIcon(size: 24),
+                  child: AnalysisBoardIcon(size: 24.ic),
                 ),
-                const SizedBox(width: 16),
+                SizedBox(width: 16.w),
                 _PlusIcon(),
               ],
             ),
@@ -85,13 +86,13 @@ class _ComingSoonWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        SvgWidget(SvgAsset.bookIcon, width: 64, height: 64),
-        const SizedBox(height: 12),
+        SvgWidget(SvgAsset.bookIcon, width: 64.w, height: 64.h),
+        SizedBox(height: 12.h),
         Text(
           'Library Coming Soon',
           style: AppTypography.textLgMedium.copyWith(color: kWhiteColor),
         ),
-        const SizedBox(width: 8),
+        SizedBox(width: 8.w),
         Text(
           'Your personal library will be\navailable in a future update.',
           style: AppTypography.textMdRegular.copyWith(color: kInactiveTabColor),
@@ -103,7 +104,7 @@ class _ComingSoonWidget extends StatelessWidget {
 
 final _boxDecoration = BoxDecoration(
   color: kBlack2Color,
-  borderRadius: BorderRadius.circular(2),
+  borderRadius: BorderRadius.circular(2.br),
 );
 
 class _PlusIcon extends StatelessWidget {
@@ -112,9 +113,9 @@ class _PlusIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.all(8),
+      padding: EdgeInsets.all(8.sp),
       decoration: _boxDecoration,
-      child: const Icon(Icons.add_rounded, color: Colors.white, size: 24),
+      child: Icon(Icons.add_rounded, color: Colors.white, size: 24.ic),
     );
   }
 }

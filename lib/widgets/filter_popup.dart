@@ -1,11 +1,12 @@
-import 'dart:ui';
+import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/back_drop_filter_widget.dart';
 
 class FilterPopup extends StatefulWidget {
-  const FilterPopup({Key? key}) : super(key: key);
+  const FilterPopup({super.key});
 
   @override
   State<FilterPopup> createState() => _FilterPopupState();
@@ -28,9 +29,9 @@ class _FilterPopupState extends State<FilterPopup> {
   @override
   Widget build(BuildContext context) {
     // Use fixed dimensions for the popup
-    const double dialogWidth = 280.0;
-    const double horizontalPadding = 20.0;
-    const double verticalPadding = 16.0;
+    final dialogWidth = 280.w;
+    final horizontalPadding = 20.w;
+    final verticalPadding = 16.h;
 
     return GestureDetector(
       // Close the dialog when tapping outside
@@ -49,12 +50,12 @@ class _FilterPopupState extends State<FilterPopup> {
               child: Container(
                 width: dialogWidth,
                 constraints: BoxConstraints(
-                  maxHeight: 448, // Fixed height as specified
+                  maxHeight: 448.h, // Fixed height as specified
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.black,
+                  color: kBlackColor,
                   borderRadius: BorderRadius.circular(
-                    4,
+                    4.br,
                   ), // Changed from 16px to 4px
                 ),
                 child: Column(
@@ -65,7 +66,7 @@ class _FilterPopupState extends State<FilterPopup> {
                     Flexible(
                       child: SingleChildScrollView(
                         child: Padding(
-                          padding: const EdgeInsets.only(
+                          padding: EdgeInsets.only(
                             left: horizontalPadding,
                             right: horizontalPadding,
                             top: verticalPadding,
@@ -74,34 +75,35 @@ class _FilterPopupState extends State<FilterPopup> {
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               // Tournament Type
                               Text(
                                 'Tournament Type',
                                 style: AppTypography.textXsMedium.copyWith(
-                                  color: Colors.white,
+                                  color: kWhiteColor,
                                 ),
                               ),
-                              const SizedBox(height: 8),
+                              SizedBox(height: 8.h),
                               Container(
-                                height: 40,
+                                height: 40.h,
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF1A1A1C),
-                                  borderRadius: BorderRadius.circular(8),
+                                  color: kBlack2Color,
+                                  borderRadius: BorderRadius.circular(8.br),
                                 ),
                                 child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 16.sp,
                                   ),
                                   child: DropdownButtonHideUnderline(
                                     child: DropdownButton<String>(
                                       value: _selectedType,
                                       icon: const Icon(
                                         Icons.keyboard_arrow_down,
-                                        color: Colors.white,
+                                        color: kWhiteColor,
                                       ),
                                       isExpanded: true,
-                                      dropdownColor: const Color(0xFF1A1A1C),
+                                      dropdownColor: kBlack2Color,
                                       style: AppTypography.textXsMedium
                                           .copyWith(color: Colors.white),
                                       onChanged: (String? newValue) {
@@ -126,7 +128,7 @@ class _FilterPopupState extends State<FilterPopup> {
                                                 style: AppTypography
                                                     .textXsMedium
                                                     .copyWith(
-                                                      color: Colors.white,
+                                                      color: kWhiteColor,
                                                     ),
                                               ),
                                             );
@@ -137,14 +139,14 @@ class _FilterPopupState extends State<FilterPopup> {
                               ),
 
                               // Format
-                              const SizedBox(height: 24),
+                              SizedBox(height: 24.h),
                               Text(
                                 'Format',
                                 style: AppTypography.textXsMedium.copyWith(
-                                  color: Colors.white,
+                                  color: kWhiteColor,
                                 ),
                               ),
-                              const SizedBox(height: 8),
+                              SizedBox(height: 8.h),
                               GestureDetector(
                                 onTap: () {
                                   setState(() {
@@ -152,16 +154,16 @@ class _FilterPopupState extends State<FilterPopup> {
                                   });
                                 },
                                 child: Container(
-                                  height: 40,
+                                  height: 40.h,
                                   decoration: BoxDecoration(
                                     color:
                                         _isFormatExpanded
                                             ? kPrimaryColor
-                                            : const Color(0xFF1A1A1C),
-                                    borderRadius: BorderRadius.circular(8),
+                                            : kBlack2Color,
+                                    borderRadius: BorderRadius.circular(8.br),
                                   ),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 16.sp,
                                   ),
                                   child: Row(
                                     mainAxisAlignment:
@@ -173,8 +175,8 @@ class _FilterPopupState extends State<FilterPopup> {
                                             .copyWith(
                                               color:
                                                   _isFormatExpanded
-                                                      ? Colors.black
-                                                      : Colors.white,
+                                                      ? kBlackColor
+                                                      : kWhiteColor,
                                             ),
                                       ),
                                       Icon(
@@ -183,9 +185,9 @@ class _FilterPopupState extends State<FilterPopup> {
                                             : Icons.keyboard_arrow_down,
                                         color:
                                             _isFormatExpanded
-                                                ? Colors.black
-                                                : Colors.white,
-                                        size: 24,
+                                                ? kBlackColor
+                                                : kWhiteColor,
+                                        size: 24.ic,
                                       ),
                                     ],
                                   ),
@@ -194,27 +196,19 @@ class _FilterPopupState extends State<FilterPopup> {
                               // Format expansion container - moved outside of the if statement
                               _isFormatExpanded
                                   ? Container(
-                                    margin: const EdgeInsets.only(
-                                      top: 4,
+                                    margin: EdgeInsets.only(
+                                      top: 4.sp,
                                     ), // Changed from 1px to 4px gap
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFF1A1A1C),
-                                      borderRadius: BorderRadius.circular(8),
+                                      color: kBlack2Color,
+                                      borderRadius: BorderRadius.circular(8.br),
                                     ),
                                     child: Column(
                                       children: [
                                         _buildFormatOption('Classical'),
-                                        const Divider(
-                                          height: 1,
-                                          thickness: 0.5,
-                                          color: Color(0xFF2C2C2E),
-                                        ),
+                                        DividerWidget(),
                                         _buildFormatOption('Rapid'),
-                                        const Divider(
-                                          height: 1,
-                                          thickness: 0.5,
-                                          color: Color(0xFF2C2C2E),
-                                        ),
+                                        DividerWidget(),
                                         _buildFormatOption('Blitz'),
                                       ],
                                     ),
@@ -222,22 +216,22 @@ class _FilterPopupState extends State<FilterPopup> {
                                   : const SizedBox.shrink(),
 
                               // Players
-                              const SizedBox(height: 20),
+                              SizedBox(height: 20.h),
                               Text(
                                 'Players',
                                 style: AppTypography.textXsMedium.copyWith(
-                                  color: Colors.white,
+                                  color: kWhiteColor,
                                 ),
                               ),
-                              const SizedBox(height: 8),
+                              SizedBox(height: 8.h),
                               Container(
-                                height: 40,
+                                height: 40.h,
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF1A1A1C),
-                                  borderRadius: BorderRadius.circular(8),
+                                  color: kBlack2Color,
+                                  borderRadius: BorderRadius.circular(8.br),
                                 ),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 16.sp,
                                 ),
                                 child: Center(
                                   child: TextField(
@@ -245,39 +239,35 @@ class _FilterPopupState extends State<FilterPopup> {
                                     decoration: InputDecoration(
                                       hintText: 'Search by player name',
                                       hintStyle: AppTypography.textXsMedium
-                                          .copyWith(
-                                            color: Colors.white.withOpacity(
-                                              0.6,
-                                            ),
-                                          ),
+                                          .copyWith(color: kWhiteColor70),
                                       border: InputBorder.none,
                                       isDense: true,
                                       contentPadding: EdgeInsets.zero,
                                     ),
                                     style: AppTypography.textXsMedium.copyWith(
-                                      color: Colors.white,
+                                      color: kWhiteColor,
                                     ),
                                   ),
                                 ),
                               ),
 
                               // Country
-                              const SizedBox(height: 20),
+                              SizedBox(height: 20.h),
                               Text(
                                 'Country',
                                 style: AppTypography.textXsMedium.copyWith(
-                                  color: Colors.white,
+                                  color: kWhiteColor,
                                 ),
                               ),
-                              const SizedBox(height: 8),
+                              SizedBox(height: 8.h),
                               Container(
-                                height: 40,
+                                height: 40.h,
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF1A1A1C),
-                                  borderRadius: BorderRadius.circular(8),
+                                  color: kBlack2Color,
+                                  borderRadius: BorderRadius.circular(8.br),
                                 ),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 16.sp,
                                 ),
                                 child: Center(
                                   child: TextField(
@@ -285,24 +275,20 @@ class _FilterPopupState extends State<FilterPopup> {
                                     decoration: InputDecoration(
                                       hintText: 'Search by country or city',
                                       hintStyle: AppTypography.textXsMedium
-                                          .copyWith(
-                                            color: Colors.white.withOpacity(
-                                              0.6,
-                                            ),
-                                          ),
+                                          .copyWith(color: kWhiteColor70),
                                       border: InputBorder.none,
                                       isDense: true,
                                       contentPadding: EdgeInsets.zero,
                                     ),
                                     style: AppTypography.textXsMedium.copyWith(
-                                      color: Colors.white,
+                                      color: kWhiteColor,
                                     ),
                                   ),
                                 ),
                               ),
 
                               // Add space at the bottom for padding
-                              const SizedBox(height: 16),
+                              SizedBox(height: 16.h),
                             ],
                           ),
                         ),
@@ -311,14 +297,14 @@ class _FilterPopupState extends State<FilterPopup> {
 
                     // Buttons - Keep outside the scrollable area to remain fixed at the bottom
                     Padding(
-                      padding: const EdgeInsets.all(20),
+                      padding: EdgeInsets.all(20.sp),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           // Reset button (left) with fixed width
                           SizedBox(
-                            width: 116,
-                            height: 40,
+                            width: 116.w,
+                            height: 40.h,
                             child: OutlinedButton(
                               onPressed: () {
                                 setState(() {
@@ -329,23 +315,18 @@ class _FilterPopupState extends State<FilterPopup> {
                                 });
                               },
                               style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.white,
+                                foregroundColor: kWhiteColor,
                                 backgroundColor: kBlack2Color,
                                 side: BorderSide.none,
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(4),
+                                  borderRadius: BorderRadius.circular(4.br),
                                 ),
                                 padding: EdgeInsets.zero,
                               ),
                               child: Text(
                                 'Reset',
-                                style: const TextStyle(
-                                  fontFamily: 'InterDisplay',
-                                  fontWeight: FontWeight.w500,
-                                  fontSize: 12,
-                                  height:
-                                      1, // Adjusted line height to prevent wrapping
-                                  color: Colors.white,
+                                style: AppTypography.textSmMedium.copyWith(
+                                  color: kWhiteColor,
                                 ),
                                 maxLines: 1, // Force single line
                                 overflow: TextOverflow.visible, // Show all text
@@ -354,8 +335,8 @@ class _FilterPopupState extends State<FilterPopup> {
                           ),
                           // Apply button (right) with fixed width
                           SizedBox(
-                            width: 116,
-                            height: 40,
+                            width: 116.w,
+                            height: 40.h,
                             child: ElevatedButton(
                               onPressed: () {
                                 // Apply filters and close dialog
@@ -363,24 +344,17 @@ class _FilterPopupState extends State<FilterPopup> {
                               },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: kPrimaryColor,
-                                foregroundColor: Colors.black,
+                                foregroundColor: kBlackColor,
                                 elevation: 0,
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(4),
+                                  borderRadius: BorderRadius.circular(4.br),
                                 ),
                                 padding:
                                     EdgeInsets.zero, // Remove default padding
                               ),
                               child: Text(
                                 'Apply Filters',
-                                style: const TextStyle(
-                                  fontFamily: 'InterDisplay',
-                                  fontWeight: FontWeight.w500,
-                                  fontSize: 12,
-                                  height:
-                                      1, // Adjusted line height to prevent wrapping
-                                  color: Colors.black,
-                                ),
+                                style: AppTypography.textSmMedium,
                                 maxLines: 1, // Force single line
                                 overflow: TextOverflow.visible, // Show all text
                               ),
@@ -410,17 +384,17 @@ class _FilterPopupState extends State<FilterPopup> {
         });
       },
       child: Container(
-        height: 40, // Match height of other inputs
-        padding: const EdgeInsets.symmetric(
-          horizontal: 16,
-        ), // Match other inputs
+        height: 40.h,
+        // Match height of other inputs
+        padding: EdgeInsets.symmetric(horizontal: 16.sp),
+        // Match other inputs
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF2C2C2E) : Colors.transparent,
+          color: isSelected ? kDividerColor : Colors.transparent,
         ),
         alignment: Alignment.centerLeft,
         child: Text(
           format,
-          style: AppTypography.textXsMedium.copyWith(color: Colors.white),
+          style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
         ),
       ),
     );

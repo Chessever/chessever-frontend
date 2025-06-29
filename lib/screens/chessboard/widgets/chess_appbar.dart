@@ -1,4 +1,5 @@
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 
@@ -23,7 +24,9 @@ class ChessMatchAppBar extends StatelessWidget implements PreferredSizeWidget {
   Widget build(BuildContext context) {
     return AppBar(
       leading: IconButton(
-        icon: const SvgWidget(
+        icon: SvgWidget(
+          height: 20.h,
+          width: 20.w,
           'assets/svgs/left_arrow.svg',
           semanticsLabel: 'Back',
         ),
@@ -37,14 +40,21 @@ class ChessMatchAppBar extends StatelessWidget implements PreferredSizeWidget {
             style: AppTypography.textSmBold.copyWith(color: Colors.white),
           ),
           SizedBox(width: 7),
-          SvgWidget('assets/svgs/arrow_down.svg', semanticsLabel: 'Back'),
+          SvgWidget(
+            height: 20.h,
+            width: 20.w,
+            'assets/svgs/arrow_down.svg',
+            semanticsLabel: 'Back',
+          ),
         ],
       ),
       centerTitle: true,
       actions: [
         IconButton(
           // icon: Icon(Icons.create_new_folder_outlined),
-          icon: const SvgWidget(
+          icon: SvgWidget(
+            height: 20.h,
+            width: 20.w,
             'assets/svgs/folderPlus.svg',
             semanticsLabel: 'Settings',
           ),
@@ -52,7 +62,9 @@ class ChessMatchAppBar extends StatelessWidget implements PreferredSizeWidget {
         ),
         IconButton(
           // icon: Icon(Icons.share),
-          icon: const SvgWidget(
+          icon: SvgWidget(
+            height: 20.h,
+            width: 20.w,
             'assets/svgs/share.svg',
             semanticsLabel: 'Share',
           ),

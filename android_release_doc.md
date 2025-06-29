@@ -1,16 +1,3 @@
-##Generate Debug SHA :
-
-Debug SHA
-
-   ```
-keytool -list -v \
--alias androiddebugkey \
--keystore ~/.android/debug.keystore \
--storepass android \
--keypass android
-   ```
-
-##Generate Debug SHA :
 Place the my-release-key.jks in
 
    ```
@@ -34,3 +21,18 @@ keytool -list -v \
    ```
 
 from your project directory using terminal
+
+
+
+
+##Generate Debug SHA :
+
+Debug SHA
+
+   ```
+keytool -list -v \
+-alias androiddebugkey \
+-keystore ~/.android/debug.keystore \
+-storepass android \
+-keypass android
+   ```

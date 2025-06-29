@@ -3,6 +3,7 @@ import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/screens/authentication/auth_screen_state.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/png_asset.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/auth_button.dart';
@@ -56,19 +57,19 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           children: [
             Hero(tag: 'blur', child: BlurBackground()),
             Positioned(
-              top: (MediaQuery.of(context).size.height / 2) - 69,
-              left: (MediaQuery.of(context).size.width / 2) - 60,
+              top: (MediaQuery.of(context).size.height / 2) - 69.sp,
+              left: (MediaQuery.of(context).size.width / 2) - 60.sp,
               child: Column(
                 children: [
                   Hero(
                     tag: 'premium-icon',
                     child: Image.asset(
                       PngAsset.premiumIcon,
-                      height: 120,
-                      width: 120,
+                      height: 120.h,
+                      width: 120.w,
                     ),
                   ),
-                  Image.asset(PngAsset.chesseverIcon, height: 18),
+                  Image.asset(PngAsset.chesseverIcon, height: 18.h),
                 ],
               ),
             ),
@@ -77,9 +78,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 alignment: Alignment.bottomCenter,
                 child: Container(
                   padding: EdgeInsets.only(
-                    bottom: MediaQuery.of(context).viewPadding.bottom + 28,
-                    left: 28,
-                    right: 28,
+                    bottom: MediaQuery.of(context).viewPadding.bottom + 28.sp,
+                    left: 28.sp,
+                    right: 28.sp,
                   ),
                   child: AuthButton(
                     signInTitle:
@@ -167,15 +168,15 @@ class _AuthCountryDropdownWidget extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 48),
+              padding: EdgeInsets.symmetric(horizontal: 48.sp),
               child: Text(
                 'Select Your Country',
                 style: AppTypography.textSmBold,
               ),
             ),
-            const SizedBox(height: 4),
+            SizedBox(height: 4.h),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 48),
+              padding: EdgeInsets.symmetric(horizontal: 48.sp),
               width: MediaQuery.of(context).size.width,
               //todo: Get and Set CountryCode here
               child: CountryDropdown(

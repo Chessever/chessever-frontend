@@ -1,5 +1,6 @@
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../utils/app_typography.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/rounded_search_bar.dart';
@@ -76,12 +77,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       ),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          padding: EdgeInsets.symmetric(horizontal: 16.sp),
           child: Column(
             children: [
               // Search bar
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16.0),
+                padding: EdgeInsets.symmetric(vertical: 16.sp),
                 child: RoundedSearchBar(
                   controller: _searchController,
                   onChanged: (value) {
@@ -100,7 +101,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
               // Column headers
               Padding(
-                padding: const EdgeInsets.only(bottom: 16.0, top: 8.0),
+                padding: EdgeInsets.only(bottom: 16.sp, top: 8.sp),
                 child: DefaultTextStyle(
                   style: AppTypography.textSmMedium.copyWith(
                     color: kWhiteColor,
@@ -108,22 +109,36 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Expanded(flex: 3, child: Text('Player')),
+                      Expanded(
+                        flex: 3,
+                        child: Text(
+                          'Player',
+                          style: AppTypography.textSmMedium,
+                        ),
+                      ),
 
                       // Elo header - right aligned to match player card
                       Expanded(
                         flex: 1,
-                        child: Text('Elo', textAlign: TextAlign.center),
+                        child: Text(
+                          'Elo',
+                          style: AppTypography.textSmMedium,
+                          textAlign: TextAlign.center,
+                        ),
                       ),
 
                       // Age header - center aligned to match player card
-                      const Expanded(
+                      Expanded(
                         flex: 1,
-                        child: Text('Age', textAlign: TextAlign.center),
+                        child: Text(
+                          'Age',
+                          style: AppTypography.textSmMedium,
+                          textAlign: TextAlign.center,
+                        ),
                       ),
 
                       // Space for favorite icon
-                      const SizedBox(width: 30),
+                      SizedBox(width: 30.w),
                     ],
                   ),
                 ),
@@ -145,7 +160,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                           ),
                         ),
                       ),
-                  data: (_) => _buildPlayerList(ref),
+                  data: (_) => _PlayerList(),
                 ),
               ),
             ],
@@ -154,8 +169,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       ),
     );
   }
+}
 
-  Widget _buildPlayerList(WidgetRef ref) {
+class _PlayerList extends ConsumerWidget {
+  const _PlayerList({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
     final filteredPlayers = ref.watch(filteredPlayersProvider);
 
     if (filteredPlayers.isEmpty) {

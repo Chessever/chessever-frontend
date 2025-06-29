@@ -14,6 +14,7 @@ import 'package:chessever2/screens/tournaments/tournament_detail_view.dart';
 import 'package:chessever2/screens/tournaments/tournament_screen.dart';
 import 'package:chessever2/screens/calendar_screen.dart';
 import 'package:chessever2/services/settings_manager.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:device_preview_plus/device_preview_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -76,6 +77,8 @@ class _MyAppState extends ConsumerState<MyApp> {
     final themeMode = ref.watch(themeModeProvider);
     final locale = ref.watch(localeProvider);
 
+    ///Initializing  Responsive Unit
+    ResponsiveHelper.init(context);
     return MaterialApp(
       locale: locale,
       supportedLocales: AppLocalizations.supportedLocales,

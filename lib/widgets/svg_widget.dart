@@ -5,8 +5,8 @@ import 'package:flutter_svg/flutter_svg.dart';
 class SvgWidget extends StatelessWidget {
   const SvgWidget(
     this.path, {
-    this.height = 20.0,
-    this.width = 20.0,
+    required this.height,
+    required this.width,
     this.semanticsLabel,
     this.colorFilter,
     this.fallback,

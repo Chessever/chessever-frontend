@@ -1,4 +1,5 @@
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import '../utils/app_typography.dart';
@@ -78,7 +79,7 @@ class _AuthButtonState extends State<AuthButton>
         );
       },
       child: Container(
-        height: widget.height,
+        height: widget.height.h,
         width: widget.width ?? MediaQuery.of(context).size.width,
         padding: widget.padding,
         decoration: BoxDecoration(
@@ -100,11 +101,15 @@ class _AuthButtonState extends State<AuthButton>
             children: [
               SvgWidget(
                 widget.svgIconPath,
-                height: 24,
-                width: 24,
-                fallback: Icon(Icons.apple, size: 24, color: kBackgroundColor),
+                height: 24.h,
+                width: 24.w,
+                fallback: Icon(
+                  Icons.apple,
+                  size: 24.ic,
+                  color: kBackgroundColor,
+                ),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: 12.w),
               Text(
                 widget.signInTitle,
                 style: AppTypography.textLgMedium.copyWith(

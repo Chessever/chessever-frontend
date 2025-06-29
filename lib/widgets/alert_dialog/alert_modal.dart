@@ -1,14 +1,13 @@
 import 'dart:ui';
-import 'package:chessever2/widgets/blur_background.dart';
 import 'package:flutter/material.dart';
 
 void showAlertModal({
   required BuildContext context,
   required Widget child,
+  required double horizontalPadding,
+  required double verticalPadding,
   Color? backgroundColor,
   bool barrierDismissible = true,
-  double horizontalPadding = 24.0,
-  double verticalPadding = 24.0,
   Color barrierColor =
       Colors.black54, // Changed default to semi-transparent black
 }) => showDialog(

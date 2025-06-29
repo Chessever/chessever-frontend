@@ -1,4 +1,7 @@
-import 'dart:ui';
+import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/blur_background.dart';
+import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -6,7 +9,7 @@ import '../providers/board_settings_provider.dart';
 import 'board_color_dialog.dart';
 
 class BoardSettingsDialog extends ConsumerWidget {
-  const BoardSettingsDialog({Key? key}) : super(key: key);
+  const BoardSettingsDialog({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -19,29 +22,26 @@ class BoardSettingsDialog extends ConsumerWidget {
         children: [
           // Backdrop filter for blur effect
           Positioned.fill(
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-              child: Container(color: Colors.black.withOpacity(0.3)),
-            ),
+            child: BlurBackground(),
           ),
           // Dialog content
           Dialog(
             backgroundColor: Colors.transparent,
-            insetPadding: const EdgeInsets.symmetric(
-              horizontal: 24.0,
-              vertical: 24.0,
+            insetPadding: EdgeInsets.symmetric(
+              horizontal: 24.sp,
+              vertical: 24.sp,
             ),
             // Prevent dialog from closing when clicking on the dialog itself
             child: GestureDetector(
               onTap: () {}, // Absorb the tap
               child: Container(
-                width: 180.5,
+                width: 180.5.w,
                 decoration: BoxDecoration(
                   color: kPopUpColor,
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(20.br),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
+                      color: kBlackColor.withOpacity(0.3),
                       blurRadius: 10,
                       spreadRadius: 1,
                     ),
@@ -50,7 +50,7 @@ class BoardSettingsDialog extends ConsumerWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _buildMenuItem(
+                    _MenuItem(
                       icon: Icons.palette_outlined,
                       title: 'Set board colour',
                       onPressed: () {
@@ -61,12 +61,8 @@ class BoardSettingsDialog extends ConsumerWidget {
                       },
                       showChevron: false,
                     ),
-                    const Divider(
-                      height: 1,
-                      thickness: 0.5,
-                      color: Color(0xFF2C2C2E),
-                    ),
-                    _buildSwitchItem(
+                    DividerWidget(),
+                    _SwitchItem(
                       title: 'Evaluation bar',
                       value: boardSettings.showEvaluationBar,
                       onChanged: (value) {
@@ -75,12 +71,8 @@ class BoardSettingsDialog extends ConsumerWidget {
                             .toggleEvaluationBar();
                       },
                     ),
-                    const Divider(
-                      height: 1,
-                      thickness: 0.5,
-                      color: Color(0xFF2C2C2E),
-                    ),
-                    _buildSwitchItem(
+                    DividerWidget(),
+                    _SwitchItem(
                       title: 'Sound',
                       value: boardSettings.soundEnabled,
                       onChanged: (_) {
@@ -88,12 +80,8 @@ class BoardSettingsDialog extends ConsumerWidget {
                         ref.read(boardSettingsProvider.notifier).toggleSound();
                       },
                     ),
-                    const Divider(
-                      height: 1,
-                      thickness: 0.5,
-                      color: Color(0xFF2C2C2E),
-                    ),
-                    _buildSwitchItem(
+                    DividerWidget(),
+                    _SwitchItem(
                       title: 'Chat',
                       value: boardSettings.chatEnabled,
                       onChanged: (_) {
@@ -110,40 +98,42 @@ class BoardSettingsDialog extends ConsumerWidget {
       ),
     );
   }
+}
 
-  Widget _buildMenuItem({
-    IconData? icon,
-    Widget? customIcon,
-    required String title,
-    required VoidCallback onPressed,
-    required bool showChevron,
-  }) {
-    return Container(
-      height: 36,
+class _MenuItem extends StatelessWidget {
+  const _MenuItem({
+    this.icon,
+    this.customIcon,
+    required this.title,
+    required this.onPressed,
+    required this.showChevron,
+    super.key,
+  });
+
+  final IconData? icon;
+  final Widget? customIcon;
+  final String title;
+  final VoidCallback onPressed;
+  final bool showChevron;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 36.h,
       child: InkWell(
         onTap: onPressed,
         child: Padding(
-          padding: const EdgeInsets.all(8),
+          padding: EdgeInsets.all(8.sp),
           child: Row(
             children: [
-              customIcon ?? Icon(icon!, color: kWhiteColor, size: 20),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    fontFamily: 'InterDisplay',
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: kWhiteColor,
-                  ),
-                ),
-              ),
+              customIcon ?? Icon(icon!, color: kWhiteColor, size: 20.ic),
+              SizedBox(width: 4.w),
+              Expanded(child: Text(title, style: AppTypography.textXsRegular)),
               if (showChevron)
                 Icon(
                   Icons.chevron_right_outlined,
                   color: kWhiteColor,
-                  size: 20,
+                  size: 20.ic,
                 ),
             ],
           ),
@@ -151,43 +141,43 @@ class BoardSettingsDialog extends ConsumerWidget {
       ),
     );
   }
+}
 
-  Widget _buildSwitchItem({
-    required String title,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
-    return Container(
-      height: 36,
+class _SwitchItem extends StatelessWidget {
+  const _SwitchItem({
+    required this.title,
+    required this.value,
+    required this.onChanged,
+    super.key,
+  });
+
+  final String title;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 36.h,
       child: InkWell(
         onTap: () => onChanged(!value),
         child: Padding(
-          padding: const EdgeInsets.all(8),
+          padding: EdgeInsets.all(8.sp),
           child: Row(
             children: [
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    fontFamily: 'InterDisplay',
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: kWhiteColor,
-                  ),
-                ),
-              ),
+              Expanded(child: Text(title, style: AppTypography.textXsRegular)),
               SizedBox(
-                width: 34,
-                height: 20,
+                width: 34.w,
+                height: 20.h,
                 child: FittedBox(
                   fit: BoxFit.fill,
                   child: Switch.adaptive(
                     value: value,
                     onChanged: onChanged,
-                    activeColor: Colors.white,
+                    activeColor: kWhiteColor,
                     activeTrackColor: kPrimaryColor,
-                    inactiveThumbColor: Colors.white,
-                    inactiveTrackColor: Colors.grey.withOpacity(0.3),
+                    inactiveThumbColor: kWhiteColor,
+                    inactiveTrackColor: kDarkGreyColor,
                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                 ),

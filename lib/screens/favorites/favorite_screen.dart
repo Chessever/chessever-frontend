@@ -1,6 +1,6 @@
-// filepath: /Users/p1/Desktop/chessever/lib/screens/favorites/favorite_screen.dart
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/app_typography.dart';
 import '../../widgets/rounded_search_bar.dart';
@@ -80,12 +80,12 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen>
       ),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          padding: EdgeInsets.symmetric(horizontal: 16.sp),
           child: Column(
             children: [
               // Search bar
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16.0),
+                padding: EdgeInsets.symmetric(vertical: 16.sp),
                 child: RoundedSearchBar(
                   controller: _searchController,
                   onChanged: (value) {
@@ -104,7 +104,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen>
 
               // Column headers
               Padding(
-                padding: const EdgeInsets.only(bottom: 16.0, top: 8.0),
+                padding: EdgeInsets.only(bottom: 16.sp, top: 8.sp),
                 child: DefaultTextStyle(
                   style: AppTypography.textSmMedium.copyWith(
                     color: kWhiteColor,
@@ -113,22 +113,36 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen>
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       // Player header - left-aligned
-                      const Expanded(flex: 3, child: Text('Player')),
+                      Expanded(
+                        flex: 3,
+                        child: Text(
+                          'Player',
+                          style: AppTypography.textSmMedium,
+                        ),
+                      ),
 
                       // Elo header - center-aligned to match player screen
                       Expanded(
                         flex: 1,
-                        child: Text('Elo', textAlign: TextAlign.center),
+                        child: Text(
+                          'Elo',
+                          style: AppTypography.textSmMedium,
+                          textAlign: TextAlign.center,
+                        ),
                       ),
 
                       // Age header - center-aligned
-                      const Expanded(
+                      Expanded(
                         flex: 1,
-                        child: Text('Age', textAlign: TextAlign.center),
+                        child: Text(
+                          'Age',
+                          style: AppTypography.textSmMedium,
+                          textAlign: TextAlign.center,
+                        ),
                       ),
 
                       // Space for favorite icon
-                      const SizedBox(width: 30),
+                      SizedBox(width: 30.w),
                     ],
                   ),
                 ),
@@ -152,7 +166,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen>
                       ),
                   data:
                       (favoritePlayers) =>
-                          _buildFavoritesList(ref, favoritePlayers),
+                          _FavoritesList(favoritePlayers: favoritePlayers),
                 ),
               ),
             ],
@@ -161,11 +175,15 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen>
       ),
     );
   }
+}
 
-  Widget _buildFavoritesList(
-    WidgetRef ref,
-    List<Map<String, dynamic>> favoritePlayers,
-  ) {
+class _FavoritesList extends ConsumerWidget {
+  const _FavoritesList({required this.favoritePlayers, super.key});
+
+  final List<Map<String, dynamic>> favoritePlayers;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
     final searchQuery = ref.watch(_favoriteSearchQueryProvider);
 
     // Filter favorites by search query

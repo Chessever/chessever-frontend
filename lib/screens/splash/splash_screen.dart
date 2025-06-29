@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/splash/splash_screen_provider.dart';
 import 'package:chessever2/utils/png_asset.dart' show PngAsset;
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/blur_background.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
@@ -40,8 +41,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                 tag: 'premium-icon',
                 child: Image.asset(
                   PngAsset.premiumIcon,
-                  height: 120,
-                  width: 120,
+                  height: 120.h,
+                  width: 120.w,
                 ),
               ),
             ),

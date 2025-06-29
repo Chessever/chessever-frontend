@@ -1,27 +1,12 @@
 import 'package:chessever2/screens/calendar_screen.dart';
 import 'package:chessever2/screens/chessboard/ChessBoardScreen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
-import 'package:chessever2/providers/notifications_settings_provider.dart';
-import 'package:chessever2/providers/timezone_provider.dart';
 import 'package:chessever2/screens/premium/premium_screen.dart'; // Import premium screen
-import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/utils/svg_asset.dart';
-import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
-import 'package:chessever2/widgets/board_settings_dialog.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
-import 'package:chessever2/widgets/hamburger_menu/hamburger_menu_dialogs.dart';
-import 'package:chessever2/widgets/language_settings_dialog.dart';
-
-// import 'package:chessever2/widgets/notifications_settings_dialog.dart';
-import 'package:chessever2/widgets/settings_menu.dart';
-import 'package:chessever2/widgets/svg_widget.dart';
-import 'package:chessever2/widgets/timezone_settings_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../localization/locale_provider.dart';
 import 'tournaments/tournament_screen.dart';
 import 'tournaments/widget/bottom_nav_bar.dart';
-import 'players/player_screen.dart'; // Import PlayerScreen
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -37,10 +22,7 @@ class HomeScreen extends StatelessWidget {
         callbacks: HamburgerMenuCallbacks(
           onPlayersPressed: () {
             // Navigate to players screen
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const PlayerScreen()),
-            );
+            Navigator.pushNamed(context, '/playerList');
           },
           onFavoritesPressed: () {
             // Navigate to favorites screen

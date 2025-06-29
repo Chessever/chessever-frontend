@@ -1,3 +1,4 @@
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/filter_popup.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
@@ -41,8 +42,8 @@ class RoundedSearchBar extends StatelessWidget {
         GestureDetector(
           onTap: onProfileTap,
           child: Container(
-            width: 32,
-            height: 32,
+            width: 32.w,
+            height: 32.h,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               gradient: kProfileInitialsGradient,
@@ -53,15 +54,13 @@ class RoundedSearchBar extends StatelessWidget {
                 style: TextStyle(
                   color: kBlack2Color, // Changed to kBlack2Color as requested
                   fontWeight: FontWeight.bold,
-                  fontSize: 12,
+                  fontSize: 12.f,
                 ),
               ),
             ),
           ),
         ),
-        const SizedBox(
-          width: 20,
-        ), // Adjusted spacing to match Figma design (was 8)
+        SizedBox(width: 20.w), // Adjusted spacing to match Figma design (was 8)
         // Search bar container - starts after the profile avatar
         Expanded(
           child: Container(
@@ -69,18 +68,22 @@ class RoundedSearchBar extends StatelessWidget {
               color: kBlack2Color,
               // Using theme constant instead of hardcoded 0xFF1A1A1C
               borderRadius: BorderRadius.circular(
-                4,
+                4.br,
               ), // Changed to 4 as requested
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+            padding: EdgeInsets.symmetric(horizontal: 4.sp, vertical: 8.sp),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Padding(
-                  padding: const EdgeInsets.only(left: 6),
-                  child: SvgWidget(SvgAsset.searchIcon, height: 16, width: 16),
+                  padding: EdgeInsets.only(left: 6.sp),
+                  child: SvgWidget(
+                    SvgAsset.searchIcon,
+                    height: 16.h,
+                    width: 16.w,
+                  ),
                 ),
-                const SizedBox(width: 4),
+                SizedBox(width: 4.w),
 
                 // Text field
                 Expanded(
@@ -107,15 +110,15 @@ class RoundedSearchBar extends StatelessWidget {
                 // Filter icon
                 if (onFilterTap != null)
                   Padding(
-                    padding: const EdgeInsets.only(right: 10),
+                    padding: EdgeInsets.only(right: 10.sp),
                     child: InkWell(
                       onTap: () => _showFilterPopup(context),
                       borderRadius:
                           BorderRadius.zero, // Removed circular corners
                       child: SvgWidget(
                         SvgAsset.listFilterIcon,
-                        height: 24,
-                        width: 24,
+                        height: 24.h,
+                        width: 24.w,
                       ),
                     ),
                   ),
