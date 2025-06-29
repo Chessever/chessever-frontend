@@ -1,220 +1,219 @@
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 
 class AppTypography {
-  static const String _fontFamily = 'InterDisplay';
+  static String _fontFamily = 'InterDisplay';
 
   // Display Styles
-  static const displayXlRegular = TextStyle(
+  static TextStyle displayXlRegular = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w400,
-    fontSize: 52,
-    height: 60 / 52,
+    fontSize: 52.f,
+    height: 60.h / 52.h,
   );
-  static const displayXlMedium = TextStyle(
+  static TextStyle displayXlMedium = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w500,
-    fontSize: 52,
-    height: 60 / 52,
+    fontSize: 52.f,
+    height: 60.h / 52.h,
   );
-  static const displayXlBold = TextStyle(
+  static TextStyle displayXlBold = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w700,
-    fontSize: 52,
-    height: 60 / 52,
+    fontSize: 52.f,
+    height: 60.h / 52.h,
   );
 
-  static const displayLgRegular = TextStyle(
+  static TextStyle displayLgRegular = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w400,
-    fontSize: 48,
-    height: 52 / 48,
+    fontSize: 48.f,
+    height: 52.h / 48.h,
   );
 
-  static const displayLgMedium = TextStyle(
+  static TextStyle displayLgMedium = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w500,
-    fontSize: 48,
-    height: 52 / 48,
+    fontSize: 48.f,
+    height: 52.h / 48.h,
   );
-  static const displayLgBold = TextStyle(
+  static TextStyle displayLgBold = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w700,
-    fontSize: 48,
-    height: 52 / 48,
+    fontSize: 48.f,
+    height: 52.h / 48.h,
   );
 
-  static const displayMdRegular = TextStyle(
+  static TextStyle displayMdRegular = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w400,
-    fontSize: 36,
-    height: 44 / 36,
+    fontSize: 36.f,
+    height: 44.h / 36.h,
   );
-  static const displayMdMedium = TextStyle(
+  static TextStyle displayMdMedium = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w500,
-    fontSize: 36,
-    height: 44 / 36,
+    fontSize: 36.f,
+    height: 44.h / 36.h,
   );
-  static const displayMdBold = TextStyle(
+  static TextStyle displayMdBold = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w700,
-    fontSize: 36,
-    height: 44 / 36,
+    fontSize: 36.f,
+    height: 44.h / 36.h,
   );
 
-  static const displaySmRegular = TextStyle(
+  static TextStyle displaySmRegular = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w400,
-    fontSize: 32,
-    height: 40 / 32,
+    fontSize: 32.f,
+    height: 40.h / 32.h,
   );
 
-
-
-  static const displaySmMedium = TextStyle(
+  static TextStyle displaySmMedium = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w500,
-    fontSize: 32,
-    height: 40 / 32,
+    fontSize: 32.f,
+    height: 40.h / 32.h,
   );
-  static const displaySmBold = TextStyle(
+  static TextStyle displaySmBold = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w700,
-    fontSize: 32,
-    height: 40 / 32,
+    fontSize: 32.f,
+    height: 40.h / 32.h,
   );
 
-  static const displayXsRegular = TextStyle(
+  static TextStyle displayXsRegular = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w400,
-    fontSize: 24,
-    height: 32 / 24,
+    fontSize: 24.f,
+    height: 32.h / 24.h,
   );
-  static const displayXsMedium = TextStyle(
+  static TextStyle displayXsMedium = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w500,
-    fontSize: 24,
-    height: 32 / 24,
+    fontSize: 24.f,
+    height: 32.h / 24.h,
   );
-  static const displayXsBold = TextStyle(
+  static TextStyle displayXsBold = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w700,
-    fontSize: 24,
-    height: 32 / 24,
+    fontSize: 24.f,
+    height: 32.h / 24.h,
   );
 
   // Text Styles
-  static const textXlRegular = TextStyle(
+  static TextStyle textXlRegular = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w400,
-    fontSize: 20,
-    height: 28 / 20,
+    fontSize: 20.f,
+    height: 28.h / 20.h,
   );
-  static const textXlMedium = TextStyle(
+  static TextStyle textXlMedium = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w500,
-    fontSize: 20,
-    height: 28 / 20,
+    fontSize: 20.f,
+    height: 28.h / 20.h,
   );
-  static const textXlBold = TextStyle(
+  static TextStyle textXlBold = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w700,
-    fontSize: 20,
-    height: 28 / 20,
+    fontSize: 20.f,
+    height: 28.h / 20.h,
   );
 
-  static const textLgRegular = TextStyle(
+  static TextStyle textLgRegular = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w400,
-    fontSize: 18,
-    height: 26 / 18,
+    fontSize: 18.f,
+    height: 26.h / 18.h,
   );
-  static const textLgMedium = TextStyle(
+  static TextStyle textLgMedium = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w500,
-    fontSize: 18,
-    height: 26 / 18,
+    fontSize: 18.f,
+    height: 26.h / 18.h,
   );
-  static const textLgBold = TextStyle(
+  static TextStyle textLgBold = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w700,
-    fontSize: 18,
-    height: 26 / 18,
+    fontSize: 18.f,
+    height: 26.h / 18.h,
   );
 
-  static const textMdRegular = TextStyle(
+  static TextStyle textMdRegular = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w400,
-    fontSize: 16,
-    height: 24 / 16,
+    fontSize: 16.f,
+    height: 24.h / 16.h,
   );
-  static const textMdMedium = TextStyle(
+  static TextStyle textMdMedium = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w500,
-    fontSize: 16,
-    height: 24 / 16,
+    fontSize: 16.f,
+    height: 24.h / 16.h,
   );
-  static const textMdBold = TextStyle(
+  static TextStyle textMdBold = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w700,
-    fontSize: 16,
-    height: 24 / 16,
+    fontSize: 16.f,
+    height: 24.h / 16.h,
   );
 
-  static const textSmRegular = TextStyle(
+  static TextStyle textSmRegular = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w400,
-    fontSize: 14,
-    height: 22 / 14,
+    fontSize: 14.f,
+    height: 22.h / 14.h,
   );
-  static const textSmMedium = TextStyle(
+  static TextStyle textSmMedium = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w500,
-    fontSize: 14,
-    height: 22 / 14,
+    fontSize: 14.f,
+    height: 22.h / 14.h,
   );
-  static const textSmBold = TextStyle(
+  static TextStyle textSmBold = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w700,
-    fontSize: 14,
-    height: 22 / 14,
+    fontSize: 14.f,
+    height: 22.h / 14.h,
   );
 
-  static const textXsRegular = TextStyle(
+  static TextStyle textXsRegular = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w400,
-    fontSize: 12,
-    height: 20 / 12,
+    fontSize: 12.f,
+    height: 20.h / 12.h,
   );
-  static const textXsMedium = TextStyle(
+  static TextStyle textXsMedium = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w500,
-    fontSize: 12,
-    height: 20 / 12,
+    fontSize: 12.f,
+    height: 20.h / 12.h,
   );
-  static const textXsBold = TextStyle(
+  static TextStyle textXsBold = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w700,
-    fontSize: 12,
-    height: 20 / 12,
+    fontSize: 12.f,
+    height: 20.h / 12.h,
   );
 
-  static const textXxsRegular = TextStyle(
+  static TextStyle textXxsRegular = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w400,
-    fontSize: 11,
-    height: 18 / 11,
+    fontSize: 11.f,
+    height: 18.h / 11.h,
   );
-  static const textXxsMedium = TextStyle(
+  static TextStyle textXxsMedium = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w500,
-    fontSize: 11,
-    height: 18 / 11,
+    fontSize: 11.f,
+    height: 18.h / 11.h,
   );
-  static const textXxsBold = TextStyle(
+  static TextStyle textXxsBold = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w700,
-    fontSize: 11,
-    height: 18 / 11,
+    fontSize: 11.f,
+    height: 18.h / 11.h,
   );
 }

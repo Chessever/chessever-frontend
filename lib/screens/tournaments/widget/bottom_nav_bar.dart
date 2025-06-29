@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/tournaments/widget/bottom_nav_bar_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -35,9 +36,9 @@ class BottomNavBar extends ConsumerWidget {
       ),
       decoration: BoxDecoration(
         color: kBackgroundColor,
-        border: Border(top: BorderSide(color: kDarkGreyColor, width: 1)),
+        border: Border(top: BorderSide(color: kDarkGreyColor, width: 1.w)),
       ),
-      height: 120 - MediaQuery.of(context).viewPadding.bottom,
+      height: 120.h - MediaQuery.of(context).viewPadding.bottom,
       child: Row(
         children: List.generate(
           BottomNavBarItem.values.length,

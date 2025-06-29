@@ -1,3 +1,4 @@
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
@@ -25,21 +26,26 @@ class SimpleSearchBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 40,
+      height: 40.h,
       decoration: BoxDecoration(
         color: kBlack2Color,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(4.br),
       ),
-      padding: const EdgeInsets.only(left: 6, right: 6, top: 4, bottom: 4),
+      padding: EdgeInsets.only(
+        left: 6.sp,
+        right: 6.sp,
+        top: 4.sp,
+        bottom: 4.sp,
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           // Search icon aligned with text
           Padding(
-            padding: const EdgeInsets.only(left: 6),
-            child: SvgWidget(SvgAsset.searchIcon, height: 16, width: 16),
+            padding: EdgeInsets.only(left: 6.sp),
+            child: SvgWidget(SvgAsset.searchIcon, height: 16.h, width: 16.w),
           ),
-          const SizedBox(width: 4),
+          SizedBox(width: 4.w),
 
           // Text field
           Expanded(
@@ -64,14 +70,14 @@ class SimpleSearchBar extends StatelessWidget {
           // Filter icon
           if (onFilterTap != null || onMenuTap != null)
             Padding(
-              padding: const EdgeInsets.only(right: 10),
+              padding: EdgeInsets.only(right: 10.sp),
               child: InkWell(
                 onTap: onFilterTap ?? onMenuTap,
                 borderRadius: BorderRadius.zero,
                 child: SvgWidget(
                   SvgAsset.listFilterIcon,
-                  height: 24,
-                  width: 24,
+                  height: 24.h,
+                  width: 24.w,
                 ),
               ),
             ),

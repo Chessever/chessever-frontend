@@ -1,5 +1,6 @@
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 
@@ -26,17 +27,19 @@ class BottomNavBarWidget extends StatelessWidget {
       onTap: onTap,
       child: Container(
         width: width,
-        padding: EdgeInsets.only(top: 24),
+        padding: EdgeInsets.only(top: 24.sp),
         child: Column(
           children: [
             SvgWidget(
+              height: 20.h,
+              width: 20.w,
               svgIcon,
               colorFilter:
                   isSelected
                       ? ColorFilter.mode(kPrimaryColor, BlendMode.srcATop)
                       : null,
             ),
-            SizedBox(height: 4),
+            SizedBox(height: 4.h),
             Text(
               title,
               style: AppTypography.textSmMedium.copyWith(

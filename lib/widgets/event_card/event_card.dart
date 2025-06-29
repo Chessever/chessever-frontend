@@ -1,6 +1,7 @@
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/event_card/starred_provider.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
@@ -31,11 +32,16 @@ class EventCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: kBlack2Color,
           borderRadius: BorderRadius.only(
-            topRight: Radius.circular(8),
-            topLeft: Radius.circular(8),
+            topRight: Radius.circular(8.br),
+            topLeft: Radius.circular(8.br),
           ),
         ),
-        padding: const EdgeInsets.only(top: 6, bottom: 6, left: 8, right: 8),
+        padding: EdgeInsets.only(
+          top: 6.sp,
+          bottom: 6.sp,
+          left: 8.sp,
+          right: 8.sp,
+        ),
         child: Stack(
           alignment: Alignment.centerRight,
           children: [
@@ -62,13 +68,13 @@ class EventCard extends StatelessWidget {
                               maxLines: 1,
                             ),
                           ),
-                          const SizedBox(width: 4),
+                          SizedBox(width: 4.w),
                           _ShowStatus(tourEventCardModel: tourEventCardModel),
                         ],
                       ),
 
                       // Small vertical spacing
-                      const SizedBox(height: 2),
+                      SizedBox(height: 2.h),
 
                       // Second row with details
                       RichText(
@@ -110,7 +116,7 @@ class EventCard extends StatelessWidget {
   }
 
   WidgetSpan _buildDot() {
-    const fontStyle = TextStyle(fontWeight: FontWeight.w900, fontSize: 12);
+    final fontStyle = TextStyle(fontWeight: FontWeight.w900, fontSize: 12.f);
     return WidgetSpan(
       alignment: PlaceholderAlignment.middle,
       child: Text(" ● ", style: fontStyle.copyWith(color: kWhiteColor70)),
@@ -202,13 +208,13 @@ class _BuildTrailingButton extends StatelessWidget {
           onTap: onMorePressed,
           child: Container(
             alignment: Alignment.centerRight,
-            width: 30,
-            height: 40,
+            width: 30.w,
+            height: 40.h,
             child: SvgWidget(
               SvgAsset.threeDots,
               semanticsLabel: 'More Options',
-              height: 24,
-              width: 24,
+              height: 24.h,
+              width: 24.w,
             ),
           ),
         );
@@ -247,13 +253,13 @@ class _StarWidgetState extends ConsumerState<_StarWidget> {
       },
       child: Container(
         alignment: Alignment.centerRight,
-        width: 30,
-        height: 40,
+        width: 30.w,
+        height: 40.h,
         child: SvgWidget(
           isStarred ? SvgAsset.starFilledIcon : SvgAsset.starIcon,
           semanticsLabel: 'Favorite Icon',
-          height: 20,
-          width: 20,
+          height: 20.h,
+          width: 20.w,
         ),
       ),
     );
