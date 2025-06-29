@@ -40,6 +40,13 @@ This command uses the `flutter_native_splash` package configuration defined in `
 to create splash screens for Android and iOS. And also generates localization utils.
 
 ```bash
+dart run flutter_launcher_icons:generate
+```bash
+This command uses the `flutter_launcher_icons` package configuration defined in `pubspec.yaml`
+to create app icons for Android and iOS. 
+
+
+```bash
 flutter pub run build_runner build --delete-conflicting-outputs
 ```
 
