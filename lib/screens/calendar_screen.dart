@@ -1,3 +1,4 @@
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -55,10 +56,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(height: 24 + MediaQuery.of(context).viewPadding.top),
+          SizedBox(height: 24.h + MediaQuery.of(context).viewPadding.top),
           // Search bar with year dropdown beside it
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding:  EdgeInsets.symmetric(horizontal: 16.sp),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [

@@ -10,6 +10,7 @@ const Color kPopUpColor = Color(0xff111111);
 const Color kWhiteColor70 = Color(
   0xB3FFFFFF,
 ); // WHITE with 70% opacity (B3 = 70%)
+const Color kDividerColor = Color(0xFF2C2C2E);
 const Color kBlack2Color = Color(0xFF1A1A1C); // BLACK#2
 const Color kDarkGreyColor = Color(0xFF333333);
 const Color kLightBlack = Color(0xFF222222);

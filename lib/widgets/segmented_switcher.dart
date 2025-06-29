@@ -1,3 +1,4 @@
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../utils/app_typography.dart';
@@ -63,7 +64,7 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
         AppTypography.textSmMedium.copyWith(color: selectedTextColor);
 
     return Container(
-      height: 40,
+      height: 40.h,
       decoration: BoxDecoration(
         color: backgroundColor,
         borderRadius: BorderRadius.circular(borderRadius),
@@ -74,8 +75,8 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
           final isFirst = index == 0;
           final isLast = widget.options.length - 1 == index;
 
-          final leftSize = isFirst ? 12.0 : 0.0;
-          final rightSize = isLast ? 12.0 : 0.0;
+          final leftSize = isFirst ? 12.0.br : 0.0;
+          final rightSize = isLast ? 12.0.br : 0.0;
 
           return Expanded(
             child: GestureDetector(

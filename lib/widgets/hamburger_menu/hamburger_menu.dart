@@ -2,6 +2,7 @@ import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/png_asset.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu_dialogs.dart';
 import 'package:chessever2/widgets/icons/analysis_board_icon.dart';
@@ -39,7 +40,7 @@ class HamburgerMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 260, // Set fixed width for hamburger menu
+      width: 260.w, // Set fixed width for hamburger menu
       child: Drawer(
         backgroundColor: kBackgroundColor,
         child: SafeArea(
@@ -49,14 +50,14 @@ class HamburgerMenu extends StatelessWidget {
                 child: ListView(
                   padding: EdgeInsets.zero,
                   children: [
-                    SizedBox(height: 24),
+                    SizedBox(height: 24.h),
                     _MenuItem(
                       icon: Icons.settings,
                       customIcon: SvgWidget(
                         SvgAsset.settingsIcon,
                         semanticsLabel: 'Settings Icon',
-                        height: 24,
-                        width: 24,
+                        height: 24.h,
+                        width: 24.w,
                       ),
                       title: 'Settings',
                       onPressed:
@@ -64,13 +65,13 @@ class HamburgerMenu extends StatelessWidget {
                               HamburgerMenuDialogs.showSettingsDialog(context),
                       showChevron: true,
                     ),
-                    SizedBox(height: 12),
+                    SizedBox(height: 12.h),
                     _MenuItem(
                       customIcon: SvgWidget(
                         SvgAsset.playersIcon,
                         semanticsLabel: 'Players Icon',
-                        height: 24,
-                        width: 24,
+                        height: 24.h,
+                        width: 24.w,
                       ),
                       title: 'Players',
                       onPressed: () {
@@ -78,13 +79,13 @@ class HamburgerMenu extends StatelessWidget {
                         callbacks.onPlayersPressed();
                       },
                     ),
-                    SizedBox(height: 12),
+                    SizedBox(height: 12.h),
                     _MenuItem(
                       customIcon: SvgWidget(
                         SvgAsset.favouriteIcon,
                         semanticsLabel: 'Fav Icon',
-                        height: 24,
-                        width: 24,
+                        height: 24.h,
+                        width: 24.w,
                       ),
                       title: 'Favorites',
                       onPressed: () {
@@ -92,29 +93,29 @@ class HamburgerMenu extends StatelessWidget {
                         callbacks.onFavoritesPressed();
                       },
                     ),
-                    SizedBox(height: 12),
+                    SizedBox(height: 12.h),
                     _CountryMan(
                       onCountryManPressed: () {
                         Navigator.pop(context); // Close drawer first
                         callbacks.onCountrymanPressed();
                       },
                     ),
-                    SizedBox(height: 12),
+                    SizedBox(height: 12.h),
                     _MenuItem(
-                      customIcon: AnalysisBoardIcon(size: 20),
+                      customIcon: AnalysisBoardIcon(size: 20.ic),
                       title: 'Analysis Board',
                       onPressed: () {
                         Navigator.pop(context); // Close drawer first
                         callbacks.onAnalysisBoardPressed();
                       },
                     ),
-                    SizedBox(height: 12),
+                    SizedBox(height: 12.h),
                     _MenuItem(
                       customIcon: SvgWidget(
                         SvgAsset.headsetIcon,
                         semanticsLabel: 'Support Icon',
-                        height: 24,
-                        width: 24,
+                        height: 24.h,
+                        width: 24.w,
                       ),
                       title: 'Support',
                       onPressed: () {
@@ -122,14 +123,14 @@ class HamburgerMenu extends StatelessWidget {
                         callbacks.onSupportPressed();
                       },
                     ),
-                    SizedBox(height: 12),
+                    SizedBox(height: 12.h),
                     _MenuItem(
                       color: kBlack2Color,
                       // Premium color
                       customIcon: Image.asset(
                         PngAsset.premiumIcon,
-                        width: 28,
-                        height: 28,
+                        width: 28.w,
+                        height: 28.h,
                         fit: BoxFit.contain,
                       ),
                       title: 'Try Premium for free',
@@ -167,12 +168,12 @@ class _LogOutButton extends StatelessWidget {
     return InkWell(
       onTap: onLogoutPressed,
       child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        height: 48,
+        padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 12.sp),
+        height: 48.h,
         child: Row(
           children: [
-            Icon(Icons.logout, color: Colors.white, size: 24),
-            SizedBox(width: 12),
+            Icon(Icons.logout, color: Colors.white, size: 24.ic),
+            SizedBox(width: 12.w),
             Text(
               'Log out',
               style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
@@ -208,12 +209,12 @@ class _MenuItem extends StatelessWidget {
       onTap: onPressed,
       child: Container(
         color: color,
-        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        height: 40,
+        padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
+        height: 40.h,
         child: Row(
           children: [
-            customIcon ?? Icon(icon, color: kWhiteColor, size: 24),
-            SizedBox(width: 4),
+            customIcon ?? Icon(icon, color: kWhiteColor, size: 24.ic),
+            SizedBox(width: 4.w),
             Text(
               title,
               style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
@@ -221,11 +222,11 @@ class _MenuItem extends StatelessWidget {
             Spacer(),
             showChevron
                 ? Padding(
-                  padding: EdgeInsets.only(right: 12),
-                  child: const Icon(
+                  padding: EdgeInsets.only(right: 12.sp),
+                  child: Icon(
                     Icons.chevron_right_outlined,
                     color: kWhiteColor,
-                    size: 24,
+                    size: 24.ic,
                   ),
                 )
                 : SizedBox.shrink(),
@@ -249,8 +250,8 @@ class _CountryMan extends ConsumerWidget {
         return _MenuItem(
           customIcon: CountryFlag.fromCountryCode(
             data.countryCode,
-            height: 12,
-            width: 24,
+            height: 12.h,
+            width: 24.w,
             shape: RoundedRectangle(0),
           ),
           title: 'Countryman',
@@ -262,8 +263,8 @@ class _CountryMan extends ConsumerWidget {
         return _MenuItem(
           customIcon: CountryFlag.fromCountryCode(
             'US',
-            height: 12,
-            width: 24,
+            height: 12.h,
+            width: 24.w,
             shape: RoundedRectangle(0),
           ),
           title: 'Countryman',
@@ -275,8 +276,8 @@ class _CountryMan extends ConsumerWidget {
         return _MenuItem(
           customIcon: CountryFlag.fromCountryCode(
             'US',
-            height: 12,
-            width: 24,
+            height: 12.h,
+            width: 24.w,
             shape: RoundedRectangle(0),
           ),
           title: 'Countryman',

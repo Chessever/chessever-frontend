@@ -1,4 +1,6 @@
-import 'dart:ui';
+import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/blur_background.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -6,7 +8,7 @@ import '../localization/locale_provider.dart';
 import '../repository/local_storage/language_repository/language_repository.dart';
 
 class LanguageSettingsDialog extends ConsumerWidget {
-  const LanguageSettingsDialog({Key? key}) : super(key: key);
+  const LanguageSettingsDialog({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -22,17 +24,14 @@ class LanguageSettingsDialog extends ConsumerWidget {
         children: [
           // Backdrop filter for blur effect
           Positioned.fill(
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-              child: Container(color: Colors.black.withOpacity(0.3)),
-            ),
+            child: BlurBackground(),
           ),
           // Dialog content
           Dialog(
             backgroundColor: Colors.transparent,
-            insetPadding: const EdgeInsets.symmetric(
-              horizontal: 24.0,
-              vertical: 24.0,
+            insetPadding: EdgeInsets.symmetric(
+              horizontal: 24.sp,
+              vertical: 24.sp,
             ),
             // Prevent dialog from closing when clicking on the dialog itself
             child: GestureDetector(
@@ -40,10 +39,10 @@ class LanguageSettingsDialog extends ConsumerWidget {
               child: Container(
                 decoration: BoxDecoration(
                   color: kPopUpColor,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(12.br),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
+                      color: kDividerColor,
                       blurRadius: 10,
                       spreadRadius: 1,
                     ),
@@ -53,12 +52,7 @@ class LanguageSettingsDialog extends ConsumerWidget {
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: languages.length,
-                  separatorBuilder:
-                      (context, index) => const Divider(
-                        height: 1,
-                        thickness: 0.5,
-                        color: Color(0xFF2C2C2E),
-                      ),
+                  separatorBuilder: (context, index) => Divider(),
                   itemBuilder: (context, index) {
                     final language = languages[index];
                     final isSelected =
@@ -73,19 +67,14 @@ class LanguageSettingsDialog extends ConsumerWidget {
                         Navigator.of(context).pop();
                       },
                       child: Container(
-                        height: 36, // Fixed height of 36px as requested
-                        padding: const EdgeInsets.all(
-                          8,
+                        height: 36.h, // Fixed height of 36px as requested
+                        padding: EdgeInsets.all(
+                          8.sp,
                         ), // Updated to have 8px padding on all sides
                         alignment: Alignment.centerLeft,
                         child: Text(
                           language.name,
-                          style: TextStyle(
-                            fontFamily: 'InterDisplay',
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: isSelected ? kPrimaryColor : kWhiteColor,
-                          ),
+                          style: AppTypography.textXsRegular,
                         ),
                       ),
                     );

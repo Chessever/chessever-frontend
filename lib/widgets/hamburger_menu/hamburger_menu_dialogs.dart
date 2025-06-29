@@ -1,3 +1,4 @@
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
@@ -13,6 +14,8 @@ class HamburgerMenuDialogs {
     // Then show the settings dialog
     showAlertModal(
       context: context,
+      horizontalPadding: 24.w,
+      verticalPadding: 24.h,
       backgroundColor: kPopUpColor,
       barrierColor: Colors.black.withOpacity(0.3),
       child: const SettingsDialog(),
