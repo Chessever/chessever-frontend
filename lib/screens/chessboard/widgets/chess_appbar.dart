@@ -39,7 +39,7 @@ class ChessMatchAppBar extends StatelessWidget implements PreferredSizeWidget {
             title,
             style: AppTypography.textSmBold.copyWith(color: Colors.white),
           ),
-          SizedBox(width: 7),
+          SizedBox(width: 7.w),
           SvgWidget(
             height: 20.h,
             width: 20.w,
