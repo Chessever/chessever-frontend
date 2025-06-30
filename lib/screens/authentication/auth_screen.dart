@@ -11,6 +11,7 @@ import 'package:chessever2/widgets/back_drop_filter_widget.dart';
 import 'package:chessever2/widgets/blur_background.dart';
 import 'package:chessever2/widgets/country_dropdown.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
+import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'auth_screen_provider.dart';
@@ -25,9 +26,7 @@ class AuthScreen extends ConsumerStatefulWidget {
 class _AuthScreenState extends ConsumerState<AuthScreen> {
   @override
   Widget build(BuildContext context) {
-    final isIos = Platform.isIOS;
     final state = ref.watch(authScreenProvider);
-    final notifier = ref.read(authScreenProvider.notifier);
 
     // Listen for state changes
     ref.listen<AuthScreenState>(authScreenProvider, (previous, current) {
@@ -57,8 +56,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           children: [
             Hero(tag: 'blur', child: BlurBackground()),
             Positioned(
-              top: (MediaQuery.of(context).size.height / 2) - 69.sp,
-              left: (MediaQuery.of(context).size.width / 2) - 60.sp,
+              top: (MediaQuery.of(context).size.height / 2) - 60.h,
+              left: (MediaQuery.of(context).size.width / 2) - 60.w,
               child: Column(
                 children: [
                   Hero(
@@ -73,39 +72,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 ],
               ),
             ),
-            if (!state.isLoading)
-              Align(
-                alignment: Alignment.bottomCenter,
-                child: Container(
-                  padding: EdgeInsets.only(
-                    bottom: MediaQuery.of(context).viewPadding.bottom + 28.sp,
-                    left: 28.sp,
-                    right: 28.sp,
-                  ),
-                  child: AuthButton(
-                    signInTitle:
-                        isIos ? 'Continue with Apple' : 'Continue with Google',
-                    svgIconPath:
-                        isIos ? SvgAsset.appleIcon : SvgAsset.googleIcon,
-                    onPressed: () async {
-                      if (state.isLoading) {
-                      } else {
-                        if (isIos) {
-                          await notifier.signInWithApple();
-                        } else {
-                          await notifier.signInWithGoogle();
-                        }
-                      }
-                    },
-                  ),
-                ),
-              ),
-            // Loading overlay
-            if (state.isLoading)
-              Container(
-                color: Colors.black.withOpacity(0.3),
-                child: const Center(child: CircularProgressIndicator()),
-              ),
+            Align(
+              alignment: Alignment.bottomCenter,
+              child:
+                  state.isLoading
+                      ? SkeletonWidget(child: _AuthButtonWidget(state: state))
+                      : _AuthButtonWidget(state: state),
+            ),
           ],
         ),
       ),
@@ -148,6 +121,35 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     //         ],
     //       ),
     // );
+  }
+}
+
+class _AuthButtonWidget extends ConsumerWidget {
+  const _AuthButtonWidget({required this.state, super.key});
+
+  final AuthScreenState state;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isIos = Platform.isIOS;
+    return Container(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewPadding.bottom + 28.sp,
+        left: 28.sp,
+        right: 28.sp,
+      ),
+      child: AuthButton(
+        signInTitle: isIos ? 'Continue with Apple' : 'Continue with Google',
+        svgIconPath: isIos ? SvgAsset.appleIcon : SvgAsset.googleIcon,
+        onPressed: () async {
+          if (isIos) {
+            await ref.read(authScreenProvider.notifier).signInWithApple();
+          } else {
+            await ref.read(authScreenProvider.notifier).signInWithGoogle();
+          }
+        },
+      ),
+    );
   }
 }
 

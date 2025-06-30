@@ -1,5 +1,5 @@
 // models/game.dart
-class Game {
+class Games {
   final String id;
   final String roundId;
   final String roundSlug;
@@ -13,7 +13,7 @@ class Game {
   final String? status;
   final String? pgn;
 
-  Game({
+  Games({
     required this.id,
     required this.roundId,
     required this.roundSlug,
@@ -28,8 +28,8 @@ class Game {
     this.pgn,
   });
 
-  factory Game.fromJson(Map<String, dynamic> json) {
-    return Game(
+  factory Games.fromJson(Map<String, dynamic> json) {
+    return Games(
       id: json['id'] as String,
       roundId: json['round_id'] as String,
       roundSlug: json['round_slug'] as String,

@@ -1,85 +1,97 @@
-import 'package:chessever2/repository/supabase/round/round.dart';
 import 'package:chessever2/screens/tournaments/model/games_app_bar_view_model.dart';
+import 'package:chessever2/screens/tournaments/providers/games_app_bar_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-class GamesAppBarWidget extends StatelessWidget {
+class GamesAppBarWidget extends ConsumerWidget {
   const GamesAppBarWidget({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final sampleData = [
-      {
-        'id': 'qdBcMm1h',
-        'slug': 'round-1',
-        'tour_id': '5LW5RS0a',
-        'tour_slug': 'norway-chess-2024--women',
-        'name': 'Round 1',
-        'created_at': '2024-05-25T21:31:09.495Z',
-        'ongoing': false,
-        'starts_at': '2026-05-27T15:00:00.000Z',
-        'url':
-            'https://lichess.org/broadcast/norway-chess-2024--women/round-1/qdBcMm1h',
-      },
-      {
-        'id': 'xiL30gik',
-        'slug': 'round-2',
-        'tour_id': '5LW5RS0a',
-        'tour_slug': 'norway-chess-2024--women',
-        'name': 'Round 2',
-        'created_at': '2024-05-25T21:44:37.425Z',
-        'ongoing': false,
-        'starts_at': '2024-05-28T15:00:00.000Z',
-        'url':
-            'https://lichess.org/broadcast/norway-chess-2024--women/round-2/xiL30gik',
-      },
-      // Add more as needed...
-    ];
-
-    final rounds = List.generate(sampleData.length, (index) {
-      final round = Round.fromJson(sampleData[index]);
-      return GamesAppBarViewModel.fromTour(round);
-    });
-
+  Widget build(BuildContext context, WidgetRef ref) {
     return Row(
       children: [
-        const SizedBox(width: 20),
+        SizedBox(width: 20.w),
         IconButton(
-          iconSize: 24,
+          iconSize: 24.ic,
           padding: EdgeInsets.zero,
           onPressed: () {
             Navigator.of(context).pop();
           },
-          icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24),
+          icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24.ic),
         ),
         const Spacer(),
+
         SizedBox(
-          height: 32,
-          width: 120,
-          child: _RoundDropdown(
-            rounds: rounds,
-            selectedRound: rounds.first,
-            onChanged: (_) {},
-          ),
+          height: 32.h,
+          width: 120.w,
+          child: ref
+              .watch(gamesAppBarProvider)
+              .when(
+                data: (data) {
+                  return _RoundDropdown(
+                    rounds: data.gamesAppBarModels,
+                    selectedRoundId: data.selectedId,
+                    onChanged: (model) {
+                      ref
+                          .read(gamesAppBarProvider.notifier)
+                          .selectNewRound(model);
+                    },
+                  );
+                },
+                error: (e, _) {
+                  return Center(
+                    child: Text(
+                      'Error loading rounds',
+                      style: AppTypography.textXsRegular.copyWith(
+                        color: kWhiteColor70,
+                      ),
+                    ),
+                  );
+                },
+                loading: () {
+                  final loadingRound = GamesAppBarViewModel(
+                    gamesAppBarModels: [
+                      GamesAppBarModel(
+                        id: 'qdBcMm1h',
+                        name: 'round-1',
+                        startsAt: DateTime.now(),
+                        ongoing: false,
+                      ),
+                    ],
+                    selectedId: 'qdBcMm1h',
+                  );
+
+                  return SkeletonWidget(
+                    child: _RoundDropdown(
+                      rounds: loadingRound.gamesAppBarModels,
+                      selectedRoundId: loadingRound.gamesAppBarModels.first.id,
+                      onChanged: (_) {},
+                    ),
+                  );
+                },
+              ),
         ),
         const Spacer(),
-        const SizedBox(width: 44),
+        SizedBox(width: 44.w),
       ],
     );
   }
 }
 
 class _RoundDropdown extends StatefulWidget {
-  final List<GamesAppBarViewModel> rounds;
-  final GamesAppBarViewModel selectedRound;
-  final ValueChanged<GamesAppBarViewModel> onChanged;
+  final List<GamesAppBarModel> rounds;
+  final String selectedRoundId;
+  final ValueChanged<GamesAppBarModel> onChanged;
 
   const _RoundDropdown({
     required this.rounds,
-    required this.selectedRound,
+    required this.selectedRoundId,
     required this.onChanged,
   });
 
@@ -96,48 +108,48 @@ class _RoundDropdownState extends State<_RoundDropdown> {
     _selectedRoundId =
         widget.rounds
             .firstWhere(
-              (round) => round.id == widget.selectedRound.id,
+              (round) => round.id == widget.selectedRoundId,
               orElse: () => widget.rounds.first,
             )
             .id;
     super.initState();
   }
 
-  Widget _buildDropdownItem(GamesAppBarViewModel round) {
+  Widget _buildDropdownItem(GamesAppBarModel round) {
     Widget trailingIcon;
 
     switch (round.status) {
       case RoundStatus.completed:
         trailingIcon = SvgPicture.asset(
           SvgAsset.selectedSvg,
-          width: 16,
-          height: 16,
+          width: 16.w,
+          height: 16.h,
           colorFilter: const ColorFilter.mode(kGreenColor, BlendMode.srcIn),
         );
         break;
       case RoundStatus.current:
         trailingIcon = Container(
-          width: 16,
-          height: 16,
+          width: 16.w,
+          height: 16.h,
           decoration: const BoxDecoration(
             color: kPrimaryColor,
             shape: BoxShape.circle,
           ),
-          child: const Icon(Icons.circle, color: kWhiteColor, size: 8),
+          child: Icon(Icons.circle, color: kWhiteColor, size: 8.ic),
         );
         break;
       case RoundStatus.upcoming:
         trailingIcon = SvgPicture.asset(
           SvgAsset.calendarIcon,
-          width: 16,
-          height: 16,
+          width: 16.w,
+          height: 16.h,
           colorFilter: const ColorFilter.mode(kWhiteColor70, BlendMode.srcIn),
         );
         break;
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      padding: EdgeInsets.symmetric(horizontal: 8.sp),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -153,7 +165,7 @@ class _RoundDropdownState extends State<_RoundDropdown> {
                   ),
                   maxLines: 1,
                 ),
-                const SizedBox(height: 2),
+                SizedBox(height: 2.h),
                 Text(
                   round.formattedStartDate,
                   style: AppTypography.textXsRegular.copyWith(
@@ -164,7 +176,7 @@ class _RoundDropdownState extends State<_RoundDropdown> {
               ],
             ),
           ),
-          const SizedBox(width: 8),
+          SizedBox(width: 8.w),
           trailingIcon,
         ],
       ),
@@ -193,15 +205,19 @@ class _RoundDropdownState extends State<_RoundDropdown> {
             );
           }).toList(),
       underline: Container(),
-      icon: const Icon(Icons.arrow_drop_down, color: kWhiteColor),
+      icon: Icon(
+        Icons.keyboard_arrow_down_outlined,
+        color: kWhiteColor,
+        size: 20.ic,
+      ),
       dropdownColor: kPopUpColor,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(8.br),
       isExpanded: true,
-      style: TextStyle(color: kWhiteColor, fontSize: 12),
+      style: AppTypography.textMdBold,
       selectedItemBuilder: (BuildContext context) {
         return widget.rounds.map((e) => e.id).map<Widget>((id) {
           return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            padding: EdgeInsets.symmetric(horizontal: 12.sp),
             alignment: Alignment.center,
             child: Text(
               widget.rounds.firstWhere((e) => e.id == id).name,

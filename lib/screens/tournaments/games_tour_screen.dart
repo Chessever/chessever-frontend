@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/tournaments/model/games_tour_model.dart';
+import 'package:chessever2/screens/tournaments/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -16,33 +17,45 @@ class GamesTourScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return ref
-        .watch(gamesTourScreenProvider)
+        .watch(gamesAppBarProvider)
         .when(
           data: (data) {
-            if (data.isEmpty) {
-              return EmptyWidget(
-                title:
-                    "No games available yet. Check back soon or set a\nreminder for updates.",
-              );
-            }
-            return Expanded(
-              child: ListView.builder(
-                padding: EdgeInsets.only(
-                  left: 20,
-                  right: 20,
-                  top: 12,
-                  bottom: MediaQuery.of(context).viewPadding.bottom,
-                ),
-                shrinkWrap: true,
-                itemCount: data.length,
-                itemBuilder: (cxt, index) {
-                  return Padding(
-                    padding: EdgeInsets.only(bottom: 12),
-                    child: _GameCard(gamesTourModel: data[index]),
-                  );
-                },
-              ),
-            );
+            return ref
+                .watch(gamesTourScreenProvider(data.selectedId))
+                .when(
+                  data: (data) {
+                    if (data.isEmpty) {
+                      return EmptyWidget(
+                        title:
+                            "No games available yet. Check back soon or set a\nreminder for updates.",
+                      );
+                    }
+                    return Expanded(
+                      child: ListView.builder(
+                        padding: EdgeInsets.only(
+                          left: 20,
+                          right: 20,
+                          top: 12,
+                          bottom: MediaQuery.of(context).viewPadding.bottom,
+                        ),
+                        shrinkWrap: true,
+                        itemCount: data.length,
+                        itemBuilder: (cxt, index) {
+                          return Padding(
+                            padding: EdgeInsets.only(bottom: 12),
+                            child: _GameCard(gamesTourModel: data[index]),
+                          );
+                        },
+                      ),
+                    );
+                  },
+                  error: (error, _) {
+                    return GenericErrorWidget();
+                  },
+                  loading: () {
+                    return GenericLoadingWidget();
+                  },
+                );
           },
           error: (error, _) {
             return GenericErrorWidget();

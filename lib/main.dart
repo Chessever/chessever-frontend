@@ -2,7 +2,7 @@ import 'package:chessever2/l10n/app_localizations.dart';
 import 'package:chessever2/localization/locale_provider.dart';
 import 'package:chessever2/screens/authentication/auth_screen.dart';
 import 'package:chessever2/screens/chessboard/ChessBoardScreen.dart';
-import 'package:chessever2/screens/home_screen.dart';
+import 'package:chessever2/screens/authentication/home_screen/home_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/players/player_screen.dart';
 import 'package:chessever2/screens/players/providers/player_providers.dart'; // Added import for player providers
@@ -79,6 +79,7 @@ class _MyAppState extends ConsumerState<MyApp> {
 
     ///Initializing  Responsive Unit
     ResponsiveHelper.init(context);
+
     return MaterialApp(
       locale: locale,
       supportedLocales: AppLocalizations.supportedLocales,

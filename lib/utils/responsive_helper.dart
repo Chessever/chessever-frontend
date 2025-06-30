@@ -49,7 +49,7 @@ class ResponsiveHelper {
       case DeviceType.phone:
         return size * _scaleWidth;
       case DeviceType.tablet:
-      // For tablets, use a more conservative scaling to prevent oversized elements
+        // For tablets, use a more conservative scaling to prevent oversized elements
         return size * min(_scaleWidth, 1.5);
     }
   }
@@ -60,7 +60,7 @@ class ResponsiveHelper {
       case DeviceType.phone:
         return size * _scaleHeight;
       case DeviceType.tablet:
-      // For tablets, use a more conservative scaling
+        // For tablets, use a more conservative scaling
         return size * min(_scaleHeight, 1.5);
     }
   }
@@ -71,11 +71,11 @@ class ResponsiveHelper {
 
     switch (_deviceType) {
       case DeviceType.phone:
-      // For phones, scale normally but with limits
+        // For phones, scale normally but with limits
         scaledSize = size * min(_scaleWidth, _scaleHeight);
         break;
       case DeviceType.tablet:
-      // For tablets, increase font size but not linearly
+        // For tablets, increase font size but not linearly
         scaledSize = size * (1 + (min(_scaleWidth, _scaleHeight) - 1) * 0.7);
         break;
     }
@@ -90,7 +90,7 @@ class ResponsiveHelper {
       case DeviceType.phone:
         return size * min(_scaleWidth, _scaleHeight);
       case DeviceType.tablet:
-      // More generous spacing on tablets
+        // More generous spacing on tablets
         return size * min(_scaleWidth, _scaleHeight) * 1.2;
     }
   }
@@ -111,30 +111,45 @@ class ResponsiveHelper {
       case DeviceType.phone:
         return size * min(_scaleWidth, _scaleHeight);
       case DeviceType.tablet:
-      // Slightly more pronounced border radius on tablets for better visual appeal
+        // Slightly more pronounced border radius on tablets for better visual appeal
         return size * min(_scaleWidth, _scaleHeight) * 1.15;
     }
   }
 
   // Getters for device info
   static DeviceType get deviceType => _deviceType;
+
   static double get screenWidth => _screenWidth;
+
   static double get screenHeight => _screenHeight;
+
   static bool get isPhone => _deviceType == DeviceType.phone;
+
   static bool get isTablet => _deviceType == DeviceType.tablet;
 }
 
 enum DeviceType {
-  phone,   // iPhone, Android phones
-  tablet,  // iPad, Android tablets
+  phone, // iPhone, Android phones
+  tablet, // iPad, Android tablets
 }
 
 // Extension for easier usage
 extension ResponsiveExtension on num {
+  //for width
   double get w => ResponsiveHelper.width(toDouble());
+
+  //for height
   double get h => ResponsiveHelper.height(toDouble());
+
+  //for font Size
   double get f => ResponsiveHelper.font(toDouble());
+
+  //for padding, margin - EdgeInsets
   double get sp => ResponsiveHelper.spacing(toDouble());
+
+  //for icon sizing
   double get ic => ResponsiveHelper.icon(toDouble());
+
+  //for border radius
   double get br => ResponsiveHelper.borderRadius(toDouble());
 }

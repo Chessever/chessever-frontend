@@ -1,5 +1,5 @@
 // models/game_card.dart
-import 'package:chessever2/repository/supabase/game/game.dart';
+import 'package:chessever2/repository/supabase/game/games.dart';
 
 class GamesTourModel {
   final String gameId;
@@ -18,7 +18,7 @@ class GamesTourModel {
     required this.gameStatus,
   });
 
-  factory GamesTourModel.fromGame(Game game) {
+  factory GamesTourModel.fromGame(Games game) {
     // Ensure we have exactly 2 players
     if (game.players == null || game.players!.length != 2) {
       throw ArgumentError('Game must have exactly 2 players');
