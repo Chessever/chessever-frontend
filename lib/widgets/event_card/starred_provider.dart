@@ -3,7 +3,7 @@ import 'package:chessever2/screens/tournaments/tournament_screen.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final starredProvider =
-    AutoDisposeStateNotifierProvider<_StarredRepository, List<String>>((ref) {
+    StateNotifierProvider<_StarredRepository, List<String>>((ref) {
       final currentEvent = ref.watch(selectedTourEventProvider);
       return _StarredRepository(ref: ref, tournamentCategory: currentEvent);
     });

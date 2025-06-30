@@ -1,5 +1,5 @@
 // repositories/game_repository.dart
-import 'package:chessever2/repository/supabase/game/game.dart';
+import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/base_repository.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -9,7 +9,7 @@ final gameRepositoryProvider = AutoDisposeProvider<GameRepository>((ref) {
 
 class GameRepository extends BaseRepository {
   // Fetch games by round ID
-  Future<List<Game>> getGamesByRoundId(String roundId) async {
+  Future<List<Games>> getGamesByRoundId(String roundId) async {
     return handleApiCall(() async {
       final response = await supabase
           .from('games')
@@ -17,12 +17,12 @@ class GameRepository extends BaseRepository {
           .eq('round_id', roundId)
           .order('id', ascending: true);
 
-      return (response as List).map((json) => Game.fromJson(json)).toList();
+      return (response as List).map((json) => Games.fromJson(json)).toList();
     });
   }
 
   // Fetch games by tour ID
-  Future<List<Game>> getGamesByTourId(String tourId, {int? limit}) async {
+  Future<List<Games>> getGamesByTourId(String tourId, {int? limit}) async {
     return handleApiCall(() async {
       var query = supabase
           .from('games')
@@ -36,22 +36,22 @@ class GameRepository extends BaseRepository {
 
       final response = await query;
 
-      return (response as List).map((json) => Game.fromJson(json)).toList();
+      return (response as List).map((json) => Games.fromJson(json)).toList();
     });
   }
 
   // Fetch game by ID
-  Future<Game> getGameById(String id) async {
+  Future<Games> getGameById(String id) async {
     return handleApiCall(() async {
       final response =
           await supabase.from('games').select().eq('id', id).single();
 
-      return Game.fromJson(response);
+      return Games.fromJson(response);
     });
   }
 
   // Fetch games by round and tour slug
-  Future<List<Game>> getGamesBySlug(String roundSlug, String tourSlug) async {
+  Future<List<Games>> getGamesBySlug(String roundSlug, String tourSlug) async {
     return handleApiCall(() async {
       final response = await supabase
           .from('games')
@@ -60,12 +60,12 @@ class GameRepository extends BaseRepository {
           .eq('tour_slug', tourSlug)
           .order('id', ascending: true);
 
-      return (response as List).map((json) => Game.fromJson(json)).toList();
+      return (response as List).map((json) => Games.fromJson(json)).toList();
     });
   }
 
   // Fetch ongoing games
-  Future<List<Game>> getOngoingGames({String? tourId, String? roundId}) async {
+  Future<List<Games>> getOngoingGames({String? tourId, String? roundId}) async {
     return handleApiCall(() async {
       var query = supabase
           .from('games')
@@ -82,12 +82,12 @@ class GameRepository extends BaseRepository {
 
       final response = await query.order('id', ascending: true);
 
-      return (response as List).map((json) => Game.fromJson(json)).toList();
+      return (response as List).map((json) => Games.fromJson(json)).toList();
     });
   }
 
   // Fetch games by status
-  Future<List<Game>> getGamesByStatus(
+  Future<List<Games>> getGamesByStatus(
     String status, {
     String? tourId,
     int? limit,
@@ -101,16 +101,16 @@ class GameRepository extends BaseRepository {
 
       if (limit != null) {
         final response = await query.limit(limit).order('id', ascending: true);
-        return (response as List).map((json) => Game.fromJson(json)).toList();
+        return (response as List).map((json) => Games.fromJson(json)).toList();
       } else {
         final response = await query.order('id', ascending: true);
-        return (response as List).map((json) => Game.fromJson(json)).toList();
+        return (response as List).map((json) => Games.fromJson(json)).toList();
       }
     });
   }
 
   // Search games by player name (requires full-text search setup)
-  Future<List<Game>> searchGamesByPlayer(String playerQuery) async {
+  Future<List<Games>> searchGamesByPlayer(String playerQuery) async {
     return handleApiCall(() async {
       final response = await supabase
           .from('games')
@@ -118,12 +118,12 @@ class GameRepository extends BaseRepository {
           .like('name', '%$playerQuery%')
           .order('id', ascending: false);
 
-      return (response as List).map((json) => Game.fromJson(json)).toList();
+      return (response as List).map((json) => Games.fromJson(json)).toList();
     });
   }
 
   // Get recent games across all tournaments
-  Future<List<Game>> getRecentGames({int limit = 20}) async {
+  Future<List<Games>> getRecentGames({int limit = 20}) async {
     return handleApiCall(() async {
       final response = await supabase
           .from('games')
@@ -131,7 +131,7 @@ class GameRepository extends BaseRepository {
           .order('id', ascending: false)
           .limit(limit);
 
-      return (response as List).map((json) => Game.fromJson(json)).toList();
+      return (response as List).map((json) => Games.fromJson(json)).toList();
     });
   }
 
@@ -166,7 +166,7 @@ class GameRepository extends BaseRepository {
   }
 
   // Get games with moves (non-null last_move)
-  Future<List<Game>> getGamesWithMoves({String? tourId, int? limit}) async {
+  Future<List<Games>> getGamesWithMoves({String? tourId, int? limit}) async {
     return handleApiCall(() async {
       var query = supabase.from('games').select().not('last_move', 'is', null);
 
@@ -176,10 +176,10 @@ class GameRepository extends BaseRepository {
 
       if (limit != null) {
         final response = await query.limit(limit).order('id', ascending: false);
-        return (response as List).map((json) => Game.fromJson(json)).toList();
+        return (response as List).map((json) => Games.fromJson(json)).toList();
       } else {
         final response = await query.order('id', ascending: false);
-        return (response as List).map((json) => Game.fromJson(json)).toList();
+        return (response as List).map((json) => Games.fromJson(json)).toList();
       }
     });
   }

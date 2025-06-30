@@ -4,8 +4,18 @@ import '../../../repository/supabase/round/round.dart';
 
 enum RoundStatus { completed, current, upcoming }
 
-class GamesAppBarViewModel extends Equatable {
-  GamesAppBarViewModel({
+class GamesAppBarViewModel {
+  const GamesAppBarViewModel({
+    required this.gamesAppBarModels,
+    required this.selectedId,
+  });
+
+  final String selectedId;
+  final List<GamesAppBarModel> gamesAppBarModels;
+}
+
+class GamesAppBarModel extends Equatable {
+  const GamesAppBarModel({
     required this.id,
     required this.name,
     required this.startsAt,
@@ -17,12 +27,12 @@ class GamesAppBarViewModel extends Equatable {
   final DateTime? startsAt;
   final bool ongoing;
 
-  factory GamesAppBarViewModel.fromTour(Round tour) {
-    return GamesAppBarViewModel(
-      id: tour.id,
-      name: tour.name,
-      startsAt: tour.startsAt,
-      ongoing: tour.ongoing,
+  factory GamesAppBarModel.fromRound(Round round) {
+    return GamesAppBarModel(
+      id: round.id,
+      name: round.name,
+      startsAt: round.startsAt,
+      ongoing: round.ongoing,
     );
   }
 
