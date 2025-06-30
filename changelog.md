@@ -119,3 +119,10 @@
 #29 june
 -> Add ResponseHelper for Widget and Font Responsiveness,
 -> Add skeletonizer for animation,
+
+
+#30 june
+-> Local repository logic for Tournament, > Skeleton Widgets across the app for
+-> loading, Implement pull to refresh,
+-> Local Repository for Games,
+-> Filter with Round data

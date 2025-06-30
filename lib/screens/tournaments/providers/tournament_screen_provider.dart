@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/local_storage/tournament/tour_local_storage.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/screens/tournaments/model/about_tour_model.dart';
@@ -38,7 +39,33 @@ class _TournamentScreenController
 
   Future<void> _int() async {
     try {
-      final tour = await ref.read(tourRepositoryProvider).getTours(limit: 20);
+      final tour = await ref.read(tourLocalStorageProvider).getTours();
+      if (tour.isNotEmpty) {
+        _tours = tour;
+        final tourEventCardModel =
+            tour.map((t) {
+              return TourEventCardModel.fromTour(t);
+            }).toList();
+        final matchingTours =
+            tourEventCardModel.where((e) {
+              switch (tourEventCategory) {
+                case TournamentCategory.all:
+                  return true;
+                case TournamentCategory.upcoming:
+                  return e.tourEventCategory == TourEventCategory.upcoming;
+              }
+            }).toList();
+        state = AsyncValue.data(matchingTours);
+      }
+    } catch (error, _) {
+      print(error);
+    }
+  }
+
+  Future<void> onRefresh() async {
+    try {
+      state = AsyncValue.loading();
+      final tour = await ref.read(tourLocalStorageProvider).refresh();
       if (tour.isNotEmpty) {
         _tours = tour;
         final tourEventCardModel =
@@ -88,49 +115,41 @@ class _TournamentScreenController
       _int();
       return;
     } else {
-      EasyDebounce.debounce(
-        'search_for_${tourEventCategory.name}',
+      final tours = await ref
+          .read(tourLocalStorageProvider)
+          .searchToursByName(query);
+      final filteredTours =
+          tours.where((tour) {
+            final isMatchingName =
+                tour.name.toLowerCase().contains(query.toLowerCase()) ||
+                (tour.info.location?.toLowerCase().contains(
+                      query.toLowerCase(),
+                    ) ??
+                    false);
 
-        Duration(milliseconds: 600), // <-- The debounce duration
-        () async {
-          final tours = await ref
-              .read(tourRepositoryProvider)
-              .searchToursByName(query);
-          final filteredTours =
-              tours.where((tour) {
-                final isMatchingName =
-                    tour.name.toLowerCase().contains(query.toLowerCase()) ||
-                    (tour.info.location?.toLowerCase().contains(
-                          query.toLowerCase(),
-                        ) ??
-                        false);
+            final tourCardModel = TourEventCardModel.fromTour(tour);
 
-                final tourCardModel = TourEventCardModel.fromTour(tour);
+            final isMatchingCategory =
+                tourEventCategory == TournamentCategory.all
+                    ? true
+                    : tourEventCategory == TournamentCategory.upcoming
+                    ? tourCardModel.tourEventCategory ==
+                        TourEventCategory.upcoming
+                    : true;
 
-                final isMatchingCategory =
-                    tourEventCategory == TournamentCategory.all
-                        ? true
-                        : tourEventCategory == TournamentCategory.upcoming
-                        ? tourCardModel.tourEventCategory ==
-                            TourEventCategory.upcoming
-                        : true;
+            return isMatchingName && isMatchingCategory;
+          }).toList();
 
-                return isMatchingName && isMatchingCategory;
-              }).toList();
-
-          if (filteredTours.isNotEmpty) {
-            final filteredTournaments =
-                tours.map((e) => TourEventCardModel.fromTour(e)).toList();
-            state = AsyncValue.data(filteredTournaments);
-          } else {
-            final tours =
-                await ref.read(tourRepositoryProvider).getRecentTours();
-            final filteredTournaments =
-                tours.map((e) => TourEventCardModel.fromTour(e)).toList();
-            state = AsyncValue.data(filteredTournaments);
-          }
-        },
-      );
+      if (filteredTours.isNotEmpty) {
+        final filteredTournaments =
+            tours.map((e) => TourEventCardModel.fromTour(e)).toList();
+        state = AsyncValue.data(filteredTournaments);
+      } else {
+        final tours = await ref.read(tourRepositoryProvider).getRecentTours();
+        final filteredTournaments =
+            tours.map((e) => TourEventCardModel.fromTour(e)).toList();
+        state = AsyncValue.data(filteredTournaments);
+      }
     }
   }
 }
