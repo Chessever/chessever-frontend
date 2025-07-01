@@ -16,15 +16,6 @@ class _FilterPopupState extends State<FilterPopup> {
   bool _isFormatExpanded = false;
   String _selectedFormat = 'All Formats';
   String _selectedType = 'All Types';
-  final _playerSearchController = TextEditingController();
-  final _countrySearchController = TextEditingController();
-
-  @override
-  void dispose() {
-    _playerSearchController.dispose();
-    _countrySearchController.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -215,78 +206,6 @@ class _FilterPopupState extends State<FilterPopup> {
                                   )
                                   : const SizedBox.shrink(),
 
-                              // Players
-                              // SizedBox(height: 20.h),
-                              // Text(
-                              //   'Players',
-                              //   style: AppTypography.textXsMedium.copyWith(
-                              //     color: kWhiteColor,
-                              //   ),
-                              // ),
-                              // SizedBox(height: 8.h),
-                              // Container(
-                              //   height: 40.h,
-                              //   decoration: BoxDecoration(
-                              //     color: kBlack2Color,
-                              //     borderRadius: BorderRadius.circular(8.br),
-                              //   ),
-                              //   padding: EdgeInsets.symmetric(
-                              //     horizontal: 16.sp,
-                              //   ),
-                              //   child: Center(
-                              //     child: TextField(
-                              //       controller: _playerSearchController,
-                              //       decoration: InputDecoration(
-                              //         hintText: 'Search by player name',
-                              //         hintStyle: AppTypography.textXsMedium
-                              //             .copyWith(color: kWhiteColor70),
-                              //         border: InputBorder.none,
-                              //         isDense: true,
-                              //         contentPadding: EdgeInsets.zero,
-                              //       ),
-                              //       style: AppTypography.textXsMedium.copyWith(
-                              //         color: kWhiteColor,
-                              //       ),
-                              //     ),
-                              //   ),
-                              // ),
-
-                              // // Country
-                              // SizedBox(height: 20.h),
-                              // Text(
-                              //   'Country',
-                              //   style: AppTypography.textXsMedium.copyWith(
-                              //     color: kWhiteColor,
-                              //   ),
-                              // ),
-                              // SizedBox(height: 8.h),
-                              // Container(
-                              //   height: 40.h,
-                              //   decoration: BoxDecoration(
-                              //     color: kBlack2Color,
-                              //     borderRadius: BorderRadius.circular(8.br),
-                              //   ),
-                              //   padding: EdgeInsets.symmetric(
-                              //     horizontal: 16.sp,
-                              //   ),
-                              //   child: Center(
-                              //     child: TextField(
-                              //       controller: _countrySearchController,
-                              //       decoration: InputDecoration(
-                              //         hintText: 'Search by country or city',
-                              //         hintStyle: AppTypography.textXsMedium
-                              //             .copyWith(color: kWhiteColor70),
-                              //         border: InputBorder.none,
-                              //         isDense: true,
-                              //         contentPadding: EdgeInsets.zero,
-                              //       ),
-                              //       style: AppTypography.textXsMedium.copyWith(
-                              //         color: kWhiteColor,
-                              //       ),
-                              //     ),
-                              //   ),
-                              // ),
-
                               // Add space at the bottom for padding
                               SizedBox(height: 16.h),
                             ],
@@ -310,8 +229,6 @@ class _FilterPopupState extends State<FilterPopup> {
                                 setState(() {
                                   _selectedFormat = 'All Formats';
                                   _selectedType = 'All Types';
-                                  _playerSearchController.clear();
-                                  _countrySearchController.clear();
                                 });
                               },
                               style: OutlinedButton.styleFrom(

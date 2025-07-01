@@ -19,7 +19,6 @@ class _TourLocalStorage {
   Future<void> fetchAndSaveTournament() async {
     try {
       final tours = await ref.read(tourRepositoryProvider).getTours();
-      print(tours.map((e) => e.toJson()).toList());
       final toursEncoded = _encodeMyReelsList(tours);
       await ref
           .read(sharedPreferencesRepository)
@@ -158,13 +157,10 @@ class _TourLocalStorage {
 
       // Return only the most relevant results (top matches)
       const maxResults = 20; // Adjust this number as needed
-      final relevantTours = tourScores
-          .take(maxResults)
-          .map((entry) => entry.key)
-          .toList();
+      final relevantTours =
+          tourScores.take(maxResults).map((entry) => entry.key).toList();
 
       return relevantTours;
-
     } catch (error, _) {
       return <Tour>[];
     }

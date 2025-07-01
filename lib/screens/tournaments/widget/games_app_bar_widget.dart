@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/tournaments/model/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tournaments/providers/games_app_bar_provider.dart';
+import 'package:chessever2/screens/tournaments/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/widget/appbar_icons_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -66,7 +67,7 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
                         duration: const Duration(milliseconds: 300),
                         curve: Curves.easeInOut,
                         // height: 45.h,
-                        margin: EdgeInsets.symmetric(horizontal: 10.sp),
+                        margin: EdgeInsets.symmetric(horizontal: 20.sp),
                         padding: EdgeInsets.symmetric(
                           horizontal: 12.sp,
                           vertical: 5.sp,
@@ -81,8 +82,7 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
                               SvgAsset.searchIcon,
                               color: kWhiteColor,
                             ),
-
-                            SizedBox(width: 8.w),
+                            SizedBox(width: 4.w),
                             Expanded(
                               child: TextField(
                                 controller: _searchController,
@@ -95,9 +95,12 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
                                   border: InputBorder.none,
                                   isDense: true,
                                 ),
+                                onChanged:
+                                    ref
+                                        .read(gamesTourScreenProvider.notifier)
+                                        .searchGames,
                               ),
                             ),
-
                             GestureDetector(
                               onTap: _closeSearch,
                               child: const Icon(
@@ -131,7 +134,7 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
                     const Spacer(),
                     SizedBox(
                       height: 32.h,
-                      width: 120.w,
+                      width: 100.w,
                       child: ref
                           .watch(gamesAppBarProvider)
                           .when(

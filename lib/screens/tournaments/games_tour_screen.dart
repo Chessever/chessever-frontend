@@ -6,7 +6,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
-import 'package:chessever2/widgets/generic_loading_widget.dart';
+import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
@@ -17,54 +17,112 @@ class GamesTourScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return ref
-        .watch(gamesAppBarProvider)
-        .when(
-          data: (data) {
-            return ref
-                .watch(gamesTourScreenProvider(data.selectedId))
-                .when(
-                  data: (data) {
-                    if (data.isEmpty) {
-                      return EmptyWidget(
-                        title:
-                            "No games available yet. Check back soon or set a\nreminder for updates.",
-                      );
-                    }
-                    return Expanded(
-                      child: ListView.builder(
-                        padding: EdgeInsets.only(
-                          left: 20,
-                          right: 20,
-                          top: 12,
-                          bottom: MediaQuery.of(context).viewPadding.bottom,
-                        ),
-                        shrinkWrap: true,
-                        itemCount: data.length,
-                        itemBuilder: (cxt, index) {
-                          return Padding(
-                            padding: EdgeInsets.only(bottom: 12),
-                            child: _GameCard(gamesTourModel: data[index]),
+    return GestureDetector(
+      onTap: FocusScope.of(context).unfocus,
+      child: RefreshIndicator(
+        onRefresh: () async {
+          FocusScope.of(context).unfocus();
+          await ref.read(gamesTourScreenProvider.notifier).refreshGames();
+        },
+        color: kWhiteColor70,
+        backgroundColor: kDarkGreyColor,
+        displacement: 60.h,
+        // Distance from top where indicator appears
+        strokeWidth: 3.w,
+        child: ref
+            .watch(gamesAppBarProvider)
+            .when(
+              data: (_) {
+                return ref
+                    .watch(gamesTourScreenProvider)
+                    .when(
+                      data: (data) {
+                        if (data.isEmpty) {
+                          return EmptyWidget(
+                            title:
+                                "No games available yet. Check back soon or set a\nreminder for updates.",
                           );
-                        },
-                      ),
+                        }
+                        return ListView.builder(
+                          padding: EdgeInsets.only(
+                            left: 20.sp,
+                            right: 20.sp,
+                            top: 12.sp,
+                            bottom: MediaQuery.of(context).viewPadding.bottom,
+                          ),
+                          shrinkWrap: true,
+                          itemCount: data.length,
+                          itemBuilder: (cxt, index) {
+                            return Padding(
+                              padding: EdgeInsets.only(bottom: 12.sp),
+                              child: _GameCard(gamesTourModel: data[index]),
+                            );
+                          },
+                        );
+                      },
+                      error: (error, _) {
+                        return GenericErrorWidget();
+                      },
+                      loading: () {
+                        return _TourLoadingWidget();
+                      },
                     );
-                  },
-                  error: (error, _) {
-                    return GenericErrorWidget();
-                  },
-                  loading: () {
-                    return GenericLoadingWidget();
-                  },
-                );
-          },
-          error: (error, _) {
-            return GenericErrorWidget();
-          },
-          loading: () {
-            return GenericLoadingWidget();
-          },
+              },
+              error: (error, _) {
+                return GenericErrorWidget();
+              },
+              loading: () {
+                return _TourLoadingWidget();
+              },
+            ),
+      ),
+    );
+  }
+}
+
+class _TourLoadingWidget extends StatelessWidget {
+  const _TourLoadingWidget({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final mockPlayer = PlayerCard(
+      name: 'name',
+      federation: 'federation',
+      title: 'title',
+      rating: 0,
+      countryCode: 'USA',
+    );
+    final gamesTourModel = GamesTourModel(
+      gameId: 'gameId',
+      whitePlayer: mockPlayer,
+      blackPlayer: mockPlayer,
+      whiteTimeDisplay: 'whiteTimeDisplay',
+      blackTimeDisplay: 'blackTimeDisplay',
+      gameStatus: GameStatus.whiteWins,
+    );
+
+    final gamesTourModelList = List.generate(8, (_) => gamesTourModel);
+
+    return ListView.builder(
+      scrollDirection: Axis.vertical,
+      padding: EdgeInsets.only(
+        left: 20.sp,
+        right: 20.sp,
+        top: 12.sp,
+        bottom: MediaQuery.of(context).viewPadding.bottom,
+      ),
+      shrinkWrap: true,
+      itemCount: gamesTourModelList.length,
+      itemBuilder: (cxt, index) {
+        return SkeletonWidget(
+          ignoreContainers: true,
+          child: Padding(
+            padding: EdgeInsets.only(bottom: 12.sp),
+            child: _GameCard(gamesTourModel: gamesTourModelList[index]),
+          ),
         );
+      },
+    );
   }
 }
 
@@ -79,8 +137,8 @@ class EmptyWidget extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       mainAxisSize: MainAxisSize.min,
       children: [
-        SvgWidget(SvgAsset.infoIcon, height: 24, width: 24),
-        SizedBox(height: 12),
+        SvgWidget(SvgAsset.infoIcon, height: 24.h, width: 24.w),
+        SizedBox(height: 12.h),
         Text(
           title,
           style: AppTypography.textXsRegular.copyWith(color: kWhiteColor70),

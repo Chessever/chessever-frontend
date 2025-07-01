@@ -6,6 +6,7 @@ import 'package:flutter_svg/svg.dart';
 class AppBarIcons extends StatelessWidget {
   final Function() onTap;
   final String image;
+
   const AppBarIcons({super.key, required this.image, required this.onTap});
 
   @override

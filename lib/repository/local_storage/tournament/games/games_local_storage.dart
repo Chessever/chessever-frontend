@@ -130,6 +130,52 @@ class _GamesLocalStorage {
           }
         }
 
+        // Search in notable players (lower weight)
+        final players = game.players?.map((e) => e.name) ?? <String>[];
+        for (final player in players) {
+          final playerLower = player.toLowerCase();
+          if (playerLower.contains(queryLower)) {
+            if (playerLower.startsWith(queryLower)) {
+              score += 20.0;
+            } else {
+              score += 10.0;
+            }
+          } else {
+            // Check for partial word matches in player names
+            final playerWords = playerLower.split(' ');
+            for (final word in playerWords) {
+              if (word.startsWith(queryLower)) {
+                score += 15.0;
+              } else if (word.contains(queryLower)) {
+                score += 8.0;
+              }
+            }
+          }
+        }
+
+        // Search in notable players (lower weight)
+        final playerTitle = game.players?.map((e) => e.title) ?? <String>[];
+        for (final title in playerTitle) {
+          final titleLower = title.toLowerCase();
+          if (titleLower.contains(queryLower)) {
+            if (titleLower.startsWith(queryLower)) {
+              score += 20.0;
+            } else {
+              score += 10.0;
+            }
+          } else {
+            // Check for partial word matches in player names
+            final playerWords = titleLower.split(' ');
+            for (final word in playerWords) {
+              if (word.startsWith(queryLower)) {
+                score += 15.0;
+              } else if (word.contains(queryLower)) {
+                score += 8.0;
+              }
+            }
+          }
+        }
+
         // Only include tours with a minimum relevance score
         if (score > 0) {
           gameScore.add(MapEntry(game, score));

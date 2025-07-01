@@ -43,7 +43,7 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
               bottomLeft: Radius.zero,
               bottomRight: Radius.zero,
             )
-            : BorderRadius.circular(8);
+            : BorderRadius.circular(8.br);
 
     final dropDownBorderRadius = BorderRadius.only(
       bottomLeft: Radius.circular(8.br),
@@ -145,7 +145,7 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
                       bottom: BorderSide(color: kDarkGreyColor, width: 1.w),
                     ),
                   ),
-                  height: 40.h,
+                  height: 44.h,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.start,
                     children: [

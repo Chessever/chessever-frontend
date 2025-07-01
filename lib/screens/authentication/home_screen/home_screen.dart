@@ -1,4 +1,3 @@
-import 'package:chessever2/screens/authentication/home_screen/home_screen_provider.dart';
 import 'package:chessever2/screens/calendar_screen.dart';
 import 'package:chessever2/screens/chessboard/ChessBoardScreen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
@@ -134,25 +133,17 @@ class _BottomNavBarViewState extends ConsumerState<BottomNavBarView>
 
     return GestureDetector(
       onTap: FocusScope.of(context).unfocus,
-      child: RefreshIndicator(
-        onRefresh: ref.read(homeScreenProvider).onPullRefresh,
-        color: Theme.of(context).primaryColor,
-        backgroundColor: Theme.of(context).cardColor,
-        displacement: 40.0,
-        // Distance from top where indicator appears
-        strokeWidth: 3.0,
-        child: AnimatedBuilder(
-          animation: _animationController,
-          builder: (context, child) {
-            return FadeTransition(
-              opacity: _fadeAnimation,
-              child: ScaleTransition(
-                scale: _scaleAnimation,
-                child: _buildScreen(currentItem),
-              ),
-            );
-          },
-        ),
+      child: AnimatedBuilder(
+        animation: _animationController,
+        builder: (context, child) {
+          return FadeTransition(
+            opacity: _fadeAnimation,
+            child: ScaleTransition(
+              scale: _scaleAnimation,
+              child: _buildScreen(currentItem),
+            ),
+          );
+        },
       ),
     );
   }

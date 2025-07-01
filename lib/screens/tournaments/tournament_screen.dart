@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/authentication/home_screen/home_screen.dart';
+import 'package:chessever2/screens/authentication/home_screen/home_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/tournament_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -31,91 +32,103 @@ class TournamentScreen extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final searchController = useTextEditingController();
     final selectedTourEvent = ref.watch(selectedTourEventProvider);
-    return Material(
-      color: kBackgroundColor,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Add top padding
-          SizedBox(height: 24.h + MediaQuery.of(context).viewPadding.top),
-          // Search bar
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20.sp),
-            child: Hero(
-              tag: 'search_bar',
-              child: RoundedSearchBar(
-                profileInitials: 'Vi'.substring(0, 2),
-                controller: searchController,
-                hintText: 'Search tournaments or players',
-                onChanged: (value) {
-                  ref
-                      .read(tournamentNotifierProvider.notifier)
-                      .searchForTournament(value, selectedTourEvent);
-                },
-                onFilterTap: () {
-                  // Show filter popup
-                },
-                onProfileTap: () {
-                  // Open hamburger menu drawer using the static _scaffoldKey
-                  HomeScreen.scaffoldKey.currentState?.openDrawer();
+
+    return RefreshIndicator(
+      onRefresh: ref.read(homeScreenProvider).onPullRefresh,
+      color: kWhiteColor70,
+      backgroundColor: kDarkGreyColor,
+      displacement: 60.h,
+      // Distance from top where indicator appears
+      strokeWidth: 3.w,
+      child: Material(
+        color: kBackgroundColor,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Add top padding
+            SizedBox(height: 24.h + MediaQuery.of(context).viewPadding.top),
+            // Search bar
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20.sp),
+              child: Hero(
+                tag: 'search_bar',
+                child: RoundedSearchBar(
+                  profileInitials: 'Vi'.substring(0, 2),
+                  controller: searchController,
+                  hintText: 'Search tournaments or players',
+                  onChanged: (value) {
+                    ref
+                        .read(tournamentNotifierProvider.notifier)
+                        .searchForTournament(value, selectedTourEvent);
+                  },
+                  onFilterTap: () {
+                    // Show filter popup
+                  },
+                  onProfileTap: () {
+                    // Open hamburger menu drawer using the static _scaffoldKey
+                    HomeScreen.scaffoldKey.currentState?.openDrawer();
+                  },
+                ),
+              ),
+            ),
+
+            SizedBox(height: 24.h),
+
+            // Segmented switcher for "All Events" and "Upcoming Events"
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20.sp),
+              child: SegmentedSwitcher(
+                backgroundColor: kBlackColor,
+                selectedBackgroundColor: kBlackColor,
+                options: _mappedName.values.toList(),
+                initialSelection: _mappedName.values.toList().indexOf(
+                  _mappedName[selectedTourEvent]!,
+                ),
+                onSelectionChanged: (index) {
+                  ref.read(selectedTourEventProvider.notifier).state =
+                      TournamentCategory.values[index];
                 },
               ),
             ),
-          ),
 
-          SizedBox(height: 24.h),
+            SizedBox(height: 12.h),
 
-          // Segmented switcher for "All Events" and "Upcoming Events"
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20.sp),
-            child: SegmentedSwitcher(
-              backgroundColor: kBlackColor,
-              selectedBackgroundColor: kBlackColor,
-              options: _mappedName.values.toList(),
-              initialSelection: _mappedName.values.toList().indexOf(
-                _mappedName[selectedTourEvent]!,
-              ),
-              onSelectionChanged: (index) {
-                ref.read(selectedTourEventProvider.notifier).state =
-                    TournamentCategory.values[index];
-              },
-            ),
-          ),
-
-          SizedBox(height: 12.h),
-
-          // Tournament list
-          ref
-              .watch(tournamentNotifierProvider)
-              .when(
-                data: (filteredEvents) {
-                  return Expanded(
-                    child: AllEventsTabWidget(filteredEvents: filteredEvents),
-                  );
-                },
-                loading: () {
-                  final mockData = TourEventCardModel(
-                    id: 'tour_001',
-                    title: 'World Chess Championship 2025',
-                    dates: 'Mar 15 - 25,2025',
-                    location: 'London, UK',
-                    playerCount: 16,
-                    elo: 2800,
-                    timeUntilStart: 'Starts in 8 months',
-                    tourEventCategory: TourEventCategory.live,
-                  );
-                  return Expanded(
-                    child: SkeletonWidget(
-                      child: AllEventsTabWidget(
-                        filteredEvents: List.generate(10, (index) => mockData),
+            // Tournament list
+            ref
+                .watch(tournamentNotifierProvider)
+                .when(
+                  data: (filteredEvents) {
+                    return Expanded(
+                      child: AllEventsTabWidget(filteredEvents: filteredEvents),
+                    );
+                  },
+                  loading: () {
+                    final mockData = TourEventCardModel(
+                      id: 'tour_001',
+                      title: 'World Chess Championship 2025',
+                      dates: 'Mar 15 - 25,2025',
+                      location: 'London, UK',
+                      playerCount: 16,
+                      elo: 2800,
+                      timeUntilStart: 'Starts in 8 months',
+                      tourEventCategory: TourEventCategory.live,
+                    );
+                    return Expanded(
+                      child: SkeletonWidget(
+                        child: AllEventsTabWidget(
+                          filteredEvents: List.generate(
+                            10,
+                            (index) => mockData,
+                          ),
+                        ),
                       ),
-                    ),
-                  );
-                },
-                error: (error, stackTrace) => GenericErrorWidget(),
-              ),
-        ],
+                    );
+                  },
+                  error: (error, stackTrace) => GenericErrorWidget(),
+                ),
+          ],
+        ),
       ),
     );
   }
