@@ -18,11 +18,10 @@ class _GamesLocalStorage {
 
   Future<void> fetchAndSaveGames(String tourId) async {
     try {
-      final tours = await ref
+      final games = await ref
           .read(gameRepositoryProvider)
           .getGamesByTourId(tourId);
-      print(tours.map((e) => e.toJson()).toList());
-      final toursEncoded = _encodeMyReelsList(tours);
+      final toursEncoded = _encodeMyReelsList(games);
       await ref
           .read(sharedPreferencesRepository)
           .setStringList(_LocalGameStorage.games.name, toursEncoded);

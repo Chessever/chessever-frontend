@@ -216,76 +216,76 @@ class _FilterPopupState extends State<FilterPopup> {
                                   : const SizedBox.shrink(),
 
                               // Players
-                              SizedBox(height: 20.h),
-                              Text(
-                                'Players',
-                                style: AppTypography.textXsMedium.copyWith(
-                                  color: kWhiteColor,
-                                ),
-                              ),
-                              SizedBox(height: 8.h),
-                              Container(
-                                height: 40.h,
-                                decoration: BoxDecoration(
-                                  color: kBlack2Color,
-                                  borderRadius: BorderRadius.circular(8.br),
-                                ),
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: 16.sp,
-                                ),
-                                child: Center(
-                                  child: TextField(
-                                    controller: _playerSearchController,
-                                    decoration: InputDecoration(
-                                      hintText: 'Search by player name',
-                                      hintStyle: AppTypography.textXsMedium
-                                          .copyWith(color: kWhiteColor70),
-                                      border: InputBorder.none,
-                                      isDense: true,
-                                      contentPadding: EdgeInsets.zero,
-                                    ),
-                                    style: AppTypography.textXsMedium.copyWith(
-                                      color: kWhiteColor,
-                                    ),
-                                  ),
-                                ),
-                              ),
+                              // SizedBox(height: 20.h),
+                              // Text(
+                              //   'Players',
+                              //   style: AppTypography.textXsMedium.copyWith(
+                              //     color: kWhiteColor,
+                              //   ),
+                              // ),
+                              // SizedBox(height: 8.h),
+                              // Container(
+                              //   height: 40.h,
+                              //   decoration: BoxDecoration(
+                              //     color: kBlack2Color,
+                              //     borderRadius: BorderRadius.circular(8.br),
+                              //   ),
+                              //   padding: EdgeInsets.symmetric(
+                              //     horizontal: 16.sp,
+                              //   ),
+                              //   child: Center(
+                              //     child: TextField(
+                              //       controller: _playerSearchController,
+                              //       decoration: InputDecoration(
+                              //         hintText: 'Search by player name',
+                              //         hintStyle: AppTypography.textXsMedium
+                              //             .copyWith(color: kWhiteColor70),
+                              //         border: InputBorder.none,
+                              //         isDense: true,
+                              //         contentPadding: EdgeInsets.zero,
+                              //       ),
+                              //       style: AppTypography.textXsMedium.copyWith(
+                              //         color: kWhiteColor,
+                              //       ),
+                              //     ),
+                              //   ),
+                              // ),
 
-                              // Country
-                              SizedBox(height: 20.h),
-                              Text(
-                                'Country',
-                                style: AppTypography.textXsMedium.copyWith(
-                                  color: kWhiteColor,
-                                ),
-                              ),
-                              SizedBox(height: 8.h),
-                              Container(
-                                height: 40.h,
-                                decoration: BoxDecoration(
-                                  color: kBlack2Color,
-                                  borderRadius: BorderRadius.circular(8.br),
-                                ),
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: 16.sp,
-                                ),
-                                child: Center(
-                                  child: TextField(
-                                    controller: _countrySearchController,
-                                    decoration: InputDecoration(
-                                      hintText: 'Search by country or city',
-                                      hintStyle: AppTypography.textXsMedium
-                                          .copyWith(color: kWhiteColor70),
-                                      border: InputBorder.none,
-                                      isDense: true,
-                                      contentPadding: EdgeInsets.zero,
-                                    ),
-                                    style: AppTypography.textXsMedium.copyWith(
-                                      color: kWhiteColor,
-                                    ),
-                                  ),
-                                ),
-                              ),
+                              // // Country
+                              // SizedBox(height: 20.h),
+                              // Text(
+                              //   'Country',
+                              //   style: AppTypography.textXsMedium.copyWith(
+                              //     color: kWhiteColor,
+                              //   ),
+                              // ),
+                              // SizedBox(height: 8.h),
+                              // Container(
+                              //   height: 40.h,
+                              //   decoration: BoxDecoration(
+                              //     color: kBlack2Color,
+                              //     borderRadius: BorderRadius.circular(8.br),
+                              //   ),
+                              //   padding: EdgeInsets.symmetric(
+                              //     horizontal: 16.sp,
+                              //   ),
+                              //   child: Center(
+                              //     child: TextField(
+                              //       controller: _countrySearchController,
+                              //       decoration: InputDecoration(
+                              //         hintText: 'Search by country or city',
+                              //         hintStyle: AppTypography.textXsMedium
+                              //             .copyWith(color: kWhiteColor70),
+                              //         border: InputBorder.none,
+                              //         isDense: true,
+                              //         contentPadding: EdgeInsets.zero,
+                              //       ),
+                              //       style: AppTypography.textXsMedium.copyWith(
+                              //         color: kWhiteColor,
+                              //       ),
+                              //     ),
+                              //   ),
+                              // ),
 
                               // Add space at the bottom for padding
                               SizedBox(height: 16.h),

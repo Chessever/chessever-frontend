@@ -1,3 +1,4 @@
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:country_flags/country_flags.dart';
 import '../theme/app_theme.dart';
@@ -24,7 +25,7 @@ class ScoreCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 28,
+      // height: 28,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: kBlack2Color,
@@ -40,15 +41,15 @@ class ScoreCard extends StatelessWidget {
             child: Row(
               children: [
                 SizedBox(
-                  width: 16,
-                  height: 12,
+                  width: 16.w,
+                  height: 12.h,
                   child: CountryFlag.fromCountryCode(
                     countryCode,
-                    height: 12,
-                    width: 16,
+                    height: 12.h,
+                    width: 16.w,
                   ),
                 ),
-                const SizedBox(width: 4),
+                SizedBox(width: 4.w),
                 Flexible(
                   child: RichText(
                     overflow: TextOverflow.ellipsis,
@@ -77,7 +78,7 @@ class ScoreCard extends StatelessWidget {
 
           // ELO column (fixed width to match header)
           SizedBox(
-            width: 100,
+            width: 100.w,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -88,7 +89,7 @@ class ScoreCard extends StatelessWidget {
                   ),
                 ),
                 if (scoreChange != null) ...[
-                  const SizedBox(width: 4),
+                  SizedBox(width: 4.w),
                   Text(
                     scoreChange! > 0 ? '+$scoreChange' : '$scoreChange',
                     style: AppTypography.textXsMedium.copyWith(
@@ -102,7 +103,7 @@ class ScoreCard extends StatelessWidget {
 
           // Match Score column (fixed width to match header)
           SizedBox(
-            width: 60,
+            width: 60.w,
             child: Text(
               matchScore,
               textAlign: TextAlign.end,

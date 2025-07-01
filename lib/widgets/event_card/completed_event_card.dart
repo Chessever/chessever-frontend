@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
@@ -35,12 +36,11 @@ class CompletedEventCard extends StatelessWidget {
       backgroundColor: Colors.transparent,
       builder:
           (context) => Container(
+            margin: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 10.sp),
+
             decoration: BoxDecoration(
               color: kBackgroundColor,
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(16.br),
-                topRight: Radius.circular(16.br),
-              ),
+              borderRadius: BorderRadius.circular(20.br),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -49,36 +49,42 @@ class CompletedEventCard extends StatelessWidget {
                   leading: SvgWidget(
                     SvgAsset.tournamentPgnIcon,
                     semanticsLabel: 'Download Tournament PGN',
-                    height: 20.h,
-                    width: 20.w,
+                    height: 20.ic,
+                    width: 20.ic,
                     colorFilter: const ColorFilter.mode(
                       kWhiteColor,
                       BlendMode.srcIn,
                     ),
                   ),
-                  title: const Text(
+                  title: Text(
                     'Download Tournament PGN',
-                    style: TextStyle(color: kWhiteColor),
+                    style: AppTypography.textXsBold.copyWith(
+                      color: kWhiteColor,
+                    ),
                   ),
                   onTap: () {
                     Navigator.pop(context);
                     onDownloadTournament?.call();
                   },
                 ),
+
                 ListTile(
                   leading: SvgWidget(
                     SvgAsset.addToLibraryIcon,
                     semanticsLabel: 'Add to Library',
-                    height: 20.h,
-                    width: 20.w,
+                    height: 20.ic,
+                    width: 20.ic,
                     colorFilter: const ColorFilter.mode(
                       kWhiteColor,
                       BlendMode.srcIn,
                     ),
                   ),
-                  title: const Text(
+                  title: Text(
                     'Add to Library',
-                    style: TextStyle(color: kWhiteColor),
+                    style: AppTypography.textXsBold.copyWith(
+                      color: kWhiteColor,
+                    ),
+                    // style: TextStyle(color: kWhiteColor),
                   ),
                   onTap: () {
                     Navigator.pop(context);

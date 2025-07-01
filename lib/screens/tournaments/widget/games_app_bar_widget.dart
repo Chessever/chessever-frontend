@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/tournaments/model/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tournaments/providers/games_app_bar_provider.dart';
+import 'package:chessever2/screens/tournaments/widget/appbar_icons_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -9,77 +10,184 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-class GamesAppBarWidget extends ConsumerWidget {
+class GamesAppBarWidget extends ConsumerStatefulWidget {
   const GamesAppBarWidget({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Row(
-      children: [
-        SizedBox(width: 20.w),
-        IconButton(
-          iconSize: 24.ic,
-          padding: EdgeInsets.zero,
-          onPressed: () {
-            Navigator.of(context).pop();
-          },
-          icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24.ic),
-        ),
-        const Spacer(),
+  ConsumerState<GamesAppBarWidget> createState() => _GamesAppBarWidgetState();
+}
 
-        SizedBox(
-          height: 32.h,
-          width: 120.w,
-          child: ref
-              .watch(gamesAppBarProvider)
-              .when(
-                data: (data) {
-                  return _RoundDropdown(
-                    rounds: data.gamesAppBarModels,
-                    selectedRoundId: data.selectedId,
-                    onChanged: (model) {
-                      ref
-                          .read(gamesAppBarProvider.notifier)
-                          .selectNewRound(model);
-                    },
-                  );
-                },
-                error: (e, _) {
-                  return Center(
-                    child: Text(
-                      'Error loading rounds',
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: kWhiteColor70,
+class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
+  bool isSearching = false;
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
+
+  void _startSearch() {
+    setState(() {
+      isSearching = true;
+    });
+    _focusNode.requestFocus();
+  }
+
+  void _closeSearch() {
+    setState(() {
+      isSearching = false;
+      _searchController.clear();
+    });
+    _focusNode.unfocus();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () {
+        if (isSearching) _closeSearch();
+      },
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        transitionBuilder: (child, animation) {
+          return FadeTransition(
+            opacity: animation,
+            child: SizeTransition(
+              sizeFactor: animation,
+              axis: Axis.horizontal,
+              child: child,
+            ),
+          );
+        },
+        child:
+            isSearching
+                ? Row(
+                  key: const ValueKey('search_mode'),
+                  children: [
+                    Expanded(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                        // height: 45.h,
+                        margin: EdgeInsets.symmetric(horizontal: 10.sp),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 12.sp,
+                          vertical: 5.sp,
+                        ),
+                        decoration: BoxDecoration(
+                          color: kBlack2Color,
+                          borderRadius: BorderRadius.circular(4.br),
+                        ),
+                        child: Row(
+                          children: [
+                            SvgPicture.asset(
+                              SvgAsset.searchIcon,
+                              color: kWhiteColor,
+                            ),
+
+                            SizedBox(width: 8.w),
+                            Expanded(
+                              child: TextField(
+                                controller: _searchController,
+                                focusNode: _focusNode,
+                                style: const TextStyle(color: kWhiteColor70),
+                                decoration: const InputDecoration(
+                                  hintText: "Search...",
+
+                                  hintStyle: TextStyle(color: kWhiteColor70),
+                                  border: InputBorder.none,
+                                  isDense: true,
+                                ),
+                              ),
+                            ),
+
+                            GestureDetector(
+                              onTap: _closeSearch,
+                              child: const Icon(
+                                Icons.close,
+                                color: kWhiteColor70,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  );
-                },
-                loading: () {
-                  final loadingRound = GamesAppBarViewModel(
-                    gamesAppBarModels: [
-                      GamesAppBarModel(
-                        id: 'qdBcMm1h',
-                        name: 'round-1',
-                        startsAt: DateTime.now(),
-                        ongoing: false,
+                  ],
+                )
+                : Row(
+                  key: const ValueKey(
+                    'app_bar_mode',
+                  ), // uniquely identifies this Row
+                  children: [
+                    SizedBox(width: 20.w),
+                    IconButton(
+                      iconSize: 24.ic,
+                      padding: EdgeInsets.zero,
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                      },
+                      icon: Icon(
+                        Icons.arrow_back_ios_new_outlined,
+                        size: 24.ic,
                       ),
-                    ],
-                    selectedId: 'qdBcMm1h',
-                  );
-
-                  return SkeletonWidget(
-                    child: _RoundDropdown(
-                      rounds: loadingRound.gamesAppBarModels,
-                      selectedRoundId: loadingRound.gamesAppBarModels.first.id,
-                      onChanged: (_) {},
                     ),
-                  );
-                },
-              ),
-        ),
-        const Spacer(),
-        SizedBox(width: 44.w),
-      ],
+                    const Spacer(),
+                    SizedBox(
+                      height: 32.h,
+                      width: 120.w,
+                      child: ref
+                          .watch(gamesAppBarProvider)
+                          .when(
+                            data:
+                                (data) => _RoundDropdown(
+                                  rounds: data.gamesAppBarModels,
+                                  selectedRoundId: data.selectedId,
+                                  onChanged: (model) {
+                                    ref
+                                        .read(gamesAppBarProvider.notifier)
+                                        .selectNewRound(model);
+                                  },
+                                ),
+                            error:
+                                (e, _) => Center(
+                                  child: Text(
+                                    'Error loading rounds',
+                                    style: AppTypography.textXsRegular.copyWith(
+                                      color: kWhiteColor70,
+                                    ),
+                                  ),
+                                ),
+                            loading: () {
+                              final loadingRound = GamesAppBarViewModel(
+                                gamesAppBarModels: [
+                                  GamesAppBarModel(
+                                    id: 'qdBcMm1h',
+                                    name: 'round-1',
+                                    startsAt: DateTime.now(),
+                                    ongoing: false,
+                                  ),
+                                ],
+                                selectedId: 'qdBcMm1h',
+                              );
+                              return SkeletonWidget(
+                                child: _RoundDropdown(
+                                  rounds: loadingRound.gamesAppBarModels,
+                                  selectedRoundId:
+                                      loadingRound.gamesAppBarModels.first.id,
+                                  onChanged: (_) {},
+                                ),
+                              );
+                            },
+                          ),
+                    ),
+                    const Spacer(),
+                    AppBarIcons(
+                      image: SvgAsset.searchIcon,
+                      onTap: _startSearch,
+                    ),
+                    SizedBox(width: 18.w),
+                    AppBarIcons(image: SvgAsset.chase_grid, onTap: () {}),
+                    SizedBox(width: 20.w),
+                  ],
+                ),
+      ),
     );
   }
 }

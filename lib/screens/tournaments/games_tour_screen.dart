@@ -3,6 +3,7 @@ import 'package:chessever2/screens/tournaments/providers/games_app_bar_provider.
 import 'package:chessever2/screens/tournaments/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/generic_loading_widget.dart';
@@ -101,13 +102,13 @@ class _GameCard extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          height: 60,
-          padding: EdgeInsets.symmetric(horizontal: 12),
+          height: 60.h,
+          padding: EdgeInsets.symmetric(horizontal: 12.sp),
           decoration: BoxDecoration(
             color: kWhiteColor70,
             borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(12.0),
-              topRight: Radius.circular(12.0),
+              topLeft: Radius.circular(12.br),
+              topRight: Radius.circular(12.br),
             ),
           ),
           child: Row(
@@ -129,13 +130,13 @@ class _GameCard extends StatelessWidget {
           ),
         ),
         Container(
-          height: 24,
-          padding: EdgeInsets.symmetric(horizontal: 10),
+          height: 24.h,
+          padding: EdgeInsets.symmetric(horizontal: 10.sp),
           decoration: BoxDecoration(
             color: kBlack2Color,
             borderRadius: BorderRadius.only(
-              bottomLeft: Radius.circular(12.0),
-              bottomRight: Radius.circular(12.0),
+              bottomLeft: Radius.circular(12.br),
+              bottomRight: Radius.circular(12.br),
             ),
           ),
           child: Row(
@@ -175,8 +176,8 @@ class _GamesRound extends StatelessWidget {
         ),
         Row(
           children: [
-            CountryFlag.fromCountryCode(countryCode, height: 12, width: 16),
-            SizedBox(width: 4),
+            CountryFlag.fromCountryCode(countryCode, height: 12.h, width: 16.w),
+            SizedBox(width: 4.w),
             Text(
               playerRank,
               style: AppTypography.textXsMedium.copyWith(color: kBlack2Color),
@@ -196,28 +197,28 @@ class _ProgressWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 48,
-      height: 12,
+      width: 48.w,
+      height: 12.h,
       child: Stack(
         children: [
           // Background container
           Container(
-            width: 48,
-            height: 12.0,
+            width: 48.w,
+            height: 12.h,
             decoration: BoxDecoration(
               color: kBlack2Color,
-              borderRadius: BorderRadius.all(Radius.circular(4)),
+              borderRadius: BorderRadius.all(Radius.circular(4.br)),
             ),
           ),
           // Progress container
           Container(
             width: 48 * progress, // 0.5 is the progress value
-            height: 12.0,
+            height: 12.0.h,
             decoration: BoxDecoration(
               color: kWhiteColor,
               borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(4),
-                bottomLeft: Radius.circular(4),
+                topLeft: Radius.circular(4.br),
+                bottomLeft: Radius.circular(4.br),
               ),
             ),
           ),

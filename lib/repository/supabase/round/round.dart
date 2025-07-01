@@ -26,8 +26,6 @@ class Round {
 
   factory Round.fromJson(Map<String, dynamic> json) {
     try {
-      // Debug logging
-      developer.log('Parsing Round from JSON: $json', name: 'Round.fromJson');
 
       // Validate required fields
       if (json['id'] == null) throw Exception('Missing required field: id');
