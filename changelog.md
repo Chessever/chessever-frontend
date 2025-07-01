@@ -126,3 +126,8 @@
 -> loading, Implement pull to refresh,
 -> Local Repository for Games,
 -> Filter with Round data
+
+#1 Jul
+-> add responsive helper in tournament_details
+-> add icons in appbar 
+-> implement animation searchbar,

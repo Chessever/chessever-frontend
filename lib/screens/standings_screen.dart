@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/tournaments/games_tour_screen.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../providers/standings_provider.dart';
@@ -14,15 +15,15 @@ class StandingsScreen extends ConsumerWidget {
     final playerStandings = ref.watch(standingsProvider);
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20.0),
+      padding: EdgeInsets.symmetric(horizontal: 20.0.sp),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const SizedBox(height: 19),
+          SizedBox(height: 19.h),
           Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 8.0,
+            padding: EdgeInsets.symmetric(
+              horizontal: 8.0.sp,
             ), // Match ScoreCard padding
             child: Row(
               children: [
@@ -37,7 +38,7 @@ class StandingsScreen extends ConsumerWidget {
                 ),
                 // Elo column (matches ScoreCard width of 100)
                 SizedBox(
-                  width: 100,
+                  width: 100.w,
                   child: Text(
                     'Elo',
                     style: AppTypography.textSmMedium.copyWith(
@@ -48,7 +49,7 @@ class StandingsScreen extends ConsumerWidget {
                 ),
                 // Score column (matches ScoreCard width of 60)
                 SizedBox(
-                  width: 60,
+                  width: 60.w,
                   child: Text(
                     'Score',
                     style: AppTypography.textSmMedium.copyWith(
@@ -70,7 +71,7 @@ class StandingsScreen extends ConsumerWidget {
                 itemBuilder: (context, index) {
                   final player = playerStandings[index];
                   return Padding(
-                    padding: const EdgeInsets.only(bottom: 16.0),
+                    padding: EdgeInsets.only(bottom: 16.0.sp),
                     child: ScoreCard(
                       countryCode: player.countryCode,
                       title: player.title,
