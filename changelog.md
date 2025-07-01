@@ -122,12 +122,15 @@
 
 
 #30 june
--> Local repository logic for Tournament, > Skeleton Widgets across the app for
+-> Local repository logic for Tournament, 
+-> Skeleton Widgets across the app for
 -> loading, Implement pull to refresh,
 -> Local Repository for Games,
 -> Filter with Round data
 
-#1 Jul
--> add responsive helper in tournament_details
--> add icons in appbar 
--> implement animation searchbar,
+#1 July
+-> implement animation searchbar and add search functionality,
+-> Update pull to refresh functionality for re-populating data for games,
+-> add responsive helper in tournament_details and missing screens,
+-> add new icons across appbars, 
+-> 

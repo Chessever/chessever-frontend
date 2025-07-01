@@ -76,7 +76,10 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               alignment: Alignment.bottomCenter,
               child:
                   state.isLoading
-                      ? SkeletonWidget(child: _AuthButtonWidget(state: state))
+                      ? SkeletonWidget(
+                        ignoreContainers: true,
+                        child: _AuthButtonWidget(state: state),
+                      )
                       : _AuthButtonWidget(state: state),
             ),
           ],
