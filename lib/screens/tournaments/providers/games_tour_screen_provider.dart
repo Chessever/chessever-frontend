@@ -2,7 +2,6 @@ import 'package:chessever2/repository/local_storage/tournament/games/games_local
 import 'package:chessever2/screens/tournaments/model/games_tour_model.dart';
 import 'package:chessever2/screens/tournaments/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tournaments/tournament_detail_view.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final gamesTourScreenProvider = StateNotifierProvider.autoDispose<
@@ -24,8 +23,10 @@ class GamesTourScreenProvider
   final String? roundId;
 
   Future<void> _init() async {
-
-    final allGames = await ref.read(gamesLocalStorage).getGames('5LW5RS0a');
+    final aboutTourModel = ref.read(aboutTourModelProvider)!;
+    final allGames = await ref
+        .read(gamesLocalStorage)
+        .getGames(aboutTourModel.id);
 
     if (roundId != null) {
       var games = allGames.where((e) => e.roundId.contains(roundId!)).toList();
@@ -49,7 +50,7 @@ class GamesTourScreenProvider
 
       final allGames = await ref
           .read(gamesLocalStorage)
-          .searchGamesByName(tourId: '5LW5RS0a', query: query);
+          .searchGamesByName(tourId: aboutTourModel.id, query: query);
 
       var games = allGames.where((e) => e.roundId.contains(roundId!)).toList();
       final gamesTourModels = List.generate(
@@ -64,7 +65,9 @@ class GamesTourScreenProvider
   Future<void> refreshGames() async {
     final aboutTourModel = ref.read(aboutTourModelProvider)!;
 
-    final allGames = await ref.read(gamesLocalStorage).refresh('5LW5RS0a');
+    final allGames = await ref
+        .read(gamesLocalStorage)
+        .refresh(aboutTourModel.id);
 
     final games = allGames.where((e) => e.roundId.contains(roundId!)).toList();
     final gamesTourModels = List.generate(
