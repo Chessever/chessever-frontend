@@ -75,7 +75,7 @@ class TournamentDetailView extends ConsumerWidget {
             selectedTourMode == _TournamentDetailScreenMode.about
                 ? Expanded(child: const AboutTourScreen())
                 : selectedTourMode == _TournamentDetailScreenMode.games
-                ? const GamesTourScreen()
+                ? Expanded(child: const GamesTourScreen())
                 : Expanded(child: const StandingsScreen()),
           ],
         ),
