@@ -30,12 +30,20 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
     _focusNode.requestFocus();
   }
 
-  void _closeSearch() {
+  Future<void> _closeSearch() async {
     setState(() {
       isSearching = false;
-      _searchController.clear();
     });
+    _searchController.clear();
+    await ref.read(gamesTourScreenProvider.notifier).refreshGames();
     _focusNode.unfocus();
+  }
+
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   @override
