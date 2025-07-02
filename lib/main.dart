@@ -1,6 +1,7 @@
 import 'package:chessever2/l10n/app_localizations.dart';
 import 'package:chessever2/localization/locale_provider.dart';
 import 'package:chessever2/screens/authentication/auth_screen.dart';
+import 'package:chessever2/screens/calendar_detail_screen.dart';
 import 'package:chessever2/screens/chessboard/ChessBoardScreen.dart';
 import 'package:chessever2/screens/authentication/home_screen/home_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
@@ -13,7 +14,6 @@ import 'package:chessever2/screens/standings_screen.dart';
 import 'package:chessever2/screens/tournaments/tournament_detail_view.dart';
 import 'package:chessever2/screens/tournaments/tournament_screen.dart';
 import 'package:chessever2/screens/calendar_screen.dart';
-import 'package:chessever2/services/notification_service.dart';
 import 'package:chessever2/services/settings_manager.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:device_preview_plus/device_preview_plus.dart';
@@ -31,8 +31,6 @@ Future<void> main() async {
 
   // Load environment variables
   await dotenv.load(fileName: ".env");
-  WidgetsFlutterBinding.ensureInitialized();
-  await NotificationService.initialize();
 
   // Initialize Supabase
   await Supabase.initialize(
@@ -112,6 +110,7 @@ class _MyAppState extends ConsumerState<MyApp> {
         // Updated to use the new FavoriteScreen
         '/countryman_screen': (context) => const CountrymanScreen(),
         '/standings': (context) => const StandingsScreen(),
+        '/calendar_detail_screen': (context) => CalendarDetailsScreen(),
         // New route for Tournament Details screen
       },
     );

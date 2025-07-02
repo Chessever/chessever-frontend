@@ -1,8 +1,6 @@
 import 'dart:io';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
-import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/screens/authentication/auth_screen_state.dart';
-import 'package:chessever2/services/notification_service.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -14,7 +12,6 @@ import 'package:chessever2/widgets/blur_background.dart';
 import 'package:chessever2/widgets/country_dropdown.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
-import 'package:country_picker/country_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'auth_screen_provider.dart';
@@ -186,41 +183,17 @@ class _AuthCountryDropdownWidget extends ConsumerWidget {
             Container(
               padding: EdgeInsets.symmetric(horizontal: 48.sp),
               width: MediaQuery.of(context).size.width,
-
               //todo: Get and Set CountryCode here
-              // child: CountryDropdown(
-              //   selectedCountryCode: 'US',
-              //   onChanged: (countryCode) async {
-              //     await ref
-              //         .read(sharedPreferencesRepository)
-              //         .setString('selected_country_code', countryCode);
-
-              //     ref
-              //         .read(countryDropdownProvider.notifier)
-              //         .selectCountry(countryCode);
-              //     // Hide country selection modal
-              //     notifier.hideCountrySelection();
-
-              //     // Close modal and navigate to home
-              //     Navigator.of(context).pop();
-              //     Navigator.pushReplacementNamed(context, '/home_screen');
-              //   },
-              // ),
               child: CountryDropdown(
                 selectedCountryCode: 'US',
-                onChanged: (Country country) async {
-                  final countryName = country.name;
-
-                  await ref
-                      .read(sharedPreferencesRepository)
-                      .setString('selected_country_name', countryName);
-
+                onChanged: (countryCode) async {
                   ref
                       .read(countryDropdownProvider.notifier)
-                      .selectCountry(country.countryCode);
-
+                      .selectCountry(countryCode);
+                  // Hide country selection modal
                   notifier.hideCountrySelection();
 
+                  // Close modal and navigate to home
                   Navigator.of(context).pop();
                   Navigator.pushReplacementNamed(context, '/home_screen');
                 },

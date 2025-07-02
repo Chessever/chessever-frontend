@@ -25,63 +25,66 @@ class SimpleSearchBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 40.h,
-      decoration: BoxDecoration(
-        color: kBlack2Color,
-        borderRadius: BorderRadius.circular(4.br),
-      ),
-      padding: EdgeInsets.only(
-        left: 6.sp,
-        right: 6.sp,
-        top: 4.sp,
-        bottom: 4.sp,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // Search icon aligned with text
-          Padding(
-            padding: EdgeInsets.only(left: 6.sp),
-            child: SvgWidget(SvgAsset.searchIcon, height: 16.h, width: 16.w),
-          ),
-          SizedBox(width: 4.w),
-
-          // Text field
-          Expanded(
-            child: TextField(
-              controller: controller,
-              onChanged: onChanged,
-              autofocus: autofocus,
-              textAlignVertical: TextAlignVertical.center,
-              style: AppTypography.textXsRegular.copyWith(color: kWhiteColor),
-              decoration: InputDecoration(
-                hintText: hintText,
-                hintStyle: AppTypography.textXsRegular.copyWith(
-                  color: kWhiteColor70,
-                ),
-                border: InputBorder.none,
-                isDense: true,
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-          ),
-
-          // Filter icon
-          if (onFilterTap != null || onMenuTap != null)
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        height: 40.h,
+        decoration: BoxDecoration(
+          color: kBlack2Color,
+          borderRadius: BorderRadius.circular(4.br),
+        ),
+        padding: EdgeInsets.only(
+          left: 6.sp,
+          right: 6.sp,
+          top: 4.sp,
+          bottom: 4.sp,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Search icon aligned with text
             Padding(
-              padding: EdgeInsets.only(right: 10.sp),
-              child: InkWell(
-                onTap: onFilterTap ?? onMenuTap,
-                borderRadius: BorderRadius.zero,
-                child: SvgWidget(
-                  SvgAsset.listFilterIcon,
-                  height: 24.h,
-                  width: 24.w,
+              padding: EdgeInsets.only(left: 6.sp),
+              child: SvgWidget(SvgAsset.searchIcon, height: 16.h, width: 16.w),
+            ),
+            SizedBox(width: 4.w),
+
+            // Text field
+            Expanded(
+              child: TextField(
+                controller: controller,
+                onChanged: onChanged,
+                autofocus: autofocus,
+                textAlignVertical: TextAlignVertical.center,
+                style: AppTypography.textXsRegular.copyWith(color: kWhiteColor),
+                decoration: InputDecoration(
+                  hintText: hintText,
+                  hintStyle: AppTypography.textXsRegular.copyWith(
+                    color: kWhiteColor70,
+                  ),
+                  border: InputBorder.none,
+                  isDense: true,
+                  contentPadding: EdgeInsets.zero,
                 ),
               ),
             ),
-        ],
+
+            // Filter icon
+            if (onFilterTap != null || onMenuTap != null)
+              Padding(
+                padding: EdgeInsets.only(right: 10.sp),
+                child: InkWell(
+                  onTap: onFilterTap ?? onMenuTap,
+                  borderRadius: BorderRadius.zero,
+                  child: SvgWidget(
+                    SvgAsset.listFilterIcon,
+                    height: 24.h,
+                    width: 24.w,
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

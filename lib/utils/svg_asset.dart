@@ -31,7 +31,4 @@ class SvgAsset {
   static const premiumUnselected = 'assets/svgs/unselected.svg';
   static const selectedSvg = 'assets/svgs/selected.svg';
   static const chase_grid = 'assets/svgs/chase_grid.svg';
-
-  static const countryMan = 'assets/svgs/country_man.svg';
-
 }
