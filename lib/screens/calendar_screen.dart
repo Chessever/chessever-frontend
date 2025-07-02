@@ -1,3 +1,4 @@
+import 'package:chessever2/utils/month_converter.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
@@ -14,35 +15,18 @@ class CalendarScreen extends ConsumerStatefulWidget {
   ConsumerState<CalendarScreen> createState() => _CalendarScreenState();
 }
 
+final selectedYearProvider = StateProvider<int>((ref) {
+  final currentDate = DateTime.now();
+  return currentDate.year; // Default to current year
+});
+
+final selectedMonthProvider = StateProvider<int>((ref) {
+  final currentDate = DateTime.now();
+  return currentDate.month; // Default to current year
+});
+
 class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   final TextEditingController _searchController = TextEditingController();
-  int _selectedYear = 2025;
-  String _selectedMonth = 'May'; // Default to current month
-
-  // List of all months
-  final List<String> _months = [
-    'January',
-    'February',
-    'March',
-    'April',
-    'May',
-    'June',
-    'July',
-    'August',
-    'September',
-    'October',
-    'November',
-    'December',
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    // Set current month based on date - for now we'll use the current date
-    final currentDate = DateTime.now();
-    _selectedMonth = _months[currentDate.month - 1];
-    _selectedYear = currentDate.year;
-  }
 
   @override
   void dispose() {
@@ -59,7 +43,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
           SizedBox(height: 24.h + MediaQuery.of(context).viewPadding.top),
           // Search bar with year dropdown beside it
           Padding(
-            padding:  EdgeInsets.symmetric(horizontal: 16.sp),
+            padding: EdgeInsets.symmetric(horizontal: 16.sp),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -82,7 +66,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                         // Show the filter popup
                         showDialog(
                           context: context,
-                          barrierColor: Colors.black.withOpacity(0.5),
+                          barrierColor: kLightBlack,
                           builder: (context) => const FilterPopup(),
                         );
                       },
@@ -100,7 +84,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                     height: 40, // Match height with search bar
                     decoration: BoxDecoration(
                       color: Colors.transparent,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(8.br),
                       border: Border.all(
                         color: Colors.white.withOpacity(0.1),
                         width: 1,
@@ -108,12 +92,11 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                     ),
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<int>(
-                        value: _selectedYear,
+                        value: ref.watch(selectedYearProvider),
                         onChanged: (int? newValue) {
                           if (newValue != null) {
-                            setState(() {
-                              _selectedYear = newValue;
-                            });
+                            ref.read(selectedYearProvider.notifier).state =
+                                newValue;
                           }
                         },
                         icon: const Icon(
@@ -157,29 +140,28 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
             ),
           ),
 
-          const SizedBox(height: 8),
+          SizedBox(height: 8.h),
           // Increased gap to 24px between search bar and first month card
           // Months list
           Expanded(
             child: ListView.builder(
-              itemCount: _months.length,
+              itemCount: MonthConverter.getAllMonthNames().length,
               padding: EdgeInsets.zero,
               itemBuilder: (context, index) {
-                final month = _months[index];
-                final isSelected = month == _selectedMonth;
+                final month = MonthConverter.getAllMonthNames()[index];
+                final monthNumber = MonthConverter.monthNameToNumber(month);
+
+                final isSelected =
+                    monthNumber == ref.read(selectedMonthProvider);
 
                 return GestureDetector(
                   onTap: () {
-                    setState(() {
-                      _selectedMonth = month;
-                    });
+                    ref
+                        .read(selectedMonthProvider.notifier)
+                        .state = MonthConverter.monthNameToNumber(month);
 
                     // Navigate to tournament details screen
-                    Navigator.pushNamed(
-                      context,
-                      '/tournament_details',
-                      arguments: {'month': month, 'year': _selectedYear},
-                    );
+                    Navigator.pushNamed(context, '/calendar_detail_screen');
                   },
                   child: Container(
                     height: 42, // Set fixed height to 42px
@@ -194,17 +176,17 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                     ),
                     decoration: BoxDecoration(
                       color: isSelected ? kActiveCalendarColor : kBlack2Color,
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(8),
-                        topRight: Radius.circular(8),
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(8.br),
+                        topRight: Radius.circular(8.br),
                         bottomLeft: Radius.zero,
                         bottomRight: Radius.zero,
                       ),
                     ),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12, // 12px padding left and right
-                        vertical: 8, // 8px padding top and bottom
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 12.sp, // 12px padding left and right
+                        vertical: 8.sp, // 8px padding top and bottom
                       ),
                       child: Align(
                         alignment: Alignment.centerLeft,

@@ -30,6 +30,7 @@ class TourRepository extends BaseRepository {
       }
 
       final response = await query;
+
       return (response as List).map((json) => Tour.fromJson(json)).toList();
     });
   }
