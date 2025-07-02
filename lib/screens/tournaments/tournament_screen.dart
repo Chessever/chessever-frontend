@@ -2,6 +2,7 @@ import 'package:chessever2/screens/authentication/home_screen/home_screen.dart';
 import 'package:chessever2/screens/authentication/home_screen/home_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/tournament_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
+import 'package:chessever2/services/notification_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
@@ -202,6 +203,19 @@ class AllEventsTabWidget extends ConsumerWidget {
               },
               onAddToLibrary: () {
                 // Add to library
+              },
+            );
+          case TourEventCategory.countrymen:
+            return EventCard(
+              tourEventCardModel: tourEventCardModel,
+              //todo:
+              onTap: () {
+                ref
+                    .read(tournamentNotifierProvider.notifier)
+                    .onSelectTournament(
+                      context: context,
+                      id: tourEventCardModel.id,
+                    );
               },
             );
         }
