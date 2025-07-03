@@ -63,7 +63,18 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
                           child: SimpleSearchBar(
                             controller: _searchController,
                             hintText: 'Search tournaments or players',
-                            onChanged: (value) {},
+                            onChanged: (value) {
+                              ref
+                                  .read(
+                                    calendarTourViewProvider(
+                                      CalendarFilterArgs(
+                                        month: selectedMonth,
+                                        year: selectedYear,
+                                      ),
+                                    ).notifier,
+                                  )
+                                  .search(value);
+                            },
                             onMenuTap: () {
                               print('Menu tapped');
                             },
