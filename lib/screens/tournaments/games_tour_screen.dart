@@ -1,15 +1,19 @@
 import 'package:chessever2/screens/tournaments/model/games_tour_model.dart';
 import 'package:chessever2/screens/tournaments/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tournaments/providers/pintop_storage.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/back_drop_filter_widget.dart';
+import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class GamesTourScreen extends ConsumerWidget {
@@ -27,7 +31,6 @@ class GamesTourScreen extends ConsumerWidget {
         color: kWhiteColor70,
         backgroundColor: kDarkGreyColor,
         displacement: 60.h,
-        // Distance from top where indicator appears
         strokeWidth: 3.w,
         child: ref
             .watch(gamesAppBarProvider)
@@ -43,37 +46,60 @@ class GamesTourScreen extends ConsumerWidget {
                                 "No games available yet. Check back soon or set a\nreminder for updates.",
                           );
                         }
-                        return ListView.builder(
-                          padding: EdgeInsets.only(
-                            left: 20.sp,
-                            right: 20.sp,
-                            top: 12.sp,
-                            bottom: MediaQuery.of(context).viewPadding.bottom,
-                          ),
-                          shrinkWrap: true,
-                          itemCount: data.length,
-                          itemBuilder: (cxt, index) {
-                            return Padding(
-                              padding: EdgeInsets.only(bottom: 12.sp),
-                              child: _GameCard(gamesTourModel: data[index]),
+
+                        return FutureBuilder<List<String>>(
+                          future: PinnedGamesStorage().getPinnedGameIds(),
+                          builder: (context, snapshot) {
+                            final pinnedIds = snapshot.data ?? [];
+
+                            final sortedGames = [
+                              ...data.where(
+                                (game) => pinnedIds.contains(game.gameId),
+                              ),
+                              ...data.where(
+                                (game) => !pinnedIds.contains(game.gameId),
+                              ),
+                            ];
+
+                            return ListView.builder(
+                              padding: EdgeInsets.only(
+                                left: 20.sp,
+                                right: 20.sp,
+                                top: 12.sp,
+                                bottom:
+                                    MediaQuery.of(context).viewPadding.bottom,
+                              ),
+                              itemCount: sortedGames.length,
+                              itemBuilder: (cxt, index) {
+                                final game = sortedGames[index];
+                                return Padding(
+                                  padding: EdgeInsets.only(bottom: 12.sp),
+                                  child: _GameCard(
+                                    gamesTourModel: game,
+                                    pinnedIds: pinnedIds,
+                                    onPinToggle: (gamesTourModel) async {
+                                      print(
+                                        'Pin toggle tapped for game: ${gamesTourModel.gameId}',
+                                      );
+                                      await ref
+                                          .read(
+                                            gamesTourScreenProvider.notifier,
+                                          )
+                                          .togglePinGame(gamesTourModel.gameId);
+                                    },
+                                  ),
+                                );
+                              },
                             );
                           },
                         );
                       },
-                      error: (error, _) {
-                        return GenericErrorWidget();
-                      },
-                      loading: () {
-                        return _TourLoadingWidget();
-                      },
+                      error: (_, __) => GenericErrorWidget(),
+                      loading: () => _TourLoadingWidget(),
                     );
               },
-              error: (error, _) {
-                return GenericErrorWidget();
-              },
-              loading: () {
-                return _TourLoadingWidget();
-              },
+              error: (_, __) => GenericErrorWidget(),
+              loading: () => _TourLoadingWidget(),
             ),
       ),
     );
@@ -118,7 +144,11 @@ class _TourLoadingWidget extends StatelessWidget {
           ignoreContainers: true,
           child: Padding(
             padding: EdgeInsets.only(bottom: 12.sp),
-            child: _GameCard(gamesTourModel: gamesTourModelList[index]),
+            child: _GameCard(
+              gamesTourModel: gamesTourModelList[index],
+              onPinToggle: (game) {},
+              pinnedIds: [],
+            ),
           ),
         );
       },
@@ -150,9 +180,18 @@ class EmptyWidget extends StatelessWidget {
 }
 
 class _GameCard extends StatelessWidget {
-  const _GameCard({required this.gamesTourModel, super.key});
+  const _GameCard({
+    required this.gamesTourModel,
+    required this.onPinToggle,
+    required this.pinnedIds,
+    super.key,
+  });
 
   final GamesTourModel gamesTourModel;
+  final void Function(GamesTourModel game) onPinToggle;
+  final List<String> pinnedIds;
+
+  bool get isPinned => pinnedIds.contains(gamesTourModel.gameId);
 
   @override
   Widget build(BuildContext context) {
@@ -176,6 +215,7 @@ class _GameCard extends StatelessWidget {
                 playerRank: gamesTourModel.whitePlayer.displayTitle,
                 countryCode: gamesTourModel.whitePlayer.countryCode,
               ),
+
               Spacer(),
               _ProgressWidget(progress: gamesTourModel.gameStatus.index / 100),
               Spacer(),
@@ -183,6 +223,100 @@ class _GameCard extends StatelessWidget {
                 playerName: gamesTourModel.blackPlayer.name,
                 playerRank: gamesTourModel.blackPlayer.displayTitle,
                 countryCode: gamesTourModel.blackPlayer.countryCode,
+              ),
+              SizedBox(width: 10.w),
+              Column(
+                mainAxisAlignment: MainAxisAlignment.start,
+                children: [
+                  if (isPinned) ...[
+                    SizedBox(width: 8.w),
+                    SvgPicture.asset(
+                      SvgAsset.pin,
+                      color: kpinColor,
+                      height: 14.h,
+                      width: 14.w,
+                    ),
+                  ],
+                  SizedBox(height: 10.h),
+                  GestureDetector(
+                    onTapDown: (TapDownDetails details) {
+                      showMenu(
+                        context: context,
+                        position: RelativeRect.fromLTRB(
+                          details.globalPosition.dx,
+                          details.globalPosition.dy,
+                          0,
+                          0,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12.br),
+                        ),
+                        items: <PopupMenuEntry<String>>[
+                          PopupMenuItem<String>(
+                            value: 'pin',
+                            child: GestureDetector(
+                              onTap: () {
+                                Navigator.pop(context);
+                                onPinToggle(gamesTourModel);
+                              },
+                              child: SizedBox(
+                                width: 200,
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      isPinned
+                                          ? "Unpin from Top"
+                                          : "Pin to Top",
+                                      style: AppTypography.textXsMedium
+                                          .copyWith(color: kWhiteColor),
+                                    ),
+                                    SvgPicture.asset(
+                                      SvgAsset.pin,
+                                      height: 13.h,
+                                      width: 13.w,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          PopupMenuDivider(
+                            height: 1.h,
+                            thickness: 0.5.w,
+                            color: kDividerColor,
+                          ),
+
+                          PopupMenuItem(
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  "Share",
+                                  style: AppTypography.textXsMedium.copyWith(
+                                    color: kWhiteColor,
+                                  ),
+                                ),
+                                SvgPicture.asset(
+                                  SvgAsset.share,
+                                  height: 13.h,
+                                  width: 13.w,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                    child: SvgPicture.asset(
+                      SvgAsset.threeDots,
+                      color: kBlack2Color,
+                      height: 18.h,
+                      width: 12.w,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

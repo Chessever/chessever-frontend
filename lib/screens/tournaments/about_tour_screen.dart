@@ -3,6 +3,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/png_asset.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/utils/url_launcher_provider.dart';
 import 'package:chessever2/widgets/network_image_widget.dart';
@@ -94,6 +95,22 @@ class AboutTourScreen extends ConsumerWidget {
                   height: 12,
                 ),
                 description: aboutTourModel.location,
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 10.sp,
+                      vertical: 10.sp,
+                    ),
+                    child: SvgWidget(SvgAsset.boat, height: 32.h, width: 32.w),
+                  ),
+                ],
               ),
               SizedBox(height: MediaQuery.of(context).viewPadding.bottom),
             ],

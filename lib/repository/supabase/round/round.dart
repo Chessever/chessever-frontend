@@ -8,7 +8,6 @@ class Round {
   final String tourSlug;
   final String name;
   final DateTime createdAt;
-  final bool ongoing;
   final DateTime? startsAt;
   final String url;
 
@@ -19,14 +18,12 @@ class Round {
     required this.tourSlug,
     required this.name,
     required this.createdAt,
-    required this.ongoing,
     this.startsAt,
     required this.url,
   });
 
   factory Round.fromJson(Map<String, dynamic> json) {
     try {
-
       // Validate required fields
       if (json['id'] == null) throw Exception('Missing required field: id');
       if (json['slug'] == null) throw Exception('Missing required field: slug');
@@ -37,8 +34,7 @@ class Round {
       if (json['name'] == null) throw Exception('Missing required field: name');
       if (json['created_at'] == null)
         throw Exception('Missing required field: created_at');
-      if (json['ongoing'] == null)
-        throw Exception('Missing required field: ongoing');
+
       if (json['url'] == null) throw Exception('Missing required field: url');
 
       return Round(
@@ -48,7 +44,6 @@ class Round {
         tourSlug: json['tour_slug'].toString(),
         name: json['name'].toString(),
         createdAt: _parseDateTime(json['created_at']),
-        ongoing: _parseBool(json['ongoing']),
         startsAt:
             json['starts_at'] != null
                 ? _parseDateTime(json['starts_at'])
@@ -108,7 +103,6 @@ class Round {
       'tour_slug': tourSlug,
       'name': name,
       'created_at': createdAt.toIso8601String(),
-      'ongoing': ongoing,
       'starts_at': startsAt?.toIso8601String(),
       'url': url,
     };

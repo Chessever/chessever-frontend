@@ -21,7 +21,7 @@ class GamesAppBarNotifier
       final aboutTourModel = ref.read(aboutTourModelProvider)!;
       final rounds = await ref
           .read(roundRepositoryProvider)
-          .getRoundsByTourId('5LW5RS0a');
+          .getRoundsByTourId(aboutTourModel.id);
       final gamesAppBarModels =
           rounds.map((round) => GamesAppBarModel.fromRound(round)).toList();
       state = AsyncValue.data(

@@ -62,47 +62,6 @@ class _TournamentScreenController
     }
   }
 
-  Future<void> _calendarDetails(BuildContext context) async {
-    try {
-      final tour = await ref.read(tourLocalStorageProvider).getTours();
-
-      if (tour.isNotEmpty) {
-        _tours = tour;
-
-        final tourEventCardModel =
-            tour.map((t) {
-              return TourEventCardModel.fromTour(t);
-            }).toList();
-
-        final args = ModalRoute.of(context)?.settings.arguments as Map?;
-        final int? month = args?['month'];
-        final int? year = args?['year'];
-
-        final matchingTours =
-            tourEventCardModel.where((e) {
-              final eventDate = DateTime.tryParse(e.dates ?? '');
-              if (eventDate == null) return false;
-
-              final bool categoryMatch =
-                  tourEventCategory == TournamentCategory.all ||
-                  (tourEventCategory == TournamentCategory.upcoming &&
-                      e.tourEventCategory == TourEventCategory.upcoming);
-
-              final bool dateMatch =
-                  (month == null || year == null)
-                      ? true
-                      : (eventDate.month == month && eventDate.year == year);
-
-              return categoryMatch && dateMatch;
-            }).toList();
-
-        state = AsyncValue.data(matchingTours);
-      }
-    } catch (error, _) {
-      print('Error loading tours: $error');
-    }
-  }
-
   Future<void> onRefresh() async {
     try {
       state = AsyncValue.loading();
@@ -246,6 +205,43 @@ class _CalendarTourViewController
             // Check if tournament date range overlaps with selected month
             return startDate.isBefore(monthEnd.add(Duration(days: 1))) &&
                 endDate.isAfter(monthStart.subtract(Duration(days: 1)));
+          }).toList();
+
+      final filteredTourEventCards =
+          filteredTours.map((t) => TourEventCardModel.fromTour(t)).toList();
+
+      state = AsyncValue.data(filteredTourEventCards);
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+    }
+  }
+
+  Future<void> search(String query) async {
+    try {
+      final tours = await ref.read(tourLocalStorageProvider).getTours();
+
+      if (query.isEmpty) {
+        _init(); // fallback to filtered list if query is empty
+        return;
+      }
+
+      final filteredTours =
+          tours.where((tour) {
+            final matchesText =
+                tour.name.toLowerCase().contains(query.toLowerCase()) ||
+                (tour.info.location?.toLowerCase().contains(
+                      query.toLowerCase(),
+                    ) ??
+                    false);
+
+            final matchesDate = tour.dates.any((dateString) {
+              final date = DateTime.tryParse(dateString.toString());
+              if (date == null) return false;
+              if (month == null || year == null) return true;
+              return date.month == month && date.year == year;
+            });
+
+            return matchesText && matchesDate;
           }).toList();
 
       final filteredTourEventCards =

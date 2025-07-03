@@ -128,9 +128,27 @@
 -> Local Repository for Games,
 -> Filter with Round data
 
+
 #1 July
 -> implement animation searchbar and add search functionality,
 -> Update pull to refresh functionality for re-populating data for games,
 -> add responsive helper in tournament_details and missing screens,
--> add new icons across appbars, 
--> 
+-> add new icons across appbars,
+
+
+#2 July
+-> Setup Local Notification configuration in Android and IOS,
+-> save selected country in local Storages,
+-> update menu dropdown at look like the design,
+-> Search feature only search from those filtered tournament from calendarTourView,
+-> Create Calendar Detail Screen with appropriate Month and Year Filtering,
+-> Update Tournament Card with countrymen detail,
+-> Add responsive helper in calendar screen for accurate size,
+-> Create an internal testing in Play store and deploy a new build,
+-> add new icons across appbars,
+
+#3 july
+->. Update GamesTourScreen to include a 3 dot option that opens a pop-up blurring the background
+-> Update GamesAppBarWidget to include a top 3 dot option that opens a pop-up menu with options
+-> Minor design update in hamburger menu  and Premium button , update gradient
+-> BackDropFilterWidget for blur

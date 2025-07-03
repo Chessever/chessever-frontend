@@ -14,6 +14,7 @@ import 'package:chessever2/screens/standings_screen.dart';
 import 'package:chessever2/screens/tournaments/tournament_detail_view.dart';
 import 'package:chessever2/screens/tournaments/tournament_screen.dart';
 import 'package:chessever2/screens/calendar_screen.dart';
+import 'package:chessever2/services/notification_service.dart';
 import 'package:chessever2/services/settings_manager.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:device_preview_plus/device_preview_plus.dart';
@@ -31,6 +32,8 @@ Future<void> main() async {
 
   // Load environment variables
   await dotenv.load(fileName: ".env");
+  WidgetsFlutterBinding.ensureInitialized();
+  await NotificationService.initialize();
 
   // Initialize Supabase
   await Supabase.initialize(

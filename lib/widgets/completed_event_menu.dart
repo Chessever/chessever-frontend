@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:flutter/material.dart';
 
 class CompletedEventMenu extends StatelessWidget {
@@ -37,6 +38,7 @@ class CompletedEventMenu extends StatelessWidget {
                     onDownloadTournament?.call();
                   },
                 ),
+                DividerWidget(),
                 ListTile(
                   leading: const Icon(
                     Icons.library_add_outlined,

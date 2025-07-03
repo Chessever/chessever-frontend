@@ -39,12 +39,13 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
     _focusNode.unfocus();
   }
 
-
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
   }
+
+  final GlobalKey _menuKey = GlobalKey();
 
   @override
   Widget build(BuildContext context) {
@@ -172,7 +173,6 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
                                     id: 'qdBcMm1h',
                                     name: 'round-1',
                                     startsAt: DateTime.now(),
-                                    ongoing: false,
                                   ),
                                 ],
                                 selectedId: 'qdBcMm1h',
@@ -195,6 +195,92 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
                     ),
                     SizedBox(width: 18.w),
                     AppBarIcons(image: SvgAsset.chase_grid, onTap: () {}),
+                    SizedBox(width: 18.w),
+
+                    AppBarIcons(
+                      key: _menuKey,
+                      image: SvgAsset.threeDots,
+                      onTap: () {
+                        final RenderBox renderBox =
+                            _menuKey.currentContext!.findRenderObject()
+                                as RenderBox;
+                        final Offset offset = renderBox.localToGlobal(
+                          Offset.zero,
+                        );
+
+                        showMenu(
+                          context: context,
+                          position: RelativeRect.fromLTRB(
+                            offset.dx,
+                            offset.dy + renderBox.size.height,
+                            offset.dx + renderBox.size.width,
+                            offset.dy,
+                          ),
+                          color: const Color(0xFF1C1C1E),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12.br),
+                          ),
+                          items: <PopupMenuEntry<String>>[
+                            PopupMenuItem<String>(
+                              value: 'Unpin all',
+                              child: GestureDetector(
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  ref
+                                      .read(gamesTourScreenProvider.notifier)
+                                      .unpinAllGames();
+                                },
+                                child: SizedBox(
+                                  width: 200,
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        "Unpin all",
+                                        style: AppTypography.textXsMedium
+                                            .copyWith(color: kWhiteColor),
+                                      ),
+                                      SvgPicture.asset(
+                                        SvgAsset.unpine,
+                                        height: 13.h,
+                                        width: 13.w,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            PopupMenuDivider(
+                              height: 1.h,
+                              thickness: 0.5.w,
+                              color: kDividerColor,
+                            ),
+                            PopupMenuItem<String>(
+                              value: 'share',
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    "Active games on top",
+                                    style: AppTypography.textXsMedium.copyWith(
+                                      color: kWhiteColor,
+                                    ),
+                                  ),
+                                  SvgPicture.asset(
+                                    SvgAsset.active,
+                                    height: 13.h,
+                                    width: 13.w,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+
                     SizedBox(width: 20.w),
                   ],
                 ),
