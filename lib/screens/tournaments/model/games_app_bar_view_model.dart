@@ -19,20 +19,17 @@ class GamesAppBarModel extends Equatable {
     required this.id,
     required this.name,
     required this.startsAt,
-    required this.ongoing,
   });
 
   final String id;
   final String name;
   final DateTime? startsAt;
-  final bool ongoing;
 
   factory GamesAppBarModel.fromRound(Round round) {
     return GamesAppBarModel(
       id: round.id,
       name: round.name,
       startsAt: round.startsAt,
-      ongoing: round.ongoing,
     );
   }
 
@@ -41,7 +38,7 @@ class GamesAppBarModel extends Equatable {
 
     if (startsAt == null) return RoundStatus.upcoming;
 
-    if (ongoing) {
+    if (startsAt?.day == DateTime.now().day) {
       return RoundStatus.current;
     } else if (startsAt!.isBefore(now)) {
       return RoundStatus.completed;
@@ -73,5 +70,5 @@ class GamesAppBarModel extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, name, startsAt, ongoing];
+  List<Object?> get props => [id, name, startsAt];
 }

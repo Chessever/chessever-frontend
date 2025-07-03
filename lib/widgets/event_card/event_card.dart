@@ -143,6 +143,8 @@ class _ShowStatus extends StatelessWidget {
         return _UpcomingTag(tourEventCardModel: tourEventCardModel);
       case TourEventCategory.completed:
         return _CompletedTag();
+      case TourEventCategory.countrymen:
+        return _CountryMen();
     }
   }
 }
@@ -159,6 +161,18 @@ class _UpcomingTag extends StatelessWidget {
       style: AppTypography.textXsMedium.copyWith(
         color: kWhiteColor.withOpacity(0.7),
       ),
+    );
+  }
+}
+
+class _CountryMen extends StatelessWidget {
+  const _CountryMen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      'Countrymen',
+      style: AppTypography.textXsBold.copyWith(color: kWhiteColor),
     );
   }
 }
@@ -208,6 +222,9 @@ class _BuildTrailingButton extends StatelessWidget {
 
       case TourEventCategory.live:
         return _StarWidget(tourEventCardModel: tourEventCardModel);
+
+      case TourEventCategory.countrymen:
+        return _CountrymenStarWidget();
       case TourEventCategory.completed:
         return InkWell(
           onTap: onMorePressed,
@@ -265,6 +282,34 @@ class _StarWidgetState extends ConsumerState<_StarWidget> {
           semanticsLabel: 'Favorite Icon',
           height: 20.h,
           width: 20.w,
+        ),
+      ),
+    );
+  }
+}
+
+class _CountrymenStarWidget extends ConsumerStatefulWidget {
+  _CountrymenStarWidget({super.key});
+
+  @override
+  ConsumerState<_CountrymenStarWidget> createState() =>
+      _CountrymenStarWidgetState();
+}
+
+class _CountrymenStarWidgetState extends ConsumerState<_CountrymenStarWidget> {
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () {},
+      child: Container(
+        alignment: Alignment.centerRight,
+        width: 32.w,
+        height: 40.h,
+        child: SvgWidget(
+          SvgAsset.countryMan,
+          semanticsLabel: 'Country Man',
+          height: 32.h,
+          width: 32.w,
         ),
       ),
     );

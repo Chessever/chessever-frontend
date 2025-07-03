@@ -103,7 +103,7 @@ class HamburgerMenu extends StatelessWidget {
                     SizedBox(height: 12.h),
                     _MenuItem(
                       customIcon: AnalysisBoardIcon(size: 20.ic),
-                      title: 'Analysis Board',
+                      title: 'Board',
                       onPressed: () {
                         Navigator.pop(context); // Close drawer first
                         callbacks.onAnalysisBoardPressed();
@@ -124,21 +124,47 @@ class HamburgerMenu extends StatelessWidget {
                       },
                     ),
                     SizedBox(height: 12.h),
-                    _MenuItem(
-                      color: kBlack2Color,
-                      // Premium color
-                      customIcon: Image.asset(
-                        PngAsset.premiumIcon,
-                        width: 28.w,
-                        height: 28.h,
-                        fit: BoxFit.contain,
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [kgradientEndColors, kgradientStartColors],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
                       ),
-                      title: 'Try Premium for free',
-                      onPressed: () {
-                        Navigator.pop(context); // Close drawer first
-                        callbacks.onPremiumPressed();
-                      },
+                      child: _MenuItem(
+                        color:
+                            Colors
+                                .transparent, 
+                        customIcon: Image.asset(
+                          PngAsset.premiumIcon,
+                          width: 28.w,
+                          height: 28.h,
+                          fit: BoxFit.contain,
+                        ),
+                        title: 'Try Premium for free',
+                        onPressed: () {
+                          Navigator.pop(context); // Close drawer first
+                          callbacks.onPremiumPressed();
+                        },
+                      ),
                     ),
+
+                    // _MenuItem(
+                    //   color: kBlack2Color,
+                    //   // Premium color
+                    //   customIcon: Image.asset(
+                    //     PngAsset.premiumIcon,
+                    //     width: 28.w,
+                    //     height: 28.h,
+                    //     fit: BoxFit.contain,
+                    //   ),
+                    //   title: 'Try Premium for free',
+                    //   onPressed: () {
+                    //     Navigator.pop(context); // Close drawer first
+                    //     callbacks.onPremiumPressed();
+                    //   },
+                    // ),
                   ],
                 ),
               ),
@@ -193,6 +219,7 @@ class _MenuItem extends StatelessWidget {
     this.showChevron = false,
     this.onPressed,
     this.color,
+    this.textColors,
     super.key,
   });
 
@@ -200,6 +227,7 @@ class _MenuItem extends StatelessWidget {
   final Widget? customIcon;
   final String title;
   final bool showChevron;
+  final Color? textColors;
   final VoidCallback? onPressed;
   final Color? color;
 
@@ -217,7 +245,9 @@ class _MenuItem extends StatelessWidget {
             SizedBox(width: 4.w),
             Text(
               title,
-              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textSmMedium.copyWith(
+                color: textColors ?? kWhiteColor,
+              ),
             ),
             Spacer(),
             showChevron
@@ -255,6 +285,7 @@ class _CountryMan extends ConsumerWidget {
             shape: RoundedRectangle(0),
           ),
           title: 'Countryman',
+          textColors: kGreenColor,
           onPressed: onCountryManPressed,
           showChevron: false,
         );

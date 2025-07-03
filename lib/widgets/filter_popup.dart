@@ -16,7 +16,9 @@ class _FilterPopupState extends State<FilterPopup> {
   bool _isFormatExpanded = false;
   String _selectedFormat = 'All Formats';
   String _selectedType = 'All Types';
+  bool _isTypeExpanded = false;
 
+  final List<String> _typeOptions = ['Tournament', 'Match', 'Wins'];
   @override
   Widget build(BuildContext context) {
     // Use fixed dimensions for the popup
@@ -76,58 +78,109 @@ class _FilterPopupState extends State<FilterPopup> {
                                 ),
                               ),
                               SizedBox(height: 8.h),
-                              Container(
-                                height: 40.h,
-                                decoration: BoxDecoration(
-                                  color: kBlack2Color,
-                                  borderRadius: BorderRadius.circular(8.br),
-                                ),
-                                child: Padding(
+                              GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    _isTypeExpanded = !_isTypeExpanded;
+                                  });
+                                },
+                                child: Container(
+                                  height: 40.h,
+                                  decoration: BoxDecoration(
+                                    color:
+                                        _isTypeExpanded
+                                            ? kPrimaryColor
+                                            : kBlack2Color,
+                                    borderRadius: BorderRadius.circular(8.br),
+                                  ),
                                   padding: EdgeInsets.symmetric(
                                     horizontal: 16.sp,
                                   ),
-                                  child: DropdownButtonHideUnderline(
-                                    child: DropdownButton<String>(
-                                      value: _selectedType,
-                                      icon: const Icon(
-                                        Icons.keyboard_arrow_down,
-                                        color: kWhiteColor,
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        _selectedType,
+                                        style: AppTypography.textXsMedium
+                                            .copyWith(
+                                              color:
+                                                  _isTypeExpanded
+                                                      ? kBlackColor
+                                                      : kWhiteColor,
+                                            ),
                                       ),
-                                      isExpanded: true,
-                                      dropdownColor: kBlack2Color,
-                                      style: AppTypography.textXsMedium
-                                          .copyWith(color: Colors.white),
-                                      onChanged: (String? newValue) {
-                                        if (newValue != null) {
-                                          setState(() {
-                                            _selectedType = newValue;
-                                          });
-                                        }
-                                      },
-                                      items:
-                                          [
-                                            'All Types',
-                                            'Tournament',
-                                            'Match',
-                                          ].map<DropdownMenuItem<String>>((
-                                            String value,
-                                          ) {
-                                            return DropdownMenuItem<String>(
-                                              value: value,
-                                              child: Text(
-                                                value,
-                                                style: AppTypography
-                                                    .textXsMedium
-                                                    .copyWith(
-                                                      color: kWhiteColor,
-                                                    ),
-                                              ),
-                                            );
-                                          }).toList(),
-                                    ),
+                                      Icon(
+                                        _isTypeExpanded
+                                            ? Icons.keyboard_arrow_up
+                                            : Icons.keyboard_arrow_down,
+                                        color:
+                                            _isTypeExpanded
+                                                ? kBlackColor
+                                                : kWhiteColor,
+                                        size: 24.ic,
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
+
+                              // Expanded List
+                              _isTypeExpanded
+                                  ? Container(
+                                    margin: EdgeInsets.only(top: 4.sp),
+                                    decoration: BoxDecoration(
+                                      color: kBlack2Color,
+                                      borderRadius: BorderRadius.circular(8.br),
+                                    ),
+                                    child: Column(
+                                      children:
+                                          _typeOptions.map((type) {
+                                            final isSelected =
+                                                _selectedType == type;
+                                            return Column(
+                                              children: [
+                                                GestureDetector(
+                                                  onTap: () {
+                                                    setState(() {
+                                                      _selectedType = type;
+                                                      _isTypeExpanded =
+                                                          false; // Hide list after selection
+                                                    });
+                                                  },
+                                                  child: Container(
+                                                    height: 40.h,
+                                                    alignment:
+                                                        Alignment.centerLeft,
+                                                    padding:
+                                                        EdgeInsets.symmetric(
+                                                          horizontal: 16.sp,
+                                                        ),
+                                                    decoration: BoxDecoration(
+                                                      color:
+                                                          isSelected
+                                                              ? kDividerColor
+                                                              : Colors
+                                                                  .transparent,
+                                                    ),
+                                                    child: Text(
+                                                      type,
+                                                      style: AppTypography
+                                                          .textXsMedium
+                                                          .copyWith(
+                                                            color: kWhiteColor,
+                                                          ),
+                                                    ),
+                                                  ),
+                                                ),
+                                                if (type != _typeOptions.last)
+                                                  DividerWidget(),
+                                              ],
+                                            );
+                                          }).toList(),
+                                    ),
+                                  )
+                                  : const SizedBox.shrink(),
 
                               // Format
                               SizedBox(height: 24.h),

@@ -2,6 +2,7 @@ import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:country_picker/country_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
@@ -9,7 +10,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class CountryDropdown extends ConsumerStatefulWidget {
   final String selectedCountryCode;
-  final ValueChanged<String> onChanged;
+  final ValueChanged<Country> onChanged;
   final String? hintText;
 
   const CountryDropdown({
@@ -73,7 +74,9 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
             isExpanded: true,
             customButton: Container(
               height: 40.h, // Match container height
-              padding: EdgeInsets.symmetric(horizontal: 12.sp), // Proper padding
+              padding: EdgeInsets.symmetric(
+                horizontal: 12.sp,
+              ), // Proper padding
               child: Row(
                 children: [
                   Expanded(
@@ -127,9 +130,13 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
             onChanged: (value) {
               if (value != null) {
                 selectedCountryCode = value;
-                widget.onChanged(value);
+                final country = allCountries.firstWhere(
+                  (c) => c.countryCode == value,
+                );
+                widget.onChanged(country);
               }
             },
+
             onMenuStateChange: (isOpen) {
               isDropDownOpen = isOpen;
               setState(() {});
