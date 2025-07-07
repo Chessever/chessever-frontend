@@ -1,10 +1,8 @@
-import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:equatable/equatable.dart';
-import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
 
-enum TourEventCategory { live, upcoming, completed, countrymen }
+enum TourEventCategory { live, upcoming, completed }
 
 class TourEventCardModel extends Equatable {
   const TourEventCardModel({
@@ -93,11 +91,6 @@ class TourEventCardModel extends Equatable {
   }
 
   static TourEventCategory getCategory(List<DateTime> dates, String location) {
-    final savedCountryName = "Cēsis, Latvia";
-    if (savedCountryName.trim().toLowerCase() ==
-        location.trim().toLowerCase()) {
-      return TourEventCategory.countrymen;
-    }
     if (dates.isNotEmpty) {
       final now = DateTime.now();
       final startDate = dates.first;

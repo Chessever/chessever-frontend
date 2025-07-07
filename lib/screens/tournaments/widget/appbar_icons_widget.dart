@@ -11,15 +11,17 @@ class AppBarIcons extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return InkWell(
       onTap: onTap,
       child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 6.sp, vertical: 5.sp),
+        height: 32.h,
+        width: 32.w,
+        padding: EdgeInsets.all(6.sp),
         decoration: BoxDecoration(
           color: kBlack2Color,
           borderRadius: BorderRadius.circular(4.br),
         ),
-        child: SvgPicture.asset(image, width: 19.w, height: 19.h),
+        child: SvgPicture.asset(image),
       ),
     );
   }

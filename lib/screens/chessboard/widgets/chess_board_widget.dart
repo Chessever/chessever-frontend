@@ -1,109 +1,98 @@
-import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
-import 'package:chessever2/screens/chessboard/utils/board_theme.dart';
-import 'package:chessever2/screens/chessboard/view_model/chess_viewmodel.dart';
+import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
+import 'package:chessever2/screens/chessboard/widgets/player_second_row_detail_widget.dart';
+import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
-import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:squares/squares.dart';
+import 'package:square_bishop/square_bishop.dart';
+import 'package:square_bishop/square_bishop.dart' as square_bishop;
+import 'package:bishop/bishop.dart' as bishop;
 
-class ChessBoardWidget extends ConsumerStatefulWidget {
-  final BoardColor boardColor;
-  final String pieceStyle;
-
-  const ChessBoardWidget({
+class ChessBoardFromFEN extends StatefulWidget {
+  const ChessBoardFromFEN({
     super.key,
-    required this.boardColor,
-    required this.pieceStyle,
+    required this.fen,
+    required this.gmName,
+    required this.gmSecondName,
+    required this.firstGmCountryCode,
+    required this.secondGmCountryCode,
+    required this.firstGmTime,
+    required this.secondGmTime,
+    required this.firstGmRank,
+    required this.secongGmRank,
   });
 
-  static const Map<String, String> _pieceAssets = {
-    'P': 'assets/pngs/pieces/wP.png',
-    'N': 'assets/pngs/pieces/wN.png',
-    'B': 'assets/pngs/pieces/wB.png',
-    'R': 'assets/pngs/pieces/wR.png',
-    'Q': 'assets/pngs/pieces/wQ.png',
-    'K': 'assets/pngs/pieces/wK.png',
-    'p': 'assets/pngs/pieces/bP.png',
-    'n': 'assets/pngs/pieces/bN.png',
-    'b': 'assets/pngs/pieces/bB.png',
-    'r': 'assets/pngs/pieces/bR.png',
-    'q': 'assets/pngs/pieces/bQ.png',
-    'k': 'assets/pngs/pieces/bK.png',
-  };
+  final String gmName;
+  final String gmSecondName;
+  final String fen;
+  final String firstGmCountryCode;
+  final String secondGmCountryCode;
+  final String firstGmTime;
+  final String secondGmTime;
+  final String firstGmRank;
+  final String secongGmRank;
 
   @override
-  ConsumerState<ChessBoardWidget> createState() => _ChessBoardWidgetState();
+  State<ChessBoardFromFEN> createState() => _ChessBoardFromFENState();
 }
 
-class _ChessBoardWidgetState extends ConsumerState<ChessBoardWidget> {
-  PieceSet? _pieceSet;
+class _ChessBoardFromFENState extends State<ChessBoardFromFEN> {
+  late BoardState boardState;
 
   @override
   void initState() {
-    _initializePieceSet();
     super.initState();
-  }
 
-  Future<void> _initializePieceSet() async {
-    try {
-      await DefaultAssetBundle.of(
-        context,
-      ).load(ChessBoardWidget._pieceAssets['K']!);
+    final game = bishop.Game.fromPgn(widget.fen);
 
-      if (mounted) {
-        setState(() {
-          _pieceSet = PieceSet(
-            pieces: {
-              for (var entry in ChessBoardWidget._pieceAssets.entries)
-                entry.key:
-                    (context) => Image.asset(entry.value, fit: BoxFit.contain),
-            },
-          );
-        });
-      }
-    } catch (e) {
-      debugPrint('Failed to load custom pieces: $e');
-      if (mounted) {
-        setState(() => _pieceSet = PieceSet.merida());
-      }
-    }
+    final squaresState = game.squaresState(Squares.white);
+
+    boardState = squaresState.board;
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_pieceSet == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 48.sp, vertical: 8.sp),
+      child: Column(
+        children: [
+          PlayerFirstRowDetailWidget(
+            name: widget.gmName,
+            firstGmRank: widget.firstGmRank,
+            countryCode: widget.firstGmCountryCode,
+            // flagAsset: 'assets/usa_flag.png',
+            time: widget.firstGmTime,
+          ),
+          Container(
+            decoration: BoxDecoration(
+              border: Border.all(color: kBlackColor, width: 2.w),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withOpacity(0.5),
+                  blurRadius: 8.br,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: AbsorbPointer(
+              child: Board(
+                size: BoardSize.standard,
+                pieceSet: PieceSet.merida(),
+                playState: PlayState.observing,
+                state: boardState,
+              ),
+            ),
+          ),
+          SizedBox(height: 3.h),
 
-    final chessState = ref.watch(chessViewModelProvider);
-    final flipBoard = ref.watch(flipBoardProvider);
-    final boardState =
-        flipBoard
-            ? chessState.squaresState.board.flipped()
-            : chessState.squaresState.board;
-    final themePair =
-        boardThemes[widget.boardColor] ?? boardThemes[BoardColor.defaultColor]!;
-
-    return BoardController(
-      state: boardState,
-      playState: chessState.squaresState.state,
-      pieceSet: _pieceSet!,
-      theme: BoardTheme(
-        lightSquare: themePair.lightSquare,
-        darkSquare: themePair.darkSquare,
-        check: Colors.yellow.withOpacity(0.4),
-        checkmate: Colors.red.withOpacity(0.4),
-        previous: Colors.blue.withOpacity(0.2),
-        selected: Colors.green.withOpacity(0.4),
-        premove: Colors.purple.withOpacity(0.4),
+          PlayerSecondRowDetailWidget(
+            name: widget.gmSecondName,
+            countryCode: widget.secondGmCountryCode,
+            time: widget.secondGmTime,
+            secondGmRank: widget.secongGmRank,
+          ),
+        ],
       ),
-      moves: chessState.squaresState.moves,
-      onMove:
-          (move) => ref.read(chessViewModelProvider.notifier).makeMove(move),
-      markerTheme: MarkerTheme(
-        empty: MarkerTheme.dot,
-        piece: MarkerTheme.corners(),
-      ),
-      promotionBehaviour: PromotionBehaviour.autoPremove,
     );
   }
 }
