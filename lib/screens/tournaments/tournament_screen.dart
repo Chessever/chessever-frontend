@@ -206,19 +206,7 @@ class AllEventsTabWidget extends ConsumerWidget {
                 // Add to library
               },
             );
-          case TourEventCategory.countrymen:
-            return EventCard(
-              tourEventCardModel: tourEventCardModel,
-              //todo:
-              onTap: () {
-                ref
-                    .read(tournamentNotifierProvider.notifier)
-                    .onSelectTournament(
-                      context: context,
-                      id: tourEventCardModel.id,
-                    );
-              },
-            );
+
         }
       },
     );

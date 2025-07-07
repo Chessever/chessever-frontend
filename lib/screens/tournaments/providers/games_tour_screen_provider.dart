@@ -57,9 +57,19 @@ class GamesTourScreenProvider
     final allGames = await ref
         .read(gamesLocalStorage)
         .getGames(aboutTourModel.id);
+
+    print("All Games:");
+    for (final game in allGames) {
+      print('''
+  ▶ Game ID: ${game.id}
+  ▶ Round ID: ${game.roundId}
+  
+  ▶ fen: ${game.fen}
+  
+  ''');
+    }
     final pinnedIds = await pinnedStorage.getPinnedGameIds();
 
-    // Filter by roundId if needed
     final selectedGames =
         roundId != null
             ? allGames.where((e) => e.roundId.contains(roundId!)).toList()

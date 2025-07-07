@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/tournaments/model/games_app_bar_view_model.dart';
+import 'package:chessever2/screens/tournaments/providers/chess_board_visibility_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/widget/appbar_icons_widget.dart';
@@ -6,6 +7,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/back_drop_filter_widget.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
@@ -22,6 +24,13 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
   bool isSearching = false;
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
+  late final GlobalKey _menuKey;
+
+  @override
+  void initState() {
+    _menuKey = GlobalKey();
+    super.initState();
+  }
 
   void _startSearch() {
     setState(() {
@@ -44,8 +53,6 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
     _searchController.dispose();
     super.dispose();
   }
-
-  final GlobalKey _menuKey = GlobalKey();
 
   @override
   Widget build(BuildContext context) {
@@ -194,15 +201,20 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
                       onTap: _startSearch,
                     ),
                     SizedBox(width: 18.w),
-                    AppBarIcons(image: SvgAsset.chase_grid, onTap: () {}),
+                    AppBarIcons(
+                      image: SvgAsset.chase_grid,
+                      onTap: () {
+                        final current = ref.read(chessBoardVisibilityProvider);
+                        ref.read(chessBoardVisibilityProvider.notifier).state =
+                            !current;
+                      },
+                    ),
                     SizedBox(width: 18.w),
 
-                    AppBarIcons(
-                      key: _menuKey,
-                      image: SvgAsset.threeDots,
-                      onTap: () {
+                    InkWell(
+                      onTap: () async {
                         final RenderBox renderBox =
-                            _menuKey.currentContext!.findRenderObject()
+                            _menuKey.currentContext?.findRenderObject()
                                 as RenderBox;
                         final Offset offset = renderBox.localToGlobal(
                           Offset.zero,
@@ -216,14 +228,14 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
                             offset.dx + renderBox.size.width,
                             offset.dy,
                           ),
-                          color: const Color(0xFF1C1C1E),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12.br),
                           ),
+                          color: kBlack2Color,
                           items: <PopupMenuEntry<String>>[
                             PopupMenuItem<String>(
                               value: 'Unpin all',
-                              child: GestureDetector(
+                              child: InkWell(
                                 onTap: () {
                                   Navigator.pop(context);
                                   ref
@@ -279,8 +291,21 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
                           ],
                         );
                       },
+                      child: Container(
+                        height: 32.h,
+                        width: 32.w,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: kBlack2Color,
+                          borderRadius: BorderRadius.circular(4.br),
+                        ),
+                        child: Icon(
+                          Icons.more_vert_rounded,
+                          size: 24.ic,
+                          color: kWhiteColor70,
+                        ),
+                      ),
                     ),
-
                     SizedBox(width: 20.w),
                   ],
                 ),

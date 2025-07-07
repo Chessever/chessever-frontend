@@ -8,6 +8,7 @@ class GamesTourModel {
   final String whiteTimeDisplay;
   final String blackTimeDisplay;
   final GameStatus gameStatus;
+  final String? fen;
 
   GamesTourModel({
     required this.gameId,
@@ -16,6 +17,7 @@ class GamesTourModel {
     required this.whiteTimeDisplay,
     required this.blackTimeDisplay,
     required this.gameStatus,
+    this.fen,
   });
 
   factory GamesTourModel.fromGame(Games game) {
@@ -34,6 +36,7 @@ class GamesTourModel {
       whiteTimeDisplay: _formatTime(white.clock),
       blackTimeDisplay: _formatTime(black.clock),
       gameStatus: GameStatus.fromString(game.status),
+      fen: game.fen,
     );
   }
 

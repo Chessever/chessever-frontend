@@ -1,8 +1,6 @@
 import 'dart:io';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
-import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/screens/authentication/auth_screen_state.dart';
-import 'package:chessever2/services/notification_service.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -209,13 +207,7 @@ class _AuthCountryDropdownWidget extends ConsumerWidget {
               child: CountryDropdown(
                 selectedCountryCode: 'US',
                 onChanged: (Country country) async {
-                  final countryName = country.name;
-
                   await ref
-                      .read(sharedPreferencesRepository)
-                      .setString('selected_country_name', countryName);
-
-                  ref
                       .read(countryDropdownProvider.notifier)
                       .selectCountry(country.countryCode);
 
