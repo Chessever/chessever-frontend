@@ -1,4 +1,8 @@
+import 'package:chessever2/providers/board_settings_provider.dart';
+import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
+import 'package:chessever2/screens/chessboard/widgets/chess_board_widget.dart';
 import 'package:chessever2/screens/tournaments/model/games_tour_model.dart';
+import 'package:chessever2/screens/tournaments/providers/chess_board_visibility_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/pintop_storage.dart';
@@ -21,6 +25,11 @@ class GamesTourScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isChessBoardVisible = ref.watch(chessBoardVisibilityProvider);
+    final boardSettingsValue = ref.watch(boardSettingsProvider);
+    final boardColorEnum = ref
+        .read(boardSettingsRepository)
+        .getBoardColorEnum(boardSettingsValue.boardColor);
     return GestureDetector(
       onTap: FocusScope.of(context).unfocus,
       child: RefreshIndicator(
@@ -47,51 +56,101 @@ class GamesTourScreen extends ConsumerWidget {
                           );
                         }
 
-                        return FutureBuilder<List<String>>(
-                          future: PinnedGamesStorage().getPinnedGameIds(),
-                          builder: (context, snapshot) {
-                            final pinnedIds = snapshot.data ?? [];
-
-                            final sortedGames = [
-                              ...data.where(
-                                (game) => pinnedIds.contains(game.gameId),
-                              ),
-                              ...data.where(
-                                (game) => !pinnedIds.contains(game.gameId),
-                              ),
-                            ];
-
-                            return ListView.builder(
-                              padding: EdgeInsets.only(
-                                left: 20.sp,
-                                right: 20.sp,
-                                top: 12.sp,
-                                bottom:
-                                    MediaQuery.of(context).viewPadding.bottom,
-                              ),
-                              itemCount: sortedGames.length,
-                              itemBuilder: (cxt, index) {
-                                final game = sortedGames[index];
-                                return Padding(
-                                  padding: EdgeInsets.only(bottom: 12.sp),
-                                  child: _GameCard(
-                                    gamesTourModel: game,
-                                    pinnedIds: pinnedIds,
-                                    onPinToggle: (gamesTourModel) async {
-                                      print(
-                                        'Pin toggle tapped for game: ${gamesTourModel.gameId}',
-                                      );
-                                      await ref
-                                          .read(
-                                            gamesTourScreenProvider.notifier,
-                                          )
-                                          .togglePinGame(gamesTourModel.gameId);
-                                    },
+                        return Column(
+                          children: [
+                            if (isChessBoardVisible)
+                              Expanded(
+                                child: ListView.builder(
+                                  padding: EdgeInsets.only(
+                                    left: 20.sp,
+                                    right: 20.sp,
+                                    top: 12.sp,
+                                    bottom:
+                                        MediaQuery.of(
+                                          context,
+                                        ).viewPadding.bottom,
                                   ),
-                                );
-                              },
-                            );
-                          },
+                                  itemCount: data.length,
+                                  itemBuilder: (cxt, index) {
+                                    return ChessBoardFromFEN(
+                                      fen: data[index].fen ?? "",
+                                      gmName: data[index].whitePlayer.name,
+                                      gmSecondName:
+                                          data[index].blackPlayer.name,
+                                      firstGmCountryCode:
+                                          data[index].whitePlayer.countryCode,
+                                      secondGmCountryCode:
+                                          data[index].blackPlayer.countryCode,
+                                      firstGmTime: data[index].whiteTimeDisplay,
+                                      secondGmTime:
+                                          data[index].blackTimeDisplay,
+                                      firstGmRank:
+                                          data[index].whitePlayer.displayTitle,
+                                      secongGmRank:
+                                          data[index].blackPlayer.displayTitle,
+                                    );
+                                  },
+                                ),
+                              )
+                            else
+                              Expanded(
+                                child: FutureBuilder<List<String>>(
+                                  future:
+                                      PinnedGamesStorage().getPinnedGameIds(),
+                                  builder: (context, snapshot) {
+                                    final pinnedIds = snapshot.data ?? [];
+
+                                    final sortedGames = [
+                                      ...data.where(
+                                        (game) =>
+                                            pinnedIds.contains(game.gameId),
+                                      ),
+                                      ...data.where(
+                                        (game) =>
+                                            !pinnedIds.contains(game.gameId),
+                                      ),
+                                    ];
+
+                                    return ListView.builder(
+                                      padding: EdgeInsets.only(
+                                        left: 20.sp,
+                                        right: 20.sp,
+                                        top: 12.sp,
+                                        bottom:
+                                            MediaQuery.of(
+                                              context,
+                                            ).viewPadding.bottom,
+                                      ),
+                                      itemCount: sortedGames.length,
+                                      itemBuilder: (cxt, index) {
+                                        final game = sortedGames[index];
+                                        return Padding(
+                                          padding: EdgeInsets.only(
+                                            bottom: 12.sp,
+                                          ),
+                                          child: _GameCard(
+                                            gamesTourModel: game,
+                                            pinnedIds: pinnedIds,
+                                            onPinToggle: (
+                                              gamesTourModel,
+                                            ) async {
+                                              await ref
+                                                  .read(
+                                                    gamesTourScreenProvider
+                                                        .notifier,
+                                                  )
+                                                  .togglePinGame(
+                                                    gamesTourModel.gameId,
+                                                  );
+                                            },
+                                          ),
+                                        );
+                                      },
+                                    );
+                                  },
+                                ),
+                              ),
+                          ],
                         );
                       },
                       error: (_, __) => GenericErrorWidget(),
@@ -196,11 +255,10 @@ class _GameCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
-      mainAxisSize: MainAxisSize.min,
       children: [
         Container(
           height: 60.h,
-          padding: EdgeInsets.symmetric(horizontal: 12.sp),
+          padding: EdgeInsets.only(left: 12.sp),
           decoration: BoxDecoration(
             color: kWhiteColor70,
             borderRadius: BorderRadius.only(
@@ -210,110 +268,115 @@ class _GameCard extends StatelessWidget {
           ),
           child: Row(
             children: [
-              _GamesRound(
-                playerName: gamesTourModel.whitePlayer.name,
-                playerRank: gamesTourModel.whitePlayer.displayTitle,
-                countryCode: gamesTourModel.whitePlayer.countryCode,
+              SizedBox(
+                width: MediaQuery.of(context).size.width * (30 / 100),
+                child: _GamesRound(
+                  playerName: gamesTourModel.whitePlayer.name,
+                  playerRank: gamesTourModel.whitePlayer.displayTitle,
+                  countryCode: gamesTourModel.whitePlayer.countryCode,
+                ),
               ),
-
               Spacer(),
               _ProgressWidget(progress: gamesTourModel.gameStatus.index / 100),
               Spacer(),
-              _GamesRound(
-                playerName: gamesTourModel.blackPlayer.name,
-                playerRank: gamesTourModel.blackPlayer.displayTitle,
-                countryCode: gamesTourModel.blackPlayer.countryCode,
+              SizedBox(
+                width: MediaQuery.of(context).size.width * (30 / 100),
+                child: _GamesRound(
+                  playerName: gamesTourModel.blackPlayer.name,
+                  playerRank: gamesTourModel.blackPlayer.displayTitle,
+                  countryCode: gamesTourModel.blackPlayer.countryCode,
+                ),
               ),
-              SizedBox(width: 10.w),
-              Column(
-                mainAxisAlignment: MainAxisAlignment.start,
+              Spacer(),
+              Stack(
+                alignment: Alignment.topRight,
                 children: [
                   if (isPinned) ...[
-                    SizedBox(width: 8.w),
-                    SvgPicture.asset(
-                      SvgAsset.pin,
-                      color: kpinColor,
-                      height: 14.h,
-                      width: 14.w,
+                    Positioned(
+                      left: 4.sp,
+                      child: SvgPicture.asset(
+                        SvgAsset.pin,
+                        color: kpinColor,
+                        height: 14.h,
+                        width: 14.w,
+                      ),
                     ),
                   ],
-                  SizedBox(height: 10.h),
-                  GestureDetector(
-                    onTapDown: (TapDownDetails details) {
-                      showMenu(
-                        context: context,
-                        position: RelativeRect.fromLTRB(
-                          details.globalPosition.dx,
-                          details.globalPosition.dy,
-                          0,
-                          0,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12.br),
-                        ),
-                        items: <PopupMenuEntry<String>>[
-                          PopupMenuItem<String>(
-                            value: 'pin',
-                            child: GestureDetector(
-                              onTap: () {
-                                Navigator.pop(context);
-                                onPinToggle(gamesTourModel);
-                              },
-                              child: SizedBox(
-                                width: 200,
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      isPinned
-                                          ? "Unpin from Top"
-                                          : "Pin to Top",
-                                      style: AppTypography.textXsMedium
-                                          .copyWith(color: kWhiteColor),
-                                    ),
-                                    SvgPicture.asset(
-                                      SvgAsset.pin,
-                                      height: 13.h,
-                                      width: 13.w,
-                                    ),
-                                  ],
+                  Align(
+                    alignment: Alignment.center,
+                    child: GestureDetector(
+                      onTapDown: (TapDownDetails details) {
+                        showMenu(
+                          context: context,
+                          position: RelativeRect.fromLTRB(
+                            details.globalPosition.dx,
+                            details.globalPosition.dy,
+                            0,
+                            0,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12.br),
+                          ),
+                          items: <PopupMenuEntry<String>>[
+                            PopupMenuItem<String>(
+                              value: 'pin',
+                              child: InkWell(
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  onPinToggle(gamesTourModel);
+                                },
+                                child: SizedBox(
+                                  width: 200,
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        isPinned
+                                            ? "Unpin from Top"
+                                            : "Pin to Top",
+                                        style: AppTypography.textXsMedium
+                                            .copyWith(color: kWhiteColor),
+                                      ),
+                                      SvgPicture.asset(
+                                        SvgAsset.pin,
+                                        height: 13.h,
+                                        width: 13.w,
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                          PopupMenuDivider(
-                            height: 1.h,
-                            thickness: 0.5.w,
-                            color: kDividerColor,
-                          ),
-
-                          PopupMenuItem(
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  "Share",
-                                  style: AppTypography.textXsMedium.copyWith(
-                                    color: kWhiteColor,
-                                  ),
-                                ),
-                                SvgPicture.asset(
-                                  SvgAsset.share,
-                                  height: 13.h,
-                                  width: 13.w,
-                                ),
-                              ],
+                            PopupMenuDivider(
+                              height: 1.h,
+                              thickness: 0.5.w,
+                              color: kDividerColor,
                             ),
-                          ),
-                        ],
-                      );
-                    },
-                    child: SvgPicture.asset(
-                      SvgAsset.threeDots,
-                      color: kBlack2Color,
-                      height: 18.h,
-                      width: 12.w,
+
+                            PopupMenuItem(
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    "Share",
+                                    style: AppTypography.textXsMedium.copyWith(
+                                      color: kWhiteColor,
+                                    ),
+                                  ),
+                                  SvgPicture.asset(
+                                    SvgAsset.share,
+                                    height: 13.h,
+                                    width: 13.w,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                      child: Icon(Icons.more_vert_rounded, color: kBlackColor),
                     ),
                   ),
                 ],
@@ -333,7 +396,7 @@ class _GameCard extends StatelessWidget {
           ),
           child: Row(
             children: [
-              _TimerWidget(turn: true, time: gamesTourModel.whiteTimeDisplay),
+              _TimerWidget(turn: false, time: gamesTourModel.whiteTimeDisplay),
               Spacer(),
               _TimerWidget(turn: false, time: gamesTourModel.blackTimeDisplay),
             ],
@@ -364,6 +427,7 @@ class _GamesRound extends StatelessWidget {
       children: [
         Text(
           playerName,
+          maxLines: 1,
           style: AppTypography.textXsMedium.copyWith(color: kBlackColor),
         ),
         Row(

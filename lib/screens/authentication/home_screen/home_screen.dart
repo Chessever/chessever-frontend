@@ -2,6 +2,7 @@ import 'package:chessever2/screens/calendar_screen.dart';
 import 'package:chessever2/screens/chessboard/ChessBoardScreen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/premium/premium_screen.dart'; // Import premium screen
+import 'package:chessever2/widgets/back_drop_filter_widget.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -44,11 +45,13 @@ class HomeScreen extends StatelessWidget {
             // Handle support action
             // e.g., open support form or chat
           },
+
           onPremiumPressed: () {
-            // Navigate to premium screen
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const PremiumScreen()),
+            showModalBottomSheet(
+              context: context,
+              backgroundColor: Colors.transparent,
+              isScrollControlled: true,
+              builder: (_) => const PremiumScreen(),
             );
           },
           onLogoutPressed: () {

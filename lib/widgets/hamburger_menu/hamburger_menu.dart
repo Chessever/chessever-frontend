@@ -133,9 +133,7 @@ class HamburgerMenu extends StatelessWidget {
                         ),
                       ),
                       child: _MenuItem(
-                        color:
-                            Colors
-                                .transparent, 
+                        color: Colors.transparent,
                         customIcon: Image.asset(
                           PngAsset.premiumIcon,
                           width: 28.w,
@@ -144,27 +142,10 @@ class HamburgerMenu extends StatelessWidget {
                         ),
                         title: 'Try Premium for free',
                         onPressed: () {
-                          Navigator.pop(context); // Close drawer first
                           callbacks.onPremiumPressed();
                         },
                       ),
                     ),
-
-                    // _MenuItem(
-                    //   color: kBlack2Color,
-                    //   // Premium color
-                    //   customIcon: Image.asset(
-                    //     PngAsset.premiumIcon,
-                    //     width: 28.w,
-                    //     height: 28.h,
-                    //     fit: BoxFit.contain,
-                    //   ),
-                    //   title: 'Try Premium for free',
-                    //   onPressed: () {
-                    //     Navigator.pop(context); // Close drawer first
-                    //     callbacks.onPremiumPressed();
-                    //   },
-                    // ),
                   ],
                 ),
               ),

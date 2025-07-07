@@ -97,7 +97,6 @@ class _MyAppState extends ConsumerState<MyApp> {
       initialRoute: '/',
       routes: {
         '/': (context) => const SplashScreen(),
-        '/splash': (context) => const SplashScreen(),
         '/auth_screen': (context) => const AuthScreen(),
         '/home_screen': (context) => const HomeScreen(),
         '/tournament_screen': (context) => const TournamentScreen(),

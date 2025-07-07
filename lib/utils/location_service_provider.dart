@@ -18,4 +18,17 @@ class LocationService {
       return 'US';
     }
   }
+
+  String getCountryName(String location) {
+    try {
+      // Extract country name from location (assuming it's the last part after comma)
+      String countryName = location.split(',').last.trim();
+
+      Country country = Country.parse(countryName);
+
+      return country.name;
+    } catch (error, _) {
+      return 'US';
+    }
+  }
 }

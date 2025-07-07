@@ -1,6 +1,8 @@
+import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/event_card/starred_provider.dart';
@@ -129,13 +131,24 @@ class EventCard extends StatelessWidget {
   }
 }
 
-class _ShowStatus extends StatelessWidget {
+class _ShowStatus extends ConsumerWidget {
   const _ShowStatus({required this.tourEventCardModel, super.key});
 
   final TourEventCardModel tourEventCardModel;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final currentLocation =
+        ref
+            .read(locationServiceProvider)
+            .getCountryName(tourEventCardModel.location)
+            .toLowerCase();
+    final dropDownSelectedCountry =
+        ref.watch(countryDropdownProvider).value!.name.toLowerCase();
+
+    if (currentLocation.contains(dropDownSelectedCountry)) {
+      return _CountryMen();
+    }
     switch (tourEventCardModel.tourEventCategory) {
       case TourEventCategory.live:
         return _LiveTag();
@@ -143,8 +156,6 @@ class _ShowStatus extends StatelessWidget {
         return _UpcomingTag(tourEventCardModel: tourEventCardModel);
       case TourEventCategory.completed:
         return _CompletedTag();
-      case TourEventCategory.countrymen:
-        return _CountryMen();
     }
   }
 }
@@ -204,7 +215,7 @@ class _LiveTag extends StatelessWidget {
   }
 }
 
-class _BuildTrailingButton extends StatelessWidget {
+class _BuildTrailingButton extends ConsumerWidget {
   const _BuildTrailingButton({
     required this.tourEventCardModel,
     this.onMorePressed,
@@ -215,7 +226,18 @@ class _BuildTrailingButton extends StatelessWidget {
   final VoidCallback? onMorePressed;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final currentLocation =
+        ref
+            .read(locationServiceProvider)
+            .getCountryName(tourEventCardModel.location)
+            .toLowerCase();
+    final dropDownSelectedCountry =
+        ref.watch(countryDropdownProvider).value!.name.toLowerCase();
+    if (currentLocation.contains(dropDownSelectedCountry)) {
+      return _CountrymenStarWidget();
+    }
+
     switch (tourEventCardModel.tourEventCategory) {
       case TourEventCategory.upcoming:
         return _StarWidget(tourEventCardModel: tourEventCardModel);
@@ -223,8 +245,6 @@ class _BuildTrailingButton extends StatelessWidget {
       case TourEventCategory.live:
         return _StarWidget(tourEventCardModel: tourEventCardModel);
 
-      case TourEventCategory.countrymen:
-        return _CountrymenStarWidget();
       case TourEventCategory.completed:
         return InkWell(
           onTap: onMorePressed,

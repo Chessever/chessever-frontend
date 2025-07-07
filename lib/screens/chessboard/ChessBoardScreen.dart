@@ -61,10 +61,7 @@ class ChessScreen extends ConsumerWidget {
                       ),
                     ],
                   ),
-                  child: ChessBoardWidget(
-                    boardColor: boardColorEnum,
-                    pieceStyle: boardSettingsValue.pieceStyle.toString(),
-                  ),
+                  // child: ChessBoardWidget(boardColor: boardColorEnum),
                 ),
               ),
 

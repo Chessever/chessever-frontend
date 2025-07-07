@@ -152,3 +152,12 @@
 -> Update GamesAppBarWidget to include a top 3 dot option that opens a pop-up menu with options
 -> Minor design update in hamburger menu  and Premium button , update gradient
 -> BackDropFilterWidget for blur
+
+#4 july
+-> Display the countryman icon in the tournaments
+-> show the fen data in the view with chess board, update the view model with fromGames first to include fen data in the view model
+
+#6 july
+->Fix the pin option dialog position in the screen in Games Screen and make it easily clickable
+-> Change 3 dots of Games screen from the design
+-> Create Premium Dialog and delete the old premium screen,

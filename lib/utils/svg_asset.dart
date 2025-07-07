@@ -37,4 +37,8 @@ class SvgAsset {
   static const active = 'assets/svgs/active.svg';
 
   static const share = 'assets/svgs/share.svg';
+  static const zero_ads = 'assets/svgs/zero_list.svg';
+  static const tour_list = 'assets/svgs/tour_list.svg';
+
+  static const libary_book = 'assets/svgs/libary_book.svg';
 }
