@@ -29,7 +29,11 @@ class AuthRepository {
       dotenv.env['SUPABASE_ANON_KEY']!,
     );
 
-    _googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
+   _googleSignIn = GoogleSignIn(
+      scopes: ['email', 'profile'],
+      clientId: dotenv.env['GOOGLE_WEB_CLIENT_ID'],
+    );
+
   }
 
   // Current user stream
@@ -72,7 +76,12 @@ class AuthRepository {
       if (user == null) {
         throw Exception('Failed to authenticate with Supabase');
       }
-
+      await _supabase.from('Users').upsert({
+        'id': user.id,
+        'email': user.email,
+        'name': user.userMetadata?['full_name'] ?? user.userMetadata?['name'],
+        'photo_url': user.userMetadata?['avatar_url'],
+      });
       return AppUser.fromSupabaseUser(user);
     } catch (e) {
       debugPrint('Google sign in error: $e');

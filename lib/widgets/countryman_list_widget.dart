@@ -1,3 +1,4 @@
+import 'package:chessever2/utils/app_typography.dart';
 import 'package:flutter/material.dart';
 import '../widgets/countryman_card.dart';
 import '../widgets/rounded_search_bar.dart';
@@ -56,18 +57,7 @@ class _CountrymanListWidgetState extends State<CountrymanListWidget> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        elevation: 0,
-        title: const Text(
-          'Countrymen',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ),
+
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -79,7 +69,9 @@ class _CountrymanListWidgetState extends State<CountrymanListWidget> {
                 child: RoundedSearchBar(
                   controller: _searchController,
                   onChanged: _filterCountrymen,
-                  hintText: 'Search tournaments or players',
+                  hintText: 'Search players',
+                  showProfile: false,
+                  showFilter: false,
                   onFilterTap: () {
                     // Show filter options if needed
                   },
@@ -91,45 +83,37 @@ class _CountrymanListWidgetState extends State<CountrymanListWidget> {
                 padding: const EdgeInsets.only(bottom: 8.0),
                 child: Row(
                   children: [
-                    // Space for rank number
-                    const SizedBox(width: 32),
-
-                    // Player name header
-                    const Expanded(
+                    Expanded(
+                      flex: 3,
                       child: Text(
                         'Player',
-                        style: TextStyle(
+                        style: AppTypography.textSmRegular.copyWith(
                           color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
 
                     // Elo header
-                    Container(
-                      width: 60,
-                      child: const Text(
+                    Expanded(
+                      flex: 1,
+                      child: Text(
                         'Elo',
-                        style: TextStyle(
+                        style: AppTypography.textSmRegular.copyWith(
                           color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
                         ),
                         textAlign: TextAlign.center,
                       ),
                     ),
 
                     // Age header
-                    Container(
-                      width: 50,
-                      child: const Text(
+                    Expanded(
+                      flex: 1,
+                      child: Text(
                         'Age',
-                        style: TextStyle(
+                        style: AppTypography.textSmRegular.copyWith(
                           color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
                         ),
+
                         textAlign: TextAlign.center,
                       ),
                     ),
