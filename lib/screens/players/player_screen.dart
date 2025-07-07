@@ -63,18 +63,18 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
     return Scaffold(
       backgroundColor: kBackgroundColor,
-      appBar: AppBar(
-        backgroundColor: kBackgroundColor,
-        elevation: 0,
-        title: Text(
-          'Players',
-          style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
-        ),
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: kWhiteColor),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ),
+      // appBar: AppBar(
+      //   backgroundColor: kBackgroundColor,
+      //   elevation: 0,
+      //   title: Text(
+      //     'Players',
+      //     style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
+      //   ),
+      //   leading: IconButton(
+      //     icon: Icon(Icons.arrow_back, color: kWhiteColor),
+      //     onPressed: () => Navigator.of(context).pop(),
+      //   ),
+      // ),
       body: SafeArea(
         child: Padding(
           padding: EdgeInsets.symmetric(horizontal: 16.sp),
@@ -84,6 +84,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               Padding(
                 padding: EdgeInsets.symmetric(vertical: 16.sp),
                 child: RoundedSearchBar(
+                  showProfile: false,
+
                   controller: _searchController,
                   onChanged: (value) {
                     // onChanged is handled by the controller listener now
@@ -95,7 +97,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                   onProfileTap: () {
                     // Profile tap functionality
                   },
-                  profileInitials: 'VD',
                 ),
               ),
 

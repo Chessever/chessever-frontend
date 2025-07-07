@@ -137,7 +137,7 @@ class PremiumScreen extends StatelessWidget {
               const SizedBox(height: 12),
 
               Text(
-                "You'll be billed at the end of your free trial. Feel\nfree to cancel anytime through Google Play.",
+                "You'll be billed at the end of your free trial. Feel free to cancel anytime through Google Play.",
                 textAlign: TextAlign.center,
                 style: AppTypography.textSmBold.copyWith(
                   color: kBoardColorGrey,
