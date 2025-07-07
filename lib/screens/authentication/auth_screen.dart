@@ -32,7 +32,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     // Listen for state changes
     ref.listen<AuthScreenState>(authScreenProvider, (previous, current) {
       // Show country selection modal after successful sign in
-      if (current.showCountrySelection && !current.isLoading) {
+      if (current.showCountrySelection && current.user != null) {
         _showCountrySelectionModal();
       }
 

@@ -161,3 +161,10 @@
 ->Fix the pin option dialog position in the screen in Games Screen and make it easily clickable
 -> Change 3 dots of Games screen from the design
 -> Create Premium Dialog and delete the old premium screen,
+
+#7 july
+-> Fix the AppBar for  Players Screen and remove the top title
+-> Fix the AppBar of Favorites Screen and remove the top title
+-> Create the countryman Design where users can change their countrymen by clicking on the appBar Country dropdown 
+-> Complete the Board View Screen details exactly as it it
+-> Check the dialogs of hamburger menu and switcher to look exactly same as in design

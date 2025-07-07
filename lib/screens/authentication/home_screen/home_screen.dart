@@ -1,7 +1,10 @@
+import 'package:chessever2/screens/players/player_screen.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:chessever2/screens/calendar_screen.dart';
 import 'package:chessever2/screens/chessboard/ChessBoardScreen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/premium/premium_screen.dart'; // Import premium screen
+import 'package:chessever2/screens/premium/provider/premium_screen_provider.dart';
 import 'package:chessever2/widgets/back_drop_filter_widget.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
 import 'package:flutter/material.dart';
@@ -9,14 +12,14 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../tournaments/tournament_screen.dart';
 import '../../tournaments/widget/bottom_nav_bar.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
   static final GlobalKey<ScaffoldState> scaffoldKey =
       GlobalKey<ScaffoldState>();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       key: scaffoldKey,
       drawer: HamburgerMenu(
@@ -30,8 +33,18 @@ class HomeScreen extends StatelessWidget {
             Navigator.pushNamed(context, '/favorites');
           },
           onCountrymanPressed: () {
-            // Navigate to countryman screen
-            Navigator.pushNamed(context, '/countryman');
+            final status = ref.read(statusProvider);
+
+            if (status) {
+              showModalBottomSheet(
+                context: context,
+                backgroundColor: Colors.transparent,
+                isScrollControlled: true,
+                builder: (_) => const PremiumScreen(),
+              );
+            } else {
+              Navigator.pushNamed(context, '/countryman_screen');
+            }
           },
           onAnalysisBoardPressed: () {
             // Navigate to analysis board
@@ -54,6 +67,7 @@ class HomeScreen extends StatelessWidget {
               builder: (_) => const PremiumScreen(),
             );
           },
+
           onLogoutPressed: () {
             // Handle logout
             // e.g., clear session and navigate to login

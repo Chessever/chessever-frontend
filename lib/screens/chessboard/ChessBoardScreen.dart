@@ -1,113 +1,160 @@
+import 'package:chessever2/utils/app_typography.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_viewmodel.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_appbar.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_widget.dart';
 import 'package:chessever2/providers/board_settings_provider.dart';
 import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
+import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_info_widget.dart';
+import 'package:chessever2/screens/chessboard/widgets/player_second_row_detail_widget.dart';
+import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
-import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart'; // Add this import
+import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
+import 'package:squares/squares.dart'; // Add this import
+import 'package:square_bishop/square_bishop.dart' as square_bishop;
+import 'package:bishop/bishop.dart' as bishop;
 
-class ChessScreen extends ConsumerWidget {
+class ChessScreen extends StatefulWidget {
   const ChessScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final chessState = ref.watch(chessViewModelProvider);
-    final boardSettingsValue = ref.watch(boardSettingsProvider);
-    final boardColorEnum = ref
-        .read(boardSettingsRepository)
-        .getBoardColorEnum(boardSettingsValue.boardColor);
+  State<ChessScreen> createState() => _ChessScreenState();
+}
 
+class _ChessScreenState extends State<ChessScreen> {
+  late final String firstGmName;
+  late final String secondGmName;
+  late final String firstGmCountryCode;
+  late final String secondGmCountryCode;
+  late final String firstGmTime;
+  late final String secondGmTime;
+  late final String firstGmRank;
+  late final String secondGmRank;
+  late final String fen;
+
+  // Board state initialized in initState
+  late BoardState boardState;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // We can't get ModalRoute.of(context) here (context is not ready),
+    // so delay it to after first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final args =
+          ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+
+      setState(() {
+        firstGmName = args?['gmName'] ?? '';
+        secondGmName = args?['gmSecondName'] ?? '';
+        firstGmCountryCode = args?['firstGmCountryCode'] ?? '';
+        secondGmCountryCode = args?['secondGmCountryCode'] ?? '';
+        firstGmTime = args?['firstGmTime'] ?? '';
+        secondGmTime = args?['secondGmTime'] ?? '';
+        firstGmRank = args?['firstGmRank'] ?? '';
+        secondGmRank = args?['secondGmRank'] ?? '';
+        fen = args?['fen'] ?? '';
+
+        final game = bishop.Game.fromPgn(fen);
+        final squaresState = game.squaresState(Squares.white);
+        boardState = squaresState.board;
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: ChessMatchAppBar(
-        title: 'Magnus vs Nakamura',
+        title: '${firstGmName} vs ${secondGmName}',
         onBackPressed: () {
           Navigator.pop(context);
         },
-        onSettingsPressed: () {
-          // Handle settings button press
-        },
+        onSettingsPressed: () {},
         onMoreOptionsPressed: () {
           // Handle share button press
         },
       ),
       body: SingleChildScrollView(
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Player information - Top (Black)
-              PlayerInfoWidget(
-                name: 'GM Nakamura, Hikaru',
-                rating: '2804',
-                time: '01:04:11',
-                isTop: true,
-              ),
-
-              const SizedBox(height: 8),
-
-              // Chess board
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
-                        blurRadius: 10,
-                        spreadRadius: 2,
-                      ),
-                    ],
+        child: Column(
+          // mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Chess board
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.2),
+                    blurRadius: 10,
+                    spreadRadius: 2,
                   ),
-                  // child: ChessBoardWidget(boardColor: boardColorEnum),
-                ),
+                ],
               ),
-
-              const SizedBox(height: 8),
-
-              // Player information - Bottom (White)
-              PlayerInfoWidget(
-                name: 'GM Carlsen, Magnus',
-                rating: '2837',
-                time: '00:45:36',
-                isTop: false,
-              ),
-
-              const SizedBox(height: 16),
-
-              // Moves section
-              Container(
-                width: double.infinity,
-                margin: const EdgeInsets.symmetric(horizontal: 16),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.outline.withOpacity(0.2),
+              child: Column(
+                children: [
+                  PlayerFirstRowDetailWidget(
+                    name: firstGmName,
+                    firstGmRank: firstGmRank,
+                    countryCode: firstGmCountryCode,
+                    // flagAsset: 'assets/usa_flag.png',
+                    time: firstGmTime,
                   ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Moves display
-                    _buildMovesText(context, chessState),
-                  ],
-                ),
-              ),
+                  Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: kBlackColor, width: 2.w),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.grey.withOpacity(0.5),
+                          blurRadius: 8.br,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Board(
+                      size: BoardSize.standard,
+                      pieceSet: PieceSet.merida(),
+                      playState: PlayState.observing,
+                      state: boardState,
+                    ),
+                  ),
+                  SizedBox(height: 3.h),
 
-              // Add bottom padding to ensure content doesn't get hidden behind bottom buttons
-              const SizedBox(height: 100),
-            ],
-          ),
+                  PlayerSecondRowDetailWidget(
+                    name: secondGmName,
+                    countryCode: secondGmCountryCode,
+                    time: secondGmTime,
+                    secondGmRank: secondGmRank,
+                  ),
+                ],
+              ),
+            ),
+
+            // SizedBox(height: 15.h),
+
+            // Moves section
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+              ),
+              child: Text(
+                fen,
+                style: AppTypography.textXsMedium.copyWith(color: kGreenColor),
+              ),
+            ),
+
+            // Add bottom padding to ensure content doesn't get hidden behind bottom buttons
+            const SizedBox(height: 100),
+          ],
         ),
       ),
       bottomNavigationBar: const ChessBoardBottomNavBar(),
-    );
+    );  
   }
 
   Widget _buildMovesText(BuildContext context, ChessGameState chessState) {
