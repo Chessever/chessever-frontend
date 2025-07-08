@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
 import 'package:chessever2/repository/local_storage/tournament/tour_local_storage.dart';
 import 'package:chessever2/widgets/event_card/starred_provider.dart';
 import 'package:flutter/material.dart';
@@ -17,6 +18,14 @@ class _SplashScreenProvider {
     await ref.read(tourLocalStorageProvider).fetchAndSaveTournament();
     //Fetch all starred tournament
     ref.read(starredProvider.notifier).init();
-    Navigator.pushReplacementNamed(context, '/auth_screen');
+
+    /// check if user   is already logged in
+    final sessionManager = ref.read(sessionManagerProvider);
+    final isLoggedIn = await sessionManager.isLoggedIn();
+    if (isLoggedIn) {
+      Navigator.pushReplacementNamed(context, '/home_screen');
+    } else {
+      Navigator.pushReplacementNamed(context, '/auth_screen');
+    }
   }
 }

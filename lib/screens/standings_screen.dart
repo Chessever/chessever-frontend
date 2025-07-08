@@ -72,7 +72,7 @@ class StandingsScreen extends ConsumerWidget {
                   final player = playerStandings[index];
                   return Padding(
                     padding: EdgeInsets.only(bottom: 16.0.sp),
-                    child: ScoreCard(
+                    child: StandingScoreCard(
                       countryCode: player.countryCode,
                       title: player.title,
                       name: player.name,

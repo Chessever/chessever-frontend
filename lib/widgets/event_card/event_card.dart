@@ -142,13 +142,18 @@ class _ShowStatus extends ConsumerWidget {
         ref
             .read(locationServiceProvider)
             .getCountryName(tourEventCardModel.location)
-            .toLowerCase();
-    final dropDownSelectedCountry =
-        ref.watch(countryDropdownProvider).value!.name.toLowerCase();
+            ?.toLowerCase() ??
+        '';
 
-    if (currentLocation.contains(dropDownSelectedCountry)) {
+    final dropDownSelectedCountry =
+        ref.watch(countryDropdownProvider).value?.name?.toLowerCase() ?? '';
+
+    if (currentLocation.isNotEmpty &&
+        dropDownSelectedCountry.isNotEmpty &&
+        currentLocation.contains(dropDownSelectedCountry)) {
       return _CountryMen();
     }
+
     switch (tourEventCardModel.tourEventCategory) {
       case TourEventCategory.live:
         return _LiveTag();
@@ -231,11 +236,16 @@ class _BuildTrailingButton extends ConsumerWidget {
         ref
             .read(locationServiceProvider)
             .getCountryName(tourEventCardModel.location)
-            .toLowerCase();
+            ?.toLowerCase() ??
+        '';
+
     final dropDownSelectedCountry =
-        ref.watch(countryDropdownProvider).value!.name.toLowerCase();
-    if (currentLocation.contains(dropDownSelectedCountry)) {
-      return _CountrymenStarWidget();
+        ref.watch(countryDropdownProvider).value?.name?.toLowerCase() ?? '';
+
+    if (currentLocation.isNotEmpty &&
+        dropDownSelectedCountry.isNotEmpty &&
+        currentLocation.contains(dropDownSelectedCountry)) {
+      return _CountryMen();
     }
 
     switch (tourEventCardModel.tourEventCategory) {

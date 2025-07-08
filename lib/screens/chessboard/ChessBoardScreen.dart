@@ -32,17 +32,43 @@ class _ChessScreenState extends State<ChessScreen> {
   late final String secondGmTime;
   late final String firstGmRank;
   late final String secondGmRank;
-  late final String fen;
+  late final String pgn;
 
   // Board state initialized in initState
   late BoardState boardState;
+  //   final String pgn = '''
+  // [Event "AAG S50 W50 S65"]
+  // [Site "idChess.com"]
+  // [Date "????.??.??"]
+  // [Round "1"]
+  // [White "Altan-Och, Genden"]
+  // [Black "Leong, Ignatius"]
+  // [Result "1/2-1/2"]
+  // [WhiteElo "2198"]
+  // [WhiteTitle "FM"]
+  // [WhiteFideId "4900278"]
+  // [BlackElo "1666"]
+  // [BlackTitle "FM"]
+  // [BlackFideId "5800242"]
+  // [Board "8"]
+  // [Variant "Standard"]
+  // [ECO "D02"]
+  // [Opening "Queen's Gambit Declined: Baltic Defense, Pseudo-Slav"]
+  // [StudyName "Round 1"]
+  // [ChapterName "Altan-Och, Genden - Leong, Ignatius"]
+  // [UTCDate "2025.07.02"]
+  // [UTCTime "07:48:48"]
+  // [GameURL "https://lichess.org/broadcast/-/-/ZxgjkL1I"]
+
+  // 1. d4 d5 2. c4 c6 3. Nf3 Bf5 4. Nc3 e6 5. cxd5 exd5 6. Bg5 Be7 7. Bf4 Nd7 8. e3 Ngf6 9. Bd3 Ne4 10. O-O Ndf6 11. Nh4 Nxc3 1/2-1/2
+  // ''';
+
+  late final String finalFen;
 
   @override
   void initState() {
     super.initState();
 
-    // We can't get ModalRoute.of(context) here (context is not ready),
-    // so delay it to after first frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final args =
           ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
@@ -56,11 +82,18 @@ class _ChessScreenState extends State<ChessScreen> {
         secondGmTime = args?['secondGmTime'] ?? '';
         firstGmRank = args?['firstGmRank'] ?? '';
         secondGmRank = args?['secondGmRank'] ?? '';
-        fen = args?['fen'] ?? '';
+        pgn = args?['pgn'] ?? '';
+        // Clean PGN header if needed
+        final cleanedPgn = pgn.replaceAll(
+          RegExp(r'\[Variant\s+"[^"]*"\]\n?'),
+          '',
+        );
 
-        final game = bishop.Game.fromPgn(fen);
+        // Parse PGN and setup board
+        final game = bishop.Game.fromPgn(cleanedPgn);
         final squaresState = game.squaresState(Squares.white);
         boardState = squaresState.board;
+        finalFen = game.fen;
       });
     });
   }
@@ -105,22 +138,72 @@ class _ChessScreenState extends State<ChessScreen> {
                   ),
                   Container(
                     decoration: BoxDecoration(
-                      border: Border.all(color: kBlackColor, width: 2.w),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.grey.withOpacity(0.5),
-                          blurRadius: 8.br,
+                          blurRadius: 8,
                           offset: const Offset(0, 4),
                         ),
                       ],
                     ),
-                    child: Board(
-                      size: BoardSize.standard,
-                      pieceSet: PieceSet.merida(),
-                      playState: PlayState.observing,
-                      state: boardState,
+                    child: Row(
+                      children: [
+                        // Column(
+                        //   children: [
+                        //     Container(
+                        //       height: MediaQuery.of(context).size.height * 0.28,
+                        //       width: 20.w,
+                        //       color: kborderLeftColors,
+                        //     ),
+                        //     Container(
+                        //       height: 6.h,
+                        //       width: 20.w,
+                        //       color: Colors.red,
+                        //     ),
+                        //     Container(
+                        //       height: MediaQuery.of(context).size.height * 0.28,
+                        //       width: 20.w,
+                        //       color: kWhiteColor,
+                        //     ),
+                        //   ],
+                        // ),
+
+                        // Main Board area
+                        Expanded(
+                          child: Container(
+                            color: Colors.transparent, // Avoid any blur/overlay
+                            child: AbsorbPointer(
+                              child: Board(
+                                size: BoardSize.standard,
+                                pieceSet: PieceSet.merida(),
+                                playState: PlayState.observing,
+                                state: boardState,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
+
+                  // Container(
+                  //   decoration: BoxDecoration(
+                  //     border: Border.all(color: kBlackColor, width: 2.w),
+                  //     boxShadow: [
+                  //       BoxShadow(
+                  //         color: Colors.grey.withOpacity(0.5),
+                  //         blurRadius: 8.br,
+                  //         offset: const Offset(0, 4),
+                  //       ),
+                  //     ],
+                  //   ),
+                  //   child: Board(
+                  //     size: BoardSize.standard,
+                  //     pieceSet: PieceSet.merida(),
+                  //     playState: PlayState.observing,
+                  //     state: boardState,
+                  //   ),
+                  // ),
                   SizedBox(height: 3.h),
 
                   PlayerSecondRowDetailWidget(
@@ -139,11 +222,12 @@ class _ChessScreenState extends State<ChessScreen> {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),
+              margin: EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surface,
               ),
               child: Text(
-                fen,
+                finalFen,
                 style: AppTypography.textXsMedium.copyWith(color: kGreenColor),
               ),
             ),
@@ -153,8 +237,9 @@ class _ChessScreenState extends State<ChessScreen> {
           ],
         ),
       ),
+
       bottomNavigationBar: const ChessBoardBottomNavBar(),
-    );  
+    );
   }
 
   Widget _buildMovesText(BuildContext context, ChessGameState chessState) {
