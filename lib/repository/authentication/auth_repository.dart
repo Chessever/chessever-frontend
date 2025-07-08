@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 import 'package:chessever2/repository/authentication/model/app_user.dart';
+import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -52,6 +53,8 @@ class AuthRepository {
 
   // Google Sign In
   Future<AppUser> signInWithGoogle() async {
+    final sessionManager = ref.read(sessionManagerProvider);
+
     try {
       final googleUser = await _googleSignIn.signIn();
       if (googleUser == null) {
@@ -73,9 +76,12 @@ class AuthRepository {
       );
 
       final user = response.user;
-      if (user == null) {
+      final session = response.session;
+
+      if (user == null || session == null) {
         throw Exception('Failed to authenticate with Supabase');
       }
+      await sessionManager.saveSession(session);
       await _supabase.from('Users').upsert({
         'id': user.id,
         'email': user.email,

@@ -20,6 +20,8 @@ class ChessBoardFromFEN extends StatefulWidget {
     required this.secondGmTime,
     required this.firstGmRank,
     required this.secongGmRank,
+    required this.pgn,
+    required this.status,
   });
 
   final String gmName;
@@ -31,6 +33,8 @@ class ChessBoardFromFEN extends StatefulWidget {
   final String secondGmTime;
   final String firstGmRank;
   final String secongGmRank;
+  final String pgn;
+  final String status;
 
   @override
   State<ChessBoardFromFEN> createState() => _ChessBoardFromFENState();
@@ -56,21 +60,39 @@ class _ChessBoardFromFENState extends State<ChessBoardFromFEN> {
       padding: EdgeInsets.symmetric(horizontal: 48.sp, vertical: 8.sp),
       child: InkWell(
         onTap: () {
-          Navigator.pushNamed(
-            context,
-            '/chess_screen',
-            arguments: {
-              'gmName': widget.gmName,
-              'gmSecondName': widget.gmSecondName,
-              'fen': widget.fen,
-              'firstGmCountryCode': widget.firstGmCountryCode,
-              'secondGmCountryCode': widget.secondGmCountryCode,
-              'firstGmTime': widget.firstGmTime,
-              'secondGmTime': widget.secondGmTime,
-              'firstGmRank': widget.firstGmRank,
-              'secongGmRank': widget.secongGmRank,
-            },
-          );
+          if (widget.status != '*') {
+            Navigator.pushNamed(
+              context,
+              '/chess_screen',
+              arguments: {
+                'gmName': widget.gmName,
+                'gmSecondName': widget.gmSecondName,
+                'fen': widget.fen,
+                'firstGmCountryCode': widget.firstGmCountryCode,
+                'secondGmCountryCode': widget.secondGmCountryCode,
+                'firstGmTime': widget.firstGmTime,
+                'secondGmTime': widget.secondGmTime,
+                'firstGmRank': widget.firstGmRank,
+                'secongGmRank': widget.secongGmRank,
+                'pgn': widget.pgn,
+              },
+            );
+          } else {
+            showDialog(
+              context: context,
+              builder:
+                  (_) => AlertDialog(
+                    title: const Text("No PGN Data"),
+                    content: const Text("This game has no PGN data available."),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text("OK"),
+                      ),
+                    ],
+                  ),
+            );
+          }
         },
         child: Column(
           children: [
@@ -83,24 +105,99 @@ class _ChessBoardFromFENState extends State<ChessBoardFromFEN> {
             ),
             Container(
               decoration: BoxDecoration(
-                border: Border.all(color: kBlackColor, width: 2.w),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.grey.withOpacity(0.5),
-                    blurRadius: 8.br,
+                    blurRadius: 8,
                     offset: const Offset(0, 4),
                   ),
                 ],
               ),
-              child: AbsorbPointer(
-                child: Board(
-                  size: BoardSize.standard,
-                  pieceSet: PieceSet.merida(),
-                  playState: PlayState.observing,
-                  state: boardState,
-                ),
+              child: Row(
+                children: [
+                  // Column(
+                  //   children: [
+                  //     Container(
+                  //       height: 160.h,
+                  //       width: 15.w,
+                  //       color: kborderLeftColors,
+                  //     ),
+                  //     Container(height: 6.h, width: 15.w, color: Colors.red),
+                  //     Container(height: 175.h, width: 15.w, color: kWhiteColor),
+                  //   ],
+                  // ),
+
+                  // Main Board area
+                  Expanded(
+                    child: Container(
+                      color: Colors.transparent, // Avoid any blur/overlay
+                      child: AbsorbPointer(
+                        child: Board(
+                          size: BoardSize.standard,
+                          pieceSet: PieceSet.merida(),
+                          playState: PlayState.observing,
+                          state: boardState,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
+
+            // Container(
+            //   decoration: BoxDecoration(
+            //     border: const Border(left: BorderSide(width: 20)),
+            //     boxShadow: [
+            //       BoxShadow(
+            //         color: Colors.grey.withOpacity(0.5),
+            //         blurRadius: 8.br,
+            //         offset: const Offset(0, 4),
+            //       ),
+            //     ],
+            //   ),
+            //   child: Stack(
+            //     children: [
+            //       // Half red and half white background
+            //       Row(
+            //         children: const [
+            //           Expanded(child: ColoredBox(color: Colors.red)),
+            //           Expanded(child: ColoredBox(color: Colors.white)),
+            //         ],
+            //       ),
+            //       // Overlay the board
+            //       AbsorbPointer(
+            //         child: Board(
+            //           size: BoardSize.standard,
+            //           pieceSet: PieceSet.merida(),
+            //           playState: PlayState.observing,
+            //           state: boardState,
+            //         ),
+            //       ),
+            //     ],
+            //   ),
+            // ),
+
+            // Container(
+            //   decoration: BoxDecoration(
+            //     border: Border(left: BorderSide(color: kRedColor, width: 20)),
+            //     boxShadow: [
+            //       BoxShadow(
+            //         color: Colors.grey.withOpacity(0.5),
+            //         blurRadius: 8.br,
+            //         offset: const Offset(0, 4),
+            //       ),
+            //     ],
+            //   ),
+            //   child: AbsorbPointer(
+            //     child: Board(
+            //       size: BoardSize.standard,
+            //       pieceSet: PieceSet.merida(),
+            //       playState: PlayState.observing,
+            //       state: boardState,
+            //     ),
+            //   ),
+            // ),
             SizedBox(height: 3.h),
 
             PlayerSecondRowDetailWidget(

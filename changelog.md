@@ -168,3 +168,10 @@
 -> Create the countryman Design where users can change their countrymen by clicking on the appBar Country dropdown 
 -> Complete the Board View Screen details exactly as it it
 -> Check the dialogs of hamburger menu and switcher to look exactly same as in design
+
+#8 july 
+-> Google Sign -in for login and sign-up
+-> URL launcher for the links provided in Tournament detail screen
+-> Create Scorecard screen
+-> Navigate to Board view when user clicks on Games
+->Show Pgn Data on ChaseBoard

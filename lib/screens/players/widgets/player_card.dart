@@ -188,6 +188,7 @@ class _PlayerCardState extends State<PlayerCard>
           ],
         ),
       ),
+   
     );
   }
 }

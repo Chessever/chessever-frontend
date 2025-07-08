@@ -9,6 +9,7 @@ import 'package:chessever2/screens/players/player_screen.dart';
 import 'package:chessever2/screens/players/providers/player_providers.dart'; // Added import for player providers
 import 'package:chessever2/screens/favorites/favorite_screen.dart';
 import 'package:chessever2/screens/countryman_screen.dart';
+import 'package:chessever2/screens/score_card/pages/score_card_page.dart';
 import 'package:chessever2/screens/splash/splash_screen.dart';
 import 'package:chessever2/screens/standings_screen.dart';
 import 'package:chessever2/screens/tournaments/tournament_detail_view.dart';
@@ -17,6 +18,7 @@ import 'package:chessever2/screens/calendar_screen.dart';
 import 'package:chessever2/services/notification_service.dart';
 import 'package:chessever2/services/settings_manager.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/standing_score_card.dart';
 import 'package:device_preview_plus/device_preview_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -113,7 +115,8 @@ class _MyAppState extends ConsumerState<MyApp> {
         '/countryman_screen': (context) => const CountrymanScreen(),
         '/standings': (context) => const StandingsScreen(),
         '/calendar_detail_screen': (context) => CalendarDetailsScreen(),
-        // New route for Tournament Details screen
+        // New route for Score Card
+        '/Score_card': (context) => ScoreCard(),
       },
     );
   }

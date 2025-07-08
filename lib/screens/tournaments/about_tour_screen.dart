@@ -28,7 +28,7 @@ class AboutTourScreen extends ConsumerWidget {
           onTap:
               () => ref
                   .read(urlLauncherProvider)
-                  .launchUrl(aboutTourModel.websiteUrl),
+                  .launchCustomUrl(aboutTourModel.websiteUrl),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -99,16 +99,23 @@ class AboutTourScreen extends ConsumerWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
+                  InkWell(
+                    onTap: () {},
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                      ),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 10.sp,
+                        vertical: 10.sp,
+                      ),
+                      child: SvgWidget(
+                        SvgAsset.boat,
+                        height: 32.h,
+                        width: 32.w,
+                      ),
                     ),
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 10.sp,
-                      vertical: 10.sp,
-                    ),
-                    child: SvgWidget(SvgAsset.boat, height: 32.h, width: 32.w),
                   ),
                 ],
               ),

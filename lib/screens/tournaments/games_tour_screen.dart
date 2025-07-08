@@ -11,7 +11,6 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/back_drop_filter_widget.dart';
-import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
@@ -19,6 +18,7 @@ import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'dart:ui';
 
 class GamesTourScreen extends ConsumerWidget {
   const GamesTourScreen({super.key});
@@ -74,6 +74,9 @@ class GamesTourScreen extends ConsumerWidget {
                                   itemBuilder: (cxt, index) {
                                     return ChessBoardFromFEN(
                                       fen: data[index].fen ?? "",
+                                      pgn: data[index].pgn ?? "",
+                                      status:
+                                          data[index].gameStatus.displayText,
                                       gmName: data[index].whitePlayer.name,
                                       gmSecondName:
                                           data[index].blackPlayer.name,
@@ -129,6 +132,76 @@ class GamesTourScreen extends ConsumerWidget {
                                             bottom: 12.sp,
                                           ),
                                           child: _GameCard(
+                                            onTap: () {
+                                              final datas = data[index];
+                                              if (data[index]
+                                                      .gameStatus
+                                                      .displayText !=
+                                                  '*') {
+                                                Navigator.pushNamed(
+                                                  context,
+                                                  '/chess_screen',
+                                                  arguments: {
+                                                    'gmName':
+                                                        data[index]
+                                                            .whitePlayer
+                                                            .name,
+                                                    'gmSecondName':
+                                                        data[index]
+                                                            .blackPlayer
+                                                            .name,
+                                                    'firstGmCountryCode':
+                                                        data[index]
+                                                            .whitePlayer
+                                                            .countryCode,
+                                                    'secondGmCountryCode':
+                                                        data[index]
+                                                            .blackPlayer
+                                                            .countryCode,
+                                                    'firstGmTime':
+                                                        data[index]
+                                                            .whiteTimeDisplay,
+                                                    'secondGmTime':
+                                                        data[index]
+                                                            .blackTimeDisplay,
+                                                    'firstGmRank':
+                                                        data[index]
+                                                            .whitePlayer
+                                                            .displayTitle,
+                                                    'secongGmRank':
+                                                        data[index]
+                                                            .blackPlayer
+                                                            .displayTitle,
+                                                    'pgn': data[index].pgn,
+                                                  },
+                                                );
+                                              } else {
+                                                showDialog(
+                                                  context: context,
+                                                  builder:
+                                                      (_) => AlertDialog(
+                                                        title: const Text(
+                                                          "No PGN Data",
+                                                        ),
+                                                        content: const Text(
+                                                          "This game has no PGN data available.",
+                                                        ),
+                                                        actions: [
+                                                          TextButton(
+                                                            onPressed:
+                                                                () =>
+                                                                    Navigator.pop(
+                                                                      context,
+                                                                    ),
+                                                            child: const Text(
+                                                              "OK",
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                );
+                                              }
+                                            },
                                             gamesTourModel: game,
                                             pinnedIds: pinnedIds,
                                             onPinToggle: (
@@ -204,6 +277,7 @@ class _TourLoadingWidget extends StatelessWidget {
           child: Padding(
             padding: EdgeInsets.only(bottom: 12.sp),
             child: _GameCard(
+              onTap: () {},
               gamesTourModel: gamesTourModelList[index],
               onPinToggle: (game) {},
               pinnedIds: [],
@@ -243,128 +317,329 @@ class _GameCard extends StatelessWidget {
     required this.gamesTourModel,
     required this.onPinToggle,
     required this.pinnedIds,
+    required this.onTap,
     super.key,
   });
 
   final GamesTourModel gamesTourModel;
   final void Function(GamesTourModel game) onPinToggle;
   final List<String> pinnedIds;
+  final Function() onTap;
 
   bool get isPinned => pinnedIds.contains(gamesTourModel.gameId);
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          height: 60.h,
-          padding: EdgeInsets.only(left: 12.sp),
-          decoration: BoxDecoration(
-            color: kWhiteColor70,
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(12.br),
-              topRight: Radius.circular(12.br),
+    return InkWell(
+      onTap: onTap,
+      child: Column(
+        children: [
+          Container(
+            height: 60.h,
+            padding: EdgeInsets.only(left: 12.sp),
+            decoration: BoxDecoration(
+              color: kWhiteColor70,
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(12.br),
+                topRight: Radius.circular(12.br),
+              ),
             ),
-          ),
-          child: Row(
-            children: [
-              SizedBox(
-                width: MediaQuery.of(context).size.width * (30 / 100),
-                child: _GamesRound(
-                  playerName: gamesTourModel.whitePlayer.name,
-                  playerRank: gamesTourModel.whitePlayer.displayTitle,
-                  countryCode: gamesTourModel.whitePlayer.countryCode,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: MediaQuery.of(context).size.width * (30 / 100),
+                  child: _GamesRound(
+                    playerName: gamesTourModel.whitePlayer.name,
+                    playerRank: gamesTourModel.whitePlayer.displayTitle,
+                    countryCode: gamesTourModel.whitePlayer.countryCode,
+                  ),
                 ),
-              ),
-              Spacer(),
-              _ProgressWidget(progress: gamesTourModel.gameStatus.index / 100),
-              Spacer(),
-              SizedBox(
-                width: MediaQuery.of(context).size.width * (30 / 100),
-                child: _GamesRound(
-                  playerName: gamesTourModel.blackPlayer.name,
-                  playerRank: gamesTourModel.blackPlayer.displayTitle,
-                  countryCode: gamesTourModel.blackPlayer.countryCode,
+                Spacer(),
+                _ProgressWidget(
+                  progress: gamesTourModel.gameStatus.index / 100,
                 ),
-              ),
-              Spacer(),
-              Stack(
-                alignment: Alignment.topRight,
-                children: [
-                  if (isPinned) ...[
-                    Positioned(
-                      left: 4.sp,
-                      child: SvgPicture.asset(
-                        SvgAsset.pin,
-                        color: kpinColor,
-                        height: 14.h,
-                        width: 14.w,
+                Spacer(),
+                SizedBox(
+                  width: MediaQuery.of(context).size.width * (30 / 100),
+                  child: _GamesRound(
+                    playerName: gamesTourModel.blackPlayer.name,
+                    playerRank: gamesTourModel.blackPlayer.displayTitle,
+                    countryCode: gamesTourModel.blackPlayer.countryCode,
+                  ),
+                ),
+                Spacer(),
+                Stack(
+                  alignment: Alignment.topRight,
+                  children: [
+                    if (isPinned) ...[
+                      Positioned(
+                        left: 4.sp,
+                        child: SvgPicture.asset(
+                          SvgAsset.pin,
+                          color: kpinColor,
+                          height: 14.h,
+                          width: 14.w,
+                        ),
+                      ),
+                    ],
+                    Align(
+                      alignment: Alignment.center,
+                      child: GestureDetector(
+                        onTapDown: (TapDownDetails details) {
+                          _showBlurredPopup(context, details);
+                        },
+                        child: Icon(
+                          Icons.more_vert_rounded,
+                          color: kBlackColor,
+                        ),
                       ),
                     ),
                   ],
-                  Align(
-                    alignment: Alignment.center,
-                    child: GestureDetector(
-                      onTapDown: (TapDownDetails details) {
-                        showMenu(
-                          context: context,
-                          position: RelativeRect.fromLTRB(
-                            details.globalPosition.dx,
-                            details.globalPosition.dy,
-                            0,
-                            0,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12.br),
-                          ),
-                          items: <PopupMenuEntry<String>>[
-                            PopupMenuItem<String>(
-                              value: 'pin',
-                              child: InkWell(
-                                onTap: () {
-                                  Navigator.pop(context);
-                                  onPinToggle(gamesTourModel);
-                                },
-                                child: SizedBox(
-                                  width: 200,
-                                  child: Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        isPinned
-                                            ? "Unpin from Top"
-                                            : "Pin to Top",
-                                        style: AppTypography.textXsMedium
-                                            .copyWith(color: kWhiteColor),
-                                      ),
-                                      SvgPicture.asset(
-                                        SvgAsset.pin,
-                                        height: 13.h,
-                                        width: 13.w,
-                                      ),
-                                    ],
-                                  ),
-                                ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            height: 24.h,
+            padding: EdgeInsets.symmetric(horizontal: 10.sp),
+            decoration: BoxDecoration(
+              color: kBlack2Color,
+              borderRadius: BorderRadius.only(
+                bottomLeft: Radius.circular(12.br),
+                bottomRight: Radius.circular(12.br),
+              ),
+            ),
+            child: Row(
+              children: [
+                _TimerWidget(
+                  turn: false,
+                  time: gamesTourModel.whiteTimeDisplay,
+                ),
+                Spacer(),
+                _TimerWidget(
+                  turn: false,
+                  time: gamesTourModel.blackTimeDisplay,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showBlurredPopup(BuildContext context, TapDownDetails details) {
+    // Get card position and size
+    final RenderBox cardRenderBox = context.findRenderObject() as RenderBox;
+    final Offset cardPosition = cardRenderBox.localToGlobal(Offset.zero);
+    final Size cardSize = cardRenderBox.size;
+
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      pageBuilder: (
+        BuildContext buildContext,
+        Animation<double> animation,
+        Animation<double> secondaryAnimation,
+      ) {
+        // Position menu at bottom of card + 8 padding
+        final double menuTop = cardPosition.dy + 60.h + 24.h + 8.sp;
+
+        return Material(
+          color: Colors.transparent,
+          child: GestureDetector(
+            onTap: () => Navigator.of(context).pop(),
+            child: Stack(
+              children: [
+                // Blur background with cutout for current card
+                _SelectiveBlurBackground(
+                  cardPosition: cardPosition,
+                  cardSize: cardSize,
+                ),
+                // Selected card in its original position (unblurred)
+                Positioned(
+                  left: cardPosition.dx,
+                  top: cardPosition.dy,
+                  child: GestureDetector(
+                    onTap: () {}, // Prevent tap from closing dialog
+                    child: SizedBox(
+                      width: cardSize.width,
+                      height: cardSize.height,
+                      child: Column(
+                        children: [
+                          Container(
+                            height: 60.h,
+                            padding: EdgeInsets.only(left: 12.sp),
+                            decoration: BoxDecoration(
+                              color: kWhiteColor70,
+                              borderRadius: BorderRadius.only(
+                                topLeft: Radius.circular(12.br),
+                                topRight: Radius.circular(12.br),
                               ),
                             ),
-                            PopupMenuDivider(
-                              height: 1.h,
-                              thickness: 0.5.w,
-                              color: kDividerColor,
+                            child: Row(
+                              children: [
+                                SizedBox(
+                                  width:
+                                      MediaQuery.of(context).size.width *
+                                      (30 / 100),
+                                  child: _GamesRound(
+                                    playerName: gamesTourModel.whitePlayer.name,
+                                    playerRank:
+                                        gamesTourModel.whitePlayer.displayTitle,
+                                    countryCode:
+                                        gamesTourModel.whitePlayer.countryCode,
+                                  ),
+                                ),
+                                Spacer(),
+                                _ProgressWidget(
+                                  progress:
+                                      gamesTourModel.gameStatus.index / 100,
+                                ),
+                                Spacer(),
+                                SizedBox(
+                                  width:
+                                      MediaQuery.of(context).size.width *
+                                      (30 / 100),
+                                  child: _GamesRound(
+                                    playerName: gamesTourModel.blackPlayer.name,
+                                    playerRank:
+                                        gamesTourModel.blackPlayer.displayTitle,
+                                    countryCode:
+                                        gamesTourModel.blackPlayer.countryCode,
+                                  ),
+                                ),
+                                Spacer(),
+                                Stack(
+                                  alignment: Alignment.topRight,
+                                  children: [
+                                    if (isPinned) ...[
+                                      Positioned(
+                                        left: 4.sp,
+                                        child: SvgPicture.asset(
+                                          SvgAsset.pin,
+                                          color: kpinColor,
+                                          height: 14.h,
+                                          width: 14.w,
+                                        ),
+                                      ),
+                                    ],
+                                    Align(
+                                      alignment: Alignment.center,
+                                      child: Icon(
+                                        Icons.more_vert_rounded,
+                                        color: kBlackColor,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
-
-                            PopupMenuItem(
+                          ),
+                          Container(
+                            height: 24.h,
+                            padding: EdgeInsets.symmetric(horizontal: 10.sp),
+                            decoration: BoxDecoration(
+                              color: kBlack2Color,
+                              borderRadius: BorderRadius.only(
+                                bottomLeft: Radius.circular(12.br),
+                                bottomRight: Radius.circular(12.br),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                _TimerWidget(
+                                  turn: false,
+                                  time: gamesTourModel.whiteTimeDisplay,
+                                ),
+                                Spacer(),
+                                _TimerWidget(
+                                  turn: false,
+                                  time: gamesTourModel.blackTimeDisplay,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                // Popup menu positioned correctly
+                Positioned(
+                  left: details.globalPosition.dx - 120.w,
+                  top: menuTop,
+                  child: GestureDetector(
+                    onTap: () {}, // Prevent tap from closing dialog
+                    child: Material(
+                      color: Colors.transparent,
+                      child: Container(
+                        width: 120.w,
+                        decoration: BoxDecoration(
+                          color: kDarkGreyColor,
+                          borderRadius: BorderRadius.circular(12.br),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.3),
+                              blurRadius: 10,
+                              offset: Offset(0, 5),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _PopupMenuItem(
+                              onTap: () {
+                                Navigator.pop(context);
+                                onPinToggle(gamesTourModel);
+                              },
                               child: Row(
                                 mainAxisAlignment:
                                     MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text(
-                                    "Share",
-                                    style: AppTypography.textXsMedium.copyWith(
-                                      color: kWhiteColor,
+                                  Expanded(
+                                    child: Text(
+                                      isPinned
+                                          ? "Unpin from Top"
+                                          : "Pin to Top",
+                                      style: AppTypography.textXsMedium
+                                          .copyWith(color: kWhiteColor),
                                     ),
                                   ),
+                                  SizedBox(width: 8.w),
+                                  SvgPicture.asset(
+                                    SvgAsset.pin,
+                                    height: 13.h,
+                                    width: 13.w,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              height: 1.h,
+                              width: double.infinity,
+                              margin: EdgeInsets.symmetric(horizontal: 12.sp),
+                              color: kDividerColor,
+                            ),
+                            _PopupMenuItem(
+                              onTap: () {
+                                Navigator.pop(context);
+                                // Handle share action
+                              },
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      "Share",
+                                      style: AppTypography.textXsMedium
+                                          .copyWith(color: kWhiteColor),
+                                    ),
+                                  ),
+                                  SizedBox(width: 8.w),
                                   SvgPicture.asset(
                                     SvgAsset.share,
                                     height: 13.h,
@@ -374,35 +649,82 @@ class _GameCard extends StatelessWidget {
                               ),
                             ),
                           ],
-                        );
-                      },
-                      child: Icon(Icons.more_vert_rounded, color: kBlackColor),
+                        ),
+                      ),
                     ),
                   ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        Container(
-          height: 24.h,
-          padding: EdgeInsets.symmetric(horizontal: 10.sp),
-          decoration: BoxDecoration(
-            color: kBlack2Color,
-            borderRadius: BorderRadius.only(
-              bottomLeft: Radius.circular(12.br),
-              bottomRight: Radius.circular(12.br),
+                ),
+              ],
             ),
           ),
-          child: Row(
-            children: [
-              _TimerWidget(turn: false, time: gamesTourModel.whiteTimeDisplay),
-              Spacer(),
-              _TimerWidget(turn: false, time: gamesTourModel.blackTimeDisplay),
-            ],
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        return FadeTransition(opacity: animation, child: child);
+      },
+      transitionDuration: const Duration(milliseconds: 300),
+    );
+  }
+}
+
+class _SelectiveBlurBackground extends StatelessWidget {
+  const _SelectiveBlurBackground({
+    required this.cardPosition,
+    required this.cardSize,
+    super.key,
+  });
+
+  final Offset cardPosition;
+  final Size cardSize;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        // Full screen blur
+        BackDropFilterWidget(),
+        // Cutout for the selected card (clear area)
+        Positioned(
+          left: cardPosition.dx,
+          top: cardPosition.dy,
+          child: Container(
+            width: cardSize.width,
+            height: cardSize.height,
+            decoration: BoxDecoration(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(12.br),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12.br),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 0, sigmaY: 0),
+                child: Container(color: Colors.transparent),
+              ),
+            ),
           ),
         ),
       ],
+    );
+  }
+}
+
+class _PopupMenuItem extends StatelessWidget {
+  const _PopupMenuItem({required this.onTap, required this.child, super.key});
+
+  final VoidCallback onTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12.br),
+      child: Container(
+        width: 120.w,
+        height: 40.h,
+        padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
+        child: child,
+      ),
     );
   }
 }
