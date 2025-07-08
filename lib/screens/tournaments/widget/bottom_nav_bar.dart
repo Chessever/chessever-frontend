@@ -31,14 +31,15 @@ class BottomNavBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedItem = ref.watch(selectedBottomNavBarItemProvider);
     return Container(
-      margin: EdgeInsets.only(
+      padding: EdgeInsets.only(
+        top: 0,
         bottom: MediaQuery.of(context).viewPadding.bottom,
       ),
       decoration: BoxDecoration(
         color: kBackgroundColor,
         border: Border(top: BorderSide(color: kDarkGreyColor, width: 1.w)),
       ),
-      height: 120.h - MediaQuery.of(context).viewPadding.bottom,
+      height: 80.h - MediaQuery.of(context).viewPadding.bottom,
       child: Row(
         children: List.generate(
           BottomNavBarItem.values.length,

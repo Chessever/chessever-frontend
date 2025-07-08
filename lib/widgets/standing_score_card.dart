@@ -4,7 +4,7 @@ import 'package:country_flags/country_flags.dart';
 import '../theme/app_theme.dart';
 import '../utils/app_typography.dart';
 
-class ScoreCard extends StatelessWidget {
+class StandingScoreCard extends StatelessWidget {
   final String countryCode;
   final String? title; // Player title (e.g., "GM") - made nullable
   final String name; // Player name
@@ -12,7 +12,7 @@ class ScoreCard extends StatelessWidget {
   final int? scoreChange; // Score change (can be positive or negative)
   final String matchScore; // Match score (e.g., "2.5/3")
 
-  const ScoreCard({
+  const StandingScoreCard({
     super.key,
     required this.countryCode,
     this.title, // Changed to optional parameter

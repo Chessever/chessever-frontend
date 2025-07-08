@@ -41,4 +41,14 @@ class SvgAsset {
   static const tour_list = 'assets/svgs/tour_list.svg';
 
   static const libary_book = 'assets/svgs/libary_book.svg';
+  static const images = 'assets/svgs/image.svg';
+  static const laptop = 'assets/svgs/laptop.svg';
+
+  static const stop = 'assets/svgs/stop.svg';
+
+  static const refresh = 'assets/svgs/refresh.svg';
+  static const left_arrow = 'assets/svgs/left_arrow.svg';
+
+  static const right_arrow = 'assets/svgs/right_arrow.svg';
+  static const chat = 'assets/svgs/chat.svg';
 }
