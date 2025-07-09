@@ -6,7 +6,13 @@ import 'package:chessever2/screens/chessboard/view_model/chess_viewmodel.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 
 class ChessBoardBottomNavBar extends ConsumerWidget {
-  const ChessBoardBottomNavBar({super.key});
+  final Function() onLeftMove;
+  final Function() onRightMove;
+  const ChessBoardBottomNavBar({
+    super.key,
+    required this.onLeftMove,
+    required this.onRightMove,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -32,9 +38,8 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
 
             // Simulate/Stop Button
             ChessBoardBottomNavbar(
-              svgPath: SvgAsset.refresh,
-              // svgPath:
-              //     chessState.simulatingPgn ? SvgAsset.laptop : SvgAsset.refresh,
+              svgPath:
+                  chessState.simulatingPgn ? SvgAsset.laptop : SvgAsset.refresh,
               onPressed:
                   chessState.simulatingPgn
                       ? () {
@@ -62,20 +67,13 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
             //           : null,
             // ),
             ChessBoardBottomNavbar(
-              svgPath: SvgAsset.right_arrow,
-              onPressed: () {},
+              svgPath: SvgAsset.left_arrow,
+              onPressed: onRightMove,
             ),
             // Next Move Button
             ChessBoardBottomNavbar(
-              svgPath: SvgAsset.left_arrow,
-              onPressed:
-                  chessState.currentMoveIndex < chessState.pgnMoves.length
-                      ? () {
-                        ref
-                            .read(chessViewModelProvider.notifier)
-                            .goToNextMove();
-                      }
-                      : null,
+              svgPath: SvgAsset.right_arrow,
+              onPressed: onLeftMove,
             ),
             ChessBoardBottomNavbar(svgPath: SvgAsset.chat, onPressed: () {}),
           ],

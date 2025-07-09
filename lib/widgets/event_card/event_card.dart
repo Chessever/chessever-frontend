@@ -236,16 +236,15 @@ class _BuildTrailingButton extends ConsumerWidget {
         ref
             .read(locationServiceProvider)
             .getCountryName(tourEventCardModel.location)
-            ?.toLowerCase() ??
-        '';
+            .toLowerCase();
 
     final dropDownSelectedCountry =
-        ref.watch(countryDropdownProvider).value?.name?.toLowerCase() ?? '';
+        ref.watch(countryDropdownProvider).value?.name.toLowerCase() ?? '';
 
     if (currentLocation.isNotEmpty &&
         dropDownSelectedCountry.isNotEmpty &&
         currentLocation.contains(dropDownSelectedCountry)) {
-      return _CountryMen();
+      return _CountrymenStarWidget();
     }
 
     switch (tourEventCardModel.tourEventCategory) {

@@ -75,43 +75,42 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 ),
 
                 // Small spacing between search bar and dropdown
-                const SizedBox(width: 8),
+                SizedBox(width: 8.w),
 
                 // Year dropdown with border outline and transparent background
                 Expanded(
                   flex: 3,
                   child: Container(
-                    height: 40, // Match height with search bar
+                    height: 40.h,
                     decoration: BoxDecoration(
                       color: Colors.transparent,
                       borderRadius: BorderRadius.circular(8.br),
                       border: Border.all(
                         color: Colors.white.withOpacity(0.1),
-                        width: 1,
+                        width: 1.w,
                       ),
                     ),
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<int>(
                         value: ref.watch(selectedYearProvider),
+                        isDense: true,
+                        isExpanded: true,
                         onChanged: (int? newValue) {
                           if (newValue != null) {
                             ref.read(selectedYearProvider.notifier).state =
                                 newValue;
                           }
                         },
-                        icon: const Icon(
+                        icon: Icon(
                           Icons.keyboard_arrow_down,
                           color: kWhiteColor,
-                          size: 24,
+                          size: 20.ic, // Try a smaller size if needed
                         ),
-                        isExpanded: true,
                         alignment: Alignment.center,
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
                         style: AppTypography.textLgBold.copyWith(
                           color: kWhiteColor,
                         ),
                         dropdownColor: kBackgroundColor,
-                        // Match background
                         items:
                             [
                               2023,
@@ -123,12 +122,15 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                               return DropdownMenuItem<int>(
                                 value: value,
                                 alignment: Alignment.center,
-                                child: Text(
-                                  value.toString(),
-                                  style: AppTypography.textLgBold.copyWith(
-                                    color: kWhiteColor,
+                                child: Padding(
+                                  padding: EdgeInsets.zero,
+                                  child: Text(
+                                    value.toString(),
+                                    style: AppTypography.textLgRegular.copyWith(
+                                      color: kWhiteColor,
+                                    ),
+                                    textAlign: TextAlign.center,
                                   ),
-                                  textAlign: TextAlign.center,
                                 ),
                               );
                             }).toList(),
@@ -164,11 +166,11 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                     Navigator.pushNamed(context, '/calendar_detail_screen');
                   },
                   child: Container(
-                    height: 42, // Set fixed height to 42px
+                    height: 42.h, // Set fixed height to 42px
                     margin: EdgeInsets.only(
-                      left: 16,
-                      right: 16,
-                      bottom: 16, // 16px gap between cards
+                      left: 16.sp,
+                      right: 16.sp,
+                      bottom: 16.sp, // 16px gap between cards
                       top:
                           index == 0
                               ? 16
@@ -192,7 +194,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                         alignment: Alignment.centerLeft,
                         child: Text(
                           month,
-                          style: AppTypography.textLgMedium.copyWith(
+                          style: AppTypography.textLgRegular.copyWith(
                             color: isSelected ? kBlack2Color : kWhiteColor,
                           ),
                         ),

@@ -16,14 +16,14 @@ import 'package:squares/squares.dart'; // Add this import
 import 'package:square_bishop/square_bishop.dart' as square_bishop;
 import 'package:bishop/bishop.dart' as bishop;
 
-class ChessScreen extends StatefulWidget {
+class ChessScreen extends ConsumerStatefulWidget {
   const ChessScreen({super.key});
 
   @override
-  State<ChessScreen> createState() => _ChessScreenState();
+  ConsumerState<ChessScreen> createState() => _ChessScreenState();
 }
 
-class _ChessScreenState extends State<ChessScreen> {
+class _ChessScreenState extends ConsumerState<ChessScreen> {
   late final String firstGmName;
   late final String secondGmName;
   late final String firstGmCountryCode;
@@ -33,35 +33,12 @@ class _ChessScreenState extends State<ChessScreen> {
   late final String firstGmRank;
   late final String secondGmRank;
   late final String pgn;
-
+  late List<String> pgnMoves;
   // Board state initialized in initState
   late BoardState boardState;
-  //   final String pgn = '''
-  // [Event "AAG S50 W50 S65"]
-  // [Site "idChess.com"]
-  // [Date "????.??.??"]
-  // [Round "1"]
-  // [White "Altan-Och, Genden"]
-  // [Black "Leong, Ignatius"]
-  // [Result "1/2-1/2"]
-  // [WhiteElo "2198"]
-  // [WhiteTitle "FM"]
-  // [WhiteFideId "4900278"]
-  // [BlackElo "1666"]
-  // [BlackTitle "FM"]
-  // [BlackFideId "5800242"]
-  // [Board "8"]
-  // [Variant "Standard"]
-  // [ECO "D02"]
-  // [Opening "Queen's Gambit Declined: Baltic Defense, Pseudo-Slav"]
-  // [StudyName "Round 1"]
-  // [ChapterName "Altan-Och, Genden - Leong, Ignatius"]
-  // [UTCDate "2025.07.02"]
-  // [UTCTime "07:48:48"]
-  // [GameURL "https://lichess.org/broadcast/-/-/ZxgjkL1I"]
-
-  // 1. d4 d5 2. c4 c6 3. Nf3 Bf5 4. Nc3 e6 5. cxd5 exd5 6. Bg5 Be7 7. Bf4 Nd7 8. e3 Ngf6 9. Bd3 Ne4 10. O-O Ndf6 11. Nh4 Nxc3 1/2-1/2
-  // ''';
+  late bishop.Game currentGame;
+  List<bishop.Move> moves = [];
+  int currentMoveIndex = -1;
 
   late final String finalFen;
 
@@ -93,14 +70,89 @@ class _ChessScreenState extends State<ChessScreen> {
         final game = bishop.Game.fromPgn(cleanedPgn);
         final squaresState = game.squaresState(Squares.white);
         boardState = squaresState.board;
+
         finalFen = game.fen;
+        // _initializePGNWithRiverpod(cleanedPgn);
       });
     });
   }
 
+  // void _initializePGNWithRiverpod(String cleanedPgn) {
+  //   try {
+  //     // Extract moves from PGN
+  //     final extractedMoves = _extractMovesFromPgn(cleanedPgn);
+
+  //     // Reset the chess game with the extracted moves
+  //     final chessViewModel = ref.read(chessViewModelProvider.notifier);
+  //     chessViewModel.resetGame(extractedMoves);
+
+  //     // Update local board state from the chess game
+  //     final chessState = ref.read(chessViewModelProvider);
+  //     boardState = chessState.squaresState.board;
+  //     finalFen = chessState.game.fen;
+  //   } catch (e) {
+  //     print('Error initializing PGN: $e');
+
+  //     // Fallback - reset to empty game
+  //     final chessViewModel = ref.read(chessViewModelProvider.notifier);
+  //     chessViewModel.resetGame([]);
+
+  //     final chessState = ref.read(chessViewModelProvider);
+  //     boardState = chessState.squaresState.board;
+  //     finalFen = chessState.game.fen;
+  //   }
+  // }
+
+  // List<String> _extractMovesFromPgn(String pgn) {
+  //   String movesSection = pgn.replaceAll(RegExp(r'\[.*?\]\s*'), '');
+
+  //   // Remove result (1-0, 0-1, 1/2-1/2, *)
+  //   movesSection = movesSection.replaceAll(
+  //     RegExp(r'\s*(1-0|0-1|1/2-1/2|\*)\s*$'),
+  //     '',
+  //   );
+
+  //   // Split by whitespace and filter out move numbers
+  //   List<String> tokens =
+  //       movesSection
+  //           .split(RegExp(r'\s+'))
+  //           .where((token) => token.isNotEmpty)
+  //           .toList();
+
+  //   List<String> moves = [];
+  //   for (String token in tokens) {
+  //     // Skip move numbers (like "1.", "2.", etc.)
+  //     if (!RegExp(r'^\d+\.').hasMatch(token)) {
+  //       // Skip comments and annotations
+  //       if (!token.startsWith('{') && !token.startsWith('(')) {
+  //         moves.add(token);
+  //       }
+  //     }
+  //   }
+
+  //   return moves;
+  // }
+
   @override
   Widget build(BuildContext context) {
+    // final chessState = ref.watch(chessViewModelProvider);
+
+    // // Update local board state when chess state changes
+    // if (mounted) {
+    //   WidgetsBinding.instance.addPostFrameCallback((_) {
+    //     if (boardState != chessState.squaresState.board) {
+    //       setState(() {
+    //         boardState = chessState.squaresState.board;
+    //         finalFen = chessState.game.fen;
+    //       });
+    //     }
+    //   });
+    // }
     return Scaffold(
+      bottomNavigationBar: ChessBoardBottomNavBar(
+        onRightMove: () {},
+        onLeftMove: () {},
+      ),
       appBar: ChessMatchAppBar(
         title: '${firstGmName} vs ${secondGmName}',
         onBackPressed: () {
@@ -116,62 +168,54 @@ class _ChessScreenState extends State<ChessScreen> {
           // mainAxisAlignment: MainAxisAlignment.center,
           children: [
             // Chess board
-            Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 10,
-                    spreadRadius: 2,
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  PlayerFirstRowDetailWidget(
-                    name: firstGmName,
-                    firstGmRank: firstGmRank,
-                    countryCode: firstGmCountryCode,
-                    // flagAsset: 'assets/usa_flag.png',
-                    time: firstGmTime,
-                  ),
-                  Container(
-                    decoration: BoxDecoration(
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.grey.withOpacity(0.5),
-                          blurRadius: 8,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        // Column(
-                        //   children: [
-                        //     Container(
-                        //       height: MediaQuery.of(context).size.height * 0.28,
-                        //       width: 20.w,
-                        //       color: kborderLeftColors,
-                        //     ),
-                        //     Container(
-                        //       height: 6.h,
-                        //       width: 20.w,
-                        //       color: Colors.red,
-                        //     ),
-                        //     Container(
-                        //       height: MediaQuery.of(context).size.height * 0.28,
-                        //       width: 20.w,
-                        //       color: kWhiteColor,
-                        //     ),
-                        //   ],
-                        // ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                PlayerFirstRowDetailWidget(
+                  name: firstGmName,
+                  firstGmRank: firstGmRank,
+                  countryCode: firstGmCountryCode,
+                  // flagAsset: 'assets/usa_flag.png',
+                  time: firstGmTime,
+                ),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final screenWidth = MediaQuery.of(context).size.height;
+                    final boardHeight = screenWidth; // Assuming a square board
+                    const sideBarWidth = 20.0;
 
-                        // Main Board area
-                        Expanded(
-                          child: Container(
-                            color: Colors.transparent, // Avoid any blur/overlay
+                    // Make sidebar total height match the board height
+                    final sidebarTotalHeight = boardHeight;
+
+                    // Adjust proportions to match board height
+                    final adjustedTopHeight = sidebarTotalHeight * 0.27;
+                    final adjustedRedBarHeight = sidebarTotalHeight * 0.02;
+                    final adjustedBottomHeight = sidebarTotalHeight * 0.27;
+
+                    return SizedBox(
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: sideBarWidth,
+
+                            child: Column(
+                              children: [
+                                Container(
+                                  height: adjustedTopHeight,
+                                  color: kborderLeftColors,
+                                ),
+                                Container(
+                                  height: adjustedRedBarHeight,
+                                  color: Colors.red,
+                                ),
+                                Container(
+                                  height: adjustedBottomHeight,
+                                  color: kWhiteColor,
+                                ),
+                              ],
+                            ),
+                          ),
+                          Expanded(
                             child: AbsorbPointer(
                               child: Board(
                                 size: BoardSize.standard,
@@ -181,39 +225,20 @@ class _ChessScreenState extends State<ChessScreen> {
                               ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+                SizedBox(height: 3.h),
 
-                  // Container(
-                  //   decoration: BoxDecoration(
-                  //     border: Border.all(color: kBlackColor, width: 2.w),
-                  //     boxShadow: [
-                  //       BoxShadow(
-                  //         color: Colors.grey.withOpacity(0.5),
-                  //         blurRadius: 8.br,
-                  //         offset: const Offset(0, 4),
-                  //       ),
-                  //     ],
-                  //   ),
-                  //   child: Board(
-                  //     size: BoardSize.standard,
-                  //     pieceSet: PieceSet.merida(),
-                  //     playState: PlayState.observing,
-                  //     state: boardState,
-                  //   ),
-                  // ),
-                  SizedBox(height: 3.h),
-
-                  PlayerSecondRowDetailWidget(
-                    name: secondGmName,
-                    countryCode: secondGmCountryCode,
-                    time: secondGmTime,
-                    secondGmRank: secondGmRank,
-                  ),
-                ],
-              ),
+                PlayerSecondRowDetailWidget(
+                  name: secondGmName,
+                  countryCode: secondGmCountryCode,
+                  time: secondGmTime,
+                  secondGmRank: secondGmRank,
+                ),
+              ],
             ),
 
             // SizedBox(height: 15.h),
@@ -237,8 +262,6 @@ class _ChessScreenState extends State<ChessScreen> {
           ],
         ),
       ),
-
-      bottomNavigationBar: const ChessBoardBottomNavBar(),
     );
   }
 

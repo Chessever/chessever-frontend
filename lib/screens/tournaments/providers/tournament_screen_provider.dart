@@ -1,11 +1,14 @@
+import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/repository/local_storage/tournament/tour_local_storage.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/screens/calendar_screen.dart';
 import 'package:chessever2/screens/tournaments/model/about_tour_model.dart';
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
+import 'package:chessever2/screens/tournaments/providers/sorting_all_event_provider.dart';
 import 'package:chessever2/screens/tournaments/tournament_detail_view.dart';
 import 'package:chessever2/screens/tournaments/tournament_screen.dart';
+import 'package:country_picker/country_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -43,19 +46,24 @@ class _TournamentScreenController
       if (tour.isNotEmpty) {
         _tours = tour;
         final tourEventCardModel =
-            tour.map((t) {
-              return TourEventCardModel.fromTour(t);
-            }).toList();
-        final matchingTours =
-            tourEventCardModel.where((e) {
-              switch (tourEventCategory) {
-                case TournamentCategory.all:
-                  return true;
-                case TournamentCategory.upcoming:
-                  return e.tourEventCategory == TourEventCategory.upcoming;
-              }
-            }).toList();
-        state = AsyncValue.data(matchingTours);
+            tour.map((t) => TourEventCardModel.fromTour(t)).toList();
+
+        final countryAsync = ref.watch(countryDropdownProvider);
+
+        // Check if country data is loaded
+        if (countryAsync is AsyncData<Country>) {
+          final selectedCountry = countryAsync.value.name.toLowerCase();
+
+          final sortingService = ref.read(tournamentSortingServiceProvider);
+          final sortedTours = sortingService.sortByPriority(
+            tourEventCardModel,
+            selectedCountry,
+          );
+
+          state = AsyncValue.data(sortedTours);
+        } else {
+          state = AsyncValue.loading();
+        }
       }
     } catch (error, _) {
       print(error);
@@ -72,16 +80,33 @@ class _TournamentScreenController
             tour.map((t) {
               return TourEventCardModel.fromTour(t);
             }).toList();
-        final matchingTours =
-            tourEventCardModel.where((e) {
-              switch (tourEventCategory) {
-                case TournamentCategory.all:
-                  return true;
-                case TournamentCategory.upcoming:
-                  return e.tourEventCategory == TourEventCategory.upcoming;
-              }
-            }).toList();
-        state = AsyncValue.data(matchingTours);
+        // final matchingTours =
+        //     tourEventCardModel.where((e) {
+        //       switch (tourEventCategory) {
+        //         case TournamentCategory.all:
+        //           return true;
+        //         case TournamentCategory.upcoming:
+        //           return e.tourEventCategory == TourEventCategory.upcoming;
+        //       }
+        //     }).toList();
+        // state = AsyncValue.data(matchingTours);
+
+        final countryAsync = ref.watch(countryDropdownProvider);
+
+        // Check if country data is loaded
+        if (countryAsync is AsyncData<Country>) {
+          final selectedCountry = countryAsync.value.name.toLowerCase();
+
+          final sortingService = ref.read(tournamentSortingServiceProvider);
+          final sortedTours = sortingService.sortByPriority(
+            tourEventCardModel,
+            selectedCountry,
+          );
+
+          state = AsyncValue.data(sortedTours);
+        } else {
+          state = AsyncValue.loading();
+        }
       }
     } catch (error, _) {
       print(error);
