@@ -207,6 +207,8 @@ class _AuthCountryDropdownWidget extends ConsumerWidget {
               child: CountryDropdown(
                 selectedCountryCode: 'US',
                 onChanged: (Country country) async {
+
+               
                   await ref
                       .read(countryDropdownProvider.notifier)
                       .selectCountry(country.countryCode);

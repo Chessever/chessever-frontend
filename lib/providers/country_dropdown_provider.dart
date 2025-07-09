@@ -8,9 +8,48 @@ final countryDropdownProvider =
     );
 
 class SelectedCountryNotifier extends StateNotifier<AsyncValue<Country>> {
-  SelectedCountryNotifier(this.ref) : super(AsyncValue.loading());
-
+  SelectedCountryNotifier(this.ref) : super(AsyncValue.loading()) {
+    _loadSavedCountry();
+  }
   final Ref ref;
+  // Future<void> _loadSavedCountry() async {
+  //   try {
+  //     final savedName =
+  //         await ref.read(countryManRepository).getSavedCountryMan();
+  //     if (savedName != null && savedName.isNotEmpty) {
+  //       final matchedCountry = CountryService().getAll().firstWhere(
+  //         (c) => c.name.toLowerCase() == savedName.toLowerCase(),
+  //         orElse: () => CountryService().getAll().first,
+  //       );
+
+  //       state = AsyncValue.data(matchedCountry);
+  //     } else {
+  //       state = AsyncValue.data(CountryService().getAll().first);
+  //     }
+  //   } catch (e) {
+  //     state = AsyncValue.error(e, StackTrace.current);
+  //   }
+  // }
+  Future<void> _loadSavedCountry() async {
+    try {
+      final savedName =
+          await ref.read(countryManRepository).getSavedCountryMan();
+      print('Loaded saved country name: $savedName');
+      if (savedName != null && savedName.isNotEmpty) {
+        final matchedCountry = CountryService().getAll().firstWhere(
+          (c) => c.name.toLowerCase() == savedName.toLowerCase(),
+          orElse: () => CountryService().getAll().first,
+        );
+        state = AsyncValue.data(matchedCountry);
+      } else {
+        state = AsyncValue.data(CountryService().getAll().first);
+      }
+      print('Country dropdown state set: ${state.value?.name}');
+    } catch (e) {
+      print('Error loading saved country: $e');
+      state = AsyncValue.error(e, StackTrace.current);
+    }
+  }
 
   Future<void> selectCountry(String countryCode) async {
     final country = CountryService().findByCode(countryCode);

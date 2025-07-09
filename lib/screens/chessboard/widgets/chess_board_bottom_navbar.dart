@@ -4,16 +4,16 @@ import 'package:flutter/material.dart';
 
 class ChessBoardBottomNavbar extends StatelessWidget {
   final String svgPath;
-  final VoidCallback? onPressed;
+  final Function() onPressed;
   const ChessBoardBottomNavbar({
     super.key,
     required this.svgPath,
-    this.onPressed,
+    required this.onPressed,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return InkWell(
       onTap: onPressed,
       child: SizedBox(
         width: 20.w,
