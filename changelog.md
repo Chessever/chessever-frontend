@@ -175,3 +175,9 @@
 -> Create Scorecard screen
 -> Navigate to Board view when user clicks on Games
 ->Show Pgn Data on ChaseBoard
+
+#9 july 
+-> side fill widget for Chess Board View in Board View screen
+-> Check the year dropdown in calendar screen is bad, Fix it
+-> Sort logic for Tournament screen (Home), More info in whatsapp
+-> Fix the menu for board view
