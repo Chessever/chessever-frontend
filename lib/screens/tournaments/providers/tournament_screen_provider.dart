@@ -55,12 +55,20 @@ class _TournamentScreenController
           final selectedCountry = countryAsync.value.name.toLowerCase();
 
           final sortingService = ref.read(tournamentSortingServiceProvider);
-          final sortedTours = sortingService.sortByPriority(
-            tourEventCardModel,
-            selectedCountry,
-          );
 
-          state = AsyncValue.data(sortedTours);
+          if (tourEventCategory == TournamentCategory.upcoming) {
+            final sortedTours = sortingService.sortUpcomingTours(
+              tourEventCardModel,
+              selectedCountry,
+            );
+            state = AsyncValue.data(sortedTours);
+          } else {
+            final sortedTours = sortingService.sortAllTours(
+              tourEventCardModel,
+              selectedCountry,
+            );
+            state = AsyncValue.data(sortedTours);
+          }
         } else {
           state = AsyncValue.loading();
         }
@@ -80,16 +88,6 @@ class _TournamentScreenController
             tour.map((t) {
               return TourEventCardModel.fromTour(t);
             }).toList();
-        // final matchingTours =
-        //     tourEventCardModel.where((e) {
-        //       switch (tourEventCategory) {
-        //         case TournamentCategory.all:
-        //           return true;
-        //         case TournamentCategory.upcoming:
-        //           return e.tourEventCategory == TourEventCategory.upcoming;
-        //       }
-        //     }).toList();
-        // state = AsyncValue.data(matchingTours);
 
         final countryAsync = ref.watch(countryDropdownProvider);
 
@@ -98,12 +96,20 @@ class _TournamentScreenController
           final selectedCountry = countryAsync.value.name.toLowerCase();
 
           final sortingService = ref.read(tournamentSortingServiceProvider);
-          final sortedTours = sortingService.sortByPriority(
-            tourEventCardModel,
-            selectedCountry,
-          );
+          if (tourEventCategory == TournamentCategory.upcoming) {
+            final sortedTours = sortingService.sortUpcomingTours(
+              tourEventCardModel,
+              selectedCountry,
+            );
+            state = AsyncValue.data(sortedTours);
+          } else {
+            final sortedTours = sortingService.sortAllTours(
+              tourEventCardModel,
+              selectedCountry,
+            );
 
-          state = AsyncValue.data(sortedTours);
+            state = AsyncValue.data(sortedTours);
+          }
         } else {
           state = AsyncValue.loading();
         }
