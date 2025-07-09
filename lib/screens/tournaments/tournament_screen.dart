@@ -128,7 +128,6 @@ class TournamentScreen extends HookConsumerWidget {
                   },
                   error: (error, stackTrace) => GenericErrorWidget(),
                 ),
-          
           ],
         ),
       ),
@@ -206,7 +205,6 @@ class AllEventsTabWidget extends ConsumerWidget {
                 // Add to library
               },
             );
-
         }
       },
     );

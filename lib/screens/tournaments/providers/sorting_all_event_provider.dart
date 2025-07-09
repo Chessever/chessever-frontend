@@ -13,7 +13,52 @@ class TournamentSortingService {
   final Ref ref;
 
   TournamentSortingService(this.ref);
-  List<TourEventCardModel> sortByPriority(
+
+  List<TourEventCardModel> sortUpcomingTours(
+    List<TourEventCardModel> tours,
+    String dropDownSelectedCountry,
+  ) {
+    final currentLocation = _getCurrentLocation(tours);
+    final favorites = ref.watch(
+      starredProvider,
+    ); // Get the list of favorited ids
+    final hasFavorites = favorites.isNotEmpty;
+
+    final filteredList =
+        tours
+            .where((t) => t.tourEventCategory == TourEventCategory.upcoming)
+            .toList();
+
+    filteredList.sort((a, b) {
+      final isFavoriteA = favorites.contains(a.id);
+      final isFavoriteB = favorites.contains(b.id);
+
+      if (hasFavorites) {
+        if (isFavoriteA && !isFavoriteB) return -1;
+        if (!isFavoriteA && isFavoriteB) return 1;
+      }
+
+      final isCountrymanA = _isCountryman(
+        a,
+        currentLocation,
+        dropDownSelectedCountry,
+      );
+      final isCountrymanB = _isCountryman(
+        b,
+        currentLocation,
+        dropDownSelectedCountry,
+      );
+
+      if (isCountrymanA && !isCountrymanB) return -1;
+      if (!isCountrymanA && isCountrymanB) return 1;
+
+      return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+    });
+
+    return filteredList;
+  }
+
+  List<TourEventCardModel> sortAllTours(
     List<TourEventCardModel> tours,
     String dropDownSelectedCountry,
   ) {
