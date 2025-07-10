@@ -8,6 +8,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/back_drop_filter_widget.dart';
+import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
@@ -150,7 +151,8 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
                     const Spacer(),
                     SizedBox(
                       height: 32.h,
-                      width: 100.w,
+                      width: 120.w,
+
                       child: ref
                           .watch(gamesAppBarProvider)
                           .when(
@@ -211,101 +213,92 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
                     ),
                     SizedBox(width: 18.w),
 
-                    InkWell(
-                      onTap: () async {
-                        final RenderBox renderBox =
+                    AppBarIcons(
+                      key: _menuKey,
+                      image: SvgAsset.threeDots,
+                      onTap: () {
+                        final RenderBox? renderBox =
                             _menuKey.currentContext?.findRenderObject()
-                                as RenderBox;
-                        final Offset offset = renderBox.localToGlobal(
-                          Offset.zero,
-                        );
+                                as RenderBox?;
 
-                        showMenu(
-                          context: context,
-                          position: RelativeRect.fromLTRB(
-                            offset.dx,
-                            offset.dy + renderBox.size.height,
-                            offset.dx + renderBox.size.width,
-                            offset.dy,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12.br),
-                          ),
-                          color: kBlack2Color,
-                          items: <PopupMenuEntry<String>>[
-                            PopupMenuItem<String>(
-                              value: 'Unpin all',
-                              child: InkWell(
-                                onTap: () {
-                                  Navigator.pop(context);
-                                  ref
-                                      .read(gamesTourScreenProvider.notifier)
-                                      .unpinAllGames();
-                                },
-                                child: SizedBox(
-                                  width: 200,
-                                  child: Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        "Unpin all",
-                                        style: AppTypography.textXsMedium
-                                            .copyWith(color: kWhiteColor),
-                                      ),
-                                      SvgPicture.asset(
-                                        SvgAsset.unpine,
-                                        height: 13.h,
-                                        width: 13.w,
-                                      ),
-                                    ],
+                        if (renderBox != null) {
+                          final Offset offset = renderBox.localToGlobal(
+                            Offset.zero,
+                          );
+
+                          showMenu(
+                            context: context,
+                            position: RelativeRect.fromLTRB(
+                              offset.dx,
+                              offset.dy + renderBox.size.height,
+                              offset.dx + renderBox.size.width,
+                              offset.dy,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12.br),
+                            ),
+                            color: kBlack2Color,
+                            items: <PopupMenuEntry<String>>[
+                              PopupMenuItem<String>(
+                                value: 'Unpin all',
+                                child: InkWell(
+                                  onTap: () {
+                                    Navigator.pop(context);
+                                    ref
+                                        .read(gamesTourScreenProvider.notifier)
+                                        .unpinAllGames();
+                                  },
+                                  child: SizedBox(
+                                    width: 200,
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          "Unpin all",
+                                          style: AppTypography.textXsMedium
+                                              .copyWith(color: kWhiteColor),
+                                        ),
+                                        SvgPicture.asset(
+                                          SvgAsset.unpine,
+                                          height: 13.h,
+                                          width: 13.w,
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                            PopupMenuDivider(
-                              height: 1.h,
-                              thickness: 0.5.w,
-                              color: kDividerColor,
-                            ),
-                            PopupMenuItem<String>(
-                              value: 'share',
-                              child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    "Active games on top",
-                                    style: AppTypography.textXsMedium.copyWith(
-                                      color: kWhiteColor,
-                                    ),
-                                  ),
-                                  SvgPicture.asset(
-                                    SvgAsset.active,
-                                    height: 13.h,
-                                    width: 13.w,
-                                  ),
-                                ],
+                              PopupMenuDivider(
+                                height: 1.h,
+                                thickness: 0.5.w,
+                                color: kDividerColor,
                               ),
-                            ),
-                          ],
-                        );
+                              PopupMenuItem<String>(
+                                value: 'share',
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      "Active games on top",
+                                      style: AppTypography.textXsMedium
+                                          .copyWith(color: kWhiteColor),
+                                    ),
+                                    SvgPicture.asset(
+                                      SvgAsset.active,
+                                      height: 13.h,
+                                      width: 13.w,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          );
+                        }
                       },
-                      child: Container(
-                        height: 32.h,
-                        width: 32.w,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: kBlack2Color,
-                          borderRadius: BorderRadius.circular(4.br),
-                        ),
-                        child: Icon(
-                          Icons.more_vert_rounded,
-                          size: 24.ic,
-                          color: kWhiteColor70,
-                        ),
-                      ),
                     ),
+
                     SizedBox(width: 20.w),
                   ],
                 ),
@@ -379,32 +372,27 @@ class _RoundDropdownState extends State<_RoundDropdown> {
     }
 
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 8.sp),
+      // padding: EdgeInsets.symmetric(horizontal: 12.w),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  round.name,
-                  style: AppTypography.textXsRegular.copyWith(
-                    color: kWhiteColor,
-                  ),
-                  maxLines: 1,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                round.name,
+                style: AppTypography.textXsRegular.copyWith(color: kWhiteColor),
+                maxLines: 1,
+              ),
+              SizedBox(height: 2.h),
+              Text(
+                round.formattedStartDate,
+                style: AppTypography.textXsRegular.copyWith(
+                  color: kWhiteColor70,
                 ),
-                SizedBox(height: 2.h),
-                Text(
-                  round.formattedStartDate,
-                  style: AppTypography.textXsRegular.copyWith(
-                    color: kWhiteColor70,
-                  ),
-                  maxLines: 1,
-                ),
-              ],
-            ),
+                maxLines: 1,
+              ),
+            ],
           ),
           SizedBox(width: 8.w),
           trailingIcon,
@@ -426,22 +414,35 @@ class _RoundDropdownState extends State<_RoundDropdown> {
         }
       },
       items:
-          widget.rounds.map((e) => e.id).map<DropdownMenuItem<String>>((id) {
+          widget.rounds.asMap().entries.map<DropdownMenuItem<String>>((entry) {
+            final index = entry.key;
+            final round = entry.value;
+            final isLast = index == widget.rounds.length - 1;
+
             return DropdownMenuItem<String>(
-              value: widget.rounds.firstWhere((e) => e.id == id).id,
-              child: _buildDropdownItem(
-                widget.rounds.firstWhere((e) => e.id == id),
+              value: round.id,
+              child: Column(
+                // crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildDropdownItem(round),
+                  if (!isLast)
+                    Padding(
+                      padding: EdgeInsets.symmetric(vertical: 5.h),
+                      child: DividerWidget(),
+                    ),
+                ],
               ),
             );
           }).toList(),
+
       underline: Container(),
       icon: Icon(
         Icons.keyboard_arrow_down_outlined,
         color: kWhiteColor,
         size: 20.ic,
       ),
-      dropdownColor: kPopUpColor,
-      borderRadius: BorderRadius.circular(8.br),
+      dropdownColor: kBlack2Color,
+      borderRadius: BorderRadius.circular(20.br),
       isExpanded: true,
       style: AppTypography.textMdBold,
       selectedItemBuilder: (BuildContext context) {
