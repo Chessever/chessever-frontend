@@ -181,3 +181,8 @@
 -> Check the year dropdown in calendar screen is bad, Fix it
 -> Sort logic for Tournament screen (Home), More info in whatsapp
 -> Fix the menu for board view
+
+#10 jul
+-> Use the same icon for games Round dropdown
+-> Update the calendar year dropdown to look exactly as like design
+-> Fix the three dots show icon in the games view from the app bar
