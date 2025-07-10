@@ -1,5 +1,6 @@
 import 'package:chessever2/utils/month_converter.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -82,6 +83,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                   flex: 3,
                   child: Container(
                     height: 40.h,
+                    padding: EdgeInsets.symmetric(horizontal: 12.w),
                     decoration: BoxDecoration(
                       color: Colors.transparent,
                       borderRadius: BorderRadius.circular(8.br),
@@ -93,8 +95,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<int>(
                         value: ref.watch(selectedYearProvider),
-                        isDense: true,
-                        isExpanded: true,
+
                         onChanged: (int? newValue) {
                           if (newValue != null) {
                             ref.read(selectedYearProvider.notifier).state =
@@ -102,38 +103,73 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                           }
                         },
                         icon: Icon(
-                          Icons.keyboard_arrow_down,
+                          Icons.keyboard_arrow_down_outlined,
                           color: kWhiteColor,
-                          size: 20.ic, // Try a smaller size if needed
+                          size: 20.ic,
                         ),
-                        alignment: Alignment.center,
                         style: AppTypography.textLgBold.copyWith(
                           color: kWhiteColor,
                         ),
-                        dropdownColor: kBackgroundColor,
+                        dropdownColor: kBlack2Color,
+                        borderRadius: BorderRadius.circular(20.br),
+                        isExpanded: true,
+                        // Items
                         items:
-                            [
-                              2023,
-                              2024,
-                              2025,
-                              2026,
-                              2027,
-                            ].map<DropdownMenuItem<int>>((int value) {
+                            [2023, 2024, 2025, 2026, 2027].asMap().entries.map((
+                              entry,
+                            ) {
+                              final index = entry.key;
+                              final value = entry.value;
+                              final isLast = index == 4;
+
                               return DropdownMenuItem<int>(
                                 value: value,
-                                alignment: Alignment.center,
-                                child: Padding(
-                                  padding: EdgeInsets.zero,
+                                child: Container(
+                                  width: double.infinity,
+                                  padding: EdgeInsets.symmetric(
+                                    vertical: 12.sp,
+                                    horizontal: 20.sp,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    border:
+                                        !isLast
+                                            ? Border(
+                                              bottom: BorderSide(
+                                                color: Colors.white.withOpacity(
+                                                  0.1,
+                                                ),
+                                                width: 0.5,
+                                              ),
+                                            )
+                                            : null,
+                                  ),
                                   child: Text(
                                     value.toString(),
-                                    style: AppTypography.textLgRegular.copyWith(
-                                      color: kWhiteColor,
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w400,
                                     ),
-                                    textAlign: TextAlign.center,
                                   ),
                                 ),
                               );
                             }).toList(),
+
+                        // Selected item style
+                        selectedItemBuilder: (BuildContext context) {
+                          return [2023, 2024, 2025, 2026, 2027].map((value) {
+                            return Container(
+                              alignment: Alignment.centerLeft,
+                              padding: EdgeInsets.only(left: 0),
+                              child: Text(
+                                value.toString(),
+                                style: AppTypography.textLgBold.copyWith(
+                                  color: kWhiteColor,
+                                ),
+                              ),
+                            );
+                          }).toList();
+                        },
                       ),
                     ),
                   ),
@@ -206,6 +242,59 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class YearSelectorList extends ConsumerWidget {
+  final List<int> years = [2023, 2024, 2025, 2026, 2027];
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selectedYear = ref.watch(selectedYearProvider);
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+      decoration: BoxDecoration(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(8.br),
+        border: Border.all(color: Colors.white.withOpacity(0.1), width: 1.w),
+      ),
+      constraints: BoxConstraints(maxHeight: 200.h), // Scroll limit
+      child: ListView.separated(
+        itemCount: years.length,
+        shrinkWrap: true,
+        itemBuilder: (context, index) {
+          final year = years[index];
+          final isSelected = year == selectedYear;
+
+          return InkWell(
+            onTap: () {
+              ref.read(selectedYearProvider.notifier).state = year;
+            },
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 8.h),
+              child: Text(
+                year.toString(),
+                style:
+                    isSelected
+                        ? AppTypography.textLgBold.copyWith(
+                          color: kPrimaryColor,
+                        )
+                        : AppTypography.textLgRegular.copyWith(
+                          color: kWhiteColor,
+                        ),
+              ),
+            ),
+          );
+        },
+        separatorBuilder:
+            (context, index) => Divider(
+              color: Colors.white.withOpacity(0.2),
+              height: 1,
+              thickness: 0.5,
+            ),
       ),
     );
   }

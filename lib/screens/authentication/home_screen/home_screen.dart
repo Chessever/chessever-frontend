@@ -74,6 +74,7 @@ class HomeScreen extends ConsumerWidget {
           },
         ),
       ),
+
       bottomNavigationBar: BottomNavBar(),
       body: BottomNavBarView(),
     );
