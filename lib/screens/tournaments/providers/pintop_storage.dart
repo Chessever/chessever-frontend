@@ -1,6 +1,12 @@
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-class PinnedGamesStorage {
+
+final pinnedGamesStorageProvider = Provider.autoDispose<_PinnedGamesStorage>(
+  (ref) => _PinnedGamesStorage(),
+);
+
+class _PinnedGamesStorage {
   static const _keyPinnedGames = 'pinned_games';
 
   Future<List<String>> getPinnedGameIds() async {
