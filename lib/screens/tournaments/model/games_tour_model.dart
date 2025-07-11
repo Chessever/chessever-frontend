@@ -1,6 +1,13 @@
 // models/game_card.dart
 import 'package:chessever2/repository/supabase/game/games.dart';
 
+class GamesScreenModel {
+  GamesScreenModel({required this.gamesTourModels, required this.pinnedGamedIs});
+
+  final List<GamesTourModel> gamesTourModels;
+  final List<String> pinnedGamedIs;
+}
+
 class GamesTourModel {
   final String gameId;
   final PlayerCard whitePlayer;
@@ -10,6 +17,7 @@ class GamesTourModel {
   final GameStatus gameStatus;
   final String? fen;
   final String? pgn;
+
   GamesTourModel({
     required this.gameId,
     required this.whitePlayer,

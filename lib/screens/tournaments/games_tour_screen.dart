@@ -1,11 +1,9 @@
-import 'package:chessever2/providers/board_settings_provider.dart';
-import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
+import 'package:chessever2/screens/chessboard/view_model/chess_board_fen_model.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_widget.dart';
 import 'package:chessever2/screens/tournaments/model/games_tour_model.dart';
 import 'package:chessever2/screens/tournaments/providers/chess_board_visibility_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/games_tour_screen_provider.dart';
-import 'package:chessever2/screens/tournaments/providers/pintop_storage.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -26,10 +24,6 @@ class GamesTourScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isChessBoardVisible = ref.watch(chessBoardVisibilityProvider);
-    final boardSettingsValue = ref.watch(boardSettingsProvider);
-    final boardColorEnum = ref
-        .read(boardSettingsRepository)
-        .getBoardColorEnum(boardSettingsValue.boardColor);
     return GestureDetector(
       onTap: FocusScope.of(context).unfocus,
       child: RefreshIndicator(
@@ -49,7 +43,7 @@ class GamesTourScreen extends ConsumerWidget {
                     .watch(gamesTourScreenProvider)
                     .when(
                       data: (data) {
-                        if (data.isEmpty) {
+                        if (data.gamesTourModels.isEmpty) {
                           return EmptyWidget(
                             title:
                                 "No games available yet. Check back soon or set a\nreminder for updates.",
@@ -70,155 +64,86 @@ class GamesTourScreen extends ConsumerWidget {
                                           context,
                                         ).viewPadding.bottom,
                                   ),
-                                  itemCount: data.length,
+                                  itemCount: data.gamesTourModels.length,
                                   itemBuilder: (cxt, index) {
                                     return ChessBoardFromFEN(
-                                      fen: data[index].fen ?? "",
-                                      pgn: data[index].pgn ?? "",
-                                      status:
-                                          data[index].gameStatus.displayText,
-                                      gmName: data[index].whitePlayer.name,
-                                      gmSecondName:
-                                          data[index].blackPlayer.name,
-                                      firstGmCountryCode:
-                                          data[index].whitePlayer.countryCode,
-                                      secondGmCountryCode:
-                                          data[index].blackPlayer.countryCode,
-                                      firstGmTime: data[index].whiteTimeDisplay,
-                                      secondGmTime:
-                                          data[index].blackTimeDisplay,
-                                      firstGmRank:
-                                          data[index].whitePlayer.displayTitle,
-                                      secongGmRank:
-                                          data[index].blackPlayer.displayTitle,
+                                      chessBoardFenModel:
+                                          ChessBoardFenModel.fromGamesTourModel(
+                                            data.gamesTourModels[index],
+                                          ),
                                     );
                                   },
                                 ),
                               )
                             else
                               Expanded(
-                                child: FutureBuilder<List<String>>(
-                                  future:
-                                      PinnedGamesStorage().getPinnedGameIds(),
-                                  builder: (context, snapshot) {
-                                    final pinnedIds = snapshot.data ?? [];
-
-                                    final sortedGames = [
-                                      ...data.where(
-                                        (game) =>
-                                            pinnedIds.contains(game.gameId),
-                                      ),
-                                      ...data.where(
-                                        (game) =>
-                                            !pinnedIds.contains(game.gameId),
-                                      ),
-                                    ];
-
-                                    return ListView.builder(
-                                      padding: EdgeInsets.only(
-                                        left: 20.sp,
-                                        right: 20.sp,
-                                        top: 12.sp,
-                                        bottom:
-                                            MediaQuery.of(
+                                child: ListView.builder(
+                                  padding: EdgeInsets.only(
+                                    left: 20.sp,
+                                    right: 20.sp,
+                                    top: 12.sp,
+                                    bottom:
+                                        MediaQuery.of(
+                                          context,
+                                        ).viewPadding.bottom,
+                                  ),
+                                  itemCount: data.gamesTourModels.length,
+                                  itemBuilder: (cxt, index) {
+                                    final game = data.gamesTourModels[index];
+                                    return Padding(
+                                      padding: EdgeInsets.only(bottom: 12.sp),
+                                      child: _GameCard(
+                                        onTap: () {
+                                          if (data
+                                                  .gamesTourModels[index]
+                                                  .gameStatus
+                                                  .displayText !=
+                                              '*') {
+                                            Navigator.pushNamed(
                                               context,
-                                            ).viewPadding.bottom,
-                                      ),
-                                      itemCount: sortedGames.length,
-                                      itemBuilder: (cxt, index) {
-                                        final game = sortedGames[index];
-                                        return Padding(
-                                          padding: EdgeInsets.only(
-                                            bottom: 12.sp,
-                                          ),
-                                          child: _GameCard(
-                                            onTap: () {
-                                              final datas = data[index];
-                                              if (data[index]
-                                                      .gameStatus
-                                                      .displayText !=
-                                                  '*') {
-                                                Navigator.pushNamed(
-                                                  context,
-                                                  '/chess_screen',
-                                                  arguments: {
-                                                    'gmName':
-                                                        data[index]
-                                                            .whitePlayer
-                                                            .name,
-                                                    'gmSecondName':
-                                                        data[index]
-                                                            .blackPlayer
-                                                            .name,
-                                                    'firstGmCountryCode':
-                                                        data[index]
-                                                            .whitePlayer
-                                                            .countryCode,
-                                                    'secondGmCountryCode':
-                                                        data[index]
-                                                            .blackPlayer
-                                                            .countryCode,
-                                                    'firstGmTime':
-                                                        data[index]
-                                                            .whiteTimeDisplay,
-                                                    'secondGmTime':
-                                                        data[index]
-                                                            .blackTimeDisplay,
-                                                    'firstGmRank':
-                                                        data[index]
-                                                            .whitePlayer
-                                                            .displayTitle,
-                                                    'secongGmRank':
-                                                        data[index]
-                                                            .blackPlayer
-                                                            .displayTitle,
-                                                    'pgn': data[index].pgn,
-                                                  },
-                                                );
-                                              } else {
-                                                showDialog(
-                                                  context: context,
-                                                  builder:
-                                                      (_) => AlertDialog(
-                                                        title: const Text(
-                                                          "No PGN Data",
-                                                        ),
-                                                        content: const Text(
-                                                          "This game has no PGN data available.",
-                                                        ),
-                                                        actions: [
-                                                          TextButton(
-                                                            onPressed:
-                                                                () =>
-                                                                    Navigator.pop(
-                                                                      context,
-                                                                    ),
-                                                            child: const Text(
-                                                              "OK",
+                                              '/chess_screen',
+                                              arguments: {
+                                                'games': data,
+                                                'currentIndex': index,
+                                              },
+                                            );
+                                          } else {
+                                            showDialog(
+                                              context: context,
+                                              builder:
+                                                  (_) => AlertDialog(
+                                                    title: const Text(
+                                                      "No PGN Data",
+                                                    ),
+                                                    content: const Text(
+                                                      "This game has no PGN data available.",
+                                                    ),
+                                                    actions: [
+                                                      TextButton(
+                                                        onPressed:
+                                                            () => Navigator.pop(
+                                                              context,
                                                             ),
-                                                          ),
-                                                        ],
+                                                        child: const Text("OK"),
                                                       ),
-                                                );
-                                              }
-                                            },
-                                            gamesTourModel: game,
-                                            pinnedIds: pinnedIds,
-                                            onPinToggle: (
-                                              gamesTourModel,
-                                            ) async {
-                                              await ref
-                                                  .read(
-                                                    gamesTourScreenProvider
-                                                        .notifier,
-                                                  )
-                                                  .togglePinGame(
-                                                    gamesTourModel.gameId,
-                                                  );
-                                            },
-                                          ),
-                                        );
-                                      },
+                                                    ],
+                                                  ),
+                                            );
+                                          }
+                                        },
+                                        gamesTourModel: game,
+                                        pinnedIds: data.pinnedGamedIs,
+                                        onPinToggle: (gamesTourModel) async {
+                                          await ref
+                                              .read(
+                                                gamesTourScreenProvider
+                                                    .notifier,
+                                              )
+                                              .togglePinGame(
+                                                gamesTourModel.gameId,
+                                              );
+                                        },
+                                      ),
                                     );
                                   },
                                 ),
