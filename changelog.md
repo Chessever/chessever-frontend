@@ -186,3 +186,9 @@
 -> Use the same icon for games Round dropdown
 -> Update the calendar year dropdown to look exactly as like design
 -> Fix the three dots show icon in the games view from the app bar
+
+#11 jul
+-> The initials in the home screen should match the user name.
+-> Implement Swipe feature to go to next gamer or previous game of the tournament,
+-> Fix Google Sign -in for release build
+-> Cleanup chess board code
