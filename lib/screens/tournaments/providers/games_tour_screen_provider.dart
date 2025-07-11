@@ -64,7 +64,6 @@ class GamesTourScreenProvider
       print('''
   ▶ Game ID: ${game.id}
   ▶ Round ID: ${game.roundId}
-  
   ▶ fen: ${game.fen}
   
   ''');

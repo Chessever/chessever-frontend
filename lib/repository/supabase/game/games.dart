@@ -97,14 +97,25 @@ class Player {
   });
 
   factory Player.fromJson(Map<String, dynamic> json) {
-    return Player(
-      fed: json['fed'] as String,
-      name: json['name'] as String,
-      clock: (json['clock'] as num).toInt(),
-      title: json['title'] as String,
-      fideId: (json['fideId'] as num).toInt(),
-      rating: (json['rating'] as num).toInt(),
-    );
+    try {
+      return Player(
+        fed: json['fed'] as String,
+        name: json['name'] as String,
+        clock: (json['clock'] as num).toInt(),
+        title: json['title'] as String,
+        fideId: (json['fideId'] as num).toInt(),
+        rating: (json['rating'] as num).toInt(),
+      );
+    } catch (error, _) {
+      return Player(
+        fed: json['fed'] as String? ?? '',
+        name: json['name'] as String? ?? '',
+        clock: (json['clock'] as num?)?.toInt() ?? 0,
+        title: json['title'] as String? ?? '',
+        fideId: (json['fideId'] as num?)?.toInt() ?? 0,
+        rating: (json['rating'] as num?)?.toInt() ?? 0,
+      );
+    }
   }
 
   Map<String, dynamic> toJson() {

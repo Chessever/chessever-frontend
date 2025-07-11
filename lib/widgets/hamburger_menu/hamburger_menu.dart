@@ -106,7 +106,7 @@ class HamburgerMenu extends StatelessWidget {
                       title: 'Board',
                       onPressed: () {
                         Navigator.pop(context); // Close drawer first
-                        callbacks.onAnalysisBoardPressed();
+                        // callbacks.onAnalysisBoardPressed();
                       },
                     ),
                     SizedBox(height: 12.h),
@@ -151,9 +151,6 @@ class HamburgerMenu extends StatelessWidget {
               ),
               _LogOutButton(
                 onLogoutPressed: () {
-                  // Close the drawer first
-                  Navigator.pop(context);
-                  // Still call the original callback if provided
                   callbacks.onLogoutPressed();
                 },
               ),
