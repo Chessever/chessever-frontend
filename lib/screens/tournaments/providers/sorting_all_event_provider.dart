@@ -30,14 +30,6 @@ class TournamentSortingService {
             .toList();
 
     filteredList.sort((a, b) {
-      final isFavoriteA = favorites.contains(a.id);
-      final isFavoriteB = favorites.contains(b.id);
-
-      if (hasFavorites) {
-        if (isFavoriteA && !isFavoriteB) return -1;
-        if (!isFavoriteA && isFavoriteB) return 1;
-      }
-
       final isCountrymanA = _isCountryman(
         a,
         currentLocation,
@@ -51,6 +43,14 @@ class TournamentSortingService {
 
       if (isCountrymanA && !isCountrymanB) return -1;
       if (!isCountrymanA && isCountrymanB) return 1;
+
+      final isFavoriteA = favorites.contains(a.id);
+      final isFavoriteB = favorites.contains(b.id);
+
+      if (hasFavorites) {
+        if (isFavoriteA && !isFavoriteB) return -1;
+        if (!isFavoriteA && isFavoriteB) return 1;
+      }
 
       return a.title.toLowerCase().compareTo(b.title.toLowerCase());
     });
@@ -74,14 +74,6 @@ class TournamentSortingService {
             .toList();
 
     filteredList.sort((a, b) {
-      final isFavoriteA = favorites.contains(a.id);
-      final isFavoriteB = favorites.contains(b.id);
-
-      if (hasFavorites) {
-        if (isFavoriteA && !isFavoriteB) return -1;
-        if (!isFavoriteA && isFavoriteB) return 1;
-      }
-
       final isCountrymanA = _isCountryman(
         a,
         currentLocation,
@@ -95,6 +87,14 @@ class TournamentSortingService {
 
       if (isCountrymanA && !isCountrymanB) return -1;
       if (!isCountrymanA && isCountrymanB) return 1;
+
+      final isFavoriteA = favorites.contains(a.id);
+      final isFavoriteB = favorites.contains(b.id);
+
+      if (hasFavorites) {
+        if (isFavoriteA && !isFavoriteB) return -1;
+        if (!isFavoriteA && isFavoriteB) return 1;
+      }
 
       final statusPriorityA = _getTournamentStatusPriority(a.tourEventCategory);
       final statusPriorityB = _getTournamentStatusPriority(b.tourEventCategory);
@@ -124,8 +124,7 @@ class TournamentSortingService {
         ref
             .read(locationServiceProvider)
             .getCountryName(tournament.location)
-            ?.toLowerCase() ??
-        '';
+            .toLowerCase();
 
     // Use exact match now, trim spaces just in case
     final tournamentLocTrimmed = tournamentLocation.trim();

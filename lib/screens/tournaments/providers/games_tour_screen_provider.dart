@@ -7,14 +7,14 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final gamesTourScreenProvider = StateNotifierProvider.autoDispose<
   GamesTourScreenProvider,
-  AsyncValue<List<GamesTourModel>>
+  AsyncValue<GamesScreenModel>
 >((ref) {
   final selectedRound = ref.watch(gamesAppBarProvider).value?.selectedId;
   return GamesTourScreenProvider(ref: ref, roundId: selectedRound);
 });
 
 class GamesTourScreenProvider
-    extends StateNotifier<AsyncValue<List<GamesTourModel>>> {
+    extends StateNotifier<AsyncValue<GamesScreenModel>> {
   GamesTourScreenProvider({required this.ref, required this.roundId})
     : super(AsyncValue.loading()) {
     _init();
@@ -22,23 +22,24 @@ class GamesTourScreenProvider
 
   final Ref ref;
   final String? roundId;
-  final pinnedStorage = PinnedGamesStorage();
 
   Future<void> togglePinGame(String gameId) async {
     print('Toggle pin called for gameId: $gameId');
 
-    final pinnedIds = await pinnedStorage.getPinnedGameIds();
+    final pinnedIds =
+        await ref.read(pinnedGamesStorageProvider).getPinnedGameIds();
     print('Currently pinned IDs before toggle: $pinnedIds');
 
     if (pinnedIds.contains(gameId)) {
       print('Game is already pinned, removing pin for gameId: $gameId');
-      await pinnedStorage.removePinnedGameId(gameId);
+      await ref.read(pinnedGamesStorageProvider).removePinnedGameId(gameId);
     } else {
       print('Game is not pinned, adding pin for gameId: $gameId');
-      await pinnedStorage.addPinnedGameId(gameId);
+      await ref.read(pinnedGamesStorageProvider).addPinnedGameId(gameId);
     }
 
-    final updatedPinnedIds = await pinnedStorage.getPinnedGameIds();
+    final updatedPinnedIds =
+        await ref.read(pinnedGamesStorageProvider).getPinnedGameIds();
     print('Pinned IDs after toggle: $updatedPinnedIds');
 
     print('Refreshing games list...');
@@ -48,7 +49,7 @@ class GamesTourScreenProvider
 
   Future<void> unpinAllGames() async {
     print("Unpin All tapped");
-    await pinnedStorage.clearAllPinnedGames();
+    await ref.read(pinnedGamesStorageProvider).clearAllPinnedGames();
     await _init();
   }
 
@@ -68,7 +69,8 @@ class GamesTourScreenProvider
   
   ''');
     }
-    final pinnedIds = await pinnedStorage.getPinnedGameIds();
+    final pinnedIds =
+        await ref.read(pinnedGamesStorageProvider).getPinnedGameIds();
 
     final selectedGames =
         roundId != null
@@ -88,30 +90,13 @@ class GamesTourScreenProvider
     final gamesTourModels =
         selectedGames.map((game) => GamesTourModel.fromGame(game)).toList();
 
-    state = AsyncValue.data(gamesTourModels);
+    state = AsyncValue.data(
+      GamesScreenModel(
+        gamesTourModels: gamesTourModels,
+        pinnedGamedIs: pinnedIds,
+      ),
+    );
   }
-
-  // Future<void> _init() async {
-  //   final aboutTourModel = ref.read(aboutTourModelProvider)!;
-  //   final allGames = await ref
-  //       .read(gamesLocalStorage)
-  //       .getGames(aboutTourModel.id);
-
-  //   if (roundId != null) {
-  //     var games = allGames.where((e) => e.roundId.contains(roundId!)).toList();
-  //     final gamesTourModels = List.generate(
-  //       games.length,
-  //       (index) => GamesTourModel.fromGame(games[index]),
-  //     );
-  //     state = AsyncValue.data(gamesTourModels);
-  //   } else {
-  //     final gamesTourModels = List.generate(
-  //       allGames.length,
-  //       (index) => GamesTourModel.fromGame(allGames[index]),
-  //     );
-  //     state = AsyncValue.data(gamesTourModels);
-  //   }
-  // }
 
   Future<void> searchGames(String query) async {
     if (query.isNotEmpty && roundId != null) {
@@ -127,23 +112,13 @@ class GamesTourScreenProvider
         (index) => GamesTourModel.fromGame(games[index]),
       );
 
-      state = AsyncValue.data(gamesTourModels);
+      state = AsyncValue.data(
+        GamesScreenModel(gamesTourModels: gamesTourModels, pinnedGamedIs: []),
+      );
     }
   }
 
   Future<void> refreshGames() async {
-    final aboutTourModel = ref.read(aboutTourModelProvider)!;
-
-    final allGames = await ref
-        .read(gamesLocalStorage)
-        .refresh(aboutTourModel.id);
-
-    final games = allGames.where((e) => e.roundId.contains(roundId!)).toList();
-    final gamesTourModels = List.generate(
-      games.length,
-      (index) => GamesTourModel.fromGame(games[index]),
-    );
-
-    state = AsyncValue.data(gamesTourModels);
+    await _init();
   }
 }

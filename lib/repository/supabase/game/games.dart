@@ -12,6 +12,7 @@ class Games {
   final int? thinkTime;
   final String? status;
   final String? pgn;
+  final List<String>? search;
 
   Games({
     required this.id,
@@ -26,6 +27,7 @@ class Games {
     this.thinkTime,
     this.status,
     this.pgn,
+    this.search,
   });
 
   factory Games.fromJson(Map<String, dynamic> json) {
@@ -37,17 +39,23 @@ class Games {
       tourSlug: json['tour_slug'] as String,
       name: json['name'] as String?,
       fen: json['fen'] as String?,
-      players: json['players'] != null
-          ? (json['players'] as List)
-          .map((player) => Player.fromJson(player as Map<String, dynamic>))
-          .toList()
-          : null,
+      players:
+          json['players'] != null
+              ? (json['players'] as List)
+                  .map(
+                    (player) => Player.fromJson(player as Map<String, dynamic>),
+                  )
+                  .toList()
+              : null,
       lastMove: json['last_move'] as String?,
-      thinkTime: json['think_time'] != null
-          ? (json['think_time'] as num).toInt()
-          : null,
+      thinkTime:
+          json['think_time'] != null
+              ? (json['think_time'] as num).toInt()
+              : null,
       status: json['status'] as String?,
       pgn: json['pgn'] as String?,
+      search:
+          (json['search'] as List<dynamic>?)?.map((e) => e as String).toList(),
     );
   }
 
@@ -65,6 +73,7 @@ class Games {
       'think_time': thinkTime,
       'status': status,
       'pgn': pgn,
+      'search': search,
     };
   }
 }
