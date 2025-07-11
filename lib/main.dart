@@ -105,7 +105,7 @@ class _MyAppState extends ConsumerState<MyApp> {
         '/tournament_detail_screen': (context) => const TournamentDetailView(),
         '/calendar_screen': (context) => const CalendarScreen(),
         '/library_screen': (context) => const LibraryScreen(),
-        '/chess_screen': (context) => const ChessScreen(),
+        // '/chess_screen': (context) => const ChessScreen(),
 
         // New Screen
         '/playerList': (context) => const PlayerScreen(),

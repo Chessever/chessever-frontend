@@ -1,3 +1,5 @@
+import 'package:chessever2/screens/chessboard/view_model/chess_board_fen_model.dart';
+import 'package:chessever2/screens/tournaments/model/games_tour_model.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_appbar.dart';
@@ -11,26 +13,24 @@ import 'package:squares/squares.dart'; // Add this import
 import 'package:square_bishop/square_bishop.dart' as square_bishop;
 import 'package:bishop/bishop.dart' as bishop;
 
-class ChessScreen extends ConsumerStatefulWidget {
-  const ChessScreen({super.key});
+class ChessBoardScreen extends ConsumerStatefulWidget {
+  final List<GamesTourModel> games;
+  final int currentIndex;
+
+  const ChessBoardScreen(this.games, {required this.currentIndex, super.key});
 
   @override
-  ConsumerState<ChessScreen> createState() => _ChessScreenState();
+  ConsumerState<ChessBoardScreen> createState() => _ChessBoardScreenState();
 }
 
-class _ChessScreenState extends ConsumerState<ChessScreen> {
+class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
   late PageController _pageController;
-  late List games;
-  late int currentIndex;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final args =
-        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>;
-    games = args['games'];
-    currentIndex = args['currentIndex'];
-    _pageController = PageController(initialPage: currentIndex);
+
+    _pageController = PageController(initialPage: widget.currentIndex);
   }
 
   @override
@@ -44,12 +44,12 @@ class _ChessScreenState extends ConsumerState<ChessScreen> {
     return Scaffold(
       body: PageView.builder(
         controller: _pageController,
-        itemCount: games.length,
+        itemCount: widget.games.length,
         itemBuilder: (context, index) {
-          final game = games[index];
+          final game = widget.games[index];
 
           // Parse PGN and board state
-          final cleanedPgn = game.pgn.replaceAll(
+          final cleanedPgn = game.pgn!.replaceAll(
             RegExp(r'\[Variant\s+"[^"]*"\]\n?'),
             '',
           );
@@ -59,10 +59,10 @@ class _ChessScreenState extends ConsumerState<ChessScreen> {
           final fen = bishopGame.fen;
 
           return Scaffold(
-            bottomNavigationBar: ChessBoardBottomNavBar(
-              onRightMove: () {},
-              onLeftMove: () {},
-            ),
+            // bottomNavigationBar: ChessBoardBottomNavBar(
+            //   onRightMove: () {},
+            //   onLeftMove: () {},
+            // ),
             appBar: ChessMatchAppBar(
               title: '${game.whitePlayer.name} vs ${game.blackPlayer.name}',
               onBackPressed: () {

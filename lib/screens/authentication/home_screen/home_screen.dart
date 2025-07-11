@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
 import 'package:chessever2/screens/players/player_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:chessever2/screens/calendar_screen.dart';
@@ -49,10 +50,10 @@ class HomeScreen extends ConsumerWidget {
           onAnalysisBoardPressed: () {
             // Navigate to analysis board
             // Navigator.pushNamed(context, '/analysisBoard');
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const ChessScreen()),
-            );
+            // Navigator.push(
+            //   context,
+            //   MaterialPageRoute(builder: (context) => const ChessScreen()),
+            // );
           },
           onSupportPressed: () {
             // Handle support action
@@ -68,9 +69,34 @@ class HomeScreen extends ConsumerWidget {
             );
           },
 
-          onLogoutPressed: () {
-            // Handle logout
-            // e.g., clear session and navigate to login
+          onLogoutPressed: () async {
+            final shouldLogout = await showDialog<bool>(
+              context: context,
+              builder:
+                  (context) => AlertDialog(
+                    title: const Text('Logout'),
+                    content: const Text('Are you sure you want to log out?'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(false),
+                        child: const Text('Cancel'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(true),
+                        child: const Text('Logout'),
+                      ),
+                    ],
+                  ),
+            );
+
+            if (shouldLogout == true) {
+              final sessionManager = ref.read(sessionManagerProvider);
+              await sessionManager.clearSession();
+
+              Navigator.of(
+                context,
+              ).pushNamedAndRemoveUntil('/', (route) => false);
+            }
           },
         ),
       ),
