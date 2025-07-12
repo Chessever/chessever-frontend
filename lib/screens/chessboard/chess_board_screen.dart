@@ -1,9 +1,7 @@
-import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
 import 'package:chessever2/screens/tournaments/model/games_tour_model.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_appbar.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
-import 'package:chessever2/screens/chessboard/widgets/player_second_row_detail_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -23,349 +21,70 @@ class ChessBoardScreen extends ConsumerStatefulWidget {
 
 class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
   late PageController _pageController;
-  Map<int, ChessGameState> _gameStates = {};
+  late List<bishop.Game> _games;
+  late List<List<String>> _allMoves;
+  late List<int> _currentMoveIndex;
 
   @override
   void didChangeDependencies() {
-    super.didChangeDependencies();
     _pageController = PageController(initialPage: widget.currentIndex);
-    _initializeGameStates();
-  }
+    _games = List.generate(widget.games.length, (index) => bishop.Game.fromPgn(_getPgnData()));
+    _allMoves = _games.map((game) => game.moveHistoryAlgebraic).toList();
+    _currentMoveIndex = List.filled(widget.games.length, 0);
 
-  /// Initialize game states for all games with PGN parsing
-  void _initializeGameStates() {
-    for (int i = 0; i < widget.games.length; i++) {
-      final game = widget.games[i];
-
-      try {
-        // Clean and parse PGN
-        String cleanedPgn = _cleanPgn(game.pgn ?? '');
-        print("Current Moves : \n${cleanedPgn}");
-        List<ChessMove> parsedMoves = _parsePgnMoves(cleanedPgn);
-
-        // Create bishop game
-        final bishopGame = bishop.Game.fromPgn(cleanedPgn);
-
-        _gameStates[i] = ChessGameState(
-          bishopGame: bishopGame,
-          currentMoveIndex: 0,
-          totalMoves: bishopGame.history.length,
-          // Use bishop game's move count
-          isPlaying: false,
-          moves: parsedMoves,
-        );
-
-        print(
-          'Game $i initialized: ${parsedMoves.length} parsed moves, ${bishopGame.history.length} bishop moves',
-        );
-      } catch (e) {
-        print('Error initializing game $i: $e');
-
-        // Fallback to empty game
-        _gameStates[i] = ChessGameState(
-          bishopGame: bishop.Game(),
-          currentMoveIndex: 0,
-          totalMoves: 0,
-          isPlaying: false,
-          moves: [],
-        );
-      }
-    }
-  }
-
-  /// Clean PGN by removing problematic headers
-  String _cleanPgn(String pgn) {
-    if (pgn.isEmpty) return '';
-
-    String cleaned = pgn;
-
-    // Remove problematic headers but keep essential ones
-    cleaned = cleaned.replaceAll(RegExp(r'\[Variant\s+"[^"]*"\]\s*'), '');
-    cleaned = cleaned.replaceAll(RegExp(r'\[FEN\s+"[^"]*"\]\s*'), '');
-    cleaned = cleaned.replaceAll(RegExp(r'\[SetUp\s+"[^"]*"\]\s*'), '');
-
-    return cleaned.trim();
-  }
-
-  /// Parse PGN moves with clock times and proper formatting
-  List<ChessMove> _parsePgnMoves(String pgn) {
-    List<ChessMove> moves = [];
-
-    // Remove headers first
-    String movesSection = pgn.replaceAll(
-      RegExp(r'^\[.*?\]\s*', multiLine: true),
-      '',
-    );
-
-    // Pattern to match: "1. e4 { [%clk 1:59:57] }" or "1... e6 { [%clk 1:59:52] }"
-    RegExp movePattern = RegExp(
-      r'(\d+)(\.{1,3})\s*([a-zA-Z0-9+#=\-O]+)\s*(?:\{\s*\[%clk\s*([\d:]+)\]\s*\})?',
-      multiLine: true,
-    );
-
-    Iterable<RegExpMatch> matches = movePattern.allMatches(movesSection);
-
-    for (RegExpMatch match in matches) {
-      String moveNumber = match.group(1) ?? '';
-      String dots = match.group(2) ?? '.';
-      String move = match.group(3) ?? '';
-      String? clockTime = match.group(4);
-
-      // Skip if it's a game result
-      if (RegExp(r'^(1-0|0-1|1/2-1/2|\*)$').hasMatch(move)) continue;
-
-      bool isWhiteMove = dots == '.';
-
-      if (move.isNotEmpty) {
-        moves.add(
-          ChessMove(
-            notation: move,
-            moveNumber: int.tryParse(moveNumber) ?? 1,
-            isWhiteMove: isWhiteMove,
-            clockTime: clockTime,
-            fullMoveText:
-                '${isWhiteMove ? moveNumber + '.' : moveNumber + '...'} $move',
-          ),
-        );
+    // Go to starting position
+    for (int i = 0; i < _games.length; i++) {
+      while (_games[i].canUndo) {
+        _games[i].undo();
       }
     }
 
-    // Fallback: simple parsing if regex fails
-    if (moves.isEmpty) {
-      moves = _parseMovesSimple(movesSection);
-    }
-
-    return moves;
-  }
-
-  /// Simple fallback parsing method
-  List<ChessMove> _parseMovesSimple(String movesText) {
-    List<ChessMove> moves = [];
-
-    // Remove clock annotations and other noise
-    String cleaned =
-        movesText
-            .replaceAll(RegExp(r'\{[^}]*\}'), '') // Remove {comments}
-            .replaceAll(RegExp(r'\([^)]*\)'), '') // Remove (annotations)
-            .replaceAll(RegExp(r'\s+'), ' ') // Normalize whitespace
-            .trim();
-
-    List<String> tokens = cleaned.split(' ');
-    int currentMoveNumber = 1;
-    bool expectingWhiteMove = true;
-
-    for (String token in tokens) {
-      token = token.trim();
-      if (token.isEmpty) continue;
-
-      // Skip move numbers
-      if (RegExp(r'^\d+\.{1,3}$').hasMatch(token)) {
-        if (token.endsWith('...')) {
-          expectingWhiteMove = false;
-        } else {
-          expectingWhiteMove = true;
-          currentMoveNumber =
-              int.tryParse(token.replaceAll('.', '')) ?? currentMoveNumber;
-        }
-        continue;
-      }
-
-      // Skip game results
-      if (RegExp(r'^(1-0|0-1|1/2-1/2|\*)$').hasMatch(token)) continue;
-
-      // This should be a move
-      if (RegExp(r'^[a-zA-Z0-9+#=\-O]+$').hasMatch(token)) {
-        moves.add(
-          ChessMove(
-            notation: token,
-            moveNumber: currentMoveNumber,
-            isWhiteMove: expectingWhiteMove,
-            clockTime: null,
-            fullMoveText:
-                '${expectingWhiteMove ? currentMoveNumber.toString() + '.' : currentMoveNumber.toString() + '...'} $token',
-          ),
-        );
-
-        if (expectingWhiteMove) {
-          expectingWhiteMove = false;
-        } else {
-          expectingWhiteMove = true;
-          currentMoveNumber++;
-        }
-      }
-    }
-
-    return moves;
-  }
-
-  /// Navigate to next move
-  void _goToNextMove(int gameIndex) {
-    print('Next move clicked for game $gameIndex');
-    final state = _gameStates[gameIndex];
-    if (state != null && state.currentMoveIndex < state.totalMoves) {
-      final newMoveIndex = state.currentMoveIndex + 1;
-      print(
-        'Moving from ${state.currentMoveIndex} to $newMoveIndex (total: ${state.totalMoves})',
-      );
-
-      setState(() {
-        _gameStates[gameIndex] = state.copyWith(currentMoveIndex: newMoveIndex);
-      });
-
-      print('Successfully moved to: $newMoveIndex/${state.totalMoves}');
-    } else {
-      print(
-        'Cannot move next: current=${state?.currentMoveIndex}, total=${state?.totalMoves}',
-      );
-    }
-  }
-
-  /// Navigate to previous move
-  void _goToPreviousMove(int gameIndex) {
-    print('Previous move clicked for game $gameIndex');
-    final state = _gameStates[gameIndex];
-    if (state != null && state.currentMoveIndex > 0) {
-      final newMoveIndex = state.currentMoveIndex - 1;
-      print('Moving from ${state.currentMoveIndex} to $newMoveIndex');
-
-      setState(() {
-        _gameStates[gameIndex] = state.copyWith(currentMoveIndex: newMoveIndex);
-      });
-
-      print('Successfully moved to: $newMoveIndex/${state.totalMoves}');
-    } else {
-      print('Cannot move previous: current=${state?.currentMoveIndex}');
-    }
-  }
-
-  /// Toggle auto-play functionality
-  void _togglePlayPause(int gameIndex) {
-    print('Play/Pause clicked for game $gameIndex');
-    final state = _gameStates[gameIndex];
-    if (state != null) {
-      setState(() {
-        _gameStates[gameIndex] = state.copyWith(isPlaying: !state.isPlaying);
-      });
-
-      if (!state.isPlaying) {
-        _startAutoPlay(gameIndex);
-      }
-    }
-  }
-
-  /// Start automatic move playback
-  void _startAutoPlay(int gameIndex) async {
-    while (_gameStates[gameIndex]?.isPlaying == true) {
-      await Future.delayed(
-        Duration(milliseconds: 1500),
-      ); // 1.5 second intervals
-
-      if (_gameStates[gameIndex]?.isPlaying == true) {
-        final state = _gameStates[gameIndex]!;
-
-        if (state.currentMoveIndex < state.totalMoves) {
-          _goToNextMove(gameIndex);
-        } else {
-          // Reached end, stop playing
-          setState(() {
-            _gameStates[gameIndex] = state.copyWith(isPlaying: false);
-          });
-          break;
-        }
-      }
-    }
-  }
-
-  /// Reset game to starting position
-  void _resetGame(int gameIndex) {
-    print('Reset clicked for game $gameIndex');
-    final state = _gameStates[gameIndex];
-    if (state != null) {
-      setState(() {
-        _gameStates[gameIndex] = state.copyWith(
-          currentMoveIndex: 0,
-          isPlaying: false,
-        );
-      });
-    }
-  }
-
-  /// Build the moves display text with highlighting
-  List<TextSpan> _buildMovesDisplay(
-    List<ChessMove> moves,
-    int currentMoveIndex,
-    BuildContext context,
-  ) {
-    List<TextSpan> spans = [];
-
-    for (int i = 0; i < moves.length; i++) {
-      final move = moves[i];
-      final isCurrentMove = i == currentMoveIndex - 1;
-      final isDark = Theme.of(context).brightness == Brightness.dark;
-
-      // Add move number for white moves or when starting a new move pair
-      if (move.isWhiteMove ||
-          (i > 0 && moves[i - 1].moveNumber != move.moveNumber)) {
-        spans.add(
-          TextSpan(
-            text: '${move.moveNumber}${move.isWhiteMove ? '.' : '...'} ',
-            style: AppTypography.textXsMedium.copyWith(
-              color: Colors.grey[isDark ? 400 : 600],
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        );
-      }
-
-      // Add the move notation with highlighting
-      spans.add(
-        TextSpan(
-          text: move.notation,
-          style: AppTypography.textXsMedium.copyWith(
-            color:
-                isCurrentMove
-                    ? Colors.white
-                    : (isDark ? Colors.grey[300] : Colors.grey[800]),
-            backgroundColor: isCurrentMove ? kGreenColor : null,
-            fontWeight: isCurrentMove ? FontWeight.bold : FontWeight.w500,
-            fontSize: 14,
-          ),
-        ),
-      );
-
-      // Add space after move
-      spans.add(TextSpan(text: ' '));
-
-      // Add line break after black moves for better readability
-      if (!move.isWhiteMove && (i + 1) % 6 == 0) {
-        spans.add(TextSpan(text: '\n'));
-      }
-    }
-
-    return spans;
-  }
-
-  /// Get current board state safely
-  BoardState _getCurrentBoardState(ChessGameState gameState) {
-    try {
-      final squareState = gameState.bishopGame.squaresState(
-        gameState.currentMoveIndex,
-      );
-      return squareState.board;
-    } catch (e) {
-      print(
-        'Error getting board state at move ${gameState.currentMoveIndex}: $e',
-      );
-      // Fallback to starting position
-      return gameState.bishopGame.squaresState(0).board;
-    }
+    super.didChangeDependencies();
   }
 
   @override
   void dispose() {
     _pageController.dispose();
     super.dispose();
+  }
+
+  String _getPgnData() {
+    return '''[Event "Round 3: Maxwell Z Yang - Jean Marco Cruz"]
+[Site "?"]
+[Date "????.??.??"]
+[Round "3.2"]
+[White "Maxwell Z Yang"]
+[Black "Jean Marco Cruz"]
+[Result "0-1"]
+[BlackTitle "FM"]
+[TimeControl "90+30"]
+[ECO "E47"]
+[Opening "Nimzo-Indian Defense: Normal Variation"]
+[StudyName "Round 3"]
+[ChapterName "Maxwell Z Yang - Jean Marco Cruz"]
+[UTCDate "2025.06.28"]
+[UTCTime "21:09:47"]
+[GameURL "https://lichess.org/broadcast/-/-/WpR4zHCq"]
+
+1. d4 { [%clk 1:25:46] } 1... Nf6 { [%clk 1:23:51] } 2. c4 { [%clk 1:26:10] } 2... e6 { [%clk 1:24:17] } 3. Nc3 { [%clk 1:26:33] } 3... Bb4 { [%clk 1:24:42] } 4. e3 { [%clk 1:26:59] } 4... O-O { [%clk 1:25:08] } 5. Bd3 { [%clk 1:27:24] } 5... Re8 { [%clk 1:25:34] } 6. Nf3 { [%clk 1:26:28] } 6... d6 { [%clk 1:26:01] } 7. O-O { [%clk 1:25:11] } 7... Bxc3 { [%clk 1:23:03] } 8. bxc3 { [%clk 1:25:32] } 8... e5 { [%clk 1:23:31] } 9. Nd2 { [%clk 1:16:47] } 9... Nc6 { [%clk 1:19:46] } 10. d5 { [%clk 1:11:22] } 10... Ne7 { [%clk 1:19:50] } 11. e4 { [%clk 1:10:51] } 11... Ng6 { [%clk 1:18:20] } 12. Nf3 { [%clk 1:10:24] } 12... Nh5 { [%clk 1:08:39] } 13. Be3 { [%clk 1:05:49] } 13... Ngf4 { [%clk 1:02:54] } 14. c5 { [%clk 1:00:50] } 14... Qf6 { [%clk 1:01:54] } 15. Ne1 { [%clk 0:54:43] } 15... Qg6 { [%clk 0:54:19] } 16. Kh1 { [%clk 0:48:43] } 16... Nxd3 { [%clk 0:53:16] } 17. Qxd3 { [%clk 0:48:35] } 17... f5 { [%clk 0:53:33] } 18. exf5 { [%clk 0:40:05] } 18... Bxf5 { [%clk 0:53:57] } 19. Qd2 { [%clk 0:40:01] } 19... Rf8 { [%clk 0:53:32] } 20. cxd6 { [%clk 0:37:53] } 20... cxd6 { [%clk 0:53:55] } 21. Nf3 { [%clk 0:37:45] } 21... Be4 { [%clk 0:52:31] } 22. Ne1 { [%clk 0:32:04] } 22... Nf4 { [%clk 0:33:58] } 23. Bxf4 { [%clk 0:28:03] } 23... Rxf4 { [%clk 0:34:26] } 24. f3 { [%clk 0:28:12] } 24... Raf8 { [%clk 0:34:47] } 25. Rg1 { [%clk 0:27:46] } 25... Bf5 { [%clk 0:28:08] } 26. Rd1 { [%clk 0:17:21] } 26... Rf6 { [%clk 0:26:04] } 27. Nd3 { [%clk 0:16:03] } 27... Bxd3 { [%clk 0:23:11] } 28. Qxd3 { [%clk 0:15:56] } 28... Qg3 { [%clk 0:23:32] } 29. Qb5 { [%clk 0:12:10] } 29... Rh6 { [%clk 0:22:59] } 30. Qe8+ { [%clk 0:11:53] } 30... Rf8 { [%clk 0:23:27] } 31. Qe6+ { [%clk 0:12:08] } 31... Rxe6 { [%clk 0:23:55] } 32. dxe6 { [%clk 0:12:29] } 32... Qg6 { [%clk 0:23:41] } 33. Rxd6 { [%clk 0:12:47] } 33... Re8 { [%clk 0:24:05] } 0-1''';
+  }
+
+  void _moveForward(int gameIndex) {
+    if (_currentMoveIndex[gameIndex] < _allMoves[gameIndex].length) {
+      setState(() {
+        _games[gameIndex].makeMoveString(_allMoves[gameIndex][_currentMoveIndex[gameIndex]]);
+        _currentMoveIndex[gameIndex]++;
+      });
+    }
+  }
+
+  void _moveBackward(int gameIndex) {
+    if (_games[gameIndex].canUndo) {
+      setState(() {
+        _games[gameIndex].undo();
+        _currentMoveIndex[gameIndex]--;
+      });
+    }
   }
 
   @override
@@ -376,10 +95,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
         itemCount: widget.games.length,
         itemBuilder: (context, index) {
           final game = widget.games[index];
-          final gameState = _gameStates[index];
+          final bishopGame = _games[index];
 
-          // Show loading if game state not ready
-          if (gameState == null) {
+          final boardState = square_bishop.buildSquaresState(
+            fen: bishopGame.fen,
+          );
+
+          if (boardState?.board == null) {
             return Scaffold(
               appBar: ChessMatchAppBar(
                 title: 'Loading...',
@@ -400,19 +122,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
             );
           }
 
-          // Get current board state
-          final boardState = _getCurrentBoardState(gameState);
-
           return Scaffold(
-            bottomNavigationBar: ChessBoardBottomNavBar(
-              onRightMove: () => _goToNextMove(index),
-              onLeftMove: () => _goToPreviousMove(index),
-              onPlayPause: () => _togglePlayPause(index),
-              onReset: () => _resetGame(index),
-              isPlaying: gameState.isPlaying,
-              currentMove: gameState.currentMoveIndex,
-              totalMoves: gameState.totalMoves,
-            ),
             appBar: ChessMatchAppBar(
               title: '${game.whitePlayer.name} vs ${game.blackPlayer.name}',
               onBackPressed: () => Navigator.pop(context),
@@ -435,10 +145,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
                     builder: (context, constraints) {
                       const sideBarWidth = 20.0;
                       final screenWidth = MediaQuery.of(context).size.width;
-                      final boardSize =
-                          screenWidth -
-                          sideBarWidth -
-                          32; // Account for padding
+                      final boardSize = screenWidth - sideBarWidth - 32;
 
                       return Container(
                         margin: EdgeInsets.symmetric(horizontal: 16),
@@ -473,7 +180,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
                                   size: BoardSize.standard,
                                   pieceSet: PieceSet.merida(),
                                   playState: PlayState.observing,
-                                  state: boardState,
+                                  state: boardState!.board,
                                 ),
                               ),
                             ),
@@ -483,175 +190,45 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
                     },
                   ),
 
-                  SizedBox(height: 16),
+                  // Navigation controls
+                  Container(
+                    margin: EdgeInsets.all(16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        IconButton(
+                          onPressed: bishopGame.canUndo
+                              ? () => _moveBackward(index)
+                              : null,
+                          icon: Icon(Icons.arrow_back_ios),
+                        ),
+                        Text(
+                          'Move ${_currentMoveIndex[index]} / ${_allMoves[index].length}',
+                          style: AppTypography.textSmMedium,
+                        ),
+                        IconButton(
+                          onPressed: _currentMoveIndex[index] < _allMoves[index].length
+                              ? () => _moveForward(index)
+                              : null,
+                          icon: Icon(Icons.arrow_forward_ios),
+                        ),
+                      ],
+                    ),
+                  ),
 
                   // Bottom player (White)
-                  PlayerSecondRowDetailWidget(
+                  PlayerFirstRowDetailWidget(
                     name: game.whitePlayer.name,
-                    secondGmRank: game.whitePlayer.displayTitle,
+                    firstGmRank: game.whitePlayer.displayTitle,
                     countryCode: game.whitePlayer.countryCode,
                     time: game.whiteTimeDisplay,
                   ),
-
-                  SizedBox(height: 16),
-
-                  // Moves display section
-                  Container(
-                    width: double.infinity,
-                    margin: EdgeInsets.symmetric(horizontal: 16),
-                    padding: EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).cardColor,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 4,
-                          offset: Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Header with move counter
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Game Moves',
-                              style: AppTypography.textXsBold.copyWith(
-                                color: kGreenColor,
-                              ),
-                            ),
-                            Container(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: kGreenColor.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                '${gameState.currentMoveIndex}/${gameState.totalMoves}',
-                                style: AppTypography.textSmMedium.copyWith(
-                                  color: kGreenColor,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        SizedBox(height: 12),
-
-                        // Moves display
-                        if (gameState.moves.isNotEmpty)
-                          Container(
-                            height: 140,
-                            width: double.infinity,
-                            padding: EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color:
-                                  Theme.of(context).brightness ==
-                                          Brightness.dark
-                                      ? Colors.grey[900]
-                                      : Colors.grey[50],
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: Colors.grey.withOpacity(0.3),
-                              ),
-                            ),
-                            child: SingleChildScrollView(
-                              child: RichText(
-                                text: TextSpan(
-                                  children: _buildMovesDisplay(
-                                    gameState.moves,
-                                    gameState.currentMoveIndex,
-                                    context,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          )
-                        else
-                          Container(
-                            height: 60,
-                            child: Center(
-                              child: Text(
-                                'No moves available',
-                                style: AppTypography.textSmMedium.copyWith(
-                                  color: Colors.grey[500],
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-
-                  SizedBox(height: 120), // Space for bottom navigation
                 ],
               ),
             ),
           );
         },
       ),
-    );
-  }
-}
-
-// Data class for chess moves
-class ChessMove {
-  final String notation;
-  final int moveNumber;
-  final bool isWhiteMove;
-  final String? clockTime;
-  final String fullMoveText;
-
-  ChessMove({
-    required this.notation,
-    required this.moveNumber,
-    required this.isWhiteMove,
-    this.clockTime,
-    required this.fullMoveText,
-  });
-
-  @override
-  String toString() {
-    return fullMoveText;
-  }
-}
-
-// Game state management class
-class ChessGameState {
-  final bishop.Game bishopGame;
-  final int currentMoveIndex;
-  final int totalMoves;
-  final bool isPlaying;
-  final List<ChessMove> moves;
-
-  ChessGameState({
-    required this.bishopGame,
-    required this.currentMoveIndex,
-    required this.totalMoves,
-    required this.isPlaying,
-    required this.moves,
-  });
-
-  ChessGameState copyWith({
-    bishop.Game? bishopGame,
-    int? currentMoveIndex,
-    int? totalMoves,
-    bool? isPlaying,
-    List<ChessMove>? moves,
-  }) {
-    return ChessGameState(
-      bishopGame: bishopGame ?? this.bishopGame,
-      currentMoveIndex: currentMoveIndex ?? this.currentMoveIndex,
-      totalMoves: totalMoves ?? this.totalMoves,
-      isPlaying: isPlaying ?? this.isPlaying,
-      moves: moves ?? this.moves,
     );
   }
 }
