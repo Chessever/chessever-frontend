@@ -2,7 +2,10 @@
 import 'package:chessever2/repository/supabase/game/games.dart';
 
 class GamesScreenModel {
-  GamesScreenModel({required this.gamesTourModels, required this.pinnedGamedIs});
+  GamesScreenModel({
+    required this.gamesTourModels,
+    required this.pinnedGamedIs,
+  });
 
   final List<GamesTourModel> gamesTourModels;
   final List<String> pinnedGamedIs;
