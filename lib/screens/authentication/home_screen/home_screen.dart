@@ -2,7 +2,7 @@ import 'package:chessever2/repository/local_storage/sesions_manager/session_mana
 import 'package:chessever2/screens/players/player_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:chessever2/screens/calendar_screen.dart';
-import 'package:chessever2/screens/chessboard/ChessBoardScreen.dart';
+import 'package:chessever2/screens/chessboard/chess_board_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/premium/premium_screen.dart'; // Import premium screen
 import 'package:chessever2/screens/premium/provider/premium_screen_provider.dart';
