@@ -2,23 +2,29 @@ import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_navbar.
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:chessever2/screens/chessboard/view_model/chess_viewmodel.dart';
-import 'package:chessever2/widgets/svg_widget.dart';
 
 class ChessBoardBottomNavBar extends ConsumerWidget {
-  final Function() onLeftMove;
-  final Function() onRightMove;
+  final VoidCallback onLeftMove;
+  final VoidCallback onRightMove;
+  final VoidCallback onPlayPause;
+  final VoidCallback onReset;
+  final bool isPlaying;
+  final int currentMove;
+  final int totalMoves;
+
   const ChessBoardBottomNavBar({
     super.key,
     required this.onLeftMove,
     required this.onRightMove,
+    required this.onPlayPause,
+    required this.onReset,
+    required this.isPlaying,
+    required this.currentMove,
+    required this.totalMoves,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final chessState = ref.watch(chessViewModelProvider);
-    final flipBoard = ref.watch(flipBoardProvider);
-
     return Container(
       padding: EdgeInsets.symmetric(vertical: 8),
       width: MediaQuery.of(context).size.width,
@@ -28,54 +34,49 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.end,
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            // New Game Button
+            // Reset Game Button
             ChessBoardBottomNavbar(
               svgPath: SvgAsset.laptop,
               onPressed: () {
-                ref.read(chessViewModelProvider.notifier).resetGame();
+                print('Reset button pressed');
+                onReset();
               },
             ),
 
-            // Simulate/Stop Button
+            // Play/Pause Button
             ChessBoardBottomNavbar(
-              svgPath:
-                  chessState.simulatingPgn ? SvgAsset.laptop : SvgAsset.refresh,
-              onPressed:
-                  chessState.simulatingPgn
-                      ? () {
-                        ref
-                            .read(chessViewModelProvider.notifier)
-                            .stopSimulation();
-                      }
-                      : () {
-                        ref
-                            .read(chessViewModelProvider.notifier)
-                            .simulatePgnMoves();
-                      },
+              svgPath: isPlaying ? SvgAsset.laptop : SvgAsset.refresh, // Use appropriate pause/play icons
+              onPressed: () {
+                print('Play/Pause button pressed');
+                onPlayPause();
+              },
             ),
 
             // Previous Move Button
-            // ChessBoardBottomNavbar(
-            //   svgPath: SvgAsset.left_arrow,
-            //   onPressed:
-            //       chessState.currentMoveIndex > 0
-            //           ? () {
-            //             ref
-            //                 .read(chessViewModelProvider.notifier)
-            //                 .goToPreviousMove();
-            //           }
-            //           : null,
-            // ),
             ChessBoardBottomNavbar(
               svgPath: SvgAsset.left_arrow,
-              onPressed: onRightMove,
+              onPressed: currentMove > 0 ? () {
+                print('Previous button pressed');
+                onLeftMove();
+              } : null,
             ),
+
             // Next Move Button
             ChessBoardBottomNavbar(
               svgPath: SvgAsset.right_arrow,
-              onPressed: onLeftMove,
+              onPressed: currentMove < totalMoves ? () {
+                print('Next button pressed');
+                onRightMove();
+              } : null,
             ),
-            ChessBoardBottomNavbar(svgPath: SvgAsset.chat, onPressed: () {}),
+
+            // Chat Button
+            ChessBoardBottomNavbar(
+                svgPath: SvgAsset.chat,
+                onPressed: () {
+                  print('Chat button pressed');
+                }
+            ),
           ],
         ),
       ),

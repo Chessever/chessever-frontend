@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 class ChessBoardBottomNavbar extends StatelessWidget {
   final String svgPath;
-  final Function() onPressed;
+  final VoidCallback? onPressed;
   const ChessBoardBottomNavbar({
     super.key,
     required this.svgPath,
