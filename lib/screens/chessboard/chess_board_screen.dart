@@ -33,6 +33,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
   late Stockfish _stockfish;
   late List<double> _evaluations;
   late List<List<String>> _sanMoves;
+  late List<bool> _isBoardFlipped; // Add this state variable
 
   @override
   void didChangeDependencies() {
@@ -47,6 +48,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
     _currentMoveIndex = List.filled(widget.games.length, 0);
     _isPlaying = List.filled(widget.games.length, false);
     _evaluations = List.filled(widget.games.length, 0.0);
+    _isBoardFlipped = List.filled(
+      widget.games.length,
+      false,
+    ); // Initialize flip state
 
     // Go to starting position
     for (int i = 0; i < _games.length; i++) {
@@ -158,6 +163,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
     });
   }
 
+  // Add flip functionality
+  void _flipBoard(int gameIndex) {
+    setState(() {
+      _isBoardFlipped[gameIndex] = !_isBoardFlipped[gameIndex];
+    });
+  }
+
   double _getWhiteRatio(double eval) {
     final normalized = (eval.clamp(-5.0, 5.0) + 5.0) / 10.0;
     return (normalized * 0.99).clamp(0.01, 0.99);
@@ -196,12 +208,16 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
         itemBuilder: (context, index) {
           final game = widget.games[index];
           final bishopGame = _games[index];
+          final isFlipped = _isBoardFlipped[index];
 
           final boardState = square_bishop.buildSquaresState(
             fen: bishopGame.fen,
           );
 
-          if (boardState?.board == null) {
+          // Create flipped board state if needed
+          final displayState = isFlipped ? boardState?.flipped() : boardState;
+
+          if (displayState?.board == null) {
             return Scaffold(
               appBar: ChessMatchAppBar(
                 title: 'Loading...',
@@ -224,7 +240,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
 
           return Scaffold(
             bottomNavigationBar: ChessBoardBottomNavBar(
-              onFlip: () {},
+              onFlip: () => _flipBoard(index),
+              // Connect flip functionality
               onRightMove: () => _moveForward(index),
               onLeftMove: () => _moveBackward(index),
               onPlayPause: () => _togglePlayPause(index),
@@ -242,12 +259,24 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
             body: SingleChildScrollView(
               child: Column(
                 children: [
-                  // Top player (Black)
+                  // Top player (conditional based on flip state)
                   PlayerFirstRowDetailWidget(
-                    name: game.blackPlayer.name,
-                    firstGmRank: game.blackPlayer.displayTitle,
-                    countryCode: game.blackPlayer.countryCode,
-                    time: game.blackTimeDisplay,
+                    name:
+                        isFlipped
+                            ? game.whitePlayer.name
+                            : game.blackPlayer.name,
+                    firstGmRank:
+                        isFlipped
+                            ? game.whitePlayer.displayTitle
+                            : game.blackPlayer.displayTitle,
+                    countryCode:
+                        isFlipped
+                            ? game.whitePlayer.countryCode
+                            : game.blackPlayer.countryCode,
+                    time:
+                        isFlipped
+                            ? game.whiteTimeDisplay
+                            : game.blackTimeDisplay,
                   ),
 
                   // Chess board with sidebar
@@ -261,13 +290,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
                         margin: EdgeInsets.symmetric(horizontal: 16.sp),
                         child: Row(
                           children: [
-                            // Left sidebar - Evaluation Bar
+                            // Left sidebar - Evaluation Bar (flipped based on board orientation)
                             SizedBox(
                               width: sideBarWidth,
                               height: boardSize,
                               child: Stack(
                                 children: [
-                                  // Black advantage (top)
+                                  // Top advantage (conditional based on flip state)
                                   Align(
                                     alignment: Alignment.topCenter,
                                     child: AnimatedContainer(
@@ -275,11 +304,18 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
                                       curve: Curves.easeInOut,
                                       height:
                                           boardSize *
-                                          _getBlackRatio(_evaluations[index]),
-                                      color: kPopUpColor,
+                                          (isFlipped
+                                              ? _getWhiteRatio(
+                                                _evaluations[index],
+                                              )
+                                              : _getBlackRatio(
+                                                _evaluations[index],
+                                              )),
+                                      color:
+                                          isFlipped ? kWhiteColor : kPopUpColor,
                                     ),
                                   ),
-                                  // White advantage (bottom)
+                                  // Bottom advantage (conditional based on flip state)
                                   Align(
                                     alignment: Alignment.bottomCenter,
                                     child: AnimatedContainer(
@@ -287,8 +323,15 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
                                       curve: Curves.easeInOut,
                                       height:
                                           boardSize *
-                                          _getWhiteRatio(_evaluations[index]),
-                                      color: kWhiteColor,
+                                          (isFlipped
+                                              ? _getBlackRatio(
+                                                _evaluations[index],
+                                              )
+                                              : _getWhiteRatio(
+                                                _evaluations[index],
+                                              )),
+                                      color:
+                                          isFlipped ? kPopUpColor : kWhiteColor,
                                     ),
                                   ),
                                   // Equal/center line
@@ -328,7 +371,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
                                     format: 'png',
                                   ),
                                   playState: PlayState.observing,
-                                  state: boardState!.board,
+                                  state: displayState!.board,
                                 ),
                               ),
                             ),
@@ -337,12 +380,24 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
                       );
                     },
                   ),
-                  // Bottom player (White)
+                  // Bottom player (conditional based on flip state)
                   PlayerFirstRowDetailWidget(
-                    name: game.whitePlayer.name,
-                    firstGmRank: game.whitePlayer.displayTitle,
-                    countryCode: game.whitePlayer.countryCode,
-                    time: game.whiteTimeDisplay,
+                    name:
+                        isFlipped
+                            ? game.blackPlayer.name
+                            : game.whitePlayer.name,
+                    firstGmRank:
+                        isFlipped
+                            ? game.blackPlayer.displayTitle
+                            : game.whitePlayer.displayTitle,
+                    countryCode:
+                        isFlipped
+                            ? game.blackPlayer.countryCode
+                            : game.whitePlayer.countryCode,
+                    time:
+                        isFlipped
+                            ? game.blackTimeDisplay
+                            : game.whiteTimeDisplay,
                   ),
 
                   // Chess moves display
