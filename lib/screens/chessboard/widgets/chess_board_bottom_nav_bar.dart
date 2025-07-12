@@ -40,7 +40,6 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
             ChessBoardBottomNavbar(
               svgPath: SvgAsset.laptop,
               onPressed: () {
-                print('Reset button pressed');
                 onReset();
               },
             ),
@@ -50,7 +49,6 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
               svgPath: isPlaying ? SvgAsset.laptop : SvgAsset.refresh,
               // Use appropriate pause/play icons
               onPressed: () {
-                print('Play/Pause button pressed');
                 onPlayPause();
               },
             ),
@@ -61,7 +59,6 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
               onPressed:
                   currentMove > 0
                       ? () {
-                        print('Previous button pressed');
                         onLeftMove();
                       }
                       : null,
@@ -73,19 +70,13 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
               onPressed:
                   currentMove < totalMoves
                       ? () {
-                        print('Next button pressed');
                         onRightMove();
                       }
                       : null,
             ),
 
             // Chat Button
-            ChessBoardBottomNavbar(
-              svgPath: SvgAsset.chat,
-              onPressed: () {
-                print('Chat button pressed');
-              },
-            ),
+            ChessBoardBottomNavbar(svgPath: SvgAsset.chat, onPressed: () {}),
           ],
         ),
       ),
