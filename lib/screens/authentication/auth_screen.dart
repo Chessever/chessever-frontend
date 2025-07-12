@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/screens/authentication/auth_screen_state.dart';
+import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -101,30 +102,30 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
 
   void _showErrorDialog(String errorMessage) {
     //todo: Error Dialod
-    // showDialog(
-    //   context: context,
-    //   builder:
-    //       (cxt) => AlertDialog(
-    //         backgroundColor: kBackgroundColor,
-    //         title: Text(
-    //           'Sign In Error',
-    //           style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
-    //         ),
-    //         content: Text(
-    //           errorMessage,
-    //           style: AppTypography.textXsMedium.copyWith(color: kRedColor),
-    //         ),
-    //         actions: [
-    //           TextButton(
-    //             onPressed: () {
-    //               Navigator.of(context).pop();
-    //               ref.read(authScreenProvider.notifier).clearError();
-    //             },
-    //             child: const Text('OK'),
-    //           ),
-    //         ],
-    //       ),
-    // );
+    showDialog(
+      context: context,
+      builder:
+          (cxt) => AlertDialog(
+            backgroundColor: kBackgroundColor,
+            title: Text(
+              'Sign In Error',
+              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            ),
+            content: Text(
+              errorMessage,
+              style: AppTypography.textXsMedium.copyWith(color: kRedColor),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  ref.read(authScreenProvider.notifier).clearError();
+                },
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+    );
   }
 }
 
@@ -184,31 +185,9 @@ class _AuthCountryDropdownWidget extends ConsumerWidget {
             Container(
               padding: EdgeInsets.symmetric(horizontal: 48.sp),
               width: MediaQuery.of(context).size.width,
-
-              //todo: Get and Set CountryCode here
-              // child: CountryDropdown(
-              //   selectedCountryCode: 'US',
-              //   onChanged: (countryCode) async {
-              //     await ref
-              //         .read(sharedPreferencesRepository)
-              //         .setString('selected_country_code', countryCode);
-
-              //     ref
-              //         .read(countryDropdownProvider.notifier)
-              //         .selectCountry(countryCode);
-              //     // Hide country selection modal
-              //     notifier.hideCountrySelection();
-
-              //     // Close modal and navigate to home
-              //     Navigator.of(context).pop();
-              //     Navigator.pushReplacementNamed(context, '/home_screen');
-              //   },
-              // ),
               child: CountryDropdown(
                 selectedCountryCode: 'US',
                 onChanged: (Country country) async {
-
-               
                   await ref
                       .read(countryDropdownProvider.notifier)
                       .selectCountry(country.countryCode);
