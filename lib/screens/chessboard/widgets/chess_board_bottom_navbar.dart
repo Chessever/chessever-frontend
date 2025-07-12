@@ -17,10 +17,8 @@ class ChessBoardBottomNavbar extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onPressed,
-      child: SizedBox(
-        width: 24.w,
-        height: 24.h,
-        // padding: EdgeInsets.all(16.sp),
+      child: Container(
+        padding: EdgeInsets.all(8.sp),
         child: SvgWidget(
           svgPath,
           height: 24.h,

@@ -330,8 +330,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
                   Container(
                     padding: EdgeInsets.all(20.sp),
                     child: Wrap(
-                      spacing: 8.sp,
-                      runSpacing: 4.sp,
+                      spacing: 2.sp,
+                      runSpacing: 2.sp,
                       children:
                           _sanMoves[index].asMap().entries.map((entry) {
                             final moveIndex = entry.key;
@@ -339,7 +339,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
                             return Container(
                               padding: EdgeInsets.symmetric(
                                 horizontal: 2.sp,
-                                vertical: 4.sp,
                               ),
                               child: Text(
                                 '${moveIndex + 1}. $move',
