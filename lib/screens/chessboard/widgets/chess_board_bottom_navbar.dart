@@ -3,11 +3,11 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 
-class ChessBoardBottomNavbar extends StatelessWidget {
+class ChessSvgBottomNavbar extends StatelessWidget {
   final String svgPath;
   final VoidCallback? onPressed;
 
-  const ChessBoardBottomNavbar({
+  const ChessSvgBottomNavbar({
     super.key,
     required this.svgPath,
     required this.onPressed,
@@ -28,6 +28,28 @@ class ChessBoardBottomNavbar extends StatelessWidget {
             BlendMode.srcIn,
           ),
         ),
+      ),
+    );
+  }
+}
+
+class ChessIconBottomNavbar extends StatelessWidget {
+  final IconData iconData;
+  final VoidCallback? onPressed;
+
+  const ChessIconBottomNavbar({
+    super.key,
+    required this.iconData,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onPressed,
+      child: Container(
+        padding: EdgeInsets.all(8.sp),
+        child: Icon(iconData, size: 24.ic),
       ),
     );
   }

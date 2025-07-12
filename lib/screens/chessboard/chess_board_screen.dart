@@ -224,6 +224,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
 
           return Scaffold(
             bottomNavigationBar: ChessBoardBottomNavBar(
+              onFlip: () {},
               onRightMove: () => _moveForward(index),
               onLeftMove: () => _moveBackward(index),
               onPlayPause: () => _togglePlayPause(index),
@@ -303,11 +304,29 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
                             ),
 
                             // Chess board
-                            Expanded(
+                            SizedBox(
+                              height: boardSize,
                               child: AbsorbPointer(
                                 child: Board(
                                   size: BoardSize.standard,
-                                  pieceSet: PieceSet.merida(),
+                                  pieceSet: PieceSet.fromImageAssets(
+                                    folder: 'assets/pngs/pieces/',
+                                    symbols: [
+                                      'P',
+                                      'R',
+                                      'N',
+                                      'B',
+                                      'Q',
+                                      'K',
+                                      'P',
+                                      'R',
+                                      'N',
+                                      'B',
+                                      'Q',
+                                      'K',
+                                    ],
+                                    format: 'png',
+                                  ),
                                   playState: PlayState.observing,
                                   state: boardState!.board,
                                 ),
@@ -337,9 +356,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
                             final moveIndex = entry.key;
                             final move = entry.value;
                             return Container(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 2.sp,
-                              ),
+                              padding: EdgeInsets.symmetric(horizontal: 2.sp),
                               child: Text(
                                 '${moveIndex + 1}. $move',
                                 style: AppTypography.textXsMedium.copyWith(
