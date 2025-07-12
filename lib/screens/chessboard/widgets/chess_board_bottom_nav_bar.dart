@@ -10,6 +10,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
   final VoidCallback onRightMove;
   final VoidCallback onPlayPause;
   final VoidCallback onReset;
+  final VoidCallback onFlip;
   final bool isPlaying;
   final int currentMove;
   final int totalMoves;
@@ -20,6 +21,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
     required this.onRightMove,
     required this.onPlayPause,
     required this.onReset,
+    required this.onFlip,
     required this.isPlaying,
     required this.currentMove,
     required this.totalMoves,
@@ -37,16 +39,27 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
             // Reset Game Button
-            ChessBoardBottomNavbar(
+            ChessSvgBottomNavbar(
               svgPath: SvgAsset.laptop,
               onPressed: () {
                 onReset();
               },
             ),
 
+            // Flip Board Button
+            ChessSvgBottomNavbar(
+              svgPath: SvgAsset.refresh,
+              onPressed: () {
+                onFlip();
+              },
+            ),
+
             // Play/Pause Button
-            ChessBoardBottomNavbar(
-              svgPath: isPlaying ? SvgAsset.laptop : SvgAsset.refresh,
+            ChessIconBottomNavbar(
+              iconData:
+                  isPlaying
+                      ? Icons.play_circle_outline
+                      : Icons.pause_circle_outline,
               // Use appropriate pause/play icons
               onPressed: () {
                 onPlayPause();
@@ -54,7 +67,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
             ),
 
             // Previous Move Button
-            ChessBoardBottomNavbar(
+            ChessSvgBottomNavbar(
               svgPath: SvgAsset.left_arrow,
               onPressed:
                   currentMove > 0
@@ -65,7 +78,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
             ),
 
             // Next Move Button
-            ChessBoardBottomNavbar(
+            ChessSvgBottomNavbar(
               svgPath: SvgAsset.right_arrow,
               onPressed:
                   currentMove < totalMoves
@@ -76,7 +89,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
             ),
 
             // Chat Button
-            ChessBoardBottomNavbar(svgPath: SvgAsset.chat, onPressed: () {}),
+            ChessSvgBottomNavbar(svgPath: SvgAsset.chat, onPressed: () {}),
           ],
         ),
       ),
