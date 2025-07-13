@@ -143,4 +143,18 @@ class TourRepository extends BaseRepository {
       };
     });
   }
+
+    // Fetch relevant tournaments as defined by created view
+  Future<List<Tour>> getRelevantTournaments() async {
+      return handleApiCall(() async {
+    final response = await supabase
+      .from('tours_relevant')
+      .select()
+      .order('first_date', ascending: true);
+
+    return (response as List)
+        .map((json) => Tour.fromJson(json))
+        .toList();
+  });
+  }
 }
