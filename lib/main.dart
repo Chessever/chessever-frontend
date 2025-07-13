@@ -3,6 +3,7 @@ import 'package:chessever2/localization/locale_provider.dart';
 import 'package:chessever2/screens/authentication/auth_screen.dart';
 import 'package:chessever2/screens/calendar_detail_screen.dart';
 import 'package:chessever2/screens/authentication/home_screen/home_screen.dart';
+import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/players/player_screen.dart';
 import 'package:chessever2/screens/players/providers/player_providers.dart'; // Added import for player providers
@@ -16,7 +17,9 @@ import 'package:chessever2/screens/tournaments/tournament_screen.dart';
 import 'package:chessever2/screens/calendar_screen.dart';
 import 'package:chessever2/services/notification_service.dart';
 import 'package:chessever2/services/settings_manager.dart';
+import 'package:chessever2/utils/lifecycle_event_handler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/board_color_dialog.dart';
 import 'package:device_preview_plus/device_preview_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -34,7 +37,13 @@ Future<void> main() async {
   await dotenv.load(fileName: ".env");
   WidgetsFlutterBinding.ensureInitialized();
   await NotificationService.initialize();
-
+  WidgetsBinding.instance.addObserver(
+    LifecycleEventHandler(
+      onAppExit: () async {
+        StockfishSingleton().dispose();
+      },
+    ),
+  );
   // Initialize Supabase
   await Supabase.initialize(
     url: dotenv.env['SUPABASE_URL']!,
@@ -115,6 +124,7 @@ class _MyAppState extends ConsumerState<MyApp> {
         '/calendar_detail_screen': (context) => CalendarDetailsScreen(),
         // New route for Score Card
         '/Score_card': (context) => ScoreCard(),
+        '/Board_sheet': (context) => BoardColorDialog(),
       },
     );
   }
