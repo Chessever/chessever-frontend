@@ -18,7 +18,7 @@ class _TourLocalStorage {
 
   Future<void> fetchAndSaveTournament() async {
     try {
-      final tours = await ref.read(tourRepositoryProvider).getTours();
+      final tours = await ref.read(tourRepositoryProvider).getRelevantTournaments();
       final toursEncoded = _encodeMyReelsList(tours);
       await ref
           .read(sharedPreferencesRepository)
