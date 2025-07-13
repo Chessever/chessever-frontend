@@ -1,18 +1,17 @@
 import 'package:chessever2/screens/chessboard/chess_board_screen.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_fen_model.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_widget.dart';
-import 'package:chessever2/screens/tournaments/model/games_tour_model.dart';
 import 'package:chessever2/screens/tournaments/providers/chess_board_visibility_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tournaments/widget/empty_widget.dart';
 import 'package:chessever2/screens/tournaments/widget/game_card.dart';
+import 'package:chessever2/screens/tournaments/widget/notice_dialogs.dart';
+import 'package:chessever2/screens/tournaments/widget/tour_loading_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
-import 'package:chessever2/widgets/skeleton_widget.dart';
-import 'package:chessever2/widgets/svg_widget.dart';
+
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -108,26 +107,11 @@ class GamesTourScreen extends ConsumerWidget {
                                               ),
                                             );
                                           } else {
-                                            showDialog(
+                                            showSimpleDialog(
                                               context: context,
-                                              builder:
-                                                  (_) => AlertDialog(
-                                                    title: const Text(
-                                                      "No PGN Data",
-                                                    ),
-                                                    content: const Text(
-                                                      "This game has no PGN data available.",
-                                                    ),
-                                                    actions: [
-                                                      TextButton(
-                                                        onPressed:
-                                                            () => Navigator.pop(
-                                                              context,
-                                                            ),
-                                                        child: const Text("OK"),
-                                                      ),
-                                                    ],
-                                                  ),
+                                              title: 'No PGN Data',
+                                              message:
+                                                  'This game has no PGN data available.',
                                             );
                                           }
                                         },
@@ -152,87 +136,13 @@ class GamesTourScreen extends ConsumerWidget {
                         );
                       },
                       error: (_, __) => GenericErrorWidget(),
-                      loading: () => _TourLoadingWidget(),
+                      loading: () => TourLoadingWidget(),
                     );
               },
               error: (_, __) => GenericErrorWidget(),
-              loading: () => _TourLoadingWidget(),
+              loading: () => TourLoadingWidget(),
             ),
       ),
-    );
-  }
-}
-
-class _TourLoadingWidget extends StatelessWidget {
-  const _TourLoadingWidget({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final mockPlayer = PlayerCard(
-      name: 'name',
-      federation: 'federation',
-      title: 'title',
-      rating: 0,
-      countryCode: 'USA',
-    );
-    final gamesTourModel = GamesTourModel(
-      gameId: 'gameId',
-      whitePlayer: mockPlayer,
-      blackPlayer: mockPlayer,
-      whiteTimeDisplay: 'whiteTimeDisplay',
-      blackTimeDisplay: 'blackTimeDisplay',
-      gameStatus: GameStatus.whiteWins,
-    );
-
-    final gamesTourModelList = List.generate(8, (_) => gamesTourModel);
-
-    return ListView.builder(
-      scrollDirection: Axis.vertical,
-      padding: EdgeInsets.only(
-        left: 20.sp,
-        right: 20.sp,
-        top: 12.sp,
-        bottom: MediaQuery.of(context).viewPadding.bottom,
-      ),
-      shrinkWrap: true,
-      itemCount: gamesTourModelList.length,
-      itemBuilder: (cxt, index) {
-        return SkeletonWidget(
-          ignoreContainers: true,
-          child: Padding(
-            padding: EdgeInsets.only(bottom: 12.sp),
-            child: GameCard(
-              onTap: () {},
-              gamesTourModel: gamesTourModelList[index],
-              onPinToggle: (game) {},
-              pinnedIds: [],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class EmptyWidget extends StatelessWidget {
-  const EmptyWidget({required this.title, super.key});
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SvgWidget(SvgAsset.infoIcon, height: 24.h, width: 24.w),
-        SizedBox(height: 12.h),
-        Text(
-          title,
-          style: AppTypography.textXsRegular.copyWith(color: kWhiteColor70),
-          textAlign: TextAlign.center,
-        ),
-      ],
     );
   }
 }

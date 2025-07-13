@@ -257,8 +257,8 @@ class _ChessProgressBarState extends State<ChessProgressBar> {
 
       if (_disposed) return;
 
-      print("Starting analysis with depth 10");
-      sf!.stdin = 'go depth 10'; // Reduced depth for faster results
+      print("Starting analysis with depth 2");
+      sf!.stdin = 'go depth 2'; // Reduced depth for faster results
     } catch (e) {
       print('Error starting Stockfish evaluation: $e');
       _timeoutTimer?.cancel();

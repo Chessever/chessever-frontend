@@ -136,10 +136,10 @@ class GameCard extends StatelessWidget {
       barrierDismissible: true,
       barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
       pageBuilder: (
-          BuildContext buildContext,
-          Animation<double> animation,
-          Animation<double> secondaryAnimation,
-          ) {
+        BuildContext buildContext,
+        Animation<double> animation,
+        Animation<double> secondaryAnimation,
+      ) {
         // Position menu at bottom of card + 8 padding
         final double menuTop = cardPosition.dy + 60.h + 24.h + 8.sp;
 
@@ -179,14 +179,14 @@ class GameCard extends StatelessWidget {
                               children: [
                                 SizedBox(
                                   width:
-                                  MediaQuery.of(context).size.width *
+                                      MediaQuery.of(context).size.width *
                                       (30 / 100),
                                   child: _GamesRound(
                                     playerName: gamesTourModel.whitePlayer.name,
                                     playerRank:
-                                    gamesTourModel.whitePlayer.displayTitle,
+                                        gamesTourModel.whitePlayer.displayTitle,
                                     countryCode:
-                                    gamesTourModel.whitePlayer.countryCode,
+                                        gamesTourModel.whitePlayer.countryCode,
                                   ),
                                 ),
                                 Spacer(),
@@ -194,14 +194,14 @@ class GameCard extends StatelessWidget {
                                 Spacer(),
                                 SizedBox(
                                   width:
-                                  MediaQuery.of(context).size.width *
+                                      MediaQuery.of(context).size.width *
                                       (30 / 100),
                                   child: _GamesRound(
                                     playerName: gamesTourModel.blackPlayer.name,
                                     playerRank:
-                                    gamesTourModel.blackPlayer.displayTitle,
+                                        gamesTourModel.blackPlayer.displayTitle,
                                     countryCode:
-                                    gamesTourModel.blackPlayer.countryCode,
+                                        gamesTourModel.blackPlayer.countryCode,
                                   ),
                                 ),
                                 Spacer(),
@@ -291,7 +291,7 @@ class GameCard extends StatelessWidget {
                               },
                               child: Row(
                                 mainAxisAlignment:
-                                MainAxisAlignment.spaceBetween,
+                                    MainAxisAlignment.spaceBetween,
                                 children: [
                                   Expanded(
                                     child: Text(
@@ -324,7 +324,7 @@ class GameCard extends StatelessWidget {
                               },
                               child: Row(
                                 mainAxisAlignment:
-                                MainAxisAlignment.spaceBetween,
+                                    MainAxisAlignment.spaceBetween,
                                 children: [
                                   Expanded(
                                     child: Text(
@@ -360,7 +360,6 @@ class GameCard extends StatelessWidget {
     );
   }
 }
-
 
 class _SelectiveBlurBackground extends StatelessWidget {
   const _SelectiveBlurBackground({
