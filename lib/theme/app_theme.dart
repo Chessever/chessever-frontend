@@ -24,6 +24,7 @@ const Color kBoardColorGrey = Color(0xFF9E9E9E); // Grey
 const Color kBoardColorGreen = Color(0xFFB1D9B0); // Green
 const Color kgradientStartColors = Color(0xFF170116); // Green
 const Color kgradientEndColors = Color(0xFF005B57); // Green
+const Color kLightPink = Color(0xFFf597d0);
 const Color kborderLeftColors = Color(0xFF253135);
 // Add these to your app_theme.dart
 const Color kBoardDarkGreen = Color(0xFFB1D9B0);

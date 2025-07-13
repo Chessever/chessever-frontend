@@ -192,3 +192,13 @@
 -> Implement Swipe feature to go to next gamer or previous game of the tournament,
 -> Fix Google Sign -in for release build
 -> Cleanup chess board code
+
+
+#11 jul
+-> Chessboard add forward and backward move functionality,
+-> Add Play pause game functionality,
+-> Add Flip board functionality,
+-> Use stockfish to evaluate game based on moves,
+-> Display recent moves in the board,
+-> Add lazy loading in the Chess Board View to save resources for stockfish depth-16 evaluation,
+
