@@ -105,8 +105,7 @@ class HamburgerMenu extends StatelessWidget {
                       customIcon: AnalysisBoardIcon(size: 20.ic),
                       title: 'Board',
                       onPressed: () {
-                        Navigator.pop(context); // Close drawer first
-                        // callbacks.onAnalysisBoardPressed();
+                        callbacks.onAnalysisBoardPressed();
                       },
                     ),
                     SizedBox(height: 12.h),

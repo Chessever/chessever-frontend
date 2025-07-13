@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:bishop/bishop.dart' as bishop;
+import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state.dart';
 import 'package:chessever2/screens/tournaments/model/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -16,12 +17,10 @@ final chessBoardScreenProvider = AutoDisposeStateNotifierProvider.family<
 });
 
 class ChessBoardScreenNotifier extends StateNotifier<ChessBoardState> {
-  late Stockfish _stockfish;
+  final Stockfish _stockfish = StockfishSingleton().stockfish;
 
   ChessBoardScreenNotifier(List<GamesTourModel> games)
-    : super(_initializeState(games)) {
-    _stockfish = Stockfish();
-  }
+    : super(_initializeState(games));
 
   static ChessBoardState _initializeState(List<GamesTourModel> games) {
     final bishopGames = List.generate(
@@ -44,6 +43,7 @@ class ChessBoardScreenNotifier extends StateNotifier<ChessBoardState> {
       games: bishopGames,
       allMoves: allMoves,
       sanMoves: sanMoves,
+
       currentMoveIndex: List.filled(games.length, 0),
       isPlaying: List.filled(games.length, false),
       isBoardFlipped: List.filled(games.length, false),
@@ -163,7 +163,7 @@ class ChessBoardScreenNotifier extends StateNotifier<ChessBoardState> {
     if (moveIndex < state.currentMoveIndex[gameIndex] - 1) {
       return kBoardColorDefault;
     }
-    return kDividerColor;
+    return kgradientEndColors;
   }
 
   void pauseGame(int gameIndex) {

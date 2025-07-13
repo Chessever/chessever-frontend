@@ -18,7 +18,19 @@ class _FilterPopupState extends State<FilterPopup> {
   String _selectedType = 'All Types';
   bool _isTypeExpanded = false;
 
-  final List<String> _typeOptions = ['Tournament', 'Match', 'Wins'];
+  final List<String> _typeOptions = [
+    'All Types',
+    'Tournament',
+    'Match',
+    'Wins',
+  ];
+  final List<String> _formatOptions = [
+    'All Formats',
+    'Classical',
+    'Rapid',
+    'Blitz',
+  ];
+
   @override
   Widget build(BuildContext context) {
     // Use fixed dimensions for the popup
@@ -55,215 +67,265 @@ class _FilterPopupState extends State<FilterPopup> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Make the content scrollable
-                    Flexible(
-                      child: SingleChildScrollView(
-                        child: Padding(
-                          padding: EdgeInsets.only(
-                            left: horizontalPadding,
-                            right: horizontalPadding,
-                            top: verticalPadding,
-                            bottom:
-                                0, // Bottom padding handled by SizedBox at the end
+                    // Content without scrolling
+                    Padding(
+                      padding: EdgeInsets.only(
+                        left: horizontalPadding,
+                        right: horizontalPadding,
+                        top: verticalPadding,
+                        bottom: 0,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Tournament Type
+                          Text(
+                            'Tournament Type',
+                            style: AppTypography.textXsMedium.copyWith(
+                              color: kWhiteColor,
+                            ),
                           ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              // Tournament Type
-                              Text(
-                                'Tournament Type',
-                                style: AppTypography.textXsMedium.copyWith(
-                                  color: kWhiteColor,
-                                ),
+                          SizedBox(height: 8.h),
+                          GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _isTypeExpanded = !_isTypeExpanded;
+                                // Close format dropdown when type is opened
+                                if (_isTypeExpanded) {
+                                  _isFormatExpanded = false;
+                                }
+                              });
+                            },
+                            child: Container(
+                              height: 40.h,
+                              decoration: BoxDecoration(
+                                color:
+                                    _isTypeExpanded
+                                        ? kPrimaryColor
+                                        : kBlack2Color,
+                                borderRadius: BorderRadius.circular(8.br),
                               ),
-                              SizedBox(height: 8.h),
-                              GestureDetector(
-                                onTap: () {
-                                  setState(() {
-                                    _isTypeExpanded = !_isTypeExpanded;
-                                  });
-                                },
-                                child: Container(
-                                  height: 40.h,
-                                  decoration: BoxDecoration(
+                              padding: EdgeInsets.symmetric(horizontal: 16.sp),
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    _selectedType,
+                                    style: AppTypography.textXsMedium.copyWith(
+                                      color:
+                                          _isTypeExpanded
+                                              ? kBlackColor
+                                              : kWhiteColor,
+                                    ),
+                                  ),
+                                  Icon(
+                                    _isTypeExpanded
+                                        ? Icons.keyboard_arrow_up
+                                        : Icons.keyboard_arrow_down,
                                     color:
                                         _isTypeExpanded
-                                            ? kPrimaryColor
-                                            : kBlack2Color,
-                                    borderRadius: BorderRadius.circular(8.br),
+                                            ? kBlackColor
+                                            : kWhiteColor,
+                                    size: 24.ic,
                                   ),
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: 16.sp,
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        _selectedType,
-                                        style: AppTypography.textXsMedium
-                                            .copyWith(
-                                              color:
-                                                  _isTypeExpanded
-                                                      ? kBlackColor
-                                                      : kWhiteColor,
-                                            ),
-                                      ),
-                                      Icon(
-                                        _isTypeExpanded
-                                            ? Icons.keyboard_arrow_up
-                                            : Icons.keyboard_arrow_down,
-                                        color:
-                                            _isTypeExpanded
-                                                ? kBlackColor
-                                                : kWhiteColor,
-                                        size: 24.ic,
-                                      ),
-                                    ],
-                                  ),
-                                ),
+                                ],
                               ),
+                            ),
+                          ),
 
-                              // Expanded List
-                              _isTypeExpanded
-                                  ? Container(
-                                    margin: EdgeInsets.only(top: 4.sp),
-                                    decoration: BoxDecoration(
-                                      color: kBlack2Color,
-                                      borderRadius: BorderRadius.circular(8.br),
-                                    ),
-                                    child: Column(
-                                      children:
-                                          _typeOptions.map((type) {
-                                            final isSelected =
-                                                _selectedType == type;
-                                            return Column(
-                                              children: [
-                                                GestureDetector(
-                                                  onTap: () {
-                                                    setState(() {
-                                                      _selectedType = type;
-                                                      _isTypeExpanded =
-                                                          false; // Hide list after selection
-                                                    });
-                                                  },
-                                                  child: Container(
-                                                    height: 40.h,
-                                                    alignment:
-                                                        Alignment.centerLeft,
-                                                    padding:
-                                                        EdgeInsets.symmetric(
-                                                          horizontal: 16.sp,
-                                                        ),
-                                                    decoration: BoxDecoration(
-                                                      color:
-                                                          isSelected
-                                                              ? kDividerColor
-                                                              : Colors
-                                                                  .transparent,
-                                                    ),
-                                                    child: Text(
-                                                      type,
-                                                      style: AppTypography
-                                                          .textXsMedium
-                                                          .copyWith(
-                                                            color: kWhiteColor,
+                          // Expanded List
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            height: _isTypeExpanded ? null : 0,
+                            child:
+                                _isTypeExpanded
+                                    ? Container(
+                                      margin: EdgeInsets.only(top: 4.sp),
+                                      decoration: BoxDecoration(
+                                        color: kBlack2Color,
+                                        borderRadius: BorderRadius.circular(
+                                          8.br,
+                                        ),
+                                      ),
+                                      child: Column(
+                                        children:
+                                            _typeOptions.map((type) {
+                                              final isSelected =
+                                                  _selectedType == type;
+                                              return Column(
+                                                children: [
+                                                  GestureDetector(
+                                                    onTap: () {
+                                                      setState(() {
+                                                        _selectedType = type;
+                                                        _isTypeExpanded = false;
+                                                      });
+                                                    },
+                                                    child: Container(
+                                                      height: 40.h,
+                                                      alignment:
+                                                          Alignment.centerLeft,
+                                                      padding:
+                                                          EdgeInsets.symmetric(
+                                                            horizontal: 16.sp,
                                                           ),
+                                                      decoration: BoxDecoration(
+                                                        color:
+                                                            isSelected
+                                                                ? kDividerColor
+                                                                : Colors
+                                                                    .transparent,
+                                                      ),
+                                                      child: Text(
+                                                        type,
+                                                        style: AppTypography
+                                                            .textXsMedium
+                                                            .copyWith(
+                                                              color:
+                                                                  kWhiteColor,
+                                                            ),
+                                                      ),
                                                     ),
                                                   ),
-                                                ),
-                                                if (type != _typeOptions.last)
-                                                  DividerWidget(),
-                                              ],
-                                            );
-                                          }).toList(),
-                                    ),
-                                  )
-                                  : const SizedBox.shrink(),
+                                                  if (type != _typeOptions.last)
+                                                    DividerWidget(),
+                                                ],
+                                              );
+                                            }).toList(),
+                                      ),
+                                    )
+                                    : const SizedBox.shrink(),
+                          ),
 
-                              // Format
-                              SizedBox(height: 24.h),
-                              Text(
-                                'Format',
-                                style: AppTypography.textXsMedium.copyWith(
-                                  color: kWhiteColor,
-                                ),
+                          // Format
+                          SizedBox(height: 24.h),
+                          Text(
+                            'Format',
+                            style: AppTypography.textXsMedium.copyWith(
+                              color: kWhiteColor,
+                            ),
+                          ),
+                          SizedBox(height: 8.h),
+                          GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _isFormatExpanded = !_isFormatExpanded;
+                                // Close type dropdown when format is opened
+                                if (_isFormatExpanded) {
+                                  _isTypeExpanded = false;
+                                }
+                              });
+                            },
+                            child: Container(
+                              height: 40.h,
+                              decoration: BoxDecoration(
+                                color:
+                                    _isFormatExpanded
+                                        ? kPrimaryColor
+                                        : kBlack2Color,
+                                borderRadius: BorderRadius.circular(8.br),
                               ),
-                              SizedBox(height: 8.h),
-                              GestureDetector(
-                                onTap: () {
-                                  setState(() {
-                                    _isFormatExpanded = !_isFormatExpanded;
-                                  });
-                                },
-                                child: Container(
-                                  height: 40.h,
-                                  decoration: BoxDecoration(
+                              padding: EdgeInsets.symmetric(horizontal: 16.sp),
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    _selectedFormat,
+                                    style: AppTypography.textXsMedium.copyWith(
+                                      color:
+                                          _isFormatExpanded
+                                              ? kBlackColor
+                                              : kWhiteColor,
+                                    ),
+                                  ),
+                                  Icon(
+                                    _isFormatExpanded
+                                        ? Icons.keyboard_arrow_up
+                                        : Icons.keyboard_arrow_down,
                                     color:
                                         _isFormatExpanded
-                                            ? kPrimaryColor
-                                            : kBlack2Color,
-                                    borderRadius: BorderRadius.circular(8.br),
+                                            ? kBlackColor
+                                            : kWhiteColor,
+                                    size: 24.ic,
                                   ),
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: 16.sp,
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        _selectedFormat,
-                                        style: AppTypography.textXsMedium
-                                            .copyWith(
-                                              color:
-                                                  _isFormatExpanded
-                                                      ? kBlackColor
-                                                      : kWhiteColor,
-                                            ),
-                                      ),
-                                      Icon(
-                                        _isFormatExpanded
-                                            ? Icons.keyboard_arrow_up
-                                            : Icons.keyboard_arrow_down,
-                                        color:
-                                            _isFormatExpanded
-                                                ? kBlackColor
-                                                : kWhiteColor,
-                                        size: 24.ic,
-                                      ),
-                                    ],
-                                  ),
-                                ),
+                                ],
                               ),
-                              // Format expansion container - moved outside of the if statement
-                              _isFormatExpanded
-                                  ? Container(
-                                    margin: EdgeInsets.only(
-                                      top: 4.sp,
-                                    ), // Changed from 1px to 4px gap
-                                    decoration: BoxDecoration(
-                                      color: kBlack2Color,
-                                      borderRadius: BorderRadius.circular(8.br),
-                                    ),
-                                    child: Column(
-                                      children: [
-                                        _buildFormatOption('Classical'),
-                                        DividerWidget(),
-                                        _buildFormatOption('Rapid'),
-                                        DividerWidget(),
-                                        _buildFormatOption('Blitz'),
-                                      ],
-                                    ),
-                                  )
-                                  : const SizedBox.shrink(),
-
-                              // Add space at the bottom for padding
-                              SizedBox(height: 16.h),
-                            ],
+                            ),
                           ),
-                        ),
+
+                          // Format expansion container
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            height: _isFormatExpanded ? null : 0,
+                            child:
+                                _isFormatExpanded
+                                    ? Container(
+                                      margin: EdgeInsets.only(top: 4.sp),
+                                      decoration: BoxDecoration(
+                                        color: kBlack2Color,
+                                        borderRadius: BorderRadius.circular(
+                                          8.br,
+                                        ),
+                                      ),
+                                      child: Column(
+                                        children:
+                                            _formatOptions.map((format) {
+                                              final isSelected =
+                                                  _selectedFormat == format;
+                                              return Column(
+                                                children: [
+                                                  GestureDetector(
+                                                    onTap: () {
+                                                      setState(() {
+                                                        _selectedFormat =
+                                                            format;
+                                                        _isFormatExpanded =
+                                                            false;
+                                                      });
+                                                    },
+                                                    child: Container(
+                                                      height: 40.h,
+                                                      alignment:
+                                                          Alignment.centerLeft,
+                                                      padding:
+                                                          EdgeInsets.symmetric(
+                                                            horizontal: 16.sp,
+                                                          ),
+                                                      decoration: BoxDecoration(
+                                                        color:
+                                                            isSelected
+                                                                ? kDividerColor
+                                                                : Colors
+                                                                    .transparent,
+                                                      ),
+                                                      child: Text(
+                                                        format,
+                                                        style: AppTypography
+                                                            .textXsMedium
+                                                            .copyWith(
+                                                              color:
+                                                                  kWhiteColor,
+                                                            ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  if (format !=
+                                                      _formatOptions.last)
+                                                    DividerWidget(),
+                                                ],
+                                              );
+                                            }).toList(),
+                                      ),
+                                    )
+                                    : const SizedBox.shrink(),
+                          ),
+
+                          // Add space at the bottom for padding
+                          SizedBox(height: 16.h),
+                        ],
                       ),
                     ),
 
@@ -282,6 +344,8 @@ class _FilterPopupState extends State<FilterPopup> {
                                 setState(() {
                                   _selectedFormat = 'All Formats';
                                   _selectedType = 'All Types';
+                                  _isFormatExpanded = false;
+                                  _isTypeExpanded = false;
                                 });
                               },
                               style: OutlinedButton.styleFrom(
@@ -339,33 +403,6 @@ class _FilterPopupState extends State<FilterPopup> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildFormatOption(String format) {
-    final bool isSelected = _selectedFormat == format;
-
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _selectedFormat = format;
-          _isFormatExpanded = false;
-        });
-      },
-      child: Container(
-        height: 40.h,
-        // Match height of other inputs
-        padding: EdgeInsets.symmetric(horizontal: 16.sp),
-        // Match other inputs
-        decoration: BoxDecoration(
-          color: isSelected ? kDividerColor : Colors.transparent,
-        ),
-        alignment: Alignment.centerLeft,
-        child: Text(
-          format,
-          style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
-        ),
       ),
     );
   }

@@ -1,4 +1,6 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:bishop/bishop.dart' as bishop;
+import 'package:chessever2/providers/board_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
@@ -53,7 +55,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
   @override
   Widget build(BuildContext context) {
     final chessBoardState = ref.watch(chessBoardScreenProvider(widget.games));
-    final chessBoardNotifier = ref.read(chessBoardScreenProvider(widget.games).notifier);
+    final chessBoardNotifier = ref.read(
+      chessBoardScreenProvider(widget.games).notifier,
+    );
 
     return Scaffold(
       body: PageView.builder(
@@ -94,7 +98,9 @@ class _GamePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isFlipped = state.isBoardFlipped[index];
-    final boardState = square_bishop.buildSquaresState(fen: state.games[index].fen);
+    final boardState = square_bishop.buildSquaresState(
+      fen: state.games[index].fen,
+    );
     final displayState = isFlipped ? boardState?.flipped() : boardState;
 
     if (displayState?.board == null) {
@@ -240,12 +246,14 @@ class _PlayerWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final player = (isTop && !isFlipped) || (!isTop && isFlipped)
-        ? game.blackPlayer
-        : game.whitePlayer;
-    final time = (isTop && !isFlipped) || (!isTop && isFlipped)
-        ? game.blackTimeDisplay
-        : game.whiteTimeDisplay;
+    final player =
+        (isTop && !isFlipped) || (!isTop && isFlipped)
+            ? game.blackPlayer
+            : game.whitePlayer;
+    final time =
+        (isTop && !isFlipped) || (!isTop && isFlipped)
+            ? game.blackTimeDisplay
+            : game.whiteTimeDisplay;
 
     return PlayerFirstRowDetailWidget(
       name: player.name,
@@ -328,7 +336,8 @@ class _EvaluationBar extends StatelessWidget {
             child: AnimatedContainer(
               duration: Duration(milliseconds: 300),
               curve: Curves.easeInOut,
-              height: height *
+              height:
+                  height *
                   (isFlipped
                       ? notifier.getWhiteRatio(state.evaluations[index])
                       : notifier.getBlackRatio(state.evaluations[index])),
@@ -340,7 +349,8 @@ class _EvaluationBar extends StatelessWidget {
             child: AnimatedContainer(
               duration: Duration(milliseconds: 300),
               curve: Curves.easeInOut,
-              height: height *
+              height:
+                  height *
                   (isFlipped
                       ? notifier.getBlackRatio(state.evaluations[index])
                       : notifier.getWhiteRatio(state.evaluations[index])),
@@ -357,17 +367,14 @@ class _EvaluationBar extends StatelessWidget {
   }
 }
 
-class _ChessBoard extends StatelessWidget {
+class _ChessBoard extends ConsumerWidget {
   final double size;
   final dynamic boardState;
 
-  const _ChessBoard({
-    required this.size,
-    required this.boardState,
-  });
+  const _ChessBoard({required this.size, required this.boardState});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return SizedBox(
       height: size,
       child: AbsorbPointer(
@@ -417,19 +424,20 @@ class _MovesDisplay extends StatelessWidget {
       child: Wrap(
         spacing: 2.sp,
         runSpacing: 2.sp,
-        children: state.sanMoves[index].asMap().entries.map((entry) {
-          final moveIndex = entry.key;
-          final move = entry.value;
-          return Container(
-            padding: EdgeInsets.symmetric(horizontal: 2.sp),
-            child: Text(
-              '${moveIndex + 1}. $move',
-              style: AppTypography.textXsMedium.copyWith(
-                color: notifier.getMoveColor(move, moveIndex, index),
-              ),
-            ),
-          );
-        }).toList(),
+        children:
+            state.sanMoves[index].asMap().entries.map((entry) {
+              final moveIndex = entry.key;
+              final move = entry.value;
+              return Container(
+                padding: EdgeInsets.symmetric(horizontal: 2.sp),
+                child: Text(
+                  '${moveIndex + 1}. $move',
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: notifier.getMoveColor(move, moveIndex, index),
+                  ),
+                ),
+              );
+            }).toList(),
       ),
     );
   }
