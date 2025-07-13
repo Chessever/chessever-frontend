@@ -38,7 +38,7 @@ class TournamentScreen extends HookConsumerWidget {
     return FutureBuilder<String?>(
       future: sessionManager.getUserInitials(),
       builder: (context, snapshot) {
-        final initials = snapshot.data ?? '';
+        final data = snapshot.data ?? '';
 
         return RefreshIndicator(
           onRefresh: ref.read(homeScreenProvider).onPullRefresh,
@@ -61,7 +61,7 @@ class TournamentScreen extends HookConsumerWidget {
                   child: Hero(
                     tag: 'search_bar',
                     child: RoundedSearchBar(
-                      profileInitials: initials,
+                      profileInitials: data,
                       controller: searchController,
                       hintText: 'Search tournaments or players',
                       onChanged: (value) {

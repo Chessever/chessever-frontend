@@ -1,5 +1,6 @@
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
 import 'package:chessever2/screens/players/player_screen.dart';
+import 'package:chessever2/widgets/board_settings_dialog.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:chessever2/screens/calendar_screen.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen.dart';
@@ -47,14 +48,7 @@ class HomeScreen extends ConsumerWidget {
               Navigator.pushNamed(context, '/countryman_screen');
             }
           },
-          onAnalysisBoardPressed: () {
-            // Navigate to analysis board
-            // Navigator.pushNamed(context, '/analysisBoard');
-            // Navigator.push(
-            //   context,
-            //   MaterialPageRoute(builder: (context) => const ChessScreen()),
-            // );
-          },
+          onAnalysisBoardPressed: () {},
           onSupportPressed: () {
             // Handle support action
             // e.g., open support form or chat

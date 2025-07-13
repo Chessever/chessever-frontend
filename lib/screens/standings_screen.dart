@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/tournaments/games_tour_screen.dart';
+import 'package:chessever2/screens/tournaments/widget/empty_widget.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';

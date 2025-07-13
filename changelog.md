@@ -202,3 +202,8 @@
 -> Display recent moves in the board,
 -> Add lazy loading in the Chess Board View to save resources for stockfish depth-16 evaluation,
 
+#13
+-> Fix GameStourScreen board to display custom png icons set
+-> Cleanup GamesTourScreen
+
+

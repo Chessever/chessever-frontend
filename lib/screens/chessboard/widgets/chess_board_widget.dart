@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
+import 'package:chessever2/screens/chessboard/ChessBoardScreen.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_fen_model.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_second_row_detail_widget.dart';
@@ -45,24 +46,20 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFEN> {
       child: InkWell(
         onTap: () {
           if (widget.chessBoardFenModel.status != '*') {
-            Navigator.pushNamed(
-              context,
-              '/chess_screen',
-              arguments: {
-                'gmName': widget.chessBoardFenModel.gmName,
-                'gmSecondName': widget.chessBoardFenModel.gmSecondName,
-                'fen': widget.chessBoardFenModel.fen,
-                'firstGmCountryCode':
-                    widget.chessBoardFenModel.firstGmCountryCode,
-                'secondGmCountryCode':
-                    widget.chessBoardFenModel.secondGmCountryCode,
-                'firstGmTime': widget.chessBoardFenModel.firstGmTime,
-                'secondGmTime': widget.chessBoardFenModel.secondGmTime,
-                'firstGmRank': widget.chessBoardFenModel.firstGmRank,
-                'secongGmRank': widget.chessBoardFenModel.secondGmRank,
-                'pgn': widget.chessBoardFenModel.pgn,
-              },
-            );
+            // Navigator.push(
+            //   context,
+            //   MaterialPageRoute(
+            //     builder:
+            //         (_) => ChessBoardScreen(
+            //           currentIndex: index,
+            //           games: [
+            //             ChessBoardFenModel.fromGamesTourModel(
+            //               data.gamesTourModels[index],
+            //             ),
+            //           ],
+            //         ),
+            //   ),
+            // );
           } else {
             showDialog(
               context: context,
@@ -105,11 +102,28 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFEN> {
                   // Main Board area
                   Expanded(
                     child: Container(
-                      color: Colors.transparent, // Avoid any blur/overlay
+                      color: Colors.transparent,
                       child: AbsorbPointer(
                         child: Board(
                           size: BoardSize.standard,
-                          pieceSet: PieceSet.merida(),
+                          pieceSet: PieceSet.fromImageAssets(
+                            folder: 'assets/pngs/pieces/',
+                            symbols: [
+                              'P',
+                              'R',
+                              'N',
+                              'B',
+                              'Q',
+                              'K',
+                              'P',
+                              'R',
+                              'N',
+                              'B',
+                              'Q',
+                              'K',
+                            ],
+                            format: 'png',
+                          ),
                           playState: PlayState.observing,
                           state: boardState,
                         ),
