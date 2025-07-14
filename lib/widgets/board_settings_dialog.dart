@@ -21,9 +21,7 @@ class BoardSettingsDialog extends ConsumerWidget {
       child: Stack(
         children: [
           // Backdrop filter for blur effect
-          Positioned.fill(
-            child: BlurBackground(),
-          ),
+          Positioned.fill(child: BlurBackground()),
           // Dialog content
           Dialog(
             backgroundColor: Colors.transparent,
@@ -54,10 +52,7 @@ class BoardSettingsDialog extends ConsumerWidget {
                       icon: Icons.palette_outlined,
                       title: 'Set board colour',
                       onPressed: () {
-                        Navigator.pop(
-                          context,
-                        ); // Close the current dialog first
-                        BoardColorBottomSheet.show(context);
+                        BoardColorDialog();
                       },
                       showChevron: false,
                     ),

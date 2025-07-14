@@ -295,9 +295,7 @@ class GameCard extends StatelessWidget {
                                 children: [
                                   Expanded(
                                     child: Text(
-                                      isPinned
-                                          ? "Unpin from Top"
-                                          : "Pin to Top",
+                                      isPinned ? "Unpin" : "Pin to Top",
                                       style: AppTypography.textXsMedium
                                           .copyWith(color: kWhiteColor),
                                     ),
