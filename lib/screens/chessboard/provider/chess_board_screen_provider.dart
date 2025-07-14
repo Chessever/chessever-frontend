@@ -7,6 +7,8 @@ import 'package:chessever2/screens/tournaments/model/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:stockfish/stockfish.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:developer' as developer;
 
 final chessBoardScreenProvider = AutoDisposeStateNotifierProvider.family<
   ChessBoardScreenNotifier,
@@ -17,10 +19,36 @@ final chessBoardScreenProvider = AutoDisposeStateNotifierProvider.family<
 });
 
 class ChessBoardScreenNotifier extends StateNotifier<ChessBoardState> {
+  RealtimeChannel? sub;
   final Stockfish _stockfish = StockfishSingleton().stockfish;
 
   ChessBoardScreenNotifier(List<GamesTourModel> games)
-    : super(_initializeState(games));
+    : super(_initializeState(games)) {
+    print(' Initializing ChessBoardScreenNotifier with ${games.length} games');
+
+    sub = Supabase.instance.client
+        .channel('live-games-${DateTime.now().millisecondsSinceEpoch}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'games',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'status',
+            value: '*',
+          ),
+          callback: (payload) => _handleUpdate(payload),
+        )
+        .subscribe((status, [error]) {
+          print('Subscription status: $status');
+
+          if (error != null) {
+            print(' Subscription error: $error');
+          } else if (status == RealtimeSubscribeStatus.subscribed) {
+            print('Successfully subscribed to live games updates');
+          }
+        });
+  }
 
   static ChessBoardState _initializeState(List<GamesTourModel> games) {
     final bishopGames = List.generate(
@@ -53,6 +81,42 @@ class ChessBoardScreenNotifier extends StateNotifier<ChessBoardState> {
 
   static String _cleanPgnData(String pgn) {
     return pgn.replaceAll(RegExp(r'^\[Variant.*\r?\n', multiLine: true), '');
+  }
+
+  void _handleUpdate(PostgresChangePayload payload) {
+    final gameId = payload.newRecord?['id']?.toString();
+    final newPgn = payload.newRecord?['pgn']?.toString();
+    if (gameId == null || newPgn == null) return;
+
+    final index = state.games.indexWhere(
+      (g) => g.hashCode.toString() == gameId,
+    );
+    if (index == -1) return;
+
+    try {
+      final newGame = bishop.Game.fromPgn(_cleanPgnData(newPgn));
+      while (newGame.canUndo) newGame.undo();
+
+      final games = [...state.games];
+      final allMoves = [...state.allMoves];
+      final sanMoves = [...state.sanMoves];
+      final currentMoveIndex = [...state.currentMoveIndex];
+
+      games[index] = newGame;
+      allMoves[index] = newGame.moveHistoryAlgebraic;
+      sanMoves[index] = newGame.moveHistorySan;
+      currentMoveIndex[index] = 0;
+
+      state = state.copyWith(
+        games: games,
+        allMoves: allMoves,
+        sanMoves: sanMoves,
+        currentMoveIndex: currentMoveIndex,
+      );
+      _updateEvaluation(index);
+    } catch (e) {
+      print('Update error: $e');
+    }
   }
 
   void moveForward(int gameIndex) {
