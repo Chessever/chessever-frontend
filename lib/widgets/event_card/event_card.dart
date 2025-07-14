@@ -10,7 +10,7 @@ import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-class EventCard extends StatelessWidget {
+class EventCard extends ConsumerWidget {
   final TourEventCardModel tourEventCardModel;
   final VoidCallback? onTap;
   final bool isFavorite;
@@ -27,7 +27,7 @@ class EventCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -90,10 +90,6 @@ class EventCard extends StatelessWidget {
                             TextSpan(text: tourEventCardModel.dates),
                             _buildDot(),
                             TextSpan(text: tourEventCardModel.location),
-                            _buildDot(),
-                            TextSpan(
-                              text: "${tourEventCardModel.playerCount} players",
-                            ),
                             _buildDot(),
                             TextSpan(text: "ELO ${tourEventCardModel.elo}"),
                           ],

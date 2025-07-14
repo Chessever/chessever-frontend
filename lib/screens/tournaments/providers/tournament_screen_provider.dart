@@ -77,6 +77,24 @@ class _TournamentScreenController
       print(error);
     }
   }
+  Future<void> loadTourFormats() async {
+    try {
+      final tours = await ref.read(tourLocalStorageProvider).getTours();
+
+      // Extract formats and get unique ones
+      final formats = tours
+          .map((tour) => tour.info.format) // assuming `format` is a String
+          .whereType<String>()        // filters out nulls
+          .toSet()                    // makes it unique
+          .toList();
+
+      // Do something with the formats
+      print("Tour Formats: $formats");
+
+    } catch (error) {
+      print("Error loading tour formats: $error");
+    }
+  }
 
   Future<void> onRefresh() async {
     try {
