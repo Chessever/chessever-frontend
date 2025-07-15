@@ -1,5 +1,4 @@
 import 'dart:convert';
-
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
@@ -156,7 +155,7 @@ class _GamesLocalStorage {
         // Search in notable players (lower weight)
         final playerTitle = game.players?.map((e) => e.title) ?? <String>[];
         for (final title in playerTitle) {
-          final titleLower = title.toLowerCase();
+          final titleLower = title!.toLowerCase();
           if (titleLower.contains(queryLower)) {
             if (titleLower.startsWith(queryLower)) {
               score += 20.0;
@@ -209,3 +208,5 @@ String _encoder(Games games) => json.encode(games.toJson());
 
 Map<String, dynamic> _decoder(String gameString) =>
     json.decode(gameString) as Map<String, dynamic>;
+
+

@@ -1,5 +1,4 @@
 import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
-import 'package:chessever2/screens/chessboard/ChessBoardScreen.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_fen_model.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_second_row_detail_widget.dart';
