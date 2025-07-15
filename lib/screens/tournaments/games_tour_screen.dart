@@ -6,12 +6,10 @@ import 'package:chessever2/screens/tournaments/providers/games_app_bar_provider.
 import 'package:chessever2/screens/tournaments/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/widget/empty_widget.dart';
 import 'package:chessever2/screens/tournaments/widget/game_card.dart';
-import 'package:chessever2/screens/tournaments/widget/notice_dialogs.dart';
 import 'package:chessever2/screens/tournaments/widget/tour_loading_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
-
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -91,29 +89,16 @@ class GamesTourScreen extends ConsumerWidget {
                                       padding: EdgeInsets.only(bottom: 12.sp),
                                       child: GameCard(
                                         onTap: () {
-                                          if (data
-                                                  .gamesTourModels[index]
-                                                  .gameStatus
-                                                  .displayText !=
-                                              '*') {
-                                            Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder:
-                                                    (_) => ChessBoardScreen(
-                                                      data.gamesTourModels,
-                                                      currentIndex: index,
-                                                    ),
-                                              ),
-                                            );
-                                          } else {
-                                            showSimpleDialog(
-                                              context: context,
-                                              title: 'No PGN Data',
-                                              message:
-                                                  'This game has no PGN data available.',
-                                            );
-                                          }
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder:
+                                                  (_) => ChessBoardScreen(
+                                                    data.gamesTourModels,
+                                                    currentIndex: index,
+                                                  ),
+                                            ),
+                                          );
                                         },
                                         gamesTourModel: game,
                                         pinnedIds: data.pinnedGamedIs,

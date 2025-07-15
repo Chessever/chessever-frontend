@@ -128,7 +128,7 @@ enum GameStatus {
       case GameStatus.draw:
         return '½-½';
       case GameStatus.ongoing:
-        return 'Live';
+        return '*';
       case GameStatus.unknown:
         return '';
     }

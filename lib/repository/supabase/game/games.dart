@@ -1,4 +1,5 @@
-// models/game.dart
+import 'dart:convert';
+
 class Games {
   final String id;
   final String roundId;
@@ -12,7 +13,7 @@ class Games {
   final int? thinkTime;
   final String? status;
   final String? pgn;
-  final List<String>? search;
+  final List<SearchGame>? search;
 
   Games({
     required this.id,
@@ -54,9 +55,52 @@ class Games {
               : null,
       status: json['status'] as String?,
       pgn: json['pgn'] as String?,
-      search:
-          (json['search'] as List<dynamic>?)?.map((e) => e as String).toList(),
+      search: _parseSearchField(json['search']),
     );
+  }
+
+  static List<SearchGame>? _parseSearchField(dynamic searchField) {
+    if (searchField == null) return null;
+
+    try {
+      final searchList = searchField as List;
+
+      // Handle case where search contains strings (your format)
+      if (searchList.isNotEmpty && searchList.first is String) {
+        // Group every 3 strings into one SearchGame
+        final List<SearchGame> searchGames = [];
+
+        for (int i = 0; i < searchList.length; i += 3) {
+          if (i + 2 < searchList.length) {
+            try {
+              final gameData = [
+                searchList[i] as String,
+                searchList[i + 1] as String,
+                searchList[i + 2] as String,
+              ];
+              searchGames.add(SearchGame.fromStringList(gameData));
+            } catch (e) {
+              print('Error parsing search game at index $i: $e');
+              continue; // Skip this game and continue with next
+            }
+          }
+        }
+        return searchGames.isNotEmpty ? searchGames : null;
+      }
+      // Handle case where search contains objects
+      else if (searchList.isNotEmpty && searchList.first is Map) {
+        return searchList
+            .map(
+              (search) =>
+                  SearchGame.fromJsonMap(search as Map<String, dynamic>),
+            )
+            .toList();
+      }
+    } catch (e) {
+      print('Error parsing search field: $e');
+    }
+
+    return null;
   }
 
   Map<String, dynamic> toJson() {
@@ -66,66 +110,111 @@ class Games {
       'round_slug': roundSlug,
       'tour_id': tourId,
       'tour_slug': tourSlug,
-      'name': name,
-      'fen': fen,
-      'players': players?.map((player) => player.toJson()).toList(),
-      'last_move': lastMove,
-      'think_time': thinkTime,
-      'status': status,
-      'pgn': pgn,
-      'search': search,
+      if (name != null) 'name': name,
+      if (fen != null) 'fen': fen,
+      if (players != null) 'players': players!.map((p) => p.toJson()).toList(),
+      if (lastMove != null) 'last_move': lastMove,
+      if (thinkTime != null) 'think_time': thinkTime,
+      if (status != null) 'status': status,
+      if (pgn != null) 'pgn': pgn,
+      if (search != null) 'search': search!.map((s) => s.toJson()).toList(),
     };
   }
 }
 
-// models/player.dart
-class Player {
-  final String fed;
-  final String name;
-  final int clock;
-  final String title;
-  final int fideId;
-  final int rating;
+class SearchGame {
+  final Player whitePlayer;
+  final Player blackPlayer;
+  final String gameTitle;
 
-  Player({
-    required this.fed,
-    required this.name,
-    required this.clock,
-    required this.title,
-    required this.fideId,
-    required this.rating,
+  SearchGame({
+    required this.whitePlayer,
+    required this.blackPlayer,
+    required this.gameTitle,
   });
 
-  factory Player.fromJson(Map<String, dynamic> json) {
-    try {
-      return Player(
-        fed: json['fed'] as String,
-        name: json['name'] as String,
-        clock: (json['clock'] as num).toInt(),
-        title: json['title'] as String,
-        fideId: (json['fideId'] as num).toInt(),
-        rating: (json['rating'] as num).toInt(),
-      );
-    } catch (error, _) {
-      return Player(
-        fed: json['fed'] as String? ?? '',
-        name: json['name'] as String? ?? '',
-        clock: (json['clock'] as num?)?.toInt() ?? 0,
-        title: json['title'] as String? ?? '',
-        fideId: (json['fideId'] as num?)?.toInt() ?? 0,
-        rating: (json['rating'] as num?)?.toInt() ?? 0,
+  // For string list format: ["player1_json", "player2_json", "game_title"]
+  factory SearchGame.fromStringList(List<String> jsonList) {
+    if (jsonList.length != 3) {
+      throw ArgumentError(
+        'Expected 3 elements in the list, got ${jsonList.length}',
       );
     }
+
+    return SearchGame(
+      whitePlayer: Player.fromJsonString(jsonList[0]),
+      blackPlayer: Player.fromJsonString(jsonList[1]),
+      gameTitle: jsonList[2],
+    );
+  }
+
+  // For object format: {"whitePlayer": {...}, "blackPlayer": {...}, "gameTitle": "..."}
+  factory SearchGame.fromJsonMap(Map<String, dynamic> json) {
+    return SearchGame(
+      whitePlayer: Player.fromJson(json['whitePlayer'] as Map<String, dynamic>),
+      blackPlayer: Player.fromJson(json['blackPlayer'] as Map<String, dynamic>),
+      gameTitle: json['gameTitle'] as String,
+    );
   }
 
   Map<String, dynamic> toJson() {
     return {
-      'fed': fed,
-      'name': name,
-      'clock': clock,
-      'title': title,
-      'fideId': fideId,
-      'rating': rating,
+      'whitePlayer': whitePlayer.toJson(),
+      'blackPlayer': blackPlayer.toJson(),
+      'gameTitle': gameTitle,
     };
   }
+}
+
+class Player {
+  final String name;
+  final String title;
+  final int rating;
+  final int fideId;
+  final String fed;
+  final int clock;
+
+  Player({
+    required this.name,
+    required this.title,
+    required this.rating,
+    required this.fideId,
+    required this.fed,
+    required this.clock,
+  });
+
+  factory Player.fromJsonString(String jsonString) {
+    try {
+      final Map<String, dynamic> json = jsonDecode(jsonString);
+      return Player.fromJson(json);
+    } catch (e) {
+      throw FormatException(
+        'Invalid JSON string for Player: $jsonString. Error: $e',
+      );
+    }
+  }
+
+  factory Player.fromJson(Map<String, dynamic> json) {
+    return Player(
+      name: json['name'] as String? ?? '',
+      title: json['title'] as String? ?? '',
+      rating: (json['rating'] as num?)?.toInt() ?? 0,
+      fideId: (json['fideId'] as num?)?.toInt() ?? 0,
+      fed: json['fed'] as String? ?? '',
+      clock: (json['clock'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      if (title != null) 'title': title,
+      'rating': rating,
+      'fideId': fideId,
+      'fed': fed,
+      'clock': clock,
+    };
+  }
+
+  String get displayName => title != null ? '$title $name' : name;
 }
