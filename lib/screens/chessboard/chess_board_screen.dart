@@ -1,6 +1,4 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:bishop/bishop.dart' as bishop;
-import 'package:chessever2/providers/board_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
@@ -189,7 +187,6 @@ class _AppBar extends StatelessWidget implements PreferredSizeWidget {
       onBackPressed: () => Navigator.pop(context),
       onSettingsPressed: () {},
       onMoreOptionsPressed: () {},
-      
     );
   }
 

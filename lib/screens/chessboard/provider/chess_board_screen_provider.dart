@@ -8,56 +8,224 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:stockfish/stockfish.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'dart:developer' as developer;
 
 final chessBoardScreenProvider = AutoDisposeStateNotifierProvider.family<
-  ChessBoardScreenNotifier,
-  ChessBoardState,
-  List<GamesTourModel>
+    ChessBoardScreenNotifier,
+    ChessBoardState,
+    List<GamesTourModel>
 >((ref, games) {
   return ChessBoardScreenNotifier(games);
 });
 
 class ChessBoardScreenNotifier extends StateNotifier<ChessBoardState> {
-  RealtimeChannel? sub;
+  RealtimeChannel? _currentSubscription;
   final Stockfish _stockfish = StockfishSingleton().stockfish;
+  String? _currentlySubscribedGameId;
+  int _updateCount = 0;
 
   ChessBoardScreenNotifier(List<GamesTourModel> games)
-    : super(_initializeState(games)) {
-    print(' Initializing ChessBoardScreenNotifier with ${games.length} games');
+      : super(_initializeState(games)) {
+    print('Initializing ChessBoardScreenNotifier with ${games.length} games');
+    print("pgn data: ${games.map((g) => g.pgn).join('\n')}");
+  }
 
-    sub = Supabase.instance.client
-        .channel('live-games-${DateTime.now().millisecondsSinceEpoch}')
+  /// Subscribe to updates for a specific game
+  void subscribeToGame(int gameIndex) {
+    if (gameIndex < 0 || gameIndex >= state.games.length) {
+      print('Invalid game index: $gameIndex');
+      return;
+    }
+
+    final game = state.games[gameIndex];
+    final gameId = _getGameId(gameIndex);
+
+    if (gameId == null) {
+      print('No game ID found for index $gameIndex');
+      return;
+    }
+
+    // Don't resubscribe if already subscribed to this game
+    if (_currentlySubscribedGameId == gameId) {
+      print('Already subscribed to game $gameId');
+      return;
+    }
+
+    // Unsubscribe from previous game
+    _unsubscribeFromCurrentGame();
+
+    print('Subscribing to game $gameId at index $gameIndex');
+
+    _currentSubscription = Supabase.instance.client
+        .channel('live-game-$gameId')
         .onPostgresChanges(
-          event: PostgresChangeEvent.update,
-          schema: 'public',
-          table: 'games',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'status',
-            value: '*',
-          ),
-          callback: (payload) => _handleUpdate(payload),
-        )
+      event: PostgresChangeEvent.update,
+      schema: 'public',
+      table: 'games',
+      filter: PostgresChangeFilter(
+        type: PostgresChangeFilterType.eq,
+        column: 'id',
+        value: gameId,
+      ),
+      callback: (payload) => _handleGameUpdate(payload, gameIndex),
+    )
         .subscribe((status, [error]) {
-          print('Subscription status: $status');
+      _handleSubscriptionStatus(status, error, gameId);
+    });
 
-          if (error != null) {
-            print(' Subscription error: $error');
-          } else if (status == RealtimeSubscribeStatus.subscribed) {
-            print('Successfully subscribed to live games updates');
-          }
-        });
+    _currentlySubscribedGameId = gameId;
+
+    // Update state to reflect subscription status
+    state = state.copyWith(
+      subscriptionStatus:  RealtimeSubscribeStatus.timedOut,
+      isConnected: false,
+      lastError: null,
+    );
+  }
+
+  /// Unsubscribe from current game
+  void _unsubscribeFromCurrentGame() {
+    if (_currentSubscription != null) {
+      print('Unsubscribing from game $_currentlySubscribedGameId');
+      _currentSubscription!.unsubscribe();
+      _currentSubscription = null;
+      _currentlySubscribedGameId = null;
+    }
+  }
+
+  /// Handle subscription status changes
+  void _handleSubscriptionStatus(RealtimeSubscribeStatus status, Object? error, String gameId) {
+    print('Subscription status for game $gameId: $status');
+
+    if (error != null) {
+      print('Subscription error for game $gameId: $error');
+      state = state.copyWith(
+        subscriptionStatus: RealtimeSubscribeStatus.channelError,
+        isConnected: false,
+        lastError: error.toString(),
+      );
+    } else {
+      switch (status) {
+        case RealtimeSubscribeStatus.subscribed:
+          print('Successfully subscribed to game $gameId updates');
+          state = state.copyWith(
+            subscriptionStatus:  RealtimeSubscribeStatus.subscribed,
+            isConnected: true,
+            lastError: null,
+          );
+          break;
+        case RealtimeSubscribeStatus.timedOut:
+          print('Subscription timed out for game $gameId');
+          state = state.copyWith(
+            subscriptionStatus: RealtimeSubscribeStatus.timedOut,
+            isConnected: false,
+            lastError: 'Subscription timed out',
+          );
+          break;
+        case RealtimeSubscribeStatus.closed:
+          print('Subscription closed for game $gameId');
+          state = state.copyWith(
+            subscriptionStatus: RealtimeSubscribeStatus.closed,
+            isConnected: false,
+            lastError: null,
+          );
+          break;
+        case RealtimeSubscribeStatus.channelError:
+          print('Channel error for game $gameId');
+          state = state.copyWith(
+            subscriptionStatus: RealtimeSubscribeStatus.channelError,
+            isConnected: false,
+            lastError: 'Channel error',
+          );
+          break;
+      }
+    }
+  }
+
+  /// Handle game update from Supabase
+  void _handleGameUpdate(PostgresChangePayload payload, int gameIndex) {
+    print('Update #${++_updateCount}: Received update for game at index $gameIndex');
+    print('Payload: ${payload.newRecord}');
+
+    final newPgn = payload.newRecord['pgn']?.toString();
+    final newStatus = payload.newRecord['status']?.toString();
+    final newFen = payload.newRecord['fen']?.toString();
+
+    if (newPgn == null) {
+      print('No PGN data in update');
+      return;
+    }
+
+    try {
+      // Parse the new game state
+      final newGame = bishop.Game.fromPgn(_cleanPgnData(newPgn));
+
+      // Reset to starting position to rebuild move history
+      while (newGame.canUndo) {
+        newGame.undo();
+      }
+
+      // Update the game state
+      final games = [...state.games];
+      final allMoves = [...state.allMoves];
+      final sanMoves = [...state.sanMoves];
+      final currentMoveIndex = [...state.currentMoveIndex];
+
+      games[gameIndex] = newGame;
+      allMoves[gameIndex] = newGame.moveHistoryAlgebraic;
+      sanMoves[gameIndex] = newGame.moveHistorySan;
+
+      // If game is auto-playing, maintain current position
+      // Otherwise, go to the latest move
+      if (!state.isPlaying[gameIndex]) {
+        currentMoveIndex[gameIndex] = allMoves[gameIndex].length;
+
+        // Apply all moves to show current position
+        for (int i = 0; i < allMoves[gameIndex].length; i++) {
+          games[gameIndex].makeMoveString(allMoves[gameIndex][i]);
+        }
+      }
+
+      state = state.copyWith(
+        games: games,
+        allMoves: allMoves,
+        sanMoves: sanMoves,
+        currentMoveIndex: currentMoveIndex,
+        lastUpdatedGameIndex: gameIndex,
+        lastUpdateTime: DateTime.now(),
+      );
+
+      // Update evaluation for the current position
+      _updateEvaluation(gameIndex);
+
+      print('Game updated successfully: ${allMoves[gameIndex].length} moves');
+      print('Current move index: ${currentMoveIndex[gameIndex]}');
+
+    } catch (e) {
+      print('Error updating game: $e');
+      state = state.copyWith(
+        lastError: 'Failed to update game: $e',
+      );
+    }
+  }
+
+  /// Get game ID from the game at the specified index
+  String? _getGameId(int gameIndex) {
+    if (gameIndex >= 0 && gameIndex < state.games.length) {
+      // You'll need to store the original GamesTourModel to get the ID
+      // For now, we'll assume you have a way to get the game ID
+      // This might need to be passed differently or stored in state
+      return "game_${gameIndex}_id"; // Replace with actual game ID logic
+    }
+    return null;
   }
 
   static ChessBoardState _initializeState(List<GamesTourModel> games) {
     final bishopGames = List.generate(
       games.length,
-      (index) => bishop.Game.fromPgn(_cleanPgnData(games[index].pgn ?? '')),
+          (index) => bishop.Game.fromPgn(_cleanPgnData(games[index].pgn ?? '')),
     );
 
-    final allMoves =
-        bishopGames.map((game) => game.moveHistoryAlgebraic).toList();
+    final allMoves = bishopGames.map((game) => game.moveHistoryAlgebraic).toList();
     final sanMoves = bishopGames.map((game) => game.moveHistorySan).toList();
 
     // Reset games to starting position
@@ -71,52 +239,20 @@ class ChessBoardScreenNotifier extends StateNotifier<ChessBoardState> {
       games: bishopGames,
       allMoves: allMoves,
       sanMoves: sanMoves,
-
       currentMoveIndex: List.filled(games.length, 0),
       isPlaying: List.filled(games.length, false),
       isBoardFlipped: List.filled(games.length, false),
       evaluations: List.filled(games.length, 0.0),
+      subscriptionStatus: null,
+      isConnected: false,
+      lastError: null,
+      lastUpdatedGameIndex: null,
+      lastUpdateTime: null,
     );
   }
 
   static String _cleanPgnData(String pgn) {
     return pgn.replaceAll(RegExp(r'^\[Variant.*\r?\n', multiLine: true), '');
-  }
-
-  void _handleUpdate(PostgresChangePayload payload) {
-    final gameId = payload.newRecord?['id']?.toString();
-    final newPgn = payload.newRecord?['pgn']?.toString();
-    if (gameId == null || newPgn == null) return;
-
-    final index = state.games.indexWhere(
-      (g) => g.hashCode.toString() == gameId,
-    );
-    if (index == -1) return;
-
-    try {
-      final newGame = bishop.Game.fromPgn(_cleanPgnData(newPgn));
-      while (newGame.canUndo) newGame.undo();
-
-      final games = [...state.games];
-      final allMoves = [...state.allMoves];
-      final sanMoves = [...state.sanMoves];
-      final currentMoveIndex = [...state.currentMoveIndex];
-
-      games[index] = newGame;
-      allMoves[index] = newGame.moveHistoryAlgebraic;
-      sanMoves[index] = newGame.moveHistorySan;
-      currentMoveIndex[index] = 0;
-
-      state = state.copyWith(
-        games: games,
-        allMoves: allMoves,
-        sanMoves: sanMoves,
-        currentMoveIndex: currentMoveIndex,
-      );
-      _updateEvaluation(index);
-    } catch (e) {
-      print('Update error: $e');
-    }
   }
 
   void moveForward(int gameIndex) {
@@ -147,8 +283,7 @@ class ChessBoardScreenNotifier extends StateNotifier<ChessBoardState> {
 
     if (newIsPlaying[gameIndex]) {
       final timer = Timer.periodic(Duration(seconds: 1), (timer) {
-        if (state.currentMoveIndex[gameIndex] <
-            state.allMoves[gameIndex].length) {
+        if (state.currentMoveIndex[gameIndex] < state.allMoves[gameIndex].length) {
           moveForward(gameIndex);
         } else {
           final stopPlaying = [...state.isPlaying];
@@ -242,6 +377,7 @@ class ChessBoardScreenNotifier extends StateNotifier<ChessBoardState> {
   @override
   void dispose() {
     state.autoPlayTimer?.cancel();
+    _unsubscribeFromCurrentGame();
     _stockfish.dispose();
     super.dispose();
   }
