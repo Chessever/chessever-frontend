@@ -9,6 +9,7 @@ class PlayerFirstRowDetailWidget extends StatelessWidget {
   final String firstGmRank;
   final String time;
   final String countryCode;
+
   const PlayerFirstRowDetailWidget({
     super.key,
     required this.name,
@@ -22,7 +23,7 @@ class PlayerFirstRowDetailWidget extends StatelessWidget {
     return Row(
       children: [
         CountryFlag.fromCountryCode(countryCode, height: 12.h, width: 16.w),
-        const SizedBox(width: 8),
+        SizedBox(width: 8.w),
         Expanded(
           child: Text(
             '$name $firstGmRank',

@@ -1,4 +1,6 @@
+import 'package:chessever2/utils/svg_asset.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/svg.dart';
 import '../utils/app_typography.dart';
 
 class CountrymanCard extends StatelessWidget {
@@ -84,6 +86,12 @@ class CountrymanCard extends StatelessWidget {
               style: AppTypography.textXsMedium.copyWith(color: Colors.white),
             ),
           ),
+          // Container(
+          //   width: 50,
+          //   child: SvgPicture.asset(
+          //     SvgAsset.favouriteIcon2
+          //   ),
+          // ),
         ],
       ),
     );
