@@ -41,7 +41,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
   }
 
   void _onPageChanged(int newIndex) {
-    final notifier = ref.read(chessBoardScreenProvider(widget.games).notifier);
+    final notifier = ref.read(
+      chessBoardScreenProvider(_currentPageIndex).notifier,
+    );
 
     // Pause previous game if it was playing
     if (_currentPageIndex != newIndex) {
@@ -52,9 +54,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final chessBoardState = ref.watch(chessBoardScreenProvider(widget.games));
     final chessBoardNotifier = ref.read(
-      chessBoardScreenProvider(widget.games).notifier,
+      chessBoardScreenProvider(_currentPageIndex).notifier,
     );
 
     return Scaffold(
@@ -68,12 +69,24 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
             return Container(); // Empty placeholder for distant pages
           }
 
-          return _GamePage(
-            index: index,
-            game: widget.games[index],
-            state: chessBoardState,
-            notifier: chessBoardNotifier,
-          );
+          return ref
+              .watch(chessBoardScreenProvider(_currentPageIndex))
+              .when(
+                data: (chessBoardState) {
+                  return _GamePage(
+                    index: index,
+                    game: widget.games[index],
+                    state: chessBoardState,
+                    notifier: chessBoardNotifier,
+                  );
+                },
+                error: (e, _) {
+                  return ErrorWidget(e);
+                },
+                loading: () {
+                  return _LoadingScreen();
+                },
+              );
         },
       ),
     );
@@ -216,53 +229,15 @@ class _GameBody extends StatelessWidget {
     return SingleChildScrollView(
       child: Column(
         children: [
-          if (isLive) _LiveBanner(),
-
           _PlayerWidget(game: game, isFlipped: isFlipped, isTop: true),
           _BoardWithSidebar(
             index: index,
             state: state,
             notifier: notifier,
             boardState: boardState,
-            isLive: isLive,
           ),
           _PlayerWidget(game: game, isFlipped: isFlipped, isTop: false),
           _MovesDisplay(index: index, state: state, notifier: notifier),
-        ],
-      ),
-    );
-  }
-}
-
-class _LiveBanner extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.symmetric(vertical: 8.h, horizontal: 16.w),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.green.withOpacity(0.8), Colors.green],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-        ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-            ),
-          ),
-          SizedBox(width: 8.w),
-          Text(
-            'LIVE GAME - Updates in real-time',
-            style: AppTypography.textSmMedium.copyWith(color: Colors.white),
-          ),
         ],
       ),
     );
@@ -305,14 +280,12 @@ class _BoardWithSidebar extends StatelessWidget {
   final ChessBoardState state;
   final ChessBoardScreenNotifier notifier;
   final dynamic boardState;
-  final bool isLive;
 
   const _BoardWithSidebar({
     required this.index,
     required this.state,
     required this.notifier,
     required this.boardState,
-    required this.isLive,
   });
 
   @override
@@ -325,18 +298,6 @@ class _BoardWithSidebar extends StatelessWidget {
         final isFlipped = state.isBoardFlipped[index];
 
         return Container(
-          decoration:
-              isLive
-                  ? BoxDecoration(
-                    border: Border.all(
-                      color: Colors.green.withOpacity(0.3),
-                      width: 2,
-                    ),
-                    borderRadius: BorderRadius.circular(8.br),
-                  )
-                  : null,
-          padding: isLive ? EdgeInsets.all(4.sp) : null,
-
           margin: EdgeInsets.symmetric(horizontal: 16.sp),
           child: Row(
             children: [
@@ -347,7 +308,6 @@ class _BoardWithSidebar extends StatelessWidget {
                 state: state,
                 notifier: notifier,
                 isFlipped: isFlipped,
-                isLive: isLive,
               ),
               _ChessBoard(size: boardSize, boardState: boardState),
             ],
@@ -365,7 +325,6 @@ class _EvaluationBar extends StatelessWidget {
   final ChessBoardState state;
   final ChessBoardScreenNotifier notifier;
   final bool isFlipped;
-  final bool isLive;
 
   const _EvaluationBar({
     required this.width,
@@ -374,7 +333,6 @@ class _EvaluationBar extends StatelessWidget {
     required this.state,
     required this.notifier,
     required this.isFlipped,
-    required this.isLive,
   });
 
   @override

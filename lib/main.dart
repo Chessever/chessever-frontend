@@ -20,11 +20,11 @@ import 'package:chessever2/services/settings_manager.dart';
 import 'package:chessever2/utils/lifecycle_event_handler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/board_color_dialog.dart';
-import 'package:device_preview_plus/device_preview_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_provider.dart';
@@ -37,6 +37,7 @@ Future<void> main() async {
   await dotenv.load(fileName: ".env");
   WidgetsFlutterBinding.ensureInitialized();
   await NotificationService.initialize();
+
   WidgetsBinding.instance.addObserver(
     LifecycleEventHandler(
       onAppExit: () async {
@@ -44,6 +45,7 @@ Future<void> main() async {
       },
     ),
   );
+  await _initRevenueCat();
   // Initialize Supabase
   await Supabase.initialize(
     url: dotenv.env['SUPABASE_URL']!,
@@ -56,6 +58,18 @@ Future<void> main() async {
     //   enabled: kDebugMode, // Changed to use kDebugMode
     //   builder: (context) => const ProviderScope(child: MyApp()),
     // ),
+  );
+}
+
+Future<void> _initRevenueCat() async {
+  await Purchases.setDebugLogsEnabled(true); // Enable debug logs
+  // final SupabaseClient = Supabase.instance.client;
+  // final user = SupabaseClient.auth.currentUser;
+  // await Purchases.setDebugLogsEnabled(true);
+  await Purchases.configure(
+    PurchasesConfiguration(dotenv.env['RevenueCatAPIKey'] ?? ''),
+    // dotenv.env['RevenueCatAPIKey'] ?? '',
+    // appUserId: '',
   );
 }
 
@@ -97,7 +111,7 @@ class _MyAppState extends ConsumerState<MyApp> {
       locale: locale,
       supportedLocales: AppLocalizations.supportedLocales,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
-      builder: DevicePreview.appBuilder,
+      // builder: DevicePreview.appBuilder,
       debugShowCheckedModeBanner: false,
       title: 'ChessEver',
       theme: AppTheme.lightTheme,

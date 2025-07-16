@@ -40,9 +40,12 @@ class _TournamentScreenController
   /// This will be populated every time we fetch the tournaments
   var _tours = <Tour>[];
 
-  Future<void> _int() async {
+  Future<void> _int({List<Tour>? inputTours}) async {
     try {
-      final tour = await ref.read(tourLocalStorageProvider).getTours();
+      // final tour = await ref.read(tourLocalStorageProvider).getTours();
+      final tour =
+          inputTours ?? await ref.read(tourLocalStorageProvider).getTours();
+
       if (tour.isNotEmpty) {
         _tours = tour;
         final tourEventCardModel =
@@ -77,23 +80,13 @@ class _TournamentScreenController
       print(error);
     }
   }
-  Future<void> loadTourFormats() async {
-    try {
-      final tours = await ref.read(tourLocalStorageProvider).getTours();
 
-      // Extract formats and get unique ones
-      final formats = tours
-          .map((tour) => tour.info.format) // assuming `format` is a String
-          .whereType<String>()        // filters out nulls
-          .toSet()                    // makes it unique
-          .toList();
+  Future<void> setFilteredModels(List<Tour> filteredTours) async {
+    await _int(inputTours: filteredTours);
+  }
 
-      // Do something with the formats
-      print("Tour Formats: $formats");
-
-    } catch (error) {
-      print("Error loading tour formats: $error");
-    }
+  Future<void> resetFilters() async {
+    await _int();
   }
 
   Future<void> onRefresh() async {

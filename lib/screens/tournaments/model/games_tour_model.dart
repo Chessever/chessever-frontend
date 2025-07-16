@@ -9,6 +9,16 @@ class GamesScreenModel {
 
   final List<GamesTourModel> gamesTourModels;
   final List<String> pinnedGamedIs;
+
+  GamesScreenModel copyWith({
+    List<GamesTourModel>? gamesTourModels,
+    List<String>? pinnedGamedIs,
+  }) {
+    return GamesScreenModel(
+      gamesTourModels: gamesTourModels ?? this.gamesTourModels,
+      pinnedGamedIs: pinnedGamedIs ?? this.pinnedGamedIs,
+    );
+  }
 }
 
 class GamesTourModel {
@@ -31,6 +41,28 @@ class GamesTourModel {
     this.fen,
     this.pgn,
   });
+
+  GamesTourModel copyWith({
+    String? gameId,
+    PlayerCard? whitePlayer,
+    PlayerCard? blackPlayer,
+    String? whiteTimeDisplay,
+    String? blackTimeDisplay,
+    GameStatus? gameStatus,
+    String? fen,
+    String? pgn,
+  }) {
+    return GamesTourModel(
+      gameId: gameId ?? this.gameId,
+      whitePlayer: whitePlayer ?? this.whitePlayer,
+      blackPlayer: blackPlayer ?? this.blackPlayer,
+      whiteTimeDisplay: whiteTimeDisplay ?? this.whiteTimeDisplay,
+      blackTimeDisplay: blackTimeDisplay ?? this.blackTimeDisplay,
+      gameStatus: gameStatus ?? this.gameStatus,
+      fen: fen ?? this.fen,
+      pgn: pgn ?? this.pgn,
+    );
+  }
 
   factory GamesTourModel.fromGame(Games game) {
     // Ensure we have exactly 2 players
@@ -85,6 +117,22 @@ class PlayerCard {
       title: player.title,
       rating: player.rating,
       countryCode: player.fed,
+    );
+  }
+
+  PlayerCard copyWith({
+    String? name,
+    String? federation,
+    String? title,
+    int? rating,
+    String? countryCode,
+  }) {
+    return PlayerCard(
+      name: name ?? this.name,
+      federation: federation ?? this.federation,
+      title: title ?? this.title,
+      rating: rating ?? this.rating,
+      countryCode: countryCode ?? this.countryCode,
     );
   }
 

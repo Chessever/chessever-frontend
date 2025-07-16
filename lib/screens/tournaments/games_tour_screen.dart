@@ -1,7 +1,9 @@
 import 'package:chessever2/screens/chessboard/chess_board_screen.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_fen_model.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_widget.dart';
+import 'package:chessever2/screens/tournaments/model/games_tour_model.dart';
 import 'package:chessever2/screens/tournaments/providers/chess_board_visibility_provider.dart';
+import 'package:chessever2/screens/tournaments/providers/game_fen_stream_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/widget/empty_widget.dart';
@@ -44,51 +46,54 @@ class GamesTourScreen extends ConsumerWidget {
                                 "No games available yet. Check back soon or set a\nreminder for updates.",
                           );
                         }
-
                         return Column(
                           children: [
-                            if (isChessBoardVisible)
-                              Expanded(
-                                child: ListView.builder(
-                                  padding: EdgeInsets.only(
-                                    left: 20.sp,
-                                    right: 20.sp,
-                                    top: 12.sp,
-                                    bottom:
-                                        MediaQuery.of(
-                                          context,
-                                        ).viewPadding.bottom,
-                                  ),
-                                  itemCount: data.gamesTourModels.length,
-                                  itemBuilder: (cxt, index) {
+                            Expanded(
+                              child: ListView.builder(
+                                padding: EdgeInsets.only(
+                                  left: 20.sp,
+                                  right: 20.sp,
+                                  top: 12.sp,
+                                  bottom:
+                                      MediaQuery.of(context).viewPadding.bottom,
+                                ),
+                                itemCount: data.gamesTourModels.length,
+                                itemBuilder: (cxt, index) {
+                                  var game = data.gamesTourModels[index];
+                                  if (game.gameStatus == GameStatus.ongoing) {
+                                    ref
+                                        .watch(
+                                          gameFenStreamProvider(game.gameId),
+                                        )
+                                        .when(
+                                          data: (fen) {
+                                            if (fen != null) {
+                                              game = game.copyWith(fen: fen);
+                                            } else {
+                                              print("fen is Null");
+                                            }
+                                          },
+                                          error: (e, _) {
+                                            print("Fen Fetching Error");
+                                          },
+                                          loading: () {
+                                            print("loading Fen Data");
+                                          },
+                                        );
+                                  }
+
+                                  if (isChessBoardVisible) {
                                     return ChessBoardFromFEN(
                                       chessBoardFenModel:
                                           ChessBoardFenModel.fromGamesTourModel(
-                                            data.gamesTourModels[index],
+                                            game,
                                           ),
                                     );
-                                  },
-                                ),
-                              )
-                            else
-                              Expanded(
-                                child: ListView.builder(
-                                  padding: EdgeInsets.only(
-                                    left: 20.sp,
-                                    right: 20.sp,
-                                    top: 12.sp,
-                                    bottom:
-                                        MediaQuery.of(
-                                          context,
-                                        ).viewPadding.bottom,
-                                  ),
-                                  itemCount: data.gamesTourModels.length,
-                                  itemBuilder: (cxt, index) {
-                                    final game = data.gamesTourModels[index];
+                                  } else {
                                     return Padding(
                                       padding: EdgeInsets.only(bottom: 12.sp),
                                       child: GameCard(
-                                        onTap: () {
+                                        onTap: ()  {
                                           Navigator.push(
                                             context,
                                             MaterialPageRoute(
@@ -114,9 +119,10 @@ class GamesTourScreen extends ConsumerWidget {
                                         },
                                       ),
                                     );
-                                  },
-                                ),
+                                  }
+                                },
                               ),
+                            ),
                           ],
                         );
                       },
