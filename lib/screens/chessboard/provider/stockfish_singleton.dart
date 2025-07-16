@@ -1,22 +1,18 @@
 import 'package:stockfish/stockfish.dart';
 
-// stockfish_singleton.dart
-import 'package:stockfish/stockfish.dart';
-
 class StockfishSingleton {
-  static final StockfishSingleton _instance = StockfishSingleton._internal();
+  static final StockfishSingleton _i = StockfishSingleton._();
+  StockfishSingleton._();
+  factory StockfishSingleton() => _i;
 
-  late final Stockfish _stockfish;
-
-  factory StockfishSingleton() => _instance;
-
-  Stockfish get stockfish => _stockfish;
-
-  StockfishSingleton._internal() {
-    _stockfish = Stockfish();
+  Stockfish? _engine;
+  Stockfish get engine {
+    if (_engine == null || _engine!.state.value != StockfishState.ready) {
+      _engine?.dispose();
+      _engine = Stockfish();
+    }
+    return _engine!;
   }
 
-  void dispose() {
-    _stockfish.dispose();
-  }
+  void dispose() => _engine?.dispose();
 }

@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/local_storage/tournament/tour_local_storage.dart';
+import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/tournaments/providers/filter_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/tournament_screen_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -375,13 +376,16 @@ class _FilterPopupState extends ConsumerState<FilterPopup> {
                               width: 116.w,
                               height: 40.h,
                               child: OutlinedButton(
-                                onPressed: () {
+                                onPressed: () async {
                                   setState(() {
                                     _selectedFormat = 'All Formats';
-                                    _selectedType = 'All Types';
                                     _isFormatExpanded = false;
-                                    _isTypeExpanded = false;
                                   });
+
+                                  await ref
+                                      .read(tournamentNotifierProvider.notifier)
+                                      .resetFilters();
+                                  Navigator.of(context).pop();
                                 },
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: kWhiteColor,
@@ -403,14 +407,22 @@ class _FilterPopupState extends ConsumerState<FilterPopup> {
                                 ),
                               ),
                             ),
+
                             // Apply button (right) with fixed width
                             SizedBox(
                               width: 116.w,
                               height: 40.h,
                               child: ElevatedButton(
-                                onPressed: () {
-                                  // Apply filters and close dialog
-                                  Navigator.of(context).pop();
+                                onPressed: () async {
+                                  final filteredTours = await ref
+                                      .read(tourFormatRepositoryProvider)
+                                      .applyFilter(_selectedFormat);
+
+                                  await ref
+                                      .read(tournamentNotifierProvider.notifier)
+                                      .setFilteredModels(filteredTours);
+
+                                  Navigator.of(context).pop(filteredTours);
                                 },
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: kPrimaryColor,
@@ -419,15 +431,13 @@ class _FilterPopupState extends ConsumerState<FilterPopup> {
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(4.br),
                                   ),
-                                  padding:
-                                      EdgeInsets.zero, // Remove default padding
+                                  padding: EdgeInsets.zero,
                                 ),
                                 child: Text(
                                   'Apply Filters',
                                   style: AppTypography.textSmMedium,
-                                  maxLines: 1, // Force single line
-                                  overflow:
-                                      TextOverflow.visible, // Show all text
+                                  maxLines: 1,
+                                  overflow: TextOverflow.visible,
                                 ),
                               ),
                             ),

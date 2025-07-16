@@ -202,8 +202,21 @@
 -> Display recent moves in the board,
 -> Add lazy loading in the Chess Board View to save resources for stockfish depth-16 evaluation,
 
-#13
+#13 jul
 -> Fix GameStourScreen board to display custom png icons set
 -> Cleanup GamesTourScreen
 
+#14 jul
+-> Display Tournament format for filter options and filtering,
+-> Fix Stockfish to run multiple instances at a time using AppLifecycle, ( Stockfish will now be able to do multiple evaluation at the same time )
+-> Cleanup Games Screen and Chess Board Screen,
 
+#16 jul
+-> Setup Stream service using Supabase for the Games Board Screen for live games,
+-> Fix feedback related to removing the players count, chess board default color, update text to unpin,
+-> Setup lazy loading for chess board screen to only have adjacent games loaded for smooth swapping,
+
+#17 July
+-> Stream the fen data in the games list view screen,
+-> Stream PGN data in the chess board view,
+-> Setup Revenue cat in the app and add a build for review,

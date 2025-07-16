@@ -136,6 +136,7 @@ class TournamentScreen extends HookConsumerWidget {
                       },
                       error: (error, stackTrace) => GenericErrorWidget(),
                     ),
+             
               ],
             ),
           ),
