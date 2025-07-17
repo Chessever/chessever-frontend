@@ -55,9 +55,11 @@ class GameCard extends StatelessWidget {
                   ),
                 ),
                 Spacer(),
-                ChessProgressBar(
-                  asyncValue: AsyncValue.loading(),
-                ),
+                (gamesTourModel.gameStatus == GameStatus.ongoing)
+                    ? ChessProgressBar(asyncValue: AsyncValue.loading())
+                    : _StatusText(
+                      status: gamesTourModel.gameStatus.displayText,
+                    ),
                 Spacer(),
                 SizedBox(
                   width: MediaQuery.of(context).size.width * (30 / 100),
@@ -193,9 +195,15 @@ class GameCard extends StatelessWidget {
                                   ),
                                 ),
                                 Spacer(),
-                                ChessProgressBar(
-                                  asyncValue: AsyncValue.loading(),
-                                ),
+                                (gamesTourModel.gameStatus ==
+                                        GameStatus.ongoing)
+                                    ? ChessProgressBar(
+                                      asyncValue: AsyncValue.loading(),
+                                    )
+                                    : _StatusText(
+                                      status:
+                                          gamesTourModel.gameStatus.displayText,
+                                    ),
                                 Spacer(),
                                 SizedBox(
                                   width:
@@ -461,6 +469,17 @@ class _GamesRound extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+class _StatusText extends StatelessWidget {
+  const _StatusText({required this.status, super.key});
+
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(children: [Text(status, style: AppTypography.textXsMedium)]);
   }
 }
 

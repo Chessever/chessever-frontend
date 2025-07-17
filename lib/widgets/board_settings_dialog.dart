@@ -1,8 +1,10 @@
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/blur_background.dart';
 import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import '../providers/board_settings_provider.dart';
@@ -26,14 +28,14 @@ class BoardSettingsDialog extends ConsumerWidget {
           Dialog(
             backgroundColor: Colors.transparent,
             insetPadding: EdgeInsets.symmetric(
-              horizontal: 24.sp,
+              // horizontal: 30.sp,
               vertical: 24.sp,
             ),
             // Prevent dialog from closing when clicking on the dialog itself
             child: GestureDetector(
               onTap: () {}, // Absorb the tap
               child: Container(
-                width: 180.5.w,
+                padding: EdgeInsets.symmetric(vertical: 10.h),
                 decoration: BoxDecoration(
                   color: kPopUpColor,
                   borderRadius: BorderRadius.circular(20.br),
@@ -48,9 +50,31 @@ class BoardSettingsDialog extends ConsumerWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    Row(
+                      children: [
+                        SizedBox(width: 16.w),
+                        InkWell(
+                          onTap: () => Navigator.of(context).pop(),
+                          child: SvgPicture.asset(
+                            SvgAsset.left_arrow,
+                            height: 10.h,
+                            width: 5.w,
+                            semanticsLabel: 'Board Settings Icon',
+                          ),
+                        ),
+                        SizedBox(width: 8.w),
+                        Text(
+                          'Board Settings',
+                          style: AppTypography.textSmRegular.copyWith(
+                            color: kBoardColorGrey,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 20.h),
                     _MenuItem(
-                      icon: Icons.palette_outlined,
-                      title: 'Set board colour',
+                      customIcon: SvgPicture.asset(SvgAsset.boardSettings),
+                      title: 'Change Board Color',
                       onPressed: () {
                         BoardColorDialog();
                       },
@@ -66,6 +90,7 @@ class BoardSettingsDialog extends ConsumerWidget {
                             .toggleEvaluationBar();
                       },
                     ),
+
                     DividerWidget(),
                     _SwitchItem(
                       title: 'Sound',
@@ -123,13 +148,21 @@ class _MenuItem extends StatelessWidget {
             children: [
               customIcon ?? Icon(icon!, color: kWhiteColor, size: 20.ic),
               SizedBox(width: 4.w),
-              Expanded(child: Text(title, style: AppTypography.textXsRegular)),
+              Expanded(child: Text(title, style: AppTypography.textSmMedium)),
               if (showChevron)
                 Icon(
                   Icons.chevron_right_outlined,
                   color: kWhiteColor,
                   size: 20.ic,
                 ),
+              SizedBox(
+                width: 36,
+                child: SvgPicture.asset(
+                  SvgAsset.right_arrow,
+                  height: 12.h,
+                  width: 6.w,
+                ),
+              ),
             ],
           ),
         ),

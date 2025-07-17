@@ -1,6 +1,9 @@
+import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/svg_asset.dart';
 import 'package:flutter/material.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:flutter_svg/svg.dart';
 
 class SettingsMenu extends StatelessWidget {
   final bool notificationsEnabled;
@@ -35,10 +38,17 @@ class SettingsMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Fixed height of 144px (36px × 4 menu items)
-    return SizedBox(
-      height: 144,
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 12.sp),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
+
         children: [
+          Text(
+            'Settings',
+            style: AppTypography.textLgMedium.copyWith(color: kWhiteColor),
+          ),
+          SizedBox(height: 20.h),
           // Board settings
           InkWell(
             onTap: onBoardSettingsPressed,
@@ -57,21 +67,32 @@ class SettingsMenu extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   SizedBox(
-                    width: 36,
+                    width: 12.w,
                     child:
                         boardSettingsIcon ??
-                        Icon(Icons.grid_4x4, color: Colors.white, size: 20),
+                        Icon(Icons.grid_4x4, color: Colors.white, size: 12.ic),
                   ),
-                  SizedBox(width: 4), // Changed from 8px to 4px
+                  SizedBox(width: 4.w), // Changed from 8px to 4px
                   Expanded(
                     child: Text(
                       'Board settings',
-                      style: TextStyle(
-                        fontFamily: 'InterDisplay',
-                        fontSize: 12,
-                        fontWeight: FontWeight.w400,
+                      style: AppTypography.textSmMedium.copyWith(
                         color: kWhiteColor,
                       ),
+                      // style: TextStyle(
+                      //   fontFamily: 'InterDisplay',
+                      //   fontSize: 12,
+                      //   fontWeight: FontWeight.w400,
+                      //   color: kWhiteColor,
+                      // ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 36,
+                    child: SvgPicture.asset(
+                      SvgAsset.right_arrow,
+                      height: 12.h,
+                      width: 6.w,
                     ),
                   ),
                 ],
@@ -99,7 +120,7 @@ class SettingsMenu extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   SizedBox(
-                    width: 36,
+                    width: 12.w,
                     child:
                         languageIcon ??
                         Icon(Icons.language, color: kWhiteColor, size: 20),
@@ -111,6 +132,14 @@ class SettingsMenu extends StatelessWidget {
                       style: AppTypography.textXsRegular.copyWith(
                         color: Colors.white,
                       ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 36,
+                    child: SvgPicture.asset(
+                      SvgAsset.right_arrow,
+                      height: 12.h,
+                      width: 6.w,
                     ),
                   ),
                 ],
@@ -138,10 +167,10 @@ class SettingsMenu extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   SizedBox(
-                    width: 36,
+                    width: 12.w,
                     child:
                         timezoneIcon ??
-                        Icon(Icons.public, color: Colors.white, size: 20),
+                        Icon(Icons.public, color: Colors.white, size: 12.ic),
                   ),
                   SizedBox(width: 4), // Changed from 8px to 4px
                   Expanded(
@@ -152,6 +181,14 @@ class SettingsMenu extends StatelessWidget {
                       ),
                     ),
                   ),
+                  SizedBox(
+                    width: 36,
+                    child: SvgPicture.asset(
+                      SvgAsset.right_arrow,
+                      height: 12.h,
+                      width: 6.w,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -160,7 +197,7 @@ class SettingsMenu extends StatelessWidget {
           // Notifications toggle
           Container(
             height: 36,
-            padding: EdgeInsets.symmetric(horizontal: 12),
+            // padding: EdgeInsets.symmetric(horizontal: 12),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.center,

@@ -7,7 +7,6 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
-import 'package:chessever2/widgets/back_drop_filter_widget.dart';
 import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
@@ -215,6 +214,10 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
 
                     AppBarIcons(
                       key: _menuKey,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 2.sp,
+                        vertical: 1.sp,
+                      ),
                       image: SvgAsset.threeDots,
                       onTap: () {
                         final RenderBox? renderBox =
