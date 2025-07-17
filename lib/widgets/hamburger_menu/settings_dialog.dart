@@ -43,15 +43,10 @@ class SettingsDialog extends ConsumerWidget {
       child: Container(
         width: MediaQuery.of(context).size.width * 0.85,
         decoration: BoxDecoration(
-          color: kPopUpColor,
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(12.br),
-            topRight: Radius.circular(12.br),
-            bottomLeft: Radius.circular(20.br),
-            bottomRight: Radius.circular(20.br),
-          ),
+          color: kBlack2Color,
+          borderRadius: BorderRadius.all(Radius.circular(20.sp)),
         ),
-        margin: EdgeInsets.all(24.sp),
+        // margin: EdgeInsets.all(30.sp),
         child: SettingsMenu(
           notificationsEnabled: notificationsSettings.enabled,
           languageSubtitle: localeName,

@@ -8,7 +8,6 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/auth_button.dart';
-import 'package:chessever2/widgets/back_drop_filter_widget.dart';
 import 'package:chessever2/widgets/blur_background.dart';
 import 'package:chessever2/widgets/country_dropdown.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
@@ -163,45 +162,74 @@ class _AuthCountryDropdownWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(authScreenProvider);
     final notifier = ref.read(authScreenProvider.notifier);
 
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        BackDropFilterWidget(),
-        Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 48.sp),
-              child: Text(
-                'Select Your Country',
-                style: AppTypography.textSmBold,
-              ),
+    return Scaffold(
+      bottomNavigationBar: Container(
+        margin: EdgeInsets.symmetric(horizontal: 20),
+        width: double.infinity,
+        child: ElevatedButton(
+          onPressed: () {
+            notifier.hideCountrySelection();
+            Navigator.of(context).pop();
+            Navigator.pushReplacementNamed(context, '/home_screen');
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.white,
+            foregroundColor: Colors.black,
+            padding: EdgeInsets.symmetric(vertical: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
             ),
-            SizedBox(height: 4.h),
-            Container(
-              padding: EdgeInsets.symmetric(horizontal: 48.sp),
-              width: MediaQuery.of(context).size.width,
-              child: CountryDropdown(
-                selectedCountryCode: 'US',
-                onChanged: (Country country) async {
-                  await ref
-                      .read(countryDropdownProvider.notifier)
-                      .selectCountry(country.countryCode);
-
-                  notifier.hideCountrySelection();
-
-                  Navigator.of(context).pop();
-                  Navigator.pushReplacementNamed(context, '/home_screen');
-                },
-              ),
-            ),
-          ],
+          ),
+          child: Text('Continue', style: AppTypography.textSmBold),
         ),
-      ],
+      ),
+      backgroundColor: Colors.black,
+      body: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Country selection box (centered)
+          Container(
+            margin: EdgeInsets.symmetric(horizontal: 40),
+            decoration: BoxDecoration(
+              // border: Border.all(color: Colors.blue, width: 2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.symmetric(horizontal: 10.sp),
+
+                  child: Text(
+                    'Select your Country',
+                    style: AppTypography.textSmBold,
+                  ),
+                ),
+                SizedBox(height: 10.h),
+                // Dropdown
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 10.sp),
+                  child: CountryDropdown(
+                    selectedCountryCode: 'US',
+                    onChanged: (Country country) async {
+                      await ref
+                          .read(countryDropdownProvider.notifier)
+                          .selectCountry(country.countryCode);
+                      notifier.hideCountrySelection();
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          SizedBox(height: 60),
+
+          // Continue button
+        ],
+      ),
     );
   }
 }
