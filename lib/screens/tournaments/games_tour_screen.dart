@@ -84,22 +84,19 @@ class GamesTourScreen extends ConsumerWidget {
 
                                   if (isChessBoardVisible) {
                                     return ChessBoardFromFEN(
-                                      chessBoardFenModel:
-                                          ChessBoardFenModel.fromGamesTourModel(
-                                            game,
-                                          ),
+                                      games: data.gamesTourModels,
                                     );
                                   } else {
                                     return Padding(
                                       padding: EdgeInsets.only(bottom: 12.sp),
                                       child: GameCard(
-                                        onTap: ()  {
+                                        onTap: () {
                                           Navigator.push(
                                             context,
                                             MaterialPageRoute(
                                               builder:
                                                   (_) => ChessBoardScreen(
-                                                    data.gamesTourModels,
+                                                    games: data.gamesTourModels,
                                                     currentIndex: index,
                                                   ),
                                             ),

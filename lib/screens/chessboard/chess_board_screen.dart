@@ -2,6 +2,7 @@ import 'package:bishop/bishop.dart' as bishop;
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
+import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/tournaments/model/games_tour_model.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_appbar.dart';
@@ -17,7 +18,11 @@ class ChessBoardScreen extends ConsumerStatefulWidget {
   final List<GamesTourModel> games;
   final int currentIndex;
 
-  const ChessBoardScreen(this.games, {required this.currentIndex, super.key});
+  const ChessBoardScreen({
+    required this.currentIndex,
+    required this.games,
+    super.key,
+  });
 
   @override
   ConsumerState<ChessBoardScreen> createState() => _ChessBoardScreenState();
@@ -301,7 +306,7 @@ class _BoardWithSidebar extends StatelessWidget {
           margin: EdgeInsets.symmetric(horizontal: 16.sp),
           child: Row(
             children: [
-              _EvaluationBar(
+              EvaluationBar(
                 width: sideBarWidth,
                 height: boardSize,
                 index: index,
@@ -314,66 +319,6 @@ class _BoardWithSidebar extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-}
-
-class _EvaluationBar extends StatelessWidget {
-  final double width;
-  final double height;
-  final int index;
-  final ChessBoardState state;
-  final ChessBoardScreenNotifier notifier;
-  final bool isFlipped;
-
-  const _EvaluationBar({
-    required this.width,
-    required this.height,
-    required this.index,
-    required this.state,
-    required this.notifier,
-    required this.isFlipped,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: width,
-      height: height,
-      child: Stack(
-        children: [
-          Align(
-            alignment: Alignment.topCenter,
-            child: AnimatedContainer(
-              duration: Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              height:
-                  height *
-                  (isFlipped
-                      ? notifier.getWhiteRatio(state.evaluations[index])
-                      : notifier.getBlackRatio(state.evaluations[index])),
-              color: isFlipped ? kWhiteColor : kPopUpColor,
-            ),
-          ),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: AnimatedContainer(
-              duration: Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              height:
-                  height *
-                  (isFlipped
-                      ? notifier.getBlackRatio(state.evaluations[index])
-                      : notifier.getWhiteRatio(state.evaluations[index])),
-              color: isFlipped ? kPopUpColor : kWhiteColor,
-            ),
-          ),
-          Align(
-            alignment: Alignment.center,
-            child: Container(height: 4.h, color: kRedColor),
-          ),
-        ],
-      ),
     );
   }
 }

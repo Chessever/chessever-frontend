@@ -6,8 +6,14 @@ import 'package:flutter_svg/svg.dart';
 class AppBarIcons extends StatelessWidget {
   final Function() onTap;
   final String image;
+  final EdgeInsetsGeometry? padding;
 
-  const AppBarIcons({super.key, required this.image, required this.onTap});
+  const AppBarIcons({
+    super.key,
+    required this.image,
+    required this.onTap,
+    this.padding,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -16,7 +22,7 @@ class AppBarIcons extends StatelessWidget {
       child: Container(
         height: 32.h,
         width: 32.w,
-        padding: EdgeInsets.all(6.sp),
+        padding: padding ?? EdgeInsets.all(6.sp),
         decoration: BoxDecoration(
           color: kBlack2Color,
           borderRadius: BorderRadius.circular(4.br),
