@@ -60,7 +60,7 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFEN> {
 
     // final isFlipped = state.isBoardFlipped[index];
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 20.sp, vertical: 8.sp),
+      padding: EdgeInsets.symmetric(horizontal: 23.sp, vertical: 8.sp),
       child: InkWell(
         onTap: () {
           Navigator.push(

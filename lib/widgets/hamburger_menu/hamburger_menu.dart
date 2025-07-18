@@ -60,9 +60,7 @@ class HamburgerMenu extends StatelessWidget {
                         width: 24.w,
                       ),
                       title: 'Settings',
-                      onPressed:
-                          () =>
-                              HamburgerMenuDialogs.showSettingsDialog(context),
+                      onPressed: () => showSettingsDialog(context),
                       showChevron: true,
                     ),
                     SizedBox(height: 12.h),
