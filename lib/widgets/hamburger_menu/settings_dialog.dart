@@ -20,15 +20,34 @@ class SettingsDialog extends ConsumerWidget {
     // Close settings menu first
     Navigator.pop(context);
 
-    // Add a small delay before showing the next dialog
-    Future.delayed(Duration(milliseconds: 100), () {
-      showAlertModal(
+    Future.delayed(const Duration(milliseconds: 100), () {
+      showModalBottomSheet(
         context: context,
-        horizontalPadding: 24.w,
-        verticalPadding: 24.h,
-        backgroundColor: kPopUpColor,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
         barrierColor: Colors.black.withOpacity(0.3),
-        child: child,
+        builder: (BuildContext bottomSheetContext) {
+          final bottomPadding =
+              MediaQuery.of(bottomSheetContext).viewInsets.bottom;
+
+          return Padding(
+            padding: EdgeInsets.only(bottom: bottomPadding + 20.h),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  decoration: BoxDecoration(
+                    color: kPopUpColor,
+                    borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(20.sp),
+                    ),
+                  ),
+                  child: child,
+                ),
+              ],
+            ),
+          );
+        },
       );
     });
   }
@@ -41,7 +60,7 @@ class SettingsDialog extends ConsumerWidget {
 
     return Center(
       child: Container(
-        width: MediaQuery.of(context).size.width * 0.85,
+        // width: MediaQuery.of(context).size.width * 0.85,
         decoration: BoxDecoration(
           color: kBlack2Color,
           borderRadius: BorderRadius.all(Radius.circular(20.sp)),
