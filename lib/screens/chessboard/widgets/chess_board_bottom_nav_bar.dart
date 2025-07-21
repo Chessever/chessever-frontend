@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_navbar.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -14,6 +15,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
   final bool isPlaying;
   final int currentMove;
   final int totalMoves;
+  final int gameIndex; // Add this parameter
 
   const ChessBoardBottomNavBar({
     super.key,
@@ -25,10 +27,13 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
     required this.isPlaying,
     required this.currentMove,
     required this.totalMoves,
+    required this.gameIndex, // Add this parameter
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final notifier = ref.read(chessBoardScreenProvider(gameIndex).notifier);
+
     return Container(
       padding: EdgeInsets.symmetric(vertical: 8.sp),
       width: MediaQuery.of(context).size.width,
@@ -39,53 +44,40 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
             // Reset Game Button
-            ChessSvgBottomNavbar(
-              svgPath: SvgAsset.laptop,
-              onPressed: () {
-                onReset();
-              },
-            ),
+            ChessSvgBottomNavbar(svgPath: SvgAsset.laptop, onPressed: onReset),
 
             // Flip Board Button
-            ChessSvgBottomNavbar(
-              svgPath: SvgAsset.refresh,
-              onPressed: () {
-                onFlip();
-              },
-            ),
+            ChessSvgBottomNavbar(svgPath: SvgAsset.refresh, onPressed: onFlip),
 
             // Play/Pause Button
-            ChessIconBottomNavbar(
-              iconData:
-                  isPlaying
-                      ? Icons.play_circle_outline
-                      : Icons.pause_circle_outline,
-              // Use appropriate pause/play icons
-              onPressed: () {
-                onPlayPause();
-              },
-            ),
+            // ChessIconBottomNavbar(
+            //   iconData:
+            //       isPlaying
+            //           ? Icons.pause_circle_outline
+            //           : Icons.play_circle_outline,
+            //   onPressed: onPlayPause,
+            // ),
 
-            // Previous Move Button
-            ChessSvgBottomNavbar(
+            // Previous Move Button with Long Press
+            ChessSvgBottomNavbarWithLongPress(
               svgPath: SvgAsset.left_arrow,
-              onPressed:
+              onPressed: currentMove > 0 ? onLeftMove : null,
+              onLongPressStart:
                   currentMove > 0
-                      ? () {
-                        onLeftMove();
-                      }
+                      ? () => notifier.startLongPressBackward()
                       : null,
+              onLongPressEnd: () => notifier.stopLongPress(),
             ),
 
-            // Next Move Button
-            ChessSvgBottomNavbar(
+            // Next Move Button with Long Press
+            ChessSvgBottomNavbarWithLongPress(
               svgPath: SvgAsset.right_arrow,
-              onPressed:
+              onPressed: currentMove < totalMoves ? onRightMove : null,
+              onLongPressStart:
                   currentMove < totalMoves
-                      ? () {
-                        onRightMove();
-                      }
+                      ? () => notifier.startLongPressForward()
                       : null,
+              onLongPressEnd: () => notifier.stopLongPress(),
             ),
 
             // Chat Button

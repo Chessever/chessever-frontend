@@ -51,4 +51,5 @@ class SvgAsset {
 
   static const right_arrow = 'assets/svgs/right_arrows.svg';
   static const chat = 'assets/svgs/chat.svg';
+  static const check = 'assets/svgs/check.svg';
 }

@@ -23,17 +23,13 @@ class SettingsDialog extends ConsumerWidget {
     Future.delayed(const Duration(milliseconds: 100), () {
       showModalBottomSheet(
         context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        barrierColor: Colors.black.withOpacity(0.3),
+        isScrollControlled: false,
         builder: (BuildContext bottomSheetContext) {
-          final bottomPadding =
-              MediaQuery.of(bottomSheetContext).viewInsets.bottom;
-
           return Padding(
-            padding: EdgeInsets.only(bottom: bottomPadding + 20.h),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+            ),
+            child: Wrap(
               children: [
                 Container(
                   decoration: BoxDecoration(
@@ -42,7 +38,10 @@ class SettingsDialog extends ConsumerWidget {
                       top: Radius.circular(20.sp),
                     ),
                   ),
-                  child: child,
+                  child: SafeArea(
+                    top: false,
+                    child: child,
+                  ),
                 ),
               ],
             ),
@@ -58,43 +57,38 @@ class SettingsDialog extends ConsumerWidget {
     final localeName = ref.watch(localeNameProvider);
     final timezone = ref.watch(timezoneProvider);
 
-    return Center(
-      child: Container(
-        // width: MediaQuery.of(context).size.width * 0.85,
-        decoration: BoxDecoration(
-          color: kBlack2Color,
-          borderRadius: BorderRadius.all(Radius.circular(20.sp)),
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.all(Radius.circular(20.sp)),
+      ),
+      child: SettingsMenu(
+        notificationsEnabled: notificationsSettings.enabled,
+        languageSubtitle: localeName,
+        timezoneSubtitle: timezone.display,
+        boardSettingsIcon: SvgWidget(
+          height: 20.h,
+          width: 20.w,
+          SvgAsset.boardSettings,
         ),
-        // margin: EdgeInsets.all(30.sp),
-        child: SettingsMenu(
-          notificationsEnabled: notificationsSettings.enabled,
-          languageSubtitle: localeName,
-          timezoneSubtitle: timezone.display,
-          boardSettingsIcon: SvgWidget(
-            height: 20.h,
-            width: 20.w,
-            SvgAsset.boardSettings,
-          ),
-          languageIcon: SvgWidget(
-            height: 20.h,
-            width: 20.w,
-            SvgAsset.languageIcon,
-          ),
-          timezoneIcon: SvgWidget(
-            height: 20.h,
-            width: 20.w,
-            SvgAsset.timezoneIcon,
-          ),
-          onBoardSettingsPressed:
-              () => _showSubDialog(context, BoardSettingsDialog()),
-          onLanguagePressed:
-              () => _showSubDialog(context, LanguageSettingsDialog()),
-          onTimezonePressed:
-              () => _showSubDialog(context, TimezoneSettingsDialog()),
-          onNotificationsPressed: () {
-            ref.read(notificationsSettingsProvider.notifier).toggleEnabled();
-          },
+        languageIcon: SvgWidget(
+          height: 20.h,
+          width: 20.w,
+          SvgAsset.languageIcon,
         ),
+        timezoneIcon: SvgWidget(
+          height: 20.h,
+          width: 20.w,
+          SvgAsset.timezoneIcon,
+        ),
+        onBoardSettingsPressed: () =>
+            _showSubDialog(context, const BoardSettingsDialog()),
+        onLanguagePressed: () =>
+            _showSubDialog(context, const LanguageSettingsDialog()),
+        onTimezonePressed: () =>
+            _showSubDialog(context, const TimezoneSettingsDialog()),
+        onNotificationsPressed: () {
+          ref.read(notificationsSettingsProvider.notifier).toggleEnabled();
+        },
       ),
     );
   }

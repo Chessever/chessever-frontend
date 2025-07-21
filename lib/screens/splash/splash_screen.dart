@@ -31,6 +31,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
           alignment: Alignment.center,
           fit: StackFit.expand,
           children: [
+
             Align(
               alignment: Alignment.center,
               child: Hero(tag: 'blur', child: AnimatedBlurBackground()),

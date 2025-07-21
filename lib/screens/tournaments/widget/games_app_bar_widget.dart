@@ -51,6 +51,7 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
   @override
   void dispose() {
     _searchController.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -347,21 +348,16 @@ class _RoundDropdownState extends State<_RoundDropdown> {
     switch (round.status) {
       case RoundStatus.completed:
         trailingIcon = SvgPicture.asset(
-          SvgAsset.selectedSvg,
+          SvgAsset.check,
           width: 16.w,
           height: 16.h,
-          colorFilter: const ColorFilter.mode(kGreenColor, BlendMode.srcIn),
         );
         break;
       case RoundStatus.current:
-        trailingIcon = Container(
+        trailingIcon = SvgPicture.asset(
+          SvgAsset.selectedSvg,
           width: 16.w,
           height: 16.h,
-          decoration: const BoxDecoration(
-            color: kPrimaryColor,
-            shape: BoxShape.circle,
-          ),
-          child: Icon(Icons.circle, color: kWhiteColor, size: 8.ic),
         );
         break;
       case RoundStatus.upcoming:
@@ -369,38 +365,32 @@ class _RoundDropdownState extends State<_RoundDropdown> {
           SvgAsset.calendarIcon,
           width: 16.w,
           height: 16.h,
-          colorFilter: const ColorFilter.mode(kWhiteColor70, BlendMode.srcIn),
         );
         break;
     }
 
-    return Container(
-      // padding: EdgeInsets.symmetric(horizontal: 12.w),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                round.name,
-                style: AppTypography.textXsRegular.copyWith(color: kWhiteColor),
-                maxLines: 1,
-              ),
-              SizedBox(height: 2.h),
-              Text(
-                round.formattedStartDate,
-                style: AppTypography.textXsRegular.copyWith(
-                  color: kWhiteColor70,
-                ),
-                maxLines: 1,
-              ),
-            ],
-          ),
-          SizedBox(width: 8.w),
-          trailingIcon,
-        ],
-      ),
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              round.name,
+              style: AppTypography.textXsRegular.copyWith(color: kWhiteColor),
+              maxLines: 1,
+            ),
+            SizedBox(height: 2.h),
+            Text(
+              round.formattedStartDate,
+              style: AppTypography.textXsRegular.copyWith(color: kWhiteColor70),
+              maxLines: 1,
+            ),
+          ],
+        ),
+        SizedBox(width: 8.w),
+        trailingIcon,
+      ],
     );
   }
 

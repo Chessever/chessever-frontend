@@ -23,7 +23,7 @@ class BoardSettingsDialog extends ConsumerWidget {
       child: Stack(
         children: [
           // Backdrop filter for blur effect
-          Positioned.fill(child: BlurBackground()),
+          // Positioned.fill(child: BlurBackground()),
           // Dialog content
           Dialog(
             backgroundColor: Colors.transparent,
@@ -35,7 +35,7 @@ class BoardSettingsDialog extends ConsumerWidget {
             child: GestureDetector(
               onTap: () {}, // Absorb the tap
               child: Container(
-                padding: EdgeInsets.symmetric(vertical: 10.h),
+                // padding: EdgeInsets.symmetric(vertical: 10.h),
                 decoration: BoxDecoration(
                   color: kPopUpColor,
                   borderRadius: BorderRadius.circular(20.br),
