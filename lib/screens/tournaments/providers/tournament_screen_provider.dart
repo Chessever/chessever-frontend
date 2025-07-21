@@ -31,7 +31,7 @@ class _TournamentScreenController
     required this.ref,
     required this.tourEventCategory,
   }) : super(const AsyncValue.loading()) {
-    _int();
+    loadTours();
   }
 
   final Ref ref;
@@ -40,7 +40,10 @@ class _TournamentScreenController
   /// This will be populated every time we fetch the tournaments
   var _tours = <Tour>[];
 
-  Future<void> _int({List<Tour>? inputTours}) async {
+  Future<void> loadTours({
+    List<Tour>? inputTours,
+    bool sortByFavorites = false,
+  }) async {
     try {
       // final tour = await ref.read(tourLocalStorageProvider).getTours();
       final tour =
@@ -69,6 +72,7 @@ class _TournamentScreenController
             final sortedTours = sortingService.sortAllTours(
               tourEventCardModel,
               selectedCountry,
+              sortByFavorites: sortByFavorites,
             );
             state = AsyncValue.data(sortedTours);
           }
@@ -82,11 +86,11 @@ class _TournamentScreenController
   }
 
   Future<void> setFilteredModels(List<Tour> filteredTours) async {
-    await _int(inputTours: filteredTours);
+    await loadTours(inputTours: filteredTours);
   }
 
   Future<void> resetFilters() async {
-    await _int();
+    await loadTours();
   }
 
   Future<void> onRefresh() async {
@@ -154,7 +158,7 @@ class _TournamentScreenController
   ) async {
     if (query.isEmpty) {
       state = const AsyncValue.loading();
-      _int();
+      loadTours();
       return;
     } else {
       final tours = await ref

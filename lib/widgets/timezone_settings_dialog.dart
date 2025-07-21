@@ -73,103 +73,85 @@ class TimezoneSettingsDialog extends ConsumerWidget {
       child: Stack(
         children: [
           Positioned.fill(child: BlurBackground()),
-          Dialog(
-            backgroundColor: Colors.transparent,
-            insetPadding: EdgeInsets.symmetric(
-              horizontal: 24.sp,
-              vertical: 24.sp,
-            ),
-            child: GestureDetector(
-              onTap: () {},
-              child: Container(
-                decoration: BoxDecoration(
-                  color: kPopUpColor,
-                  borderRadius: BorderRadius.vertical(
-                    top: Radius.circular(12.br),
-                    bottom: Radius.circular(20.br),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: kDarkGreyColor,
-                      blurRadius: 10,
-                      spreadRadius: 1,
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Header
-                    Padding(
-                      padding: EdgeInsets.all(16.sp),
-                      child: Row(
-                        children: [
-                          InkWell(
-                            onTap: () => Navigator.pop(context),
-                            child: Row(
-                              children: [
-                                SvgPicture.asset(
-                                  SvgAsset.left_arrow,
-                                  height: 10.h,
-                                  width: 5.w,
+          GestureDetector(
+            onTap: () {},
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 5.sp, vertical: 8.sp),
+
+              decoration: BoxDecoration(
+                color: kBlackColor,
+                borderRadius: BorderRadius.circular(20.sp),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Header
+                  Padding(
+                    padding: EdgeInsets.all(16.sp),
+                    child: Row(
+                      children: [
+                        InkWell(
+                          onTap: () => Navigator.pop(context),
+                          child: Row(
+                            children: [
+                              SvgPicture.asset(
+                                SvgAsset.left_arrow,
+                                height: 10.h,
+                                width: 5.w,
+                              ),
+                              SizedBox(width: 8.w),
+                              Text(
+                                'Back',
+                                style: AppTypography.textSmRegular.copyWith(
+                                  color: kBoardColorGrey,
                                 ),
-                                SizedBox(width: 8.w),
-                                Text(
-                                  'Back',
-                                  style: AppTypography.textSmRegular.copyWith(
-                                    color: kBoardColorGrey,
-                                  ),
-                                ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
+                  ),
 
-                    // Timezone list
-                    ListView.separated(
-                      shrinkWrap: true,
-                      physics: NeverScrollableScrollPhysics(),
-                      padding: EdgeInsets.symmetric(horizontal: 16.sp),
-                      itemCount: timezoneOptions.length,
-                      separatorBuilder:
-                          (_, __) =>
-                              Divider(color: Colors.grey[800], height: 1),
-                      itemBuilder: (context, index) {
-                        final option = timezoneOptions[index];
-                        final isSelected = selectedId == option.id;
+                  // Timezone list
+                  ListView.separated(
+                    shrinkWrap: true,
+                    physics: NeverScrollableScrollPhysics(),
+                    padding: EdgeInsets.symmetric(horizontal: 16.sp),
+                    itemCount: timezoneOptions.length,
+                    separatorBuilder:
+                        (_, __) => Divider(color: Colors.grey[800], height: 1),
+                    itemBuilder: (context, index) {
+                      final option = timezoneOptions[index];
+                      final isSelected = selectedId == option.id;
 
-                        return InkWell(
-                          onTap: () {
-                            ref
-                                .read(timezoneProvider.notifier)
-                                .setTimezone(option.timezone);
-                            ref
-                                .read(selectedTimezoneIdProvider.notifier)
-                                .state = option.id;
-                            Navigator.pop(context);
-                          },
-                          child: Container(
-                            height: 50.h,
-                            padding: EdgeInsets.symmetric(vertical: 8.sp),
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                option.display,
-                                style: AppTypography.textSmMedium.copyWith(
-                                  color:
-                                      isSelected ? kPrimaryColor : kWhiteColor,
-                                ),
+                      return InkWell(
+                        onTap: () {
+                          ref
+                              .read(timezoneProvider.notifier)
+                              .setTimezone(option.timezone);
+                          ref.read(selectedTimezoneIdProvider.notifier).state =
+                              option.id;
+                          Navigator.pop(context);
+                        },
+                        child: Container(
+                          height: 50.h,
+                          padding: EdgeInsets.symmetric(vertical: 8.sp),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              option.display,
+                              style: AppTypography.textSmMedium.copyWith(
+                                color: isSelected ? kPrimaryColor : kWhiteColor,
                               ),
                             ),
                           ),
-                        );
-                      },
-                    ),
-                    SizedBox(height: 16.h),
-                  ],
-                ),
+                        ),
+                      );
+                    },
+                  ),
+                  SizedBox(height: 16.h),
+                ],
               ),
             ),
           ),

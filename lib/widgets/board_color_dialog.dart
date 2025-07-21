@@ -1,4 +1,6 @@
 import 'dart:ui';
+import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -31,104 +33,97 @@ class BoardColorDialog extends ConsumerWidget {
       selectedColor = 'green';
     }
 
-    return BackdropFilter(
-      filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-      child: Container(
-        height: 259, // Fixed height of 259px as requested
-        decoration: BoxDecoration(
-          color: Color(0xff000000),
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(12),
-            topRight: Radius.circular(12),
+    return Container(
+      // height: 259, // Fixed height of 259px as requested
+      decoration: BoxDecoration(
+        color: kBlackColor,
+
+        borderRadius: BorderRadius.circular(20.sp),
+        boxShadow: [
+          BoxShadow(
+            color: kBlack2Color.withOpacity(0.3),
+            blurRadius: 10,
+            spreadRadius: 1,
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.3),
-              blurRadius: 10,
-              spreadRadius: 1,
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Small white bar at the top with adjusted size and spacing
+          Container(
+            width: 40.w,
+            height: 5.h,
+            margin: const EdgeInsets.only(top: 32),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(2.5),
             ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Small white bar at the top with adjusted size and spacing
-            Container(
-              width: 40,
-              height: 5,
-              margin: const EdgeInsets.only(top: 32),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(2.5),
-              ),
-            ),
-            // Gap of 20px between white bar and board color text
-            const SizedBox(height: 20),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // Title with updated typography
-                  Text(
-                    'Board Colour',
-                    style: TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 18,
-                      fontWeight: FontWeight.w500,
-                      color: kWhiteColor,
+          ),
+          // Gap of 20px between white bar and board color text
+          SizedBox(height: 20.h),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 24.sp, vertical: 32.sp),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Title with updated typography
+                Text(
+                  'Board Colour',
+                  style: AppTypography.textLgMedium.copyWith(
+                    color: kWhiteColor,
+                  ),
+
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 40.h),
+
+                // Color options row
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _buildBoardColorOption(
+                      context: context,
+                      ref: ref,
+                      svgAsset: SvgAsset.boardColorDefault,
+                      label: 'Default',
+                      color: defaultColor,
+                      isSelected: selectedColor == 'default',
                     ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 24),
+                    _buildBoardColorOption(
+                      context: context,
+                      ref: ref,
+                      svgAsset: SvgAsset.boardColorBrown,
+                      label: 'Brown',
+                      color: brownColor,
+                      isSelected: selectedColor == 'brown',
+                    ),
+                    _buildBoardColorOption(
+                      context: context,
+                      ref: ref,
+                      svgAsset: SvgAsset.boardColorGrey,
+                      label: 'Grey',
+                      color: greyColor,
+                      isSelected: selectedColor == 'grey',
+                    ),
+                    _buildBoardColorOption(
+                      context: context,
+                      ref: ref,
+                      svgAsset: SvgAsset.boardColorGreen,
+                      label: 'Green',
+                      color: greenColor,
+                      isSelected: selectedColor == 'green',
+                    ),
+                  ],
+                ),
 
-                  // Color options row
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _buildBoardColorOption(
-                        context: context,
-                        ref: ref,
-                        svgAsset: SvgAsset.boardColorDefault,
-                        label: 'Default',
-                        color: defaultColor,
-                        isSelected: selectedColor == 'default',
-                      ),
-                      _buildBoardColorOption(
-                        context: context,
-                        ref: ref,
-                        svgAsset: SvgAsset.boardColorBrown,
-                        label: 'Brown',
-                        color: brownColor,
-                        isSelected: selectedColor == 'brown',
-                      ),
-                      _buildBoardColorOption(
-                        context: context,
-                        ref: ref,
-                        svgAsset: SvgAsset.boardColorGrey,
-                        label: 'Grey',
-                        color: greyColor,
-                        isSelected: selectedColor == 'grey',
-                      ),
-                      _buildBoardColorOption(
-                        context: context,
-                        ref: ref,
-                        svgAsset: SvgAsset.boardColorGreen,
-                        label: 'Green',
-                        color: greenColor,
-                        isSelected: selectedColor == 'green',
-                      ),
-                    ],
-                  ),
-
-                  // Bottom padding for safe area
-                  SizedBox(height: MediaQuery.of(context).padding.bottom),
-                ],
-              ),
+                // Bottom padding for safe area
+                SizedBox(height: MediaQuery.of(context).padding.bottom),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -160,12 +155,7 @@ class BoardColorDialog extends ConsumerWidget {
           const SizedBox(height: 8),
           Text(
             label,
-            style: const TextStyle(
-              fontFamily: 'Inter',
-              fontSize: 12,
-              fontWeight: FontWeight.w400,
-              color: Colors.white,
-            ),
+            style: AppTypography.textXsRegular.copyWith(color: kWhiteColor),
           ),
           const SizedBox(height: 8),
           // Selection indicator - changed to 20x20

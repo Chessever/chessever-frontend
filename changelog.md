@@ -220,3 +220,22 @@
 -> Stream the fen data in the games list view screen,
 -> Stream PGN data in the chess board view,
 -> Setup Revenue cat in the app and add a build for review,
+
+#18 July
+-> New modal design flow,
+-> Chessboard Nakamura Theme by default,
+-> Stockfish evaluation fixes and update,
+
+
+#19 July
+-> Cleanup Business logic for Chess Board Screen View,
+-> Update the Riverpod for as less rebuilds as possible with minimal state in memory,
+
+#20 July
+-> Board should be fixed,
+-> notation should be clickable,
+-> Go to the last move in each game,
+-> hold on the button then naigate to the moves ,
+-> when you go to a previous move, the board won’t take you to the latest notation,
+Board causes error -> White Screen issue when clicked on games,
+
