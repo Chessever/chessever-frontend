@@ -20,60 +20,37 @@ class LanguageSettingsDialog extends ConsumerWidget {
     return GestureDetector(
       // Close the dialog when tapping outside
       onTap: () => Navigator.of(context).pop(),
-      child: Dialog(
-        // backgroundColor: Colors.transparent,
-        insetPadding: EdgeInsets.symmetric(
-          horizontal: 24.sp,
-          vertical: 24.sp,
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 20.sp, vertical: 8.sp),
+        decoration: BoxDecoration(
+          color: kBlackColor,
+          borderRadius: BorderRadius.circular(12.br),
         ),
-        // Prevent dialog from closing when clicking on the dialog itself
-        child: GestureDetector(
-          onTap: () {}, // Absorb the tap
-          child: Container(
-            decoration: BoxDecoration(
-              color: kPopUpColor,
-              borderRadius: BorderRadius.circular(12.br),
-              boxShadow: [
-                BoxShadow(
-                  color: kDividerColor,
-                  blurRadius: 10,
-                  spreadRadius: 1,
-                ),
-              ],
-            ),
-            child: ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: languages.length,
-              separatorBuilder: (context, index) => Divider(),
-              itemBuilder: (context, index) {
-                final language = languages[index];
-                final isSelected =
-                    currentLocale.languageCode ==
-                    language.locale.languageCode;
+        child: ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: languages.length,
+          separatorBuilder: (context, index) => Divider(),
+          itemBuilder: (context, index) {
+            final language = languages[index];
+            final isSelected =
+                currentLocale.languageCode == language.locale.languageCode;
 
-                return InkWell(
-                  onTap: () {
-                    ref
-                        .read(localeProvider.notifier)
-                        .setLocale(language.locale);
-                    Navigator.of(context).pop();
-                  },
-                  child: Container(
-                    height: 36.h, // Fixed height of 36px as requested
-                    padding: EdgeInsets.all(
-                      8.sp,
-                    ), // Updated to have 8px padding on all sides
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      language.name,
-                      style: AppTypography.textXsRegular,
-                    ),
-                  ),
-                );
+            return InkWell(
+              onTap: () {
+                ref.read(localeProvider.notifier).setLocale(language.locale);
+                Navigator.of(context).pop();
               },
-            ),
-          ),
+              child: Container(
+                height: 36.h, // Fixed height of 36px as requested
+                padding: EdgeInsets.all(
+                  8.sp,
+                ), // Updated to have 8px padding on all sides
+                alignment: Alignment.centerLeft,
+                child: Text(language.name, style: AppTypography.textXsRegular),
+              ),
+            );
+          },
         ),
       ),
     );

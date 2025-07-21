@@ -1,12 +1,15 @@
+import 'dart:ui';
+
 import 'package:chessever2/repository/local_storage/starred_repository/starred_repository.dart';
 import 'package:chessever2/screens/tournaments/tournament_screen.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-final starredProvider =
-    StateNotifierProvider<_StarredRepository, List<String>>((ref) {
-      final currentEvent = ref.watch(selectedTourEventProvider);
-      return _StarredRepository(ref: ref, tournamentCategory: currentEvent);
-    });
+final starredProvider = StateNotifierProvider<_StarredRepository, List<String>>(
+  (ref) {
+    final currentEvent = ref.watch(selectedTourEventProvider);
+    return _StarredRepository(ref: ref, tournamentCategory: currentEvent);
+  },
+);
 
 class _StarredRepository extends StateNotifier<List<String>> {
   _StarredRepository({required this.ref, required this.tournamentCategory})
@@ -30,7 +33,10 @@ class _StarredRepository extends StateNotifier<List<String>> {
     }
   }
 
-  Future<void> toggleStarred(String value) async {
+  Future<void> toggleStarred(
+    String value, {
+    VoidCallback? onStarToggled,
+  }) async {
     try {
       final currentSaved = List<String>.from(state);
       if (currentSaved.contains(value)) {
@@ -43,8 +49,14 @@ class _StarredRepository extends StateNotifier<List<String>> {
           tournamentCategory == TournamentCategory.upcoming
               ? StarRepoKey.upcomingEvent.name
               : StarRepoKey.liveEvent.name;
+
       await ref.read(starredRepository).toggleStar(key, value);
       state = currentSaved;
+
+      // Refresh the tour list if needed
+      if (onStarToggled != null) {
+        onStarToggled();
+      }
     } catch (error, _) {
       rethrow;
     }
