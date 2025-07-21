@@ -20,7 +20,7 @@ void showSettingsDialog(BuildContext context) {
         padding: EdgeInsets.only(
           // left: 24.w,
           // right: 24.w,
-          bottom: bottomPadding + 24.h,
+          // bottom: bottomPadding + 24.h,
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),

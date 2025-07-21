@@ -88,7 +88,6 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen>
                   onProfileTap: () {
                     // Profile tap functionality
                   },
-                  profileInitials: 'VD',
                 ),
               ),
 

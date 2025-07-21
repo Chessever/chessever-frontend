@@ -1,8 +1,8 @@
+import 'package:chessever2/providers/board_settings_provider.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'dart:convert';
-import '../../../providers/board_settings_provider.dart';
 
 // Add an enum for board colors
 enum BoardColor { defaultColor, brown, grey, green }

@@ -9,6 +9,7 @@ class PlayerSecondRowDetailWidget extends StatelessWidget {
   final String secondGmRank;
   final String time;
   final String countryCode;
+
   const PlayerSecondRowDetailWidget({
     super.key,
     required this.name,

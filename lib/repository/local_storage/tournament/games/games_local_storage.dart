@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -8,39 +7,25 @@ final gamesLocalStorage = AutoDisposeProvider<_GamesLocalStorage>((ref) {
   return _GamesLocalStorage(ref);
 });
 
-enum _LocalGameStorage { games }
-
 class _GamesLocalStorage {
   _GamesLocalStorage(this.ref);
 
   final Ref ref;
 
-  Future<void> fetchAndSaveGames(String tourId) async {
+  Future<List<Games>> fetchAndSaveGames(String tourId) async {
     try {
       final games = await ref
           .read(gameRepositoryProvider)
           .getGamesByTourId(tourId);
-      final toursEncoded = _encodeMyReelsList(games);
-      await ref
-          .read(sharedPreferencesRepository)
-          .setStringList(_LocalGameStorage.games.name, toursEncoded);
-    } catch (error, _) {}
+      return games;
+    } catch (error, _) {
+      return <Games>[];
+    }
   }
 
   Future<List<Games>> getGames(String tourId) async {
     try {
-      final tourStringList = await ref
-          .read(sharedPreferencesRepository)
-          .getStringList(_LocalGameStorage.games.name);
-      if (tourStringList.isNotEmpty) {
-        return _decodeMyReelsList(tourStringList);
-      } else {
-        await fetchAndSaveGames(tourId);
-        final tourStringList = await ref
-            .read(sharedPreferencesRepository)
-            .getStringList(_LocalGameStorage.games.name);
-        return _decodeMyReelsList(tourStringList);
-      }
+      return await fetchAndSaveGames(tourId);
     } catch (error, _) {
       return <Games>[];
     }
@@ -48,19 +33,7 @@ class _GamesLocalStorage {
 
   Future<List<Games>> refresh(String tourId) async {
     try {
-      await fetchAndSaveGames(tourId);
-      final tourStringList = await ref
-          .read(sharedPreferencesRepository)
-          .getStringList(_LocalGameStorage.games.name);
-      if (tourStringList.isNotEmpty) {
-        return _decodeMyReelsList(tourStringList);
-      } else {
-        await fetchAndSaveGames(tourId);
-        final tourStringList = await ref
-            .read(sharedPreferencesRepository)
-            .getStringList(_LocalGameStorage.games.name);
-        return _decodeMyReelsList(tourStringList);
-      }
+      return await fetchAndSaveGames(tourId);
     } catch (error, _) {
       return <Games>[];
     }
@@ -208,5 +181,3 @@ String _encoder(Games games) => json.encode(games.toJson());
 
 Map<String, dynamic> _decoder(String gameString) =>
     json.decode(gameString) as Map<String, dynamic>;
-
-
