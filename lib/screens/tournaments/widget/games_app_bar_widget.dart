@@ -414,16 +414,19 @@ class _RoundDropdownState extends State<_RoundDropdown> {
 
             return DropdownMenuItem<String>(
               value: round.id,
-              child: Column(
-                // crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildDropdownItem(round),
-                  if (!isLast)
-                    Padding(
-                      padding: EdgeInsets.symmetric(vertical: 5.h),
-                      child: DividerWidget(),
-                    ),
-                ],
+              child: SingleChildScrollView(
+                physics: const NeverScrollableScrollPhysics(),
+                child: Column(
+                  // crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildDropdownItem(round),
+                    if (!isLast)
+                      Padding(
+                        padding: EdgeInsets.symmetric(vertical: 5.h),
+                        child: DividerWidget(),
+                      ),
+                  ],
+                ),
               ),
             );
           }).toList(),

@@ -1,5 +1,7 @@
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
+import 'package:chessever2/screens/tournaments/providers/sorting_all_event_provider.dart';
+import 'package:chessever2/screens/tournaments/providers/tournament_screen_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
@@ -296,7 +298,14 @@ class _StarWidgetState extends ConsumerState<_StarWidget> {
         });
         ref
             .read(starredProvider.notifier)
-            .toggleStarred(widget.tourEventCardModel.id);
+            .toggleStarred(
+              widget.tourEventCardModel.id,
+              onStarToggled: () {
+                ref
+                    .read(tournamentNotifierProvider.notifier)
+                    .loadTours(sortByFavorites: true);
+              },
+            );
       },
       child: Container(
         alignment: Alignment.centerRight,

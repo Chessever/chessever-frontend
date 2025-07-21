@@ -17,34 +17,34 @@ class SettingsDialog extends ConsumerWidget {
   const SettingsDialog({super.key});
 
   void _showSubDialog(BuildContext context, Widget child) {
-    // Close settings menu first
     Navigator.pop(context);
 
     Future.delayed(const Duration(milliseconds: 100), () {
       showModalBottomSheet(
         context: context,
         isScrollControlled: false,
-        builder: (BuildContext bottomSheetContext) {
-          return Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom,
-            ),
-            child: Wrap(
-              children: [
-                Container(
-                  decoration: BoxDecoration(
-                    color: kPopUpColor,
-                    borderRadius: BorderRadius.vertical(
-                      top: Radius.circular(20.sp),
-                    ),
-                  ),
-                  child: SafeArea(
-                    top: false,
-                    child: child,
-                  ),
+        builder: (BuildContext context) {
+          return Builder(
+            builder: (BuildContext newContext) {
+              return Padding(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(newContext).viewInsets.bottom,
                 ),
-              ],
-            ),
+                child: Wrap(
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        color: kPopUpColor,
+                        borderRadius: BorderRadius.vertical(
+                          top: Radius.circular(20.sp),
+                        ),
+                      ),
+                      child: SafeArea(top: false, child: child),
+                    ),
+                  ],
+                ),
+              );
+            },
           );
         },
       );
@@ -80,12 +80,12 @@ class SettingsDialog extends ConsumerWidget {
           width: 20.w,
           SvgAsset.timezoneIcon,
         ),
-        onBoardSettingsPressed: () =>
-            _showSubDialog(context, const BoardSettingsDialog()),
-        onLanguagePressed: () =>
-            _showSubDialog(context, const LanguageSettingsDialog()),
-        onTimezonePressed: () =>
-            _showSubDialog(context, const TimezoneSettingsDialog()),
+        onBoardSettingsPressed:
+            () => _showSubDialog(context, const BoardSettingsDialog()),
+        onLanguagePressed:
+            () => _showSubDialog(context, const LanguageSettingsDialog()),
+        onTimezonePressed:
+            () => _showSubDialog(context, const TimezoneSettingsDialog()),
         onNotificationsPressed: () {
           ref.read(notificationsSettingsProvider.notifier).toggleEnabled();
         },

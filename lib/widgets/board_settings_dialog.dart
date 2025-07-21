@@ -17,105 +17,115 @@ class BoardSettingsDialog extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final boardSettings = ref.watch(boardSettingsProvider);
 
-    return GestureDetector(
-      // Close the dialog when tapping outside
-      onTap: () => Navigator.of(context).pop(),
-      child: Stack(
-        children: [
-          // Backdrop filter for blur effect
-          // Positioned.fill(child: BlurBackground()),
-          // Dialog content
-          Dialog(
-            backgroundColor: Colors.transparent,
-            insetPadding: EdgeInsets.symmetric(
-              // horizontal: 30.sp,
-              vertical: 24.sp,
-            ),
-            // Prevent dialog from closing when clicking on the dialog itself
-            child: GestureDetector(
-              onTap: () {}, // Absorb the tap
-              child: Container(
-                // padding: EdgeInsets.symmetric(vertical: 10.h),
-                decoration: BoxDecoration(
-                  color: kPopUpColor,
-                  borderRadius: BorderRadius.circular(20.br),
-                  boxShadow: [
-                    BoxShadow(
-                      color: kBlackColor.withOpacity(0.3),
-                      blurRadius: 10,
-                      spreadRadius: 1,
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
+    return Stack(
+      children: [
+        // Backdrop filter for blur effect
+        // Positioned.fill(child: BlurBackground()),
+        // Dialog content
+        Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 24.sp),
+          // Prevent dialog from closing when clicking on the dialog itself
+          child: GestureDetector(
+            onTap: () {}, // Absorb the tap
+            child: Container(
+              // padding: EdgeInsets.symmetric(vertical: 10.h),
+              decoration: BoxDecoration(
+                color: kPopUpColor,
+                borderRadius: BorderRadius.circular(20.br),
+                boxShadow: [
+                  BoxShadow(
+                    color: kBlackColor.withOpacity(0.3),
+                    blurRadius: 10,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: Row(
                       children: [
                         SizedBox(width: 16.w),
-                        InkWell(
-                          onTap: () => Navigator.of(context).pop(),
-                          child: SvgPicture.asset(
-                            SvgAsset.left_arrow,
-                            height: 10.h,
-                            width: 5.w,
-                            semanticsLabel: 'Board Settings Icon',
-                          ),
+                        SvgPicture.asset(
+                          SvgAsset.left_arrow,
+                          height: 10.h,
+                          width: 5.w,
+                          semanticsLabel: 'Board Settings Icon',
                         ),
                         SizedBox(width: 8.w),
                         Text(
-                          'Board Settings',
+                          'Back',
                           style: AppTypography.textSmRegular.copyWith(
                             color: kBoardColorGrey,
                           ),
                         ),
                       ],
                     ),
-                    SizedBox(height: 20.h),
-                    _MenuItem(
-                      customIcon: SvgPicture.asset(SvgAsset.boardSettings),
-                      title: 'Change Board Color',
-                      onPressed: () {
-                        BoardColorDialog();
-                      },
-                      showChevron: false,
-                    ),
-                    DividerWidget(),
-                    _SwitchItem(
-                      title: 'Evaluation bar',
-                      value: boardSettings.showEvaluationBar,
-                      onChanged: (value) {
-                        ref
-                            .read(boardSettingsProvider.notifier)
-                            .toggleEvaluationBar();
-                      },
-                    ),
+                  ),
+                  SizedBox(height: 25.h),
+                  _MenuItem(
+                    customIcon: SvgPicture.asset(SvgAsset.boardSettings),
+                    title: 'Change Board Color',
+                    onPressed: () {
+                      showModalBottomSheet(
+                        context: context,
+                        isScrollControlled: true,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.vertical(
+                            top: Radius.circular(20),
+                          ),
+                        ),
+                        backgroundColor: Colors.transparent,
+                        builder: (BuildContext bottomSheetContext) {
+                          return Padding(
+                            padding: EdgeInsets.only(
+                              bottom: MediaQuery.of(context).viewInsets.bottom,
+                            ),
+                            child: BoardColorDialog(),
+                          );
+                        },
+                      );
+                    },
+                    showChevron: false,
+                  ),
+                  DividerWidget(),
+                  _SwitchItem(
+                    title: 'Evaluation bar',
+                    value: boardSettings.showEvaluationBar,
+                    onChanged: (value) {
+                      ref
+                          .read(boardSettingsProvider.notifier)
+                          .toggleEvaluationBar();
+                    },
+                  ),
 
-                    DividerWidget(),
-                    _SwitchItem(
-                      title: 'Sound',
-                      value: boardSettings.soundEnabled,
-                      onChanged: (_) {
-                        // Use separate reference to prevent cross-interference
-                        ref.read(boardSettingsProvider.notifier).toggleSound();
-                      },
-                    ),
-                    DividerWidget(),
-                    _SwitchItem(
-                      title: 'Chat',
-                      value: boardSettings.chatEnabled,
-                      onChanged: (_) {
-                        // Use separate reference to prevent cross-interference
-                        ref.read(boardSettingsProvider.notifier).toggleChat();
-                      },
-                    ),
-                  ],
-                ),
+                  DividerWidget(),
+                  _SwitchItem(
+                    title: 'Sound',
+                    value: boardSettings.soundEnabled,
+                    onChanged: (_) {
+                      // Use separate reference to prevent cross-interference
+                      ref.read(boardSettingsProvider.notifier).toggleSound();
+                    },
+                  ),
+                  DividerWidget(),
+                  _SwitchItem(
+                    title: 'Chat',
+                    value: boardSettings.chatEnabled,
+                    onChanged: (_) {
+                      // Use separate reference to prevent cross-interference
+                      ref.read(boardSettingsProvider.notifier).toggleChat();
+                    },
+                  ),
+                ],
               ),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -190,7 +200,7 @@ class _SwitchItem extends StatelessWidget {
       child: InkWell(
         onTap: () => onChanged(!value),
         child: Padding(
-          padding: EdgeInsets.all(8.sp),
+          padding: EdgeInsets.symmetric(horizontal: 20.sp, vertical: 8.sp),
           child: Row(
             children: [
               Expanded(child: Text(title, style: AppTypography.textXsRegular)),
