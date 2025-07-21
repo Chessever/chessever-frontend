@@ -4,13 +4,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 // State class for chess board
 class ChessBoardState {
-  final List<bishop.Game> games;
-  final List<List<String>> allMoves;
-  final List<List<String>> sanMoves;
-  final List<int> currentMoveIndex;
-  final List<bool> isPlaying;
-  final List<bool> isBoardFlipped;
-  final List<double> evaluations;
+  final bishop.Game game;
+  final List<String> allMoves;
+  final List<String> sanMoves;
+  final int currentMoveIndex;
+  final bool isPlaying;
+  final bool isBoardFlipped;
+  final double evaluations;
   final Timer? autoPlayTimer;
   final RealtimeSubscribeStatus? subscriptionStatus;
   final bool isConnected;
@@ -19,7 +19,7 @@ class ChessBoardState {
   final DateTime? lastUpdateTime;
 
   ChessBoardState({
-    required this.games,
+    required this.game,
     required this.allMoves,
     required this.sanMoves,
     required this.currentMoveIndex,
@@ -35,13 +35,13 @@ class ChessBoardState {
   });
 
   ChessBoardState copyWith({
-    List<bishop.Game>? games,
-    List<List<String>>? allMoves,
-    List<List<String>>? sanMoves,
-    List<int>? currentMoveIndex,
-    List<bool>? isPlaying,
-    List<bool>? isBoardFlipped,
-    List<double>? evaluations,
+    bishop.Game? game,
+    List<String>? allMoves,
+    List<String>? sanMoves,
+    int? currentMoveIndex,
+    bool? isPlaying,
+    bool? isBoardFlipped,
+    double? evaluations,
     Timer? autoPlayTimer,
     RealtimeSubscribeStatus? subscriptionStatus,
     bool? isConnected,
@@ -50,7 +50,7 @@ class ChessBoardState {
     DateTime? lastUpdateTime,
   }) {
     return ChessBoardState(
-      games: games ?? this.games,
+      game: game ?? this.game,
       allMoves: allMoves ?? this.allMoves,
       sanMoves: sanMoves ?? this.sanMoves,
       currentMoveIndex: currentMoveIndex ?? this.currentMoveIndex,

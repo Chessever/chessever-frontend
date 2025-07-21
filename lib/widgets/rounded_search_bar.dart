@@ -1,15 +1,15 @@
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:country_flags/country_flags.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
-import 'package:chessever2/widgets/country_dropdown.dart';
 import 'package:chessever2/widgets/filter_popup.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/theme/app_theme.dart';
-import 'package:flutter_svg/flutter_svg.dart'; // Import for gradient and colors
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+import '../repository/local_storage/sesions_manager/session_manager.dart'; // Import for gradient and colors
 
 class RoundedSearchBar extends ConsumerStatefulWidget {
   final TextEditingController controller;
@@ -18,7 +18,6 @@ class RoundedSearchBar extends ConsumerStatefulWidget {
   final bool autofocus;
   final VoidCallback? onFilterTap;
   final VoidCallback? onProfileTap;
-  final String profileInitials;
 
   final bool showProfile;
   final bool showFilter;
@@ -31,7 +30,6 @@ class RoundedSearchBar extends ConsumerStatefulWidget {
     this.autofocus = false,
     this.onFilterTap,
     this.onProfileTap,
-    this.profileInitials = 'VD',
     this.showProfile = true,
     this.showFilter = true,
   });
@@ -50,34 +48,43 @@ class _RoundedSearchBarState extends ConsumerState<RoundedSearchBar> {
   }
 
   String selectedCountryCode = 'US';
+
   @override
   Widget build(BuildContext context) {
     final allCountries =
         ref.read(countryDropdownProvider.notifier).getAllCountries();
+    final sessionManager = ref.read(sessionManagerProvider);
 
     return Row(
       children: [
         if (widget.showProfile)
-          GestureDetector(
-            onTap: widget.onProfileTap,
-            child: Container(
-              width: 32.w,
-              height: 32.h,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: kProfileInitialsGradient,
-              ),
-              child: Center(
-                child: Text(
-                  widget.profileInitials.toUpperCase(),
-                  style: TextStyle(
-                    color: kBlack2Color,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12.f,
+          FutureBuilder<String?>(
+            future: sessionManager.getUserInitials(),
+            builder: (context, snapshot) {
+              final data = snapshot.data ?? '';
+
+              return GestureDetector(
+                onTap: widget.onProfileTap,
+                child: Container(
+                  width: 32.w,
+                  height: 32.h,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: kProfileInitialsGradient,
+                  ),
+                  child: Center(
+                    child: Text(
+                      data.toUpperCase(),
+                      style: TextStyle(
+                        color: kBlack2Color,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12.f,
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
 
         if (widget.showProfile) SizedBox(width: 20.w),

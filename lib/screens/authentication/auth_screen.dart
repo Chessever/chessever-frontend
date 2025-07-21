@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/screens/authentication/auth_screen_state.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -165,69 +166,127 @@ class _AuthCountryDropdownWidget extends ConsumerWidget {
     final notifier = ref.read(authScreenProvider.notifier);
 
     return Scaffold(
-      bottomNavigationBar: Container(
-        margin: EdgeInsets.symmetric(horizontal: 20),
-        width: double.infinity,
-        child: ElevatedButton(
-          onPressed: () {
-            notifier.hideCountrySelection();
-            Navigator.of(context).pop();
-            Navigator.pushReplacementNamed(context, '/home_screen');
-          },
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.white,
-            foregroundColor: Colors.black,
-            padding: EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-          child: Text('Continue', style: AppTypography.textSmBold),
-        ),
-      ),
-      backgroundColor: Colors.black,
-      body: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      backgroundColor: Colors.transparent,
+      extendBody: true,
+      body: Stack(
         children: [
-          // Country selection box (centered)
-          Container(
-            margin: EdgeInsets.symmetric(horizontal: 40),
-            decoration: BoxDecoration(
-              // border: Border.all(color: Colors.blue, width: 2),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Column(
-              children: [
-                Container(
-                  width: double.infinity,
-                  padding: EdgeInsets.symmetric(horizontal: 10.sp),
+          // Background content
+          BlurBackground(),
 
-                  child: Text(
-                    'Select your Country',
-                    style: AppTypography.textSmBold,
-                  ),
+          // Main content
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Country selection box (centered)
+              Container(
+                margin: EdgeInsets.symmetric(horizontal: 40.sp),
+
+                child: Column(
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: EdgeInsets.symmetric(horizontal: 10.sp),
+                      child: Text(
+                        'Select your Country',
+                        style: AppTypography.textSmBold.copyWith(
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+
+                    // Dropdown
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 10.sp,
+                        vertical: 5.sp,
+                      ),
+                      child: CountryDropdown(
+                        selectedCountryCode: 'US',
+                        onChanged: (Country country) async {
+                          await ref
+                              .read(countryDropdownProvider.notifier)
+                              .selectCountry(country.countryCode);
+                        },
+                      ),
+                    ),
+                  ],
                 ),
-                SizedBox(height: 10.h),
-                // Dropdown
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 10.sp),
-                  child: CountryDropdown(
-                    selectedCountryCode: 'US',
-                    onChanged: (Country country) async {
-                      await ref
-                          .read(countryDropdownProvider.notifier)
-                          .selectCountry(country.countryCode);
-                      notifier.hideCountrySelection();
-                    },
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
 
-          SizedBox(height: 60),
-
-          // Continue button
+          // Blurred bottom button area
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: ClipRRect(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+              child: Container(
+                padding: EdgeInsets.fromLTRB(
+                  20.sp,
+                  20.sp,
+                  20.sp,
+                  MediaQuery.of(context).viewPadding.bottom + 28.sp,
+                ),
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    // Enhanced glow effect with multiple shadows
+                    boxShadow: [
+                      // Inner glow
+                      BoxShadow(
+                        color: kWhiteColor.withOpacity(0.8),
+                        blurRadius: 8,
+                        spreadRadius: 2,
+                        offset: Offset(-1, 0),
+                      ),
+                      // // Outer glow - larger
+                      BoxShadow(
+                        color: kWhiteColor.withOpacity(0.5),
+                        blurRadius: 20,
+                        spreadRadius: 2,
+                        offset: Offset(0, 2),
+                      ),
+                      // Additional outer glow for stronger effect
+                      BoxShadow(
+                        color: kWhiteColor.withOpacity(0.3),
+                        blurRadius: 35,
+                        spreadRadius: 2,
+                        offset: Offset(0, 4),
+                      ),
+                      // Subtle bottom shadow for depth
+                      BoxShadow(
+                        color: kBlackColor.withOpacity(0.2),
+                        blurRadius: 15,
+                        spreadRadius: 1,
+                        offset: Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: ElevatedButton(
+                    onPressed: () {
+                      notifier.hideCountrySelection();
+                      Navigator.of(context).pop();
+                      Navigator.pushReplacementNamed(context, '/home_screen');
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: kWhiteColor,
+                      foregroundColor: kBlackColor,
+                      padding: EdgeInsets.symmetric(vertical: 16.sp),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12.br),
+                      ),
+                      elevation: 0,
+                      // Remove default elevation since we're using custom shadows
+                      shadowColor: Colors.transparent, // Remove default shadow
+                    ),
+                    child: Text('Continue', style: AppTypography.textLgRegular),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );

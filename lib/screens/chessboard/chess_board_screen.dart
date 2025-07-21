@@ -52,17 +52,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
 
     // Pause previous game if it was playing
     if (_currentPageIndex != newIndex) {
-      notifier.pauseGame(_currentPageIndex);
+      notifier.pauseGame();
       _currentPageIndex = newIndex;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final chessBoardNotifier = ref.read(
-      chessBoardScreenProvider(_currentPageIndex).notifier,
-    );
-
     return Scaffold(
       body: PageView.builder(
         controller: _pageController,
@@ -82,7 +78,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
                     index: index,
                     game: widget.games[index],
                     state: chessBoardState,
-                    notifier: chessBoardNotifier,
                   );
                 },
                 error: (e, _) {
@@ -102,21 +97,17 @@ class _GamePage extends StatelessWidget {
   final int index;
   final GamesTourModel game;
   final ChessBoardState state;
-  final ChessBoardScreenNotifier notifier;
 
   const _GamePage({
     required this.index,
     required this.game,
     required this.state,
-    required this.notifier,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isFlipped = state.isBoardFlipped[index];
-    final boardState = square_bishop.buildSquaresState(
-      fen: state.games[index].fen,
-    );
+    final isFlipped = state.isBoardFlipped;
+    final boardState = square_bishop.buildSquaresState(fen: state.game.fen);
     final displayState = isFlipped ? boardState?.flipped() : boardState;
 
     if (displayState?.board == null) {
@@ -124,17 +115,12 @@ class _GamePage extends StatelessWidget {
     }
 
     return Scaffold(
-      bottomNavigationBar: _BottomNavBar(
-        index: index,
-        state: state,
-        notifier: notifier,
-      ),
+      bottomNavigationBar: _BottomNavBar(index: index, state: state),
       appBar: _AppBar(game: game),
       body: _GameBody(
         index: index,
         game: game,
         state: state,
-        notifier: notifier,
         boardState: displayState,
       ),
     );
@@ -167,28 +153,30 @@ class _LoadingScreen extends StatelessWidget {
   }
 }
 
-class _BottomNavBar extends StatelessWidget {
+class _BottomNavBar extends ConsumerWidget {
   final int index;
   final ChessBoardState state;
-  final ChessBoardScreenNotifier notifier;
 
-  const _BottomNavBar({
-    required this.index,
-    required this.state,
-    required this.notifier,
-  });
+  const _BottomNavBar({required this.index, required this.state});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return ChessBoardBottomNavBar(
-      onFlip: () => notifier.flipBoard(index),
-      onRightMove: () => notifier.moveForward(index),
-      onLeftMove: () => notifier.moveBackward(index),
-      onPlayPause: () => notifier.togglePlayPause(index),
-      onReset: () => notifier.resetGame(index),
-      isPlaying: state.isPlaying[index],
-      currentMove: state.currentMoveIndex[index],
-      totalMoves: state.allMoves[index].length,
+      onFlip:
+          () => ref
+              .read(chessBoardScreenProvider(index).notifier)
+              .flipBoard(index),
+      onRightMove:
+          ref.read(chessBoardScreenProvider(index).notifier).moveForward,
+      onLeftMove:
+          ref.read(chessBoardScreenProvider(index).notifier).moveBackward,
+      onPlayPause:
+          ref.read(chessBoardScreenProvider(index).notifier).togglePlayPause,
+      onReset: ref.read(chessBoardScreenProvider(index).notifier).resetGame,
+      isPlaying: state.isPlaying,
+      currentMove: state.currentMoveIndex,
+      totalMoves: state.allMoves.length,
+      gameIndex: index,
     );
   }
 }
@@ -216,35 +204,29 @@ class _GameBody extends StatelessWidget {
   final int index;
   final GamesTourModel game;
   final ChessBoardState state;
-  final ChessBoardScreenNotifier notifier;
   final dynamic boardState;
 
   const _GameBody({
     required this.index,
     required this.game,
     required this.state,
-    required this.notifier,
     required this.boardState,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isFlipped = state.isBoardFlipped[index];
-    final isLive = game.gameStatus.displayText == '*';
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          _PlayerWidget(game: game, isFlipped: isFlipped, isTop: true),
-          _BoardWithSidebar(
-            index: index,
-            state: state,
-            notifier: notifier,
-            boardState: boardState,
+    final isFlipped = state.isBoardFlipped;
+    return Column(
+      children: [
+        _PlayerWidget(game: game, isFlipped: isFlipped, isTop: true),
+        _BoardWithSidebar(index: index, state: state, boardState: boardState),
+        _PlayerWidget(game: game, isFlipped: isFlipped, isTop: false),
+        Expanded(
+          child: SingleChildScrollView(
+            child: _MovesDisplay(index: index, state: state),
           ),
-          _PlayerWidget(game: game, isFlipped: isFlipped, isTop: false),
-          _MovesDisplay(index: index, state: state, notifier: notifier),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -283,13 +265,11 @@ class _PlayerWidget extends StatelessWidget {
 class _BoardWithSidebar extends StatelessWidget {
   final int index;
   final ChessBoardState state;
-  final ChessBoardScreenNotifier notifier;
   final dynamic boardState;
 
   const _BoardWithSidebar({
     required this.index,
     required this.state,
-    required this.notifier,
     required this.boardState,
   });
 
@@ -300,19 +280,18 @@ class _BoardWithSidebar extends StatelessWidget {
         final sideBarWidth = 20.w;
         final screenWidth = MediaQuery.of(context).size.width;
         final boardSize = screenWidth - sideBarWidth - 32.w;
-        final isFlipped = state.isBoardFlipped[index];
+        final isFlipped = state.isBoardFlipped;
 
         return Container(
           margin: EdgeInsets.symmetric(horizontal: 16.sp),
           child: Row(
             children: [
-              EvaluationBar(
+              EvaluationBarWidget(
                 width: sideBarWidth,
                 height: boardSize,
                 index: index,
-                state: state,
-                notifier: notifier,
                 isFlipped: isFlipped,
+                evaluation: state.evaluations,
               ),
               _ChessBoard(size: boardSize, boardState: boardState),
             ],
@@ -362,34 +341,55 @@ class _ChessBoard extends ConsumerWidget {
   }
 }
 
-class _MovesDisplay extends StatelessWidget {
+class _MovesDisplay extends ConsumerWidget {
   final int index;
   final ChessBoardState state;
-  final ChessBoardScreenNotifier notifier;
 
-  const _MovesDisplay({
-    required this.index,
-    required this.state,
-    required this.notifier,
-  });
+  const _MovesDisplay({required this.state, required this.index});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Container(
       padding: EdgeInsets.all(20.sp),
       child: Wrap(
         spacing: 2.sp,
         runSpacing: 2.sp,
         children:
-            state.sanMoves[index].asMap().entries.map((entry) {
+            state.sanMoves.asMap().entries.map((entry) {
               final moveIndex = entry.key;
               final move = entry.value;
-              return Container(
-                padding: EdgeInsets.symmetric(horizontal: 2.sp),
-                child: Text(
-                  '${moveIndex + 1}. $move',
-                  style: AppTypography.textXsMedium.copyWith(
-                    color: notifier.getMoveColor(move, moveIndex, index),
+              final isCurrentMove = moveIndex == state.currentMoveIndex - 1;
+
+              return GestureDetector(
+                onTap:
+                    () => ref
+                        .read(chessBoardScreenProvider(index).notifier)
+                        .navigateToMove(moveIndex),
+                child: Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 6.sp,
+                    vertical: 2.sp,
+                  ),
+                  decoration: BoxDecoration(
+                    color:
+                        isCurrentMove
+                            ? kgradientEndColors.withOpacity(0.2)
+                            : Colors.transparent,
+                    borderRadius: BorderRadius.circular(4.sp),
+                    border:
+                        isCurrentMove
+                            ? Border.all(color: kgradientEndColors, width: 0.5)
+                            : Border.all(color: Colors.transparent, width: 0.5),
+                  ),
+                  child: Text(
+                    '${moveIndex + 1}. $move',
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: ref
+                          .read(chessBoardScreenProvider(index).notifier)
+                          .getMoveColor(move, moveIndex),
+                      fontWeight:
+                          isCurrentMove ? FontWeight.bold : FontWeight.normal,
+                    ),
                   ),
                 ),
               );

@@ -479,7 +479,11 @@ class _StatusText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(children: [Text(status, style: AppTypography.textXsMedium)]);
+    return Text(
+      status,
+      textAlign: TextAlign.center,
+      style: AppTypography.textXsMedium.copyWith(color: kBlackColor),
+    );
   }
 }
 
