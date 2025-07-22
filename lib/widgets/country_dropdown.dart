@@ -38,20 +38,12 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
   Widget build(BuildContext context) {
     final borderRadius =
         isDropDownOpen
-            ? BorderRadius.only(
-              topLeft: Radius.circular(8.br),
-              topRight: Radius.circular(8.br),
-              bottomLeft: Radius.zero,
-              bottomRight: Radius.zero,
+            ? BorderRadius.circular(
+              10.br, // Use 8.br for consistent border radius with other widgets
             )
             : BorderRadius.circular(8.br);
 
-    final dropDownBorderRadius = BorderRadius.only(
-      bottomLeft: Radius.circular(8.br),
-      bottomRight: Radius.circular(8.br),
-      topLeft: Radius.zero,
-      topRight: Radius.zero,
-    );
+    final dropDownBorderRadius = BorderRadius.circular(10.br);
 
     final allCountries =
         ref.read(countryDropdownProvider.notifier).getAllCountries();
@@ -59,8 +51,9 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
     return ClipRRect(
       borderRadius: borderRadius,
       child: AnimatedContainer(
+        padding: EdgeInsets.symmetric(vertical: 7.sp),
         duration: const Duration(milliseconds: 200),
-        height: 40.h, // Set fixed height to 40px
+        // height: 4.h, // Set fixed height to 40px
         decoration: BoxDecoration(
           color: kBackgroundColor,
           borderRadius: borderRadius,
@@ -69,14 +62,13 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
                   ? null
                   : Border.all(color: kDarkGreyColor, width: 1.w),
         ),
-        child: 
-        DropdownButtonHideUnderline(
+        child: DropdownButtonHideUnderline(
           child: DropdownButton2<String>(
             isExpanded: true,
             customButton: Container(
               height: 40.h, // Match container height
               padding: EdgeInsets.symmetric(
-                horizontal: 12.sp,
+                horizontal: 20.sp,
               ), // Proper padding
               child: Row(
                 children: [
@@ -86,8 +78,8 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
                       ref
                           .read(countryDropdownProvider.notifier)
                           .getCountryName(selectedCountryCode),
-                      style: AppTypography.textXsMedium.copyWith(
-                        color: kWhiteColor,
+                      style: AppTypography.textSmRegular.copyWith(
+                        color: kWhiteColor70,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -98,7 +90,7 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
                     width: 16.w,
                     height: 12.h,
                   ),
-                  SizedBox(width: 8.w),
+                  SizedBox(width: 2.w),
                   Icon(
                     isDropDownOpen
                         ? Icons.keyboard_arrow_up
@@ -167,7 +159,7 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
                       Expanded(
                         child: Text(
                           country.name,
-                          style: AppTypography.textXsMedium.copyWith(
+                          style: AppTypography.textMdMedium.copyWith(
                             color: kWhiteColor,
                           ),
                         ),
@@ -179,7 +171,6 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
             }),
           ),
         ),
-     
       ),
     );
   }

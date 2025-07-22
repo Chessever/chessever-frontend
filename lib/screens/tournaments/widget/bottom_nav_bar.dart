@@ -30,6 +30,8 @@ class BottomNavBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedItem = ref.watch(selectedBottomNavBarItemProvider);
+    final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
+
     return Container(
       padding: EdgeInsets.only(
         top: 0,
@@ -39,7 +41,7 @@ class BottomNavBar extends ConsumerWidget {
         color: kBackgroundColor,
         border: Border(top: BorderSide(color: kDarkGreyColor, width: 1.w)),
       ),
-      height: 80.h - MediaQuery.of(context).viewPadding.bottom,
+      height: (70.h + bottomPadding).clamp(70.0, 120.0),
       child: Row(
         children: List.generate(
           BottomNavBarItem.values.length,

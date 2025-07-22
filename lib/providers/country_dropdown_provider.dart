@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/local_storage/country_man/country_man_repository.dart';
+import 'package:chessever2/repository/location/location_repository_provider.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -11,25 +12,9 @@ class SelectedCountryNotifier extends StateNotifier<AsyncValue<Country>> {
   SelectedCountryNotifier(this.ref) : super(AsyncValue.loading()) {
     _loadSavedCountry();
   }
-  final Ref ref;
-  // Future<void> _loadSavedCountry() async {
-  //   try {
-  //     final savedName =
-  //         await ref.read(countryManRepository).getSavedCountryMan();
-  //     if (savedName != null && savedName.isNotEmpty) {
-  //       final matchedCountry = CountryService().getAll().firstWhere(
-  //         (c) => c.name.toLowerCase() == savedName.toLowerCase(),
-  //         orElse: () => CountryService().getAll().first,
-  //       );
 
-  //       state = AsyncValue.data(matchedCountry);
-  //     } else {
-  //       state = AsyncValue.data(CountryService().getAll().first);
-  //     }
-  //   } catch (e) {
-  //     state = AsyncValue.error(e, StackTrace.current);
-  //   }
-  // }
+  final Ref ref;
+
   Future<void> _loadSavedCountry() async {
     try {
       final savedName =
@@ -42,7 +27,10 @@ class SelectedCountryNotifier extends StateNotifier<AsyncValue<Country>> {
         );
         state = AsyncValue.data(matchedCountry);
       } else {
-        state = AsyncValue.data(CountryService().getAll().first);
+        final countryCode =
+            await ref.read(locationRepositoryProvider).getCountryCode();
+        final country = CountryService().findByCode(countryCode);
+        state = AsyncValue.data(country ?? CountryService().getAll().first);
       }
       print('Country dropdown state set: ${state.value?.name}');
     } catch (e) {

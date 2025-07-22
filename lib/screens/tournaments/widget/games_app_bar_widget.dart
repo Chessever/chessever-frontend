@@ -372,21 +372,26 @@ class _RoundDropdownState extends State<_RoundDropdown> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              round.name,
-              style: AppTypography.textXsRegular.copyWith(color: kWhiteColor),
-              maxLines: 1,
-            ),
-            SizedBox(height: 2.h),
-            Text(
-              round.formattedStartDate,
-              style: AppTypography.textXsRegular.copyWith(color: kWhiteColor70),
-              maxLines: 1,
-            ),
-          ],
+        Flexible(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                round.name,
+                style: AppTypography.textXsRegular.copyWith(color: kWhiteColor),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              SizedBox(height: 2.h),
+              Text(
+                round.formattedStartDate,
+                style: AppTypography.textXsRegular.copyWith(
+                  color: kWhiteColor70,
+                ),
+                maxLines: 1,
+              ),
+            ],
+          ),
         ),
         SizedBox(width: 8.w),
         trailingIcon,
