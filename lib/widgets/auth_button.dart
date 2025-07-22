@@ -113,7 +113,7 @@ class _AuthButtonState extends State<AuthButton>
               Text(
                 widget.signInTitle,
                 style: AppTypography.textLgMedium.copyWith(
-                  color: kBackgroundColor, // Black text
+                  color: kBlackColor, // Black text
                 ),
               ),
             ],

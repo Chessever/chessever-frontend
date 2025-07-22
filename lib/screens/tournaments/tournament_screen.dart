@@ -155,7 +155,10 @@ class AllEventsTabWidget extends ConsumerWidget {
         bottom: MediaQuery.of(context).viewPadding.bottom + 12.sp,
       ),
       itemCount: filteredEvents.length,
-      separatorBuilder: (context, index) => SizedBox(height: 12.sp),
+      separatorBuilder: (context, index) {
+
+       return SizedBox(height: 12.sp);
+      },
       itemBuilder: (context, index) {
         final tourEventCardModel = filteredEvents[index];
 

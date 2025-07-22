@@ -68,7 +68,7 @@ class SettingsMenu extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   SizedBox(
-                    width: 12.w,
+                    width: 24.w,
                     child:
                         boardSettingsIcon ??
                         Icon(Icons.grid_4x4, color: Colors.white, size: 12.ic),
@@ -77,7 +77,7 @@ class SettingsMenu extends StatelessWidget {
                   Expanded(
                     child: Text(
                       'Board settings',
-                      style: AppTypography.textSmMedium.copyWith(
+                      style: AppTypography.textMdMedium.copyWith(
                         color: kWhiteColor,
                       ),
                       // style: TextStyle(
@@ -92,8 +92,8 @@ class SettingsMenu extends StatelessWidget {
                     width: 36,
                     child: SvgPicture.asset(
                       SvgAsset.right_arrow,
-                      height: 12.h,
-                      width: 6.w,
+                      height: 24.h,
+                      width: 24.w,
                     ),
                   ),
                 ],
@@ -121,7 +121,7 @@ class SettingsMenu extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   SizedBox(
-                    width: 12.w,
+                    width: 24.w,
                     child:
                         languageIcon ??
                         Icon(Icons.language, color: kWhiteColor, size: 20),
@@ -130,7 +130,7 @@ class SettingsMenu extends StatelessWidget {
                   Expanded(
                     child: Text(
                       'Language',
-                      style: AppTypography.textXsRegular.copyWith(
+                      style: AppTypography.textMdMedium.copyWith(
                         color: Colors.white,
                       ),
                     ),
@@ -139,8 +139,8 @@ class SettingsMenu extends StatelessWidget {
                     width: 36,
                     child: SvgPicture.asset(
                       SvgAsset.right_arrow,
-                      height: 12.h,
-                      width: 6.w,
+                      height: 24.h,
+                      width: 24.w,
                     ),
                   ),
                 ],
@@ -168,7 +168,7 @@ class SettingsMenu extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   SizedBox(
-                    width: 12.w,
+                    width: 24.w,
                     child:
                         timezoneIcon ??
                         Icon(Icons.public, color: Colors.white, size: 12.ic),
@@ -177,7 +177,7 @@ class SettingsMenu extends StatelessWidget {
                   Expanded(
                     child: Text(
                       'Set timezone',
-                      style: AppTypography.textXsRegular.copyWith(
+                      style: AppTypography.textMdMedium.copyWith(
                         color: Colors.white,
                       ),
                     ),
@@ -186,8 +186,8 @@ class SettingsMenu extends StatelessWidget {
                     width: 36,
                     child: SvgPicture.asset(
                       SvgAsset.right_arrow,
-                      height: 12.h,
-                      width: 6.w,
+                      height: 24.h,
+                      width: 24.w,
                     ),
                   ),
                 ],
@@ -198,7 +198,7 @@ class SettingsMenu extends StatelessWidget {
           // Notifications toggle
           Container(
             height: 36,
-            // padding: EdgeInsets.symmetric(horizontal: 12),
+            padding: EdgeInsets.symmetric(horizontal: 10),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -206,7 +206,7 @@ class SettingsMenu extends StatelessWidget {
                 // Text aligned with icons (no spacers)
                 Text(
                   'Notifications',
-                  style: AppTypography.textXsRegular.copyWith(
+                  style: AppTypography.textMdMedium.copyWith(
                     color: Colors.white,
                   ),
                 ),

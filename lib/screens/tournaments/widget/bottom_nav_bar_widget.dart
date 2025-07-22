@@ -27,23 +27,24 @@ class BottomNavBarWidget extends StatelessWidget {
       onTap: onTap,
       child: Container(
         width: width,
-        padding: EdgeInsets.only(top: 24.sp),
+        padding: EdgeInsets.symmetric(vertical: 8.sp),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             SvgWidget(
               height: 20.h,
               width: 20.w,
               svgIcon,
-              colorFilter:
-                  isSelected
-                      ? ColorFilter.mode(kPrimaryColor, BlendMode.srcATop)
-                      : null,
+              colorFilter: ColorFilter.mode(
+                isSelected ? kWhiteColor : kDarkGreyColor,
+                BlendMode.srcIn,
+              ),
             ),
             SizedBox(height: 4.h),
             Text(
               title,
-              style: AppTypography.textSmMedium.copyWith(
-                color: isSelected ? kPrimaryColor : kWhiteColor70,
+              style: AppTypography.textMdMedium.copyWith(
+                color: isSelected ? kWhiteColor : kDarkGreyColor,
               ),
             ),
           ],

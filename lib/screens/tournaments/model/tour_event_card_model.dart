@@ -51,7 +51,7 @@ class TourEventCardModel extends Equatable {
 
   static String getTimeUntilStart(List<DateTime> dates) {
     if (dates.isEmpty) {
-      return "Starts in 3 days";
+      return "in 3 days";
     }
 
     final startDateTime = dates.first;
@@ -71,22 +71,22 @@ class TourEventCardModel extends Equatable {
         final hours = difference.inHours;
         if (hours == 0) {
           final minutes = difference.inMinutes;
-          return "Starts in $minutes minute${minutes == 1 ? '' : 's'}";
+          return "In $minutes minute${minutes == 1 ? '' : 's'}";
         }
-        return "Starts in $hours hour${hours == 1 ? '' : 's'}";
+        return "In $hours hour${hours == 1 ? '' : 's'}";
       } else if (days == 1) {
-        return "Starts in 1 day";
+        return "In 1 day";
       } else {
-        return "Starts in $days days";
+        return "In $days days";
       }
     } else if (days < 365) {
       // Between 30 days and 365 days - show in months
       final months = (days / 30).round();
-      return "Starts in $months month${months == 1 ? '' : 's'}";
+      return "In $months month${months == 1 ? '' : 's'}";
     } else {
       // More than 365 days - show in years
       final years = (days / 365).round();
-      return "Starts in $years year${years == 1 ? '' : 's'}";
+      return "In $years year${years == 1 ? '' : 's'}";
     }
   }
 
