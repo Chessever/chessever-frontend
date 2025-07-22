@@ -1,6 +1,5 @@
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
-import 'package:chessever2/screens/tournaments/providers/sorting_all_event_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/tournament_screen_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -62,8 +61,7 @@ class EventCard extends ConsumerWidget {
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          SizedBox(
-                            width: MediaQuery.of(context).size.width / 1.75,
+                          Flexible(
                             child: Text(
                               tourEventCardModel.title,
                               style: AppTypography.textXsBold.copyWith(
@@ -73,7 +71,7 @@ class EventCard extends ConsumerWidget {
                               maxLines: 1,
                             ),
                           ),
-                          SizedBox(width: 4.w),
+                          SizedBox(width: 8.w),
                           _ShowStatus(tourEventCardModel: tourEventCardModel),
                         ],
                       ),
@@ -93,7 +91,7 @@ class EventCard extends ConsumerWidget {
                             _buildDot(),
                             TextSpan(text: tourEventCardModel.location),
                             _buildDot(),
-                            TextSpan(text: "ELO ${tourEventCardModel.elo}"),
+                            TextSpan(text: "Ø ${tourEventCardModel.elo}"),
                           ],
                         ),
                       ),

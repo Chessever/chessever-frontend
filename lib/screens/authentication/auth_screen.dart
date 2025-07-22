@@ -56,24 +56,35 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       child: Scaffold(
         body: Stack(
           children: [
-            Hero(tag: 'blur', child: BlurBackground()),
-            Positioned(
-              top: (MediaQuery.of(context).size.height / 2) - 60.h,
-              left: (MediaQuery.of(context).size.width / 2) - 60.w,
+            // Background blur layer
+            const Hero(tag: 'blur', child: BlurBackground()),
+
+            // Centered Column with Icon and Text
+            Center(
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Hero(
+                  const Hero(
                     tag: 'premium-icon',
-                    child: Image.asset(
-                      PngAsset.premiumIcon,
-                      height: 120.h,
-                      width: 120.w,
+                    child: Image(
+                      image: AssetImage(PngAsset.chesseverIcon),
+                      height: 120,
+                      width: 295,
                     ),
                   ),
-                  Image.asset(PngAsset.chesseverIcon, height: 18.h),
+                  SizedBox(height: 10),
+                  Text(
+                    "Follow Chess Better.",
+                    style: AppTypography.textXsRegular.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ],
               ),
             ),
+
+            // Bottom Auth Button
             Align(
               alignment: Alignment.bottomCenter,
               child:
@@ -188,7 +199,7 @@ class _AuthCountryDropdownWidget extends ConsumerWidget {
                       padding: EdgeInsets.symmetric(horizontal: 10.sp),
                       child: Text(
                         'Select your Country',
-                        style: AppTypography.textSmBold.copyWith(
+                        style: AppTypography.textMdMedium.copyWith(
                           color: Colors.white,
                         ),
                       ),

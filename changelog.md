@@ -239,3 +239,16 @@
 -> when you go to a previous move, the board won’t take you to the latest notation,
 Board causes error -> White Screen issue when clicked on games,
 
+#21 july
+-> When the user clicks on star for the tournament bring them at the top
+-> Test and verify google sign in
+->Make the design for dropdown button pixel perfect
+
+#22 july 
+-> onboard design update
+-> textsize of country model update
+-> bottom nav bar colors update and icons 
+-> upcoming events design fixed 
+-> bottom sheet text size update
+-> update icons up splash page
+-> round dropdown issue fix

@@ -220,7 +220,7 @@ class _MenuItem extends StatelessWidget {
             SizedBox(width: 4.w),
             Text(
               title,
-              style: AppTypography.textSmMedium.copyWith(
+              style: AppTypography.textMdMedium.copyWith(
                 color: textColors ?? kWhiteColor,
               ),
             ),

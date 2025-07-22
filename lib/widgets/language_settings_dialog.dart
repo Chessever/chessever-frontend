@@ -47,7 +47,7 @@ class LanguageSettingsDialog extends ConsumerWidget {
                   8.sp,
                 ), // Updated to have 8px padding on all sides
                 alignment: Alignment.centerLeft,
-                child: Text(language.name, style: AppTypography.textXsRegular),
+                child: Text(language.name, style: AppTypography.textMdRegular),
               ),
             );
           },
