@@ -101,8 +101,8 @@ class _AuthButtonState extends State<AuthButton>
             children: [
               SvgWidget(
                 widget.svgIconPath,
-                height: 24.h,
-                width: 24.w,
+                height: 20.h,
+                width: 29.w,
                 fallback: Icon(
                   Icons.apple,
                   size: 24.ic,
@@ -112,9 +112,7 @@ class _AuthButtonState extends State<AuthButton>
               SizedBox(width: 12.w),
               Text(
                 widget.signInTitle,
-                style: AppTypography.textLgMedium.copyWith(
-                  color: kBlackColor, // Black text
-                ),
+                style: AppTypography.textMdMedium.copyWith(color: kBlackColor),
               ),
             ],
           ),

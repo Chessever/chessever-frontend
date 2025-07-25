@@ -33,6 +33,7 @@ class TournamentDetailView extends ConsumerWidget {
     final selectedTourMode = ref.watch(selectedTourModeProvider);
 
     final title = ref.read(aboutTourModelProvider)!.name;
+    
     return ScreenWrapper(
       child: Scaffold(
         body: Column(
@@ -72,11 +73,18 @@ class TournamentDetailView extends ConsumerWidget {
               ),
             ),
             SizedBox(height: 12),
-            selectedTourMode == _TournamentDetailScreenMode.about
-                ? Expanded(child: const AboutTourScreen())
-                : selectedTourMode == _TournamentDetailScreenMode.games
-                ? Expanded(child: const GamesTourScreen())
-                : Expanded(child: const StandingsScreen()),
+            Expanded(
+              child: () {
+                switch (selectedTourMode) {
+                  case _TournamentDetailScreenMode.about:
+                    return const AboutTourScreen();
+                  case _TournamentDetailScreenMode.games:
+                    return const GamesTourScreen();
+                  case _TournamentDetailScreenMode.standings:
+                    return const StandingsScreen();
+                }
+              }(),
+            ),
           ],
         ),
       ),
