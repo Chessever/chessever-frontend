@@ -103,7 +103,9 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
             filteredTours.when(
               data: (filteredEvents) {
                 return Expanded(
-                  child: AllEventsTabWidget(filteredEvents: filteredEvents),
+                  child: AllEventsTabWidget(
+                    filteredEvents: filteredEvents,
+                  ),
                 );
               },
               loading: () {

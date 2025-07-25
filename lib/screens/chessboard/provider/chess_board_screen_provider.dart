@@ -5,17 +5,30 @@ import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state.dart';
 import 'package:chessever2/screens/tournaments/model/games_tour_model.dart';
+import 'package:chessever2/screens/tournaments/providers/countryman_games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:easy_debounce/easy_debounce.dart';
+import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+enum ChessboardView { tour, countryman }
+
+final chessboardViewFromProvider = StateProvider<ChessboardView>((ref) {
+  return ChessboardView.tour;
+});
 
 final chessBoardScreenProvider = AutoDisposeStateNotifierProvider.family<
   ChessBoardScreenNotifier,
   AsyncValue<ChessBoardState>,
   int
 >((ref, index) {
-  var games = ref.watch(gamesTourScreenProvider).value!.gamesTourModels;
+  final view = ref.watch(chessboardViewFromProvider);
+  var games =
+      view == ChessboardView.tour
+          ? ref.watch(gamesTourScreenProvider).value!.gamesTourModels
+          : ref.watch(countrymanGamesTourScreenProvider).value!.gamesTourModels;
+
   if (games[index].gameStatus == GameStatus.ongoing) {
     final subscribedStream = ref.watch(
       gamePgnStreamProvider(games[index].gameId),
@@ -260,29 +273,41 @@ class ChessBoardScreenNotifier
   }
 
   Future<void> _updateEvaluation() async {
-    await _stockSub?.cancel(); // cancel previous
-    EasyDebounce.debounce('my-debouncer', Duration(milliseconds: 500), () {
-      final fen = state.value!.game.fen;
-      final sf = StockfishSingleton().engine;
-      sf.stdin = 'position fen $fen';
-      sf.stdin = 'go depth 10';
+    await _stockSub?.cancel(); // cancel previous subscription
 
-      _stockSub = sf.stdout.listen((line) {
-        double ev = 0;
-        final cp = RegExp(r'score cp (-?\d+)').firstMatch(line)?.group(1);
-        if (cp != null) {
-          ev = int.parse(cp) / 100.0;
-        } else {
-          final mate = RegExp(r'score mate (-?\d+)').firstMatch(line)?.group(1);
-          if (mate != null) ev = int.parse(mate).sign * 10.0;
+    const debounceTag = 'eval-debounce';
+    EasyDebounce.debounce(
+      debounceTag,
+      const Duration(milliseconds: 500),
+      () async {
+        try {
+          final sf = await StockfishSingleton().readyEngine;
+
+          final fen = state.value!.game.fen;
+          sf.stdin = 'position fen $fen';
+          sf.stdin = 'go depth 10';
+
+          _stockSub = sf.stdout.listen((line) {
+            double ev = 0;
+            final cp = RegExp(r'score cp (-?\d+)').firstMatch(line)?.group(1);
+            if (cp != null) {
+              ev = int.parse(cp) / 100.0;
+            } else {
+              final mate = RegExp(
+                r'score mate (-?\d+)',
+              ).firstMatch(line)?.group(1);
+              if (mate != null) ev = int.parse(mate).sign * 10.0;
+            }
+            if (line.startsWith('bestmove')) return; // finished
+
+            state = AsyncValue.data(state.value!.copyWith(evaluations: ev));
+          });
+        } catch (e) {
+          // Engine not available – silently ignore or log
+          debugPrint('Evaluation skipped: $e');
         }
-        if (line.startsWith('bestmove')) return; // finished
-
-        var list = state.value!.evaluations;
-        list = ev;
-        state = AsyncValue.data(state.value!.copyWith(evaluations: list));
-      });
-    });
+      },
+    );
   }
 
   double getWhiteRatio(double eval) {
@@ -294,13 +319,13 @@ class ChessBoardScreenNotifier
 
   Color getMoveColor(String move, int moveIndex) {
     if (moveIndex == state.value!.currentMoveIndex - 1) {
-      return kgradientEndColors;
+      return kWhiteColor;
     }
     if (move.contains('x')) return kLightPink;
     if (moveIndex < state.value!.currentMoveIndex - 1) {
-      return kBoardColorDefault;
+      return kWhiteColor;
     }
-    return kgradientEndColors;
+    return kWhiteColor70;
   }
 
   void pauseGame() {

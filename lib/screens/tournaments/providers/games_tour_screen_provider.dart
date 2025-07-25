@@ -10,6 +10,7 @@ final gamesTourScreenProvider = StateNotifierProvider.autoDispose<
   AsyncValue<GamesScreenModel>
 >((ref) {
   final selectedRound = ref.watch(gamesAppBarProvider).value?.selectedId;
+  
   return GamesTourScreenProvider(ref: ref, roundId: selectedRound);
 });
 

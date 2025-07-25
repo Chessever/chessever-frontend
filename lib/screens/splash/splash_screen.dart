@@ -31,7 +31,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
           alignment: Alignment.center,
           fit: StackFit.expand,
           children: [
-
             Align(
               alignment: Alignment.center,
               child: Hero(tag: 'blur', child: AnimatedBlurBackground()),
@@ -41,8 +40,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
               child: Hero(
                 tag: 'premium-icon',
                 child: Image.asset(
-                  PngAsset.premiumIcon,
-                  height: 120.h,
+                  PngAsset.premium2Icon,
+                  height: 126.h,
                   width: 120.w,
                 ),
               ),

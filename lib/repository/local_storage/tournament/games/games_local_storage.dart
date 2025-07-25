@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final gamesLocalStorage = AutoDisposeProvider<_GamesLocalStorage>((ref) {
@@ -23,9 +24,51 @@ class _GamesLocalStorage {
     }
   }
 
+  Future<List<Games>> fetchAndSaveCountrymanGames(String countryCode) async {
+    try {
+      final games = await ref
+          .read(gameRepositoryProvider)
+          .getGamesByCountryCode(countryCode);
+      return games;
+    } catch (error, _) {
+      return <Games>[];
+    }
+  }
+
   Future<List<Games>> getGames(String tourId) async {
     try {
       return await fetchAndSaveGames(tourId);
+    } catch (error, _) {
+      return <Games>[];
+    }
+  }
+
+  Future<List<Games>> getCountrymanGames(String countryCode) async {
+    try {
+      final loadNow = 25;
+
+      final gameJsonList = await ref
+          .read(gameRepositoryProvider)
+          .getGamesByCountryCode(countryCode)
+          .then((games) => games.map((g) => json.encode(g.toJson())).toList());
+
+      if (gameJsonList.length <= loadNow) {
+        return gameJsonList.map((e) => Games.fromJson(json.decode(e))).toList();
+      }
+
+      final initial = gameJsonList.take(loadNow).toList();
+      final remaining = gameJsonList.skip(loadNow).toList();
+
+      final initialParsed =
+          initial.map((e) => Games.fromJson(json.decode(e))).toList();
+
+      // Parse the rest in background isolate
+      compute(decodeGamesInIsolate, remaining).then((parsedRemaining) {
+        final all = [...initialParsed, ...parsedRemaining];
+        ref.read(fullGamesProvider.notifier).state = all;
+      });
+
+      return initialParsed;
     } catch (error, _) {
       return <Games>[];
     }
@@ -181,3 +224,5 @@ String _encoder(Games games) => json.encode(games.toJson());
 
 Map<String, dynamic> _decoder(String gameString) =>
     json.decode(gameString) as Map<String, dynamic>;
+
+final fullGamesProvider = StateProvider<List<Games>>((ref) => []);
