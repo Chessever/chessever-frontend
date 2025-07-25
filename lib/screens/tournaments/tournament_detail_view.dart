@@ -12,9 +12,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final aboutTourModelProvider = StateProvider<AboutTourModel?>((ref) => null);
 
-final selectedTourModeProvider = StateProvider<_TournamentDetailScreenMode>(
-  (ref) => _TournamentDetailScreenMode.about,
-);
+final selectedTourModeProvider =
+    AutoDisposeStateProvider<_TournamentDetailScreenMode>(
+      (ref) => _TournamentDetailScreenMode.about,
+    );
 
 ///For Tabs
 enum _TournamentDetailScreenMode { about, games, standings }
@@ -33,7 +34,7 @@ class TournamentDetailView extends ConsumerWidget {
     final selectedTourMode = ref.watch(selectedTourModeProvider);
 
     final title = ref.read(aboutTourModelProvider)!.name;
-    
+
     return ScreenWrapper(
       child: Scaffold(
         body: Column(
