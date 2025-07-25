@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 import 'package:bishop/bishop.dart' as bishop;
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
@@ -49,17 +48,24 @@ final chessBoardScreenProvider = AutoDisposeStateNotifierProvider.family<
       },
     );
   }
-  return ChessBoardScreenNotifier(game: games[index]);
+  return ChessBoardScreenNotifier(
+    game: games[index],
+    index: index,
+  );
 });
 
 class ChessBoardScreenNotifier
     extends StateNotifier<AsyncValue<ChessBoardState>> {
-  ChessBoardScreenNotifier({required this.game}) : super(AsyncValue.loading()) {
+  ChessBoardScreenNotifier({
+    required this.game,
+    required this.index,
+  }) : super(AsyncValue.loading()) {
     _initializeState();
   }
 
   StreamSubscription? _stockSub;
   final GamesTourModel game;
+  final int index;
 
   Timer? _longPressTimer;
   bool _isLongPressing = false;
@@ -273,38 +279,19 @@ class ChessBoardScreenNotifier
   }
 
   Future<void> _updateEvaluation() async {
-    await _stockSub?.cancel(); // cancel previous subscription
-
     const debounceTag = 'eval-debounce';
     EasyDebounce.debounce(
       debounceTag,
       const Duration(milliseconds: 500),
       () async {
         try {
-          final sf = await StockfishSingleton().readyEngine;
-
           final fen = state.value!.game.fen;
-          sf.stdin = 'position fen $fen';
-          sf.stdin = 'go depth 10';
-
-          _stockSub = sf.stdout.listen((line) {
-            double ev = 0;
-            final cp = RegExp(r'score cp (-?\d+)').firstMatch(line)?.group(1);
-            if (cp != null) {
-              ev = int.parse(cp) / 100.0;
-            } else {
-              final mate = RegExp(
-                r'score mate (-?\d+)',
-              ).firstMatch(line)?.group(1);
-              if (mate != null) ev = int.parse(mate).sign * 10.0;
-            }
-            if (line.startsWith('bestmove')) return; // finished
-
+          final ev = await StockfishSingleton().evaluatePosition(fen);
+          if (mounted) {
             state = AsyncValue.data(state.value!.copyWith(evaluations: ev));
-          });
-        } catch (e) {
-          // Engine not available – silently ignore or log
-          debugPrint('Evaluation skipped: $e');
+          }
+        } catch (_) {
+          // Silently ignore
         }
       },
     );
