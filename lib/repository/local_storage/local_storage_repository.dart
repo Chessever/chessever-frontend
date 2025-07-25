@@ -10,6 +10,43 @@ final sharedPreferencesRepository = AutoDisposeProvider<_SharedPreferences>((
 class _SharedPreferences {
   _SharedPreferences();
 
+  Future<void> setInt(String key, int value) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(key, value);
+    } catch (error, _) {
+      rethrow;
+    }
+  }
+
+  Future<int?> getInt(String key) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getInt(key);
+    } catch (error, _) {
+      rethrow;
+    }
+  }
+
+  Future<void> setBool(String key, bool value) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(key, value);
+    } catch (error, _) {
+      rethrow;
+    }
+  }
+
+
+  Future<bool?> getBool(String key) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool(key);
+    } catch (error, _) {
+      rethrow;
+    }
+  }
+
   Future<void> setString(String key, String value) async {
     try {
       final prefs = await SharedPreferences.getInstance();

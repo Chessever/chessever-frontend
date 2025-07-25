@@ -45,41 +45,62 @@ class _TournamentScreenController
     bool sortByFavorites = false,
   }) async {
     try {
-      // final tour = await ref.read(tourLocalStorageProvider).getTours();
       final tour =
           inputTours ?? await ref.read(tourLocalStorageProvider).getTours();
+      if (tour.isEmpty) return;
 
-      if (tour.isNotEmpty) {
-        _tours = tour;
+      _tours = tour;
+
+      final countryAsync = ref.watch(countryDropdownProvider);
+      if (countryAsync is AsyncData<Country>) {
+        final selectedCountry = countryAsync.value.name.toLowerCase();
+        final sortingService = ref.read(tournamentSortingServiceProvider);
+
         final tourEventCardModel =
             tour.map((t) => TourEventCardModel.fromTour(t)).toList();
 
-        final countryAsync = ref.watch(countryDropdownProvider);
+        final sortedTours =
+            tourEventCategory == TournamentCategory.upcoming
+                ? sortingService.sortUpcomingTours(
+                  tourEventCardModel,
+                  selectedCountry,
+                )
+                : sortingService.sortAllTours(
+                  tourEventCardModel,
+                  selectedCountry,
+                  sortByFavorites: sortByFavorites,
+                );
 
-        // Check if country data is loaded
-        if (countryAsync is AsyncData<Country>) {
-          final selectedCountry = countryAsync.value.name.toLowerCase();
+        state = AsyncValue.data(sortedTours);
+      }
+
+      /// 🔁 Listen for isolate-merged tours and update UI
+      ref.listen<List<Tour>>(mergedTourProvider, (previous, next) {
+        if (next.length > _tours.length) {
+          _tours = next;
+
+          final updatedCardModels =
+              next.map((t) => TourEventCardModel.fromTour(t)).toList();
 
           final sortingService = ref.read(tournamentSortingServiceProvider);
+          final selectedCountry =
+              ref.read(countryDropdownProvider).value?.name.toLowerCase() ?? '';
 
-          if (tourEventCategory == TournamentCategory.upcoming) {
-            final sortedTours = sortingService.sortUpcomingTours(
-              tourEventCardModel,
-              selectedCountry,
-            );
-            state = AsyncValue.data(sortedTours);
-          } else {
-            final sortedTours = sortingService.sortAllTours(
-              tourEventCardModel,
-              selectedCountry,
-              sortByFavorites: sortByFavorites,
-            );
-            state = AsyncValue.data(sortedTours);
-          }
-        } else {
-          state = AsyncValue.loading();
+          final sortedTours =
+              tourEventCategory == TournamentCategory.upcoming
+                  ? sortingService.sortUpcomingTours(
+                    updatedCardModels,
+                    selectedCountry,
+                  )
+                  : sortingService.sortAllTours(
+                    updatedCardModels,
+                    selectedCountry,
+                    sortByFavorites: sortByFavorites,
+                  );
+
+          state = AsyncValue.data(sortedTours);
         }
-      }
+      });
     } catch (error, _) {
       print(error);
     }

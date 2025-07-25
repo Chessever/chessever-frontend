@@ -144,17 +144,33 @@ class TourRepository extends BaseRepository {
     });
   }
 
-    // Fetch relevant tournaments as defined by created view
-  Future<List<Tour>> getRelevantTournaments() async {
-      return handleApiCall(() async {
-    final response = await supabase
-      .from('tours_relevant')
-      .select()
-      .order('first_date', ascending: true);
+  Future<List<Tour>> getTournaments() async {
+    final liveTournaments = await getLiveTournaments();
+    final upcomingTournaments = await getUpcomingTournaments();
 
-    return (response as List)
-        .map((json) => Tour.fromJson(json))
-        .toList();
-  });
+    return [...liveTournaments, ...upcomingTournaments];
+  }
+
+  // Fetch relevant tournaments as defined by created view
+  Future<List<Tour>> getLiveTournaments() async {
+    return handleApiCall(() async {
+      final response = await supabase
+          .from('tours_live')
+          .select()
+          .order('first_date', ascending: true);
+
+      return (response as List).map((json) => Tour.fromJson(json)).toList();
+    });
+  }
+
+  Future<List<Tour>> getUpcomingTournaments() async {
+    return handleApiCall(() async {
+      final response = await supabase
+          .from('tours_upcoming')
+          .select()
+          .order('first_date', ascending: true);
+
+      return (response as List).map((json) => Tour.fromJson(json)).toList();
+    });
   }
 }

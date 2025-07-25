@@ -68,16 +68,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     tag: 'premium-icon',
                     child: Image(
                       image: AssetImage(PngAsset.chesseverIcon),
-                      height: 120,
+                      height: 156,
                       width: 295,
-                    ),
-                  ),
-                  SizedBox(height: 10),
-                  Text(
-                    "Follow Chess Better.",
-                    style: AppTypography.textXsRegular.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],
@@ -292,7 +284,7 @@ class _AuthCountryDropdownWidget extends ConsumerWidget {
                       // Remove default elevation since we're using custom shadows
                       shadowColor: Colors.transparent, // Remove default shadow
                     ),
-                    child: Text('Continue', style: AppTypography.textLgRegular),
+                    child: Text('Continue', style: AppTypography.textMdRegular),
                   ),
                 ),
               ),

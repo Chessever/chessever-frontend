@@ -4,6 +4,7 @@ import 'package:chessever2/screens/authentication/auth_screen.dart';
 import 'package:chessever2/screens/calendar_detail_screen.dart';
 import 'package:chessever2/screens/authentication/home_screen/home_screen.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
+import 'package:chessever2/screens/countryman_games_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/players/player_screen.dart';
 import 'package:chessever2/screens/players/providers/player_providers.dart'; // Added import for player providers
@@ -134,6 +135,7 @@ class _MyAppState extends ConsumerState<MyApp> {
         '/favorites': (context) => const FavoriteScreen(),
         // Updated to use the new FavoriteScreen
         '/countryman_screen': (context) => const CountrymanScreen(),
+        '/countryman_games_screen': (context) => const CountrymanGamesScreen(),
         '/standings': (context) => const StandingsScreen(),
         '/calendar_detail_screen': (context) => CalendarDetailsScreen(),
         // New route for Score Card

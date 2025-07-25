@@ -15,6 +15,7 @@ const Color kBlack2Color = Color(0xFF1A1A1C); // BLACK#2
 const Color kDarkGreyColor = Color(0xFF333333);
 const Color kLightBlack = Color(0xFF222222);
 const Color kGreenColor = Color(0xFF009C42); // GREEN
+const Color kGreenColor2 = Color(0xFF45C86E); // GREEN
 const Color kRedColor = Color(0xFFF5453A); // RED
 const Color kActiveCalendarColor = Color(0xff68D3FF);
 const Color kpinColor = Color(0xFFBD3D44);
@@ -24,7 +25,7 @@ const Color kBoardColorGrey = Color(0xFF9E9E9E); // Grey
 const Color kBoardColorGreen = Color(0xFFB1D9B0); // Green
 const Color kgradientStartColors = Color(0xFF170116); // Green
 const Color kgradientEndColors = Color(0xFF005B57); // Green
-const Color kLightPink = Color(0xFFf597d0);
+const Color kLightPink = Color(0xFFF39FD5);
 const Color kborderLeftColors = Color(0xFF253135);
 // Add these to your app_theme.dart
 const Color kBoardDarkGreen = Color(0xFFB1D9B0);

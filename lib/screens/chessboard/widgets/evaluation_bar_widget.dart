@@ -75,13 +75,11 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
   final double width;
   final double height;
   final double evaluation;
-  final int index;
 
   const EvaluationBarWidgetForGames({
     required this.width,
     required this.height,
     required this.evaluation,
-    required this.index,
     super.key,
   });
 

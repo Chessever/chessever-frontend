@@ -45,64 +45,59 @@ class EventCard extends ConsumerWidget {
           left: 8.sp,
           right: 8.sp,
         ),
-        child: Stack(
-          alignment: Alignment.centerRight,
+        child: Row(
+          crossAxisAlignment:
+              CrossAxisAlignment
+                  .center, // Center vertically in the entire container
+          mainAxisAlignment: MainAxisAlignment.start,
           children: [
-            Row(
-              crossAxisAlignment:
-                  CrossAxisAlignment
-                      .center, // Center vertically in the entire container
-              mainAxisAlignment: MainAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            Expanded(
+              flex: 9,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Flexible(
-                            child: Text(
-                              tourEventCardModel.title,
-                              style: AppTypography.textXsBold.copyWith(
-                                color: kWhiteColor,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 1,
-                            ),
+                      Flexible(
+                        child: Text(
+                          tourEventCardModel.title,
+                          style: AppTypography.textSmMedium.copyWith(
+                            color: kWhiteColor,
                           ),
-                          SizedBox(width: 8.w),
-                          _ShowStatus(tourEventCardModel: tourEventCardModel),
-                        ],
-                      ),
-
-                      // Small vertical spacing
-                      SizedBox(height: 2.h),
-
-                      // Second row with details
-                      RichText(
-                        maxLines: 1,
-                        text: TextSpan(
-                          style: AppTypography.textXsMedium.copyWith(
-                            color: kWhiteColor70,
-                          ),
-                          children: [
-                            TextSpan(text: tourEventCardModel.dates),
-                            _buildDot(),
-                            TextSpan(text: tourEventCardModel.location),
-                            _buildDot(),
-                            TextSpan(text: "Ø ${tourEventCardModel.elo}"),
-                          ],
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
                         ),
                       ),
+                      SizedBox(width: 8.w),
+                      _ShowStatus(tourEventCardModel: tourEventCardModel),
                     ],
                   ),
-                ),
-              ],
-            ),
 
-            Align(
-              alignment: Alignment.centerRight,
+                  // Small vertical spacing
+                  SizedBox(height: 2.h),
+
+                  // Second row with details
+                  RichText(
+                    maxLines: 1,
+                    text: TextSpan(
+                      style: AppTypography.textXsMedium.copyWith(
+                        color: kWhiteColor70,
+                      ),
+                      children: [
+                        TextSpan(text: tourEventCardModel.dates),
+                        _buildDot(),
+                        TextSpan(text: tourEventCardModel.location),
+                        _buildDot(),
+                        TextSpan(text: "Ø ${tourEventCardModel.elo}"),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              flex: 1,
               child: _BuildTrailingButton(
                 tourEventCardModel: tourEventCardModel,
                 onMorePressed: onMorePressed,
@@ -128,7 +123,7 @@ class EventCard extends ConsumerWidget {
 }
 
 class _ShowStatus extends ConsumerWidget {
-  const _ShowStatus({required this.tourEventCardModel, super.key});
+  const _ShowStatus({required this.tourEventCardModel});
 
   final TourEventCardModel tourEventCardModel;
 
@@ -138,11 +133,10 @@ class _ShowStatus extends ConsumerWidget {
         ref
             .read(locationServiceProvider)
             .getCountryName(tourEventCardModel.location)
-            ?.toLowerCase() ??
-        '';
+            .toLowerCase();
 
     final dropDownSelectedCountry =
-        ref.watch(countryDropdownProvider).value?.name?.toLowerCase() ?? '';
+        ref.watch(countryDropdownProvider).value?.name.toLowerCase() ?? '';
 
     if (currentLocation.isNotEmpty &&
         dropDownSelectedCountry.isNotEmpty &&
@@ -162,7 +156,7 @@ class _ShowStatus extends ConsumerWidget {
 }
 
 class _UpcomingTag extends StatelessWidget {
-  const _UpcomingTag({required this.tourEventCardModel, super.key});
+  const _UpcomingTag({required this.tourEventCardModel});
 
   final TourEventCardModel tourEventCardModel;
 
@@ -178,7 +172,7 @@ class _UpcomingTag extends StatelessWidget {
 }
 
 class _CountryMen extends StatelessWidget {
-  const _CountryMen({super.key});
+  const _CountryMen();
 
   @override
   Widget build(BuildContext context) {
@@ -190,7 +184,7 @@ class _CountryMen extends StatelessWidget {
 }
 
 class _CompletedTag extends StatelessWidget {
-  const _CompletedTag({super.key});
+  const _CompletedTag();
 
   @override
   Widget build(BuildContext context) {
@@ -202,7 +196,7 @@ class _CompletedTag extends StatelessWidget {
 }
 
 class _LiveTag extends StatelessWidget {
-  const _LiveTag({super.key});
+  const _LiveTag();
 
   @override
   Widget build(BuildContext context) {
@@ -220,7 +214,6 @@ class _BuildTrailingButton extends ConsumerWidget {
   const _BuildTrailingButton({
     required this.tourEventCardModel,
     this.onMorePressed,
-    super.key,
   });
 
   final TourEventCardModel tourEventCardModel;
@@ -228,20 +221,20 @@ class _BuildTrailingButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final currentLocation =
-        ref
-            .read(locationServiceProvider)
-            .getCountryName(tourEventCardModel.location)
-            .toLowerCase();
+    // final currentLocation =
+    //     ref
+    //         .read(locationServiceProvider)
+    //         .getCountryName(tourEventCardModel.location)
+    //         .toLowerCase();
 
-    final dropDownSelectedCountry =
-        ref.watch(countryDropdownProvider).value?.name.toLowerCase() ?? '';
+    // final dropDownSelectedCountry =
+    //     ref.watch(countryDropdownProvider).value?.name.toLowerCase() ?? '';
 
-    if (currentLocation.isNotEmpty &&
-        dropDownSelectedCountry.isNotEmpty &&
-        currentLocation.contains(dropDownSelectedCountry)) {
-      return _CountrymenStarWidget();
-    }
+    // if (currentLocation.isNotEmpty &&
+    //     dropDownSelectedCountry.isNotEmpty &&
+    //     currentLocation.contains(dropDownSelectedCountry)) {
+    //   return _CountrymenStarWidget();
+    // }
 
     switch (tourEventCardModel.tourEventCategory) {
       case TourEventCategory.upcoming:
@@ -270,7 +263,7 @@ class _BuildTrailingButton extends ConsumerWidget {
 }
 
 class _StarWidget extends ConsumerStatefulWidget {
-  const _StarWidget({required this.tourEventCardModel, super.key});
+  const _StarWidget({required this.tourEventCardModel});
 
   final TourEventCardModel tourEventCardModel;
 
@@ -321,7 +314,7 @@ class _StarWidgetState extends ConsumerState<_StarWidget> {
 }
 
 class _CountrymenStarWidget extends ConsumerStatefulWidget {
-  _CountrymenStarWidget({super.key});
+  _CountrymenStarWidget();
 
   @override
   ConsumerState<_CountrymenStarWidget> createState() =>

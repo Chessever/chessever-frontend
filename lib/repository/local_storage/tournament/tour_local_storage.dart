@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final tourLocalStorageProvider = Provider<_TourLocalStorage>(
@@ -18,12 +19,15 @@ class _TourLocalStorage {
 
   Future<void> fetchAndSaveTournament() async {
     try {
-      final tours = await ref.read(tourRepositoryProvider).getRelevantTournaments();
+      final tours = await ref.read(tourRepositoryProvider).getTournaments();
+
       final toursEncoded = _encodeMyReelsList(tours);
       await ref
           .read(sharedPreferencesRepository)
           .setStringList(_LocalTourStorage.tour.name, toursEncoded);
-    } catch (error, _) {}
+    } catch (error, _) {
+      rethrow;
+    }
   }
 
   Future<List<Tour>> getTours() async {
@@ -31,16 +35,26 @@ class _TourLocalStorage {
       final tourStringList = await ref
           .read(sharedPreferencesRepository)
           .getStringList(_LocalTourStorage.tour.name);
-      if (tourStringList.isNotEmpty) {
-        return _decodeMyReelsList(tourStringList);
-      } else {
+
+      if (tourStringList.isEmpty) {
         await fetchAndSaveTournament();
-        final tourStringList = await ref
-            .read(sharedPreferencesRepository)
-            .getStringList(_LocalTourStorage.tour.name);
-        return _decodeMyReelsList(tourStringList);
+        return getTours();
       }
-    } catch (error, _) {
+
+      final initialCount = 20;
+      final initial = tourStringList.take(initialCount).toList();
+      final remaining = tourStringList.skip(initialCount).toList();
+
+      final firstBatch = _decodeMyReelsList(initial);
+
+      // Compute remaining in background and update provider
+      compute(decodeToursInIsolate, remaining).then((parsedRemaining) {
+        final allTours = [...firstBatch, ...parsedRemaining];
+        ref.read(mergedTourProvider.notifier).state = allTours;
+      });
+
+      return firstBatch;
+    } catch (e) {
       return <Tour>[];
     }
   }
@@ -179,3 +193,12 @@ String _encoder(Tour tour) => json.encode(tour.toJson());
 
 Map<String, dynamic> _decoder(String tourString) =>
     json.decode(tourString) as Map<String, dynamic>;
+
+List<Tour> decodeToursInIsolate(List<String> jsonStrings) {
+  return jsonStrings.map<Tour>((e) {
+    final decoded = json.decode(e) as Map<String, dynamic>;
+    return Tour.fromJson(decoded);
+  }).toList();
+}
+
+final mergedTourProvider = StateProvider<List<Tour>>((ref) => []);

@@ -1,4 +1,6 @@
 // repositories/game_repository.dart
+import 'dart:convert';
+
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/base_repository.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -183,4 +185,24 @@ class GameRepository extends BaseRepository {
       }
     });
   }
+
+  // Get games where any player has a specific country code
+  Future<List<Games>> getGamesByCountryCode(String countryCode) async {
+    return handleApiCall(() async {
+      final response = await supabase
+          .from('games')
+          .select()
+          .contains('players', '[{"fed": "$countryCode"}]')
+          .order('id', ascending: true);
+
+      return (response as List).map((json) => Games.fromJson(json)).toList();
+    });
+  }
+}
+
+List<Games> decodeGamesInIsolate(List<String> gameJsonList) {
+  return gameJsonList.map((e) {
+    final decoded = json.decode(e) as Map<String, dynamic>;
+    return Games.fromJson(decoded);
+  }).toList();
 }

@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/chessboard/chess_board_screen.dart';
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_widget.dart';
 import 'package:chessever2/screens/tournaments/model/games_tour_model.dart';
 import 'package:chessever2/screens/tournaments/providers/chess_board_visibility_provider.dart';
@@ -56,16 +57,22 @@ class GamesTourScreen extends ConsumerWidget {
                           ),
                           itemCount: data.gamesTourModels.length,
                           itemBuilder: (context, index) {
-                            var game = data.gamesTourModels[index];
+                            var gamesTourModel = data.gamesTourModels[index];
 
                             // Update game with live FEN if ongoing
-                            if (game.gameStatus == GameStatus.ongoing) {
+                            if (gamesTourModel.gameStatus ==
+                                GameStatus.ongoing) {
                               ref
-                                  .watch(gameFenStreamProvider(game.gameId))
+                                  .watch(
+                                    gameFenStreamProvider(
+                                      gamesTourModel.gameId,
+                                    ),
+                                  )
                                   .whenOrNull(
                                     data: (fen) {
                                       if (fen != null) {
-                                        game = game.copyWith(fen: fen);
+                                        gamesTourModel = gamesTourModel
+                                            .copyWith(fen: fen);
                                       }
                                     },
                                   );
@@ -76,10 +83,14 @@ class GamesTourScreen extends ConsumerWidget {
                               child:
                                   isChessBoardVisible
                                       ? ChessBoardFromFEN(
-                                        games: data.gamesTourModels,
-                                      )
-                                      : GameCard(
-                                        onTap: () {
+                                        gamesTourModel: gamesTourModel,
+                                        onChanged: () {
+                                          ref
+                                              .read(
+                                                chessboardViewFromProvider
+                                                    .notifier,
+                                              )
+                                              .state = ChessboardView.tour;
                                           Navigator.push(
                                             context,
                                             MaterialPageRoute(
@@ -91,7 +102,27 @@ class GamesTourScreen extends ConsumerWidget {
                                             ),
                                           );
                                         },
-                                        gamesTourModel: game,
+                                      )
+                                      : GameCard(
+                                        onTap: () {
+                                          ref
+                                              .read(
+                                                chessboardViewFromProvider
+                                                    .notifier,
+                                              )
+                                              .state = ChessboardView.tour;
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder:
+                                                  (_) => ChessBoardScreen(
+                                                    games: data.gamesTourModels,
+                                                    currentIndex: index,
+                                                  ),
+                                            ),
+                                          );
+                                        },
+                                        gamesTourModel: gamesTourModel,
                                         pinnedIds: data.pinnedGamedIs,
                                         onPinToggle: (gamesTourModel) async {
                                           await ref

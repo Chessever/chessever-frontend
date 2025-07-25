@@ -11,7 +11,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:squares/squares.dart';
+import 'package:squares/squares.dart' as square;
 import 'package:square_bishop/square_bishop.dart' as square_bishop;
 
 class ChessBoardScreen extends ConsumerStatefulWidget {
@@ -34,9 +34,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
 
   @override
   void initState() {
-    super.initState();
     _currentPageIndex = widget.currentIndex;
     _pageController = PageController(initialPage: widget.currentIndex);
+    super.initState();
   }
 
   @override
@@ -46,15 +46,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
   }
 
   void _onPageChanged(int newIndex) {
-    final notifier = ref.read(
-      chessBoardScreenProvider(_currentPageIndex).notifier,
-    );
+    if (_currentPageIndex == newIndex) return;
 
-    // Pause previous game if it was playing
-    if (_currentPageIndex != newIndex) {
-      notifier.pauseGame();
-      _currentPageIndex = newIndex;
-    }
+    ref.read(chessBoardScreenProvider(_currentPageIndex).notifier).pauseGame();
+    _currentPageIndex = newIndex;
   }
 
   @override
@@ -71,7 +66,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
           }
 
           return ref
-              .watch(chessBoardScreenProvider(_currentPageIndex))
+              .watch(chessBoardScreenProvider(index))
               .when(
                 data: (chessBoardState) {
                   return _GamePage(
@@ -121,7 +116,7 @@ class _GamePage extends StatelessWidget {
         index: index,
         game: game,
         state: state,
-        boardState: displayState,
+        boardState: displayState!.board,
       ),
     );
   }
@@ -204,7 +199,7 @@ class _GameBody extends StatelessWidget {
   final int index;
   final GamesTourModel game;
   final ChessBoardState state;
-  final dynamic boardState;
+  final square.BoardState boardState;
 
   const _GameBody({
     required this.index,
@@ -265,7 +260,7 @@ class _PlayerWidget extends StatelessWidget {
 class _BoardWithSidebar extends StatelessWidget {
   final int index;
   final ChessBoardState state;
-  final dynamic boardState;
+  final square.BoardState boardState;
 
   const _BoardWithSidebar({
     required this.index,
@@ -304,18 +299,21 @@ class _BoardWithSidebar extends StatelessWidget {
 
 class _ChessBoard extends ConsumerWidget {
   final double size;
-  final dynamic boardState;
+  final square.BoardState boardState;
 
-  const _ChessBoard({required this.size, required this.boardState});
+  const _ChessBoard({
+    required this.size,
+    required this.boardState,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return SizedBox(
       height: size,
       child: AbsorbPointer(
-        child: Board(
-          size: BoardSize.standard,
-          pieceSet: PieceSet.fromImageAssets(
+        child: square.Board(
+          size: square.BoardSize.standard,
+          pieceSet: square.PieceSet.fromImageAssets(
             folder: 'assets/pngs/pieces/',
             symbols: [
               'P',
@@ -333,8 +331,8 @@ class _ChessBoard extends ConsumerWidget {
             ],
             format: 'png',
           ),
-          playState: PlayState.observing,
-          state: boardState!.board,
+          playState: square.PlayState.observing,
+          state: boardState,
         ),
       ),
     );
@@ -355,45 +353,64 @@ class _MovesDisplay extends ConsumerWidget {
         spacing: 2.sp,
         runSpacing: 2.sp,
         children:
-            state.sanMoves.asMap().entries.map((entry) {
-              final moveIndex = entry.key;
-              final move = entry.value;
-              final isCurrentMove = moveIndex == state.currentMoveIndex - 1;
+            state.sanMoves.isNotEmpty
+                ? state.sanMoves.asMap().entries.map((entry) {
+                  final moveIndex = entry.key;
+                  final move = entry.value;
+                  final isCurrentMove = moveIndex == state.currentMoveIndex - 1;
 
-              return GestureDetector(
-                onTap:
-                    () => ref
-                        .read(chessBoardScreenProvider(index).notifier)
-                        .navigateToMove(moveIndex),
-                child: Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 6.sp,
-                    vertical: 2.sp,
-                  ),
-                  decoration: BoxDecoration(
-                    color:
-                        isCurrentMove
-                            ? kgradientEndColors.withOpacity(0.2)
-                            : Colors.transparent,
-                    borderRadius: BorderRadius.circular(4.sp),
-                    border:
-                        isCurrentMove
-                            ? Border.all(color: kgradientEndColors, width: 0.5)
-                            : Border.all(color: Colors.transparent, width: 0.5),
-                  ),
-                  child: Text(
-                    '${moveIndex + 1}. $move',
+                  // Calculate full move number (only for White's moves)
+                  final fullMoveNumber = (moveIndex / 2).floor() + 1;
+                  final isWhiteMove = moveIndex % 2 == 0;
+
+                  return GestureDetector(
+                    onTap:
+                        () => ref
+                            .read(chessBoardScreenProvider(index).notifier)
+                            .navigateToMove(moveIndex),
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 6.sp,
+                        vertical: 2.sp,
+                      ),
+                      decoration: BoxDecoration(
+                        color:
+                            isCurrentMove
+                                ? kWhiteColor70.withOpacity(0.4)
+                                : Colors.transparent,
+                        borderRadius: BorderRadius.circular(4.sp),
+                        border:
+                            isCurrentMove
+                                ? Border.all(color: kWhiteColor, width: 0.5)
+                                : Border.all(
+                                  color: Colors.transparent,
+                                  width: 0.5,
+                                ),
+                      ),
+                      child: Text(
+                        isWhiteMove ? '$fullMoveNumber. $move' : move,
+                        style: AppTypography.textXsMedium.copyWith(
+                          color: ref
+                              .read(chessBoardScreenProvider(index).notifier)
+                              .getMoveColor(move, moveIndex),
+                          fontWeight:
+                              isCurrentMove
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList()
+                : [
+                  Text(
+                    "No Moves Made yet!",
                     style: AppTypography.textXsMedium.copyWith(
-                      color: ref
-                          .read(chessBoardScreenProvider(index).notifier)
-                          .getMoveColor(move, moveIndex),
-                      fontWeight:
-                          isCurrentMove ? FontWeight.bold : FontWeight.normal,
+                      color: kWhiteColor,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                ),
-              );
-            }).toList(),
+                ],
       ),
     );
   }
