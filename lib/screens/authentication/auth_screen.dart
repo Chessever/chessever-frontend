@@ -191,8 +191,8 @@ class _AuthCountryDropdownWidget extends ConsumerWidget {
                       padding: EdgeInsets.symmetric(horizontal: 10.sp),
                       child: Text(
                         'Select your Country',
-                        style: AppTypography.textMdMedium.copyWith(
-                          color: Colors.white,
+                        style: AppTypography.textMdBold.copyWith(
+                          color: kWhiteColor,
                         ),
                       ),
                     ),
@@ -284,7 +284,7 @@ class _AuthCountryDropdownWidget extends ConsumerWidget {
                       // Remove default elevation since we're using custom shadows
                       shadowColor: Colors.transparent, // Remove default shadow
                     ),
-                    child: Text('Continue', style: AppTypography.textMdRegular),
+                    child: Text('Continue', style: AppTypography.textLgMedium),
                   ),
                 ),
               ),

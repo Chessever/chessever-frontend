@@ -24,6 +24,12 @@ class PositionRepository extends BaseRepository {
     return Position.fromJson(response);
   });
 
+  Future<Position?> getByFen(String fen) => handleApiCall(() async {
+    final res =
+    await supabase.from('positions').select().eq('fen', fen).maybeSingle();
+    return res == null ? null : Position.fromJson(res);
+  });
+
   Future<void> delete(int id) => handleApiCall(() async {
     await supabase.from('positions').delete().eq('id', id);
   });

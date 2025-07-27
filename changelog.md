@@ -252,3 +252,31 @@ Board causes error -> White Screen issue when clicked on games,
 -> bottom sheet text size update
 -> update icons up splash page
 -> round dropdown issue fix
+
+#23 july
+-> Users country will be auto detected based on the location of the device,
+-> Updated new splash screen and App icons from Figma,
+-> Global instance for Stockfish as an engine for local evaluation,
+
+#24 july
+-> Allow the chess pieces to be draggable and movable, 
+-> Updated typography, colors as per new design for the settings modal,
+-> The moves in the board are shown with a different color,
+-> Fix new splash screen and new icons,
+
+#25 july
+-> Show indicators for the pieces in the board from and to position,
+-> Update the style for displaying moves,
+-> Fix to display the fen data in the games list view,
+-> Fetch data from updated table for tournaments,
+
+#27 july
+-> We will have 4 sources for the analysis, which we will query in that order:
+1. Local Cache
+2. Lichess DB
+3. Own DB
+4. Local Stockfish
+
+- 4 is not used for the board-list-view. (The others are used for both views).
+- For 2 you will use this route: https://lichess.org/api#tag/Analysis
+- Whenever you obtain a result via 2,3 or 4 you will put it in 1.
