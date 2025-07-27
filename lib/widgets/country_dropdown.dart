@@ -78,7 +78,7 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
                       ref
                           .read(countryDropdownProvider.notifier)
                           .getCountryName(selectedCountryCode),
-                      style: AppTypography.textSmRegular.copyWith(
+                      style: AppTypography.textSmMedium.copyWith(
                         color: kWhiteColor70,
                       ),
                       overflow: TextOverflow.ellipsis,

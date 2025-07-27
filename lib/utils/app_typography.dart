@@ -30,7 +30,6 @@ class AppTypography {
     fontSize: 48.f,
     height: 52.h / 48.h,
   );
-
   static TextStyle displayLgMedium = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w500,
@@ -69,7 +68,6 @@ class AppTypography {
     fontSize: 32.f,
     height: 40.h / 32.h,
   );
-
   static TextStyle displaySmMedium = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w500,

@@ -3,7 +3,6 @@ class Evals {
   final int positionId;
   final int knodes;
   final int depth;
-  final int? pvsCount;
   final List<dynamic> pvs;
 
   Evals({
@@ -11,7 +10,6 @@ class Evals {
     required this.positionId,
     required this.knodes,
     required this.depth,
-    this.pvsCount,
     required this.pvs,
   });
 
@@ -20,16 +18,14 @@ class Evals {
     positionId: json['position_id'],
     knodes: json['knodes'],
     depth: json['depth'],
-    pvsCount: json['pvs_count'],
     pvs: json['pvs'] ?? [],
   );
 
   Map<String, dynamic> toJson() => {
-    'id': id,
+    if (id != null) 'id': id,
     'position_id': positionId,
     'knodes': knodes,
     'depth': depth,
-    'pvs_count': pvsCount,
     'pvs': pvs,
   };
 }

@@ -29,7 +29,6 @@ class ChessBoardFromFEN extends ConsumerStatefulWidget {
 
 class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFEN> {
   late BoardState boardState;
-  var evaluations = 0.4;
 
   @override
   void initState() {
@@ -95,7 +94,7 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFEN> {
                   EvaluationBarWidgetForGames(
                     width: sideBarWidth,
                     height: boardSize,
-                    evaluation: evaluations,
+                    fen: widget.gamesTourModel.fen ?? '',
                   ),
 
                   SizedBox(
