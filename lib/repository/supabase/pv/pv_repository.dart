@@ -1,5 +1,5 @@
 import 'package:chessever2/repository/supabase/base_repository.dart';
-import 'package:chessever2/repository/supabase/pv/pv.dart';
+import 'package:chessever2/repository/supabase/pv/supabase_pv.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final pvRepositoryProvider = AutoDisposeProvider<PvRepository>(
@@ -7,17 +7,17 @@ final pvRepositoryProvider = AutoDisposeProvider<PvRepository>(
 );
 
 class PvRepository extends BaseRepository {
-  Future<List<Pv>> getAll() => handleApiCall(() async {
+  Future<List<SupabasePv>> getAll() => handleApiCall(() async {
     final response = await supabase.from('pvs').select();
-    return (response as List).map((json) => Pv.fromJson(json)).toList();
+    return (response as List).map((json) => SupabasePv.fromJson(json)).toList();
   });
 
-  Future<List<Pv>> getByEvalId(int evalId) => handleApiCall(() async {
+  Future<List<SupabasePv>> getByEvalId(int evalId) => handleApiCall(() async {
     final response = await supabase.from('pvs').select().eq('eval_id', evalId);
-    return (response as List).map((json) => Pv.fromJson(json)).toList();
+    return (response as List).map((json) => SupabasePv.fromJson(json)).toList();
   });
 
-  Future<Pv> create({
+  Future<SupabasePv> create({
     required int evalId,
     required int idx,
     int? cp,
@@ -36,7 +36,7 @@ class PvRepository extends BaseRepository {
             })
             .select()
             .single();
-    return Pv.fromJson(response);
+    return SupabasePv.fromJson(response);
   });
 
   Future<void> delete(int id) => handleApiCall(() async {
