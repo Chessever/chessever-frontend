@@ -93,7 +93,8 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
       error: (_, __) => 0.0,
       data: (cloud) {
         final pv = cloud.pvs.firstOrNull;
-        return pv == null ? 0.0 : (pv.cp / 100).clamp(-10, 10) / 10;
+        print(pv?.cp ?? 0);
+        return pv == null ? 0.0 : (pv.cp * 10 / 100).clamp(-10, 10) / 10;
       },
     );
 

@@ -23,8 +23,7 @@ class _LichessEvalRepository {
     }
 
     if (resp.statusCode == 404) {
-      final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
-      throw NoEvalException(decoded['error'] ?? 'No evaluation');
+      throw NoEvalException('No evaluation');
     }
 
     throw HttpException('Unexpected status ${resp.statusCode}');
