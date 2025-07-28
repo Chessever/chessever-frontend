@@ -10,7 +10,6 @@ import 'package:chessever2/widgets/back_drop_filter_widget.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class GameCard extends StatelessWidget {
   const GameCard({
@@ -56,7 +55,9 @@ class GameCard extends StatelessWidget {
                 ),
                 Spacer(),
                 (gamesTourModel.gameStatus == GameStatus.ongoing)
-                    ? ChessProgressBar(asyncValue: AsyncValue.loading())
+                    ? ChessProgressBar(
+                      fen: gamesTourModel.fen ?? '',
+                    )
                     : _StatusText(
                       status: gamesTourModel.gameStatus.displayText,
                     ),
@@ -198,7 +199,7 @@ class GameCard extends StatelessWidget {
                                 (gamesTourModel.gameStatus ==
                                         GameStatus.ongoing)
                                     ? ChessProgressBar(
-                                      asyncValue: AsyncValue.loading(),
+                                      fen: gamesTourModel.fen ?? "",
                                     )
                                     : _StatusText(
                                       status:
