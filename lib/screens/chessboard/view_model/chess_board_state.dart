@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'package:bishop/bishop.dart' as bishop;
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:square_bishop/square_bishop.dart' as square_bishop;
+import 'package:squares/squares.dart' as square;
 
 // State class for chess board
 class ChessBoardState {
   final bishop.Game game;
+  final square_bishop.SquaresState squaresState;
   final List<String> allMoves;
   final List<String> sanMoves;
   final int currentMoveIndex;
@@ -12,14 +14,12 @@ class ChessBoardState {
   final bool isBoardFlipped;
   final double evaluations;
   final Timer? autoPlayTimer;
-  final RealtimeSubscribeStatus? subscriptionStatus;
-  final bool isConnected;
-  final String? lastError;
   final int? lastUpdatedGameIndex;
   final DateTime? lastUpdateTime;
 
   ChessBoardState({
     required this.game,
+    required this.squaresState,
     required this.allMoves,
     required this.sanMoves,
     required this.currentMoveIndex,
@@ -27,15 +27,13 @@ class ChessBoardState {
     required this.isBoardFlipped,
     required this.evaluations,
     this.autoPlayTimer,
-    this.subscriptionStatus,
-    required this.isConnected,
-    this.lastError,
     this.lastUpdatedGameIndex,
     this.lastUpdateTime,
   });
 
   ChessBoardState copyWith({
     bishop.Game? game,
+    square_bishop.SquaresState? squaresState,
     List<String>? allMoves,
     List<String>? sanMoves,
     int? currentMoveIndex,
@@ -43,7 +41,6 @@ class ChessBoardState {
     bool? isBoardFlipped,
     double? evaluations,
     Timer? autoPlayTimer,
-    RealtimeSubscribeStatus? subscriptionStatus,
     bool? isConnected,
     String? lastError,
     int? lastUpdatedGameIndex,
@@ -58,11 +55,9 @@ class ChessBoardState {
       isBoardFlipped: isBoardFlipped ?? this.isBoardFlipped,
       evaluations: evaluations ?? this.evaluations,
       autoPlayTimer: autoPlayTimer ?? this.autoPlayTimer,
-      subscriptionStatus: subscriptionStatus ?? this.subscriptionStatus,
-      isConnected: isConnected ?? this.isConnected,
-      lastError: lastError ?? this.lastError,
       lastUpdatedGameIndex: lastUpdatedGameIndex,
       lastUpdateTime: lastUpdateTime,
+      squaresState: squaresState ?? this.squaresState,
     );
   }
 }
