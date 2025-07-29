@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:bishop/bishop.dart' as bishop;
+import 'package:square_bishop/square_bishop.dart' as square_bishop;
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state.dart';
@@ -71,7 +72,10 @@ class ChessBoardScreenNotifier
   bool _isLongPressing = false;
 
   void _initializeState() {
-    final bishopGames = bishop.Game.fromPgn(_cleanPgnData(game.pgn ?? ""));
+    final bishopGames = bishop.Game.fromPgn(
+      _cleanPgnData(game.pgn ?? ""),
+    );
+    final squaresState = square_bishop.buildSquaresState(fen: bishopGames.fen);
 
     final allMoves = bishopGames.moveHistoryAlgebraic;
     final sanMoves = bishopGames.moveHistorySan;
@@ -84,15 +88,13 @@ class ChessBoardScreenNotifier
     state = AsyncValue.data(
       ChessBoardState(
         game: bishopGames,
+        squaresState: squaresState!,
         allMoves: allMoves,
         sanMoves: sanMoves,
         currentMoveIndex: currentMoveIndex,
         isPlaying: false,
         isBoardFlipped: false,
         evaluations: 0.0,
-        subscriptionStatus: null,
-        isConnected: false,
-        lastError: null,
         lastUpdatedGameIndex: null,
         lastUpdateTime: null,
       ),
@@ -161,71 +163,63 @@ class ChessBoardScreenNotifier
   }
 
   void moveForward() {
-    if (state.value!.currentMoveIndex < state.value!.allMoves.length) {
-      state.value!.game.makeMoveString(
-        state.value!.allMoves[state.value!.currentMoveIndex],
-      );
-      final newCurrentMoveIndex = state.value!.currentMoveIndex + 1;
-      state = AsyncValue.data(
-        state.value!.copyWith(currentMoveIndex: newCurrentMoveIndex),
-      );
-      _updateEvaluation();
-    }
+    final st = state.value!;
+    if (st.currentMoveIndex >= st.allMoves.length) return;
+
+    st.game.makeMoveString(st.allMoves[st.currentMoveIndex]);
+
+    final squaresState = square_bishop.buildSquaresState(fen: st.game.fen);
+
+    state = AsyncValue.data(
+      st.copyWith(
+        currentMoveIndex: st.currentMoveIndex + 1,
+        squaresState: squaresState,
+      ),
+    );
+    _updateEvaluation();
   }
 
   void moveBackward() {
-    if (state.value!.game.canUndo) {
-      state.value!.game.undo();
-      final newCurrentMoveIndex = state.value!.currentMoveIndex - 1;
-      state = AsyncValue.data(
-        state.value!.copyWith(currentMoveIndex: newCurrentMoveIndex),
-      );
-      _updateEvaluation();
-    }
+    final st = state.value!;
+    if (!st.game.canUndo) return;
+
+    st.game.undo();
+
+    final squaresState = square_bishop.buildSquaresState(fen: st.game.fen);
+
+    state = AsyncValue.data(
+      st.copyWith(
+        currentMoveIndex: st.currentMoveIndex - 1,
+        squaresState: squaresState,
+      ),
+    );
+    _updateEvaluation();
   }
 
   void navigateToMove(int targetMoveIndex) {
-    final currentMoveIndex = state.value!.currentMoveIndex - 1;
+    final st = state.value!;
+    final current = st.currentMoveIndex - 1;
+    if (targetMoveIndex == current) return;
 
-    if (targetMoveIndex == currentMoveIndex) {
-      // Already at this move, do nothing
-      return;
+    if (st.isPlaying) pauseGame();
+
+    // bring game to start
+    while (st.game.canUndo) st.game.undo();
+
+    // replay to desired index
+    for (var i = 0; i < targetMoveIndex; i++) {
+      st.game.makeMoveString(st.allMoves[i]);
     }
 
-    // Pause auto-play if it's running
-    if (state.value!.isPlaying) {
-      pauseGame();
-    }
+    final squaresState = square_bishop.buildSquaresState(fen: st.game.fen);
 
-    if (targetMoveIndex < currentMoveIndex) {
-      // Move backward to target
-      final stepsBack = currentMoveIndex - targetMoveIndex;
-      for (int i = 0; i < stepsBack; i++) {
-        if (state.value!.game.canUndo) {
-          state.value!.game.undo();
-          final newCurrentMoveIndex = state.value!.currentMoveIndex - 1;
-          state = AsyncValue.data(
-            state.value!.copyWith(currentMoveIndex: newCurrentMoveIndex),
-          );
-        }
-      }
-    } else {
-      // Move forward to target
-      final stepsForward = targetMoveIndex - currentMoveIndex;
-      for (int i = 0; i < stepsForward; i++) {
-        if (state.value!.currentMoveIndex < state.value!.allMoves.length) {
-          state.value!.game.makeMoveString(
-            state.value!.allMoves[state.value!.currentMoveIndex],
-          );
-          final newCurrentMoveIndex = state.value!.currentMoveIndex + 1;
-          state = AsyncValue.data(
-            state.value!.copyWith(currentMoveIndex: newCurrentMoveIndex),
-          );
-        }
-      }
-    }
+    state = AsyncValue.data(
+      st.copyWith(
+        currentMoveIndex: targetMoveIndex + 1,
+        squaresState: squaresState,
+      ),
+    );
 
-    // Update evaluation after navigation
     _updateEvaluation();
   }
 

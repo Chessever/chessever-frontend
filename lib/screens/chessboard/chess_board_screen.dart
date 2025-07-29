@@ -1,4 +1,3 @@
-import 'package:bishop/bishop.dart' as bishop;
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
@@ -12,7 +11,6 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:squares/squares.dart' as square;
-import 'package:square_bishop/square_bishop.dart' as square_bishop;
 
 class ChessBoardScreen extends ConsumerStatefulWidget {
   final List<GamesTourModel> games;
@@ -102,12 +100,8 @@ class _GamePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isFlipped = state.isBoardFlipped;
-    final boardState = square_bishop.buildSquaresState(fen: state.game.fen);
-    final displayState = isFlipped ? boardState?.flipped() : boardState;
-
-    if (displayState?.board == null) {
-      return const _LoadingScreen();
-    }
+    final squaresState =
+        isFlipped ? state.squaresState.flipped() : state.squaresState;
 
     return Scaffold(
       bottomNavigationBar: _BottomNavBar(index: index, state: state),
@@ -116,7 +110,7 @@ class _GamePage extends StatelessWidget {
         index: index,
         game: game,
         state: state,
-        boardState: displayState!.board,
+        boardState: squaresState.board,
       ),
     );
   }
@@ -214,7 +208,11 @@ class _GameBody extends StatelessWidget {
     return Column(
       children: [
         _PlayerWidget(game: game, isFlipped: isFlipped, isTop: true),
-        _BoardWithSidebar(index: index, state: state, boardState: boardState),
+        _BoardWithSidebar(
+          index: index,
+          state: state,
+          boardState: boardState,
+        ),
         _PlayerWidget(game: game, isFlipped: isFlipped, isTop: false),
         Expanded(
           child: SingleChildScrollView(
@@ -270,6 +268,17 @@ class _BoardWithSidebar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    square.Move? getLastMove() {
+      final idx = state.currentMoveIndex;
+      if (idx == 0 || state.allMoves.isEmpty) return null;
+
+      final alg = state.allMoves[idx - 1]; // e.g. "d2b3"
+      return square.BoardSize.standard.moveFromAlgebraic(alg);
+    }
+
+    print("currentIndex: ${state.currentMoveIndex}");
+    print("allMoves: ${state.allMoves}");
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final sideBarWidth = 20.w;
@@ -288,7 +297,11 @@ class _BoardWithSidebar extends StatelessWidget {
                 isFlipped: isFlipped,
                 evaluation: state.evaluations,
               ),
-              _ChessBoard(size: boardSize, boardState: boardState),
+              _ChessBoard(
+                size: boardSize,
+                boardState: boardState,
+                lastMove: getLastMove(),
+              ),
             ],
           ),
         );
@@ -300,14 +313,43 @@ class _BoardWithSidebar extends StatelessWidget {
 class _ChessBoard extends ConsumerWidget {
   final double size;
   final square.BoardState boardState;
+  final square.Move? lastMove;
 
   const _ChessBoard({
     required this.size,
     required this.boardState,
+    this.lastMove,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Build a list of square indices to highlight
+    final List<int> markers = [];
+    if (lastMove != null) {
+      markers.add(lastMove!.from);
+      markers.add(lastMove!.to);
+    }
+
+    // Theme used by squares to paint the highlighted squares
+    final lastMoveTheme = square.MarkerTheme(
+      empty:
+          (context, squareSize, _) => Container(
+            width: squareSize,
+            height: squareSize,
+            decoration: BoxDecoration(
+              color: kPrimaryColor,
+            ),
+          ),
+      piece:
+          (context, squareSize, _) => Container(
+            width: squareSize,
+            height: squareSize,
+            decoration: BoxDecoration(
+              color: kPrimaryColor,
+            ),
+          ),
+    );
+
     return SizedBox(
       height: size,
       child: AbsorbPointer(
@@ -333,6 +375,14 @@ class _ChessBoard extends ConsumerWidget {
           ),
           playState: square.PlayState.observing,
           state: boardState,
+          // Smooth glide with ease-in-out
+          animatePieces: true,
+          animationDuration: const Duration(milliseconds: 400),
+          animationCurve: Curves.easeInOut,
+
+          // Highlight last move
+          markerTheme: lastMoveTheme,
+          markers: markers, // <-- list of square indices
         ),
       ),
     );
