@@ -95,118 +95,35 @@ class _GamesLocalStorage {
 
       final queryLower = query.toLowerCase().trim();
 
-      // Create a list of tours with their relevance scores
-      final List<MapEntry<Games, double>> gameScore = [];
+      final List<MapEntry<Games, double>> gameScores = [];
 
       for (final game in games) {
         double score = 0.0;
 
-        // Search in tournament name (highest weight)
-        final nameLower = game.name?.toLowerCase();
-        if (nameLower != null) {
-          if (nameLower.contains(queryLower)) {
-            if (nameLower.startsWith(queryLower)) {
-              score += 100.0; // Exact start match gets highest score
-            } else {
-              score += 80.0; // Contains match gets high score
-            }
-          } else {
-            // Check for partial word matches in name
-            final nameWords = nameLower.split(' ');
-            for (final word in nameWords) {
-              if (word.startsWith(queryLower)) {
-                score += 60.0;
-              } else if (word.contains(queryLower)) {
-                score += 40.0;
-              }
-            }
+        // Use the new `search` field as the primary matching source
+        final searchTerms = game.search ?? [];
+
+        for (final term in searchTerms) {
+          final termLower = term.toLowerCase();
+          if (termLower == queryLower) {
+            score += 120.0; // Exact match
+            break;
+          } else if (termLower.startsWith(queryLower)) {
+            score += 100.0;
+          } else if (termLower.contains(queryLower)) {
+            score += 80.0;
           }
         }
 
-        // Search in location (medium weight)
-        final locationLower = game.tourSlug.toLowerCase();
-        if (locationLower.isNotEmpty) {
-          if (locationLower.contains(queryLower)) {
-            if (locationLower.startsWith(queryLower)) {
-              score += 50.0;
-            } else {
-              score += 30.0;
-            }
-          } else {
-            // Check for partial word matches in location
-            final locationWords = locationLower.split(' ');
-            for (final word in locationWords) {
-              if (word.startsWith(queryLower)) {
-                score += 25.0;
-              } else if (word.contains(queryLower)) {
-                score += 15.0;
-              }
-            }
-          }
-        }
-
-        // Search in notable players (lower weight)
-        final players = game.players?.map((e) => e.name) ?? <String>[];
-        for (final player in players) {
-          final playerLower = player.toLowerCase();
-          if (playerLower.contains(queryLower)) {
-            if (playerLower.startsWith(queryLower)) {
-              score += 20.0;
-            } else {
-              score += 10.0;
-            }
-          } else {
-            // Check for partial word matches in player names
-            final playerWords = playerLower.split(' ');
-            for (final word in playerWords) {
-              if (word.startsWith(queryLower)) {
-                score += 15.0;
-              } else if (word.contains(queryLower)) {
-                score += 8.0;
-              }
-            }
-          }
-        }
-
-        // Search in notable players (lower weight)
-        final playerTitle = game.players?.map((e) => e.title) ?? <String>[];
-        for (final title in playerTitle) {
-          final titleLower = title!.toLowerCase();
-          if (titleLower.contains(queryLower)) {
-            if (titleLower.startsWith(queryLower)) {
-              score += 20.0;
-            } else {
-              score += 10.0;
-            }
-          } else {
-            // Check for partial word matches in player names
-            final playerWords = titleLower.split(' ');
-            for (final word in playerWords) {
-              if (word.startsWith(queryLower)) {
-                score += 15.0;
-              } else if (word.contains(queryLower)) {
-                score += 8.0;
-              }
-            }
-          }
-        }
-
-        // Only include tours with a minimum relevance score
         if (score > 0) {
-          gameScore.add(MapEntry(game, score));
+          gameScores.add(MapEntry(game, score));
         }
       }
 
-      // Sort by relevance score (highest first) and return the tours
-      gameScore.sort((a, b) => b.value.compareTo(a.value));
-
-      // Return only the most relevant results (top matches)
-      const maxResults = 20; // Adjust this number as needed
-      final relevantTours =
-          gameScore.take(maxResults).map((entry) => entry.key).toList();
-
-      return relevantTours;
-    } catch (error, _) {
+      gameScores.sort((a, b) => b.value.compareTo(a.value));
+      const maxResults = 20;
+      return gameScores.take(maxResults).map((e) => e.key).toList();
+    } catch (e, _) {
       return <Games>[];
     }
   }
