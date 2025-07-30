@@ -219,6 +219,7 @@ class _TournamentScreenController
       }
     }
   }
+
 }
 
 final calendarTourViewProvider = AutoDisposeStateNotifierProvider.family((
