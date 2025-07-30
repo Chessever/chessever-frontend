@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
-import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final tourLocalStorageProvider = Provider<_TourLocalStorage>(
@@ -41,17 +40,7 @@ class _TourLocalStorage {
         return getTours();
       }
 
-      final initialCount = 20;
-      final initial = tourStringList.take(initialCount).toList();
-      final remaining = tourStringList.skip(initialCount).toList();
-
-      final firstBatch = _decodeMyReelsList(initial);
-
-      // Compute remaining in background and update provider
-      compute(decodeToursInIsolate, remaining).then((parsedRemaining) {
-        final allTours = [...firstBatch, ...parsedRemaining];
-        ref.read(mergedTourProvider.notifier).state = allTours;
-      });
+      final firstBatch = _decodeMyReelsList(tourStringList);
 
       return firstBatch;
     } catch (e) {
@@ -95,87 +84,64 @@ class _TourLocalStorage {
       for (final tour in tours) {
         double score = 0.0;
 
-        // Search in tournament name (highest weight)
+        // 🔍 PRIMARY: Use `search` field if available
+        if (tour.search != null && tour.search!.isNotEmpty) {
+          for (final term in tour.search!) {
+            final termLower = term.toLowerCase();
+
+            if (termLower == queryLower) {
+              score += 120.0; // Exact match
+              break;
+            } else if (termLower.startsWith(queryLower)) {
+              score += 100.0;
+            } else if (termLower.contains(queryLower)) {
+              score += 80.0;
+            }
+          }
+        }
+
+        // 🔄 FALLBACK: Search in `name`
         final nameLower = tour.name.toLowerCase();
         if (nameLower.contains(queryLower)) {
           if (nameLower.startsWith(queryLower)) {
-            score += 100.0; // Exact start match gets highest score
+            score += 60.0;
           } else {
-            score += 80.0; // Contains match gets high score
-          }
-        } else {
-          // Check for partial word matches in name
-          final nameWords = nameLower.split(' ');
-          for (final word in nameWords) {
-            if (word.startsWith(queryLower)) {
-              score += 60.0;
-            } else if (word.contains(queryLower)) {
-              score += 40.0;
-            }
+            score += 40.0;
           }
         }
 
-        // Search in location (medium weight)
+        // 🔄 FALLBACK: Search in `location`
         final locationLower = tour.info.location?.toLowerCase() ?? '';
-        if (locationLower.isNotEmpty) {
-          if (locationLower.contains(queryLower)) {
-            if (locationLower.startsWith(queryLower)) {
-              score += 50.0;
-            } else {
-              score += 30.0;
-            }
+        if (locationLower.contains(queryLower)) {
+          if (locationLower.startsWith(queryLower)) {
+            score += 30.0;
           } else {
-            // Check for partial word matches in location
-            final locationWords = locationLower.split(' ');
-            for (final word in locationWords) {
-              if (word.startsWith(queryLower)) {
-                score += 25.0;
-              } else if (word.contains(queryLower)) {
-                score += 15.0;
-              }
-            }
+            score += 20.0;
           }
         }
 
-        // Search in notable players (lower weight)
-        final players = tour.notablePlayers;
-        for (final player in players) {
-          final playerLower = player.toLowerCase();
-          if (playerLower.contains(queryLower)) {
-            if (playerLower.startsWith(queryLower)) {
-              score += 20.0;
+        // 🔄 FALLBACK: Search in `players`
+        final players = tour.players;
+        for (final playerMap in players) {
+          final playerName = playerMap['name']?.toString().toLowerCase() ?? '';
+          if (playerName.contains(queryLower)) {
+            if (playerName.startsWith(queryLower)) {
+              score += 15.0;
             } else {
               score += 10.0;
             }
-          } else {
-            // Check for partial word matches in player names
-            final playerWords = playerLower.split(' ');
-            for (final word in playerWords) {
-              if (word.startsWith(queryLower)) {
-                score += 15.0;
-              } else if (word.contains(queryLower)) {
-                score += 8.0;
-              }
-            }
           }
         }
 
-        // Only include tours with a minimum relevance score
         if (score > 0) {
           tourScores.add(MapEntry(tour, score));
         }
       }
 
-      // Sort by relevance score (highest first) and return the tours
       tourScores.sort((a, b) => b.value.compareTo(a.value));
-
-      // Return only the most relevant results (top matches)
-      const maxResults = 20; // Adjust this number as needed
-      final relevantTours =
-          tourScores.take(maxResults).map((entry) => entry.key).toList();
-
-      return relevantTours;
-    } catch (error, _) {
+      const maxResults = 20;
+      return tourScores.take(maxResults).map((e) => e.key).toList();
+    } catch (e, _) {
       return <Tour>[];
     }
   }

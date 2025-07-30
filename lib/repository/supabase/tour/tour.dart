@@ -72,6 +72,7 @@ class Tour {
   final String? image;
   final List<Map<String, dynamic>>
   players; // This appears to be empty in your data
+  final List<String>? search;
 
   Tour({
     required this.id,
@@ -84,6 +85,7 @@ class Tour {
     required this.dates,
     this.image,
     required this.players,
+    this.search,
   });
 
   factory Tour.fromJson(Map<String, dynamic> json) {
@@ -104,6 +106,7 @@ class Tour {
           (json['players'] as List)
               .map((player) => player as Map<String, dynamic>)
               .toList(),
+      search: (json['search'] as List?)?.map((e) => e as String).toList(),
     );
   }
 
@@ -119,6 +122,7 @@ class Tour {
       'dates': dates.map((date) => date.toIso8601String()).toList(),
       'image': image,
       'players': players,
+      'search': search,
     };
   }
 

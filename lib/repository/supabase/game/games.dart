@@ -13,7 +13,7 @@ class Games {
   final int? thinkTime;
   final String? status;
   final String? pgn;
-  final List<SearchGame>? search;
+  final List<String>? search;
 
   Games({
     required this.id,
@@ -55,7 +55,7 @@ class Games {
               : null,
       status: json['status'] as String?,
       pgn: json['pgn'] as String?,
-      search: _parseSearchField(json['search']),
+      search: (json['search'] as List).map((e) => e as String).toList(),
     );
   }
 
@@ -117,7 +117,7 @@ class Games {
       if (thinkTime != null) 'think_time': thinkTime,
       if (status != null) 'status': status,
       if (pgn != null) 'pgn': pgn,
-      if (search != null) 'search': search!.map((s) => s.toJson()).toList(),
+      if (search != null) 'search': search!.map((s) => s).toList(),
     };
   }
 }
