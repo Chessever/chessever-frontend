@@ -1,6 +1,7 @@
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/repository/local_storage/group_broadcast/group_broadcast_local_storage.dart';
 import 'package:chessever2/repository/local_storage/tournament/tour_local_storage.dart';
-import 'package:chessever2/repository/supabase/tour/tour.dart';
+import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/screens/calendar_screen.dart';
 import 'package:chessever2/screens/tournaments/model/about_tour_model.dart';
@@ -11,8 +12,6 @@ import 'package:chessever2/screens/tournaments/tournament_screen.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-
-enum EventMode { live, completed, upcoming }
 
 final tournamentNotifierProvider = AutoDisposeStateNotifierProvider<
   _TournamentScreenController,
@@ -38,18 +37,21 @@ class _TournamentScreenController
   final TournamentCategory tourEventCategory;
 
   /// This will be populated every time we fetch the tournaments
-  var _tours = <Tour>[];
+  var _groupBroadcastList = <GroupBroadcast>[];
 
   Future<void> loadTours({
-    List<Tour>? inputTours,
+    List<GroupBroadcast>? inputBroadcast,
     bool sortByFavorites = false,
   }) async {
     try {
       final tour =
-          inputTours ?? await ref.read(tourLocalStorageProvider).getTours();
+          inputBroadcast ??
+          await ref
+              .read(groupBroadcastLocalStorage(tourEventCategory))
+              .getGroupBroadcasts();
       if (tour.isEmpty) return;
 
-      _tours = tour;
+      _groupBroadcastList = tour;
 
       final countryAsync = ref.watch(countryDropdownProvider);
       if (countryAsync is AsyncData<Country>) {
@@ -57,7 +59,7 @@ class _TournamentScreenController
         final sortingService = ref.read(tournamentSortingServiceProvider);
 
         final tourEventCardModel =
-            tour.map((t) => TourEventCardModel.fromTour(t)).toList();
+            tour.map((t) => TourEventCardModel.fromGroupBroadcast(t)).toList();
 
         final sortedTours =
             tourEventCategory == TournamentCategory.upcoming
@@ -73,41 +75,13 @@ class _TournamentScreenController
 
         state = AsyncValue.data(sortedTours);
       }
-
-      /// 🔁 Listen for isolate-merged tours and update UI
-      ref.listen<List<Tour>>(mergedTourProvider, (previous, next) {
-        if (next.length > _tours.length) {
-          _tours = next;
-
-          final updatedCardModels =
-              next.map((t) => TourEventCardModel.fromTour(t)).toList();
-
-          final sortingService = ref.read(tournamentSortingServiceProvider);
-          final selectedCountry =
-              ref.read(countryDropdownProvider).value?.name.toLowerCase() ?? '';
-
-          final sortedTours =
-              tourEventCategory == TournamentCategory.upcoming
-                  ? sortingService.sortUpcomingTours(
-                    updatedCardModels,
-                    selectedCountry,
-                  )
-                  : sortingService.sortAllTours(
-                    updatedCardModels,
-                    selectedCountry,
-                    sortByFavorites: sortByFavorites,
-                  );
-
-          state = AsyncValue.data(sortedTours);
-        }
-      });
     } catch (error, _) {
       print(error);
     }
   }
 
-  Future<void> setFilteredModels(List<Tour> filteredTours) async {
-    await loadTours(inputTours: filteredTours);
+  Future<void> setFilteredModels(List<GroupBroadcast> filterBroadcast) async {
+    await loadTours(inputBroadcast: filterBroadcast);
   }
 
   Future<void> resetFilters() async {
@@ -117,12 +91,12 @@ class _TournamentScreenController
   Future<void> onRefresh() async {
     try {
       state = AsyncValue.loading();
-      final tour = await ref.read(tourLocalStorageProvider).refresh();
+      final tour = await ref.read(groupBroadcastLocalStorage(tourEventCategory)).refresh();
       if (tour.isNotEmpty) {
-        _tours = tour;
+        _groupBroadcastList = tour;
         final tourEventCardModel =
             tour.map((t) {
-              return TourEventCardModel.fromTour(t);
+              return TourEventCardModel.fromGroupBroadcast(t);
             }).toList();
 
         final countryAsync = ref.watch(countryDropdownProvider);
@@ -155,20 +129,21 @@ class _TournamentScreenController
     }
   }
 
+  //todo:
   void onSelectTournament({required BuildContext context, required String id}) {
-    final tour = _tours.firstWhere(
+    final tour = _groupBroadcastList.firstWhere(
       (tour) => tour.id == id,
-      orElse: () => _tours.first,
+      orElse: () => _groupBroadcastList.first,
     );
-    if (tour.id.isNotEmpty) {
-      ref.read(aboutTourModelProvider.notifier).state = AboutTourModel.fromTour(
-        tour,
-      );
-    } else {
-      ref.read(aboutTourModelProvider.notifier).state = AboutTourModel.fromTour(
-        _tours.first,
-      );
-    }
+    // if (tour.id.isNotEmpty) {
+    //   ref.read(aboutTourModelProvider.notifier).state = AboutTourModel.fromTour(
+    //     tour,
+    //   );
+    // } else {
+    //   ref.read(aboutTourModelProvider.notifier).state = AboutTourModel.fromTour(
+    //     _groupBroadcastList.first,
+    //   );
+    // }
     Navigator.pushNamed(context, '/tournament_detail_screen');
   }
 
@@ -182,19 +157,19 @@ class _TournamentScreenController
       loadTours();
       return;
     } else {
-      final tours = await ref
-          .read(tourLocalStorageProvider)
-          .searchToursByName(query);
+      final groupBroadcast = await ref
+          .read(groupBroadcastLocalStorage(tourEventCategory))
+          .searchGroupBroadcastsByName(query);
       final filteredTours =
-          tours.where((tour) {
+      groupBroadcast.where((tour) {
             final isMatchingName =
                 tour.name.toLowerCase().contains(query.toLowerCase()) ||
-                (tour.info.location?.toLowerCase().contains(
+                (tour.timeControl?.toLowerCase().contains(
                       query.toLowerCase(),
                     ) ??
                     false);
 
-            final tourCardModel = TourEventCardModel.fromTour(tour);
+            final tourCardModel = TourEventCardModel.fromGroupBroadcast(tour);
 
             final isMatchingCategory =
                 tourEventCategory == TournamentCategory.all
@@ -209,17 +184,16 @@ class _TournamentScreenController
 
       if (filteredTours.isNotEmpty) {
         final filteredTournaments =
-            tours.map((e) => TourEventCardModel.fromTour(e)).toList();
+        groupBroadcast.map((e) => TourEventCardModel.fromGroupBroadcast(e)).toList();
         state = AsyncValue.data(filteredTournaments);
       } else {
-        final tours = await ref.read(tourRepositoryProvider).getRecentTours();
+        final tours = await ref.read(groupBroadcastLocalStorage(tourEventCategory)).getGroupBroadcasts();
         final filteredTournaments =
-            tours.map((e) => TourEventCardModel.fromTour(e)).toList();
+            tours.map((e) => TourEventCardModel.fromGroupBroadcast(e)).toList();
         state = AsyncValue.data(filteredTournaments);
       }
     }
   }
-
 }
 
 final calendarTourViewProvider = AutoDisposeStateNotifierProvider.family((
@@ -249,7 +223,7 @@ class _CalendarTourViewController
 
   Future<void> _init() async {
     try {
-      final tours = await ref.read(tourLocalStorageProvider).getTours();
+      final tours = await ref.read(groupBroadcastLocalStorage()).getTours();
 
       if (tours.isEmpty) {
         state = const AsyncValue.data([]);

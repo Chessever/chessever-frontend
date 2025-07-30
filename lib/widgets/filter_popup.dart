@@ -1,14 +1,13 @@
-import 'package:chessever2/repository/local_storage/tournament/tour_local_storage.dart';
-import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/tournaments/providers/filter_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/tournament_screen_provider.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:chessever2/screens/tournaments/tournament_screen.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/back_drop_filter_widget.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class FilterPopup extends ConsumerStatefulWidget {
   const FilterPopup({super.key});
@@ -32,11 +31,12 @@ class _FilterPopupState extends ConsumerState<FilterPopup> {
 
   @override
   Widget build(BuildContext context) {
+    final selectedTourEvent = ref.watch(selectedTourEventProvider);
     // Use fixed dimensions for the popup
     final dialogWidth = 280.w;
     final horizontalPadding = 20.w;
     final verticalPadding = 16.h;
-    final formatsAsync = ref.watch(tourFormatsProvider);
+    final formatsAsync = ref.watch(tourFormatsProvider(selectedTourEvent));
 
     return GestureDetector(
       // Close the dialog when tapping outside
@@ -415,7 +415,7 @@ class _FilterPopupState extends ConsumerState<FilterPopup> {
                               child: ElevatedButton(
                                 onPressed: () async {
                                   final filteredTours = await ref
-                                      .read(tourFormatRepositoryProvider)
+                                      .read(tourFormatRepositoryProvider(selectedTourEvent))
                                       .applyFilter(_selectedFormat);
 
                                   await ref

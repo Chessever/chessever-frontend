@@ -10,7 +10,7 @@ final groupBroadcastRepositoryProvider =
 
 class GroupBroadcastRepository extends BaseRepository {
   /// Fetch all group broadcasts with optional pagination and sorting
-  Future<List<GroupBroadcast>> getGroupBroadcasts({
+  Future<List<GroupBroadcast>> getCurrentGroupBroadcasts({
     int? limit,
     int? offset,
     String orderBy = 'created_at',
@@ -18,7 +18,34 @@ class GroupBroadcastRepository extends BaseRepository {
   }) async {
     return handleApiCall(() async {
       PostgrestTransformBuilder<PostgrestList> query =
-          supabase.from('group_broadcasts').select();
+          supabase.from('group_broadcasts_current').select();
+
+      query = query.order(orderBy, ascending: ascending);
+
+      if (limit != null) {
+        query = query.limit(limit);
+      }
+
+      if (offset != null) {
+        query = query.range(offset, offset + (limit ?? 50) - 1);
+      }
+
+      final response = await query;
+      return (response as List)
+          .map((json) => GroupBroadcast.fromJson(json))
+          .toList();
+    });
+  }
+
+  Future<List<GroupBroadcast>> getUpcomingGroupBroadcasts({
+    int? limit,
+    int? offset,
+    String orderBy = 'created_at',
+    bool ascending = false,
+  }) async {
+    return handleApiCall(() async {
+      PostgrestTransformBuilder<PostgrestList> query =
+      supabase.from('group_broadcasts_upcoming').select();
 
       query = query.order(orderBy, ascending: ascending);
 

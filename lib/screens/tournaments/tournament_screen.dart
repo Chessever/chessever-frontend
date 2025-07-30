@@ -110,11 +110,10 @@ class TournamentScreen extends HookConsumerWidget {
                       id: 'tour_001',
                       title: 'World Chess Championship 2025',
                       dates: 'Mar 15 - 25,2025',
-                      location: 'London, UK',
-                      playerCount: 16,
-                      elo: 2800,
                       timeUntilStart: 'Starts in 8 months',
                       tourEventCategory: TourEventCategory.live,
+                      maxAvgElo: 0,
+                      timeControl: 'Standard',
                     );
                     return Expanded(
                       child: SkeletonWidget(

@@ -113,11 +113,10 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
                   id: 'tour_001',
                   title: 'World Chess Championship 2025',
                   dates: '2025-03-15',
-                  location: 'London, UK',
-                  playerCount: 16,
-                  elo: 2800,
+                  maxAvgElo: 200,
                   timeUntilStart: 'Starts in 8 months',
                   tourEventCategory: TourEventCategory.live,
+                  timeControl: 'Standard',
                 );
                 return Expanded(
                   child: SkeletonWidget(
