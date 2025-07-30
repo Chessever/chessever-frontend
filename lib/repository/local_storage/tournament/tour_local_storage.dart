@@ -166,5 +166,3 @@ List<Tour> decodeToursInIsolate(List<String> jsonStrings) {
     return Tour.fromJson(decoded);
   }).toList();
 }
-
-final mergedTourProvider = StateProvider<List<Tour>>((ref) => []);
