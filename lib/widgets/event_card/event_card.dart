@@ -1,9 +1,7 @@
-import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/tournaments/providers/tournament_screen_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
-import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/event_card/starred_provider.dart';
@@ -87,9 +85,9 @@ class EventCard extends ConsumerWidget {
                       children: [
                         TextSpan(text: tourEventCardModel.dates),
                         _buildDot(),
-                        TextSpan(text: tourEventCardModel.location),
+                        TextSpan(text: tourEventCardModel.timeControl),
                         _buildDot(),
-                        TextSpan(text: "Ø ${tourEventCardModel.elo}"),
+                        TextSpan(text: "Ø ${tourEventCardModel.maxAvgElo}"),
                       ],
                     ),
                   ),
@@ -129,21 +127,6 @@ class _ShowStatus extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final currentLocation =
-        ref
-            .read(locationServiceProvider)
-            .getCountryName(tourEventCardModel.location)
-            .toLowerCase();
-
-    final dropDownSelectedCountry =
-        ref.watch(countryDropdownProvider).value?.name.toLowerCase() ?? '';
-
-    if (currentLocation.isNotEmpty &&
-        dropDownSelectedCountry.isNotEmpty &&
-        currentLocation.contains(dropDownSelectedCountry)) {
-      return _CountryMen();
-    }
-
     switch (tourEventCardModel.tourEventCategory) {
       case TourEventCategory.live:
         return _LiveTag();

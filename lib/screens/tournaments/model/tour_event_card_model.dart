@@ -1,4 +1,4 @@
-import 'package:chessever2/repository/supabase/tour/tour.dart';
+import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:equatable/equatable.dart';
 import 'package:intl/intl.dart';
 
@@ -9,39 +9,34 @@ class TourEventCardModel extends Equatable {
     required this.id,
     required this.title,
     required this.dates,
-    required this.location,
-    required this.playerCount,
-    required this.elo,
+    required this.maxAvgElo,
     required this.timeUntilStart,
     required this.tourEventCategory,
+    required this.timeControl,
   });
 
   final String id;
   final String title;
   final String dates;
-  final String location;
-  final int playerCount;
-  final int elo;
+  final int maxAvgElo;
   final String timeUntilStart;
   final TourEventCategory tourEventCategory;
+  final String timeControl;
 
-  factory TourEventCardModel.fromTour(Tour tour) {
+  factory TourEventCardModel.fromGroupBroadcast(GroupBroadcast groupBroadcast) {
     return TourEventCardModel(
-      id: tour.id,
-      title: tour.name,
-      dates: convertDates(tour.dates),
-      location: tour.info.location ?? tour.name.split(' ').first,
-      playerCount: tour.players.length,
-      elo: tour.tier,
-      timeUntilStart: getTimeUntilStart(tour.dates),
-      tourEventCategory: getCategory(tour.dates, tour.info.location ?? ""),
+      id: groupBroadcast.id,
+      title: groupBroadcast.name,
+      dates: convertDates(groupBroadcast.dateStart, groupBroadcast.dateEnd),
+      maxAvgElo: groupBroadcast.maxAvgElo ?? 0,
+      timeUntilStart: getTimeUntilStart(groupBroadcast.dateStart),
+      tourEventCategory: getCategory(groupBroadcast.dateStart),
+      timeControl: groupBroadcast.timeControl ?? '',
     );
   }
 
-  static String convertDates(List<DateTime> dates) {
-    if (dates.isNotEmpty) {
-      final startDateTime = dates.first;
-      final endDateTime = dates.last;
+  static String convertDates(DateTime? startDateTime, DateTime? endDateTime) {
+    if (startDateTime != null && endDateTime != null) {
       return "${DateFormat('MMM d').format(startDateTime)} - ${DateFormat('d,yyyy').format(endDateTime)}";
     } else {
       //todo: Fix this
@@ -49,16 +44,15 @@ class TourEventCardModel extends Equatable {
     }
   }
 
-  static String getTimeUntilStart(List<DateTime> dates) {
-    if (dates.isEmpty) {
-      return "in 3 days";
+  static String getTimeUntilStart(DateTime? startDateTime) {
+    if (startDateTime != null) {
+      return "";
     }
 
-    final startDateTime = dates.first;
     final now = DateTime.now();
 
     // If the start time has already passed
-    if (startDateTime.isBefore(now)) {
+    if (startDateTime!.isBefore(now)) {
       return "Started";
     }
 
@@ -90,10 +84,9 @@ class TourEventCardModel extends Equatable {
     }
   }
 
-  static TourEventCategory getCategory(List<DateTime> dates, String location) {
-    if (dates.isNotEmpty) {
+  static TourEventCategory getCategory(DateTime? startDate) {
+    if (startDate != null) {
       final now = DateTime.now();
-      final startDate = dates.first;
 
       if (startDate.isAfter(now)) {
         return TourEventCategory.upcoming;
