@@ -184,9 +184,12 @@ class _CountryFlag extends StatelessWidget {
           children: [
             flag,
             SizedBox(width: 4),
-            Text(
-              description,
-              style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+            Flexible(
+              child: Text(
+                description,
+                maxLines: 1,
+                style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+              ),
             ),
           ],
         ),
