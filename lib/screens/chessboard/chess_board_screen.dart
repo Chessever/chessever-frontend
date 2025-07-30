@@ -268,12 +268,50 @@ class _BoardWithSidebar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Helper function to convert algebraic notation to square index
+    int _algebraicToIndex(String algebraic) {
+      if (algebraic.length < 2) return -1;
+
+      final file = algebraic.codeUnitAt(0) - 97; // 'a' = 0, 'b' = 1, etc.
+      final rank = int.parse(algebraic[1]) - 1; // '1' = 0, '2' = 1, etc.
+
+      if (file < 0 || file > 7 || rank < 0 || rank > 7) return -1;
+
+      return rank * 8 + file;
+    }
+
     square.Move? getLastMove() {
       final idx = state.currentMoveIndex;
       if (idx == 0 || state.allMoves.isEmpty) return null;
 
-      final alg = state.allMoves[idx - 1]; // e.g. "d2b3"
-      return square.BoardSize.standard.moveFromAlgebraic(alg);
+      final alg = state.allMoves[idx - 1]; // e.g. "d2d4"
+      print("Raw algebraic move: '$alg'");
+
+      try {
+        // Parse the algebraic notation manually for better control
+        if (alg.length >= 4) {
+          // Format: "d2d4" -> from d2, to d4
+          final fromSquare = alg.substring(0, 2); // "d2"
+          final toSquare = alg.substring(2, 4); // "d4"
+
+          final fromIndex = _algebraicToIndex(fromSquare);
+          final toIndex = _algebraicToIndex(toSquare);
+
+          print(
+            "Parsed move: $fromSquare ($fromIndex) -> $toSquare ($toIndex)",
+          );
+
+          if (fromIndex >= 0 && toIndex >= 0) {
+            return square.Move(from: fromIndex, to: toIndex);
+          }
+        }
+
+        // Fallback to squares' built-in parser
+        return square.BoardSize.standard.moveFromAlgebraic(alg);
+      } catch (e) {
+        print("Error parsing move '$alg': $e");
+        return null;
+      }
     }
 
     print("currentIndex: ${state.currentMoveIndex}");
@@ -299,8 +337,9 @@ class _BoardWithSidebar extends StatelessWidget {
               ),
               _ChessBoard(
                 size: boardSize,
-                boardState: boardState,
+                chessBoardState: state,
                 lastMove: getLastMove(),
+                isFlipped: isFlipped, // Pass the board orientation
               ),
             ],
           ),
@@ -312,32 +351,30 @@ class _BoardWithSidebar extends StatelessWidget {
 
 class _ChessBoard extends ConsumerWidget {
   final double size;
-  final square.BoardState boardState;
+  final ChessBoardState chessBoardState;
   final square.Move? lastMove;
+  final bool isFlipped; // Add board orientation
 
   const _ChessBoard({
     required this.size,
-    required this.boardState,
+    required this.chessBoardState,
     this.lastMove,
+    this.isFlipped = false,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Build a list of square indices to highlight
-    final List<int> markers = [];
-    if (lastMove != null) {
-      markers.add(lastMove!.from);
-      markers.add(lastMove!.to);
-    }
+    final squaresState = chessBoardState.squaresState;
 
-    // Theme used by squares to paint the highlighted squares
-    final lastMoveTheme = square.MarkerTheme(
+    // Custom marker theme for possible moves
+    final customMarkerTheme = square.MarkerTheme(
       empty:
           (context, squareSize, _) => Container(
             width: squareSize,
             height: squareSize,
             decoration: BoxDecoration(
-              color: kPrimaryColor,
+              color: Colors.green.withOpacity(0.4),
+              borderRadius: BorderRadius.circular(squareSize * 0.5),
             ),
           ),
       piece:
@@ -345,45 +382,127 @@ class _ChessBoard extends ConsumerWidget {
             width: squareSize,
             height: squareSize,
             decoration: BoxDecoration(
-              color: kPrimaryColor,
+              border: Border.all(
+                color: Colors.green.withOpacity(0.6),
+                width: 3,
+              ),
+              borderRadius: BorderRadius.circular(4),
             ),
           ),
     );
 
     return SizedBox(
       height: size,
-      child: AbsorbPointer(
-        child: square.Board(
-          size: square.BoardSize.standard,
-          pieceSet: square.PieceSet.fromImageAssets(
-            folder: 'assets/pngs/pieces/',
-            symbols: [
-              'P',
-              'R',
-              'N',
-              'B',
-              'Q',
-              'K',
-              'P',
-              'R',
-              'N',
-              'B',
-              'Q',
-              'K',
-            ],
-            format: 'png',
-          ),
-          playState: square.PlayState.observing,
-          state: boardState,
-          // Smooth glide with ease-in-out
-          animatePieces: true,
-          animationDuration: const Duration(milliseconds: 400),
-          animationCurve: Curves.easeInOut,
-
-          // Highlight last move
-          markerTheme: lastMoveTheme,
-          markers: markers, // <-- list of square indices
+      child: square.BoardController(
+        size: square.BoardSize.standard,
+        pieceSet: square.PieceSet.fromImageAssets(
+          folder: 'assets/pngs/pieces/',
+          symbols: [
+            'P', 'R', 'N', 'B', 'Q', 'K', // White pieces
+            'P', 'R', 'N', 'B', 'Q', 'K', // Black pieces (fixed)
+          ],
+          format: 'png',
         ),
+        playState: square.PlayState.ourTurn,
+        state: squaresState.board,
+        moves: squaresState.moves,
+        markerTheme: customMarkerTheme,
+        draggable: true,
+        animatePieces: true,
+        animationDuration: const Duration(milliseconds: 400),
+        animationCurve: Curves.easeInOut,
+        onMove: (_) {},
+
+        // Add last move highlighting as overlay
+        overlays:
+            lastMove != null
+                ? [
+                  _LastMoveHighlightOverlay(
+                    lastMove: lastMove!,
+                    boardSize: size,
+                    isFlipped: isFlipped,
+                  ),
+                ]
+                : [],
+      ),
+    );
+  }
+}
+
+// Fixed overlay for last move highlighting
+class _LastMoveHighlightOverlay extends StatelessWidget {
+  final square.Move lastMove;
+  final double boardSize;
+  final bool isFlipped;
+
+  const _LastMoveHighlightOverlay({
+    required this.lastMove,
+    required this.boardSize,
+    this.isFlipped = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final squareSize = boardSize / 8;
+
+    // Convert square index to board coordinates
+    Offset getSquarePosition(int squareIndex) {
+      int file = squareIndex % 8;
+      int rank = squareIndex ~/ 8;
+
+      // Account for board orientation
+      if (isFlipped) {
+        file = 7 - file;
+        rank = 7 - rank;
+      }
+
+      // Convert to screen coordinates
+      // Note: rank 0 should be at the bottom of the screen
+      return Offset(
+        file * squareSize,
+        (7 - rank) * squareSize,
+      );
+    }
+
+    final fromPos = getSquarePosition(lastMove.from);
+    final toPos = getSquarePosition(lastMove.to);
+
+    print("Last move highlight: from=${lastMove.from} to=${lastMove.to}");
+    print("From position: (${fromPos.dx}, ${fromPos.dy})");
+    print("To position: (${toPos.dx}, ${toPos.dy})");
+    print("Board flipped: $isFlipped");
+
+    return IgnorePointer(
+      child: Stack(
+        children: [
+          // From square highlight
+          Positioned(
+            left: fromPos.dx,
+            top: fromPos.dy,
+            child: Container(
+              width: squareSize,
+              height: squareSize,
+              decoration: BoxDecoration(
+                color: kPrimaryColor.withOpacity(0.6),
+              ),
+            ),
+          ),
+          // To square highlight
+          Positioned(
+            left: toPos.dx,
+            top: toPos.dy,
+            child: Container(
+              width: squareSize,
+              height: squareSize,
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: kPrimaryColor.withOpacity(0.6),
+                  width: 2,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

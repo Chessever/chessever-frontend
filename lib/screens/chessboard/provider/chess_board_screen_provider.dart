@@ -196,6 +196,7 @@ class ChessBoardScreenNotifier
     _updateEvaluation();
   }
 
+  // Fix in ChessBoardScreenNotifier
   void navigateToMove(int targetMoveIndex) {
     final st = state.value!;
     final current = st.currentMoveIndex - 1;
@@ -204,10 +205,13 @@ class ChessBoardScreenNotifier
     if (st.isPlaying) pauseGame();
 
     // bring game to start
-    while (st.game.canUndo) st.game.undo();
+    while (st.game.canUndo) {
+      st.game.undo();
+    }
 
     // replay to desired index
-    for (var i = 0; i < targetMoveIndex; i++) {
+    for (var i = 0; i <= targetMoveIndex; i++) {
+      // Changed < to <=
       st.game.makeMoveString(st.allMoves[i]);
     }
 
@@ -217,6 +221,34 @@ class ChessBoardScreenNotifier
       st.copyWith(
         currentMoveIndex: targetMoveIndex + 1,
         squaresState: squaresState,
+      ),
+    );
+
+    _updateEvaluation();
+  }
+
+  // Alternative: More explicit fix
+  void navigateToMoveFixed(int targetMoveIndex) {
+    final st = state.value!;
+    if (st.isPlaying) pauseGame();
+
+    // Reset to start position
+    while (st.game.canUndo) st.game.undo();
+
+    // Play moves up to and INCLUDING the target move
+    for (var i = 0; i <= targetMoveIndex; i++) {
+      if (i < st.allMoves.length) {
+        st.game.makeMoveString(st.allMoves[i]);
+      }
+    }
+
+    // Update squares state with new position
+    final squaresState = square_bishop.buildSquaresState(fen: st.game.fen);
+
+    state = AsyncValue.data(
+      st.copyWith(
+        currentMoveIndex: targetMoveIndex + 1,
+        squaresState: squaresState!,
       ),
     );
 
