@@ -208,11 +208,7 @@ class _GameBody extends StatelessWidget {
     return Column(
       children: [
         _PlayerWidget(game: game, isFlipped: isFlipped, isTop: true),
-        _BoardWithSidebar(
-          index: index,
-          state: state,
-          boardState: boardState,
-        ),
+        _BoardWithSidebar(index: index, state: state, boardState: boardState),
         _PlayerWidget(game: game, isFlipped: isFlipped, isTop: false),
         Expanded(
           child: SingleChildScrollView(
@@ -458,10 +454,7 @@ class _LastMoveHighlightOverlay extends StatelessWidget {
 
       // Convert to screen coordinates
       // Note: rank 0 should be at the bottom of the screen
-      return Offset(
-        file * squareSize,
-        (7 - rank) * squareSize,
-      );
+      return Offset(file * squareSize, (7 - rank) * squareSize);
     }
 
     final fromPos = getSquarePosition(lastMove.from);
@@ -482,9 +475,7 @@ class _LastMoveHighlightOverlay extends StatelessWidget {
             child: Container(
               width: squareSize,
               height: squareSize,
-              decoration: BoxDecoration(
-                color: kPrimaryColor.withOpacity(0.6),
-              ),
+              decoration: BoxDecoration(color: kPrimaryColor.withOpacity(0.6)),
             ),
           ),
           // To square highlight
