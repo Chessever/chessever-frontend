@@ -49,18 +49,15 @@ final chessBoardScreenProvider = AutoDisposeStateNotifierProvider.family<
       },
     );
   }
-  return ChessBoardScreenNotifier(
-    game: games[index],
-    index: index,
-  );
+
+  print("PGN DATA : ${games[index].pgn}");
+  return ChessBoardScreenNotifier(game: games[index], index: index);
 });
 
 class ChessBoardScreenNotifier
     extends StateNotifier<AsyncValue<ChessBoardState>> {
-  ChessBoardScreenNotifier({
-    required this.game,
-    required this.index,
-  }) : super(AsyncValue.loading()) {
+  ChessBoardScreenNotifier({required this.game, required this.index})
+    : super(AsyncValue.loading()) {
     _initializeState();
   }
 
@@ -72,9 +69,7 @@ class ChessBoardScreenNotifier
   bool _isLongPressing = false;
 
   void _initializeState() {
-    final bishopGames = bishop.Game.fromPgn(
-      _cleanPgnData(game.pgn ?? ""),
-    );
+    final bishopGames = bishop.Game.fromPgn(_cleanPgnData(game.pgn ?? ""));
     final squaresState = square_bishop.buildSquaresState(fen: bishopGames.fen);
 
     final allMoves = bishopGames.moveHistoryAlgebraic;
