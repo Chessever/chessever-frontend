@@ -4,7 +4,6 @@ import 'package:chessever2/screens/tournaments/model/games_tour_model.dart';
 import 'package:chessever2/screens/tournaments/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/pintop_storage.dart';
 import 'package:chessever2/screens/tournaments/providers/tour_detail_screen_provider.dart';
-import 'package:chessever2/screens/tournaments/tournament_detail_view.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final gamesTourScreenProvider = StateNotifierProvider.autoDispose<
@@ -110,11 +109,12 @@ class GamesTourScreenProvider
 
   Future<void> searchGames(String query) async {
     if (query.isNotEmpty && roundId != null) {
-      final aboutTourModel = ref.read(selectedBroadcastModelProvider)!;
+      final selectedTourId =
+          ref.read(tourDetailScreenProvider).value!.selectedTourId;
 
       final allGames = await ref
           .read(gamesLocalStorage)
-          .searchGamesByName(tourId: aboutTourModel.id, query: query);
+          .searchGamesByName(tourId: selectedTourId, query: query);
 
       var games = allGames.where((e) => e.roundId.contains(roundId!)).toList();
       final gamesTourModels = List.generate(
@@ -129,6 +129,45 @@ class GamesTourScreenProvider
   }
 
   Future<void> refreshGames() async {
-    await _init();
+    final allGames = await ref
+        .read(gamesLocalStorage)
+        .refresh(aboutTourModel.id);
+
+    print("All Games:");
+    for (final game in allGames) {
+      print('''
+  ▶ Game ID: ${game.id}
+  ▶ Round ID: ${game.roundId}
+  ▶ fen: ${game.fen}
+  
+  ''');
+    }
+    final pinnedIds =
+        await ref.read(pinnedGamesStorageProvider).getPinnedGameIds();
+
+    final selectedGames =
+        roundId != null
+            ? allGames.where((e) => e.roundId.contains(roundId!)).toList()
+            : allGames;
+
+    // Sort: pinned games on top
+    selectedGames.sort((a, b) {
+      final aPinned = pinnedIds.contains(a.id);
+      final bPinned = pinnedIds.contains(b.id);
+
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
+      return 0;
+    });
+
+    final gamesTourModels =
+        selectedGames.map((game) => GamesTourModel.fromGame(game)).toList();
+
+    state = AsyncValue.data(
+      GamesScreenModel(
+        gamesTourModels: gamesTourModels,
+        pinnedGamedIs: pinnedIds,
+      ),
+    );
   }
 }
