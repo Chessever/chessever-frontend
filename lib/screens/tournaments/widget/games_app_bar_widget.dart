@@ -1,7 +1,6 @@
 import 'package:chessever2/screens/tournaments/model/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tournaments/providers/chess_board_visibility_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/games_app_bar_provider.dart';
-import 'package:chessever2/screens/tournaments/providers/countryman_games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/widget/appbar_icons_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';

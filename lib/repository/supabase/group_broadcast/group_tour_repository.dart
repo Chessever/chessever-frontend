@@ -13,7 +13,7 @@ class GroupBroadcastRepository extends BaseRepository {
   Future<List<GroupBroadcast>> getCurrentGroupBroadcasts({
     int? limit,
     int? offset,
-    String orderBy = 'created_at',
+    String orderBy = 'max_avg_elo',
     bool ascending = false,
   }) async {
     return handleApiCall(() async {
@@ -27,7 +27,7 @@ class GroupBroadcastRepository extends BaseRepository {
       }
 
       if (offset != null) {
-        query = query.range(offset, offset + (limit ?? 50) - 1);
+        query = query.range(offset, offset + (limit ?? 100) - 1);
       }
 
       final response = await query;
@@ -40,12 +40,12 @@ class GroupBroadcastRepository extends BaseRepository {
   Future<List<GroupBroadcast>> getUpcomingGroupBroadcasts({
     int? limit,
     int? offset,
-    String orderBy = 'created_at',
+    String orderBy = 'max_avg_elo',
     bool ascending = false,
   }) async {
     return handleApiCall(() async {
       PostgrestTransformBuilder<PostgrestList> query =
-      supabase.from('group_broadcasts_upcoming').select();
+          supabase.from('group_broadcasts_upcoming').select();
 
       query = query.order(orderBy, ascending: ascending);
 
@@ -54,7 +54,7 @@ class GroupBroadcastRepository extends BaseRepository {
       }
 
       if (offset != null) {
-        query = query.range(offset, offset + (limit ?? 50) - 1);
+        query = query.range(offset, offset + (limit ?? 100) - 1);
       }
 
       final response = await query;

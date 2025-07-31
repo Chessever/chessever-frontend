@@ -18,6 +18,7 @@ class CountrymenCardWidget extends ConsumerWidget {
 
     return GestureDetector(
       onTap: () {
+
         Navigator.pushNamed(context, '/countryman_games_screen');
       },
       child: Container(
