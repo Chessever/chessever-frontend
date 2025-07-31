@@ -4,7 +4,9 @@ import 'package:chessever2/screens/tournaments/about_tour_screen.dart';
 import 'package:chessever2/screens/tournaments/games_tour_screen.dart';
 import 'package:chessever2/screens/tournaments/providers/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/widget/games_app_bar_widget.dart';
+import 'package:chessever2/screens/tournaments/widget/text_dropdown_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/app_bar_with_title.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
@@ -44,58 +46,95 @@ class TournamentDetailView extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(height: MediaQuery.of(context).viewPadding.top + 24.h),
-
             ref
                 .watch(tourDetailScreenProvider)
                 .when(
                   data: (data) {
-                    return selectedTourMode == _TournamentDetailScreenMode.about
-                        ? AppBarWithTitle(
-                          title: data.aboutTourModel.name.substring(
-                            0,
-                            data.aboutTourModel.name.length > 20
-                                ? 20
-                                : data.aboutTourModel.name.length,
+                    return Column(
+                      children: [
+                        selectedTourMode == _TournamentDetailScreenMode.about
+                            ? Row(
+                              children: [
+                                SizedBox(width: 20),
+                                IconButton(
+                                  iconSize: 24,
+                                  padding: EdgeInsets.zero,
+                                  onPressed: () {
+                                    Navigator.of(context).pop();
+                                  },
+                                  icon: Icon(
+                                    Icons.arrow_back_ios_new_outlined,
+                                    size: 24,
+                                  ),
+                                ),
+                                Spacer(),
+                                SizedBox(
+                                  height: 32.h,
+                                  width: 200.w,
+                                  child: TextDropDownWidget(
+                                    items:
+                                        data.tours
+                                            .map(
+                                              (e) => {
+                                                'key': e.id,
+                                                'value': e.name,
+                                              },
+                                            )
+                                            .toList(),
+                                    selectedId: data.selectedTourId,
+                                    onChanged: (value) {
+                                      ref
+                                          .read(
+                                            tourDetailScreenProvider.notifier,
+                                          )
+                                          .updateSelection(value);
+                                    },
+                                  ),
+                                ),
+                                Spacer(),
+                                SizedBox(width: 44),
+                              ],
+                            )
+                            : selectedTourMode ==
+                                _TournamentDetailScreenMode.games
+                            ? GamesAppBarWidget()
+                            : AppBarWithTitle(
+                              title: data.aboutTourModel.name.substring(
+                                0,
+                                data.aboutTourModel.name.length > 20
+                                    ? 20
+                                    : data.aboutTourModel.name.length,
+                              ),
+                            ),
+                        SizedBox(height: 36.h),
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 20.sp),
+                          child: SegmentedSwitcher(
+                            backgroundColor: kPopUpColor,
+                            selectedBackgroundColor: kPopUpColor,
+                            options: _mappedName.values.toList(),
+                            initialSelection: _mappedName.values
+                                .toList()
+                                .indexOf(_mappedName[selectedTourMode]!),
+                            onSelectionChanged: (index) {
+                              ref
+                                      .read(selectedTourModeProvider.notifier)
+                                      .state =
+                                  _TournamentDetailScreenMode.values[index];
+                            },
                           ),
-                        )
-                        : selectedTourMode == _TournamentDetailScreenMode.games
-                        ? GamesAppBarWidget()
-                        : AppBarWithTitle(
-                          title: data.aboutTourModel.name.substring(
-                            0,
-                            data.aboutTourModel.name.length > 20
-                                ? 20
-                                : data.aboutTourModel.name.length,
-                          ),
-                        );
+                        ),
+                      ],
+                    );
                   },
                   error: (e, _) {
-                    return SkeletonWidget(
-                      child: AppBarWithTitle(title: "Chessever"),
-                    );
+                    return LoadingAppBarWithTitle(title: "Chessever");
                   },
                   loading: () {
-                    return SkeletonWidget(
-                      child: AppBarWithTitle(title: "Chessever"),
-                    );
+                    return LoadingAppBarWithTitle(title: "Chessever");
                   },
                 ),
-            SizedBox(height: 36.h),
-            Padding(
-              padding:  EdgeInsets.symmetric(horizontal: 20.sp),
-              child: SegmentedSwitcher(
-                backgroundColor: kPopUpColor,
-                selectedBackgroundColor: kPopUpColor,
-                options: _mappedName.values.toList(),
-                initialSelection: _mappedName.values.toList().indexOf(
-                  _mappedName[selectedTourMode]!,
-                ),
-                onSelectionChanged: (index) {
-                  ref.read(selectedTourModeProvider.notifier).state =
-                      _TournamentDetailScreenMode.values[index];
-                },
-              ),
-            ),
+
             SizedBox(height: 12.h),
             Expanded(
               child: () {
@@ -112,6 +151,37 @@ class TournamentDetailView extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class LoadingAppBarWithTitle extends StatelessWidget {
+  const LoadingAppBarWithTitle({required this.title, super.key});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        SizedBox(width: 20),
+        IconButton(
+          iconSize: 24,
+          padding: EdgeInsets.zero,
+          onPressed: () {
+            Navigator.of(context).pop();
+          },
+          icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24),
+        ),
+        SizedBox(width: 44),
+        SkeletonWidget(
+          child: Text(
+            title,
+            style: AppTypography.textMdRegular.copyWith(color: kWhiteColor),
+          ),
+        ),
+        SizedBox(width: 44),
+      ],
     );
   }
 }

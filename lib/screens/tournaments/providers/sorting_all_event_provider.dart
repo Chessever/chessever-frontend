@@ -3,8 +3,8 @@ import 'package:chessever2/widgets/event_card/starred_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final tournamentSortingServiceProvider = Provider<TournamentSortingService>((
-  ref,
-) {
+    ref,
+    ) {
   return TournamentSortingService(ref);
 });
 
@@ -14,17 +14,17 @@ class TournamentSortingService {
   TournamentSortingService(this.ref);
 
   List<TourEventCardModel> sortAllTours(
-    List<TourEventCardModel> tours,
-    String dropDownSelectedCountry, {
-    bool sortByFavorites = false, // Add this optional flag
-  }) {
+      List<TourEventCardModel> tours,
+      String dropDownSelectedCountry, {
+        bool sortByFavorites = false, // Add this optional flag
+      }) {
     final favorites = ref.watch(starredProvider);
     final hasFavorites = favorites.isNotEmpty;
 
     final filteredList =
-        tours
-            .where((t) => t.tourEventCategory != TourEventCategory.upcoming)
-            .toList();
+    tours
+        .where((t) => t.tourEventCategory != TourEventCategory.upcoming)
+        .toList();
 
     filteredList.sort((a, b) {
       if (sortByFavorites && hasFavorites) {
@@ -41,6 +41,14 @@ class TournamentSortingService {
       final statusComparison = statusPriorityA.compareTo(statusPriorityB);
       if (statusComparison != 0) return statusComparison;
 
+      // Within the same status category, sort by maxElo (descending)
+      if (a.tourEventCategory == TourEventCategory.live ||
+          a.tourEventCategory == TourEventCategory.completed) {
+        final eloComparison = (b.maxAvgElo ?? 0).compareTo(a.maxAvgElo ?? 0);
+        if (eloComparison != 0) return eloComparison;
+      }
+
+      // Finally sort by title if everything else is equal
       return a.title.toLowerCase().compareTo(b.title.toLowerCase());
     });
 
@@ -48,18 +56,18 @@ class TournamentSortingService {
   }
 
   List<TourEventCardModel> sortUpcomingTours(
-    List<TourEventCardModel> tours,
-    String dropDownSelectedCountry,
-  ) {
+      List<TourEventCardModel> tours,
+      String dropDownSelectedCountry,
+      ) {
     final favorites = ref.watch(
       starredProvider,
     ); // Get the list of favorited ids
     final hasFavorites = favorites.isNotEmpty;
 
     final filteredList =
-        tours
-            .where((t) => t.tourEventCategory == TourEventCategory.upcoming)
-            .toList();
+    tours
+        .where((t) => t.tourEventCategory == TourEventCategory.upcoming)
+        .toList();
 
     filteredList.sort((a, b) {
       final isFavoriteA = favorites.contains(a.id);
@@ -70,6 +78,11 @@ class TournamentSortingService {
         if (!isFavoriteA && isFavoriteB) return 1;
       }
 
+      // For upcoming tournaments, also sort by maxElo after favorites
+      final eloComparison = (b.maxAvgElo ?? 0).compareTo(a.maxAvgElo ?? 0);
+      if (eloComparison != 0) return eloComparison;
+
+      // Finally sort by title
       return a.title.toLowerCase().compareTo(b.title.toLowerCase());
     });
 

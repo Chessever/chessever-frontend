@@ -32,75 +32,36 @@ class Games {
   });
 
   factory Games.fromJson(Map<String, dynamic> json) {
-    return Games(
-      id: json['id'] as String,
-      roundId: json['round_id'] as String,
-      roundSlug: json['round_slug'] as String,
-      tourId: json['tour_id'] as String,
-      tourSlug: json['tour_slug'] as String,
-      name: json['name'] as String?,
-      fen: json['fen'] as String?,
-      players:
-          json['players'] != null
-              ? (json['players'] as List)
-                  .map(
-                    (player) => Player.fromJson(player as Map<String, dynamic>),
-                  )
-                  .toList()
-              : null,
-      lastMove: json['last_move'] as String?,
-      thinkTime:
-          json['think_time'] != null
-              ? (json['think_time'] as num).toInt()
-              : null,
-      status: json['status'] as String?,
-      pgn: json['pgn'] as String?,
-      search: (json['search'] as List).map((e) => e as String).toList(),
-    );
-  }
-
-  static List<SearchGame>? _parseSearchField(dynamic searchField) {
-    if (searchField == null) return null;
-
     try {
-      final searchList = searchField as List;
-
-      // Handle case where search contains strings (your format)
-      if (searchList.isNotEmpty && searchList.first is String) {
-        // Group every 3 strings into one SearchGame
-        final List<SearchGame> searchGames = [];
-
-        for (int i = 0; i < searchList.length; i += 3) {
-          if (i + 2 < searchList.length) {
-            try {
-              final gameData = [
-                searchList[i] as String,
-                searchList[i + 1] as String,
-                searchList[i + 2] as String,
-              ];
-              searchGames.add(SearchGame.fromStringList(gameData));
-            } catch (e) {
-              print('Error parsing search game at index $i: $e');
-              continue; // Skip this game and continue with next
-            }
-          }
-        }
-        return searchGames.isNotEmpty ? searchGames : null;
-      }
-      // Handle case where search contains objects
-      else if (searchList.isNotEmpty && searchList.first is Map) {
-        return searchList
-            .map(
-              (search) =>
-                  SearchGame.fromJsonMap(search as Map<String, dynamic>),
-            )
-            .toList();
-      }
-    } catch (e) {
-      print('Error parsing search field: $e');
+      return Games(
+        id: json['id'] as String,
+        roundId: json['round_id'] as String,
+        roundSlug: json['round_slug'] as String,
+        tourId: json['tour_id'] as String,
+        tourSlug: json['tour_slug'] as String,
+        name: json['name'] as String?,
+        fen: json['fen'] as String?,
+        players:
+            json['players'] != null
+                ? (json['players'] as List)
+                    .map(
+                      (player) =>
+                          Player.fromJson(player as Map<String, dynamic>),
+                    )
+                    .toList()
+                : null,
+        lastMove: json['last_move'] as String?,
+        thinkTime:
+            json['think_time'] != null
+                ? (json['think_time'] as num).toInt()
+                : null,
+        status: json['status'] as String?,
+        pgn: json['pgn'] as String?,
+        search: (json['search'] as List).map((e) => e as String).toList(),
+      );
+    } catch (e, _) {
+      rethrow;
     }
-
-    return null;
   }
 
   Map<String, dynamic> toJson() {

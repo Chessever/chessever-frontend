@@ -35,6 +35,20 @@ class _GroupBroadcastLocalStorage {
                   .read(groupBroadcastRepositoryProvider)
                   .getCurrentGroupBroadcasts();
 
+      broadcasts.sort((a, b) {
+        // If both have null maxAvgElo, maintain original order
+        if (a.maxAvgElo == null && b.maxAvgElo == null) return 0;
+
+        // If a is null, put it after b
+        if (a.maxAvgElo == null) return 1;
+
+        // If b is null, put it after a
+        if (b.maxAvgElo == null) return -1;
+
+        // Both are non-null, sort in descending order
+        return b.maxAvgElo!.compareTo(a.maxAvgElo!);
+      });
+
       final encoded = _encodeGroupBroadcastsList(broadcasts);
 
       await ref
@@ -91,15 +105,13 @@ class _GroupBroadcastLocalStorage {
 
       final queryLower = query.toLowerCase().trim();
 
-      return broadcasts
-          .where((gb) {
-            // Check if any search term contains the query
-            return gb.search.any(
-                  (term) => term.toLowerCase().contains(queryLower),
-                ) ||
-                gb.name.toLowerCase().contains(queryLower);
-          })
-          .toList();
+      return broadcasts.where((gb) {
+        // Check if any search term contains the query
+        return gb.search.any(
+              (term) => term.toLowerCase().contains(queryLower),
+            ) ||
+            gb.name.toLowerCase().contains(queryLower);
+      }).toList();
     } catch (e) {
       return <GroupBroadcast>[];
     }
