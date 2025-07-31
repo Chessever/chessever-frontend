@@ -91,39 +91,16 @@ class _GroupBroadcastLocalStorage {
 
       final queryLower = query.toLowerCase().trim();
 
-      final List<MapEntry<GroupBroadcast, double>> scored = [];
-
-      for (final gb in broadcasts) {
-        double score = 0.0;
-
-        // Search tags
-        for (final term in gb.search) {
-          final termLower = term.toLowerCase();
-          if (termLower == queryLower) {
-            score += 120.0;
-            break;
-          } else if (termLower.startsWith(queryLower)) {
-            score += 100.0;
-          } else if (termLower.contains(queryLower)) {
-            score += 80.0;
-          }
-        }
-
-        // Name
-        final nameLower = gb.name.toLowerCase();
-        if (nameLower.contains(queryLower)) {
-          score += nameLower.startsWith(queryLower) ? 60.0 : 40.0;
-        }
-
-        if (score > 0) {
-          scored.add(MapEntry(gb, score));
-        }
-      }
-
-      scored.sort((a, b) => b.value.compareTo(a.value));
-      const maxResults = 20;
-      return scored.take(maxResults).map((e) => e.key).toList();
-    } catch (_) {
+      return broadcasts
+          .where((gb) {
+            // Check if any search term contains the query
+            return gb.search.any(
+                  (term) => term.toLowerCase().contains(queryLower),
+                ) ||
+                gb.name.toLowerCase().contains(queryLower);
+          })
+          .toList();
+    } catch (e) {
       return <GroupBroadcast>[];
     }
   }

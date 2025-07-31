@@ -1,10 +1,6 @@
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/repository/local_storage/group_broadcast/group_broadcast_local_storage.dart';
-import 'package:chessever2/repository/local_storage/tournament/tour_local_storage.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
-import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
-import 'package:chessever2/screens/calendar_screen.dart';
-import 'package:chessever2/screens/tournaments/model/about_tour_model.dart';
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/tournaments/providers/sorting_all_event_provider.dart';
 import 'package:chessever2/screens/tournaments/tournament_detail_view.dart';
@@ -91,7 +87,10 @@ class _TournamentScreenController
   Future<void> onRefresh() async {
     try {
       state = AsyncValue.loading();
-      final tour = await ref.read(groupBroadcastLocalStorage(tourEventCategory)).refresh();
+      final tour =
+          await ref
+              .read(groupBroadcastLocalStorage(tourEventCategory))
+              .refresh();
       if (tour.isNotEmpty) {
         _groupBroadcastList = tour;
         final tourEventCardModel =
@@ -131,19 +130,17 @@ class _TournamentScreenController
 
   //todo:
   void onSelectTournament({required BuildContext context, required String id}) {
-    final tour = _groupBroadcastList.firstWhere(
-      (tour) => tour.id == id,
+    final selectedBroadcast = _groupBroadcastList.firstWhere(
+      (broadcast) => broadcast.id == id,
       orElse: () => _groupBroadcastList.first,
     );
-    // if (tour.id.isNotEmpty) {
-    //   ref.read(aboutTourModelProvider.notifier).state = AboutTourModel.fromTour(
-    //     tour,
-    //   );
-    // } else {
-    //   ref.read(aboutTourModelProvider.notifier).state = AboutTourModel.fromTour(
-    //     _groupBroadcastList.first,
-    //   );
-    // }
+    if (selectedBroadcast.id.isNotEmpty) {
+      ref.read(selectedBroadcastModelProvider.notifier).state =
+          selectedBroadcast;
+    } else {
+      ref.read(selectedBroadcastModelProvider.notifier).state =
+          selectedBroadcast;
+    }
     Navigator.pushNamed(context, '/tournament_detail_screen');
   }
 
@@ -152,164 +149,37 @@ class _TournamentScreenController
     String query,
     TournamentCategory tourEventCategory,
   ) async {
-    if (query.isEmpty) {
-      state = const AsyncValue.loading();
-      loadTours();
-      return;
-    } else {
+    state = const AsyncValue.loading();
+
+    try {
       final groupBroadcast = await ref
           .read(groupBroadcastLocalStorage(tourEventCategory))
           .searchGroupBroadcastsByName(query);
-      final filteredTours =
-      groupBroadcast.where((tour) {
-            final isMatchingName =
-                tour.name.toLowerCase().contains(query.toLowerCase()) ||
-                (tour.timeControl?.toLowerCase().contains(
-                      query.toLowerCase(),
-                    ) ??
-                    false);
 
+      final filteredTours =
+          groupBroadcast.where((tour) {
             final tourCardModel = TourEventCardModel.fromGroupBroadcast(tour);
 
-            final isMatchingCategory =
-                tourEventCategory == TournamentCategory.all
-                    ? true
-                    : tourEventCategory == TournamentCategory.upcoming
-                    ? tourCardModel.tourEventCategory ==
-                        TourEventCategory.upcoming
-                    : true;
-
-            return isMatchingName && isMatchingCategory;
+            // Filter by category
+            if (tourEventCategory == TournamentCategory.current) {
+              return true;
+            } else if (tourEventCategory == TournamentCategory.upcoming) {
+              return tourCardModel.tourEventCategory ==
+                  TourEventCategory.upcoming;
+            } else {
+              // Add other category checks here if needed
+              return true;
+            }
           }).toList();
 
-      if (filteredTours.isNotEmpty) {
-        final filteredTournaments =
-        groupBroadcast.map((e) => TourEventCardModel.fromGroupBroadcast(e)).toList();
-        state = AsyncValue.data(filteredTournaments);
-      } else {
-        final tours = await ref.read(groupBroadcastLocalStorage(tourEventCategory)).getGroupBroadcasts();
-        final filteredTournaments =
-            tours.map((e) => TourEventCardModel.fromGroupBroadcast(e)).toList();
-        state = AsyncValue.data(filteredTournaments);
-      }
+      final filteredTournaments =
+          filteredTours
+              .map((e) => TourEventCardModel.fromGroupBroadcast(e))
+              .toList();
+
+      state = AsyncValue.data(filteredTournaments);
+    } catch (error, stackTrace) {
+      state = AsyncValue.error(error, stackTrace);
     }
   }
-}
-
-final calendarTourViewProvider = AutoDisposeStateNotifierProvider.family((
-  ref,
-  CalendarFilterArgs args,
-) {
-  return _CalendarTourViewController(
-    ref: ref,
-    month: args.month,
-    year: args.year,
-  );
-});
-
-class _CalendarTourViewController
-    extends StateNotifier<AsyncValue<List<TourEventCardModel>>> {
-  _CalendarTourViewController({
-    required this.ref,
-    required this.month,
-    required this.year,
-  }) : super(const AsyncValue.loading()) {
-    _init();
-  }
-
-  final Ref ref;
-  final int? month;
-  final int? year;
-
-  Future<void> _init() async {
-    try {
-      final tours = await ref.read(groupBroadcastLocalStorage()).getTours();
-
-      if (tours.isEmpty) {
-        state = const AsyncValue.data([]);
-        return;
-      }
-
-      final selectedMonth = ref.read(selectedMonthProvider);
-      final selectedYear = ref.read(selectedYearProvider);
-
-      final filteredTours =
-          tours.where((tour) {
-            if (tour.dates.isEmpty) return false;
-
-            final startDate = tour.dates.first;
-            final endDate = tour.dates.last;
-
-            // Create date range for selected month
-            final monthStart = DateTime(selectedYear, selectedMonth, 1);
-            final monthEnd = DateTime(selectedYear, selectedMonth + 1, 0);
-
-            // Check if tournament date range overlaps with selected month
-            return startDate.isBefore(monthEnd.add(Duration(days: 1))) &&
-                endDate.isAfter(monthStart.subtract(Duration(days: 1)));
-          }).toList();
-
-      final filteredTourEventCards =
-          filteredTours.map((t) => TourEventCardModel.fromTour(t)).toList();
-
-      state = AsyncValue.data(filteredTourEventCards);
-    } catch (e, st) {
-      state = AsyncValue.error(e, st);
-    }
-  }
-
-  Future<void> search(String query) async {
-    try {
-      final tours = await ref.read(tourLocalStorageProvider).getTours();
-
-      if (query.isEmpty) {
-        _init(); // fallback to filtered list if query is empty
-        return;
-      }
-
-      final filteredTours =
-          tours.where((tour) {
-            final matchesText =
-                tour.name.toLowerCase().contains(query.toLowerCase()) ||
-                (tour.info.location?.toLowerCase().contains(
-                      query.toLowerCase(),
-                    ) ??
-                    false);
-
-            final matchesDate = tour.dates.any((dateString) {
-              final date = DateTime.tryParse(dateString.toString());
-              if (date == null) return false;
-              if (month == null || year == null) return true;
-              return date.month == month && date.year == year;
-            });
-
-            return matchesText && matchesDate;
-          }).toList();
-
-      final filteredTourEventCards =
-          filteredTours.map((t) => TourEventCardModel.fromTour(t)).toList();
-
-      state = AsyncValue.data(filteredTourEventCards);
-    } catch (e, st) {
-      state = AsyncValue.error(e, st);
-    }
-  }
-}
-
-class CalendarFilterArgs {
-  final int? month;
-  final int? year;
-
-  const CalendarFilterArgs({this.month, this.year});
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is CalendarFilterArgs &&
-          runtimeType == other.runtimeType &&
-          month == other.month &&
-          year == other.year;
-
-  @override
-  int get hashCode => month.hashCode ^ year.hashCode;
 }

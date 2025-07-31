@@ -1,27 +1,31 @@
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
 import 'package:chessever2/screens/tournaments/model/games_app_bar_view_model.dart';
-import 'package:chessever2/screens/tournaments/tournament_detail_view.dart';
+import 'package:chessever2/screens/tournaments/providers/tour_detail_screen_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final gamesAppBarProvider = AutoDisposeStateNotifierProvider<
   GamesAppBarNotifier,
   AsyncValue<GamesAppBarViewModel>
->((ref) => GamesAppBarNotifier(ref));
+>((ref) {
+  final tourId = ref.watch(tourDetailScreenProvider).value!.selectedTourId;
+  return GamesAppBarNotifier(ref: ref, tourId: tourId);
+});
 
 class GamesAppBarNotifier
     extends StateNotifier<AsyncValue<GamesAppBarViewModel>> {
-  GamesAppBarNotifier(this.ref) : super(AsyncValue.loading()) {
+  GamesAppBarNotifier({required this.ref, required this.tourId})
+    : super(AsyncValue.loading()) {
     _init();
   }
 
   final Ref ref;
+  final String tourId;
 
   Future<void> _init() async {
     try {
-      final aboutTourModel = ref.read(aboutTourModelProvider)!;
       final rounds = await ref
           .read(roundRepositoryProvider)
-          .getRoundsByTourId(aboutTourModel.id);
+          .getRoundsByTourId(tourId);
       final gamesAppBarModels =
           rounds.map((round) => GamesAppBarModel.fromRound(round)).toList();
       state = AsyncValue.data(
@@ -35,7 +39,7 @@ class GamesAppBarNotifier
     }
   }
 
-  void selectNewRound(GamesAppBarModel gamesAppBarModel){
+  void selectNewRound(GamesAppBarModel gamesAppBarModel) {
     state = AsyncValue.data(
       GamesAppBarViewModel(
         gamesAppBarModels: state.value!.gamesAppBarModels,
