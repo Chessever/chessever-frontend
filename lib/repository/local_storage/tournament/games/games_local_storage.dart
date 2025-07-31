@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:flutter/foundation.dart';
@@ -8,16 +9,24 @@ final gamesLocalStorage = AutoDisposeProvider<_GamesLocalStorage>((ref) {
   return _GamesLocalStorage(ref);
 });
 
+enum _GameSaver { tourId }
+
 class _GamesLocalStorage {
   _GamesLocalStorage(this.ref);
 
   final Ref ref;
+
+  String getSaveKey(String tourId) => '${_GameSaver.tourId.name}$tourId';
 
   Future<List<Games>> fetchAndSaveGames(String tourId) async {
     try {
       final games = await ref
           .read(gameRepositoryProvider)
           .getGamesByTourId(tourId);
+      final value = _encodeMyGamesList(games);
+      await ref
+          .read(sharedPreferencesRepository)
+          .setStringList(getSaveKey(tourId), value);
       return games;
     } catch (error, _) {
       return <Games>[];
@@ -37,11 +46,18 @@ class _GamesLocalStorage {
 
   Future<List<Games>> getGames(String tourId) async {
     try {
+      final gameStringList = await ref
+          .read(sharedPreferencesRepository)
+          .getStringList(getSaveKey(tourId));
+      if (gameStringList.isNotEmpty) {
+        return _decodeMyGamesList(gameStringList);
+      }
       return await fetchAndSaveGames(tourId);
     } catch (error, _) {
       return <Games>[];
     }
   }
+
 
   Future<List<Games>> getCountrymanGames(String countryCode) async {
     try {
@@ -129,10 +145,10 @@ class _GamesLocalStorage {
   }
 }
 
-List<String> _encodeMyReelsList(List<Games> games) =>
+List<String> _encodeMyGamesList(List<Games> games) =>
     games.map(_encoder).toList();
 
-List<Games> _decodeMyReelsList(List<String> gameStringList) =>
+List<Games> _decodeMyGamesList(List<String> gameStringList) =>
     gameStringList
         .map<Games>((reelsString) => Games.fromJson(_decoder(reelsString)))
         .toList();

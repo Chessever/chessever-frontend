@@ -77,11 +77,13 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
+                  Spacer(),
                   Container(
                     padding: EdgeInsets.symmetric(horizontal: 10.sp),
                     alignment: Alignment.center,
                     child: _buildDropdownItem(item['value']!),
-                  ), // Display the value/name
+                  ),
+                  Spacer(),
                   if (!isLast)
                     Padding(
                       padding: EdgeInsets.symmetric(vertical: 2.h),
