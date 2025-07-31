@@ -75,8 +75,13 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
               value: item['key']!, // Use the key as the value
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  _buildDropdownItem(item['value']!), // Display the value/name
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 10.sp),
+                    alignment: Alignment.center,
+                    child: _buildDropdownItem(item['value']!),
+                  ), // Display the value/name
                   if (!isLast)
                     Padding(
                       padding: EdgeInsets.symmetric(vertical: 2.h),
@@ -99,7 +104,7 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
       selectedItemBuilder: (BuildContext context) {
         return widget.items.map((item) {
           return Container(
-            padding: EdgeInsets.symmetric(horizontal: 12.sp),
+            padding: EdgeInsets.symmetric(horizontal: 10.sp),
             alignment: Alignment.center,
             child: Text(
               item['value']!, // Display the name/value in the selected item
