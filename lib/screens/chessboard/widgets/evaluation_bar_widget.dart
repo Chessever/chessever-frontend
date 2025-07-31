@@ -1,6 +1,7 @@
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
@@ -66,6 +67,20 @@ class EvaluationBarWidget extends ConsumerWidget {
           Align(
             alignment: Alignment.center,
             child: Container(height: 4.h, color: kRedColor),
+          ),
+          Align(
+            alignment: Alignment.bottomCenter,
+
+            child: Padding(
+              padding: EdgeInsets.only(bottom: 2.h),
+              child: Text(
+                evaluation.toString().characters.take(3).string,
+                style: AppTypography.textSmRegular.copyWith(
+                  color: kBlackColor,
+                  fontSize: 4.f,
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -186,11 +201,7 @@ class _Bars extends StatelessWidget {
               color: kWhiteColor,
             ),
           ),
-          Container(
-            width: width,
-            height: 2,
-            color: kRedColor,
-          ),
+          Container(width: width, height: 2, color: kRedColor),
         ],
       ),
     );
