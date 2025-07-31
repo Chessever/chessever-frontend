@@ -36,8 +36,8 @@ class AboutTourScreen extends ConsumerWidget {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      SvgWidget(SvgAsset.websiteIcon, height: 12, width: 12),
-                      SizedBox(width: 4),
+                      SvgWidget(SvgAsset.websiteIcon, height: 12.h, width: 12.h),
+                      SizedBox(width: 4.w),
                       Text(
                         data.aboutTourModel.extractDomain(),
                         maxLines: 1,
@@ -51,7 +51,7 @@ class AboutTourScreen extends ConsumerWidget {
                 ),
               ),
               body: Container(
-                margin: EdgeInsets.symmetric(horizontal: 20),
+                margin: EdgeInsets.symmetric(horizontal: 20.sp),
                 child: SingleChildScrollView(
                   padding: EdgeInsets.zero,
                   child: Column(
@@ -60,23 +60,23 @@ class AboutTourScreen extends ConsumerWidget {
                     children: [
                       ClipRRect(
                         borderRadius: BorderRadius.only(
-                          topLeft: Radius.circular(12),
-                          topRight: Radius.circular(12),
+                          topLeft: Radius.circular(12.br),
+                          topRight: Radius.circular(12.br),
                         ),
                         child: NetworkImageWidget(
-                          height: 240,
+                          height: 240.h,
                           imageUrl: data.aboutTourModel.imageUrl,
                           placeHolder: PngAsset.premiumIcon,
                         ),
                       ),
-                      SizedBox(height: 12),
+                      SizedBox(height: 12.h),
                       Text(
                         data.aboutTourModel.description,
                         style: AppTypography.textSmMedium.copyWith(
                           color: kWhiteColor70,
                         ),
                       ),
-                      SizedBox(height: 12),
+                      SizedBox(height: 12.h),
                       _TitleDescWidget(
                         title: 'Players',
                         description: data.aboutTourModel.players.join(', '),
@@ -86,20 +86,20 @@ class AboutTourScreen extends ConsumerWidget {
                         title: 'Time Control',
                         description: data.aboutTourModel.timeControl,
                       ),
-                      SizedBox(height: 12),
+                      SizedBox(height: 12.h),
                       _TitleDescWidget(
                         title: 'Date',
                         description: data.aboutTourModel.date,
                       ),
-                      SizedBox(height: 12),
+                      SizedBox(height: 12.h),
                       _CountryFlag(
                         title: 'Location',
                         flag: CountryFlag.fromCountryCode(
                           ref
                               .read(locationServiceProvider)
                               .getCountryCode(data.aboutTourModel.location),
-                          width: 16,
-                          height: 12,
+                          width: 16.w,
+                          height: 12.h,
                         ),
                         description: data.aboutTourModel.location,
                       ),
