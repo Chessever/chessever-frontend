@@ -42,4 +42,15 @@ class TourDetailScreenProvider
       state = AsyncValue.error(e, st);
     }
   }
+
+  void updateSelection(String tourId) {
+    final currentState = state.value!;
+    final selectedTour = currentState.tours.firstWhere((e) => e.id == tourId);
+    final tourEventCardModel = TourDetailViewModel(
+      aboutTourModel: AboutTourModel.fromTour(selectedTour),
+      selectedTourId: selectedTour.id,
+      tours: currentState.tours,
+    );
+    state = AsyncValue.data(tourEventCardModel);
+  }
 }

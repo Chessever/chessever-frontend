@@ -9,7 +9,6 @@ import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/players/player_screen.dart';
 import 'package:chessever2/screens/players/providers/player_providers.dart'; // Added import for player providers
 import 'package:chessever2/screens/favorites/favorite_screen.dart';
-import 'package:chessever2/screens/countryman_screen.dart';
 import 'package:chessever2/screens/score_card/pages/score_card_page.dart';
 import 'package:chessever2/screens/splash/splash_screen.dart';
 import 'package:chessever2/screens/standings_screen.dart';
@@ -134,7 +133,6 @@ class _MyAppState extends ConsumerState<MyApp> {
         // Updated to use the navigation component
         '/favorites': (context) => const FavoriteScreen(),
         // Updated to use the new FavoriteScreen
-        '/countryman_screen': (context) => const CountrymanScreen(),
         '/countryman_games_screen': (context) => const CountrymanGamesScreen(),
         '/standings': (context) => const StandingsScreen(),
         '/calendar_detail_screen': (context) => CalendarDetailsScreen(),

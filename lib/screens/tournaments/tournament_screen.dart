@@ -160,6 +160,7 @@ class AllEventsTabWidget extends ConsumerWidget {
       },
       itemBuilder: (context, index) {
         if (index == 0) {
+          return SizedBox.shrink();
           return CountrymenCardWidget();
         }
 

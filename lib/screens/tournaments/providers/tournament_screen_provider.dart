@@ -41,10 +41,10 @@ class _TournamentScreenController
   }) async {
     try {
       final tour =
-          inputBroadcast ??
-          await ref
-              .read(groupBroadcastLocalStorage(tourEventCategory))
-              .getGroupBroadcasts();
+          (inputBroadcast ??
+              await ref
+                  .read(groupBroadcastLocalStorage(tourEventCategory))
+                  .getGroupBroadcasts());
       if (tour.isEmpty) return;
 
       _groupBroadcastList = tour;
