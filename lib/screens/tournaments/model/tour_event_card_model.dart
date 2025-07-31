@@ -45,7 +45,7 @@ class TourEventCardModel extends Equatable {
   }
 
   static String getTimeUntilStart(DateTime? startDateTime) {
-    if (startDateTime != null) {
+    if (startDateTime == null) {
       return "";
     }
 

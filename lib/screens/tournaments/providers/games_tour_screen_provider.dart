@@ -1,7 +1,9 @@
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
+import 'package:chessever2/screens/tournaments/model/about_tour_model.dart';
 import 'package:chessever2/screens/tournaments/model/games_tour_model.dart';
 import 'package:chessever2/screens/tournaments/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/pintop_storage.dart';
+import 'package:chessever2/screens/tournaments/providers/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/tournament_detail_view.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -10,19 +12,28 @@ final gamesTourScreenProvider = StateNotifierProvider.autoDispose<
   AsyncValue<GamesScreenModel>
 >((ref) {
   final selectedRound = ref.watch(gamesAppBarProvider).value?.selectedId;
-  
-  return GamesTourScreenProvider(ref: ref, roundId: selectedRound);
+  final aboutTourModel =
+      ref.watch(tourDetailScreenProvider).value!.aboutTourModel;
+  return GamesTourScreenProvider(
+    ref: ref,
+    roundId: selectedRound,
+    aboutTourModel: aboutTourModel,
+  );
 });
 
 class GamesTourScreenProvider
     extends StateNotifier<AsyncValue<GamesScreenModel>> {
-  GamesTourScreenProvider({required this.ref, required this.roundId})
-    : super(AsyncValue.loading()) {
+  GamesTourScreenProvider({
+    required this.ref,
+    required this.roundId,
+    required this.aboutTourModel,
+  }) : super(AsyncValue.loading()) {
     _init();
   }
 
   final Ref ref;
   final String? roundId;
+  final AboutTourModel aboutTourModel;
 
   Future<void> togglePinGame(String gameId) async {
     print('Toggle pin called for gameId: $gameId');
@@ -55,7 +66,6 @@ class GamesTourScreenProvider
   }
 
   Future<void> _init() async {
-    final aboutTourModel = ref.read(aboutTourModelProvider)!;
     final allGames = await ref
         .read(gamesLocalStorage)
         .getGames(aboutTourModel.id);
@@ -100,7 +110,7 @@ class GamesTourScreenProvider
 
   Future<void> searchGames(String query) async {
     if (query.isNotEmpty && roundId != null) {
-      final aboutTourModel = ref.read(aboutTourModelProvider)!;
+      final aboutTourModel = ref.read(selectedBroadcastModelProvider)!;
 
       final allGames = await ref
           .read(gamesLocalStorage)

@@ -1,5 +1,6 @@
+import 'package:chessever2/repository/local_storage/group_broadcast/group_broadcast_local_storage.dart';
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
-import 'package:chessever2/repository/local_storage/tournament/tour_local_storage.dart';
+import 'package:chessever2/screens/tournaments/tournament_screen.dart';
 import 'package:chessever2/widgets/event_card/starred_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -15,7 +16,15 @@ class _SplashScreenProvider {
 
   Future<void> runAuthenticationPreProcessor(BuildContext context) async {
     //Fetch all tournament
-    await ref.read(tourLocalStorageProvider).fetchAndSaveTournament();
+    await Future.wait([
+      ref
+          .read(groupBroadcastLocalStorage(TournamentCategory.current))
+          .fetchAndSaveGroupBroadcasts(),
+      ref
+          .read(groupBroadcastLocalStorage(TournamentCategory.upcoming))
+          .fetchAndSaveGroupBroadcasts(),
+    ]);
+
     //Fetch all starred tournament
     ref.read(starredProvider.notifier).init();
 
