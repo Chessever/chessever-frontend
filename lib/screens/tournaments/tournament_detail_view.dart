@@ -5,6 +5,7 @@ import 'package:chessever2/screens/tournaments/games_tour_screen.dart';
 import 'package:chessever2/screens/tournaments/providers/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/widget/games_app_bar_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/app_bar_with_title.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
@@ -42,7 +43,7 @@ class TournamentDetailView extends ConsumerWidget {
         body: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            SizedBox(height: MediaQuery.of(context).viewPadding.top + 24),
+            SizedBox(height: MediaQuery.of(context).viewPadding.top + 24.h),
 
             ref
                 .watch(tourDetailScreenProvider)
@@ -79,9 +80,9 @@ class TournamentDetailView extends ConsumerWidget {
                     );
                   },
                 ),
-            SizedBox(height: 36),
+            SizedBox(height: 36.h),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20.0),
+              padding:  EdgeInsets.symmetric(horizontal: 20.sp),
               child: SegmentedSwitcher(
                 backgroundColor: kPopUpColor,
                 selectedBackgroundColor: kPopUpColor,
@@ -95,7 +96,7 @@ class TournamentDetailView extends ConsumerWidget {
                 },
               ),
             ),
-            SizedBox(height: 12),
+            SizedBox(height: 12.h),
             Expanded(
               child: () {
                 switch (selectedTourMode) {
