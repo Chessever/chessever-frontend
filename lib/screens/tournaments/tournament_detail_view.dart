@@ -2,6 +2,7 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.d
 import 'package:chessever2/screens/standings_screen.dart';
 import 'package:chessever2/screens/tournaments/about_tour_screen.dart';
 import 'package:chessever2/screens/tournaments/games_tour_screen.dart';
+import 'package:chessever2/screens/tournaments/model/tour_detail_view_model.dart';
 import 'package:chessever2/screens/tournaments/providers/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/widget/games_app_bar_widget.dart';
 import 'package:chessever2/screens/tournaments/widget/text_dropdown_widget.dart';
@@ -53,48 +54,7 @@ class TournamentDetailView extends ConsumerWidget {
                     return Column(
                       children: [
                         selectedTourMode == _TournamentDetailScreenMode.about
-                            ? Row(
-                              children: [
-                                SizedBox(width: 20),
-                                IconButton(
-                                  iconSize: 24,
-                                  padding: EdgeInsets.zero,
-                                  onPressed: () {
-                                    Navigator.of(context).pop();
-                                  },
-                                  icon: Icon(
-                                    Icons.arrow_back_ios_new_outlined,
-                                    size: 24,
-                                  ),
-                                ),
-                                Spacer(),
-                                SizedBox(
-                                  height: 32.h,
-                                  width: 200.w,
-                                  child: TextDropDownWidget(
-                                    items:
-                                        data.tours
-                                            .map(
-                                              (e) => {
-                                                'key': e.id,
-                                                'value': e.name,
-                                              },
-                                            )
-                                            .toList(),
-                                    selectedId: data.selectedTourId,
-                                    onChanged: (value) {
-                                      ref
-                                          .read(
-                                            tourDetailScreenProvider.notifier,
-                                          )
-                                          .updateSelection(value);
-                                    },
-                                  ),
-                                ),
-                                Spacer(),
-                                SizedBox(width: 44),
-                              ],
-                            )
+                            ? _TourDetailDropDownAppBar(data: data)
                             : selectedTourMode ==
                                 _TournamentDetailScreenMode.games
                             ? GamesAppBarWidget()
@@ -151,6 +111,48 @@ class TournamentDetailView extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _TourDetailDropDownAppBar extends ConsumerWidget {
+  const _TourDetailDropDownAppBar({required this.data, super.key});
+
+  final TourDetailViewModel data;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Row(
+      children: [
+        SizedBox(width: 20),
+        IconButton(
+          iconSize: 24,
+          padding: EdgeInsets.zero,
+          onPressed: () {
+            Navigator.of(context).pop();
+          },
+          icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24),
+        ),
+        Spacer(),
+        SizedBox(
+          height: 32.h,
+          width: 150.w,
+          child: TextDropDownWidget(
+            items:
+                data.tours
+                    .map((e) => {'key': e.id, 'value': e.name.split('|').last})
+                    .toList(),
+            selectedId: data.selectedTourId,
+            onChanged: (value) {
+              ref
+                  .read(tourDetailScreenProvider.notifier)
+                  .updateSelection(value);
+            },
+          ),
+        ),
+        Spacer(),
+        SizedBox(width: 44),
+      ],
     );
   }
 }

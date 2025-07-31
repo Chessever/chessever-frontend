@@ -4,7 +4,6 @@ import 'package:chessever2/screens/tournaments/providers/tournament_screen_provi
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/event_card/countrymen_card.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
@@ -159,12 +158,13 @@ class AllEventsTabWidget extends ConsumerWidget {
         return SizedBox(height: 12.sp);
       },
       itemBuilder: (context, index) {
-        if (index == 0) {
-          return SizedBox.shrink();
-          return CountrymenCardWidget();
-        }
+        // if (index == 0) {
+        //   return SizedBox.shrink();
+        //   return CountrymenCardWidget();
+        // }
 
-        final tourEventCardModel = filteredEvents[index - 1];
+        // final tourEventCardModel = filteredEvents[index - 1];
+        final tourEventCardModel = filteredEvents[index];
 
         switch (tourEventCardModel.tourEventCategory) {
           case TourEventCategory.live:

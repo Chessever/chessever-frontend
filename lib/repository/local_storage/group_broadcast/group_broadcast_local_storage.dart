@@ -105,12 +105,20 @@ class _GroupBroadcastLocalStorage {
 
       final queryLower = query.toLowerCase().trim();
 
+      // Split into words for flexible matching
+      final queryWords = queryLower.split(RegExp(r'\s+'))
+          .where((word) => word.isNotEmpty)
+          .toList();
+
       return broadcasts.where((gb) {
-        // Check if any search term contains the query
-        return gb.search.any(
-              (term) => term.toLowerCase().contains(queryLower),
-            ) ||
-            gb.name.toLowerCase().contains(queryLower);
+        final nameLower = gb.name.toLowerCase();
+        final allText = [nameLower, ...gb.search.map((s) => s.toLowerCase())].join(' ');
+
+        // Option 1: All words must be present (AND search)
+        return queryWords.every((word) => allText.contains(word));
+
+        // Option 2: Any word can be present (OR search) - uncomment if preferred
+        // return queryWords.any((word) => allText.contains(word));
       }).toList();
     } catch (e) {
       return <GroupBroadcast>[];
