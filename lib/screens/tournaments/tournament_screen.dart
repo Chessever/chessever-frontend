@@ -15,15 +15,15 @@ import '../../widgets/rounded_search_bar.dart';
 import '../../widgets/segmented_switcher.dart';
 import '../../widgets/event_card/completed_event_card.dart';
 
-enum TournamentCategory { all, upcoming }
+enum TournamentCategory { current, upcoming }
 
 final _mappedName = {
-  TournamentCategory.all: 'All Events',
+  TournamentCategory.current: 'All Events',
   TournamentCategory.upcoming: 'Upcoming Events',
 };
 
 final selectedTourEventProvider = StateProvider<TournamentCategory>(
-  (ref) => TournamentCategory.all,
+  (ref) => TournamentCategory.current,
 );
 
 class TournamentScreen extends HookConsumerWidget {
@@ -100,9 +100,7 @@ class TournamentScreen extends HookConsumerWidget {
                 .when(
                   data: (filteredEvents) {
                     return Expanded(
-                      child: AllEventsTabWidget(
-                        filteredEvents: filteredEvents,
-                      ),
+                      child: AllEventsTabWidget(filteredEvents: filteredEvents),
                     );
                   },
                   loading: () {
