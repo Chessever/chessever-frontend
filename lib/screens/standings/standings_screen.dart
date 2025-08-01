@@ -1,19 +1,18 @@
-import 'package:chessever2/screens/tournaments/games_tour_screen.dart';
+import 'package:chessever2/screens/standings/standing_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/widget/empty_widget.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../providers/standings_provider.dart';
-import '../theme/app_theme.dart';
-import '../widgets/standing_score_card.dart';
-import '../utils/app_typography.dart';
+import '../../theme/app_theme.dart';
+import '../../widgets/standing_score_card.dart';
+import '../../utils/app_typography.dart';
 
 class StandingsScreen extends ConsumerWidget {
   const StandingsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final playerStandings = ref.watch(standingsProvider);
+    final playerStandings = ref.watch(standingScreenProvider);
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 20.0.sp),
@@ -65,24 +64,31 @@ class StandingsScreen extends ConsumerWidget {
           const SizedBox(height: 24),
           playerStandings.isEmpty
               ? EmptyWidget(title: "No data available")
-              : ListView.builder(
-                shrinkWrap: true,
-                padding: EdgeInsets.zero,
-                itemCount: playerStandings.length,
-                itemBuilder: (context, index) {
-                  final player = playerStandings[index];
-                  return Padding(
-                    padding: EdgeInsets.only(bottom: 16.0.sp),
-                    child: StandingScoreCard(
-                      countryCode: player.countryCode,
-                      title: player.title,
-                      name: player.name,
-                      score: player.score,
-                      scoreChange: player.scoreChange,
-                      matchScore: player.matchScore,
-                    ),
-                  );
-                },
+              : Expanded(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  padding: EdgeInsets.only(
+                    bottom: MediaQuery.of(context).viewInsets.bottom + 16.sp,
+                  ),
+                  itemCount: playerStandings.length,
+                  itemBuilder: (context, index) {
+                    final player = playerStandings[index];
+                    return Padding(
+                      padding: EdgeInsets.only(
+                        bottom: 16.sp,
+                        top: index == 0 ? 16.sp : 0,
+                      ),
+                      child: StandingScoreCard(
+                        countryCode: player.countryCode,
+                        title: player.title,
+                        name: player.name,
+                        score: player.score,
+                        scoreChange: player.scoreChange,
+                        matchScore: player.matchScore,
+                      ),
+                    );
+                  },
+                ),
               ),
         ],
       ),
