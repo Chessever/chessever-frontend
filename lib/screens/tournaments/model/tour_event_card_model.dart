@@ -37,10 +37,13 @@ class TourEventCardModel extends Equatable {
 
   static String convertDates(DateTime? startDateTime, DateTime? endDateTime) {
     if (startDateTime != null && endDateTime != null) {
-      return "${DateFormat('MMM d').format(startDateTime)} - ${DateFormat('d,yyyy').format(endDateTime)}";
+      if (startDateTime.month == endDateTime.month) {
+        return "${DateFormat('MMM d').format(startDateTime)} - ${DateFormat('d,yyyy').format(endDateTime)}";
+      } else {
+        return "${DateFormat('MMM d').format(startDateTime)} - ${DateFormat('d MMM,yyyy').format(endDateTime)}";
+      }
     } else {
-      //todo: Fix this
-      return "10 Jan 2024";
+      return "";
     }
   }
 
