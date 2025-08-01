@@ -10,7 +10,7 @@ class StandingScoreCard extends StatelessWidget {
   final String name; // Player name
   final int score; // Current score/rating
   final int? scoreChange; // Score change (can be positive or negative)
-  final String matchScore; // Match score (e.g., "2.5/3")
+  final String? matchScore; // Match score (e.g., "2.5/3")
 
   const StandingScoreCard({
     super.key,
@@ -19,17 +19,17 @@ class StandingScoreCard extends StatelessWidget {
     required this.name,
     required this.score,
     this.scoreChange,
-    required this.matchScore,
+    this.matchScore,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       height: 48.h,
-      padding:  EdgeInsets.symmetric(horizontal: 8.sp, vertical: 4.sp),
+      padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 4.sp),
       decoration: BoxDecoration(
         color: kBlack2Color,
-        borderRadius:  BorderRadius.only(
+        borderRadius: BorderRadius.only(
           topLeft: Radius.circular(4.br),
           topRight: Radius.circular(4.br),
         ),
@@ -105,7 +105,7 @@ class StandingScoreCard extends StatelessWidget {
           SizedBox(
             width: 60.w,
             child: Text(
-              matchScore,
+              matchScore == null ? '' : matchScore!,
               textAlign: TextAlign.end,
               style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
             ),
