@@ -99,7 +99,16 @@ class TournamentScreen extends HookConsumerWidget {
                 .when(
                   data: (filteredEvents) {
                     return Expanded(
-                      child: AllEventsTabWidget(filteredEvents: filteredEvents),
+                      child: AllEventsTabWidget(
+                        filteredEvents: filteredEvents,
+                        onSelect:
+                            (tourEventCardModel) => ref
+                                .read(tournamentNotifierProvider.notifier)
+                                .onSelectTournament(
+                                  context: context,
+                                  id: tourEventCardModel.id,
+                                ),
+                      ),
                     );
                   },
                   loading: () {
@@ -115,6 +124,7 @@ class TournamentScreen extends HookConsumerWidget {
                     return Expanded(
                       child: SkeletonWidget(
                         child: AllEventsTabWidget(
+                          onSelect: (_) {},
                           filteredEvents: List.generate(
                             10,
                             (index) => mockData,
@@ -133,9 +143,14 @@ class TournamentScreen extends HookConsumerWidget {
 }
 
 class AllEventsTabWidget extends ConsumerWidget {
-  const AllEventsTabWidget({required this.filteredEvents, super.key});
+  const AllEventsTabWidget({
+    required this.filteredEvents,
+    required this.onSelect,
+    super.key,
+  });
 
   final List<TourEventCardModel> filteredEvents;
+  final ValueChanged<TourEventCardModel> onSelect;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -170,39 +185,18 @@ class AllEventsTabWidget extends ConsumerWidget {
           case TourEventCategory.live:
             return EventCard(
               tourEventCardModel: tourEventCardModel,
-              onTap: () {
-                ref
-                    .read(tournamentNotifierProvider.notifier)
-                    .onSelectTournament(
-                      context: context,
-                      id: tourEventCardModel.id,
-                    );
-              },
+              onTap: () => onSelect(tourEventCardModel),
             );
           case TourEventCategory.upcoming:
             return EventCard(
               tourEventCardModel: tourEventCardModel,
               //todo:
-              onTap: () {
-                ref
-                    .read(tournamentNotifierProvider.notifier)
-                    .onSelectTournament(
-                      context: context,
-                      id: tourEventCardModel.id,
-                    );
-              },
+              onTap: () => onSelect(tourEventCardModel),
             );
           case TourEventCategory.completed:
             return CompletedEventCard(
               tourEventCardModel: tourEventCardModel,
-              onTap: () {
-                ref
-                    .read(tournamentNotifierProvider.notifier)
-                    .onSelectTournament(
-                      context: context,
-                      id: tourEventCardModel.id,
-                    );
-              },
+              onTap: () => onSelect(tourEventCardModel),
               onDownloadTournament: () {
                 // Download tournament
               },
