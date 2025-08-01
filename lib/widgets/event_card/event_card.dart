@@ -83,8 +83,10 @@ class EventCard extends ConsumerWidget {
                         color: kWhiteColor70,
                       ),
                       children: [
-                        TextSpan(text: tourEventCardModel.dates),
-                        _buildDot(),
+                        if (tourEventCardModel.dates.trim().isEmpty) ...[
+                          TextSpan(text: tourEventCardModel.dates),
+                          _buildDot(),
+                        ],
                         TextSpan(text: tourEventCardModel.timeControl),
                         _buildDot(),
                         TextSpan(text: "Ø ${tourEventCardModel.maxAvgElo}"),
