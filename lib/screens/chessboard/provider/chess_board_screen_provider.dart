@@ -50,7 +50,6 @@ final chessBoardScreenProvider = AutoDisposeStateNotifierProvider.family<
     );
   }
 
-  print("PGN DATA : ${games[index].pgn}");
   return ChessBoardScreenNotifier(game: games[index], index: index);
 });
 
@@ -306,6 +305,7 @@ class ChessBoardScreenNotifier
         try {
           final fen = state.value!.game.fen;
           final ev = await StockfishSingleton().evaluatePosition(fen);
+          print('Evaluation : $ev');
           if (mounted) {
             state = AsyncValue.data(state.value!.copyWith(evaluations: ev));
           }
@@ -317,11 +317,10 @@ class ChessBoardScreenNotifier
   }
 
   double getWhiteRatio(double eval) {
-    final normalized = (eval.clamp(-5.0, 5.0) + 5.0) / 10.0;
-    return (normalized * 0.99).clamp(0.01, 0.99);
+    return (eval.clamp(-5.0, 5.0) + 5.0) / 10.0;
   }
 
-  double getBlackRatio(double eval) => 0.99 - getWhiteRatio(eval);
+  double getBlackRatio(double eval) => 1.0 - getWhiteRatio(eval);
 
   Color getMoveColor(String move, int moveIndex) {
     if (moveIndex == state.value!.currentMoveIndex - 1) {
