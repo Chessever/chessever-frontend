@@ -69,15 +69,6 @@ class GamesTourScreenProvider
         .read(gamesLocalStorage)
         .getGames(aboutTourModel.id);
 
-    print("All Games:");
-    for (final game in allGames) {
-      print('''
-  ▶ Game ID: ${game.id}
-  ▶ Round ID: ${game.roundId}
-  ▶ fen: ${game.fen}
-  
-  ''');
-    }
     final pinnedIds =
         await ref.read(pinnedGamesStorageProvider).getPinnedGameIds();
 
@@ -127,7 +118,6 @@ class GamesTourScreenProvider
       );
     }
   }
-
 
   Future<void> refreshGames() async {
     final allGames = await ref
