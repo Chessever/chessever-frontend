@@ -40,16 +40,18 @@ class StandingScoreCard extends StatelessWidget {
           Expanded(
             child: Row(
               children: [
-                SizedBox(
-                  width: 16.w,
-                  height: 12.h,
-                  child: CountryFlag.fromCountryCode(
-                    countryCode,
-                    height: 12.h,
+                if (countryCode.isNotEmpty) ...[
+                  SizedBox(
                     width: 16.w,
+                    height: 12.h,
+                    child: CountryFlag.fromCountryCode(
+                      countryCode,
+                      height: 12.h,
+                      width: 16.w,
+                    ),
                   ),
-                ),
-                SizedBox(width: 4.w),
+                  SizedBox(width: 4.w),
+                ],
                 Flexible(
                   child: RichText(
                     overflow: TextOverflow.ellipsis,

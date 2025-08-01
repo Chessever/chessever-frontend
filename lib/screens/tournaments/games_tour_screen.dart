@@ -42,9 +42,18 @@ class GamesTourScreen extends ConsumerWidget {
                     .when(
                       data: (data) {
                         if (data.gamesTourModels.isEmpty) {
-                          return EmptyWidget(
-                            title:
-                                "No games available yet. Check back soon or set a\nreminder for updates.",
+                          return Center(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+
+                                EmptyWidget(
+                                  title:
+                                  "No games available yet. Check back soon or set a\nreminder for updates.",
+                                )
+                              ],
+                            ),
                           );
                         }
 
@@ -52,7 +61,7 @@ class GamesTourScreen extends ConsumerWidget {
                           padding: EdgeInsets.only(
                             left: 20.sp,
                             right: 20.sp,
-                            top: 12.sp,
+                            top: 16.sp,
                             bottom: MediaQuery.of(context).viewPadding.bottom,
                           ),
                           itemCount: data.gamesTourModels.length,

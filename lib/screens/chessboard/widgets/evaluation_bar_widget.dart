@@ -226,27 +226,29 @@ class _Bars extends StatelessWidget {
           ),
           Container(width: width, height: 2, color: kRedColor),
           // Add evaluation number display
-          Container(
+          Align(
             alignment: Alignment.center,
-            padding: EdgeInsets.symmetric(horizontal: 1.w, vertical: 0.5.h),
-            decoration: BoxDecoration(
-              color: kPrimaryColor,
-              borderRadius: BorderRadius.circular(2.br),
-            ),
-            child: Text(
-              evaluation.abs() >= 10.0
-                  ? (evaluation > 0 ? "M" : "-M") // Show "M" or "-M" for mate
-                  : evaluation
-                      .toString()
-                      .characters
-                      .take(4)
-                      .string, // Show negative values directly
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              style: AppTypography.textSmRegular.copyWith(
-                color: Colors.white,
-                fontSize: 1.5.f,
-                fontWeight: FontWeight.w600,
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 1.w, vertical: 0.5.h),
+              decoration: BoxDecoration(
+                color: kPrimaryColor,
+                borderRadius: BorderRadius.circular(2.br),
+              ),
+              child: Text(
+                evaluation.abs() >= 10.0
+                    ? (evaluation > 0 ? "M" : "-M") // Show "M" or "-M" for mate
+                    : evaluation
+                        .toString()
+                        .characters
+                        .take(4)
+                        .string, // Show negative values directly
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                style: AppTypography.textSmRegular.copyWith(
+                  color: Colors.white,
+                  fontSize: 1.5.f,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ),
