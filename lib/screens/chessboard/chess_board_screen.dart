@@ -460,11 +460,6 @@ class _LastMoveHighlightOverlay extends StatelessWidget {
     final fromPos = getSquarePosition(lastMove.from);
     final toPos = getSquarePosition(lastMove.to);
 
-    print("Last move highlight: from=${lastMove.from} to=${lastMove.to}");
-    print("From position: (${fromPos.dx}, ${fromPos.dy})");
-    print("To position: (${toPos.dx}, ${toPos.dy})");
-    print("Board flipped: $isFlipped");
-
     return IgnorePointer(
       child: Stack(
         children: [
