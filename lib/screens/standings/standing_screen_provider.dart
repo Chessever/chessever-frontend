@@ -1,76 +1,73 @@
-import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
-import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/repository/local_storage/tournament/tour_local_storage.dart';
+import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
-import 'package:chessever2/screens/tournaments/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/tour_detail_screen_provider.dart';
+import 'package:chessever2/screens/tournaments/tournament_detail_view.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 // Provider for the standings state
-final standingScreenProvider =
-    StateNotifierProvider<StandingScreenNotifier, List<PlayerStandingModel>>((
-      ref,
-    ) {
-      final roundId = ref.watch(gamesAppBarProvider).value?.selectedId;
-      final aboutTourModel =
-          ref.watch(tourDetailScreenProvider).value!.aboutTourModel;
-      return StandingScreenNotifier(
-        ref: ref,
-        tourId: aboutTourModel.id,
-        roundId: roundId,
-      );
-    });
+final standingScreenProvider = StateNotifierProvider<
+  StandingScreenNotifier,
+  AsyncValue<List<PlayerStandingModel>>
+>((ref) {
+  final groupBroadcastId = ref.watch(selectedBroadcastModelProvider)!.id;
+  final aboutTourModel =
+      ref.watch(tourDetailScreenProvider).value!.aboutTourModel;
+  return StandingScreenNotifier(
+    ref: ref,
+    tourId: aboutTourModel.id,
+    groupBroadcastId: groupBroadcastId,
+  );
+});
 
-class StandingScreenNotifier extends StateNotifier<List<PlayerStandingModel>> {
+class StandingScreenNotifier
+    extends StateNotifier<AsyncValue<List<PlayerStandingModel>>> {
   StandingScreenNotifier({
     required this.ref,
     required this.tourId,
-    required this.roundId,
-  }) : super([]) {
+    required this.groupBroadcastId,
+  }) : super(AsyncValue.loading()) {
     // Initialize with test data
-    loadTestData();
+    loadStandings();
   }
 
   final Ref ref;
   final String tourId;
-  final String? roundId;
+  final String groupBroadcastId;
 
-  Future<void> loadTestData() async {
-    final allGames = await ref.read(gamesLocalStorage).getGames(tourId);
+  Future<void> loadStandings() async {
+    try {
+      final allTours = await ref
+          .read(tourLocalStorageProvider)
+          .getTours(groupBroadcastId);
+      final selectedTour = allTours.where((e) => e.id == tourId).toList();
 
-    print("All Games:");
-    for (final game in allGames) {
-      print('''
-  ▶ Game ID: ${game.id}
-  ▶ Round ID: ${game.roundId}
-  ▶ fen: ${game.fen}
-  
-  ''');
-    }
+      var tournamentPlayer = <TournamentPlayer>[];
 
-    final selectedGames =
-        roundId != null
-            ? allGames.where((e) => e.roundId.contains(roundId!)).toList()
-            : allGames;
-
-    var players = <Player>[];
-
-    for (var a = 0; a < selectedGames.length; a++) {
-      if (selectedGames[a].players != null) {
-        for (var b = 0; b < selectedGames[a].players!.length; b++) {
-          players.add(selectedGames[a].players![b]);
+      for (var a = 0; a < selectedTour.length; a++) {
+        for (var b = 0; b < selectedTour[a].players.length; b++) {
+          tournamentPlayer.add(selectedTour[a].players[b]);
         }
       }
+
+      tournamentPlayer = tournamentPlayer.toSet().toList();
+
+      tournamentPlayer.sort((a, b) {
+        final aRating = a.score == null ? 0 : (a.score! / a.played);
+        final bRating = b.score == null ? 0 : (b.score! / b.played);
+
+        if (bRating == aRating) {
+          return b.played.compareTo(a.played);
+        }
+
+        return bRating.compareTo(aRating); // Descending order (highest first)
+      });
+
+      state = AsyncValue.data(
+        tournamentPlayer.map((e) => PlayerStandingModel.fromPlayer(e)).toList(),
+      );
+    } catch (e, _) {
+      state = AsyncValue.data([]);
     }
-
-    players = players.toSet().toList();
-
-    players.sort((a, b) {
-      final aRating = a.rating ?? 0; // Handle null ratings
-      final bRating = b.rating ?? 0;
-
-      return bRating.compareTo(aRating); // Descending order (highest first)
-    });
-
-    state = players.map((e) => PlayerStandingModel.fromPlayer(e)).toList();
   }
 }

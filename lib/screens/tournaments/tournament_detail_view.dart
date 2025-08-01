@@ -58,7 +58,7 @@ class TournamentDetailView extends ConsumerWidget {
                             : selectedTourMode ==
                                 _TournamentDetailScreenMode.games
                             ? GamesAppBarWidget()
-                            : _StandingAppBar(),
+                            : _TourDetailDropDownAppBar(data: data),
                         SizedBox(height: 36.h),
                         Padding(
                           padding: EdgeInsets.symmetric(horizontal: 20.sp),
@@ -104,31 +104,6 @@ class TournamentDetailView extends ConsumerWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _StandingAppBar extends StatelessWidget {
-  const _StandingAppBar({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        SizedBox(width: 20),
-        IconButton(
-          iconSize: 24,
-          padding: EdgeInsets.zero,
-          onPressed: () {
-            Navigator.of(context).pop();
-          },
-          icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24),
-        ),
-        Spacer(),
-        RoundDropDown(),
-        Spacer(),
-        SizedBox(width: 44),
-      ],
     );
   }
 }

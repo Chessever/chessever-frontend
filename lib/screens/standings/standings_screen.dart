@@ -1,6 +1,8 @@
+import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/standing_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/widget/empty_widget.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../theme/app_theme.dart';
@@ -62,36 +64,108 @@ class StandingsScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 24),
-          playerStandings.isEmpty
-              ? EmptyWidget(title: "No data available")
-              : Expanded(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  padding: EdgeInsets.only(
-                    bottom: MediaQuery.of(context).viewInsets.bottom + 16.sp,
-                  ),
-                  itemCount: playerStandings.length,
-                  itemBuilder: (context, index) {
-                    final player = playerStandings[index];
-                    return Padding(
+          playerStandings.when(
+            data: (data) {
+              return data.isEmpty
+                  ? EmptyWidget(title: "No data available")
+                  : Expanded(
+                    child: ListView.builder(
+                      shrinkWrap: true,
                       padding: EdgeInsets.only(
-                        bottom: 16.sp,
-                        top: index == 0 ? 16.sp : 0,
+                        bottom:
+                            MediaQuery.of(context).viewInsets.bottom + 16.sp,
                       ),
-                      child: StandingScoreCard(
-                        countryCode: player.countryCode,
-                        title: player.title,
-                        name: player.name,
-                        score: player.score,
-                        scoreChange: player.scoreChange,
-                        matchScore: player.matchScore,
-                      ),
-                    );
-                  },
-                ),
-              ),
+                      itemCount: data.length,
+                      itemBuilder: (context, index) {
+                        final player = data[index];
+                        return Padding(
+                          padding: EdgeInsets.only(
+                            bottom: 16.sp,
+                            top: index == 0 ? 16.sp : 0,
+                          ),
+                          child: StandingScoreCard(
+                            countryCode: player.countryCode,
+                            title: player.title,
+                            name: player.name,
+                            score: player.score,
+                            scoreChange: player.scoreChange,
+                            matchScore: player.matchScore,
+                          ),
+                        );
+                      },
+                    ),
+                  );
+            },
+            error: (e, _) {
+              return _StandingScreenLoading();
+            },
+            loading: () {
+              return _StandingScreenLoading();
+            },
+          ),
         ],
       ),
+    );
+  }
+}
+
+class _StandingScreenLoading extends StatelessWidget {
+  const _StandingScreenLoading({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final List<PlayerStandingModel> data = [
+      PlayerStandingModel(
+        countryCode: 'ARM',
+        title: 'GM',
+        name: 'Aronian, Levon',
+        score: 2712,
+        scoreChange: -12,
+        matchScore: '5.0 / 9',
+      ),
+      PlayerStandingModel(
+        countryCode: 'AZE',
+        title: 'GM',
+        name: 'Mamedyarov, Shakhriyar',
+        score: 2704,
+        scoreChange: 6,
+        matchScore: '5.0 / 9',
+      ),
+      PlayerStandingModel(
+        countryCode: 'USA',
+        title: 'GM',
+        name: 'Nakamura, Hikaru',
+        score: 2698,
+        scoreChange: -5,
+        matchScore: '4.5 / 9',
+      ),
+    ];
+
+    return ListView.builder(
+      shrinkWrap: true,
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom + 16.sp,
+      ),
+      itemCount: data.length,
+      itemBuilder: (context, index) {
+        final player = data[index];
+        return SkeletonWidget(
+          child: Padding(
+            padding: EdgeInsets.only(
+              bottom: 16.sp,
+              top: index == 0 ? 16.sp : 0,
+            ),
+            child: StandingScoreCard(
+              countryCode: player.countryCode,
+              title: player.title,
+              name: player.name,
+              score: player.score,
+              scoreChange: player.scoreChange,
+              matchScore: player.matchScore,
+            ),
+          ),
+        );
+      },
     );
   }
 }
