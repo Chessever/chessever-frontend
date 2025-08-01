@@ -67,7 +67,7 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFEN> {
     final boardSize = screenWidth - sideBarWidth - horizontalPadding;
 
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 23.sp, vertical: 8.sp),
+      padding: EdgeInsets.only(left: 24.sp,right: 24.sp, bottom: 8.sp),
       child: InkWell(
         onTap: widget.onChanged,
         child: Column(

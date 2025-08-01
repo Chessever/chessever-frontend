@@ -83,7 +83,7 @@ class EventCard extends ConsumerWidget {
                         color: kWhiteColor70,
                       ),
                       children: [
-                        if (tourEventCardModel.dates.trim().isEmpty) ...[
+                        if (tourEventCardModel.dates.trim().isNotEmpty) ...[
                           TextSpan(text: tourEventCardModel.dates),
                           _buildDot(),
                         ],
