@@ -23,7 +23,21 @@ class NetworkImageWidget extends StatelessWidget {
         imageUrl: imageUrl,
         height: height,
         width: double.infinity,
-        fit: BoxFit.fitHeight,
+        fit: BoxFit.contain,
+        imageBuilder: (context, imageProvider) {
+          return ClipRRect(
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(16),
+              topRight: Radius.circular(16),
+            ),
+            child: Image(
+              image: imageProvider,
+              fit: BoxFit.contain,
+              height: height,
+              width: double.infinity,
+            ),
+          );
+        },
         placeholder:
             (context, url) => SkeletonWidget(
               child: Container(
@@ -34,43 +48,25 @@ class NetworkImageWidget extends StatelessWidget {
                   height: height,
                   width: double.infinity,
                   fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      height: height,
-                      width: double.infinity,
-                      color: kDarkGreyColor,
-                      child: const Icon(
-                        Icons.image_not_supported,
-                        color: kWhiteColor,
-                        size: 50,
-                      ),
-                    );
-                  },
                 ),
               ),
             ),
         errorWidget:
-            (context, url, error) => Container(
-              height: height,
-              width: double.infinity,
-              decoration: const BoxDecoration(color: kDarkGreyColor),
-              child: Image.asset(
-                placeHolder,
+            (context, url, error) => ClipRRect(
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
+              ),
+              child: Container(
                 height: height,
                 width: double.infinity,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    height: height,
-                    width: double.infinity,
-                    color: kDarkGreyColor,
-                    child: const Icon(
-                      Icons.image_not_supported,
-                      color: kWhiteColor,
-                      size: 50,
-                    ),
-                  );
-                },
+                color: kDarkGreyColor,
+                alignment: Alignment.center,
+                child: const Icon(
+                  Icons.image_not_supported,
+                  color: kWhiteColor,
+                  size: 50,
+                ),
               ),
             ),
       ),
