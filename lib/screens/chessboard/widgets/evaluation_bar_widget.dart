@@ -68,16 +68,29 @@ class EvaluationBarWidget extends ConsumerWidget {
             alignment: Alignment.center,
             child: Container(height: 4.h, color: kRedColor),
           ),
+          // Evaluation number display
           Align(
-            alignment: Alignment.bottomCenter,
-
-            child: Padding(
-              padding: EdgeInsets.only(bottom: 2.h),
+            alignment: Alignment.center,
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 1.w, vertical: 0.5.h),
+              decoration: BoxDecoration(
+                color: kPrimaryColor,
+                borderRadius: BorderRadius.circular(2.br),
+              ),
               child: Text(
-                evaluation.toString().characters.take(3).string,
+                evaluation.abs() >= 10.0
+                    ? (evaluation > 0 ? "M" : "-M") // Show "M" or "-M" for mate
+                    : evaluation
+                        .toString()
+                        .characters
+                        .take(4)
+                        .string, // Show negative values directly
+                maxLines: 1,
+                textAlign: TextAlign.center,
                 style: AppTypography.textSmRegular.copyWith(
-                  color: kBlackColor,
-                  fontSize: 4.f,
+                  color: Colors.white,
+                  fontSize: 3.5.f,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
@@ -102,9 +115,6 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    var whiteHeight = ((1 - 0.5) / 2) * height;
-    var blackHeight = height - whiteHeight;
-
     return ref
         .watch(cascadeEvalProvider(fen))
         .when(
@@ -113,8 +123,9 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
               child: _Bars(
                 width: width,
                 height: height,
-                whiteHeight: whiteHeight,
-                blackHeight: blackHeight,
+                whiteHeight: height * 0.5,
+                blackHeight: height * 0.5,
+                evaluation: 0.0,
               ),
             );
           },
@@ -123,8 +134,9 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
                 child: _Bars(
                   width: width,
                   height: height,
-                  whiteHeight: whiteHeight,
-                  blackHeight: blackHeight,
+                  whiteHeight: height * 0.5,
+                  blackHeight: height * 0.5,
+                  evaluation: 0.0,
                 ),
               ),
           data: (cloud) {
@@ -136,23 +148,32 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
                   height: height,
                   whiteHeight: height * 0.5,
                   blackHeight: height * 0.5,
+                  evaluation: 0.0,
                 ),
               );
             }
 
-            final cpRaw = pv.cp;
+            // Handle evaluation based on cp value
+            double evaluation;
+            if (pv.cp.abs() == 100000) {
+              // This is a mate score (converted from mate in X moves)
+              evaluation = pv.cp > 0 ? 10.0 : -10.0;
+            } else {
+              // Normal centipawn score - convert to pawn units
+              evaluation = pv.cp / 100.0;
+            }
 
-            final normalized = (cpRaw.clamp(-5.0, 5.0) + 5.0) / 10.0;
-
-            final whiteRatio = (normalized * 0.99).clamp(0.01, 0.99);
-
-            final blackRatio = 0.99 - whiteRatio;
+            // Calculate ratios (fixed to sum to 1.0)
+            final normalized = (evaluation.clamp(-5.0, 5.0) + 5.0) / 10.0;
+            final whiteRatio = normalized;
+            final blackRatio = 1.0 - whiteRatio;
 
             return _Bars(
               width: width,
               height: height,
               blackHeight: blackRatio * height,
               whiteHeight: whiteRatio * height,
+              evaluation: evaluation,
             );
           },
         );
@@ -165,6 +186,7 @@ class _Bars extends StatelessWidget {
     required this.height,
     required this.whiteHeight,
     required this.blackHeight,
+    required this.evaluation,
     super.key,
   });
 
@@ -172,6 +194,7 @@ class _Bars extends StatelessWidget {
   final double height;
   final double whiteHeight;
   final double blackHeight;
+  final double evaluation;
 
   @override
   Widget build(BuildContext context) {
@@ -202,6 +225,31 @@ class _Bars extends StatelessWidget {
             ),
           ),
           Container(width: width, height: 2, color: kRedColor),
+          // Add evaluation number display
+          Container(
+            alignment: Alignment.center,
+            padding: EdgeInsets.symmetric(horizontal: 1.w, vertical: 0.5.h),
+            decoration: BoxDecoration(
+              color: kPrimaryColor,
+              borderRadius: BorderRadius.circular(2.br),
+            ),
+            child: Text(
+              evaluation.abs() >= 10.0
+                  ? (evaluation > 0 ? "M" : "-M") // Show "M" or "-M" for mate
+                  : evaluation
+                      .toString()
+                      .characters
+                      .take(4)
+                      .string, // Show negative values directly
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              style: AppTypography.textSmRegular.copyWith(
+                color: Colors.white,
+                fontSize: 1.5.f,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
         ],
       ),
     );
