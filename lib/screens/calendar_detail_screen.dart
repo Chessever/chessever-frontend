@@ -105,6 +105,9 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
                 return Expanded(
                   child: AllEventsTabWidget(
                     filteredEvents: filteredEvents,
+                    onSelect: (_) {
+                      //todo:
+                    },
                   ),
                 );
               },
@@ -122,6 +125,7 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
                   child: SkeletonWidget(
                     child: AllEventsTabWidget(
                       filteredEvents: List.generate(10, (index) => mockData),
+                      onSelect: (_) {},
                     ),
                   ),
                 );
