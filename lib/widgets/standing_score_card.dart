@@ -25,13 +25,13 @@ class StandingScoreCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      // height: 28,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      height: 48.h,
+      padding:  EdgeInsets.symmetric(horizontal: 8.sp, vertical: 4.sp),
       decoration: BoxDecoration(
         color: kBlack2Color,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(4),
-          topRight: Radius.circular(4),
+        borderRadius:  BorderRadius.only(
+          topLeft: Radius.circular(4.br),
+          topRight: Radius.circular(4.br),
         ),
       ),
       child: Row(
