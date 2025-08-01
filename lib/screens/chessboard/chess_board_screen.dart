@@ -503,6 +503,8 @@ class _MovesDisplay extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Container(
+      alignment:
+          state.sanMoves.isEmpty ? Alignment.center : Alignment.centerLeft,
       padding: EdgeInsets.all(20.sp),
       child: Wrap(
         spacing: 2.sp,

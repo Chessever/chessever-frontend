@@ -88,7 +88,7 @@ class StandingScoreCard extends StatelessWidget {
                     color: kWhiteColor,
                   ),
                 ),
-                if (scoreChange != null) ...[
+                if (scoreChange != null && scoreChange != 0) ...[
                   SizedBox(width: 4.w),
                   Text(
                     scoreChange! > 0 ? '+$scoreChange' : '$scoreChange',
