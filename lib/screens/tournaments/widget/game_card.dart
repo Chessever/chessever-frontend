@@ -4,12 +4,14 @@ import 'package:chessever2/screens/tournaments/model/games_tour_model.dart';
 import 'package:chessever2/screens/tournaments/widget/chess_progress_bar.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/back_drop_filter_widget.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class GameCard extends StatelessWidget {
   const GameCard({
@@ -55,9 +57,7 @@ class GameCard extends StatelessWidget {
                 ),
                 Spacer(),
                 (gamesTourModel.gameStatus == GameStatus.ongoing)
-                    ? ChessProgressBar(
-                      fen: gamesTourModel.fen ?? '',
-                    )
+                    ? ChessProgressBar(fen: gamesTourModel.fen ?? '')
                     : _StatusText(
                       status: gamesTourModel.gameStatus.displayText,
                     ),
@@ -435,7 +435,7 @@ class _PopupMenuItem extends StatelessWidget {
   }
 }
 
-class _GamesRound extends StatelessWidget {
+class _GamesRound extends ConsumerWidget {
   const _GamesRound({
     required this.playerName,
     required this.playerRank,
@@ -448,7 +448,10 @@ class _GamesRound extends StatelessWidget {
   final String countryCode;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final validCountryCode = ref
+        .read(locationServiceProvider)
+        .getValidCountryCode(countryCode);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisAlignment: MainAxisAlignment.center,
@@ -460,8 +463,14 @@ class _GamesRound extends StatelessWidget {
         ),
         Row(
           children: [
-            CountryFlag.fromCountryCode(countryCode, height: 12.h, width: 16.w),
-            SizedBox(width: 4.w),
+            if (validCountryCode.isNotEmpty) ...<Widget>[
+              CountryFlag.fromCountryCode(
+                countryCode,
+                height: 12.h,
+                width: 16.w,
+              ),
+              SizedBox(width: 4.w),
+            ],
             Text(
               playerRank,
               style: AppTypography.textXsMedium.copyWith(color: kBlack2Color),

@@ -1,6 +1,7 @@
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/standing_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/widget/empty_widget.dart';
+import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
@@ -22,7 +23,7 @@ class StandingsScreen extends ConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          SizedBox(height: 19.h),
+          SizedBox(height: 16.h),
           Padding(
             padding: EdgeInsets.symmetric(
               horizontal: 8.0.sp,
@@ -63,11 +64,20 @@ class StandingsScreen extends ConsumerWidget {
               ],
             ),
           ),
-          const SizedBox(height: 24),
+          SizedBox(height: 4.h),
           playerStandings.when(
             data: (data) {
               return data.isEmpty
-                  ? EmptyWidget(title: "No data available")
+                  ? Center(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(height: 64.h),
+                        EmptyWidget(title: "No data available"),
+                      ],
+                    ),
+                  )
                   : Expanded(
                     child: ListView.builder(
                       shrinkWrap: true,
@@ -78,13 +88,16 @@ class StandingsScreen extends ConsumerWidget {
                       itemCount: data.length,
                       itemBuilder: (context, index) {
                         final player = data[index];
+                        final validCountryCode = ref
+                            .read(locationServiceProvider)
+                            .getCountryCode(player.countryCode);
                         return Padding(
                           padding: EdgeInsets.only(
                             bottom: 16.sp,
                             top: index == 0 ? 16.sp : 0,
                           ),
                           child: StandingScoreCard(
-                            countryCode: player.countryCode,
+                            countryCode: validCountryCode,
                             title: player.title,
                             name: player.name,
                             score: player.score,

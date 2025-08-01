@@ -38,9 +38,11 @@ class TourEventCardModel extends Equatable {
   static String convertDates(DateTime? startDateTime, DateTime? endDateTime) {
     if (startDateTime != null && endDateTime != null) {
       if (startDateTime.month == endDateTime.month) {
-        return "${DateFormat('MMM d').format(startDateTime)} - ${DateFormat('d,yyyy').format(endDateTime)}";
+        return "${DateFormat('MMM d').format(startDateTime)} - ${DateFormat('d, yyyy').format(endDateTime)}";
+      } else if (startDateTime.year == endDateTime.year) {
+        return "${DateFormat('MMM d').format(startDateTime)} - ${DateFormat('d MMM, yyyy').format(endDateTime)}";
       } else {
-        return "${DateFormat('MMM d').format(startDateTime)} - ${DateFormat('d MMM,yyyy').format(endDateTime)}";
+        return "${DateFormat('MMM d, yyyy').format(startDateTime)} - ${DateFormat('MMM d, yyyy').format(endDateTime)}";
       }
     } else {
       return "";
@@ -55,7 +57,7 @@ class TourEventCardModel extends Equatable {
     final now = DateTime.now();
 
     // If the start time has already passed
-    if (startDateTime!.isBefore(now)) {
+    if (startDateTime.isBefore(now)) {
       return "Started";
     }
 

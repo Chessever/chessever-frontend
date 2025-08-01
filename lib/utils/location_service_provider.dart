@@ -15,7 +15,7 @@ class LocationService {
 
       return country.countryCode;
     } catch (error, _) {
-      return 'US';
+      return '';
     }
   }
 
@@ -29,6 +29,21 @@ class LocationService {
       return country.name;
     } catch (error, _) {
       return 'US';
+    }
+  }
+
+  String getValidCountryCode(String countryCode) {
+    try {
+      // Extract country name from location (assuming it's the last part after comma)
+
+      final country = CountryService().findByCode(countryCode);
+      if (country != null) {
+        return country.countryCode;
+      }
+
+      return '';
+    } catch (error, _) {
+      return '';
     }
   }
 }

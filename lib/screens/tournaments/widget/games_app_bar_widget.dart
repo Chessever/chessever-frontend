@@ -133,7 +133,7 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
                     'app_bar_mode',
                   ), // uniquely identifies this Row
                   children: [
-                    SizedBox(width: 20.w),
+                    SizedBox(width: 16.w),
                     IconButton(
                       iconSize: 24.ic,
                       padding: EdgeInsets.zero,

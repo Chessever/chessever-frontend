@@ -23,6 +23,9 @@ class AboutTourScreen extends ConsumerWidget {
         .watch(tourDetailScreenProvider)
         .when(
           data: (data) {
+            final countryCode = ref
+                .read(locationServiceProvider)
+                .getCountryCode(data.aboutTourModel.location);
             return Scaffold(
               bottomNavigationBar: Container(
                 padding: EdgeInsets.only(
@@ -36,7 +39,11 @@ class AboutTourScreen extends ConsumerWidget {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      SvgWidget(SvgAsset.websiteIcon, height: 12.h, width: 12.h),
+                      SvgWidget(
+                        SvgAsset.websiteIcon,
+                        height: 12.h,
+                        width: 12.h,
+                      ),
                       SizedBox(width: 4.w),
                       Text(
                         data.aboutTourModel.extractDomain(),
@@ -58,6 +65,7 @@ class AboutTourScreen extends ConsumerWidget {
                     mainAxisAlignment: MainAxisAlignment.start,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      SizedBox(height: 16.h),
                       ClipRRect(
                         borderRadius: BorderRadius.only(
                           topLeft: Radius.circular(12.br),
@@ -94,13 +102,14 @@ class AboutTourScreen extends ConsumerWidget {
                       SizedBox(height: 12.h),
                       _CountryFlag(
                         title: 'Location',
-                        flag: CountryFlag.fromCountryCode(
-                          ref
-                              .read(locationServiceProvider)
-                              .getCountryCode(data.aboutTourModel.location),
-                          width: 16.w,
-                          height: 12.h,
-                        ),
+                        flag:
+                            countryCode.isNotEmpty
+                                ? CountryFlag.fromCountryCode(
+                                  countryCode,
+                                  width: 16.w,
+                                  height: 12.h,
+                                )
+                                : null,
                         description: data.aboutTourModel.location,
                       ),
                       Row(
@@ -158,8 +167,8 @@ class _DummyView extends ConsumerWidget {
       players: ['Chessever'],
       timeControl: 'Chessever',
       date: 'Chessever',
-      location: 'Chessever',
-      websiteUrl: 'Chessever',
+      location: 'US',
+      websiteUrl: 'https://www.chessever.com/',
     );
     return Scaffold(
       bottomNavigationBar: SkeletonWidget(
@@ -309,7 +318,7 @@ class _CountryFlag extends StatelessWidget {
   });
 
   final String title;
-  final Widget flag;
+  final Widget? flag;
   final String description;
 
   @override
@@ -321,12 +330,11 @@ class _CountryFlag extends StatelessWidget {
           title,
           style: AppTypography.textXsMedium.copyWith(color: kWhiteColor70),
         ),
-        SizedBox(height: 8),
+        SizedBox(height: 8.w),
         Row(
           mainAxisAlignment: MainAxisAlignment.start,
           children: [
-            flag,
-            SizedBox(width: 4),
+            if (flag != null) ...[flag!, SizedBox(width: 4.w)],
             Flexible(
               child: Text(
                 description,

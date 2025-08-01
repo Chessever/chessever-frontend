@@ -1,5 +1,6 @@
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 
@@ -25,16 +26,18 @@ class NetworkImageWidget extends StatelessWidget {
         width: double.infinity,
         fit: BoxFit.contain,
         imageBuilder: (context, imageProvider) {
-          return ClipRRect(
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(16),
-              topRight: Radius.circular(16),
-            ),
-            child: Image(
-              image: imageProvider,
-              fit: BoxFit.contain,
-              height: height,
-              width: double.infinity,
+          return Container(
+            alignment: Alignment.topCenter,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(16.br),
+                topRight: Radius.circular(16.br),
+              ),
+              image: DecorationImage(
+                alignment: Alignment.topCenter,
+                image: imageProvider,
+                fit: BoxFit.contain, // Optional: specify how the image should fit
+              ),
             ),
           );
         },

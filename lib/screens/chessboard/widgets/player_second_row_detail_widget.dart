@@ -1,10 +1,12 @@
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-class PlayerSecondRowDetailWidget extends StatelessWidget {
+class PlayerSecondRowDetailWidget extends ConsumerWidget {
   final String name;
   final String secondGmRank;
   final String time;
@@ -19,12 +21,16 @@ class PlayerSecondRowDetailWidget extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final validCountryCode = ref.read(locationServiceProvider).getValidCountryCode(countryCode);
     return Row(
       mainAxisAlignment: MainAxisAlignment.start,
       children: [
-        CountryFlag.fromCountryCode(countryCode, height: 12.h, width: 16.w),
-        const SizedBox(width: 8),
+        if(validCountryCode.isNotEmpty)...[
+          CountryFlag.fromCountryCode(validCountryCode, height: 12.h, width: 16.w),
+           SizedBox(width: 8.w),
+        ],
+
         Expanded(
           child: Text(
             '$name $secondGmRank',
