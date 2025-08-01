@@ -37,7 +37,8 @@ class TournamentDetailView extends ConsumerStatefulWidget {
   const TournamentDetailView({super.key});
 
   @override
-  ConsumerState<TournamentDetailView> createState() => _TournamentDetailViewState();
+  ConsumerState<TournamentDetailView> createState() =>
+      _TournamentDetailViewState();
 }
 
 class _TournamentDetailViewState extends ConsumerState<TournamentDetailView> {
@@ -75,59 +76,67 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailView> {
           mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
-            ref.watch(tourDetailScreenProvider).when(
-              data: (data) {
-                return Column(
-                  children: [
-                    selectedTourMode == _TournamentDetailScreenMode.about
-                        ? _TourDetailDropDownAppBar(data: data)
-                        : selectedTourMode == _TournamentDetailScreenMode.games
-                        ? GamesAppBarWidget()
-                        : _TourDetailDropDownAppBar(data: data),
-                    SizedBox(height: 8.h),
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 20.sp),
-                      child: SegmentedSwitcher(
-                        key: UniqueKey(),
-                        backgroundColor: kPopUpColor,
-                        selectedBackgroundColor: kPopUpColor,
-                        options: _mappedName.values.toList(),
-                        initialSelection: _mappedName.values
-                            .toList()
-                            .indexOf(_mappedName[selectedTourMode]!),
-                        onSelectionChanged: (index) {
-                          // Animate to the selected page first
-                          pageController.animateToPage(
-                            index,
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeInOut,
-                          );
+            ref
+                .watch(tourDetailScreenProvider)
+                .when(
+                  data: (data) {
+                    return Column(
+                      children: [
+                        selectedTourMode == _TournamentDetailScreenMode.about
+                            ? _TourDetailDropDownAppBar(data: data)
+                            : selectedTourMode ==
+                                _TournamentDetailScreenMode.games
+                            ? GamesAppBarWidget()
+                            : _TourDetailDropDownAppBar(data: data),
+                        SizedBox(height: 8.h),
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 20.sp),
+                          child: SegmentedSwitcher(
+                            key: UniqueKey(),
+                            backgroundColor: kPopUpColor,
+                            selectedBackgroundColor: kPopUpColor,
+                            options: _mappedName.values.toList(),
+                            initialSelection: _mappedName.values
+                                .toList()
+                                .indexOf(_mappedName[selectedTourMode]!),
+                            onSelectionChanged: (index) {
+                              // Animate to the selected page first
+                              pageController.animateToPage(
+                                index,
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeInOut,
+                              );
 
-                          // Update state after animation starts
-                          ref.read(selectedTourModeProvider.notifier).state =
-                          _TournamentDetailScreenMode.values[index];
-                        },
-                      ),
-                    ),
-                  ],
-                );
-              },
-              error: (e, _) {
-                return LoadingAppBarWithTitle(title: "Chessever");
-              },
-              loading: () {
-                return LoadingAppBarWithTitle(title: "Chessever");
-              },
-            ),
+                              // Update state after animation starts
+                              ref
+                                      .read(selectedTourModeProvider.notifier)
+                                      .state =
+                                  _TournamentDetailScreenMode.values[index];
+                            },
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                  error: (e, _) {
+                    return LoadingAppBarWithTitle(title: "Chessever");
+                  },
+                  loading: () {
+                    return LoadingAppBarWithTitle(title: "Chessever");
+                  },
+                ),
             Expanded(
               child: PageView.builder(
                 controller: pageController,
                 itemCount: _pages.length,
                 onPageChanged: (index) {
                   // Update the selected mode when page changes (from swiping)
-                  if (_TournamentDetailScreenMode.values.indexOf(ref.read(selectedTourModeProvider)) != index) {
+                  if (_TournamentDetailScreenMode.values.indexOf(
+                        ref.read(selectedTourModeProvider),
+                      ) !=
+                      index) {
                     ref.read(selectedTourModeProvider.notifier).state =
-                    _TournamentDetailScreenMode.values[index];
+                        _TournamentDetailScreenMode.values[index];
                   }
                 },
                 itemBuilder: (context, index) {
