@@ -61,7 +61,6 @@ class ChessBoardScreenNotifier
     _initializeState();
   }
 
-  StreamSubscription? _stockSub;
   final GamesTourModel game;
   final int index;
 
@@ -151,7 +150,6 @@ class ChessBoardScreenNotifier
 
   @override
   void dispose() {
-    _stockSub?.cancel();
     _longPressTimer?.cancel();
     state.value?.autoPlayTimer?.cancel();
     super.dispose();

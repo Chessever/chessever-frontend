@@ -1,4 +1,4 @@
-import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/repository/supabase/tour/tour.dart';
 
 class PlayerStandingModel {
   final String countryCode;
@@ -6,7 +6,7 @@ class PlayerStandingModel {
   final String name;
   final int score;
   final int scoreChange;
-  final String matchScore;
+  final String? matchScore;
 
   const PlayerStandingModel({
     required this.countryCode,
@@ -17,13 +17,14 @@ class PlayerStandingModel {
     required this.matchScore,
   });
 
-  factory PlayerStandingModel.fromPlayer(Player player) {
+  factory PlayerStandingModel.fromPlayer(TournamentPlayer player) {
     return PlayerStandingModel(
-      countryCode: player.fed,
+      countryCode: player.federation ?? '',
       name: player.name,
-      score: player.rating,
-      scoreChange: 0,
-      matchScore: '0',
+      score: player.rating ?? 0,
+      scoreChange: player.ratingDiff ?? 0,
+      matchScore:
+          player.score == null ? null : '${player.score} / ${player.played}',
     );
   }
 
