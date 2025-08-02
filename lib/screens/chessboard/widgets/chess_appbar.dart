@@ -8,12 +8,14 @@ class ChessMatchAppBar extends StatelessWidget implements PreferredSizeWidget {
   final VoidCallback? onBackPressed;
   final VoidCallback? onSettingsPressed;
   final VoidCallback? onMoreOptionsPressed;
+  final bool showDownArrow;
 
   const ChessMatchAppBar({
     required this.title,
     this.onBackPressed,
     this.onSettingsPressed,
     this.onMoreOptionsPressed,
+    required this.showDownArrow,
     super.key,
   });
 
@@ -42,13 +44,15 @@ class ChessMatchAppBar extends StatelessWidget implements PreferredSizeWidget {
               maxLines: 1,
             ),
           ),
-          SizedBox(width: 7.w),
-          SvgWidget(
-            height: 20.h,
-            width: 20.w,
-            'assets/svgs/arrow_down.svg',
-            semanticsLabel: 'Back',
-          ),
+          if (showDownArrow) ...[
+            SizedBox(width: 7.w),
+            SvgWidget(
+              height: 20.h,
+              width: 20.w,
+              'assets/svgs/arrow_down.svg',
+              semanticsLabel: 'Back',
+            ),
+          ],
         ],
       ),
       centerTitle: true,

@@ -45,7 +45,11 @@ class _TournamentScreenController
               await ref
                   .read(groupBroadcastLocalStorage(tourEventCategory))
                   .getGroupBroadcasts());
-      if (tour.isEmpty) return;
+      if (tour.isEmpty) {
+        final tourEventCardModel =
+            tour.map((t) => TourEventCardModel.fromGroupBroadcast(t)).toList();
+        state = AsyncValue.data(tourEventCardModel);
+      }
 
       _groupBroadcastList = tour;
 
