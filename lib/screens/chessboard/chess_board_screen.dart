@@ -124,6 +124,7 @@ class _LoadingScreen extends StatelessWidget {
     return Scaffold(
       appBar: ChessMatchAppBar(
         title: 'Loading...',
+        showDownArrow: false,
         onBackPressed: () => Navigator.pop(context),
         onSettingsPressed: () {},
         onMoreOptionsPressed: () {},
@@ -179,6 +180,7 @@ class _AppBar extends StatelessWidget implements PreferredSizeWidget {
   Widget build(BuildContext context) {
     return ChessMatchAppBar(
       title: '${game.whitePlayer.name} vs ${game.blackPlayer.name}',
+      showDownArrow: false,
       onBackPressed: () => Navigator.pop(context),
       onSettingsPressed: () {},
       onMoreOptionsPressed: () {},
