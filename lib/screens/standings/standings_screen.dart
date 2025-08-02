@@ -90,7 +90,7 @@ class StandingsScreen extends ConsumerWidget {
                         final player = data[index];
                         final validCountryCode = ref
                             .read(locationServiceProvider)
-                            .getCountryCode(player.countryCode);
+                            .getValidCountryCode(player.countryCode);
                         return Padding(
                           padding: EdgeInsets.only(
                             bottom: 16.sp,

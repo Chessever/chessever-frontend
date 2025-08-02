@@ -15,9 +15,9 @@ class StandingScoreCard extends StatelessWidget {
   const StandingScoreCard({
     super.key,
     required this.countryCode,
-    this.title, // Changed to optional parameter
     required this.name,
     required this.score,
+    this.title, // Changed to optional parameter
     this.scoreChange,
     this.matchScore,
   });
@@ -25,6 +25,7 @@ class StandingScoreCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      alignment: Alignment.center,
       height: 48.h,
       padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 4.sp),
       decoration: BoxDecoration(
@@ -35,10 +36,12 @@ class StandingScoreCard extends StatelessWidget {
         ),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           // Player Info (flag + name)
           Expanded(
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 if (countryCode.isNotEmpty) ...[
                   SizedBox(
@@ -52,9 +55,12 @@ class StandingScoreCard extends StatelessWidget {
                   ),
                   SizedBox(width: 4.w),
                 ],
-                Flexible(
+                Padding(
+                  padding: EdgeInsets.only(bottom: 4.sp),
                   child: RichText(
+
                     overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
                     text: TextSpan(
                       children: [
                         if (title != null)
