@@ -28,6 +28,7 @@ class PlayerFirstRowDetailWidget extends ConsumerWidget {
     return Row(
       children: [
         if (validCountryCode.isNotEmpty) ...[
+          SizedBox(width: 8.w),
           CountryFlag.fromCountryCode(
             validCountryCode,
             height: 12.h,
@@ -51,6 +52,7 @@ class PlayerFirstRowDetailWidget extends ConsumerWidget {
             fontSize: 9.f,
           ),
         ),
+        SizedBox(width: 8.w),
       ],
     );
   }

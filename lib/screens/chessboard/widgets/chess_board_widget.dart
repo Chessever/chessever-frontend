@@ -132,7 +132,7 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFEN> {
             SizedBox(height: 4.h),
             PlayerSecondRowDetailWidget(
               name: widget.gamesTourModel.blackPlayer.displayName,
-              countryCode: widget.gamesTourModel.blackPlayer.displayTitle,
+              countryCode: widget.gamesTourModel.blackPlayer.countryCode,
               time: widget.gamesTourModel.blackTimeDisplay,
               secondGmRank: widget.gamesTourModel.blackPlayer.displayTitle,
             ),
