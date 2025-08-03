@@ -161,136 +161,208 @@ class _AuthButtonWidget extends ConsumerWidget {
   }
 }
 
-class _AuthCountryDropdownWidget extends ConsumerWidget {
+class _AuthCountryDropdownWidget extends ConsumerStatefulWidget {
   const _AuthCountryDropdownWidget({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_AuthCountryDropdownWidget> createState() => _AuthCountryDropdownWidgetState();
+}
+
+class _AuthCountryDropdownWidgetState extends ConsumerState<_AuthCountryDropdownWidget>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Single controller with shorter, professional duration
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 400),
+      vsync: this,
+    );
+
+    // Subtle fade animation
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOut,
+    ));
+
+    // Minimal slide animation from top
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, -0.1),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+    ));
+
+    // Start animation
+    _controller.forward();
+  }
+
+  Future<void> _dismissWithAnimation() async {
+    await _controller.reverse();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final notifier = ref.read(authScreenProvider.notifier);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       extendBody: true,
-      body: Stack(
-        children: [
-          // Background content
-          BlurBackground(),
-
-          // Main content
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+      body: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          return Stack(
             children: [
-              // Country selection box (centered)
-              Container(
-                margin: EdgeInsets.symmetric(horizontal: 40.sp),
-
-                child: Column(
-                  children: [
-                    Container(
-                      width: double.infinity,
-                      padding: EdgeInsets.symmetric(horizontal: 10.sp),
-                      child: Text(
-                        'Select your Country',
-                        style: AppTypography.textMdBold.copyWith(
-                          color: kWhiteColor,
-                        ),
-                      ),
-                    ),
-
-                    // Dropdown
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 10.sp,
-                        vertical: 5.sp,
-                      ),
-                      child: CountryDropdown(
-                        selectedCountryCode: 'US',
-                        onChanged: (Country country) async {
-                          await ref
-                              .read(countryDropdownProvider.notifier)
-                              .selectCountry(country.countryCode);
-                        },
-                      ),
-                    ),
-                  ],
-                ),
+              // Background content with subtle fade
+              Opacity(
+                opacity: _fadeAnimation.value,
+                child: BlurBackground(),
               ),
-            ],
-          ),
 
-          // Blurred bottom button area
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: ClipRRect(
-              borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
-              child: Container(
-                padding: EdgeInsets.fromLTRB(
-                  20.sp,
-                  20.sp,
-                  20.sp,
-                  MediaQuery.of(context).viewPadding.bottom + 28.sp,
-                ),
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    // Enhanced glow effect with multiple shadows
-                    boxShadow: [
-                      // Inner glow
-                      BoxShadow(
-                        color: kWhiteColor.withOpacity(0.8),
-                        blurRadius: 8,
-                        spreadRadius: 2,
-                        offset: Offset(-1, 0),
-                      ),
-                      // // Outer glow - larger
-                      BoxShadow(
-                        color: kWhiteColor.withOpacity(0.5),
-                        blurRadius: 20,
-                        spreadRadius: 2,
-                        offset: Offset(0, 2),
-                      ),
-                      // Additional outer glow for stronger effect
-                      BoxShadow(
-                        color: kWhiteColor.withOpacity(0.3),
-                        blurRadius: 35,
-                        spreadRadius: 2,
-                        offset: Offset(0, 4),
-                      ),
-                      // Subtle bottom shadow for depth
-                      BoxShadow(
-                        color: kBlackColor.withOpacity(0.2),
-                        blurRadius: 15,
-                        spreadRadius: 1,
-                        offset: Offset(0, 8),
+              // Main content with minimal slide
+              FadeTransition(
+                opacity: _fadeAnimation,
+                child: SlideTransition(
+                  position: _slideAnimation,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // Country selection box (centered)
+                      Container(
+                        margin: EdgeInsets.symmetric(horizontal: 40.sp),
+                        child: Column(
+                          children: [
+                            Container(
+                              width: double.infinity,
+                              padding: EdgeInsets.symmetric(horizontal: 10.sp),
+                              child: Text(
+                                'Select your Country',
+                                style: AppTypography.textMdBold.copyWith(
+                                  color: kWhiteColor,
+                                ),
+                              ),
+                            ),
+
+                            // Dropdown
+                            Container(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 10.sp,
+                                vertical: 5.sp,
+                              ),
+                              child: CountryDropdown(
+                                selectedCountryCode: 'US',
+                                onChanged: (Country country) async {
+                                  await ref
+                                      .read(countryDropdownProvider.notifier)
+                                      .selectCountry(country.countryCode);
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
-                  child: ElevatedButton(
-                    onPressed: () {
-                      notifier.hideCountrySelection();
-                      Navigator.of(context).pop();
-                      Navigator.pushReplacementNamed(context, '/home_screen');
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: kWhiteColor,
-                      foregroundColor: kBlackColor,
-                      padding: EdgeInsets.symmetric(vertical: 16.sp),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12.br),
+                ),
+              ),
+
+              // Bottom button area with fade-in
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+                    child: Container(
+                      padding: EdgeInsets.fromLTRB(
+                        20.sp,
+                        20.sp,
+                        20.sp,
+                        MediaQuery.of(context).viewPadding.bottom + 28.sp,
                       ),
-                      elevation: 0,
-                      // Remove default elevation since we're using custom shadows
-                      shadowColor: Colors.transparent, // Remove default shadow
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          // Enhanced glow effect with multiple shadows
+                          boxShadow: [
+                            // Inner glow
+                            BoxShadow(
+                              color: kWhiteColor.withOpacity(0.8),
+                              blurRadius: 8,
+                              spreadRadius: 2,
+                              offset: Offset(-1, 0),
+                            ),
+                            // // Outer glow - larger
+                            BoxShadow(
+                              color: kWhiteColor.withOpacity(0.5),
+                              blurRadius: 20,
+                              spreadRadius: 2,
+                              offset: Offset(0, 2),
+                            ),
+                            // Additional outer glow for stronger effect
+                            BoxShadow(
+                              color: kWhiteColor.withOpacity(0.3),
+                              blurRadius: 35,
+                              spreadRadius: 2,
+                              offset: Offset(0, 4),
+                            ),
+                            // Subtle bottom shadow for depth
+                            BoxShadow(
+                              color: kBlackColor.withOpacity(0.2),
+                              blurRadius: 15,
+                              spreadRadius: 1,
+                              offset: Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: ElevatedButton(
+                          onPressed: () async {
+                            await _dismissWithAnimation();
+
+                            if (mounted) {
+                              notifier.hideCountrySelection();
+                              Navigator.of(context).pop();
+                              Navigator.pushReplacementNamed(context, '/home_screen');
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: kWhiteColor,
+                            foregroundColor: kBlackColor,
+                            padding: EdgeInsets.symmetric(vertical: 16.sp),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12.br),
+                            ),
+                            elevation: 0,
+                            // Remove default elevation since we're using custom shadows
+                            shadowColor: Colors.transparent, // Remove default shadow
+                          ),
+                          child: Text('Continue', style: AppTypography.textLgMedium),
+                        ),
+                      ),
                     ),
-                    child: Text('Continue', style: AppTypography.textLgMedium),
                   ),
                 ),
               ),
-            ),
-          ),
-        ],
+            ],
+          );
+        },
       ),
     );
   }
