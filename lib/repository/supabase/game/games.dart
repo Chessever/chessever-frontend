@@ -14,6 +14,7 @@ class Games {
   final String? status;
   final String? pgn;
   final List<String>? search;
+  final int? boardNr;
 
   Games({
     required this.id,
@@ -29,6 +30,7 @@ class Games {
     this.status,
     this.pgn,
     this.search,
+    this.boardNr,
   });
 
   factory Games.fromJson(Map<String, dynamic> json) {
@@ -58,6 +60,9 @@ class Games {
         status: json['status'] as String?,
         pgn: json['pgn'] as String?,
         search: (json['search'] as List).map((e) => e as String).toList(),
+        boardNr: json['board_nr'] != null
+            ? (json['board_nr'] as num).toInt()
+            : null,
       );
     } catch (e, _) {
       rethrow;
@@ -79,6 +84,7 @@ class Games {
       if (status != null) 'status': status,
       if (pgn != null) 'pgn': pgn,
       if (search != null) 'search': search!.map((s) => s).toList(),
+      if (boardNr != null) 'board_nr': boardNr,
     };
   }
 }
