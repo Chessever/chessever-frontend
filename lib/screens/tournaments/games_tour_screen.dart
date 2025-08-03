@@ -47,11 +47,10 @@ class GamesTourScreen extends ConsumerWidget {
                               crossAxisAlignment: CrossAxisAlignment.center,
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-
                                 EmptyWidget(
                                   title:
-                                  "No games available yet. Check back soon or set a\nreminder for updates.",
-                                )
+                                      "No games available yet. Check back soon or set a\nreminder for updates.",
+                                ),
                               ],
                             ),
                           );
