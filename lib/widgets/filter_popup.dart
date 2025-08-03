@@ -47,7 +47,8 @@ class _FilterPopupState extends ConsumerState<FilterPopup> {
               onTap: () {},
               child: Container(
                 width: dialogWidth,
-                constraints: BoxConstraints(maxHeight: 500.h), // Increased height
+                constraints: BoxConstraints(maxHeight: 500.h),
+                // Increased height
                 decoration: BoxDecoration(
                   color: kBlackColor,
                   borderRadius: BorderRadius.circular(4.br),
@@ -69,29 +70,53 @@ class _FilterPopupState extends ConsumerState<FilterPopup> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             // Format Section
-                            Text('Format', style: AppTypography.textXsMedium.copyWith(color: kWhiteColor)),
+                            Text(
+                              'Format',
+                              style: AppTypography.textXsMedium.copyWith(
+                                color: kWhiteColor,
+                              ),
+                            ),
                             SizedBox(height: 8.h),
                             GestureDetector(
-                              onTap: () => setState(() => _isFormatExpanded = !_isFormatExpanded),
+                              onTap:
+                                  () => setState(
+                                    () =>
+                                        _isFormatExpanded = !_isFormatExpanded,
+                                  ),
                               child: Container(
                                 height: 40.h,
                                 decoration: BoxDecoration(
-                                  color: _isFormatExpanded ? kPrimaryColor : kBlack2Color,
+                                  color:
+                                      _isFormatExpanded
+                                          ? kPrimaryColor
+                                          : kBlack2Color,
                                   borderRadius: BorderRadius.circular(8.br),
                                 ),
-                                padding: EdgeInsets.symmetric(horizontal: 16.sp),
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 16.sp,
+                                ),
                                 child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
                                   children: [
                                     Text(
                                       _selectedFormat,
-                                      style: AppTypography.textXsMedium.copyWith(
-                                        color: _isFormatExpanded ? kBlackColor : kWhiteColor,
-                                      ),
+                                      style: AppTypography.textXsMedium
+                                          .copyWith(
+                                            color:
+                                                _isFormatExpanded
+                                                    ? kBlackColor
+                                                    : kWhiteColor,
+                                          ),
                                     ),
                                     Icon(
-                                      _isFormatExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
-                                      color: _isFormatExpanded ? kBlackColor : kWhiteColor,
+                                      _isFormatExpanded
+                                          ? Icons.keyboard_arrow_up
+                                          : Icons.keyboard_arrow_down,
+                                      color:
+                                          _isFormatExpanded
+                                              ? kBlackColor
+                                              : kWhiteColor,
                                       size: 24.ic,
                                     ),
                                   ],
@@ -103,64 +128,108 @@ class _FilterPopupState extends ConsumerState<FilterPopup> {
                             AnimatedContainer(
                               duration: const Duration(milliseconds: 200),
                               height: _isFormatExpanded ? null : 0,
-                              child: _isFormatExpanded
-                                  ? Container(
-                                margin: EdgeInsets.only(top: 4.sp),
-                                decoration: BoxDecoration(
-                                  color: kBlack2Color,
-                                  borderRadius: BorderRadius.circular(8.br),
-                                ),
-                                child: formatsAsync.when(
-                                  data: (formats) => Column(
-                                    children: formats.map((format) {
-                                      final isSelected = _selectedFormat == format;
-                                      return Column(
-                                        children: [
-                                          GestureDetector(
-                                            onTap: () => setState(() {
-                                              _selectedFormat = format;
-                                              _isFormatExpanded = false;
-                                            }),
-                                            child: Container(
-                                              height: 40.h,
-                                              alignment: Alignment.centerLeft,
-                                              padding: EdgeInsets.symmetric(horizontal: 16.sp),
-                                              decoration: BoxDecoration(
-                                                color: isSelected ? kDividerColor : Colors.transparent,
-                                              ),
-                                              child: Text(
-                                                format,
-                                                style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
-                                              ),
-                                            ),
+                              child:
+                                  _isFormatExpanded
+                                      ? Container(
+                                        margin: EdgeInsets.only(top: 4.sp),
+                                        decoration: BoxDecoration(
+                                          color: kBlack2Color,
+                                          borderRadius: BorderRadius.circular(
+                                            8.br,
                                           ),
-                                          if (format != formats.last) DividerWidget(),
-                                        ],
-                                      );
-                                    }).toList(),
-                                  ),
-                                  loading: () => const Padding(
-                                    padding: EdgeInsets.all(8.0),
-                                    child: Center(child: CircularProgressIndicator()),
-                                  ),
-                                  error: (e, st) => Padding(
-                                    padding: const EdgeInsets.all(8.0),
-                                    child: Text(
-                                      'Failed to load formats',
-                                      style: TextStyle(color: Colors.red),
-                                    ),
-                                  ),
-                                ),
-                              )
-                                  : const SizedBox.shrink(),
+                                        ),
+                                        child: formatsAsync.when(
+                                          data:
+                                              (formats) => Column(
+                                                children:
+                                                    formats.map((format) {
+                                                      final isSelected =
+                                                          _selectedFormat ==
+                                                          format;
+                                                      return Column(
+                                                        children: [
+                                                          GestureDetector(
+                                                            onTap:
+                                                                () => setState(() {
+                                                                  _selectedFormat =
+                                                                      format;
+                                                                  _isFormatExpanded =
+                                                                      false;
+                                                                }),
+                                                            child: Container(
+                                                              height: 40.h,
+                                                              alignment:
+                                                                  Alignment
+                                                                      .centerLeft,
+                                                              padding:
+                                                                  EdgeInsets.symmetric(
+                                                                    horizontal:
+                                                                        16.sp,
+                                                                  ),
+                                                              decoration: BoxDecoration(
+                                                                color:
+                                                                    isSelected
+                                                                        ? kDividerColor
+                                                                        : Colors
+                                                                            .transparent,
+                                                              ),
+                                                              child: Text(
+                                                                format,
+                                                                style: AppTypography
+                                                                    .textXsMedium
+                                                                    .copyWith(
+                                                                      color:
+                                                                          kWhiteColor,
+                                                                    ),
+                                                              ),
+                                                            ),
+                                                          ),
+                                                          if (format !=
+                                                              formats.last)
+                                                            DividerWidget(),
+                                                        ],
+                                                      );
+                                                    }).toList(),
+                                              ),
+                                          loading:
+                                              () => const Padding(
+                                                padding: EdgeInsets.all(8.0),
+                                                child: Center(
+                                                  child:
+                                                      CircularProgressIndicator(),
+                                                ),
+                                              ),
+                                          error:
+                                              (e, st) => Padding(
+                                                padding: const EdgeInsets.all(
+                                                  8.0,
+                                                ),
+                                                child: Text(
+                                                  'Failed to load formats',
+                                                  style: TextStyle(
+                                                    color: Colors.red,
+                                                  ),
+                                                ),
+                                              ),
+                                        ),
+                                      )
+                                      : const SizedBox.shrink(),
                             ),
 
                             // ELO Range Slider
                             SizedBox(height: 24.h),
-                            Text('ELO Range', style: AppTypography.textXsMedium.copyWith(color: kWhiteColor)),
+                            Text(
+                              'ELO Range',
+                              style: AppTypography.textXsMedium.copyWith(
+                                color: kWhiteColor,
+                              ),
+                            ),
                             SizedBox(height: 8.h),
                             Container(
-                              padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 12.sp),
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 16.sp,
+                                vertical: 12.sp,
+                              ),
                               decoration: BoxDecoration(
                                 color: kBlack2Color,
                                 borderRadius: BorderRadius.circular(8.br),
@@ -168,10 +237,19 @@ class _FilterPopupState extends ConsumerState<FilterPopup> {
                               child: Column(
                                 children: [
                                   Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
                                     children: [
-                                      Text('${_eloRange.start.round()}', style: AppTypography.textXsMedium.copyWith(color: kWhiteColor)),
-                                      Text('${_eloRange.end.round()}', style: AppTypography.textXsMedium.copyWith(color: kWhiteColor)),
+                                      Text(
+                                        '${_eloRange.start.round()}',
+                                        style: AppTypography.textXsMedium
+                                            .copyWith(color: kWhiteColor),
+                                      ),
+                                      Text(
+                                        '${_eloRange.end.round()}',
+                                        style: AppTypography.textXsMedium
+                                            .copyWith(color: kWhiteColor),
+                                      ),
                                     ],
                                   ),
                                   RangeSlider(
@@ -187,109 +265,14 @@ class _FilterPopupState extends ConsumerState<FilterPopup> {
                                     inactiveColor: kDividerColor,
                                     onChanged: (values) {
                                       setState(() => _eloRange = values);
-                                      print('ELO Range changed: ${values.start.round()}-${values.end.round()}');
+                                      print(
+                                        'ELO Range changed: ${values.start.round()}-${values.end.round()}',
+                                      );
                                     },
                                   ),
                                 ],
                               ),
                             ),
-
-                            // Date Range
-                            SizedBox(height: 24.h),
-                            Text('Date Range', style: AppTypography.textXsMedium.copyWith(color: kWhiteColor)),
-                            SizedBox(height: 8.h),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: GestureDetector(
-                                    onTap: () async {
-                                      final date = await showDatePicker(
-                                        context: context,
-                                        initialDate: _startDate ?? DateTime.now().subtract(const Duration(days: 30)),
-                                        firstDate: DateTime(2020),
-                                        lastDate: DateTime.now().add(const Duration(days: 365)),
-                                        builder: (context, child) => Theme(
-                                          data: Theme.of(context).copyWith(
-                                            colorScheme: const ColorScheme.dark(
-                                              primary: kPrimaryColor,
-                                              surface: kBlack2Color,
-                                            ),
-                                          ),
-                                          child: child!,
-                                        ),
-                                      );
-                                      if (date != null) setState(() => _startDate = date);
-                                    },
-                                    child: Container(
-                                      height: 40.h,
-                                      decoration: BoxDecoration(
-                                        color: kBlack2Color,
-                                        borderRadius: BorderRadius.circular(8.br),
-                                      ),
-                                      padding: EdgeInsets.symmetric(horizontal: 12.sp),
-                                      child: Row(
-                                        children: [
-                                          Icon(Icons.calendar_today, color: kWhiteColor, size: 16.ic),
-                                          SizedBox(width: 8.w),
-                                          Expanded(
-                                            child: Text(
-                                              _startDate?.toLocal().toString().split(' ')[0] ?? 'Start Date',
-                                              style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(width: 8.w),
-                                Expanded(
-                                  child: GestureDetector(
-                                    onTap: () async {
-                                      final date = await showDatePicker(
-                                        context: context,
-                                        initialDate: _endDate ?? DateTime.now(),
-                                        firstDate: _startDate ?? DateTime(2020),
-                                        lastDate: DateTime.now().add(const Duration(days: 365)),
-                                        builder: (context, child) => Theme(
-                                          data: Theme.of(context).copyWith(
-                                            colorScheme: const ColorScheme.dark(
-                                              primary: kPrimaryColor,
-                                              surface: kBlack2Color,
-                                            ),
-                                          ),
-                                          child: child!,
-                                        ),
-                                      );
-                                      if (date != null) setState(() => _endDate = date);
-                                    },
-                                    child: Container(
-                                      height: 40.h,
-                                      decoration: BoxDecoration(
-                                        color: kBlack2Color,
-                                        borderRadius: BorderRadius.circular(8.br),
-                                      ),
-                                      padding: EdgeInsets.symmetric(horizontal: 12.sp),
-                                      child: Row(
-                                        children: [
-                                          Icon(Icons.calendar_today, color: kWhiteColor, size: 16.ic),
-                                          SizedBox(width: 8.w),
-                                          Expanded(
-                                            child: Text(
-                                              _endDate?.toLocal().toString().split(' ')[0] ?? 'End Date',
-                                              style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-
                             SizedBox(height: 16.h),
                           ],
                         ),
@@ -313,19 +296,25 @@ class _FilterPopupState extends ConsumerState<FilterPopup> {
                                     _startDate = null;
                                     _endDate = null;
                                   });
-                                  await ref.read(tournamentNotifierProvider.notifier).resetFilters();
+                                  await ref
+                                      .read(tournamentNotifierProvider.notifier)
+                                      .resetFilters();
                                   Navigator.of(context).pop();
                                 },
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: kWhiteColor,
                                   backgroundColor: kBlack2Color,
                                   side: BorderSide.none,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4.br)),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(4.br),
+                                  ),
                                   padding: EdgeInsets.zero,
                                 ),
                                 child: Text(
                                   'Reset',
-                                  style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+                                  style: AppTypography.textSmMedium.copyWith(
+                                    color: kWhiteColor,
+                                  ),
                                   maxLines: 1,
                                   overflow: TextOverflow.visible,
                                 ),
@@ -337,13 +326,17 @@ class _FilterPopupState extends ConsumerState<FilterPopup> {
                               child: ElevatedButton(
                                 onPressed: () async {
                                   final filteredTours = await ref
-                                      .read(tourFormatRepositoryProvider(selectedTourEvent))
+                                      .read(
+                                        tourFormatRepositoryProvider(
+                                          selectedTourEvent,
+                                        ),
+                                      )
                                       .applyAllFilters(
-                                    format: _selectedFormat,
-                                    eloRange: _eloRange,
-                                    startDate: _startDate,
-                                    endDate: _endDate,
-                                  );
+                                        format: _selectedFormat,
+                                        eloRange: _eloRange,
+                                        startDate: _startDate,
+                                        endDate: _endDate,
+                                      );
 
                                   await ref
                                       .read(tournamentNotifierProvider.notifier)
@@ -355,7 +348,9 @@ class _FilterPopupState extends ConsumerState<FilterPopup> {
                                   backgroundColor: kPrimaryColor,
                                   foregroundColor: kBlackColor,
                                   elevation: 0,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4.br)),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(4.br),
+                                  ),
                                   padding: EdgeInsets.zero,
                                 ),
                                 child: Text(

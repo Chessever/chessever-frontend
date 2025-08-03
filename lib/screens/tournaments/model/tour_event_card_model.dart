@@ -23,14 +23,22 @@ class TourEventCardModel extends Equatable {
   final TourEventCategory tourEventCategory;
   final String timeControl;
 
-  factory TourEventCardModel.fromGroupBroadcast(GroupBroadcast groupBroadcast) {
+  factory TourEventCardModel.fromGroupBroadcast(
+    GroupBroadcast groupBroadcast,
+    List<String> liveGroupIds,
+  ) {
     return TourEventCardModel(
       id: groupBroadcast.id,
       title: groupBroadcast.name,
       dates: convertDates(groupBroadcast.dateStart, groupBroadcast.dateEnd),
       maxAvgElo: groupBroadcast.maxAvgElo ?? 0,
       timeUntilStart: getTimeUntilStart(groupBroadcast.dateStart),
-      tourEventCategory: getCategory(groupBroadcast.dateStart),
+      tourEventCategory: getCategory(
+        groupId: groupBroadcast.id,
+        startDate: groupBroadcast.dateStart,
+        endDate: groupBroadcast.dateEnd,
+        liveGroupIds: liveGroupIds,
+      ),
       timeControl: groupBroadcast.timeControl ?? '',
     );
   }
@@ -89,21 +97,28 @@ class TourEventCardModel extends Equatable {
     }
   }
 
-  static TourEventCategory getCategory(DateTime? startDate) {
-    if (startDate != null) {
-      final now = DateTime.now();
+  static TourEventCategory getCategory({
+    required String groupId,
+    required DateTime? startDate,
+    required DateTime? endDate,
+    required List<String> liveGroupIds,
+  }) {
+    if (liveGroupIds.contains(groupId)) {
+      return TourEventCategory.live;
+    }
+    final now = DateTime.now();
 
+    if (startDate != null) {
       if (startDate.isAfter(now)) {
         return TourEventCategory.upcoming;
-      } else if (startDate.year == DateTime.now().year &&
-          startDate.month == DateTime.now().month &&
-          startDate.day == DateTime.now().day) {
-        return TourEventCategory.live;
-      } else {
-        return TourEventCategory.completed;
       }
     }
 
+    if (endDate != null) {
+      if (endDate.isBefore(now)) {
+        return TourEventCategory.completed;
+      }
+    }
     return TourEventCategory.completed;
   }
 
