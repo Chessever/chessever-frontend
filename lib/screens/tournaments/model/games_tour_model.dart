@@ -30,6 +30,7 @@ class GamesTourModel {
   final GameStatus gameStatus;
   final String? fen;
   final String? pgn;
+  final int? boardNr;
 
   GamesTourModel({
     required this.gameId,
@@ -40,6 +41,7 @@ class GamesTourModel {
     required this.gameStatus,
     this.fen,
     this.pgn,
+    this.boardNr,
   });
 
   GamesTourModel copyWith({
@@ -51,6 +53,7 @@ class GamesTourModel {
     GameStatus? gameStatus,
     String? fen,
     String? pgn,
+    int? boardNr,
   }) {
     return GamesTourModel(
       gameId: gameId ?? this.gameId,
@@ -61,6 +64,7 @@ class GamesTourModel {
       gameStatus: gameStatus ?? this.gameStatus,
       fen: fen ?? this.fen,
       pgn: pgn ?? this.pgn,
+      boardNr: boardNr ?? this.boardNr,
     );
   }
 
@@ -82,6 +86,7 @@ class GamesTourModel {
       gameStatus: GameStatus.fromString(game.status),
       fen: game.fen,
       pgn: game.pgn,
+      boardNr: game.boardNr,
     );
   }
 

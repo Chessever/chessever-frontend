@@ -2,6 +2,7 @@ import 'package:chessever2/repository/local_storage/tournament/tour_local_storag
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/screens/tournaments/model/about_tour_model.dart';
 import 'package:chessever2/screens/tournaments/model/tour_detail_view_model.dart';
+import 'package:chessever2/screens/tournaments/providers/live_tour_id_provider.dart';
 import 'package:chessever2/screens/tournaments/tournament_detail_view.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -10,18 +11,36 @@ final tourDetailScreenProvider = StateNotifierProvider.autoDispose<
   AsyncValue<TourDetailViewModel>
 >((ref) {
   final groupBroadcast = ref.watch(selectedBroadcastModelProvider)!;
-  return TourDetailScreenProvider(ref: ref, groupBroadcast: groupBroadcast);
+  var liveTourId = <String>[];
+  ref
+      .watch(liveTourIdProvider)
+      .when(
+        data: (data) {
+          liveTourId = data;
+        },
+        error: (e, _) {},
+        loading: () {},
+      );
+  return TourDetailScreenProvider(
+    ref: ref,
+    groupBroadcast: groupBroadcast,
+    liveTourId: liveTourId,
+  );
 });
 
 class TourDetailScreenProvider
     extends StateNotifier<AsyncValue<TourDetailViewModel>> {
-  TourDetailScreenProvider({required this.ref, required this.groupBroadcast})
-    : super(const AsyncValue.loading()) {
+  TourDetailScreenProvider({
+    required this.ref,
+    required this.groupBroadcast,
+    required this.liveTourId,
+  }) : super(const AsyncValue.loading()) {
     loadTourDetails();
   }
 
   final Ref ref;
   final GroupBroadcast groupBroadcast;
+  final List<String> liveTourId;
 
   Future<void> loadTourDetails() async {
     try {
@@ -31,9 +50,19 @@ class TourDetailScreenProvider
 
       if (tours.isEmpty) return;
 
+      var selectedTourId = tours.first.id;
+      var selectedTour = tours.first;
+      for (var a = 0; a < tours.length; a++) {
+        if (liveTourId.contains(tours[a].id)) {
+          selectedTourId = tours[a].id;
+          selectedTour = tours[a];
+          break;
+        }
+      }
+
       final tourEventCardModel = TourDetailViewModel(
-        aboutTourModel: AboutTourModel.fromTour(tours.first),
-        selectedTourId: tours.first.id,
+        aboutTourModel: AboutTourModel.fromTour(selectedTour),
+        selectedTourId: selectedTourId,
         tours: tours,
       );
 

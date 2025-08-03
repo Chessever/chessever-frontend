@@ -2,6 +2,7 @@ import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/repository/local_storage/group_broadcast/group_broadcast_local_storage.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
+import 'package:chessever2/screens/tournaments/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/sorting_all_event_provider.dart';
 import 'package:chessever2/screens/tournaments/tournament_detail_view.dart';
 import 'package:chessever2/screens/tournaments/tournament_screen.dart';
@@ -14,9 +15,20 @@ final tournamentNotifierProvider = AutoDisposeStateNotifierProvider<
   AsyncValue<List<TourEventCardModel>>
 >((ref) {
   final tourEventCategory = ref.watch(selectedTourEventProvider);
+  var liveBroadcastId = <String>[];
+  ref
+      .watch(liveGroupBroadcastIdsProvider)
+      .when(
+        data: (liveIds) {
+          liveBroadcastId = liveIds;
+        },
+        error: (error, _) {},
+        loading: () {},
+      );
   return _TournamentScreenController(
     ref: ref,
     tourEventCategory: tourEventCategory,
+    liveBroadcastId: liveBroadcastId,
   );
 });
 
@@ -25,12 +37,14 @@ class _TournamentScreenController
   _TournamentScreenController({
     required this.ref,
     required this.tourEventCategory,
+    required this.liveBroadcastId,
   }) : super(const AsyncValue.loading()) {
     loadTours();
   }
 
   final Ref ref;
   final TournamentCategory tourEventCategory;
+  final List<String> liveBroadcastId;
 
   /// This will be populated every time we fetch the tournaments
   var _groupBroadcastList = <GroupBroadcast>[];
@@ -44,11 +58,9 @@ class _TournamentScreenController
           (inputBroadcast ??
               await ref
                   .read(groupBroadcastLocalStorage(tourEventCategory))
-                  .getGroupBroadcasts());
+                  .fetchGroupBroadcasts());
       if (tour.isEmpty) {
-        final tourEventCardModel =
-            tour.map((t) => TourEventCardModel.fromGroupBroadcast(t)).toList();
-        state = AsyncValue.data(tourEventCardModel);
+        state = AsyncValue.data(<TourEventCardModel>[]);
       }
 
       _groupBroadcastList = tour;
@@ -59,7 +71,12 @@ class _TournamentScreenController
         final sortingService = ref.read(tournamentSortingServiceProvider);
 
         final tourEventCardModel =
-            tour.map((t) => TourEventCardModel.fromGroupBroadcast(t)).toList();
+            tour
+                .map(
+                  (t) =>
+                      TourEventCardModel.fromGroupBroadcast(t, liveBroadcastId),
+                )
+                .toList();
 
         final sortedTours =
             tourEventCategory == TournamentCategory.upcoming
@@ -99,7 +116,7 @@ class _TournamentScreenController
         _groupBroadcastList = tour;
         final tourEventCardModel =
             tour.map((t) {
-              return TourEventCardModel.fromGroupBroadcast(t);
+              return TourEventCardModel.fromGroupBroadcast(t, liveBroadcastId);
             }).toList();
 
         final countryAsync = ref.watch(countryDropdownProvider);
@@ -162,7 +179,10 @@ class _TournamentScreenController
 
       final filteredTours =
           groupBroadcast.where((tour) {
-            final tourCardModel = TourEventCardModel.fromGroupBroadcast(tour);
+            final tourCardModel = TourEventCardModel.fromGroupBroadcast(
+              tour,
+              liveBroadcastId,
+            );
 
             // Filter by category
             if (tourEventCategory == TournamentCategory.current) {
@@ -178,7 +198,10 @@ class _TournamentScreenController
 
       final filteredTournaments =
           filteredTours
-              .map((e) => TourEventCardModel.fromGroupBroadcast(e))
+              .map(
+                (e) =>
+                    TourEventCardModel.fromGroupBroadcast(e, liveBroadcastId),
+              )
               .toList();
 
       state = AsyncValue.data(filteredTournaments);

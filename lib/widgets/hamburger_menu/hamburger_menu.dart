@@ -98,51 +98,51 @@ class HamburgerMenu extends StatelessWidget {
                     //     callbacks.onCountrymanPressed();
                     //   },
                     // ),
-                    SizedBox(height: 12.h),
-                    _MenuItem(
-                      customIcon: AnalysisBoardIcon(size: 20.ic),
-                      title: 'Board',
-                      onPressed: () {
-                        callbacks.onAnalysisBoardPressed();
-                      },
-                    ),
-                    SizedBox(height: 12.h),
-                    _MenuItem(
-                      customIcon: SvgWidget(
-                        SvgAsset.headsetIcon,
-                        semanticsLabel: 'Support Icon',
-                        height: 24.h,
-                        width: 24.w,
-                      ),
-                      title: 'Support',
-                      onPressed: () {
-                        Navigator.pop(context); // Close drawer first
-                        callbacks.onSupportPressed();
-                      },
-                    ),
-                    SizedBox(height: 12.h),
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [kgradientEndColors, kgradientStartColors],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                      ),
-                      child: _MenuItem(
-                        color: Colors.transparent,
-                        customIcon: Image.asset(
-                          PngAsset.premiumIcon,
-                          width: 28.w,
-                          height: 28.h,
-                          fit: BoxFit.contain,
-                        ),
-                        title: 'Try Premium for free',
-                        onPressed: () {
-                          callbacks.onPremiumPressed();
-                        },
-                      ),
-                    ),
+                    // SizedBox(height: 12.h),
+                    // _MenuItem(
+                    //   customIcon: AnalysisBoardIcon(size: 20.ic),
+                    //   title: 'Board',
+                    //   onPressed: () {
+                    //     callbacks.onAnalysisBoardPressed();
+                    //   },
+                    // ),
+                    // SizedBox(height: 12.h),
+                    // _MenuItem(
+                    //   customIcon: SvgWidget(
+                    //     SvgAsset.headsetIcon,
+                    //     semanticsLabel: 'Support Icon',
+                    //     height: 24.h,
+                    //     width: 24.w,
+                    //   ),
+                    //   title: 'Support',
+                    //   onPressed: () {
+                    //     Navigator.pop(context); // Close drawer first
+                    //     callbacks.onSupportPressed();
+                    //   },
+                    // ),
+                    // SizedBox(height: 12.h),
+                    // Container(
+                    //   decoration: BoxDecoration(
+                    //     gradient: LinearGradient(
+                    //       colors: [kgradientEndColors, kgradientStartColors],
+                    //       begin: Alignment.topLeft,
+                    //       end: Alignment.bottomRight,
+                    //     ),
+                    //   ),
+                    //   child: _MenuItem(
+                    //     color: Colors.transparent,
+                    //     customIcon: Image.asset(
+                    //       PngAsset.premiumIcon,
+                    //       width: 28.w,
+                    //       height: 28.h,
+                    //       fit: BoxFit.contain,
+                    //     ),
+                    //     title: 'Try Premium for free',
+                    //     onPressed: () {
+                    //       callbacks.onPremiumPressed();
+                    //     },
+                    //   ),
+                    // ),
                   ],
                 ),
               ),

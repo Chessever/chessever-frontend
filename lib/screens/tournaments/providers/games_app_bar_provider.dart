@@ -1,5 +1,6 @@
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
 import 'package:chessever2/screens/tournaments/model/games_app_bar_view_model.dart';
+import 'package:chessever2/screens/tournaments/providers/live_rounds_id_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/tour_detail_screen_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -8,18 +9,32 @@ final gamesAppBarProvider = AutoDisposeStateNotifierProvider<
   AsyncValue<GamesAppBarViewModel>
 >((ref) {
   final tourId = ref.watch(tourDetailScreenProvider).value!.selectedTourId;
-  return GamesAppBarNotifier(ref: ref, tourId: tourId);
+  var liveRounds = <String>[];
+  ref
+      .watch(liveRoundsIdProvider)
+      .when(
+        data: (data) {
+          liveRounds = data;
+        },
+        error: (e, _) {},
+        loading: () {},
+      );
+  return GamesAppBarNotifier(ref: ref, tourId: tourId, liveRounds: liveRounds);
 });
 
 class GamesAppBarNotifier
     extends StateNotifier<AsyncValue<GamesAppBarViewModel>> {
-  GamesAppBarNotifier({required this.ref, required this.tourId})
-    : super(AsyncValue.loading()) {
+  GamesAppBarNotifier({
+    required this.ref,
+    required this.tourId,
+    required this.liveRounds,
+  }) : super(AsyncValue.loading()) {
     _init();
   }
 
   final Ref ref;
   final String tourId;
+  final List<String> liveRounds;
 
   Future<void> _init() async {
     try {
@@ -28,10 +43,17 @@ class GamesAppBarNotifier
           .getRoundsByTourId(tourId);
       final gamesAppBarModels =
           rounds.map((round) => GamesAppBarModel.fromRound(round)).toList();
+      var selectedId = gamesAppBarModels.first.id;
+      for (var a = 0; a < gamesAppBarModels.length; a++) {
+        if (liveRounds.contains(gamesAppBarModels[a].id)) {
+          selectedId = gamesAppBarModels[a].id;
+          break;
+        }
+      }
       state = AsyncValue.data(
         GamesAppBarViewModel(
           gamesAppBarModels: gamesAppBarModels,
-          selectedId: gamesAppBarModels.first.id,
+          selectedId: selectedId,
         ),
       );
     } catch (e, st) {

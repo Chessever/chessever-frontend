@@ -1,6 +1,7 @@
 import 'package:chessever2/repository/local_storage/group_broadcast/group_broadcast_local_storage.dart';
 import 'package:chessever2/screens/calendar_screen.dart';
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
+import 'package:chessever2/screens/tournaments/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/tournaments/tournament_screen.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -8,10 +9,21 @@ final calendarTourViewProvider = AutoDisposeStateNotifierProvider.family((
   ref,
   CalendarFilterArgs args,
 ) {
+  var liveBroadcastId = <String>[];
+  ref
+      .watch(liveGroupBroadcastIdsProvider)
+      .when(
+        data: (liveIds) {
+          liveBroadcastId = liveIds;
+        },
+        error: (error, _) {},
+        loading: () {},
+      );
   return _CalendarTourViewController(
     ref: ref,
     month: args.month,
     year: args.year,
+    liveBroadcastId: liveBroadcastId,
   );
 });
 
@@ -21,6 +33,7 @@ class _CalendarTourViewController
     required this.ref,
     required this.month,
     required this.year,
+    required this.liveBroadcastId,
   }) : super(const AsyncValue.loading()) {
     _init();
   }
@@ -28,6 +41,7 @@ class _CalendarTourViewController
   final Ref ref;
   final int? month;
   final int? year;
+  final List<String> liveBroadcastId;
 
   Future<void> _init() async {
     try {
@@ -68,7 +82,10 @@ class _CalendarTourViewController
 
       final filteredTourEventCards =
           filteredTours
-              .map((t) => TourEventCardModel.fromGroupBroadcast(t))
+              .map(
+                (t) =>
+                    TourEventCardModel.fromGroupBroadcast(t, liveBroadcastId),
+              )
               .toList();
 
       state = AsyncValue.data(filteredTourEventCards);
@@ -114,7 +131,10 @@ class _CalendarTourViewController
 
       final filteredTourEventCards =
           filteredTours
-              .map((t) => TourEventCardModel.fromGroupBroadcast(t))
+              .map(
+                (t) =>
+                    TourEventCardModel.fromGroupBroadcast(t, liveBroadcastId),
+              )
               .toList();
 
       state = AsyncValue.data(filteredTourEventCards);

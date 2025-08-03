@@ -27,6 +27,20 @@ class TournamentSortingService {
             .toList();
 
     filteredList.sort((a, b) {
+      // HIGHEST PRIORITY: Starred live tours come first
+      final isStarredLiveA =
+          favorites.contains(a.id) &&
+          a.tourEventCategory == TourEventCategory.live;
+      final isStarredLiveB =
+          favorites.contains(b.id) &&
+          b.tourEventCategory == TourEventCategory.live;
+
+      if (isStarredLiveA && !isStarredLiveB) return -1;
+      if (!isStarredLiveA && isStarredLiveB) return 1;
+
+      // If both are starred live tours, continue with other sorting criteria below
+
+      // SECOND PRIORITY: General favorites (if sortByFavorites is enabled)
       if (sortByFavorites && hasFavorites) {
         final isFavoriteA = favorites.contains(a.id);
         final isFavoriteB = favorites.contains(b.id);
@@ -35,13 +49,14 @@ class TournamentSortingService {
         if (!isFavoriteA && isFavoriteB) return 1;
       }
 
+      // THIRD PRIORITY: Tournament status (live > completed > others)
       final statusPriorityA = _getTournamentStatusPriority(a.tourEventCategory);
       final statusPriorityB = _getTournamentStatusPriority(b.tourEventCategory);
 
       final statusComparison = statusPriorityA.compareTo(statusPriorityB);
       if (statusComparison != 0) return statusComparison;
 
-      // Within the same status category, sort by maxElo (descending)
+      // FOURTH PRIORITY: Within the same status category, sort by maxElo (descending)
       if (a.tourEventCategory == TourEventCategory.live ||
           a.tourEventCategory == TourEventCategory.completed) {
         // Special handling for tournaments with maxElo > 3200
@@ -57,7 +72,7 @@ class TournamentSortingService {
         if (eloComparison != 0) return eloComparison;
       }
 
-      // Finally sort by title if everything else is equal
+      // FINAL PRIORITY: Sort by title if everything else is equal
       return a.title.toLowerCase().compareTo(b.title.toLowerCase());
     });
 

@@ -59,6 +59,11 @@ class _GroupBroadcastLocalStorage {
     }
   }
 
+  Future<List<GroupBroadcast>> fetchGroupBroadcasts() async {
+    await fetchAndSaveGroupBroadcasts();
+    return getGroupBroadcasts();
+  }
+
   Future<List<GroupBroadcast>> getGroupBroadcasts() async {
     try {
       final jsonList = await ref
@@ -106,13 +111,18 @@ class _GroupBroadcastLocalStorage {
       final queryLower = query.toLowerCase().trim();
 
       // Split into words for flexible matching
-      final queryWords = queryLower.split(RegExp(r'\s+'))
-          .where((word) => word.isNotEmpty)
-          .toList();
+      final queryWords =
+          queryLower
+              .split(RegExp(r'\s+'))
+              .where((word) => word.isNotEmpty)
+              .toList();
 
       return broadcasts.where((gb) {
         final nameLower = gb.name.toLowerCase();
-        final allText = [nameLower, ...gb.search.map((s) => s.toLowerCase())].join(' ');
+        final allText = [
+          nameLower,
+          ...gb.search.map((s) => s.toLowerCase()),
+        ].join(' ');
 
         // Option 1: All words must be present (AND search)
         return queryWords.every((word) => allText.contains(word));
