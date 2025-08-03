@@ -31,7 +31,7 @@ class AboutTourModel extends Equatable{
       //todo: add a fallback
       imageUrl: tour.image ?? '',
       //todo: This field needs to be added in the Tour Model
-      description: 'To Be Added to Tour Model',
+      description: '',
       players: tour.info.playersList,
       //todo: add a fallback
       timeControl: tour.info.tc ?? '',
