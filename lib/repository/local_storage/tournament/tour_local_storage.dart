@@ -35,14 +35,10 @@ class _TourLocalStorage {
 
   Future<List<Tour>> getToursBasedOnGroupId(String groupId) async {
     try {
+      await fetchAndSaveTournament(groupId);
       final tourStringList = await ref
           .read(sharedPreferencesRepository)
           .getStringList(getPathId(groupId));
-
-      if (tourStringList.isEmpty) {
-        await fetchAndSaveTournament(groupId);
-        return getTours(groupId);
-      }
 
       final firstBatch = _decodeMyToursList(tourStringList);
 
