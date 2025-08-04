@@ -2,7 +2,12 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.d
 import 'package:equatable/equatable.dart';
 import 'package:intl/intl.dart';
 
-enum TourEventCategory { live, upcoming, completed }
+enum TourEventCategory {
+  live,
+  ongoing,
+  upcoming,
+  completed,
+}
 
 class TourEventCardModel extends Equatable {
   const TourEventCardModel({
@@ -103,22 +108,48 @@ class TourEventCardModel extends Equatable {
     required DateTime? endDate,
     required List<String> liveGroupIds,
   }) {
+    // Check if it's a live event first (highest priority)
     if (liveGroupIds.contains(groupId)) {
       return TourEventCategory.live;
     }
+
     final now = DateTime.now();
 
-    if (startDate != null) {
-      if (startDate.isAfter(now)) {
+    // If we have both start and end dates
+    if (startDate != null && endDate != null) {
+      // Handle invalid date range (end before start)
+      if (endDate.isBefore(startDate)) {
+        // Treat as completed if end date is in the past
+        return endDate.isBefore(now)
+            ? TourEventCategory.completed
+            : TourEventCategory.upcoming;
+      }
+
+      // Normal case: valid date range
+      if (now.isBefore(startDate)) {
         return TourEventCategory.upcoming;
+      } else if (now.isAfter(endDate)) {
+        return TourEventCategory.completed;
+      } else {
+        return TourEventCategory.ongoing;
       }
     }
 
-    if (endDate != null) {
-      if (endDate.isBefore(now)) {
-        return TourEventCategory.completed;
-      }
+    // If we only have start date
+    if (startDate != null) {
+      return now.isBefore(startDate)
+          ? TourEventCategory.upcoming
+          : TourEventCategory.completed; // Changed from ongoing to completed
     }
+
+    // If we only have end date
+    if (endDate != null) {
+      return now.isAfter(endDate)
+          ? TourEventCategory.completed
+          : TourEventCategory.ongoing;
+    }
+
+    // No date information available - default to completed
     return TourEventCategory.completed;
   }
 

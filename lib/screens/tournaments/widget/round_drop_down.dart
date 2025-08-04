@@ -47,6 +47,7 @@ class RoundDropDown extends ConsumerWidget {
                   GamesAppBarModel(
                     id: 'qdBcMm1h',
                     name: 'round-1',
+                    roundStatus: RoundStatus.live,
                     startsAt: DateTime.now(),
                   ),
                 ],
@@ -99,7 +100,7 @@ class _RoundDropdownState extends State<_RoundDropdown> {
   Widget _buildDropdownItem(GamesAppBarModel round) {
     Widget trailingIcon;
 
-    switch (round.status) {
+    switch (round.roundStatus) {
       case RoundStatus.completed:
         trailingIcon = SvgPicture.asset(
           SvgAsset.check,
@@ -107,11 +108,19 @@ class _RoundDropdownState extends State<_RoundDropdown> {
           height: 16.h,
         );
         break;
-      case RoundStatus.current:
+      case RoundStatus.live:
         trailingIcon = SvgPicture.asset(
           SvgAsset.selectedSvg,
           width: 16.w,
           height: 16.h,
+        );
+        break;
+      case RoundStatus.ongoing:
+        trailingIcon = SvgPicture.asset(
+          SvgAsset.selectedSvg,
+          width: 16.w,
+          height: 16.h,
+          color: kBoardColorDefault,
         );
         break;
       case RoundStatus.upcoming:

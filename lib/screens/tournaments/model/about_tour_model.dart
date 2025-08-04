@@ -1,7 +1,7 @@
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:equatable/equatable.dart';
 
-class AboutTourModel extends Equatable{
+class AboutTourModel extends Equatable {
   final String id;
   final String name;
   final String description;

@@ -210,7 +210,9 @@ class _GameBody extends StatelessWidget {
     return Column(
       children: [
         _PlayerWidget(game: game, isFlipped: isFlipped, isTop: true),
+        SizedBox(height: 2.h),
         _BoardWithSidebar(index: index, state: state, boardState: boardState),
+        SizedBox(height: 2.h),
         _PlayerWidget(game: game, isFlipped: isFlipped, isTop: false),
         Expanded(
           child: SingleChildScrollView(
@@ -237,12 +239,12 @@ class _PlayerWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final player =
         (isTop && !isFlipped) || (!isTop && isFlipped)
-            ? game.blackPlayer
-            : game.whitePlayer;
+            ? game.whitePlayer
+            : game.blackPlayer;
     final time =
         (isTop && !isFlipped) || (!isTop && isFlipped)
-            ? game.blackTimeDisplay
-            : game.whiteTimeDisplay;
+            ? game.whiteTimeDisplay
+            : game.blackTimeDisplay;
 
     return PlayerFirstRowDetailWidget(
       name: player.name,

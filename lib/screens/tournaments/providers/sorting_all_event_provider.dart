@@ -129,10 +129,12 @@ class TournamentSortingService {
     switch (category) {
       case TourEventCategory.live:
         return 1;
-      case TourEventCategory.completed:
+      case TourEventCategory.ongoing:
         return 2;
-      default:
+      case TourEventCategory.completed:
         return 3;
+      case TourEventCategory.upcoming:
+        return 4;
     }
   }
 }

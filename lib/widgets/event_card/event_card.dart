@@ -136,6 +136,8 @@ class _ShowStatus extends ConsumerWidget {
         return _UpcomingTag(tourEventCardModel: tourEventCardModel);
       case TourEventCategory.completed:
         return _CompletedTag();
+      case TourEventCategory.ongoing:
+        return _OngoingTag();
     }
   }
 }
@@ -156,14 +158,16 @@ class _UpcomingTag extends StatelessWidget {
   }
 }
 
-class _CountryMen extends StatelessWidget {
-  const _CountryMen();
+class _OngoingTag extends StatelessWidget {
+  const _OngoingTag();
 
   @override
   Widget build(BuildContext context) {
     return Text(
-      'Countrymen',
-      style: AppTypography.textXsBold.copyWith(color: kWhiteColor),
+      'Ongoing',
+      style: AppTypography.textXsBold.copyWith(
+        color: kPrimaryColor.withOpacity(0.4),
+      ),
     );
   }
 }
@@ -175,7 +179,7 @@ class _CompletedTag extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       "Completed",
-      style: AppTypography.textXsMedium.copyWith(color: Colors.grey),
+      style: AppTypography.textXsMedium.copyWith(color: kWhiteColor70),
     );
   }
 }
@@ -243,6 +247,8 @@ class _BuildTrailingButton extends ConsumerWidget {
             ),
           ),
         );
+      case TourEventCategory.ongoing:
+        return _StarWidget(tourEventCardModel: tourEventCardModel);
     }
   }
 }

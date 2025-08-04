@@ -22,13 +22,20 @@ class PlayerSecondRowDetailWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final validCountryCode = ref.read(locationServiceProvider).getValidCountryCode(countryCode);
+    final validCountryCode = ref
+        .read(locationServiceProvider)
+        .getValidCountryCode(countryCode);
     return Row(
       mainAxisAlignment: MainAxisAlignment.start,
       children: [
-        if(validCountryCode.isNotEmpty)...[
-          CountryFlag.fromCountryCode(validCountryCode, height: 12.h, width: 16.w),
-           SizedBox(width: 8.w),
+        if (validCountryCode.isNotEmpty) ...[
+          SizedBox(width: 16.w),
+          CountryFlag.fromCountryCode(
+            validCountryCode,
+            height: 12.h,
+            width: 16.w,
+          ),
+          SizedBox(width: 8.w),
         ],
 
         Expanded(
