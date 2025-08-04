@@ -95,7 +95,7 @@ class GamesTourScreenProvider
 
   Future<void> searchGames(String query) async {
     if (query.isNotEmpty && roundId != null) {
-      final selectedTourId = ref.read(tourDetailScreenProvider).value!.selectedTourId;
+      final selectedTourId = ref.watch(selectedTourIdProvider)!;
       final allGames = await ref.read(gamesLocalStorage).searchGamesByName(tourId: selectedTourId, query: query);
       var games = allGames.where((e) => e.roundId.contains(roundId!)).toList();
       final gamesTourModels = List.generate(games.length, (index) => GamesTourModel.fromGame(games[index]));
