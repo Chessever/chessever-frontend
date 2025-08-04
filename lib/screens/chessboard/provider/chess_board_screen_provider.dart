@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:bishop/bishop.dart' as bishop;
+import 'package:chess/chess.dart' as chess;
 import 'package:square_bishop/square_bishop.dart' as square_bishop;
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
@@ -67,11 +67,32 @@ class ChessBoardScreenNotifier
   bool _isLongPressing = false;
 
   void _initializeState() {
-    final bishopGames = bishop.Game.fromPgn(_cleanPgnData(game.pgn ?? ""));
-    final squaresState = square_bishop.buildSquaresState(fen: bishopGames.fen);
+    print("My Current PGN: \n ${game.gameId} \n ${game.pgn}");
+    final chessGame = chess.Chess();
 
-    final allMoves = bishopGames.moveHistoryAlgebraic;
-    final sanMoves = bishopGames.moveHistorySan;
+    // Load PGN if available
+    if (game.pgn != null && game.pgn!.isNotEmpty) {
+      chessGame.load_pgn(game.pgn!);
+    }
+
+    final squaresState = square_bishop.buildSquaresState(fen: chessGame.fen);
+
+    // Get move history
+    final allMoves = <String>[];
+    final sanMoves = <String>[];
+
+    // Reset to start and collect moves
+    final tempGame = chess.Chess();
+    if (game.pgn != null && game.pgn!.isNotEmpty) {
+      tempGame.load_pgn(game.pgn!);
+      final history = tempGame.getHistory({'verbose': true});
+
+      for (var move in history) {
+        allMoves.add(move['lan'] ?? move['from'] + move['to']);
+        sanMoves.add(move['san'] ?? '');
+      }
+    }
+
     final currentMoveIndex =
         (state.value != null &&
                 state.value?.currentMoveIndex != allMoves.length)
@@ -80,7 +101,7 @@ class ChessBoardScreenNotifier
 
     state = AsyncValue.data(
       ChessBoardState(
-        game: bishopGames,
+        game: chessGame,
         squaresState: squaresState!,
         allMoves: allMoves,
         sanMoves: sanMoves,
@@ -131,7 +152,7 @@ class ChessBoardScreenNotifier
     _longPressTimer = Timer.periodic(const Duration(milliseconds: 150), (
       timer,
     ) {
-      if (!state.value!.game.canUndo) {
+      if (state.value!.game.history.isEmpty) {
         stopLongPress();
         return;
       }
@@ -158,7 +179,8 @@ class ChessBoardScreenNotifier
     final st = state.value!;
     if (st.currentMoveIndex >= st.allMoves.length) return;
 
-    st.game.makeMoveString(st.allMoves[st.currentMoveIndex]);
+    final moveResult = st.game.move(st.allMoves[st.currentMoveIndex]);
+    if (moveResult == null) return; // Invalid move
 
     final squaresState = square_bishop.buildSquaresState(fen: st.game.fen);
 
@@ -173,7 +195,7 @@ class ChessBoardScreenNotifier
 
   void moveBackward() {
     final st = state.value!;
-    if (!st.game.canUndo) return;
+    if (st.game.history.isEmpty) return;
 
     st.game.undo();
 
@@ -196,15 +218,15 @@ class ChessBoardScreenNotifier
 
     if (st.isPlaying) pauseGame();
 
-    // bring game to start
-    while (st.game.canUndo) {
-      st.game.undo();
-    }
+    // Reset to start position
+    st.game.reset();
 
-    // replay to desired index
+    // Replay to desired index
     for (var i = 0; i <= targetMoveIndex; i++) {
-      // Changed < to <=
-      st.game.makeMoveString(st.allMoves[i]);
+      if (i < st.allMoves.length) {
+        final moveResult = st.game.move(st.allMoves[i]);
+        if (moveResult == null) break; // Stop if invalid move
+      }
     }
 
     final squaresState = square_bishop.buildSquaresState(fen: st.game.fen);
@@ -225,12 +247,13 @@ class ChessBoardScreenNotifier
     if (st.isPlaying) pauseGame();
 
     // Reset to start position
-    while (st.game.canUndo) st.game.undo();
+    st.game.reset();
 
     // Play moves up to and INCLUDING the target move
     for (var i = 0; i <= targetMoveIndex; i++) {
       if (i < st.allMoves.length) {
-        st.game.makeMoveString(st.allMoves[i]);
+        final moveResult = st.game.move(st.allMoves[i]);
+        if (moveResult == null) break; // Stop if invalid move
       }
     }
 
@@ -275,16 +298,20 @@ class ChessBoardScreenNotifier
 
   void resetGame() {
     state.value!.autoPlayTimer?.cancel();
-    while (state.value!.game.canUndo) {
-      state.value!.game.undo();
-    }
+    state.value!.game.reset();
+
     final newIsPlaying = false;
     final newCurrentMoveIndex = 0;
+    final squaresState = square_bishop.buildSquaresState(
+      fen: state.value!.game.fen,
+    );
+
     state = AsyncValue.data(
       state.value!.copyWith(
         isPlaying: newIsPlaying,
         currentMoveIndex: newCurrentMoveIndex,
         autoPlayTimer: null,
+        squaresState: squaresState,
       ),
     );
   }

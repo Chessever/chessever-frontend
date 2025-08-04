@@ -8,7 +8,7 @@ final gamesAppBarProvider = AutoDisposeStateNotifierProvider<
   GamesAppBarNotifier,
   AsyncValue<GamesAppBarViewModel>
 >((ref) {
-  final tourId = ref.watch(tourDetailScreenProvider).value!.selectedTourId;
+  final tourId = ref.watch(selectedTourIdProvider)!;
   var liveRounds = <String>[];
   ref
       .watch(liveRoundsIdProvider)

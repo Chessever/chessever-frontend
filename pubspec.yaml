@@ -94,8 +94,7 @@ dependencies:
   #for launching url
   url_launcher: ^6.3.1
   squares: ^1.2.1
-  bishop: ^1.4.4
-  square_bishop: ^0.3.0
+  chess: ^0.8.1
   stockfish: ^1.7.1
   flutter_local_notifications: ^19.3.0
 

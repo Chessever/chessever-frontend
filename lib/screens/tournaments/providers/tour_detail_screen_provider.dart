@@ -6,6 +6,7 @@ import 'package:chessever2/screens/tournaments/providers/live_tour_id_provider.d
 import 'package:chessever2/screens/tournaments/tournament_detail_view.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+final selectedTourIdProvider = StateProvider<String?>((ref) => null);
 final tourDetailScreenProvider = StateNotifierProvider.autoDispose<
   TourDetailScreenProvider,
   AsyncValue<TourDetailViewModel>
@@ -59,11 +60,13 @@ class TourDetailScreenProvider
           break;
         }
       }
+      if (ref.read(selectedTourIdProvider) == null) {
+        ref.read(selectedTourIdProvider.notifier).state = selectedTourId;
+      }
 
       final tourEventCardModel = TourDetailViewModel(
         aboutTourModel: AboutTourModel.fromTour(selectedTour),
         liveTourIds: liveTourId,
-        selectedTourId: selectedTourId,
         tours: tours,
       );
 
@@ -76,10 +79,10 @@ class TourDetailScreenProvider
   void updateSelection(String tourId) {
     final currentState = state.value!;
     final selectedTour = currentState.tours.firstWhere((e) => e.id == tourId);
+    ref.read(selectedTourIdProvider.notifier).state = selectedTour.id;
     final tourEventCardModel = TourDetailViewModel(
       aboutTourModel: AboutTourModel.fromTour(selectedTour),
       liveTourIds: liveTourId,
-      selectedTourId: selectedTour.id,
       tours: currentState.tours,
     );
     state = AsyncValue.data(tourEventCardModel);

@@ -63,6 +63,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailView> {
   @override
   void dispose() {
     pageController.dispose();
+    ref.invalidate(selectedTourIdProvider);
     super.dispose();
   }
 
@@ -181,7 +182,8 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
                 data.tours
                     .map((e) => {'key': e.id, 'value': e.name.split('|').last})
                     .toList(),
-            selectedId: data.selectedTourId,
+            selectedId:
+                ref.watch(selectedTourIdProvider) ?? data.tours.first.id,
             onChanged: (value) {
               ref
                   .read(tourDetailScreenProvider.notifier)
