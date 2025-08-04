@@ -62,6 +62,7 @@ class TourDetailScreenProvider
 
       final tourEventCardModel = TourDetailViewModel(
         aboutTourModel: AboutTourModel.fromTour(selectedTour),
+        liveTourIds: liveTourId,
         selectedTourId: selectedTourId,
         tours: tours,
       );
@@ -77,6 +78,7 @@ class TourDetailScreenProvider
     final selectedTour = currentState.tours.firstWhere((e) => e.id == tourId);
     final tourEventCardModel = TourDetailViewModel(
       aboutTourModel: AboutTourModel.fromTour(selectedTour),
+      liveTourIds: liveTourId,
       selectedTourId: selectedTour.id,
       tours: currentState.tours,
     );

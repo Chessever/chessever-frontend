@@ -152,7 +152,10 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailView> {
 }
 
 class _TourDetailDropDownAppBar extends ConsumerWidget {
-  const _TourDetailDropDownAppBar({required this.data, super.key});
+  const _TourDetailDropDownAppBar({
+    required this.data,
+    super.key,
+  });
 
   final TourDetailViewModel data;
 
