@@ -1,11 +1,11 @@
 import 'dart:async';
-import 'package:bishop/bishop.dart' as bishop;
 import 'package:square_bishop/square_bishop.dart' as square_bishop;
-import 'package:squares/squares.dart' as square;
+import 'package:chess/chess.dart' as chess;
+
 
 // State class for chess board
 class ChessBoardState {
-  final bishop.Game game;
+  final chess.Chess game;
   final square_bishop.SquaresState squaresState;
   final List<String> allMoves;
   final List<String> sanMoves;
@@ -32,7 +32,7 @@ class ChessBoardState {
   });
 
   ChessBoardState copyWith({
-    bishop.Game? game,
+    chess.Chess? game,
     square_bishop.SquaresState? squaresState,
     List<String>? allMoves,
     List<String>? sanMoves,
