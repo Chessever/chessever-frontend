@@ -193,6 +193,12 @@ class AllEventsTabWidget extends ConsumerWidget {
               //todo:
               onTap: () => onSelect(tourEventCardModel),
             );
+          case TourEventCategory.ongoing:
+            return EventCard(
+              tourEventCardModel: tourEventCardModel,
+              //todo:
+              onTap: () => onSelect(tourEventCardModel),
+            );
           case TourEventCategory.completed:
             return CompletedEventCard(
               tourEventCardModel: tourEventCardModel,

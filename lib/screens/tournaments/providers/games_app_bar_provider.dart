@@ -42,7 +42,9 @@ class GamesAppBarNotifier
           .read(roundRepositoryProvider)
           .getRoundsByTourId(tourId);
       final gamesAppBarModels =
-          rounds.map((round) => GamesAppBarModel.fromRound(round)).toList();
+          rounds
+              .map((round) => GamesAppBarModel.fromRound(round, liveRounds))
+              .toList();
       var selectedId = gamesAppBarModels.first.id;
       for (var a = 0; a < gamesAppBarModels.length; a++) {
         if (liveRounds.contains(gamesAppBarModels[a].id)) {

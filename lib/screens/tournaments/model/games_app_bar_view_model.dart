@@ -1,8 +1,9 @@
 import 'package:equatable/equatable.dart';
+import 'package:intl/intl.dart';
 
 import '../../../repository/supabase/round/round.dart';
 
-enum RoundStatus { completed, current, upcoming }
+enum RoundStatus { completed, ongoing, live, upcoming }
 
 class GamesAppBarViewModel {
   const GamesAppBarViewModel({
@@ -19,30 +20,54 @@ class GamesAppBarModel extends Equatable {
     required this.id,
     required this.name,
     required this.startsAt,
+    required this.roundStatus,
   });
 
   final String id;
   final String name;
   final DateTime? startsAt;
+  final RoundStatus roundStatus;
 
-  factory GamesAppBarModel.fromRound(Round round) {
+  factory GamesAppBarModel.fromRound(Round round, List<String> liveRound) {
     return GamesAppBarModel(
       id: round.id,
       name: round.name,
       startsAt: round.startsAt,
+      roundStatus: status(
+        currentId: round.id,
+        startsAt: round.startsAt,
+        liveRound: liveRound,
+      ),
     );
   }
 
-  RoundStatus get status {
+  static RoundStatus status({
+    required DateTime? startsAt,
+    required String currentId,
+    required List<String> liveRound,
+  }) {
     final now = DateTime.now();
 
     if (startsAt == null) return RoundStatus.upcoming;
 
-    if (startsAt?.day == DateTime.now().day) {
-      return RoundStatus.current;
-    } else if (startsAt!.isBefore(now)) {
-      return RoundStatus.completed;
+    // Check if this round is currently live
+    if (liveRound.isNotEmpty && liveRound.contains(currentId)) {
+      return RoundStatus.live;
+    }
+
+    // Check if round has started
+    if (startsAt.isBefore(now) || startsAt.isAtSameMomentAs(now)) {
+      // If it's the same day as start, consider it ongoing
+      if (startsAt.day == now.day &&
+          startsAt.month == now.month &&
+          startsAt.year == now.year) {
+        return RoundStatus.ongoing;
+      } else {
+        // Started on a previous day, so completed
+        return RoundStatus.completed;
+      }
     } else {
+      // Round hasn't started yet
       return RoundStatus.upcoming;
     }
   }
@@ -51,22 +76,8 @@ class GamesAppBarModel extends Equatable {
   String get formattedStartDate {
     if (startsAt == null) return 'TBD';
 
-    final months = [
-      'January',
-      'February',
-      'March',
-      'April',
-      'May',
-      'June',
-      'July',
-      'August',
-      'September',
-      'October',
-      'November',
-      'December',
-    ];
-
-    return '${startsAt!.day} ${months[startsAt!.month - 1]} ${startsAt!.year}';
+    final formatter = DateFormat('d MMMM y');
+    return formatter.format(startsAt!);
   }
 
   @override

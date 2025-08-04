@@ -26,9 +26,11 @@ class PlayerFirstRowDetailWidget extends ConsumerWidget {
         .read(locationServiceProvider)
         .getValidCountryCode(countryCode);
     return Row(
+      mainAxisAlignment: MainAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (validCountryCode.isNotEmpty) ...[
-          SizedBox(width: 8.w),
+          SizedBox(width: 16.w),
           CountryFlag.fromCountryCode(
             validCountryCode,
             height: 12.h,
@@ -38,7 +40,7 @@ class PlayerFirstRowDetailWidget extends ConsumerWidget {
         ],
         Expanded(
           child: Text(
-            '$name $firstGmRank',
+            '$firstGmRank $name',
             style: AppTypography.textXsMedium.copyWith(
               color: kWhiteColor70,
               fontSize: 9.f,
