@@ -45,17 +45,31 @@ class GamesAppBarNotifier
           rounds
               .map((round) => GamesAppBarModel.fromRound(round, liveRounds))
               .toList();
-      var selectedId = gamesAppBarModels.first.id;
-      for (var a = 0; a < gamesAppBarModels.length; a++) {
-        if (liveRounds.contains(gamesAppBarModels[a].id)) {
-          selectedId = gamesAppBarModels[a].id;
-          break;
+
+      // Default to first round
+      String selectedId = gamesAppBarModels.first.id;
+      bool userSelectedId = false;
+
+      // If user already selected a round, keep it
+      final currentState = state;
+      if (currentState is AsyncData<GamesAppBarViewModel> &&
+          currentState.value.userSelectedId) {
+        selectedId = currentState.value.selectedId;
+        userSelectedId = true;
+      } else {
+        // Else auto-select live round if available
+        for (var a = 0; a < gamesAppBarModels.length; a++) {
+          if (liveRounds.contains(gamesAppBarModels[a].id)) {
+            selectedId = gamesAppBarModels[a].id;
+            break;
+          }
         }
       }
       state = AsyncValue.data(
         GamesAppBarViewModel(
           gamesAppBarModels: gamesAppBarModels,
           selectedId: selectedId,
+          userSelectedId: userSelectedId,
         ),
       );
     } catch (e, st) {
@@ -68,6 +82,8 @@ class GamesAppBarNotifier
       GamesAppBarViewModel(
         gamesAppBarModels: state.value!.gamesAppBarModels,
         selectedId: gamesAppBarModel.id,
+        // If user selects a round, set userSelectedId to true
+        userSelectedId: true,
       ),
     );
   }

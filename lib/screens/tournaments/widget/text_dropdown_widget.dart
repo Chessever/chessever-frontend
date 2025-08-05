@@ -1,8 +1,11 @@
+import 'package:chessever2/screens/tournaments/model/games_app_bar_view_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/svg.dart';
 
 class TextDropDownWidget extends StatefulWidget {
   const TextDropDownWidget({
@@ -37,12 +40,58 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
     }
   }
 
-  Widget _buildDropdownItem(String text) {
-    return Text(
-      text,
-      style: AppTypography.textXsRegular.copyWith(color: kWhiteColor),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
+  Widget _buildDropdownItem(String text, String status) {
+    final roundStatus = RoundStatus.values.firstWhere(
+      (e) => e.name == status,
+      orElse: () => RoundStatus.completed,
+    );
+
+    Widget trailingIcon;
+
+    switch (roundStatus) {
+      case RoundStatus.completed:
+        trailingIcon = SvgPicture.asset(
+          SvgAsset.check,
+          width: 16.w,
+          height: 16.h,
+        );
+        break;
+      case RoundStatus.live:
+        trailingIcon = SvgPicture.asset(
+          SvgAsset.selectedSvg,
+          width: 16.w,
+          height: 16.h,
+        );
+        break;
+      case RoundStatus.ongoing:
+        trailingIcon = SvgPicture.asset(
+          SvgAsset.selectedSvg,
+          width: 16.w,
+          height: 16.h,
+        );
+        break;
+      case RoundStatus.upcoming:
+        trailingIcon = SvgPicture.asset(
+          SvgAsset.calendarIcon,
+          width: 16.w,
+          height: 16.h,
+        );
+        break;
+    }
+
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            text,
+            style: AppTypography.textXsRegular.copyWith(color: kWhiteColor),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        const Spacer(),
+        trailingIcon,
+      ],
     );
   }
 
@@ -81,7 +130,10 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
                   Container(
                     padding: EdgeInsets.symmetric(horizontal: 10.sp),
                     alignment: Alignment.center,
-                    child: _buildDropdownItem(item['value']!),
+                    child: _buildDropdownItem(
+                      item['value']!,
+                      item['status']!,
+                    ),
                   ),
                   Spacer(),
                   if (!isLast)

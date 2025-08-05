@@ -11,12 +11,12 @@ class TourDetailViewModel extends Equatable {
 
   final AboutTourModel aboutTourModel;
   final List<String> liveTourIds;
-  final List<Tour> tours;
+  final List<TourModel> tours;
 
   @override
   List<Object?> get props => [
-    this.aboutTourModel,
-    this.liveTourIds,
-    this.tours,
+    aboutTourModel,
+    liveTourIds,
+    tours,
   ];
 }

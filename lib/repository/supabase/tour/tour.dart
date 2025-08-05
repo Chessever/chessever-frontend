@@ -1,3 +1,5 @@
+import 'package:chessever2/screens/tournaments/model/games_app_bar_view_model.dart';
+import 'package:chessever2/widgets/round_selector.dart';
 import 'package:intl/intl.dart';
 
 class TournamentPlayer {
@@ -8,8 +10,8 @@ class TournamentPlayer {
   final int played;
   final int? rating;
   final int? ratingDiff;
-  final double? score;      // Added: Tournament score (e.g., 2.0, 1.5)
-  final int? performance;   // Added: Performance rating
+  final double? score; // Added: Tournament score (e.g., 2.0, 1.5)
+  final int? performance; // Added: Performance rating
 
   TournamentPlayer({
     this.federation,
@@ -95,7 +97,9 @@ class TournamentPlayer {
   String get scoreString {
     if (score == null) return '';
     // Show one decimal place if not a whole number, otherwise show as integer
-    return score! % 1 == 0 ? score!.toInt().toString() : score!.toStringAsFixed(1);
+    return score! % 1 == 0
+        ? score!.toInt().toString()
+        : score!.toStringAsFixed(1);
   }
 
   /// Gets score percentage (score/played * 100)
@@ -162,14 +166,14 @@ class TournamentPlayer {
   @override
   int get hashCode {
     return federation.hashCode ^
-    name.hashCode ^
-    title.hashCode ^
-    fideId.hashCode ^
-    played.hashCode ^
-    rating.hashCode ^
-    ratingDiff.hashCode ^
-    score.hashCode ^
-    performance.hashCode;
+        name.hashCode ^
+        title.hashCode ^
+        fideId.hashCode ^
+        played.hashCode ^
+        rating.hashCode ^
+        ratingDiff.hashCode ^
+        score.hashCode ^
+        performance.hashCode;
   }
 
   /// Creates a copy of this player with updated fields
@@ -208,19 +212,29 @@ List<TournamentPlayer> parsePlayersFromJson(List<dynamic> jsonList) {
 }
 
 /// Filters players by minimum rating
-List<TournamentPlayer> filterByMinRating(List<TournamentPlayer> players, int minRating) {
-  return players.where((player) =>
-  player.hasRating && player.rating! >= minRating).toList();
+List<TournamentPlayer> filterByMinRating(
+  List<TournamentPlayer> players,
+  int minRating,
+) {
+  return players
+      .where((player) => player.hasRating && player.rating! >= minRating)
+      .toList();
 }
 
 /// Filters players by minimum score
-List<TournamentPlayer> filterByMinScore(List<TournamentPlayer> players, double minScore) {
-  return players.where((player) =>
-  player.hasScore && player.score! >= minScore).toList();
+List<TournamentPlayer> filterByMinScore(
+  List<TournamentPlayer> players,
+  double minScore,
+) {
+  return players
+      .where((player) => player.hasScore && player.score! >= minScore)
+      .toList();
 }
 
 /// Groups players by federation
-Map<String, List<TournamentPlayer>> groupByFederation(List<TournamentPlayer> players) {
+Map<String, List<TournamentPlayer>> groupByFederation(
+  List<TournamentPlayer> players,
+) {
   final Map<String, List<TournamentPlayer>> grouped = {};
 
   for (final player in players) {
@@ -329,6 +343,16 @@ class _TourInfo {
   }
 }
 
+class TourModel {
+  final Tour tour;
+  final RoundStatus roundStatus;
+
+  TourModel({
+    required this.tour,
+    required this.roundStatus,
+  });
+}
+
 class Tour {
   final String id;
   final String name;
@@ -369,9 +393,10 @@ class Tour {
       createdAt: DateTime.parse(json['created_at'] as String),
       url: json['url'] as String,
       tier: json['tier'] as int,
-      dates: (json['dates'] as List)
-          .map((date) => DateTime.parse(date as String))
-          .toList(),
+      dates:
+          (json['dates'] as List)
+              .map((date) => DateTime.parse(date as String))
+              .toList(),
       image: json['image'] as String?,
       players: parsePlayersFromJson(json['players'] as List? ?? []),
       search: (json['search'] as List?)?.map((e) => e as String).toList(),
@@ -514,16 +539,13 @@ class Tour {
   int get totalPlayers => players.length;
 
   /// Get number of rated players
-  int get ratedPlayersCount =>
-      players.where((p) => p.hasRating).length;
+  int get ratedPlayersCount => players.where((p) => p.hasRating).length;
 
   /// Get number of titled players
-  int get titledPlayersCount =>
-      players.where((p) => p.hasTitle).length;
+  int get titledPlayersCount => players.where((p) => p.hasTitle).length;
 
   /// Get number of players with scores
-  int get playersWithScoreCount =>
-      players.where((p) => p.hasScore).length;
+  int get playersWithScoreCount => players.where((p) => p.hasScore).length;
 
   /// Get number of players with performance ratings
   int get playersWithPerformanceCount =>
@@ -552,7 +574,10 @@ class Tour {
     final performancePlayers = players.where((p) => p.hasPerformance).toList();
     if (performancePlayers.isEmpty) return null;
 
-    final sum = performancePlayers.fold<int>(0, (sum, p) => sum + p.performance!);
+    final sum = performancePlayers.fold<int>(
+      0,
+      (sum, p) => sum + p.performance!,
+    );
     return sum / performancePlayers.length;
   }
 
@@ -561,8 +586,7 @@ class Tour {
     final ratedPlayers = players.where((p) => p.hasRating).toList();
     if (ratedPlayers.isEmpty) return null;
 
-    return ratedPlayers.reduce((a, b) =>
-    a.rating! > b.rating! ? a : b);
+    return ratedPlayers.reduce((a, b) => a.rating! > b.rating! ? a : b);
   }
 
   /// Get highest scoring player
@@ -570,8 +594,7 @@ class Tour {
     final scoredPlayers = players.where((p) => p.hasScore).toList();
     if (scoredPlayers.isEmpty) return null;
 
-    return scoredPlayers.reduce((a, b) =>
-    a.score! > b.score! ? a : b);
+    return scoredPlayers.reduce((a, b) => a.score! > b.score! ? a : b);
   }
 
   /// Get player with highest performance
@@ -579,8 +602,9 @@ class Tour {
     final performancePlayers = players.where((p) => p.hasPerformance).toList();
     if (performancePlayers.isEmpty) return null;
 
-    return performancePlayers.reduce((a, b) =>
-    a.performance! > b.performance! ? a : b);
+    return performancePlayers.reduce(
+      (a, b) => a.performance! > b.performance! ? a : b,
+    );
   }
 
   /// Get players from a specific federation
@@ -595,18 +619,21 @@ class Tour {
 
   /// Get players with rating in range
   List<TournamentPlayer> playersInRatingRange(int minRating, int maxRating) {
-    return players.where((p) =>
-    p.hasRating &&
-        p.rating! >= minRating &&
-        p.rating! <= maxRating).toList();
+    return players
+        .where(
+          (p) =>
+              p.hasRating && p.rating! >= minRating && p.rating! <= maxRating,
+        )
+        .toList();
   }
 
   /// Get players with score in range
   List<TournamentPlayer> playersInScoreRange(double minScore, double maxScore) {
-    return players.where((p) =>
-    p.hasScore &&
-        p.score! >= minScore &&
-        p.score! <= maxScore).toList();
+    return players
+        .where(
+          (p) => p.hasScore && p.score! >= minScore && p.score! <= maxScore,
+        )
+        .toList();
   }
 
   /// Get federation statistics
@@ -636,8 +663,9 @@ class Tour {
     if (query.isEmpty) return players;
 
     final lowerQuery = query.toLowerCase();
-    return players.where((p) =>
-        p.name.toLowerCase().contains(lowerQuery)).toList();
+    return players
+        .where((p) => p.name.toLowerCase().contains(lowerQuery))
+        .toList();
   }
 
   @override

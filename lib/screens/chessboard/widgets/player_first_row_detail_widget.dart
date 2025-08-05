@@ -37,7 +37,8 @@ class PlayerFirstRowDetailWidget extends ConsumerWidget {
             width: 16.w,
           ),
           SizedBox(width: 8.w),
-        ],
+        ] else
+          SizedBox(width: 16.w),
         Expanded(
           child: Text(
             '$firstGmRank $name',

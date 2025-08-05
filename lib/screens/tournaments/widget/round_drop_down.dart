@@ -120,7 +120,6 @@ class _RoundDropdownState extends State<_RoundDropdown> {
           SvgAsset.selectedSvg,
           width: 16.w,
           height: 16.h,
-          color: kBoardColorDefault,
         );
         break;
       case RoundStatus.upcoming:

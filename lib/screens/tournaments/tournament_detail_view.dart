@@ -61,9 +61,15 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailView> {
   }
 
   @override
+  void deactivate() {
+    ref.invalidate(selectedTourModeProvider);
+    ref.invalidate(selectedTourIdProvider);
+    super.deactivate();
+  }
+
+  @override
   void dispose() {
     pageController.dispose();
-    ref.invalidate(selectedTourIdProvider);
     super.dispose();
   }
 
@@ -176,14 +182,20 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
         Spacer(),
         SizedBox(
           height: 32.h,
-          width: 150.w,
+          width: 180.w,
           child: TextDropDownWidget(
             items:
                 data.tours
-                    .map((e) => {'key': e.id, 'value': e.name.split('|').last})
+                    .map(
+                      (e) => {
+                        'key': e.tour.id,
+                        'value': e.tour.name.split('|').last,
+                        'status': e.roundStatus.name,
+                      },
+                    )
                     .toList(),
             selectedId:
-                ref.watch(selectedTourIdProvider) ?? data.tours.first.id,
+                ref.watch(selectedTourIdProvider) ?? data.tours.first.tour.id,
             onChanged: (value) {
               ref
                   .read(tourDetailScreenProvider.notifier)
