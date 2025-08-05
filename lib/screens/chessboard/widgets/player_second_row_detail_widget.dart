@@ -40,7 +40,7 @@ class PlayerSecondRowDetailWidget extends ConsumerWidget {
 
         Expanded(
           child: Text(
-            '$name $secondGmRank',
+            '$secondGmRank $name',
             style: AppTypography.textXsMedium.copyWith(
               color: kWhiteColor70,
               fontSize: 9.f,

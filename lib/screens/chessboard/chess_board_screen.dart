@@ -1,3 +1,5 @@
+import 'package:chessever2/providers/board_settings_provider.dart';
+import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
@@ -365,7 +367,10 @@ class _ChessBoard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final squaresState = chessBoardState.squaresState;
-
+    final boardSettingsValue = ref.watch(boardSettingsProvider);
+    final boardTheme = ref
+        .read(boardSettingsRepository)
+        .getBoardTheme(boardSettingsValue.boardColor);
     // Custom marker theme for possible moves
     final customMarkerTheme = square.MarkerTheme(
       empty:
@@ -395,6 +400,7 @@ class _ChessBoard extends ConsumerWidget {
       height: size,
       child: square.BoardController(
         size: square.BoardSize.standard,
+        theme: boardTheme,
         pieceSet: square.PieceSet.fromImageAssets(
           folder: 'assets/pngs/pieces/',
           symbols: [
@@ -412,7 +418,6 @@ class _ChessBoard extends ConsumerWidget {
         animationDuration: const Duration(milliseconds: 400),
         animationCurve: Curves.easeInOut,
         onMove: (_) {},
-
         // Add last move highlighting as overlay
         overlays:
             lastMove != null

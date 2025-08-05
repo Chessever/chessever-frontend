@@ -9,9 +9,11 @@ class GamesAppBarViewModel {
   const GamesAppBarViewModel({
     required this.gamesAppBarModels,
     required this.selectedId,
+    this.userSelectedId = false,
   });
 
   final String selectedId;
+  final bool userSelectedId;
   final List<GamesAppBarModel> gamesAppBarModels;
 }
 
