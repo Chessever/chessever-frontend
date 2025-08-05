@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'dart:convert';
 
+import 'package:squares/squares.dart';
+
 // Add an enum for board colors
 enum BoardColor { defaultColor, brown, grey, green }
 
@@ -48,6 +50,22 @@ class _BoardSettingsRepository {
     } else {
       // Default fallback
       return BoardColor.brown;
+    }
+  }
+
+  BoardTheme getBoardTheme(Color color) {
+    final boardColor = getBoardColorEnum(color);
+    switch (boardColor) {
+      case BoardColor.defaultColor:
+        return BoardTheme.blueGrey;
+      case BoardColor.brown:
+        return BoardTheme.brown;
+      case BoardColor.grey:
+        return BoardTheme.dart;
+      case BoardColor.green:
+        return BoardTheme.pink;
+      default:
+        return BoardTheme.brown;
     }
   }
 

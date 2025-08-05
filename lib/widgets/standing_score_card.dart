@@ -55,28 +55,29 @@ class StandingScoreCard extends StatelessWidget {
                   ),
                   SizedBox(width: 4.w),
                 ],
-                Padding(
-                  padding: EdgeInsets.only(bottom: 4.sp),
-                  child: RichText(
-
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                    text: TextSpan(
-                      children: [
-                        if (title != null)
+                Flexible(
+                  child: Padding(
+                    padding: EdgeInsets.only(bottom: 4.sp),
+                    child: RichText(
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                      text: TextSpan(
+                        children: [
+                          if (title != null)
+                            TextSpan(
+                              text: '$title ',
+                              style: AppTypography.textXsMedium.copyWith(
+                                color: kWhiteColor,
+                              ),
+                            ),
                           TextSpan(
-                            text: '$title ',
+                            text: name,
                             style: AppTypography.textXsMedium.copyWith(
                               color: kWhiteColor,
                             ),
                           ),
-                        TextSpan(
-                          text: name,
-                          style: AppTypography.textXsMedium.copyWith(
-                            color: kWhiteColor,
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),

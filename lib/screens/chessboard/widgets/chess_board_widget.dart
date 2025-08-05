@@ -60,7 +60,7 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFEN> {
     final boardSettingsValue = ref.watch(boardSettingsProvider);
     final boardTheme = ref
         .read(boardSettingsRepository)
-        .getBoardColorEnum(boardSettingsValue.boardColor);
+        .getBoardTheme(boardSettingsValue.boardColor);
     final sideBarWidth = 20.w;
     final horizontalPadding = 48.sp * 2;
     final screenWidth = MediaQuery.of(context).size.width;
@@ -101,7 +101,8 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFEN> {
                     height: boardSize,
                     child: AbsorbPointer(
                       child: Board(
-                        theme: BoardTheme.blueGrey,
+                        // theme: BoardTheme.blueGrey,
+                        theme: boardTheme,
                         size: BoardSize.standard,
                         pieceSet: PieceSet.fromImageAssets(
                           folder: 'assets/pngs/pieces/',
