@@ -30,6 +30,7 @@ class GamesTourModel {
   final GameStatus gameStatus;
   final String? fen;
   final String? pgn;
+  final String? lastMove;
   final int? boardNr;
 
   GamesTourModel({
@@ -39,6 +40,7 @@ class GamesTourModel {
     required this.whiteTimeDisplay,
     required this.blackTimeDisplay,
     required this.gameStatus,
+    this.lastMove,
     this.fen,
     this.pgn,
     this.boardNr,
@@ -51,6 +53,7 @@ class GamesTourModel {
     String? whiteTimeDisplay,
     String? blackTimeDisplay,
     GameStatus? gameStatus,
+    String? lastMove,
     String? fen,
     String? pgn,
     int? boardNr,
@@ -62,6 +65,7 @@ class GamesTourModel {
       whiteTimeDisplay: whiteTimeDisplay ?? this.whiteTimeDisplay,
       blackTimeDisplay: blackTimeDisplay ?? this.blackTimeDisplay,
       gameStatus: gameStatus ?? this.gameStatus,
+      lastMove: lastMove ?? this.lastMove,
       fen: fen ?? this.fen,
       pgn: pgn ?? this.pgn,
       boardNr: boardNr ?? this.boardNr,
@@ -86,6 +90,7 @@ class GamesTourModel {
       gameStatus: GameStatus.fromString(game.status),
       fen: game.fen,
       pgn: game.pgn,
+      lastMove: game.lastMove,
       boardNr: game.boardNr,
     );
   }
@@ -142,8 +147,6 @@ class PlayerCard {
   }
 
   String get displayName => name;
-
-  String get displayTitle => '$title $rating';
 }
 
 // models/game_status.dart

@@ -175,13 +175,11 @@ class Player {
   Map<String, dynamic> toJson() {
     return {
       'name': name,
-      if (title != null) 'title': title,
+      'title': title,
       'rating': rating,
       'fideId': fideId,
       'fed': fed,
       'clock': clock,
     };
   }
-
-  String get displayName => title != null ? '$title $name' : name;
 }
