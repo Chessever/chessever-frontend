@@ -51,7 +51,8 @@ class GameCard extends StatelessWidget {
                   width: MediaQuery.of(context).size.width * (30 / 100),
                   child: _GamesRound(
                     playerName: gamesTourModel.whitePlayer.name,
-                    playerRank: gamesTourModel.whitePlayer.displayTitle,
+                    playerRank:
+                        '${gamesTourModel.whitePlayer.title} ${gamesTourModel.whitePlayer.rating}',
                     countryCode: gamesTourModel.whitePlayer.countryCode,
                   ),
                 ),
@@ -66,7 +67,8 @@ class GameCard extends StatelessWidget {
                   width: MediaQuery.of(context).size.width * (30 / 100),
                   child: _GamesRound(
                     playerName: gamesTourModel.blackPlayer.name,
-                    playerRank: gamesTourModel.blackPlayer.displayTitle,
+                    playerRank:
+                        '${gamesTourModel.blackPlayer.title} ${gamesTourModel.blackPlayer.rating}',
                     countryCode: gamesTourModel.blackPlayer.countryCode,
                   ),
                 ),
@@ -190,7 +192,7 @@ class GameCard extends StatelessWidget {
                                   child: _GamesRound(
                                     playerName: gamesTourModel.whitePlayer.name,
                                     playerRank:
-                                        gamesTourModel.whitePlayer.displayTitle,
+                                        '${gamesTourModel.whitePlayer.title} ${gamesTourModel.whitePlayer.rating}',
                                     countryCode:
                                         gamesTourModel.whitePlayer.countryCode,
                                   ),
@@ -213,7 +215,7 @@ class GameCard extends StatelessWidget {
                                   child: _GamesRound(
                                     playerName: gamesTourModel.blackPlayer.name,
                                     playerRank:
-                                        gamesTourModel.blackPlayer.displayTitle,
+                                        '${gamesTourModel.blackPlayer.title} ${gamesTourModel.blackPlayer.rating}',
                                     countryCode:
                                         gamesTourModel.blackPlayer.countryCode,
                                   ),

@@ -4,10 +4,21 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'dart:convert';
 
-import 'package:squares/squares.dart';
-
 // Add an enum for board colors
 enum BoardColor { defaultColor, brown, grey, green }
+
+// Chess board theme class - ADD THIS CLASS
+class ChessBoardTheme {
+  const ChessBoardTheme({
+    required this.lightSquareColor,
+    required this.darkSquareColor,
+    required this.name,
+  });
+
+  final Color lightSquareColor;
+  final Color darkSquareColor;
+  final String name;
+}
 
 final boardSettingsRepository = AutoDisposeProvider<_BoardSettingsRepository>((
   ref,
@@ -53,19 +64,38 @@ class _BoardSettingsRepository {
     }
   }
 
-  BoardTheme getBoardTheme(Color color) {
-    final boardColor = getBoardColorEnum(color);
-    switch (boardColor) {
+  // Get chess board theme based on BoardColor
+  ChessBoardTheme getBoardTheme(Color boardColor) {
+    final boardColorEnum = getBoardColorEnum(boardColor);
+
+    switch (boardColorEnum) {
       case BoardColor.defaultColor:
-        return BoardTheme.blueGrey;
+        return const ChessBoardTheme(
+          lightSquareColor: Color(0xFFD1E9E9), // Light grey-white
+          darkSquareColor: Color(0xFF6B939F), // Your default teal color
+          name: 'Default',
+        );
+
       case BoardColor.brown:
-        return BoardTheme.brown;
+        return const ChessBoardTheme(
+          lightSquareColor: Color(0xFFF0D9B5), // Classic chess.com light brown
+          darkSquareColor: Color(0xFFB58863), // Classic chess.com dark brown
+          name: 'Brown',
+        );
+
       case BoardColor.grey:
-        return BoardTheme.dart;
+        return const ChessBoardTheme(
+          lightSquareColor: Color(0xFFF5F5F5), // Light grey
+          darkSquareColor: Color(0xFF9E9E9E), // Medium grey
+          name: 'Grey',
+        );
+
       case BoardColor.green:
-        return BoardTheme.pink;
-      default:
-        return BoardTheme.brown;
+        return const ChessBoardTheme(
+          lightSquareColor: Color(0xFFEEFFEE), // Very light green
+          darkSquareColor: Color(0xFF4CAF50), // Material green
+          name: 'Green',
+        );
     }
   }
 

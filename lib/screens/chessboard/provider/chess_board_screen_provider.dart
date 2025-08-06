@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:chess/chess.dart' as chess;
-import 'package:square_bishop/square_bishop.dart' as square_bishop;
+import 'package:advanced_chess_board/chess_board_controller.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state.dart';
@@ -69,56 +69,161 @@ class ChessBoardScreenNotifier
   void _initializeState() {
     print("My Current PGN: \n ${game.gameId} \n ${game.pgn}");
     final chessGame = chess.Chess();
+    final chessBoardController = ChessBoardController();
 
     // Load PGN if available
     if (game.pgn != null && game.pgn!.isNotEmpty) {
       chessGame.load_pgn(game.pgn!);
+      chessBoardController.loadGameFromFEN(chessGame.fen);
     }
 
-    final squaresState = square_bishop.buildSquaresState(fen: chessGame.fen);
-
-    // Get move history
+    // Get move history - FIXED: Use proper UCI format
     final allMoves = <String>[];
     final sanMoves = <String>[];
 
-    // Reset to start and collect moves
-    final tempGame = chess.Chess();
     if (game.pgn != null && game.pgn!.isNotEmpty) {
+      final tempGame = chess.Chess();
       tempGame.load_pgn(game.pgn!);
       final history = tempGame.getHistory({'verbose': true});
 
       for (var move in history) {
-        allMoves.add(move['lan'] ?? move['from'] + move['to']);
+        // Use UCI format for moves (e2e4 format)
+        final from = move['from'] ?? '';
+        final to = move['to'] ?? '';
+        final promotion = move['promotion'] ?? '';
+
+        String uciMove = '$from$to';
+        if (promotion.isNotEmpty) {
+          uciMove += promotion.toLowerCase();
+        }
+
+        allMoves.add(uciMove);
         sanMoves.add(move['san'] ?? '');
       }
     }
 
-    final currentMoveIndex =
-        (state.value != null &&
-                state.value?.currentMoveIndex != allMoves.length)
-            ? state.value!.currentMoveIndex
-            : allMoves.length;
+    final currentMoveIndex = allMoves.length;
 
     state = AsyncValue.data(
       ChessBoardState(
         game: chessGame,
-        squaresState: squaresState!,
+        chessBoardController: chessBoardController,
         allMoves: allMoves,
         sanMoves: sanMoves,
         currentMoveIndex: currentMoveIndex,
         isPlaying: false,
         isBoardFlipped: false,
         evaluations: 0.0,
-        lastUpdatedGameIndex: null,
-        lastUpdateTime: null,
       ),
     );
 
     _updateEvaluation();
   }
 
-  static String _cleanPgnData(String pgn) {
-    return pgn.replaceAll(RegExp(r'^\[Variant.*\r?\n', multiLine: true), '');
+  // Enhanced move methods with proper state management
+  void moveForward() {
+    final st = state.value!;
+    if (st.currentMoveIndex >= st.allMoves.length) return;
+
+    // Create new game instance to ensure state change detection
+    final newGame = chess.Chess();
+    newGame.load(st.game.fen);
+
+    // Replay moves up to the next one
+    for (int i = 0; i <= st.currentMoveIndex; i++) {
+      if (i < st.allMoves.length) {
+        newGame.move(st.allMoves[i]);
+      }
+    }
+
+    // Update controller with new position
+    st.chessBoardController.loadGameFromFEN(newGame.fen);
+
+    state = AsyncValue.data(
+      st.copyWith(
+        game: newGame,
+        currentMoveIndex: st.currentMoveIndex + 1,
+      ),
+    );
+    _updateEvaluation();
+  }
+
+  void moveBackward() {
+    final st = state.value!;
+    if (st.currentMoveIndex <= 0) return;
+
+    // Create new game instance
+    final newGame = chess.Chess();
+    newGame.load(st.game.fen);
+
+    // Replay moves up to previous position
+    for (int i = 0; i < st.currentMoveIndex - 1; i++) {
+      if (i < st.allMoves.length) {
+        newGame.move(st.allMoves[i]);
+      }
+    }
+
+    // Update controller with new position
+    st.chessBoardController.loadGameFromFEN(newGame.fen);
+
+    state = AsyncValue.data(
+      st.copyWith(
+        game: newGame,
+        currentMoveIndex: st.currentMoveIndex - 1,
+      ),
+    );
+    _updateEvaluation();
+  }
+
+  void navigateToMove(int targetMoveIndex) {
+    final st = state.value!;
+    if (targetMoveIndex < 0 || targetMoveIndex >= st.allMoves.length) return;
+    if (targetMoveIndex == st.currentMoveIndex - 1) return;
+
+    if (st.isPlaying) pauseGame();
+
+    // Create new game instance
+    final newGame = chess.Chess();
+    newGame.load(st.game.fen);
+
+    // Replay moves up to target position
+    for (int i = 0; i <= targetMoveIndex; i++) {
+      if (i < st.allMoves.length) {
+        newGame.move(st.allMoves[i]);
+      }
+    }
+
+    // Update controller with new position
+    st.chessBoardController.loadGameFromFEN(newGame.fen);
+
+    state = AsyncValue.data(
+      st.copyWith(
+        game: newGame,
+        currentMoveIndex: targetMoveIndex + 1,
+      ),
+    );
+    _updateEvaluation();
+  }
+
+  void resetGame() {
+    final st = state.value!;
+    st.autoPlayTimer?.cancel();
+
+    final newGame = chess.Chess();
+    if (game.pgn != null && game.pgn!.isNotEmpty) {
+      newGame.load_pgn(game.pgn!);
+    }
+
+    st.chessBoardController.loadGameFromFEN(newGame.fen);
+
+    state = AsyncValue.data(
+      st.copyWith(
+        game: newGame,
+        isPlaying: false,
+        currentMoveIndex: 0,
+        autoPlayTimer: null,
+      ),
+    );
   }
 
   // Long press navigation methods
@@ -126,10 +231,8 @@ class ChessBoardScreenNotifier
     if (_isLongPressing) return;
 
     _isLongPressing = true;
-    // First move immediately
     moveForward();
 
-    // Then continue with timer
     _longPressTimer = Timer.periodic(const Duration(milliseconds: 150), (
       timer,
     ) {
@@ -145,10 +248,8 @@ class ChessBoardScreenNotifier
     if (_isLongPressing) return;
 
     _isLongPressing = true;
-    // First move immediately
     moveBackward();
 
-    // Then continue with timer
     _longPressTimer = Timer.periodic(const Duration(milliseconds: 150), (
       timer,
     ) {
@@ -171,103 +272,15 @@ class ChessBoardScreenNotifier
   @override
   void dispose() {
     _longPressTimer?.cancel();
-    state.value?.autoPlayTimer?.cancel();
+    state.value?.dispose();
     super.dispose();
   }
 
-  void moveForward() {
-    final st = state.value!;
-    if (st.currentMoveIndex >= st.allMoves.length) return;
-
-    final moveResult = st.game.move(st.allMoves[st.currentMoveIndex]);
-    if (moveResult == null) return; // Invalid move
-
-    final squaresState = square_bishop.buildSquaresState(fen: st.game.fen);
-
+  void flipBoard(int gameIndex) {
+    final newIsBoardFlipped = !state.value!.isBoardFlipped;
     state = AsyncValue.data(
-      st.copyWith(
-        currentMoveIndex: st.currentMoveIndex + 1,
-        squaresState: squaresState,
-      ),
+      state.value!.copyWith(isBoardFlipped: newIsBoardFlipped),
     );
-    _updateEvaluation();
-  }
-
-  void moveBackward() {
-    final st = state.value!;
-    if (st.game.history.isEmpty) return;
-
-    st.game.undo();
-
-    final squaresState = square_bishop.buildSquaresState(fen: st.game.fen);
-
-    state = AsyncValue.data(
-      st.copyWith(
-        currentMoveIndex: st.currentMoveIndex - 1,
-        squaresState: squaresState,
-      ),
-    );
-    _updateEvaluation();
-  }
-
-  // Fix in ChessBoardScreenNotifier
-  void navigateToMove(int targetMoveIndex) {
-    final st = state.value!;
-    final current = st.currentMoveIndex - 1;
-    if (targetMoveIndex == current) return;
-
-    if (st.isPlaying) pauseGame();
-
-    // Reset to start position
-    st.game.reset();
-
-    // Replay to desired index
-    for (var i = 0; i <= targetMoveIndex; i++) {
-      if (i < st.allMoves.length) {
-        final moveResult = st.game.move(st.allMoves[i]);
-        if (moveResult == null) break; // Stop if invalid move
-      }
-    }
-
-    final squaresState = square_bishop.buildSquaresState(fen: st.game.fen);
-
-    state = AsyncValue.data(
-      st.copyWith(
-        currentMoveIndex: targetMoveIndex + 1,
-        squaresState: squaresState,
-      ),
-    );
-
-    _updateEvaluation();
-  }
-
-  // Alternative: More explicit fix
-  void navigateToMoveFixed(int targetMoveIndex) {
-    final st = state.value!;
-    if (st.isPlaying) pauseGame();
-
-    // Reset to start position
-    st.game.reset();
-
-    // Play moves up to and INCLUDING the target move
-    for (var i = 0; i <= targetMoveIndex; i++) {
-      if (i < st.allMoves.length) {
-        final moveResult = st.game.move(st.allMoves[i]);
-        if (moveResult == null) break; // Stop if invalid move
-      }
-    }
-
-    // Update squares state with new position
-    final squaresState = square_bishop.buildSquaresState(fen: st.game.fen);
-
-    state = AsyncValue.data(
-      st.copyWith(
-        currentMoveIndex: targetMoveIndex + 1,
-        squaresState: squaresState!,
-      ),
-    );
-
-    _updateEvaluation();
   }
 
   void togglePlayPause() {
@@ -294,33 +307,6 @@ class ChessBoardScreenNotifier
         state.value!.copyWith(isPlaying: newIsPlaying, autoPlayTimer: null),
       );
     }
-  }
-
-  void resetGame() {
-    state.value!.autoPlayTimer?.cancel();
-    state.value!.game.reset();
-
-    final newIsPlaying = false;
-    final newCurrentMoveIndex = 0;
-    final squaresState = square_bishop.buildSquaresState(
-      fen: state.value!.game.fen,
-    );
-
-    state = AsyncValue.data(
-      state.value!.copyWith(
-        isPlaying: newIsPlaying,
-        currentMoveIndex: newCurrentMoveIndex,
-        autoPlayTimer: null,
-        squaresState: squaresState,
-      ),
-    );
-  }
-
-  void flipBoard(int gameIndex) {
-    final newIsBoardFlipped = !state.value!.isBoardFlipped;
-    state = AsyncValue.data(
-      state.value!.copyWith(isBoardFlipped: newIsBoardFlipped),
-    );
   }
 
   Future<void> _updateEvaluation() async {

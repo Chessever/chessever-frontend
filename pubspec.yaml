@@ -93,7 +93,9 @@ dependencies:
 
   #for launching url
   url_launcher: ^6.3.1
-  squares: ^1.2.1
+  advanced_chess_board:
+    path : advanced_chess_board
+
   chess: ^0.8.1
   stockfish: ^1.7.1
   flutter_local_notifications: ^19.3.0
@@ -142,20 +144,6 @@ flutter:
     - assets/launch.jpg
     - assets/app_icon.png
     - .env
-
-    ## pieces svg
-    - assets/pngs/pieces/bB.png
-    - assets/pngs/pieces/bK.png
-    - assets/pngs/pieces/bN.png
-    - assets/pngs/pieces/bP.png
-    - assets/pngs/pieces/bQ.png
-    - assets/pngs/pieces/bR.png
-    - assets/pngs/pieces/wB.png
-    - assets/pngs/pieces/wK.png
-    - assets/pngs/pieces/wN.png
-    - assets/pngs/pieces/wP.png
-    - assets/pngs/pieces/wQ.png
-    - assets/pngs/pieces/wR.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
