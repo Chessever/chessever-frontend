@@ -1,12 +1,11 @@
 import 'dart:async';
-import 'package:square_bishop/square_bishop.dart' as square_bishop;
 import 'package:chess/chess.dart' as chess;
+import 'package:advanced_chess_board/chess_board_controller.dart';
 
-
-// State class for chess board
+// Cleaned up State class for chess board
 class ChessBoardState {
   final chess.Chess game;
-  final square_bishop.SquaresState squaresState;
+  final ChessBoardController chessBoardController;
   final List<String> allMoves;
   final List<String> sanMoves;
   final int currentMoveIndex;
@@ -14,12 +13,10 @@ class ChessBoardState {
   final bool isBoardFlipped;
   final double evaluations;
   final Timer? autoPlayTimer;
-  final int? lastUpdatedGameIndex;
-  final DateTime? lastUpdateTime;
 
   ChessBoardState({
     required this.game,
-    required this.squaresState,
+    required this.chessBoardController,
     required this.allMoves,
     required this.sanMoves,
     required this.currentMoveIndex,
@@ -27,13 +24,11 @@ class ChessBoardState {
     required this.isBoardFlipped,
     required this.evaluations,
     this.autoPlayTimer,
-    this.lastUpdatedGameIndex,
-    this.lastUpdateTime,
   });
 
   ChessBoardState copyWith({
     chess.Chess? game,
-    square_bishop.SquaresState? squaresState,
+    ChessBoardController? chessBoardController,
     List<String>? allMoves,
     List<String>? sanMoves,
     int? currentMoveIndex,
@@ -41,13 +36,10 @@ class ChessBoardState {
     bool? isBoardFlipped,
     double? evaluations,
     Timer? autoPlayTimer,
-    bool? isConnected,
-    String? lastError,
-    int? lastUpdatedGameIndex,
-    DateTime? lastUpdateTime,
   }) {
     return ChessBoardState(
       game: game ?? this.game,
+      chessBoardController: chessBoardController ?? this.chessBoardController,
       allMoves: allMoves ?? this.allMoves,
       sanMoves: sanMoves ?? this.sanMoves,
       currentMoveIndex: currentMoveIndex ?? this.currentMoveIndex,
@@ -55,9 +47,11 @@ class ChessBoardState {
       isBoardFlipped: isBoardFlipped ?? this.isBoardFlipped,
       evaluations: evaluations ?? this.evaluations,
       autoPlayTimer: autoPlayTimer ?? this.autoPlayTimer,
-      lastUpdatedGameIndex: lastUpdatedGameIndex,
-      lastUpdateTime: lastUpdateTime,
-      squaresState: squaresState ?? this.squaresState,
     );
+  }
+
+  void dispose() {
+    chessBoardController.dispose();
+    autoPlayTimer?.cancel();
   }
 }
