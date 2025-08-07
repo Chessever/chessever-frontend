@@ -7,27 +7,39 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class ChessBoardBottomNavBar extends ConsumerWidget {
-  final VoidCallback onLeftMove;
-  final VoidCallback onRightMove;
+  final int gameIndex;
+  final VoidCallback? onLeftMove;
+  final VoidCallback? onRightMove;
   final VoidCallback onPlayPause;
   final VoidCallback onReset;
   final VoidCallback onFlip;
+  final VoidCallback? onJumpToStart;
+  final VoidCallback? onJumpToEnd;
   final bool isPlaying;
   final int currentMove;
   final int totalMoves;
-  final int gameIndex; // Add this parameter
+  final bool canMoveForward;
+  final bool canMoveBackward;
+  final bool isAtStart;
+  final bool isAtEnd;
 
   const ChessBoardBottomNavBar({
     super.key,
+    required this.gameIndex,
     required this.onLeftMove,
     required this.onRightMove,
     required this.onPlayPause,
     required this.onReset,
     required this.onFlip,
+    this.onJumpToStart,
+    this.onJumpToEnd,
     required this.isPlaying,
     required this.currentMove,
     required this.totalMoves,
-    required this.gameIndex, // Add this parameter
+    required this.canMoveForward,
+    required this.canMoveBackward,
+    required this.isAtStart,
+    required this.isAtEnd,
   });
 
   @override
@@ -44,44 +56,42 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
             // Reset Game Button
-            ChessSvgBottomNavbar(svgPath: SvgAsset.laptop, onPressed: onReset),
+            ChessSvgBottomNavbar(
+              svgPath: SvgAsset.laptop,
+              onPressed: (){},
+            ),
 
             // Flip Board Button
-            ChessSvgBottomNavbar(svgPath: SvgAsset.refresh, onPressed: onFlip),
-
-            // Play/Pause Button
-            // ChessIconBottomNavbar(
-            //   iconData:
-            //       isPlaying
-            //           ? Icons.pause_circle_outline
-            //           : Icons.play_circle_outline,
-            //   onPressed: onPlayPause,
-            // ),
+            ChessSvgBottomNavbar(
+              svgPath: SvgAsset.refresh,
+              onPressed: onFlip,
+            ),
 
             // Previous Move Button with Long Press
             ChessSvgBottomNavbarWithLongPress(
               svgPath: SvgAsset.left_arrow,
-              onPressed: currentMove > 0 ? onLeftMove : null,
-              onLongPressStart:
-                  currentMove > 0
-                      ? () => notifier.startLongPressBackward()
-                      : null,
+              onPressed: canMoveBackward ? onLeftMove : null,
+              onLongPressStart: canMoveBackward
+                  ? () => notifier.startLongPressBackward()
+                  : null,
               onLongPressEnd: () => notifier.stopLongPress(),
             ),
 
             // Next Move Button with Long Press
             ChessSvgBottomNavbarWithLongPress(
               svgPath: SvgAsset.right_arrow,
-              onPressed: currentMove < totalMoves ? onRightMove : null,
-              onLongPressStart:
-                  currentMove < totalMoves
-                      ? () => notifier.startLongPressForward()
-                      : null,
+              onPressed: canMoveForward ? onRightMove : null,
+              onLongPressStart: canMoveForward
+                  ? () => notifier.startLongPressForward()
+                  : null,
               onLongPressEnd: () => notifier.stopLongPress(),
             ),
 
             // Chat Button
-            ChessSvgBottomNavbar(svgPath: SvgAsset.chat, onPressed: () {}),
+            ChessSvgBottomNavbar(
+              svgPath: SvgAsset.chat,
+              onPressed: () {},
+            ),
           ],
         ),
       ),

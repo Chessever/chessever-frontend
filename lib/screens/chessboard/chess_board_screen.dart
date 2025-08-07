@@ -76,7 +76,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
                   );
                 },
                 error: (e, _) => ErrorWidget(e),
-                loading: () => _LoadingScreen(),
+                loading: () => const _LoadingScreen(),
               );
         },
       ),
@@ -123,7 +123,7 @@ class _LoadingScreen extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             CircularProgressIndicator(color: kGreenColor),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             Text('Loading game...', style: AppTypography.textSmMedium),
           ],
         ),
@@ -132,6 +132,7 @@ class _LoadingScreen extends StatelessWidget {
   }
 }
 
+// Enhanced bottom navigation bar with proper state integration
 class _BottomNavBar extends ConsumerWidget {
   final int index;
   final ChessBoardState state;
@@ -140,22 +141,24 @@ class _BottomNavBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final notifier = ref.read(chessBoardScreenProvider(index).notifier);
+
     return ChessBoardBottomNavBar(
-      onFlip:
-          () => ref
-              .read(chessBoardScreenProvider(index).notifier)
-              .flipBoard(index),
-      onRightMove:
-          ref.read(chessBoardScreenProvider(index).notifier).moveForward,
-      onLeftMove:
-          ref.read(chessBoardScreenProvider(index).notifier).moveBackward,
-      onPlayPause:
-          ref.read(chessBoardScreenProvider(index).notifier).togglePlayPause,
-      onReset: ref.read(chessBoardScreenProvider(index).notifier).resetGame,
+      gameIndex: index,
+      onFlip: () => notifier.flipBoard(index),
+      onRightMove: state.canMoveForward ? () => notifier.moveForward() : null,
+      onLeftMove: state.canMoveBackward ? () => notifier.moveBackward() : null,
+      onPlayPause: () => notifier.togglePlayPause(),
+      onReset: () => notifier.resetGame(),
+      onJumpToStart: state.canMoveBackward ? () => notifier.resetGame() : null,
+      onJumpToEnd: state.canMoveForward ? () => notifier.jumpToEnd() : null,
       isPlaying: state.isPlaying,
       currentMove: state.currentMoveIndex,
-      totalMoves: state.allMoves.length,
-      gameIndex: index,
+      totalMoves: state.totalMoves,
+      canMoveForward: state.canMoveForward,
+      canMoveBackward: state.canMoveBackward,
+      isAtStart: state.isAtStart,
+      isAtEnd: state.isAtEnd,
     );
   }
 }
@@ -290,6 +293,7 @@ class _BoardWithSidebar extends StatelessWidget {
   }
 }
 
+// Enhanced chess board with integrated last move highlighting
 class _ChessBoard extends ConsumerWidget {
   final double size;
   final ChessBoardState chessBoardState;
@@ -308,23 +312,33 @@ class _ChessBoard extends ConsumerWidget {
         .read(boardSettingsRepository)
         .getBoardTheme(boardSettingsValue.boardColor);
 
+    // Get last move squares for highlighting
+    final (fromSquare, toSquare) = chessBoardState.lastMoveSquares;
+
     return SizedBox(
       height: size,
       width: size,
       child: AdvancedChessBoard(
         key: ValueKey(
-          'chess_board_${chessBoardState.currentMoveIndex}_${chessBoardState.game.fen}',
+          'chess_board_${chessBoardState.currentMoveIndex}_${chessBoardState.currentPosition.fen}',
         ),
         controller: chessBoardState.chessBoardController,
         lightSquareColor: boardTheme.lightSquareColor,
         darkSquareColor: boardTheme.darkSquareColor,
         boardOrientation: isFlipped ? PlayerColor.black : PlayerColor.white,
+        enableMoves: false,
+        // Read-only for game viewing
         highlightLastMove: true,
+        lastMoveFrom: fromSquare,
+        lastMoveTo: toSquare,
+        lastMoveFromColor: kPrimaryColor,
+        lastMoveToColor: kPrimaryColor,
       ),
     );
   }
 }
 
+// Enhanced moves display with proper highlighting and navigation
 class _MovesDisplay extends ConsumerWidget {
   final int index;
   final ChessBoardState state;
@@ -333,70 +347,67 @@ class _MovesDisplay extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final notifier = ref.read(chessBoardScreenProvider(index).notifier);
+
+    if (state.sanMoves.isEmpty) {
+      return Container(
+        alignment: Alignment.center,
+        padding: EdgeInsets.all(20.sp),
+        child: Text(
+          "No Moves Made yet!",
+          style: AppTypography.textXsMedium.copyWith(
+            color: kWhiteColor,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      );
+    }
+
     return Container(
-      alignment:
-          state.sanMoves.isEmpty ? Alignment.center : Alignment.centerLeft,
+      alignment: Alignment.centerLeft,
       padding: EdgeInsets.all(20.sp),
       child: Wrap(
         spacing: 2.sp,
         runSpacing: 2.sp,
         children:
-            state.sanMoves.isNotEmpty
-                ? state.sanMoves.asMap().entries.map((entry) {
-                  final moveIndex = entry.key;
-                  final move = entry.value;
-                  final isCurrentMove = moveIndex == state.currentMoveIndex - 1;
-                  final fullMoveNumber = (moveIndex / 2).floor() + 1;
-                  final isWhiteMove = moveIndex % 2 == 0;
+            state.sanMoves.asMap().entries.map((entry) {
+              final moveIndex = entry.key;
+              final move = entry.value;
 
-                  return GestureDetector(
-                    onTap:
-                        () => ref
-                            .read(chessBoardScreenProvider(index).notifier)
-                            .navigateToMove(moveIndex),
-                    child: Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 6.sp,
-                        vertical: 2.sp,
-                      ),
-                      decoration: BoxDecoration(
-                        color:
-                            isCurrentMove
-                                ? kWhiteColor70.withOpacity(0.4)
-                                : Colors.transparent,
-                        borderRadius: BorderRadius.circular(4.sp),
-                        border:
-                            isCurrentMove
-                                ? Border.all(color: kWhiteColor, width: 0.5)
-                                : Border.all(
-                                  color: Colors.transparent,
-                                  width: 0.5,
-                                ),
-                      ),
-                      child: Text(
-                        isWhiteMove ? '$fullMoveNumber. $move' : move,
-                        style: AppTypography.textXsMedium.copyWith(
-                          color: ref
-                              .read(chessBoardScreenProvider(index).notifier)
-                              .getMoveColor(move, moveIndex),
-                          fontWeight:
-                              isCurrentMove
-                                  ? FontWeight.bold
-                                  : FontWeight.normal,
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList()
-                : [
-                  Text(
-                    "No Moves Made yet!",
-                    style: AppTypography.textXsMedium.copyWith(
-                      color: kWhiteColor,
-                      fontWeight: FontWeight.bold,
+              // Check if this move is currently displayed on board
+              final isCurrentMove = moveIndex == state.currentMoveIndex - 1;
+              final fullMoveNumber = (moveIndex / 2).floor() + 1;
+              final isWhiteMove = moveIndex % 2 == 0;
+
+              return GestureDetector(
+                onTap: () => notifier.navigateToMove(moveIndex),
+                child: Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 6.sp,
+                    vertical: 2.sp,
+                  ),
+                  decoration: BoxDecoration(
+                    color:
+                        isCurrentMove
+                            ? kWhiteColor70.withOpacity(0.4)
+                            : Colors.transparent,
+                    borderRadius: BorderRadius.circular(4.sp),
+                    border: Border.all(
+                      color: isCurrentMove ? kWhiteColor : Colors.transparent,
+                      width: 0.5,
                     ),
                   ),
-                ],
+                  child: Text(
+                    isWhiteMove ? '$fullMoveNumber. $move' : move,
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: notifier.getMoveColor(move, moveIndex),
+                      fontWeight:
+                          isCurrentMove ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
       ),
     );
   }

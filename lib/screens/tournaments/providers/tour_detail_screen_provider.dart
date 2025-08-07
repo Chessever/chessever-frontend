@@ -105,15 +105,21 @@ class TourDetailScreenProvider
         tours: tourModels,
       );
 
-      state = AsyncValue.data(tourEventCardModel);
+      if (mounted) {
+        state = AsyncValue.data(tourEventCardModel);
+      }
     } catch (e, st) {
-      state = AsyncValue.error(e, st);
+      if (mounted) {
+        state = AsyncValue.error(e, st);
+      }
     }
   }
 
   void updateSelection(String tourId) {
     final currentState = state.value!;
-    final selectedTour = currentState.tours.firstWhere((e) => e.tour.id == tourId);
+    final selectedTour = currentState.tours.firstWhere(
+      (e) => e.tour.id == tourId,
+    );
     ref.read(selectedTourIdProvider.notifier).state = selectedTour.tour.id;
     final tourEventCardModel = TourDetailViewModel(
       aboutTourModel: AboutTourModel.fromTour(selectedTour.tour),

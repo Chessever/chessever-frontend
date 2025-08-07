@@ -74,12 +74,15 @@ class AuthRepository {
         accessToken: accessToken,
       );
 
+      print('asim $response');
+
       final user = response.user;
       final session = response.session;
 
       if (user == null || session == null) {
         throw Exception('Failed to authenticate with Supabase');
       }
+
       await sessionManager.saveSession(session, user);
 
       return AppUser.fromSupabaseUser(user);
