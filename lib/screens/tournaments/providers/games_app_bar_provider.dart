@@ -4,6 +4,10 @@ import 'package:chessever2/screens/tournaments/providers/live_rounds_id_provider
 import 'package:chessever2/screens/tournaments/providers/tour_detail_screen_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+// Stores the currently selected round ID and whether the user has selected it
+final userSelectedRoundProvider =
+    StateProvider<({String id, bool userSelected})?>((ref) => null);
+
 final gamesAppBarProvider = AutoDisposeStateNotifierProvider<
   GamesAppBarNotifier,
   AsyncValue<GamesAppBarViewModel>
@@ -41,6 +45,7 @@ class GamesAppBarNotifier
       final rounds = await ref
           .read(roundRepositoryProvider)
           .getRoundsByTourId(tourId);
+
       final gamesAppBarModels =
           rounds
               .map((round) => GamesAppBarModel.fromRound(round, liveRounds))
@@ -50,21 +55,21 @@ class GamesAppBarNotifier
       String selectedId = gamesAppBarModels.first.id;
       bool userSelectedId = false;
 
-      // If user already selected a round, keep it
-      final currentState = state;
-      if (currentState is AsyncData<GamesAppBarViewModel> &&
-          currentState.value.userSelectedId) {
-        selectedId = currentState.value.selectedId;
+      // Check if user had previously selected a round
+      final userSelection = ref.read(userSelectedRoundProvider);
+      if (userSelection != null && userSelection.userSelected) {
+        selectedId = userSelection.id;
         userSelectedId = true;
       } else {
-        // Else auto-select live round if available
-        for (var a = 0; a < gamesAppBarModels.length; a++) {
-          if (liveRounds.contains(gamesAppBarModels[a].id)) {
-            selectedId = gamesAppBarModels[a].id;
+        // Auto-select a live round if available
+        for (final model in gamesAppBarModels) {
+          if (liveRounds.contains(model.id)) {
+            selectedId = model.id;
             break;
           }
         }
       }
+
       state = AsyncValue.data(
         GamesAppBarViewModel(
           gamesAppBarModels: gamesAppBarModels,
@@ -73,16 +78,24 @@ class GamesAppBarNotifier
         ),
       );
     } catch (e, st) {
-      state = AsyncValue.error(e, st);
+      if (mounted) {
+        state = AsyncValue.error(e, st);
+      }
     }
   }
 
   void selectNewRound(GamesAppBarModel gamesAppBarModel) {
+    // Persist user selection
+    ref.read(userSelectedRoundProvider.notifier).state = (
+      id: gamesAppBarModel.id,
+      userSelected: true,
+    );
+
+    // Update local state
     state = AsyncValue.data(
       GamesAppBarViewModel(
         gamesAppBarModels: state.value!.gamesAppBarModels,
         selectedId: gamesAppBarModel.id,
-        // If user selects a round, set userSelectedId to true
         userSelectedId: true,
       ),
     );

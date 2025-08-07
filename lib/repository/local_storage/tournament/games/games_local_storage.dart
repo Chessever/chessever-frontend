@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/utils/logger/logger.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -20,15 +21,22 @@ class _GamesLocalStorage {
 
   Future<List<Games>> fetchAndSaveGames(String tourId) async {
     try {
+      ref.read(loggerProvider).logInfo('Fetching games for tourId: $tourId');
+      
       final games = await ref
           .read(gameRepositoryProvider)
           .getGamesByTourId(tourId);
+
       final value = _encodeMyGamesList(games);
+
       await ref
           .read(sharedPreferencesRepository)
           .setStringList(getSaveKey(tourId), value);
+
       return games;
-    } catch (error, _) {
+    } catch (error, st) {
+      ref.read(loggerProvider).logError(error, st);
+
       return <Games>[];
     }
   }
@@ -57,7 +65,6 @@ class _GamesLocalStorage {
       return <Games>[];
     }
   }
-
 
   Future<List<Games>> getCountrymanGames(String countryCode) async {
     try {

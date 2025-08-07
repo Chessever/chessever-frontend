@@ -21,140 +21,135 @@ class GamesTourScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isChessBoardVisible = ref.watch(chessBoardVisibilityProvider);
+    final gamesAppBarAsync = ref.watch(gamesAppBarProvider);
 
-    return GestureDetector(
-      onTap: FocusScope.of(context).unfocus,
-      child: RefreshIndicator(
-        onRefresh: () async {
-          FocusScope.of(context).unfocus();
-          await ref.read(gamesTourScreenProvider.notifier).refreshGames();
-        },
-        color: kWhiteColor70,
-        backgroundColor: kDarkGreyColor,
-        displacement: 60.h,
-        strokeWidth: 3.w,
-        child: ref
-            .watch(gamesAppBarProvider)
-            .when(
-              data: (_) {
-                return ref
-                    .watch(gamesTourScreenProvider)
-                    .when(
-                      data: (data) {
-                        if (data.gamesTourModels.isEmpty) {
-                          return Center(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                EmptyWidget(
-                                  title:
-                                      "No games available yet. Check back soon or set a\nreminder for updates.",
-                                ),
-                              ],
-                            ),
-                          );
-                        }
+    // Wait until the AppBar is loaded, since gamesTourScreenProvider depends on it
+    return gamesAppBarAsync.when(
+      loading: () => const TourLoadingWidget(),
+      error: (_, __) => const GenericErrorWidget(),
+      data: (_) {
+        final gamesTourAsync = ref.watch(gamesTourScreenProvider);
 
-                        return ListView.builder(
-                          padding: EdgeInsets.only(
-                            left: 20.sp,
-                            right: 20.sp,
-                            top: 16.sp,
-                            bottom: MediaQuery.of(context).viewPadding.bottom,
-                          ),
-                          itemCount: data.gamesTourModels.length,
-                          itemBuilder: (context, index) {
-                            var gamesTourModel = data.gamesTourModels[index];
-
-                            // Update game with live FEN if ongoing
-                            if (gamesTourModel.gameStatus ==
-                                GameStatus.ongoing) {
-                              ref
-                                  .watch(
-                                    gameFenStreamProvider(
-                                      gamesTourModel.gameId,
-                                    ),
-                                  )
-                                  .whenOrNull(
-                                    data: (fen) {
-                                      if (fen != null) {
-                                        gamesTourModel = gamesTourModel
-                                            .copyWith(fen: fen);
-                                      }
-                                    },
-                                  );
-                            }
-
-                            return Padding(
-                              padding: EdgeInsets.only(bottom: 12.sp),
-                              child:
-                                  isChessBoardVisible
-                                      ? ChessBoardFromFEN(
-                                        gamesTourModel: gamesTourModel,
-                                        onChanged: () {
-                                          ref
-                                              .read(
-                                                chessboardViewFromProvider
-                                                    .notifier,
-                                              )
-                                              .state = ChessboardView.tour;
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder:
-                                                  (_) => ChessBoardScreen(
-                                                    games: data.gamesTourModels,
-                                                    currentIndex: index,
-                                                  ),
-                                            ),
-                                          );
-                                        },
-                                      )
-                                      : GameCard(
-                                        onTap: () {
-                                          ref
-                                              .read(
-                                                chessboardViewFromProvider
-                                                    .notifier,
-                                              )
-                                              .state = ChessboardView.tour;
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder:
-                                                  (_) => ChessBoardScreen(
-                                                    games: data.gamesTourModels,
-                                                    currentIndex: index,
-                                                  ),
-                                            ),
-                                          );
-                                        },
-                                        gamesTourModel: gamesTourModel,
-                                        pinnedIds: data.pinnedGamedIs,
-                                        onPinToggle: (gamesTourModel) async {
-                                          await ref
-                                              .read(
-                                                gamesTourScreenProvider
-                                                    .notifier,
-                                              )
-                                              .togglePinGame(
-                                                gamesTourModel.gameId,
-                                              );
-                                        },
-                                      ),
-                            );
-                          },
-                        );
-                      },
-                      error: (_, __) => GenericErrorWidget(),
-                      loading: () => TourLoadingWidget(),
-                    );
+        return gamesTourAsync.when(
+          loading: () => const TourLoadingWidget(),
+          error: (_, __) => const GenericErrorWidget(),
+          data: (data) {
+            return RefreshIndicator(
+              onRefresh: () async {
+                FocusScope.of(context).unfocus();
+                await ref.read(gamesTourScreenProvider.notifier).refreshGames();
               },
-              error: (_, __) => GenericErrorWidget(),
-              loading: () => TourLoadingWidget(),
-            ),
-      ),
+              color: kWhiteColor70,
+              backgroundColor: kDarkGreyColor,
+              displacement: 60.h,
+              strokeWidth: 3.w,
+              child:
+                  data.gamesTourModels.isEmpty
+                      ? Center(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: const [
+                            EmptyWidget(
+                              title:
+                                  "No games available yet. Check back soon or set a\nreminder for updates.",
+                            ),
+                          ],
+                        ),
+                      )
+                      : ListView.builder(
+                        padding: EdgeInsets.only(
+                          left: 20.sp,
+                          right: 20.sp,
+                          top: 16.sp,
+                          bottom: MediaQuery.of(context).viewPadding.bottom,
+                        ),
+                        itemCount: data.gamesTourModels.length,
+                        itemBuilder: (context, index) {
+                          var gamesTourModel = data.gamesTourModels[index];
+
+                          // Attach live FEN if ongoing
+                          if (gamesTourModel.gameStatus == GameStatus.ongoing) {
+                            ref
+                                .watch(
+                                  gameFenStreamProvider(gamesTourModel.gameId),
+                                )
+                                .whenOrNull(
+                                  data: (fen) {
+                                    if (fen != null) {
+                                      gamesTourModel = gamesTourModel.copyWith(
+                                        fen: fen,
+                                      );
+                                    }
+                                  },
+                                );
+                          }
+
+                          return Padding(
+                            padding: EdgeInsets.only(bottom: 12.sp),
+                            child:
+                                isChessBoardVisible
+                                    ? ChessBoardFromFEN(
+                                      gamesTourModel: gamesTourModel,
+                                      onChanged: () {
+                                        ref
+                                            .read(
+                                              chessboardViewFromProvider
+                                                  .notifier,
+                                            )
+                                            .state = ChessboardView.tour;
+
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder:
+                                                (_) => ChessBoardScreen(
+                                                  games: data.gamesTourModels,
+                                                  currentIndex: index,
+                                                ),
+                                          ),
+                                        );
+                                      },
+                                    )
+                                    : GameCard(
+                                      gamesTourModel: gamesTourModel,
+                                      pinnedIds: data.pinnedGamedIs,
+                                      onPinToggle: (gamesTourModel) async {
+                                        await ref
+                                            .read(
+                                              gamesTourScreenProvider.notifier,
+                                            )
+                                            .togglePinGame(
+                                              gamesTourModel.gameId,
+                                            );
+                                      },
+                                      onTap: () {
+                                        ref
+                                            .read(
+                                              chessboardViewFromProvider
+                                                  .notifier,
+                                            )
+                                            .state = ChessboardView.tour;
+
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder:
+                                                (_) => ChessBoardScreen(
+                                                  games: data.gamesTourModels,
+                                                  currentIndex: index,
+                                                ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                          );
+                        },
+                      ),
+            );
+          },
+        );
+      },
     );
   }
 }

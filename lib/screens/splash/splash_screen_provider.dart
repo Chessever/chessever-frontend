@@ -31,6 +31,8 @@ class _SplashScreenProvider {
     /// check if user   is already logged in
     final sessionManager = ref.read(sessionManagerProvider);
     final isLoggedIn = await sessionManager.isLoggedIn();
+    print('Is user logged in: $isLoggedIn');
+
     if (isLoggedIn) {
       Navigator.pushReplacementNamed(context, '/home_screen');
     } else {

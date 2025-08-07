@@ -35,10 +35,10 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFEN> {
   @override
   void initState() {
     super.initState();
-    final raw = widget.gamesTourModel.fen?.trim();
-    final fen = _validFenOrStart(raw);
 
-    chessBoardController = ChessBoardController()..loadGameFromFEN(fen);
+    chessBoardController =
+        ChessBoardController()
+          ..loadGameFromFEN(widget.gamesTourModel.fen ?? '');
     _lastMove = widget.gamesTourModel.lastMove;
   }
 
@@ -56,26 +56,6 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFEN> {
     super.dispose();
   }
 
-  String _validFenOrStart(String? fen) {
-    const start = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-    if (fen == null || fen.isEmpty) return start;
-    if (fen.split('/').length - 1 != 7) return start;
-    return fen;
-  }
-
-  /// Returns the pixel rectangle for an algebraic square (e.g. "e4").
-  Rect _squareRect(String alg, double boardSize) {
-    final file = alg.codeUnitAt(0) - 97; // a -> 0 … h -> 7
-    final rank = int.parse(alg.substring(1)) - 1;
-    final sq = boardSize / 8;
-    return Rect.fromLTWH(
-      file * sq,
-      (7 - rank) * sq,
-      sq,
-      sq,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final boardSettingsValue = ref.watch(boardSettingsProvider);
@@ -88,12 +68,12 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFEN> {
     final screenWidth = MediaQuery.of(context).size.width;
     final boardSize = screenWidth - sideBarWidth - horizontalPadding;
 
-    final toSquare =
-        _lastMove != null && _lastMove!.length >= 4
-            ? _lastMove!.substring(2, 4)
-            : null;
-    final highlightRect =
-        toSquare != null ? _squareRect(toSquare, boardSize) : null;
+    String? fromSquare;
+    String? toSquare;
+    if (_lastMove != null && _lastMove!.length >= 4) {
+      fromSquare = _lastMove!.substring(0, 2);
+      toSquare = _lastMove!.substring(2, 4);
+    }
 
     return Padding(
       padding: EdgeInsets.only(left: 24.sp, right: 24.sp, bottom: 8.sp),
@@ -128,33 +108,18 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFEN> {
                   SizedBox(
                     height: boardSize,
                     width: boardSize,
-                    child: Stack(
-                      children: [
-                        AbsorbPointer(
-                          child: AdvancedChessBoard(
-                            controller: chessBoardController,
-                            lightSquareColor: boardTheme.lightSquareColor,
-                            darkSquareColor: boardTheme.darkSquareColor,
-                            enableMoves: false,
-                            kingBackgroundColorOnCheckmate: kpinColor,
-                          ),
-                        ),
-                        if (highlightRect != null)
-                          Positioned(
-                            left:
-                                sideBarWidth +
-                                horizontalPadding / 2 +
-                                highlightRect.left,
-                            top: highlightRect.top,
-                            width: highlightRect.width,
-                            height: highlightRect.height,
-                            child: IgnorePointer(
-                              child: Container(
-                                color: kPrimaryColor.withOpacity(0.5),
-                              ),
-                            ),
-                          ),
-                      ],
+                    child: AbsorbPointer(
+                      child: AdvancedChessBoard(
+                        controller: chessBoardController,
+                        lightSquareColor: boardTheme.lightSquareColor,
+                        darkSquareColor: boardTheme.darkSquareColor,
+                        enableMoves: false,
+                        kingBackgroundColorOnCheckmate: kpinColor,
+                        lastMoveFrom: fromSquare,
+                        lastMoveTo: toSquare,
+                        lastMoveFromColor: kPrimaryColor,
+                        lastMoveToColor: kPrimaryColor,
+                      ),
                     ),
                   ),
                 ],
