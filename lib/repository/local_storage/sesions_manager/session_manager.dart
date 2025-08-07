@@ -13,9 +13,13 @@ class SessionManager {
 
   /// Save the session as JSON string
   Future<void> saveSession(Session session, User user) async {
+    print('Saving session: ${session.toJson()}');
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyPersistSession, jsonEncode(session.toJson()));
     await prefs.setString(_keyPersistUser, jsonEncode(user.toJson()));
+
+    print('Session saved: ${session.toJson()}');
   }
 
   /// Clear session from storage and Supabase

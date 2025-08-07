@@ -67,50 +67,51 @@ class ChessBoardScreenNotifier
   bool _isLongPressing = false;
 
   void _initializeState() {
-    print("My Current PGN: \n ${game.gameId} \n ${game.pgn}");
-    final chessGame = chess.Chess();
-    final chessBoardController = ChessBoardController();
+    print("Initializing game: ${game.gameId}\nPGN: ${game.pgn}");
 
-    // Load PGN if available
-    if (game.pgn != null && game.pgn!.isNotEmpty) {
-      chessGame.load_pgn(game.pgn!);
-      chessBoardController.loadGameFromFEN(chessGame.fen);
-    }
-
-    // Get move history - FIXED: Use proper UCI format
-    final allMoves = <String>[];
+    // Create base game from PGN
+    final baseGame = chess.Chess();
+    final uciMoves = <String>[];
     final sanMoves = <String>[];
 
     if (game.pgn != null && game.pgn!.isNotEmpty) {
-      final tempGame = chess.Chess();
-      tempGame.load_pgn(game.pgn!);
-      final history = tempGame.getHistory({'verbose': true});
+      try {
+        baseGame.load_pgn(game.pgn!);
 
-      for (var move in history) {
-        // Use UCI format for moves (e2e4 format)
-        final from = move['from'] ?? '';
-        final to = move['to'] ?? '';
-        final promotion = move['promotion'] ?? '';
+        // Extract moves from history
+        final history = baseGame.getHistory({'verbose': true});
+        for (var move in history) {
+          final from = move['from'] ?? '';
+          final to = move['to'] ?? '';
+          final promotion = move['promotion'] ?? '';
 
-        String uciMove = '$from$to';
-        if (promotion.isNotEmpty) {
-          uciMove += promotion.toLowerCase();
+          String uciMove = '$from$to';
+          if (promotion.isNotEmpty) {
+            uciMove += promotion.toLowerCase();
+          }
+
+          uciMoves.add(uciMove);
+          sanMoves.add(move['san'] ?? '');
         }
-
-        allMoves.add(uciMove);
-        sanMoves.add(move['san'] ?? '');
+      } catch (e) {
+        print('Error loading PGN: $e');
       }
     }
 
-    final currentMoveIndex = allMoves.length;
+    // Create controller and set to final position initially
+    final controller = ChessBoardController();
+    controller.loadGameFromFEN(baseGame.fen);
+
+    // Start at the end of the game
+    final initialMoveIndex = uciMoves.length;
 
     state = AsyncValue.data(
       ChessBoardState(
-        game: chessGame,
-        chessBoardController: chessBoardController,
-        allMoves: allMoves,
+        baseGame: baseGame,
+        chessBoardController: controller,
+        uciMoves: uciMoves,
         sanMoves: sanMoves,
-        currentMoveIndex: currentMoveIndex,
+        currentMoveIndex: initialMoveIndex,
         isPlaying: false,
         isBoardFlipped: false,
         evaluations: 0.0,
@@ -120,144 +121,141 @@ class ChessBoardScreenNotifier
     _updateEvaluation();
   }
 
-  // Enhanced move methods with proper state management
-  void moveForward() {
+  // Core navigation method - builds position from scratch
+  void _navigateToMoveIndex(int targetMoveIndex) {
     final st = state.value!;
-    if (st.currentMoveIndex >= st.allMoves.length) return;
 
-    // Create new game instance to ensure state change detection
-    final newGame = chess.Chess();
-    newGame.load(st.game.fen);
+    // Validate bounds
+    if (targetMoveIndex < 0 || targetMoveIndex > st.totalMoves) return;
+    if (targetMoveIndex == st.currentMoveIndex) return;
 
-    // Replay moves up to the next one
-    for (int i = 0; i <= st.currentMoveIndex; i++) {
-      if (i < st.allMoves.length) {
-        newGame.move(st.allMoves[i]);
+    // Build position by replaying moves from start
+    final positionGame = chess.Chess();
+
+    for (int i = 0; i < targetMoveIndex; i++) {
+      try {
+        positionGame.move(st.sanMoves[i]);
+      } catch (e) {
+        print('Error replaying move ${st.sanMoves[i]}: $e');
+        return;
       }
     }
 
-    // Update controller with new position
-    st.chessBoardController.loadGameFromFEN(newGame.fen);
+    // Create new controller with the position
+    final newController = ChessBoardController();
+    newController.loadGameFromFEN(positionGame.fen);
 
     state = AsyncValue.data(
       st.copyWith(
-        game: newGame,
-        currentMoveIndex: st.currentMoveIndex + 1,
+        currentMoveIndex: targetMoveIndex,
+        chessBoardController: newController,
       ),
     );
+
     _updateEvaluation();
+  }
+
+  // Public navigation methods
+  void moveForward() {
+    final st = state.value!;
+    if (!st.canMoveForward) return;
+    _navigateToMoveIndex(st.currentMoveIndex + 1);
   }
 
   void moveBackward() {
     final st = state.value!;
-    if (st.currentMoveIndex <= 0) return;
-
-    // Create new game instance
-    final newGame = chess.Chess();
-    newGame.load(st.game.fen);
-
-    // Replay moves up to previous position
-    for (int i = 0; i < st.currentMoveIndex - 1; i++) {
-      if (i < st.allMoves.length) {
-        newGame.move(st.allMoves[i]);
-      }
-    }
-
-    // Update controller with new position
-    st.chessBoardController.loadGameFromFEN(newGame.fen);
-
-    state = AsyncValue.data(
-      st.copyWith(
-        game: newGame,
-        currentMoveIndex: st.currentMoveIndex - 1,
-      ),
-    );
-    _updateEvaluation();
+    if (!st.canMoveBackward) return;
+    _navigateToMoveIndex(st.currentMoveIndex - 1);
   }
 
-  void navigateToMove(int targetMoveIndex) {
-    final st = state.value!;
-    if (targetMoveIndex < 0 || targetMoveIndex >= st.allMoves.length) return;
-    if (targetMoveIndex == st.currentMoveIndex - 1) return;
-
-    if (st.isPlaying) pauseGame();
-
-    // Create new game instance
-    final newGame = chess.Chess();
-    newGame.load(st.game.fen);
-
-    // Replay moves up to target position
-    for (int i = 0; i <= targetMoveIndex; i++) {
-      if (i < st.allMoves.length) {
-        newGame.move(st.allMoves[i]);
-      }
-    }
-
-    // Update controller with new position
-    st.chessBoardController.loadGameFromFEN(newGame.fen);
-
-    state = AsyncValue.data(
-      st.copyWith(
-        game: newGame,
-        currentMoveIndex: targetMoveIndex + 1,
-      ),
-    );
-    _updateEvaluation();
+  void navigateToMove(int sanMoveIndex) {
+    // Convert SAN move index to position index
+    // sanMoveIndex 0 = first move, we want to be at position 1 (after first move)
+    _navigateToMoveIndex(sanMoveIndex + 1);
   }
 
   void resetGame() {
+    pauseGame();
+    _navigateToMoveIndex(0);
+  }
+
+  void jumpToEnd() {
     final st = state.value!;
-    st.autoPlayTimer?.cancel();
+    pauseGame();
+    _navigateToMoveIndex(st.totalMoves);
+  }
 
-    final newGame = chess.Chess();
-    if (game.pgn != null && game.pgn!.isNotEmpty) {
-      newGame.load_pgn(game.pgn!);
+  // Auto-play functionality
+  void togglePlayPause() {
+    final st = state.value!;
+
+    if (st.isPlaying) {
+      pauseGame();
+    } else {
+      startAutoPlay();
     }
+  }
 
-    st.chessBoardController.loadGameFromFEN(newGame.fen);
+  void startAutoPlay() {
+    final st = state.value!;
+    if (st.isAtEnd) return; // Can't play from end
+
+    final timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      final currentSt = state.value!;
+      if (currentSt.canMoveForward) {
+        moveForward();
+      } else {
+        // Reached end, stop auto-play
+        timer.cancel();
+        state = AsyncValue.data(
+          currentSt.copyWith(isPlaying: false, autoPlayTimer: null),
+        );
+      }
+    });
 
     state = AsyncValue.data(
-      st.copyWith(
-        game: newGame,
-        isPlaying: false,
-        currentMoveIndex: 0,
-        autoPlayTimer: null,
-      ),
+      st.copyWith(isPlaying: true, autoPlayTimer: timer),
     );
   }
 
-  // Long press navigation methods
+  void pauseGame() {
+    final st = state.value!;
+    if (st.isPlaying) {
+      st.autoPlayTimer?.cancel();
+      state = AsyncValue.data(
+        st.copyWith(isPlaying: false, autoPlayTimer: null),
+      );
+    }
+  }
+
+  // Long press navigation
   void startLongPressForward() {
     if (_isLongPressing) return;
-
     _isLongPressing = true;
-    moveForward();
 
-    _longPressTimer = Timer.periodic(const Duration(milliseconds: 150), (
-      timer,
-    ) {
-      if (state.value!.currentMoveIndex >= state.value!.allMoves.length) {
+    moveForward();
+    _longPressTimer = Timer.periodic(const Duration(milliseconds: 150), (_) {
+      final st = state.value!;
+      if (st.canMoveForward) {
+        moveForward();
+      } else {
         stopLongPress();
-        return;
       }
-      moveForward();
     });
   }
 
   void startLongPressBackward() {
     if (_isLongPressing) return;
-
     _isLongPressing = true;
-    moveBackward();
 
-    _longPressTimer = Timer.periodic(const Duration(milliseconds: 150), (
-      timer,
-    ) {
-      if (state.value!.game.history.isEmpty) {
+    moveBackward();
+    _longPressTimer = Timer.periodic(const Duration(milliseconds: 150), (_) {
+      final st = state.value!;
+      if (st.canMoveBackward) {
+        moveBackward();
+      } else {
         stopLongPress();
-        return;
       }
-      moveBackward();
     });
   }
 
@@ -269,66 +267,37 @@ class ChessBoardScreenNotifier
 
   bool get isLongPressing => _isLongPressing;
 
-  @override
-  void dispose() {
-    _longPressTimer?.cancel();
-    state.value?.dispose();
-    super.dispose();
-  }
-
+  // Board orientation
   void flipBoard(int gameIndex) {
-    final newIsBoardFlipped = !state.value!.isBoardFlipped;
+    final st = state.value!;
     state = AsyncValue.data(
-      state.value!.copyWith(isBoardFlipped: newIsBoardFlipped),
+      st.copyWith(isBoardFlipped: !st.isBoardFlipped),
     );
   }
 
-  void togglePlayPause() {
-    final newIsPlaying = !state.value!.isPlaying;
-
-    if (newIsPlaying) {
-      final timer = Timer.periodic(Duration(seconds: 1), (timer) {
-        if (state.value!.currentMoveIndex < state.value!.allMoves.length) {
-          moveForward();
-        } else {
-          final stopPlaying = false;
-          state = AsyncValue.data(
-            state.value!.copyWith(isPlaying: stopPlaying, autoPlayTimer: null),
-          );
-          timer.cancel();
-        }
-      });
-      state = AsyncValue.data(
-        state.value!.copyWith(isPlaying: newIsPlaying, autoPlayTimer: timer),
-      );
-    } else {
-      state.value!.autoPlayTimer?.cancel();
-      state = AsyncValue.data(
-        state.value!.copyWith(isPlaying: newIsPlaying, autoPlayTimer: null),
-      );
-    }
-  }
-
+  // Evaluation
   Future<void> _updateEvaluation() async {
     const debounceTag = 'eval-debounce';
     EasyDebounce.debounce(
       debounceTag,
-      const Duration(milliseconds: 500),
+      const Duration(milliseconds: 300),
       () async {
         try {
-          final fen = state.value!.game.fen;
+          final st = state.value!;
+          final fen = st.currentPosition.fen;
           final ev = await StockfishSingleton().evaluatePosition(fen);
-          print('Evaluation : $ev');
+
           if (mounted) {
-            state = AsyncValue.data(state.value!.copyWith(evaluations: ev));
+            state = AsyncValue.data(st.copyWith(evaluations: ev));
           }
-        } catch (_) {
-          // Silently ignore
+        } catch (e) {
+          print('Evaluation error: $e');
         }
       },
     );
   }
 
+  // Utility methods for UI
   double getWhiteRatio(double eval) {
     return (eval.clamp(-5.0, 5.0) + 5.0) / 10.0;
   }
@@ -336,22 +305,28 @@ class ChessBoardScreenNotifier
   double getBlackRatio(double eval) => 1.0 - getWhiteRatio(eval);
 
   Color getMoveColor(String move, int moveIndex) {
-    if (moveIndex == state.value!.currentMoveIndex - 1) {
+    final st = state.value!;
+
+    // Current move gets white color
+    if (moveIndex == st.currentMoveIndex - 1) {
       return kWhiteColor;
     }
+
+    // Capture moves get pink
     if (move.contains('x')) return kLightPink;
-    if (moveIndex < state.value!.currentMoveIndex - 1) {
+
+    // Past moves get white, future moves get dimmed
+    if (moveIndex < st.currentMoveIndex - 1) {
       return kWhiteColor;
     }
+
     return kWhiteColor70;
   }
 
-  void pauseGame() {
-    if (state.value!.isPlaying) {
-      state.value!.autoPlayTimer?.cancel();
-      state = AsyncValue.data(
-        state.value!.copyWith(isPlaying: false, autoPlayTimer: null),
-      );
-    }
+  @override
+  void dispose() {
+    _longPressTimer?.cancel();
+    state.value?.dispose();
+    super.dispose();
   }
 }
