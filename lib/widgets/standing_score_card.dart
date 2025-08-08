@@ -11,6 +11,9 @@ class StandingScoreCard extends StatelessWidget {
   final int score; // Current score/rating
   final int? scoreChange; // Score change (can be positive or negative)
   final String? matchScore; // Match score (e.g., "2.5/3")
+  final int index;
+  final bool isFirst;
+  final bool isLast;
 
   const StandingScoreCard({
     super.key,
@@ -20,20 +23,34 @@ class StandingScoreCard extends StatelessWidget {
     this.title, // Changed to optional parameter
     this.scoreChange,
     this.matchScore,
+    required this.index,
+    required this.isFirst,
+    required this.isLast,
   });
 
   @override
   Widget build(BuildContext context) {
+    final Color backgroundColor =
+        index.isOdd ? kBlack2Color : Color(0xff111111);
+    BorderRadius? borderRadius;
+    if (isFirst) {
+      borderRadius = BorderRadius.only(
+        topLeft: Radius.circular(4.br),
+        topRight: Radius.circular(4.br),
+      );
+    } else if (isLast) {
+      borderRadius = BorderRadius.only(
+        bottomLeft: Radius.circular(4.br),
+        bottomRight: Radius.circular(4.br),
+      );
+    }
     return Container(
       alignment: Alignment.center,
-      height: 48.h,
+      height: 49.h,
       padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 4.sp),
       decoration: BoxDecoration(
-        color: kBlack2Color,
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(4.br),
-          topRight: Radius.circular(4.br),
-        ),
+        color: backgroundColor,
+        borderRadius: borderRadius,
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
