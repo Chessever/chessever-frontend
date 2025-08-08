@@ -93,8 +93,8 @@ class StandingsScreen extends ConsumerWidget {
                             .getValidCountryCode(player.countryCode);
                         return Padding(
                           padding: EdgeInsets.only(
-                            bottom: 16.sp,
-                            top: index == 0 ? 16.sp : 0,
+                            // bottom: 16.sp,
+                            // top: index == 0 ? 16.sp : 0,
                           ),
                           child: StandingScoreCard(
                             countryCode: validCountryCode,
@@ -103,6 +103,9 @@ class StandingsScreen extends ConsumerWidget {
                             score: player.score,
                             scoreChange: player.scoreChange,
                             matchScore: player.matchScore,
+                            index: index,
+                            isFirst: index == 0,
+                            isLast: index == data.length - 1,
                           ),
                         );
                       },
@@ -175,6 +178,9 @@ class _StandingScreenLoading extends StatelessWidget {
               score: player.score,
               scoreChange: player.scoreChange,
               matchScore: player.matchScore,
+              index: index,
+              isFirst: index == 0,
+              isLast: index == data.length - 1,
             ),
           ),
         );
