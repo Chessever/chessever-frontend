@@ -14,7 +14,7 @@ final Map<BottomNavBarItem, String> bottomNavBarIcons = {
 };
 
 final namesBottomNavBarIcons = {
-  BottomNavBarItem.tournaments: 'Tournaments',
+  BottomNavBarItem.tournaments: 'Events',
   BottomNavBarItem.calendar: 'Calendar',
   BottomNavBarItem.library: 'Library',
 };

@@ -165,10 +165,12 @@ class _AuthCountryDropdownWidget extends ConsumerStatefulWidget {
   const _AuthCountryDropdownWidget({super.key});
 
   @override
-  ConsumerState<_AuthCountryDropdownWidget> createState() => _AuthCountryDropdownWidgetState();
+  ConsumerState<_AuthCountryDropdownWidget> createState() =>
+      _AuthCountryDropdownWidgetState();
 }
 
-class _AuthCountryDropdownWidgetState extends ConsumerState<_AuthCountryDropdownWidget>
+class _AuthCountryDropdownWidgetState
+    extends ConsumerState<_AuthCountryDropdownWidget>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
@@ -177,6 +179,10 @@ class _AuthCountryDropdownWidgetState extends ConsumerState<_AuthCountryDropdown
   @override
   void initState() {
     super.initState();
+
+    Future.microtask(() async {
+      await ref.read(countryDropdownProvider);
+    });
 
     // Single controller with shorter, professional duration
     _controller = AnimationController(
@@ -188,19 +194,23 @@ class _AuthCountryDropdownWidgetState extends ConsumerState<_AuthCountryDropdown
     _fadeAnimation = Tween<double>(
       begin: 0.0,
       end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOut,
-    ));
+    ).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: Curves.easeOut,
+      ),
+    );
 
     // Minimal slide animation from top
     _slideAnimation = Tween<Offset>(
       begin: const Offset(0, -0.1),
       end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOutCubic,
-    ));
+    ).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: Curves.easeOutCubic,
+      ),
+    );
 
     // Start animation
     _controller.forward();
@@ -219,6 +229,7 @@ class _AuthCountryDropdownWidgetState extends ConsumerState<_AuthCountryDropdown
   @override
   Widget build(BuildContext context) {
     final notifier = ref.read(authScreenProvider.notifier);
+    final countryState = ref.watch(countryDropdownProvider);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -264,12 +275,43 @@ class _AuthCountryDropdownWidgetState extends ConsumerState<_AuthCountryDropdown
                                 horizontal: 10.sp,
                                 vertical: 5.sp,
                               ),
-                              child: CountryDropdown(
-                                selectedCountryCode: 'US',
-                                onChanged: (Country country) async {
-                                  await ref
-                                      .read(countryDropdownProvider.notifier)
-                                      .selectCountry(country.countryCode);
+                              // child: CountryDropdown(
+                              //   selectedCountryCode: 'US',
+                              //   onChanged: (Country country) async {
+                              //     await ref
+                              //         .read(countryDropdownProvider.notifier)
+                              //         .selectCountry(country.countryCode);
+                              //   },
+                              // ),
+                              child: countryState.when(
+                                loading:
+                                    () => CountryDropdown(
+                                      selectedCountryCode: '',
+                                      onChanged:
+                                          (
+                                            _,
+                                          ) {},
+                                      hintText: 'Loading country...',
+                                      isLoading: true,
+                                    ),
+                                error:
+                                    (err, _) => Text(
+                                      'Error loading countries',
+                                      style: TextStyle(color: Colors.red),
+                                    ),
+                                data: (country) {
+                                  return CountryDropdown(
+                                    selectedCountryCode: country.countryCode,
+                                    onChanged: (Country newCountry) async {
+                                      await ref
+                                          .read(
+                                            countryDropdownProvider.notifier,
+                                          )
+                                          .selectCountry(
+                                            newCountry.countryCode,
+                                          );
+                                    },
+                                  );
                                 },
                               ),
                             ),
@@ -289,7 +331,9 @@ class _AuthCountryDropdownWidgetState extends ConsumerState<_AuthCountryDropdown
                 child: FadeTransition(
                   opacity: _fadeAnimation,
                   child: ClipRRect(
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+                    borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(25),
+                    ),
                     child: Container(
                       padding: EdgeInsets.fromLTRB(
                         20.sp,
@@ -339,7 +383,10 @@ class _AuthCountryDropdownWidgetState extends ConsumerState<_AuthCountryDropdown
                             if (mounted) {
                               notifier.hideCountrySelection();
                               Navigator.of(context).pop();
-                              Navigator.pushReplacementNamed(context, '/home_screen');
+                              Navigator.pushReplacementNamed(
+                                context,
+                                '/home_screen',
+                              );
                             }
                           },
                           style: ElevatedButton.styleFrom(
@@ -351,9 +398,13 @@ class _AuthCountryDropdownWidgetState extends ConsumerState<_AuthCountryDropdown
                             ),
                             elevation: 0,
                             // Remove default elevation since we're using custom shadows
-                            shadowColor: Colors.transparent, // Remove default shadow
+                            shadowColor:
+                                Colors.transparent, // Remove default shadow
                           ),
-                          child: Text('Continue', style: AppTypography.textLgMedium),
+                          child: Text(
+                            'Continue',
+                            style: AppTypography.textLgMedium,
+                          ),
                         ),
                       ),
                     ),

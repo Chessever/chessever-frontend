@@ -17,8 +17,6 @@ class SettingsDialog extends ConsumerWidget {
   const SettingsDialog({super.key});
 
   void _showSubDialog(BuildContext context, Widget child) {
-    Navigator.pop(context);
-
     Future.delayed(const Duration(milliseconds: 100), () {
       showModalBottomSheet(
         context: context,
@@ -60,6 +58,7 @@ class SettingsDialog extends ConsumerWidget {
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.all(Radius.circular(20.sp)),
+        color: kPopUpColor,
       ),
       child: SettingsMenu(
         notificationsEnabled: notificationsSettings.enabled,

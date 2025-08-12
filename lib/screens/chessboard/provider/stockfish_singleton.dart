@@ -52,10 +52,13 @@ class StockfishSingleton {
       _engine!.stdin = 'position fen $fen';
       _engine!.stdin = 'go depth 10';
 
-      await completer.future.timeout(const Duration(seconds: 3), onTimeout: () {
-        if (!completer.isCompleted) completer.complete(0.0);
-        return 0.0;
-      });
+      await completer.future.timeout(
+        const Duration(seconds: 3),
+        onTimeout: () {
+          if (!completer.isCompleted) completer.complete(0.0);
+          return 0.0;
+        },
+      );
 
       sub.cancel();
     }
