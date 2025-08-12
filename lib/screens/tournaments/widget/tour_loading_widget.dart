@@ -17,6 +17,7 @@ class TourLoadingWidget extends StatelessWidget {
       countryCode: 'USA',
     );
     final gamesTourModel = GamesTourModel(
+      roundId: 'roundId',
       gameId: 'gameId',
       whitePlayer: mockPlayer,
       blackPlayer: mockPlayer,

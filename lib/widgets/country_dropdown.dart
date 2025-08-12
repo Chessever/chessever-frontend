@@ -12,12 +12,14 @@ class CountryDropdown extends ConsumerStatefulWidget {
   final String selectedCountryCode;
   final ValueChanged<Country> onChanged;
   final String? hintText;
+  final bool isLoading;
 
   const CountryDropdown({
     super.key,
     required this.selectedCountryCode,
     required this.onChanged,
     this.hintText,
+    this.isLoading = false,
   });
 
   @override
@@ -35,6 +37,15 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
   }
 
   @override
+  void didUpdateWidget(covariant CountryDropdown oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Update selectedCountryCode if prop changed
+    if (oldWidget.selectedCountryCode != widget.selectedCountryCode) {
+      selectedCountryCode = widget.selectedCountryCode;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final borderRadius =
         isDropDownOpen
@@ -45,8 +56,11 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
 
     final dropDownBorderRadius = BorderRadius.circular(10.br);
 
-    final allCountries =
-        ref.read(countryDropdownProvider.notifier).getAllCountries();
+    // final allCountries =
+    //     ref.read(countryDropdownProvider.notifier).getAllCountries();
+
+    // CHANGE: Get countries directly from CountryService to avoid triggering provider init on first tap
+    final allCountries = CountryService().getAll();
 
     return ClipRRect(
       borderRadius: borderRadius,
@@ -73,23 +87,35 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      // Find the country name using the selected code
-                      ref
-                          .read(countryDropdownProvider.notifier)
-                          .getCountryName(selectedCountryCode),
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: kWhiteColor70,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    child:
+                        widget.isLoading
+                            ? Text(
+                              widget.hintText ?? 'Loading...',
+                              style: AppTypography.textSmMedium.copyWith(
+                                color: kWhiteColor70,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            )
+                            : Text(
+                              ref
+                                  .read(countryDropdownProvider.notifier)
+                                  .getCountryName(selectedCountryCode ?? ''),
+                              style: AppTypography.textSmMedium.copyWith(
+                                color: kWhiteColor70,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                   ),
                   SizedBox(width: 12.w), // 12px gap
-                  CountryFlag.fromCountryCode(
-                    selectedCountryCode,
-                    width: 16.w,
-                    height: 12.h,
-                  ),
+
+                  if (!widget.isLoading &&
+                      selectedCountryCode.isNotEmpty &&
+                      selectedCountryCode.isNotEmpty)
+                    CountryFlag.fromCountryCode(
+                      selectedCountryCode,
+                      width: 16.w,
+                      height: 12.h,
+                    ),
                   SizedBox(width: 2.w),
                   Icon(
                     isDropDownOpen
@@ -119,56 +145,65 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
               height: 40.h,
               padding: EdgeInsets.zero,
             ),
-            value: selectedCountryCode,
-            onChanged: (value) {
-              if (value != null) {
-                selectedCountryCode = value;
-                final country = allCountries.firstWhere(
-                  (c) => c.countryCode == value,
-                );
-                widget.onChanged(country);
-              }
-            },
+            value: widget.isLoading ? null : selectedCountryCode,
+            onChanged:
+                widget.isLoading
+                    ? null
+                    : (value) {
+                      if (value != null) {
+                        final country = allCountries.firstWhere(
+                          (c) => c.countryCode == value,
+                        );
+                        widget.onChanged(country);
+                      }
+                    },
 
             onMenuStateChange: (isOpen) {
               isDropDownOpen = isOpen;
               setState(() {});
             },
-            items: List.generate(allCountries.length, (index) {
-              final country = allCountries[index];
+            // Show empty items list when loading, else full list
+            items:
+                widget.isLoading
+                    ? []
+                    : List.generate(allCountries.length, (index) {
+                      final country = allCountries[index];
 
-              return DropdownMenuItem<String>(
-                value: country.countryCode,
-                child: Container(
-                  decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(color: kDarkGreyColor, width: 1.w),
-                    ),
-                  ),
-                  height: 44.h,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.start,
-                    children: [
-                      SizedBox(width: 16.w),
-                      CountryFlag.fromCountryCode(
-                        country.countryCode,
-                        width: 16.w,
-                        height: 12.h,
-                      ),
-                      SizedBox(width: 8.w),
-                      Expanded(
-                        child: Text(
-                          country.name,
-                          style: AppTypography.textMdMedium.copyWith(
-                            color: kWhiteColor,
+                      return DropdownMenuItem<String>(
+                        value: country.countryCode,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            border: Border(
+                              bottom: BorderSide(
+                                color: kDarkGreyColor,
+                                width: 1.w,
+                              ),
+                            ),
+                          ),
+                          height: 44.h,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.start,
+                            children: [
+                              SizedBox(width: 16.w),
+                              CountryFlag.fromCountryCode(
+                                country.countryCode,
+                                width: 16.w,
+                                height: 12.h,
+                              ),
+                              SizedBox(width: 8.w),
+                              Expanded(
+                                child: Text(
+                                  country.name,
+                                  style: AppTypography.textMdMedium.copyWith(
+                                    color: kWhiteColor,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }),
+                      );
+                    }),
           ),
         ),
       ),

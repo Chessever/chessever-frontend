@@ -17,8 +17,8 @@ import '../../widgets/event_card/completed_event_card.dart';
 enum TournamentCategory { current, upcoming }
 
 final _mappedName = {
-  TournamentCategory.current: 'All Events',
-  TournamentCategory.upcoming: 'Upcoming Events',
+  TournamentCategory.current: 'Current',
+  TournamentCategory.upcoming: 'Upcoming',
 };
 
 final selectedTourEventProvider = StateProvider<TournamentCategory>(
@@ -55,7 +55,7 @@ class TournamentScreen extends HookConsumerWidget {
                 tag: 'search_bar',
                 child: RoundedSearchBar(
                   controller: searchController,
-                  hintText: 'Search tournaments or players',
+                  hintText: 'Search Events or Players',
                   onChanged: (value) {
                     ref
                         .read(tournamentNotifierProvider.notifier)

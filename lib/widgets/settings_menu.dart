@@ -43,13 +43,22 @@ class SettingsMenu extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 12.sp),
       child: Column(
         mainAxisSize: MainAxisSize.min,
-
         children: [
+          SizedBox(height: 10.h),
+          Container(
+            height: 5,
+            width: 40,
+            decoration: BoxDecoration(
+              color: kWhiteColor,
+              borderRadius: BorderRadius.circular(20),
+            ),
+          ),
+          SizedBox(height: 15),
           Text(
             'Settings',
             style: AppTypography.textLgMedium.copyWith(color: kWhiteColor),
           ),
-          SizedBox(height: 20.h),
+          SizedBox(height: 25.h),
           // Board settings
           InkWell(
             onTap: onBoardSettingsPressed,
@@ -100,6 +109,7 @@ class SettingsMenu extends StatelessWidget {
               ),
             ),
           ),
+          SizedBox(height: 7.h),
 
           // Language
           InkWell(
@@ -147,6 +157,7 @@ class SettingsMenu extends StatelessWidget {
               ),
             ),
           ),
+          SizedBox(height: 7.h),
 
           // Set timezone
           InkWell(
@@ -194,6 +205,7 @@ class SettingsMenu extends StatelessWidget {
               ),
             ),
           ),
+          SizedBox(height: 7.h),
 
           // Notifications toggle
           Container(
@@ -213,7 +225,7 @@ class SettingsMenu extends StatelessWidget {
                 // Custom sized switch
                 SizedBox(
                   width: 34,
-                  height: 20,
+                  height: 25,
                   child: FittedBox(
                     fit: BoxFit.fill,
                     child: Switch(
@@ -234,6 +246,7 @@ class SettingsMenu extends StatelessWidget {
               ],
             ),
           ),
+          SizedBox(height: 15.h),
         ],
       ),
     );

@@ -5,20 +5,39 @@ class GamesScreenModel {
   GamesScreenModel({
     required this.gamesTourModels,
     required this.pinnedGamedIs,
+    this.scrollToIndex, // New field for scroll position
   });
 
   final List<GamesTourModel> gamesTourModels;
   final List<String> pinnedGamedIs;
+  final int? scrollToIndex; // Index to scroll to when round changes
 
   GamesScreenModel copyWith({
     List<GamesTourModel>? gamesTourModels,
     List<String>? pinnedGamedIs,
+    int? scrollToIndex,
   }) {
     return GamesScreenModel(
       gamesTourModels: gamesTourModels ?? this.gamesTourModels,
       pinnedGamedIs: pinnedGamedIs ?? this.pinnedGamedIs,
+      scrollToIndex: scrollToIndex ?? this.scrollToIndex,
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is GamesScreenModel &&
+        other.gamesTourModels == gamesTourModels &&
+        other.pinnedGamedIs == pinnedGamedIs &&
+        other.scrollToIndex == scrollToIndex;
+  }
+
+  @override
+  int get hashCode =>
+      gamesTourModels.hashCode ^
+      pinnedGamedIs.hashCode ^
+      (scrollToIndex?.hashCode ?? 0);
 }
 
 class GamesTourModel {
@@ -32,6 +51,7 @@ class GamesTourModel {
   final String? pgn;
   final String? lastMove;
   final int? boardNr;
+  final String roundId;
 
   GamesTourModel({
     required this.gameId,
@@ -40,6 +60,7 @@ class GamesTourModel {
     required this.whiteTimeDisplay,
     required this.blackTimeDisplay,
     required this.gameStatus,
+    required this.roundId, // Make required
     this.lastMove,
     this.fen,
     this.pgn,
@@ -57,6 +78,7 @@ class GamesTourModel {
     String? fen,
     String? pgn,
     int? boardNr,
+    String? roundId,
   }) {
     return GamesTourModel(
       gameId: gameId ?? this.gameId,
@@ -69,42 +91,123 @@ class GamesTourModel {
       fen: fen ?? this.fen,
       pgn: pgn ?? this.pgn,
       boardNr: boardNr ?? this.boardNr,
+      roundId: roundId ?? this.roundId,
     );
   }
 
   factory GamesTourModel.fromGame(Games game) {
-    // Ensure we have exactly 2 players
-    if (game.players == null || game.players!.length != 2) {
-      throw ArgumentError('Game must have exactly 2 players');
+    // Enhanced null safety and validation
+    if (game.players == null || game.players!.length < 2) {
+      throw ArgumentError(
+        'Game must have at least 2 players, found: ${game.players?.length ?? 0}',
+      );
     }
 
-    final Player white = game.players!.first; // First player is white
-    final Player black = game.players!.last; // Second player is black
+    final players = game.players!;
 
-    return GamesTourModel(
-      gameId: game.id,
-      whitePlayer: PlayerCard.fromPlayer(white),
-      blackPlayer: PlayerCard.fromPlayer(black),
-      whiteTimeDisplay: _formatTime(white.clock),
-      blackTimeDisplay: _formatTime(black.clock),
-      gameStatus: GameStatus.fromString(game.status),
-      fen: game.fen,
-      pgn: game.pgn,
-      lastMove: game.lastMove,
-      boardNr: game.boardNr,
-    );
+    // Ensure we have exactly 2 players, take first two if more
+    final Player white = players.first;
+    final Player black = players.length > 1 ? players[1] : players.first;
+
+    // Validate player data
+    if (white.name.isEmpty || black.name.isEmpty) {
+      throw ArgumentError('Player names cannot be empty');
+    }
+
+    try {
+      return GamesTourModel(
+        gameId: game.id,
+        whitePlayer: PlayerCard.fromPlayer(white),
+        blackPlayer: PlayerCard.fromPlayer(black),
+        whiteTimeDisplay: _formatTime(white.clock),
+        blackTimeDisplay: _formatTime(black.clock),
+        gameStatus: GameStatus.fromString(game.status),
+        roundId: game.roundId, // Include roundId in model
+        fen: game.fen?.isNotEmpty == true ? game.fen : null,
+        pgn: game.pgn?.isNotEmpty == true ? game.pgn : null,
+        lastMove: game.lastMove?.isNotEmpty == true ? game.lastMove : null,
+        boardNr: game.boardNr,
+      );
+    } catch (e) {
+      throw ArgumentError(
+        'Failed to create GamesTourModel from game ${game.id}: $e',
+      );
+    }
   }
 
-  static String _formatTime(int clockTimeMs) {
+  static String _formatTime(int? clockTimeMs) {
+    // Enhanced null safety for clock time
+    if (clockTimeMs == null || clockTimeMs < 0) {
+      return '--:--';
+    }
+
     // Convert milliseconds to minutes and seconds
     final totalSeconds = (clockTimeMs / 1000).floor();
     final minutes = totalSeconds ~/ 60;
     final seconds = totalSeconds % 60;
+
+    // Handle display for very long games (over 99 minutes)
+    if (minutes > 99) {
+      final hours = minutes ~/ 60;
+      final remainingMinutes = minutes % 60;
+      return '${hours}h${remainingMinutes.toString().padLeft(2, '0')}m';
+    }
+
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  // Helper method to get round display name
+  String get roundDisplayName {
+    // Extract round number for display (e.g., "round7" -> "Round 7")
+    final match = RegExp(
+      r'round(\d+)',
+      caseSensitive: false,
+    ).firstMatch(roundId);
+    if (match != null) {
+      final roundNumber = match.group(1);
+      return 'Round $roundNumber';
+    }
+    // Fallback to original roundId with capitalization
+    return roundId.replaceAllMapped(
+      RegExp(r'\b\w'),
+      (match) => match.group(0)!.toUpperCase(),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is GamesTourModel &&
+        other.gameId == gameId &&
+        other.whitePlayer == whitePlayer &&
+        other.blackPlayer == blackPlayer &&
+        other.whiteTimeDisplay == whiteTimeDisplay &&
+        other.blackTimeDisplay == blackTimeDisplay &&
+        other.gameStatus == gameStatus &&
+        other.lastMove == lastMove &&
+        other.fen == fen &&
+        other.pgn == pgn &&
+        other.boardNr == boardNr &&
+        other.roundId == roundId;
+  }
+
+  @override
+  int get hashCode {
+    return gameId.hashCode ^
+        whitePlayer.hashCode ^
+        blackPlayer.hashCode ^
+        whiteTimeDisplay.hashCode ^
+        blackTimeDisplay.hashCode ^
+        gameStatus.hashCode ^
+        (lastMove?.hashCode ?? 0) ^
+        (fen?.hashCode ?? 0) ^
+        (pgn?.hashCode ?? 0) ^
+        (boardNr?.hashCode ?? 0) ^
+        roundId.hashCode;
   }
 }
 
-// models/player_card.dart
+// Rest of the classes remain the same...
 class PlayerCard {
   final String name;
   final String federation;
@@ -121,12 +224,17 @@ class PlayerCard {
   });
 
   factory PlayerCard.fromPlayer(Player player) {
+    final name = player.name.trim();
+    if (name.isEmpty) {
+      throw ArgumentError('Player name cannot be empty');
+    }
+
     return PlayerCard(
-      name: player.name,
-      federation: player.fed,
-      title: player.title,
-      rating: player.rating,
-      countryCode: player.fed,
+      name: name,
+      federation: player.fed.trim(),
+      title: player.title.trim(),
+      rating: player.rating >= 0 ? player.rating : 0,
+      countryCode: player.fed.trim(),
     );
   }
 
@@ -147,9 +255,30 @@ class PlayerCard {
   }
 
   String get displayName => name;
+  String get displayTitle => title.isNotEmpty ? title : '';
+  String get displayRating => rating > 0 ? rating.toString() : 'Unrated';
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is PlayerCard &&
+        other.name == name &&
+        other.federation == federation &&
+        other.title == title &&
+        other.rating == rating &&
+        other.countryCode == countryCode;
+  }
+
+  @override
+  int get hashCode {
+    return name.hashCode ^
+        federation.hashCode ^
+        title.hashCode ^
+        rating.hashCode ^
+        countryCode.hashCode;
+  }
 }
 
-// models/game_status.dart
 enum GameStatus {
   ongoing,
   whiteWins,
@@ -158,19 +287,25 @@ enum GameStatus {
   unknown;
 
   static GameStatus fromString(String? status) {
-    if (status == null) return GameStatus.unknown;
+    if (status == null || status.trim().isEmpty) {
+      return GameStatus.unknown;
+    }
 
-    switch (status) {
+    final normalizedStatus = status.trim();
+
+    switch (normalizedStatus) {
       case '1-0':
         return GameStatus.whiteWins;
       case '0-1':
         return GameStatus.blackWins;
       case '1/2-1/2':
       case '½-½':
+      case '0.5-0.5':
         return GameStatus.draw;
       case '*':
         return GameStatus.ongoing;
       default:
+        print('Unknown game status: "$normalizedStatus"');
         return GameStatus.unknown;
     }
   }
@@ -192,5 +327,9 @@ enum GameStatus {
 
   bool get isFinished {
     return this != GameStatus.ongoing && this != GameStatus.unknown;
+  }
+
+  bool get isOngoing {
+    return this == GameStatus.ongoing;
   }
 }
