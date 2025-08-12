@@ -40,6 +40,7 @@ class BoardSettingsDialog extends ConsumerWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                SizedBox(height: 16.h),
                 GestureDetector(
                   onTap: () => Navigator.of(context).pop(),
                   child: Row(
@@ -47,21 +48,22 @@ class BoardSettingsDialog extends ConsumerWidget {
                       SizedBox(width: 16.w),
                       SvgPicture.asset(
                         SvgAsset.left_arrow,
-                        height: 10.h,
-                        width: 5.w,
+                        height: 15.h,
+                        width: 15.w,
                         semanticsLabel: 'Board Settings Icon',
+                        color: kBoardColorGrey.withValues(alpha: 0.4),
                       ),
                       SizedBox(width: 8.w),
                       Text(
                         'Back',
-                        style: AppTypography.textSmRegular.copyWith(
-                          color: kBoardColorGrey,
+                        style: AppTypography.textLgMedium.copyWith(
+                          color: kBoardColorGrey.withValues(alpha: 0.4),
                         ),
                       ),
                     ],
                   ),
                 ),
-                SizedBox(height: 25.h),
+                SizedBox(height: 20.h),
                 _MenuItem(
                   customIcon: SvgPicture.asset(SvgAsset.boardSettings),
                   title: 'Change Board Color',
@@ -87,6 +89,7 @@ class BoardSettingsDialog extends ConsumerWidget {
                   },
                   showChevron: false,
                 ),
+                SizedBox(height: 4.h),
                 DividerWidget(),
                 _SwitchItem(
                   title: 'Evaluation bar',
@@ -97,6 +100,7 @@ class BoardSettingsDialog extends ConsumerWidget {
                         .toggleEvaluationBar();
                   },
                 ),
+                SizedBox(height: 5.h),
 
                 DividerWidget(),
                 _SwitchItem(
@@ -107,6 +111,8 @@ class BoardSettingsDialog extends ConsumerWidget {
                     ref.read(boardSettingsProvider.notifier).toggleSound();
                   },
                 ),
+                SizedBox(height: 7.h),
+
                 DividerWidget(),
                 _SwitchItem(
                   title: 'Chat',
@@ -116,6 +122,7 @@ class BoardSettingsDialog extends ConsumerWidget {
                     ref.read(boardSettingsProvider.notifier).toggleChat();
                   },
                 ),
+                SizedBox(height: 7.h),
               ],
             ),
           ),
@@ -144,11 +151,11 @@ class _MenuItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 36.h,
+      height: 40.h,
       child: InkWell(
         onTap: onPressed,
         child: Padding(
-          padding: EdgeInsets.all(8.sp),
+          padding: EdgeInsets.symmetric(horizontal: 20.sp),
           child: Row(
             children: [
               customIcon ?? Icon(icon!, color: kWhiteColor, size: 20.ic),
@@ -164,8 +171,8 @@ class _MenuItem extends StatelessWidget {
                 width: 36,
                 child: SvgPicture.asset(
                   SvgAsset.right_arrow,
-                  height: 12.h,
-                  width: 6.w,
+                  height: 24.h,
+                  width: 24.w,
                 ),
               ),
             ],
@@ -199,12 +206,11 @@ class _SwitchItem extends StatelessWidget {
           child: Row(
             children: [
               Expanded(child: Text(title, style: AppTypography.textMdMedium)),
-              SizedBox(
-                width: 34.w,
-                height: 20.h,
-                child: FittedBox(
-                  fit: BoxFit.fill,
-                  child: Switch.adaptive(
+              FittedBox(
+                fit: BoxFit.fill,
+                child: Transform.scale(
+                  scale: 1.12,
+                  child: Switch(
                     value: value,
                     onChanged: onChanged,
                     activeColor: kWhiteColor,

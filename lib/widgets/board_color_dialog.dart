@@ -36,7 +36,7 @@ class BoardColorDialog extends ConsumerWidget {
     return Container(
       // height: 259, // Fixed height of 259px as requested
       decoration: BoxDecoration(
-        color: kBlackColor,
+        color: kPopUpColor,
 
         borderRadius: BorderRadius.circular(20.sp),
         boxShadow: [
@@ -50,18 +50,18 @@ class BoardColorDialog extends ConsumerWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          SizedBox(height: 10),
           // Small white bar at the top with adjusted size and spacing
           Container(
-            width: 40.w,
-            height: 5.h,
-            margin: const EdgeInsets.only(top: 32),
+            height: 5,
+            width: 40,
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(2.5),
+              color: kWhiteColor,
+              borderRadius: BorderRadius.circular(20),
             ),
           ),
           // Gap of 20px between white bar and board color text
-          SizedBox(height: 20.h),
+          // SizedBox(height: 20.h),
           Padding(
             padding: EdgeInsets.symmetric(horizontal: 24.sp, vertical: 32.sp),
             child: Column(
@@ -80,42 +80,45 @@ class BoardColorDialog extends ConsumerWidget {
                 SizedBox(height: 40.h),
 
                 // Color options row
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _buildBoardColorOption(
-                      context: context,
-                      ref: ref,
-                      svgAsset: SvgAsset.boardColorDefault,
-                      label: 'Default',
-                      color: defaultColor,
-                      isSelected: selectedColor == 'default',
-                    ),
-                    _buildBoardColorOption(
-                      context: context,
-                      ref: ref,
-                      svgAsset: SvgAsset.boardColorBrown,
-                      label: 'Brown',
-                      color: brownColor,
-                      isSelected: selectedColor == 'brown',
-                    ),
-                    _buildBoardColorOption(
-                      context: context,
-                      ref: ref,
-                      svgAsset: SvgAsset.boardColorGrey,
-                      label: 'Grey',
-                      color: greyColor,
-                      isSelected: selectedColor == 'grey',
-                    ),
-                    _buildBoardColorOption(
-                      context: context,
-                      ref: ref,
-                      svgAsset: SvgAsset.boardColorGreen,
-                      label: 'Green',
-                      color: greenColor,
-                      isSelected: selectedColor == 'green',
-                    ),
-                  ],
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 10.w),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _buildBoardColorOption(
+                        context: context,
+                        ref: ref,
+                        svgAsset: SvgAsset.boardColorDefault,
+                        label: 'Default',
+                        color: defaultColor,
+                        isSelected: selectedColor == 'default',
+                      ),
+                      _buildBoardColorOption(
+                        context: context,
+                        ref: ref,
+                        svgAsset: SvgAsset.boardColorBrown,
+                        label: 'Brown',
+                        color: brownColor,
+                        isSelected: selectedColor == 'brown',
+                      ),
+                      _buildBoardColorOption(
+                        context: context,
+                        ref: ref,
+                        svgAsset: SvgAsset.boardColorGrey,
+                        label: 'Grey',
+                        color: greyColor,
+                        isSelected: selectedColor == 'grey',
+                      ),
+                      _buildBoardColorOption(
+                        context: context,
+                        ref: ref,
+                        svgAsset: SvgAsset.boardColorGreen,
+                        label: 'Green',
+                        color: greenColor,
+                        isSelected: selectedColor == 'green',
+                      ),
+                    ],
+                  ),
                 ),
 
                 // Bottom padding for safe area
