@@ -28,7 +28,26 @@ class GameRepository extends BaseRepository {
     return handleApiCall(() async {
       var query = supabase
           .from('games')
-          .select()
+          .select('''
+          id,
+          round_id,
+          round_slug,
+          tour_id,
+          tour_slug,
+          name,
+          fen,
+          players,
+          last_move,
+          think_time,
+          status,
+          search,
+          lichess_id,
+          player_white,
+          player_black,
+          date_start,
+          time_start,
+          board_nr
+        ''')
           .eq('tour_id', tourId)
           .order('id', ascending: true);
 
@@ -42,8 +61,18 @@ class GameRepository extends BaseRepository {
     });
   }
 
+  Future<Games> getGameWithPGN(String gameId) async {
+    return handleApiCall(() async {
+      final response =
+          await supabase.from('games').select().eq('id', gameId).single();
+
+      return Games.fromJson(response);
+    });
+  }
+
   // Fetch game by ID
   Future<Games> getGameById(String id) async {
+    print('Fetching game by ID: $id');
     return handleApiCall(() async {
       final response =
           await supabase.from('games').select().eq('id', id).single();

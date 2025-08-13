@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:chess/chess.dart' as chess;
 import 'package:advanced_chess_board/chess_board_controller.dart';
+import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state.dart';
@@ -50,29 +51,37 @@ final chessBoardScreenProvider = AutoDisposeStateNotifierProvider.family<
     );
   }
 
-  return ChessBoardScreenNotifier(game: games[index], index: index);
+  return ChessBoardScreenNotifier(ref, game: games[index], index: index);
 });
 
 class ChessBoardScreenNotifier
     extends StateNotifier<AsyncValue<ChessBoardState>> {
-  ChessBoardScreenNotifier({required this.game, required this.index})
+  ChessBoardScreenNotifier(this.ref, {required this.game, required this.index})
     : super(AsyncValue.loading()) {
     _initializeState();
   }
 
-  final GamesTourModel game;
+  final Ref ref;
+
+  GamesTourModel game;
   final int index;
 
   Timer? _longPressTimer;
   bool _isLongPressing = false;
 
-  void _initializeState() {
+  void _initializeState() async {
     print("Initializing game: ${game.gameId}\nPGN: ${game.pgn}");
 
     // Create base game from PGN
     final baseGame = chess.Chess();
     final uciMoves = <String>[];
     final sanMoves = <String>[];
+
+    final gameWithPGn = await ref
+        .read(gameRepositoryProvider)
+        .getGameById(game.gameId);
+
+    game = GamesTourModel.fromGame(gameWithPGn);
 
     if (game.pgn != null && game.pgn!.isNotEmpty) {
       try {

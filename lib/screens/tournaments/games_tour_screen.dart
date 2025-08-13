@@ -12,9 +12,7 @@ import 'package:chessever2/screens/tournaments/widget/tour_loading_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
-import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class GamesTourScreen extends ConsumerStatefulWidget {
@@ -43,7 +41,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
   @override
   void initState() {
     super.initState();
-    _scrollController = ScrollController();
+    _scrollController = ScrollController(); 
   }
 
   @override
@@ -182,16 +180,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
         }
       });
     });
-  }
-
-  void _debugHeaderKeys() {
-    debugPrint('=== Header Keys Debug ===');
-    debugPrint('Total header keys: ${_headerKeys.length}');
-    for (final entry in _headerKeys.entries) {
-      final hasContext = entry.value.currentContext != null;
-      debugPrint('Round ${entry.key}: context=$hasContext');
-    }
-    debugPrint('========================');
   }
 
   Future<void> _performScrollToRound(String roundId) async {
@@ -471,6 +459,11 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     for (final round in rounds) {
       final roundGames = gamesByRound[round.id] ?? [];
 
+      if (roundGames.isEmpty) {
+        debugPrint('Skipping empty round ${round.id} (${round.name})');
+        continue;
+      }
+
       debugPrint(
         'Building round ${round.id} (${round.name}) with ${roundGames.length} games',
       );
@@ -587,6 +580,9 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
       try {
         ref.read(chessboardViewFromProvider.notifier).state =
             ChessboardView.tour;
+
+        print('asim' + gamesData.gamesTourModels.length.toString());
+        print('asim 2' + gameIndex.toString());
 
         Navigator.push(
           context,

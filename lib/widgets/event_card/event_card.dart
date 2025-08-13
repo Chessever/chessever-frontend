@@ -7,9 +7,10 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/event_card/starred_provider.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-class EventCard extends ConsumerWidget {
+class EventCard extends ConsumerWidget {  
   final TourEventCardModel tourEventCardModel;
   final VoidCallback? onTap;
   final bool isFavorite;
@@ -137,7 +138,7 @@ class _ShowStatus extends ConsumerWidget {
       case TourEventCategory.completed:
         return _CompletedTag();
       case TourEventCategory.ongoing:
-        return _OngoingTag();
+        return SizedBox.shrink();
     }
   }
 }
@@ -189,12 +190,10 @@ class _LiveTag extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      'LIVE',
-      style: AppTypography.textXsBold.copyWith(
-        color: kPrimaryColor,
-        fontFamily: 'InterDisplay',
-      ),
+    return SvgPicture.asset(
+      SvgAsset.selectedSvg,
+      width: 16.w,
+      height: 16.h,
     );
   }
 }

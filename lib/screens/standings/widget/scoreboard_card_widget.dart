@@ -1,10 +1,10 @@
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:country_flags/country_flags.dart';
-import '../theme/app_theme.dart';
-import '../utils/app_typography.dart';
+import '../../../theme/app_theme.dart';
+import '../../../utils/app_typography.dart';
 
-class StandingScoreCard extends StatelessWidget {
+class ScoreboardCardWidget extends StatelessWidget {
   final String countryCode;
   final String? title; // Player title (e.g., "GM") - made nullable
   final String name; // Player name
@@ -16,7 +16,7 @@ class StandingScoreCard extends StatelessWidget {
   final bool isLast;
   final VoidCallback onTap;
 
-  const StandingScoreCard({
+  const ScoreboardCardWidget({
     super.key,
     required this.countryCode,
     required this.name,

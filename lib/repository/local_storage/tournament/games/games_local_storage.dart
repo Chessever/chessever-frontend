@@ -6,14 +6,14 @@ import 'package:chessever2/utils/logger/logger.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-final gamesLocalStorage = AutoDisposeProvider<_GamesLocalStorage>((ref) {
-  return _GamesLocalStorage(ref);
+final gamesLocalStorage = AutoDisposeProvider<GamesLocalStorage>((ref) {
+  return GamesLocalStorage(ref);
 });
 
 enum _GameSaver { tourId }
 
-class _GamesLocalStorage {
-  _GamesLocalStorage(this.ref);
+class GamesLocalStorage {
+  GamesLocalStorage(this.ref);
 
   final Ref ref;
 

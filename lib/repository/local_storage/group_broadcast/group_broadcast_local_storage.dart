@@ -7,14 +7,14 @@ import 'package:chessever2/screens/tournaments/tournament_screen.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final groupBroadcastLocalStorage = Provider.family<
-  _GroupBroadcastLocalStorage,
+  GroupBroadcastLocalStorage,
   TournamentCategory
->((ref, category) => _GroupBroadcastLocalStorage(ref: ref, category: category));
+>((ref, category) => GroupBroadcastLocalStorage(ref: ref, category: category));
 
 enum _LocalGroupBroadcastStorage { upcoming, current }
 
-class _GroupBroadcastLocalStorage {
-  _GroupBroadcastLocalStorage({required this.ref, required this.category});
+class GroupBroadcastLocalStorage {
+  GroupBroadcastLocalStorage({required this.ref, required this.category});
 
   final Ref ref;
   final TournamentCategory category;
@@ -95,7 +95,7 @@ class _GroupBroadcastLocalStorage {
         final fallback = await ref
             .read(sharedPreferencesRepository)
             .getStringList(localStorageName);
-        return _decodeGroupBroadcastsList(fallback ?? []);
+        return _decodeGroupBroadcastsList(fallback);
       }
     } catch (_) {
       return <GroupBroadcast>[];

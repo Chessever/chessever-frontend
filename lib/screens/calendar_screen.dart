@@ -9,22 +9,29 @@ import '../widgets/simple_search_bar.dart';
 import '../utils/app_typography.dart';
 import '../widgets/filter_popup.dart';
 
+final availableYearsProvider = Provider<List<int>>((ref) {
+  final currentYear = DateTime.now().year;
+  return [
+    currentYear - 1,
+    currentYear,
+    currentYear + 1,
+  ];
+});
+
+final selectedYearProvider = StateProvider<int>((ref) {
+  return DateTime.now().year;
+});
+
+final selectedMonthProvider = StateProvider<int>((ref) {
+  return DateTime.now().month;
+});
+
 class CalendarScreen extends ConsumerStatefulWidget {
   const CalendarScreen({super.key});
 
   @override
   ConsumerState<CalendarScreen> createState() => _CalendarScreenState();
 }
-
-final selectedYearProvider = StateProvider<int>((ref) {
-  final currentDate = DateTime.now();
-  return currentDate.year; // Default to current year
-});
-
-final selectedMonthProvider = StateProvider<int>((ref) {
-  final currentDate = DateTime.now();
-  return currentDate.month; // Default to current year
-});
 
 class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   final TextEditingController _searchController = TextEditingController();
@@ -37,18 +44,21 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final yearList = ref.watch(availableYearsProvider);
+
     return ScreenWrapper(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(height: 24.h + MediaQuery.of(context).viewPadding.top),
-          // Search bar with year dropdown beside it
+
+          /// Search bar + year dropdown
           Padding(
             padding: EdgeInsets.symmetric(horizontal: 16.sp),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Search bar
+                /// Search bar
                 Expanded(
                   flex: 7,
                   child: Hero(
@@ -60,11 +70,9 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                         // Handle search
                       },
                       onMenuTap: () {
-                        // Handle menu tap
                         print('Menu tapped');
                       },
                       onFilterTap: () {
-                        // Show the filter popup
                         showDialog(
                           context: context,
                           barrierColor: kLightBlack,
@@ -75,10 +83,8 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                   ),
                 ),
 
-                // Small spacing between search bar and dropdown
                 SizedBox(width: 8.w),
-
-                // Year dropdown with border outline and transparent background
+                /// Year dropdown
                 Expanded(
                   flex: 3,
                   child: Container(
@@ -95,7 +101,6 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<int>(
                         value: ref.watch(selectedYearProvider),
-
                         onChanged: (int? newValue) {
                           if (newValue != null) {
                             ref.read(selectedYearProvider.notifier).state =
@@ -113,14 +118,13 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                         dropdownColor: kBlack2Color,
                         borderRadius: BorderRadius.circular(20.br),
                         isExpanded: true,
-                        // Items
+
+                        /// Dropdown items
                         items:
-                            [2023, 2024, 2025, 2026, 2027].asMap().entries.map((
-                              entry,
-                            ) {
+                            yearList.asMap().entries.map((entry) {
                               final index = entry.key;
                               final value = entry.value;
-                              final isLast = index == 4;
+                              final isLast = index == yearList.length - 1;
 
                               return DropdownMenuItem<int>(
                                 value: value,
@@ -145,7 +149,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                                   ),
                                   child: Text(
                                     value.toString(),
-                                    style: TextStyle(
+                                    style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 16,
                                       fontWeight: FontWeight.w400,
@@ -155,9 +159,9 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                               );
                             }).toList(),
 
-                        // Selected item style
+                        /// Selected item style
                         selectedItemBuilder: (BuildContext context) {
-                          return [2023, 2024, 2025, 2026, 2027].map((value) {
+                          return yearList.map((value) {
                             return Container(
                               alignment: Alignment.centerLeft,
                               padding: EdgeInsets.only(left: 0),
@@ -179,8 +183,8 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
           ),
 
           SizedBox(height: 8.h),
-          // Increased gap to 24px between search bar and first month card
-          // Months list
+
+          /// Month list
           Expanded(
             child: ListView.builder(
               itemCount: MonthConverter.getAllMonthNames().length,
@@ -188,29 +192,23 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
               itemBuilder: (context, index) {
                 final month = MonthConverter.getAllMonthNames()[index];
                 final monthNumber = MonthConverter.monthNameToNumber(month);
-
                 final isSelected =
                     monthNumber == ref.read(selectedMonthProvider);
 
                 return GestureDetector(
                   onTap: () {
-                    ref
-                        .read(selectedMonthProvider.notifier)
-                        .state = MonthConverter.monthNameToNumber(month);
+                    ref.read(selectedMonthProvider.notifier).state =
+                        monthNumber;
 
-                    // Navigate to tournament details screen
                     Navigator.pushNamed(context, '/calendar_detail_screen');
                   },
                   child: Container(
-                    height: 42.h, // Set fixed height to 42px
+                    height: 42.h,
                     margin: EdgeInsets.only(
                       left: 16.sp,
                       right: 16.sp,
-                      bottom: 16.sp, // 16px gap between cards
-                      top:
-                          index == 0
-                              ? 16
-                              : 0, // Add top margin only for first card
+                      bottom: 16.sp,
+                      top: index == 0 ? 16 : 0,
                     ),
                     decoration: BoxDecoration(
                       color: isSelected ? kActiveCalendarColor : kBlack2Color,
@@ -223,8 +221,8 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                     ),
                     child: Padding(
                       padding: EdgeInsets.symmetric(
-                        horizontal: 12.sp, // 12px padding left and right
-                        vertical: 8.sp, // 8px padding top and bottom
+                        horizontal: 12.sp,
+                        vertical: 8.sp,
                       ),
                       child: Align(
                         alignment: Alignment.centerLeft,
@@ -248,10 +246,11 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
 }
 
 class YearSelectorList extends ConsumerWidget {
-  final List<int> years = [2023, 2024, 2025, 2026, 2027];
+  const YearSelectorList({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final yearList = ref.watch(availableYearsProvider);
     final selectedYear = ref.watch(selectedYearProvider);
 
     return Container(
@@ -261,12 +260,12 @@ class YearSelectorList extends ConsumerWidget {
         borderRadius: BorderRadius.circular(8.br),
         border: Border.all(color: Colors.white.withOpacity(0.1), width: 1.w),
       ),
-      constraints: BoxConstraints(maxHeight: 200.h), // Scroll limit
+      constraints: BoxConstraints(maxHeight: 200.h),
       child: ListView.separated(
-        itemCount: years.length,
+        itemCount: yearList.length,
         shrinkWrap: true,
         itemBuilder: (context, index) {
-          final year = years[index];
+          final year = yearList[index];
           final isSelected = year == selectedYear;
 
           return InkWell(

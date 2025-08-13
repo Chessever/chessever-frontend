@@ -124,6 +124,31 @@ class GamesAppBarNotifier
     }
   }
 
+  // void selectNewRound(GamesAppBarModel gamesAppBarModel) {
+  //   try {
+  //     // Persist user selection
+  //     ref.read(userSelectedRoundProvider.notifier).state = (
+  //       id: gamesAppBarModel.id,
+  //       userSelected: true,
+  //     );
+
+  //     // Safely update local state
+  //     final currentState = state.valueOrNull;
+  //     if (currentState != null) {
+  //       state = AsyncValue.data(
+  //         GamesAppBarViewModel(
+  //           gamesAppBarModels: currentState.gamesAppBarModels,
+  //           selectedId: gamesAppBarModel.id,
+  //           userSelectedId: true,
+  //         ),
+  //       );
+  //     }
+  //   } catch (e, st) {
+  //     if (mounted) {
+  //       state = AsyncValue.error(e, st);
+  //     }
+  //   }
+  // }
   void selectNewRound(GamesAppBarModel gamesAppBarModel) {
     try {
       // Persist user selection
@@ -132,7 +157,7 @@ class GamesAppBarNotifier
         userSelected: true,
       );
 
-      // Safely update local state
+      // Update state without triggering a full refresh
       final currentState = state.valueOrNull;
       if (currentState != null) {
         state = AsyncValue.data(

@@ -86,7 +86,7 @@ class _RoundDropdownState extends State<_RoundDropdown> {
 
   @override
   void initState() {
-    // Ensure the selected round exists in the rounds list
+    // Ensure the selected round exists in the rounds list\
     _selectedRoundId =
         widget.rounds
             .firstWhere(
