@@ -57,6 +57,10 @@ class TourEventCardModel extends Equatable {
       } else {
         return "${DateFormat('MMM d, yyyy').format(startDateTime)} - ${DateFormat('MMM d, yyyy').format(endDateTime)}";
       }
+    } else if (startDateTime != null) {
+      return DateFormat('MMM d, yyyy').format(startDateTime);
+    } else if (endDateTime != null) {
+      return DateFormat('MMM d, yyyy').format(endDateTime);
     } else {
       return "";
     }

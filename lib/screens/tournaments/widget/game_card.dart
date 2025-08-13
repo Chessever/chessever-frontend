@@ -134,10 +134,16 @@ class GameCard extends StatelessWidget {
   }
 
   void _showBlurredPopup(BuildContext context, TapDownDetails details) {
-    // Get card position and size
     final RenderBox cardRenderBox = context.findRenderObject() as RenderBox;
     final Offset cardPosition = cardRenderBox.localToGlobal(Offset.zero);
     final Size cardSize = cardRenderBox.size;
+
+    final double screenHeight = MediaQuery.of(context).size.height;
+    const double popupHeight = 100;
+    final double spaceBelow =
+        screenHeight - (cardPosition.dy + cardSize.height);
+
+    bool showAbove = spaceBelow < popupHeight;
 
     showGeneralDialog(
       context: context,
@@ -148,26 +154,25 @@ class GameCard extends StatelessWidget {
         Animation<double> animation,
         Animation<double> secondaryAnimation,
       ) {
-        // Position menu at bottom of card + 8 padding
-        final double menuTop = cardPosition.dy + 60.h + 24.h + 8.sp;
-
+        final double menuTop =
+            showAbove
+                ? cardPosition.dy - popupHeight - 8.sp
+                : cardPosition.dy + cardSize.height + 8.sp;
         return Material(
           color: Colors.transparent,
           child: GestureDetector(
             onTap: () => Navigator.of(context).pop(),
             child: Stack(
               children: [
-                // Blur background with cutout for current card
                 _SelectiveBlurBackground(
                   cardPosition: cardPosition,
                   cardSize: cardSize,
                 ),
-                // Selected card in its original position (unblurred)
                 Positioned(
                   left: cardPosition.dx,
                   top: cardPosition.dy,
                   child: GestureDetector(
-                    onTap: () {}, // Prevent tap from closing dialog
+                    onTap: () {},
                     child: SizedBox(
                       width: cardSize.width,
                       height: cardSize.height,
@@ -276,12 +281,12 @@ class GameCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                // Popup menu positioned correctly
+                // Popup menu
                 Positioned(
                   left: details.globalPosition.dx - 120.w,
                   top: menuTop,
                   child: GestureDetector(
-                    onTap: () {}, // Prevent tap from closing dialog
+                    onTap: () {},
                     child: Material(
                       color: Colors.transparent,
                       child: Container(
@@ -334,7 +339,7 @@ class GameCard extends StatelessWidget {
                             _PopupMenuItem(
                               onTap: () {
                                 Navigator.pop(context);
-                                // Handle share action
+                                // Handle share
                               },
                               child: Row(
                                 mainAxisAlignment:

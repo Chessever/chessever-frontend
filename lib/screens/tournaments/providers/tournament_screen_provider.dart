@@ -6,6 +6,8 @@ import 'package:chessever2/screens/tournaments/providers/live_group_broadcast_id
 import 'package:chessever2/screens/tournaments/providers/sorting_all_event_provider.dart';
 import 'package:chessever2/screens/tournaments/tournament_detail_view.dart';
 import 'package:chessever2/screens/tournaments/tournament_screen.dart';
+import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
+import 'package:chessever2/widgets/search/search_result_model.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -166,42 +168,131 @@ class _TournamentScreenController
   }
 
   // Get filtered tournaments based on search query and tab selection
+  // Future<void> searchForTournament(
+  //   String query,
+  //   TournamentCategory tourEventCategory,
+  // ) async {
+  //   state = const AsyncValue.loading();
+
+  //   try {
+  //     final groupBroadcast = await ref
+  //         .read(groupBroadcastLocalStorage(tourEventCategory))
+  //         .searchGroupBroadcastsByName(query);
+
+  //     final filteredTours =
+  //         groupBroadcast.where((tour) {
+  //           final tourCardModel = TourEventCardModel.fromGroupBroadcast(
+  //             tour,
+  //             liveBroadcastId,
+  //           );
+
+  //           // Filter by category
+  //           if (tourEventCategory == TournamentCategory.current) {
+  //             return true;
+  //           } else if (tourEventCategory == TournamentCategory.upcoming) {
+  //             return tourCardModel.tourEventCategory ==
+  //                 TourEventCategory.upcoming;
+  //           } else {
+  //             // Add other category checks here if needed
+  //             return true;
+  //           }
+  //         }).toList();
+
+  //     final filteredTournaments =
+  //         filteredTours
+  //             .map(
+  //               (e) =>
+  //                   TourEventCardModel.fromGroupBroadcast(e, liveBroadcastId),
+  //             )
+  //             .toList();
+
+  //     state = AsyncValue.data(filteredTournaments);
+  //   } catch (error, stackTrace) {
+  //     state = AsyncValue.error(error, stackTrace);
+  //   }
+  // }
+
   Future<void> searchForTournament(
     String query,
     TournamentCategory tourEventCategory,
   ) async {
+    if (query.isEmpty) {
+      // Load all tournaments when query is empty
+      await loadTournaments(tourEventCategory);
+      return;
+    }
+
     state = const AsyncValue.loading();
 
     try {
-      final groupBroadcast = await ref
+      final searchResult = await ref
           .read(groupBroadcastLocalStorage(tourEventCategory))
-          .searchGroupBroadcastsByName(query);
+          .searchWithScoring(query);
 
-      final filteredTours =
-          groupBroadcast.where((tour) {
-            final tourCardModel = TourEventCardModel.fromGroupBroadcast(
-              tour,
-              liveBroadcastId,
-            );
+      // Combine both tournament and player results, prioritizing tournament matches
+      final allResults = [
+        ...searchResult.tournamentResults,
+        ...searchResult.playerResults,
+      ];
 
-            // Filter by category
+      // Remove duplicates while preserving the highest score for each tournament
+      final Map<String, SearchResult> uniqueResults = {};
+      for (final result in allResults) {
+        final key = result.tournament.id;
+        if (!uniqueResults.containsKey(key) ||
+            result.score > uniqueResults[key]!.score) {
+          uniqueResults[key] = result;
+        }
+      }
+
+      // Apply category filter
+      final filteredResults =
+          uniqueResults.values.where((result) {
             if (tourEventCategory == TournamentCategory.current) {
               return true;
             } else if (tourEventCategory == TournamentCategory.upcoming) {
-              return tourCardModel.tourEventCategory ==
+              return result.tournament.tourEventCategory ==
                   TourEventCategory.upcoming;
             } else {
-              // Add other category checks here if needed
               return true;
             }
           }).toList();
 
+      // Sort by score and extract tournaments
+      filteredResults.sort((a, b) => b.score.compareTo(a.score));
+      final tournaments = filteredResults.map((r) => r.tournament).toList();
+
+      state = AsyncValue.data(tournaments);
+    } catch (error, stackTrace) {
+      state = AsyncValue.error(error, stackTrace);
+    }
+  }
+
+  Future<void> loadTournaments(TournamentCategory tourEventCategory) async {
+    // Original logic to load all tournaments
+    state = const AsyncValue.loading();
+
+    try {
+      final groupBroadcast =
+          await ref
+              .read(groupBroadcastLocalStorage(tourEventCategory))
+              .getGroupBroadcasts();
+
       final filteredTournaments =
-          filteredTours
+          groupBroadcast
               .map(
                 (e) =>
                     TourEventCardModel.fromGroupBroadcast(e, liveBroadcastId),
               )
+              .where((tour) {
+                if (tourEventCategory == TournamentCategory.current) {
+                  return true;
+                } else if (tourEventCategory == TournamentCategory.upcoming) {
+                  return tour.tourEventCategory == TourEventCategory.upcoming;
+                } else {
+                  return true;
+                }
+              })
               .toList();
 
       state = AsyncValue.data(filteredTournaments);
