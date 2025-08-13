@@ -16,8 +16,8 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class ChessBoardScreen extends ConsumerStatefulWidget {
-  final List<GamesTourModel> games;
   final int currentIndex;
+  final List<GamesTourModel> games;
 
   const ChessBoardScreen({
     required this.currentIndex,
@@ -64,7 +64,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
           if ((index - _currentPageIndex).abs() > 1) {
             return Container();
           }
-
           return ref
               .watch(chessBoardScreenProvider(index))
               .when(

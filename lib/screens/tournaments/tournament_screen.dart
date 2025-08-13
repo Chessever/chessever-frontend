@@ -6,6 +6,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
+import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -53,13 +54,21 @@ class TournamentScreen extends HookConsumerWidget {
               padding: EdgeInsets.symmetric(horizontal: 20.sp),
               child: Hero(
                 tag: 'search_bar',
-                child: RoundedSearchBar(
+                child: EnhancedRoundedSearchBar(
                   controller: searchController,
                   hintText: 'Search Events or Players',
                   onChanged: (value) {
                     ref
                         .read(tournamentNotifierProvider.notifier)
                         .searchForTournament(value, selectedTourEvent);
+                  },
+                  onTournamentSelected: (tournament) {
+                    ref
+                        .read(tournamentNotifierProvider.notifier)
+                        .onSelectTournament(
+                          context: context,
+                          id: tournament.id,
+                        );
                   },
                   onFilterTap: () {
                     // Show filter popup
