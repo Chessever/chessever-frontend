@@ -34,15 +34,15 @@ const _mappedName = {
   _TournamentDetailScreenMode.standings: 'Standings',
 };
 
-class TournamentDetailView extends ConsumerStatefulWidget {
-  const TournamentDetailView({super.key});
+class TournamentDetailScreen extends ConsumerStatefulWidget {
+  const TournamentDetailScreen({super.key});
 
   @override
-  ConsumerState<TournamentDetailView> createState() =>
+  ConsumerState<TournamentDetailScreen> createState() =>
       _TournamentDetailViewState();
 }
 
-class _TournamentDetailViewState extends ConsumerState<TournamentDetailView>
+class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     with TickerProviderStateMixin {
   late PageController pageController;
   bool _isDisposed = false;

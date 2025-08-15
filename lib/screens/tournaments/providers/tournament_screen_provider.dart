@@ -4,7 +4,7 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.d
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/tournaments/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/sorting_all_event_provider.dart';
-import 'package:chessever2/screens/tournaments/tournament_detail_view.dart';
+import 'package:chessever2/screens/tournaments/tournament_detail_screen.dart';
 import 'package:chessever2/screens/tournaments/tournament_screen.dart';
 import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
 import 'package:chessever2/widgets/search/search_result_model.dart';

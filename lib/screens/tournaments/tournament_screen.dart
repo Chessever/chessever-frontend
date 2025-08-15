@@ -180,16 +180,13 @@ class AllEventsTabWidget extends ConsumerWidget {
         ),
       );
     }
-    return ListView.separated(
+    return ListView.builder(
       padding: EdgeInsets.only(
         left: 20.sp,
         right: 20.sp,
         bottom: MediaQuery.of(context).viewPadding.bottom + 12.sp,
       ),
       itemCount: filteredEvents.length,
-      separatorBuilder: (context, index) {
-        return SizedBox(height: 12.sp);
-      },
       itemBuilder: (context, index) {
         // if (index == 0) {
         //   return SizedBox.shrink();
@@ -201,32 +198,44 @@ class AllEventsTabWidget extends ConsumerWidget {
 
         switch (tourEventCardModel.tourEventCategory) {
           case TourEventCategory.live:
-            return EventCard(
-              tourEventCardModel: tourEventCardModel,
-              onTap: () => onSelect(tourEventCardModel),
+            return Padding(
+              padding: EdgeInsets.only(bottom: 12.sp),
+              child: EventCard(
+                tourEventCardModel: tourEventCardModel,
+                onTap: () => onSelect(tourEventCardModel),
+              ),
             );
           case TourEventCategory.upcoming:
-            return EventCard(
-              tourEventCardModel: tourEventCardModel,
-              //todo:
-              onTap: () => onSelect(tourEventCardModel),
+            return Padding(
+              padding: EdgeInsets.only(bottom: 12.sp),
+              child: EventCard(
+                tourEventCardModel: tourEventCardModel,
+                //todo:
+                onTap: () => onSelect(tourEventCardModel),
+              ),
             );
           case TourEventCategory.ongoing:
-            return EventCard(
-              tourEventCardModel: tourEventCardModel,
-              //todo:
-              onTap: () => onSelect(tourEventCardModel),
+            return Padding(
+              padding: EdgeInsets.only(bottom: 12.sp),
+              child: EventCard(
+                tourEventCardModel: tourEventCardModel,
+                //todo:
+                onTap: () => onSelect(tourEventCardModel),
+              ),
             );
           case TourEventCategory.completed:
-            return CompletedEventCard(
-              tourEventCardModel: tourEventCardModel,
-              onTap: () => onSelect(tourEventCardModel),
-              onDownloadTournament: () {
-                // Download tournament
-              },
-              onAddToLibrary: () {
-                // Add to library
-              },
+            return Padding(
+              padding: EdgeInsets.only(bottom: 12.sp),
+              child: CompletedEventCard(
+                tourEventCardModel: tourEventCardModel,
+                onTap: () => onSelect(tourEventCardModel),
+                onDownloadTournament: () {
+                  // Download tournament
+                },
+                onAddToLibrary: () {
+                  // Add to library
+                },
+              ),
             );
         }
       },
