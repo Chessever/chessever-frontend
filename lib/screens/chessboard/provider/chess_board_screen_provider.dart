@@ -77,6 +77,7 @@ class ChessBoardScreenNotifier
       final initialController = ChessBoardController();
       initialController.loadGameFromFEN(chess.Chess.DEFAULT_POSITION);
 
+
       // Set initial state with loading moves flag
       state = AsyncValue.data(
         ChessBoardState(

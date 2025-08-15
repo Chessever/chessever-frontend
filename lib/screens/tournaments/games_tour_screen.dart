@@ -42,7 +42,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
   @override
   void initState() {
     super.initState();
-    _scrollController = ScrollController(); 
+    _scrollController = ScrollController();
   }
 
   @override
@@ -73,7 +73,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     final gamesTourAsync = ref.watch(gamesTourScreenProvider);
 
     // Debug logging to understand loading sequence
-    debugPrint('🎮 GamesTourScreen build:');
     debugPrint(
       '  - App bar: ${gamesAppBarAsync.isLoading
           ? "loading"
@@ -681,9 +680,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
       try {
         ref.read(chessboardViewFromProvider.notifier).state =
             ChessboardView.tour;
-
-        print('asim' + gamesData.gamesTourModels.length.toString());
-        print('asim 2' + gameIndex.toString());
 
         Navigator.push(
           context,
