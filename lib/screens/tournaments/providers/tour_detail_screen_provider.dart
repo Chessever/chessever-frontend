@@ -5,7 +5,7 @@ import 'package:chessever2/screens/tournaments/model/about_tour_model.dart';
 import 'package:chessever2/screens/tournaments/model/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tournaments/model/tour_detail_view_model.dart';
 import 'package:chessever2/screens/tournaments/providers/live_tour_id_provider.dart';
-import 'package:chessever2/screens/tournaments/tournament_detail_view.dart';
+import 'package:chessever2/screens/tournaments/tournament_detail_screen.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final selectedTourIdProvider = StateProvider<String?>((ref) => null);

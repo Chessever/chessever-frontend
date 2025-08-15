@@ -2,7 +2,7 @@ import 'package:chessever2/repository/local_storage/tournament/tour_local_storag
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/tournaments/providers/tour_detail_screen_provider.dart';
-import 'package:chessever2/screens/tournaments/tournament_detail_view.dart';
+import 'package:chessever2/screens/tournaments/tournament_detail_screen.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 // Provider for the standings state

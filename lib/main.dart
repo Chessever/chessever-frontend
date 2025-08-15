@@ -12,7 +12,7 @@ import 'package:chessever2/screens/favorites/favorite_screen.dart';
 import 'package:chessever2/screens/score_card/pages/score_card_page.dart';
 import 'package:chessever2/screens/splash/splash_screen.dart';
 import 'package:chessever2/screens/standings/standings_screen.dart';
-import 'package:chessever2/screens/tournaments/tournament_detail_view.dart';
+import 'package:chessever2/screens/tournaments/tournament_detail_screen.dart';
 import 'package:chessever2/screens/tournaments/tournament_screen.dart';
 import 'package:chessever2/screens/calendar_screen.dart';
 import 'package:chessever2/services/notification_service.dart';
@@ -21,6 +21,7 @@ import 'package:chessever2/utils/lifecycle_event_handler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/board_color_dialog.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -32,6 +33,10 @@ import 'theme/theme_provider.dart';
 Future<void> main() async {
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
 
   // Load environment variables
   await dotenv.load(fileName: ".env");
@@ -123,7 +128,8 @@ class _MyAppState extends ConsumerState<MyApp> {
         '/auth_screen': (context) => const AuthScreen(),
         '/home_screen': (context) => const HomeScreen(),
         '/tournament_screen': (context) => const TournamentScreen(),
-        '/tournament_detail_screen': (context) => const TournamentDetailView(),
+        '/tournament_detail_screen':
+            (context) => const TournamentDetailScreen(),
         '/calendar_screen': (context) => const CalendarScreen(),
         '/library_screen': (context) => const LibraryScreen(),
         // '/chess_screen': (context) => const ChessScreen(),
