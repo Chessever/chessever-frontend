@@ -6,6 +6,7 @@ import 'package:chessever2/screens/tournaments/providers/chess_board_visibility_
 import 'package:chessever2/screens/tournaments/providers/game_fen_stream_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tournaments/providers/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/widget/empty_widget.dart';
 import 'package:chessever2/screens/tournaments/widget/game_card.dart';
 import 'package:chessever2/screens/tournaments/widget/tour_loading_widget.dart';
@@ -71,6 +72,23 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     final gamesAppBarAsync = ref.watch(gamesAppBarProvider);
     final gamesTourAsync = ref.watch(gamesTourScreenProvider);
 
+    // Debug logging to understand loading sequence
+    debugPrint('🎮 GamesTourScreen build:');
+    debugPrint(
+      '  - App bar: ${gamesAppBarAsync.isLoading
+          ? "loading"
+          : gamesAppBarAsync.hasValue
+          ? "loaded"
+          : "error"}',
+    );
+    debugPrint(
+      '  - Games: ${gamesTourAsync.isLoading
+          ? "loading"
+          : gamesTourAsync.hasValue
+          ? "loaded"
+          : "error"}',
+    );
+
     // Handle round changes (including initial load)
     _handleRoundChange(gamesAppBarAsync);
 
@@ -79,23 +97,45 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
 
     return RefreshIndicator(
       onRefresh: () async {
+        debugPrint('🔄 Refresh triggered');
         FocusScope.of(context).unfocus();
 
         final futures = <Future>[];
 
-        if (gamesAppBarAsync.hasValue) {
-          futures.add(ref.read(gamesAppBarProvider.notifier).refreshRounds());
+        // Always try to refresh tour details first
+        try {
+          futures.add(
+            ref.read(tourDetailScreenProvider.notifier).refreshTourDetails(),
+          );
+        } catch (e) {
+          debugPrint('Error refreshing tour details: $e');
         }
 
+        // Then refresh app bar if available
+        if (gamesAppBarAsync.hasValue) {
+          try {
+            futures.add(ref.read(gamesAppBarProvider.notifier).refreshRounds());
+          } catch (e) {
+            debugPrint('Error refreshing app bar: $e');
+          }
+        }
+
+        // Finally refresh games if available
         if (gamesTourAsync.hasValue) {
-          futures.add(
-            ref.read(gamesTourScreenProvider.notifier).refreshGames(),
-          );
+          try {
+            futures.add(
+              ref.read(gamesTourScreenProvider.notifier).refreshGames(),
+            );
+          } catch (e) {
+            debugPrint('Error refreshing games: $e');
+          }
         }
 
         if (futures.isNotEmpty) {
           await Future.wait(futures);
         }
+
+        debugPrint('🔄 Refresh completed');
       },
       color: kWhiteColor70,
       backgroundColor: kDarkGreyColor,
@@ -313,27 +353,88 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     AsyncValue<GamesScreenModel> gamesTourAsync,
     bool isChessBoardVisible,
   ) {
+    // Check critical dependencies first
+    final tourId = ref.watch(selectedTourIdProvider);
+    final tourDetails = ref.watch(tourDetailScreenProvider);
+
+    // Show loading for missing critical dependencies
+    if (tourId == null) {
+      return const TourLoadingWidget();
+    }
+
+    // Show loading while tour details are loading
+    if (tourDetails.isLoading) {
+      return const TourLoadingWidget();
+    }
+
+    // Handle tour details errors
+    if (tourDetails.hasError) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error, color: Colors.red, size: 48),
+            const SizedBox(height: 16),
+            Text(
+              'Error loading tournament: ${tourDetails.error}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () {
+                ref
+                    .read(tourDetailScreenProvider.notifier)
+                    .refreshTourDetails();
+              },
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Check if tour details are available
+    if (!tourDetails.hasValue ||
+        tourDetails.valueOrNull?.aboutTourModel == null) {
+      return const TourLoadingWidget();
+    }
+
     // Keep the last valid model even when refreshing
     if (gamesTourAsync.hasValue) {
       _lastGamesData = gamesTourAsync.valueOrNull;
     }
 
-    // Show loading only on first fetch
-    if (gamesAppBarAsync.isLoading ||
-        (gamesTourAsync.isLoading && _lastGamesData == null)) {
+    // Show loading for app bar if it's still loading and we don't have cached data
+    if (gamesAppBarAsync.isLoading && _lastGamesData == null) {
       return const TourLoadingWidget();
     }
 
-    if (gamesAppBarAsync.hasError || gamesTourAsync.hasError) {
+    // Show loading for games if loading and no cached data
+    if (gamesTourAsync.isLoading && _lastGamesData == null) {
+      return const TourLoadingWidget();
+    }
+
+    // Handle app bar errors
+    if (gamesAppBarAsync.hasError) {
       return _buildErrorWidget(context, ref, gamesAppBarAsync, gamesTourAsync);
     }
 
-    final gamesData = _lastGamesData;
+    // Handle games errors
+    if (gamesTourAsync.hasError) {
+      return _buildErrorWidget(context, ref, gamesAppBarAsync, gamesTourAsync);
+    }
+
+    // Get games data (use cached if available)
+    final gamesData = _lastGamesData ?? gamesTourAsync.valueOrNull;
+
+    // Still show loading if no games data at all
     if (gamesData == null) {
       return const TourLoadingWidget();
     }
 
-    if (gamesData.gamesTourModels.isEmpty) {
+    // Show empty state only if we have confirmed empty games
+    if (gamesData.gamesTourModels.isEmpty && !gamesTourAsync.isLoading) {
       return const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,

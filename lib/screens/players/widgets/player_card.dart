@@ -17,6 +17,10 @@ class PlayerCard extends StatefulWidget {
     required this.age,
     this.isFavorite = false,
     this.onFavoriteToggle,
+
+    required this.index,
+    required this.isFirst,
+    required this.isLast,
   });
 
   final int rank;
@@ -27,6 +31,9 @@ class PlayerCard extends StatefulWidget {
   final int age;
   final bool isFavorite;
   final VoidCallback? onFavoriteToggle;
+  final int index;
+  final bool isFirst;
+  final bool isLast;
 
   @override
   State<PlayerCard> createState() => _PlayerCardState();
@@ -89,16 +96,30 @@ class _PlayerCardState extends State<PlayerCard>
 
   @override
   Widget build(BuildContext context) {
+    final Color backgroundColor =
+        widget.index.isOdd ? kBlack2Color : Color(0xff111111);
+    BorderRadius? borderRadius;
+    if (widget.isFirst) {
+      borderRadius = BorderRadius.only(
+        topLeft: Radius.circular(4.br),
+        topRight: Radius.circular(4.br),
+      );
+    } else if (widget.isLast) {
+      borderRadius = BorderRadius.only(
+        bottomLeft: Radius.circular(4.br),
+        bottomRight: Radius.circular(4.br),
+      );
+    }
     return GestureDetector(
       onTap: () {
         // Navigate to standings screen when the card is tapped
         // Navigator.pushNamed(context, '/standings');
       },
       child: Container(
-        height: 48.h,
+        height: 49.h,
         decoration: BoxDecoration(
-          color: kBlack2Color,
-          borderRadius: BorderRadius.zero,
+          color: backgroundColor,
+          borderRadius: borderRadius,
         ),
         padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 14.sp),
         child: Row(
@@ -129,12 +150,6 @@ class _PlayerCardState extends State<PlayerCard>
                 textAlign: TextAlign.start,
                 text: TextSpan(
                   children: [
-                    TextSpan(
-                      text: 'GM ',
-                      style: AppTypography.textXsMedium.copyWith(
-                        color: kWhiteColor,
-                      ),
-                    ),
                     TextSpan(
                       text: widget.playerName,
                       style: AppTypography.textXsMedium.copyWith(
@@ -171,7 +186,7 @@ class _PlayerCardState extends State<PlayerCard>
               onTap: _toggleFavorite,
               behavior: HitTestBehavior.opaque,
               child: SizedBox(
-                width: 30.w,
+                width: 32.w,
                 child: ScaleTransition(
                   scale: _scaleAnimation,
                   child: SvgWidget(
@@ -179,7 +194,7 @@ class _PlayerCardState extends State<PlayerCard>
                         ? SvgAsset.favouriteRedIcon
                         : SvgAsset.favouriteIcon2,
                     semanticsLabel: 'Favorite Icon',
-                    height: 12.h,
+                    height: 14.h,
                     width: 14.w,
                   ),
                 ),
@@ -188,7 +203,6 @@ class _PlayerCardState extends State<PlayerCard>
           ],
         ),
       ),
-   
     );
   }
 }
