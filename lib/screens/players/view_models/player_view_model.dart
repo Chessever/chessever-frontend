@@ -1,91 +1,31 @@
-import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../../repository/supabase/players/players_repository.dart';
 
 class PlayerViewModel {
   static const String _favoritePlayerIdsKey = 'favorite_player_ids';
 
-  final List<Map<String, dynamic>> _players = [
-    {
-      'id': '1',
-      'name': 'Magnus, Carlsen',
-      'countryCode': 'NO',
-      'elo': 2837,
-      'age': 35,
-    },
-    {
-      'id': '2',
-      'name': 'Hikaru, Nakamura',
-      'countryCode': 'US',
-      'elo': 2804,
-      'age': 38,
-    },
-    {
-      'id': '3',
-      'name': 'Erigaisi, Arjun',
-      'countryCode': 'IN',
-      'elo': 2782,
-      'age': 22,
-    },
-    {
-      'id': '4',
-      'name': 'Carauna, Fabiano',
-      'countryCode': 'US',
-      'elo': 2777,
-      'age': 33,
-    },
-    {
-      'id': '5',
-      'name': 'Gukesh, D',
-      'countryCode': 'IN',
-      'elo': 2776,
-      'age': 19,
-    },
-    {
-      'id': '6',
-      'name': 'Abdusattorov, N',
-      'countryCode': 'UZ',
-      'elo': 2767,
-      'age': 21,
-    },
-    {
-      'id': '7',
-      'name': 'Praggnanandhaa, R',
-      'countryCode': 'IN',
-      'elo': 2766,
-      'age': 20,
-    },
-    {
-      'id': '8',
-      'name': 'Simmons, R',
-      'countryCode': 'NP',
-      'elo': 2766,
-      'age': 22,
-    },
-  ];
-
-  Set<String> _favoritePlayerIds = {};
+  final PlayersRepository _repo = PlayersRepository();
+  final List<Map<String, dynamic>> _players = [];
   bool _isInitialized = false;
 
-  // Initialize the view model and load favorites
-  Future<void> initialize() async {
-    if (_isInitialized) return;
+  int _offset = 0;
+  final int _pageSize = 50;
+  bool _hasMore = true;
 
-    try {
-      await _loadFavoritePlayerIds();
-      _isInitialized = true;
-      print('Initialized PlayerViewModel with favorites: $_favoritePlayerIds');
+  Set<String> _favoritePlayerIds = {};
 
-      // Ensure persistence of initial favorites if needed
-      if (_favoritePlayerIds.isEmpty) {
-        // Don't add any default favorites
-        await _saveFavoritePlayerIds();
-      }
-    } catch (e) {
-      print('Error initializing PlayerViewModel: $e');
+  Future<void> initialize({bool clear = false}) async {
+    if (clear) {
+      _players.clear();
+      _offset = 0;
+      _hasMore = true;
     }
+    if (_isInitialized && !clear) return;
+    _isInitialized = true;
+    await _loadFavoritePlayerIds();
   }
 
-  // Load favorite player IDs from SharedPreferences
   Future<void> _loadFavoritePlayerIds() async {
     final prefs = await SharedPreferences.getInstance();
     final favoritesJson = prefs.getString(_favoritePlayerIdsKey);
@@ -96,84 +36,67 @@ class PlayerViewModel {
     }
   }
 
-  // Save favorite player IDs to SharedPreferences
+  Future<List<Map<String, dynamic>>> fetchNextPage() async {
+    if (!_hasMore) return [];
+
+    final page = await _repo.fetchPlayersPage(
+      offset: _offset,
+      pageSize: _pageSize,
+    );
+
+    final List<Map<String, dynamic>> newPlayers = [];
+
+    for (var game in page) {
+      final playersList =
+          (game['players'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ??
+          [];
+      for (var player in playersList) {
+        final key = '${player['name']}_${player['rating']}';
+        if (!_players.any((p) => '${p['name']}_${p['rating']}' == key)) {
+          final playerData = {
+            'fideId': player['fideId'],
+            'name': player['name'],
+            'rating': player['rating'] ?? 0,
+            'title': player['title'] ?? '',
+            'fed': player['fed'],
+            'clock': player['clock'],
+            'isFavorite': _favoritePlayerIds.contains(
+              player['fideId'].toString(),
+            ),
+          };
+          _players.add(playerData);
+          newPlayers.add(playerData);
+        }
+      }
+    }
+
+    _offset += _pageSize;
+    _hasMore = page.isNotEmpty;
+
+    return newPlayers;
+  }
+
+  Future<void> toggleFavorite(String fideId) async {
+    if (_favoritePlayerIds.contains(fideId)) {
+      _favoritePlayerIds.remove(fideId);
+    } else {
+      _favoritePlayerIds.add(fideId);
+    }
+    await _saveFavoritePlayerIds();
+
+    final index = _players.indexWhere((p) => p['fideId'].toString() == fideId);
+    if (index != -1) {
+      _players[index]['isFavorite'] = _favoritePlayerIds.contains(fideId);
+    }
+  }
+
   Future<void> _saveFavoritePlayerIds() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final favoritesJson = jsonEncode(_favoritePlayerIds.toList());
       await prefs.setString(_favoritePlayerIdsKey, favoritesJson);
-      print('Saved favorite player IDs: $_favoritePlayerIds');
     } catch (e) {
       print('Error saving favorite player IDs: $e');
-    }
-  }
-
-  // Get all players with their favorite status
-  List<Map<String, dynamic>> getPlayers() {
-    return _players.map((player) {
-      final playerWithFavorite = Map<String, dynamic>.from(player);
-      playerWithFavorite['isFavorite'] = _favoritePlayerIds.contains(
-        player['id'],
-      );
-      return playerWithFavorite;
-    }).toList();
-  }
-
-  // Search players by name
-  List<Map<String, dynamic>> searchPlayers(String query) {
-    if (query.isEmpty) {
-      return getPlayers();
-    }
-
-    final lowercaseQuery = query.toLowerCase();
-    return getPlayers()
-        .where(
-          (player) =>
-              player['name'].toString().toLowerCase().contains(lowercaseQuery),
-        )
-        .toList();
-  }
-
-  // Toggle favorite status for a player
-  Future<void> toggleFavorite(String playerId) async {
-    await initialize();
-
-    if (_favoritePlayerIds.contains(playerId)) {
-      _favoritePlayerIds.remove(playerId);
-    } else {
-      _favoritePlayerIds.add(playerId);
-    }
-
-    await _saveFavoritePlayerIds();
-  }
-
-  // Check if a player is a favorite
-  bool isPlayerFavorite(String playerId) {
-    return _favoritePlayerIds.contains(playerId);
-  }
-
-  // Get all favorite players
-  List<Map<String, dynamic>> getFavoritePlayers() {
-    return getPlayers()
-        .where((player) => _favoritePlayerIds.contains(player['id']))
-        .toList();
-  }
-
-  // Get a player by ID
-  Map<String, dynamic>? getPlayerById(String id) {
-    try {
-      return _players.firstWhere((player) => player['id'] == id);
-    } catch (e) {
-      return null;
-    }
-  }
-
-  // Get a player by name
-  Map<String, dynamic>? getPlayerByName(String name) {
-    try {
-      return _players.firstWhere((player) => player['name'] == name);
-    } catch (e) {
-      return null;
     }
   }
 }

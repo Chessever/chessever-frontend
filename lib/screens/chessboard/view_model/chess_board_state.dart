@@ -13,6 +13,7 @@ class ChessBoardState {
   final bool isBoardFlipped;
   final double evaluations;
   final Timer? autoPlayTimer;
+  final bool isLoadingMoves;
 
   ChessBoardState({
     required this.baseGame,
@@ -24,6 +25,7 @@ class ChessBoardState {
     required this.isBoardFlipped,
     required this.evaluations,
     this.autoPlayTimer,
+    this.isLoadingMoves = false,
   });
 
   // Convenience getters
@@ -60,6 +62,7 @@ class ChessBoardState {
     bool? isBoardFlipped,
     double? evaluations,
     Timer? autoPlayTimer,
+    bool? isLoadingMoves,
   }) {
     return ChessBoardState(
       baseGame: baseGame ?? this.baseGame,
@@ -71,6 +74,7 @@ class ChessBoardState {
       isBoardFlipped: isBoardFlipped ?? this.isBoardFlipped,
       evaluations: evaluations ?? this.evaluations,
       autoPlayTimer: autoPlayTimer ?? this.autoPlayTimer,
+      isLoadingMoves: isLoadingMoves ?? this.isLoadingMoves,
     );
   }
 

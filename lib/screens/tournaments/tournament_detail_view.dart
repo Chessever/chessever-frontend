@@ -22,7 +22,7 @@ final selectedBroadcastModelProvider = StateProvider<GroupBroadcast?>(
 
 final selectedTourModeProvider =
     AutoDisposeStateProvider<_TournamentDetailScreenMode>(
-      (ref) => _TournamentDetailScreenMode.about,
+      (ref) => _TournamentDetailScreenMode.games,
     );
 
 /// For Tabs
@@ -67,7 +67,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailView>
     );
 
     pageController = PageController(
-      initialPage: initialPage.clamp(0, _pages.length - 1),
+      initialPage: initialPage.clamp(1, _pages.length - 1),
     );
   }
 

@@ -64,33 +64,33 @@ class HamburgerMenu extends StatelessWidget {
                       showChevron: true,
                     ),
                     SizedBox(height: 12.h),
-                    // _MenuItem(
-                    //   customIcon: SvgWidget(
-                    //     SvgAsset.playersIcon,
-                    //     semanticsLabel: 'Players Icon',
-                    //     height: 24.h,
-                    //     width: 24.w,
-                    //   ),
-                    //   title: 'Players',
-                    //   onPressed: () {
-                    //     Navigator.pop(context); // Close drawer first
-                    //     callbacks.onPlayersPressed();
-                    //   },
-                    // ),
-                    // SizedBox(height: 12.h),
-                    // _MenuItem(
-                    //   customIcon: SvgWidget(
-                    //     SvgAsset.favouriteIcon,
-                    //     semanticsLabel: 'Fav Icon',
-                    //     height: 24.h,
-                    //     width: 24.w,
-                    //   ),
-                    //   title: 'Favorites',
-                    //   onPressed: () {
-                    //     Navigator.pop(context); // Close drawer first
-                    //     callbacks.onFavoritesPressed();
-                    //   },
-                    // ),
+                    _MenuItem(
+                      customIcon: SvgWidget(
+                        SvgAsset.playersIcon,
+                        semanticsLabel: 'Players Icon',
+                        height: 24.h,
+                        width: 24.w,
+                      ),
+                      title: 'Players',
+                      onPressed: () {
+                        Navigator.pop(context); // Close drawer first
+                        callbacks.onPlayersPressed();
+                      },
+                    ),
+                    SizedBox(height: 12.h),
+                    _MenuItem(
+                      customIcon: SvgWidget(
+                        SvgAsset.favouriteIcon,
+                        semanticsLabel: 'Fav Icon',
+                        height: 24.h,
+                        width: 24.w,
+                      ),
+                      title: 'Favorites',
+                      onPressed: () {
+                        Navigator.pop(context); // Close drawer first
+                        callbacks.onFavoritesPressed();
+                      },
+                    ),
                     // SizedBox(height: 12.h),
                     // _CountryMan(
                     //   onCountryManPressed: () {

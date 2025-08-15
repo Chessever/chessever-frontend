@@ -8,16 +8,16 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 final userSelectedRoundProvider =
     StateProvider<({String id, bool userSelected})?>((ref) => null);
 
-// Optimized provider with better error handling and null safety
+// Fixed provider with proper null handling
 final gamesAppBarProvider = AutoDisposeStateNotifierProvider<
   GamesAppBarNotifier,
   AsyncValue<GamesAppBarViewModel>
 >((ref) {
-  final tourId = ref.read(selectedTourIdProvider);
+  final tourId = ref.watch(selectedTourIdProvider); // Use watch instead of read
 
-  // Null safety check for tourId
+  // Return loading state if tourId is null instead of throwing
   if (tourId == null) {
-    throw Exception('Tournament ID not available');
+    return GamesAppBarNotifier.withoutTourId(ref: ref);
   }
 
   // Get live rounds with fallback
@@ -41,15 +41,52 @@ class GamesAppBarNotifier
     _init();
   }
 
+  // Constructor for when tourId is not available
+  GamesAppBarNotifier.withoutTourId({
+    required this.ref,
+  }) : tourId = null,
+       liveRounds = <String>[],
+       super(const AsyncValue.loading()) {
+    // Wait for tourId to become available
+    _waitForTourId();
+  }
+
   final Ref ref;
-  final String tourId;
+  final String? tourId;
   final List<String> liveRounds;
 
   // Cache for optimization
   List<GamesAppBarModel>? _cachedRounds;
   String? _lastTourId;
 
+  Future<void> _waitForTourId() async {
+    // Listen for changes to selectedTourIdProvider
+    ref.listen<String?>(selectedTourIdProvider, (previous, next) {
+      if (next != null && mounted) {
+        // Tournament ID is now available, recreate the provider
+        // This will trigger a rebuild of the dependent widgets
+        ref.invalidateSelf();
+      }
+    });
+
+    // Set initial empty state
+    if (mounted) {
+      state = AsyncValue.data(
+        GamesAppBarViewModel(
+          gamesAppBarModels: [],
+          selectedId: '',
+          userSelectedId: false,
+        ),
+      );
+    }
+  }
+
   Future<void> _init() async {
+    if (tourId == null) {
+      await _waitForTourId();
+      return;
+    }
+
     try {
       // Use cache if same tour ID
       List<GamesAppBarModel> gamesAppBarModels;
@@ -58,7 +95,7 @@ class GamesAppBarNotifier
         gamesAppBarModels = _cachedRounds!;
       } else {
         final roundRepository = ref.read(roundRepositoryProvider);
-        final rounds = await roundRepository.getRoundsByTourId(tourId);
+        final rounds = await roundRepository.getRoundsByTourId(tourId!);
 
         if (rounds.isEmpty) {
           if (mounted) {
@@ -177,6 +214,11 @@ class GamesAppBarNotifier
 
   // Method to refresh rounds if needed
   Future<void> refreshRounds() async {
+    if (tourId == null) {
+      print('Cannot refresh rounds: Tournament ID not available');
+      return;
+    }
+
     try {
       // Clear cache to force fresh data
       _cachedRounds = null;

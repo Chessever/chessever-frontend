@@ -2,6 +2,7 @@ import 'package:chessever2/repository/local_storage/group_broadcast/group_broadc
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/tournaments/tournament_screen.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
 import 'package:chessever2/widgets/search/search_result_model.dart';
 import 'package:flutter/foundation.dart';
@@ -23,15 +24,8 @@ class SearchOverlay extends ConsumerWidget {
     return Container(
       decoration: BoxDecoration(
         color: Colors.grey[900],
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(16.br),
         border: Border.all(color: Colors.white.withOpacity(0.1)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),

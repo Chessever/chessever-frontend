@@ -11,7 +11,6 @@ import 'package:chessever2/screens/players/providers/player_providers.dart';
 import 'package:chessever2/screens/favorites/favorite_screen.dart';
 import 'package:chessever2/screens/score_card/pages/score_card_page.dart';
 import 'package:chessever2/screens/splash/splash_screen.dart';
-import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/standings/standings_screen.dart';
 import 'package:chessever2/screens/tournaments/tournament_detail_view.dart';
 import 'package:chessever2/screens/tournaments/tournament_screen.dart';

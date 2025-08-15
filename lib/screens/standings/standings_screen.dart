@@ -108,16 +108,15 @@ class StandingsScreen extends ConsumerWidget {
                             isFirst: index == 0,
                             isLast: index == data.length - 1,
                             onTap: () {
+                              ref.read(selectedPlayerProvider.notifier).state =
+                                  player;
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) => ScoreCardScreen(
-                                    score:player.matchScore??"" ,
-                                    performance: player.score,
-                                    scoreChangeData: player.scoreChange,
-                                    
-
-                                  ),
+                                  builder:
+                                      (_) => ScoreCardScreen(
+                                       
+                                      ),
                                 ),
                               );
                             },

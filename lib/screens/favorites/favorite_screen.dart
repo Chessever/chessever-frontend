@@ -137,27 +137,27 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen>
                 ),
               ),
 
-              // Favorites list
-              Expanded(
-                child: favoritesAsync.when(
-                  loading:
-                      () => const Center(
-                        child: CircularProgressIndicator(color: kWhiteColor),
-                      ),
-                  error:
-                      (error, stackTrace) => Center(
-                        child: Text(
-                          'Error loading favorites: $error',
-                          style: AppTypography.textSmRegular.copyWith(
-                            color: kWhiteColor,
-                          ),
-                        ),
-                      ),
-                  data:
-                      (favoritePlayers) =>
-                          _FavoritesList(favoritePlayers: favoritePlayers),
-                ),
-              ),
+              // // Favorites list
+              // Expanded(
+              //   child: favoritesAsync.when(
+              //     loading:
+              //         () => const Center(
+              //           child: CircularProgressIndicator(color: kWhiteColor),
+              //         ),
+              //     error:
+              //         (error, stackTrace) => Center(
+              //           child: Text(
+              //             'Error loading favorites: $error',
+              //             style: AppTypography.textSmRegular.copyWith(
+              //               color: kWhiteColor,
+              //             ),
+              //           ),
+              //         ),
+              //     data:
+              //         (favoritePlayers) =>
+              //             _FavoritesList(favoritePlayers: favoritePlayers),
+              //   ),
+              // ),
             ],
           ),
         ),
@@ -216,7 +216,7 @@ class _FavoritesList extends ConsumerWidget {
     viewModel.toggleFavorite(playerId).then((_) {
       // Refresh providers to update UI
       ref.invalidate(favoritePlayersProvider);
-      ref.invalidate(playerProvider);
+      // ref.invalidate(playerProvider);
     });
   }
 }

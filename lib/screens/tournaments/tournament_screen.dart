@@ -5,13 +5,13 @@ import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart'
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
+import 'package:chessever2/widgets/filter_popup.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../../widgets/rounded_search_bar.dart';
 import '../../widgets/segmented_switcher.dart';
 import '../../widgets/event_card/completed_event_card.dart';
 
@@ -28,6 +28,14 @@ final selectedTourEventProvider = StateProvider<TournamentCategory>(
 
 class TournamentScreen extends HookConsumerWidget {
   const TournamentScreen({super.key});
+
+  void _showFilterPopup(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.5),
+      builder: (context) => const FilterPopup(),
+    );
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -48,13 +56,14 @@ class TournamentScreen extends HookConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             // Add top padding
-            SizedBox(height: 24.h + MediaQuery.of(context).viewPadding.top),
+            SizedBox(height: 16.h + MediaQuery.of(context).viewPadding.top),
             // Search bar
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 20.sp),
               child: Hero(
                 tag: 'search_bar',
                 child: EnhancedRoundedSearchBar(
+                  showFilter: true,
                   controller: searchController,
                   hintText: 'Search Events or Players',
                   onChanged: (value) {
@@ -71,7 +80,7 @@ class TournamentScreen extends HookConsumerWidget {
                         );
                   },
                   onFilterTap: () {
-                    // Show filter popup
+                    _showFilterPopup(context);
                   },
                   onProfileTap: () {
                     // Open hamburger menu drawer using the static _scaffoldKey
@@ -81,7 +90,7 @@ class TournamentScreen extends HookConsumerWidget {
               ),
             ),
 
-            SizedBox(height: 24.h),
+            SizedBox(height: 16.h),
 
             // Segmented switcher for "All Events" and "Upcoming Events"
             Padding(
