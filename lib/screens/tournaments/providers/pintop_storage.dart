@@ -13,7 +13,7 @@ class _PinnedGamesStorage {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getStringList(_keyPinnedGames) ?? [];
   }
-
+ 
   Future<void> savePinnedGameIds(List<String> pinnedIds) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(_keyPinnedGames, pinnedIds);

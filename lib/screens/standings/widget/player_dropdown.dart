@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../widgets/skeleton_widget.dart';
+import '../score_card_screen.dart';
 
 class PlayerDropDown extends ConsumerWidget {
   const PlayerDropDown({super.key});
@@ -19,12 +20,7 @@ class PlayerDropDown extends ConsumerWidget {
       child: ref
           .watch(standingScreenProvider)
           .when(
-            data:
-                (data) => _PlayerDropdown(
-                  players: data,
-                  selectedPlayerId: data.isNotEmpty ? data.first.name : null,
-                  onChanged: (player) {},
-                ),
+            data: (players) => _PlayerDropdown(players: players),
             error:
                 (e, _) => Center(
                   child: Text(
@@ -34,57 +30,36 @@ class PlayerDropDown extends ConsumerWidget {
                     ),
                   ),
                 ),
-            loading: () {
-              final loadingPlayers = [
-                PlayerStandingModel(
-                  countryCode: 'USA',
-                  title: 'GM',
-                  name: 'Loading...',
-                  score: 0,
-                  scoreChange: 0,
-                  matchScore: '0.0 / 0',
+            loading:
+                () => SkeletonWidget(
+                  child: _PlayerDropdown(
+                    players: [
+                      PlayerStandingModel(
+                        countryCode: 'USA',
+                        title: 'GM',
+                        name: 'Loading...',
+                        score: 0,
+                        scoreChange: 0,
+                        matchScore: '0.0 / 0',
+                      ),
+                    ],
+                  ),
                 ),
-              ];
-              return SkeletonWidget(
-                child: _PlayerDropdown(
-                  players: loadingPlayers,
-                  selectedPlayerId: loadingPlayers.first.name,
-                  onChanged: (_) {},
-                ),
-              );
-            },
           ),
     );
   }
 }
 
-class _PlayerDropdown extends StatefulWidget {
+class _PlayerDropdown extends ConsumerWidget {
   final List<PlayerStandingModel> players;
-  final String? selectedPlayerId;
-  final ValueChanged<PlayerStandingModel> onChanged;
 
-  const _PlayerDropdown({
-    required this.players,
-    required this.selectedPlayerId,
-    required this.onChanged,
-  });
+  const _PlayerDropdown({required this.players});
 
   @override
-  State<_PlayerDropdown> createState() => _PlayerDropdownState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selectedPlayer = ref.watch(selectedPlayerProvider);
 
-class _PlayerDropdownState extends State<_PlayerDropdown> {
-  late String? _selectedPlayerId;
-
-  @override
-  void initState() {
-    _selectedPlayerId = widget.selectedPlayerId;
-    super.initState();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (widget.players.isEmpty) {
+    if (players.isEmpty) {
       return Container(
         padding: EdgeInsets.symmetric(horizontal: 12.sp),
         alignment: Alignment.center,
@@ -96,51 +71,46 @@ class _PlayerDropdownState extends State<_PlayerDropdown> {
       );
     }
 
-    return DropdownButton<String>(
-      value: _selectedPlayerId,
-      onChanged: (newValue) {
-        if (newValue != null) {
-          setState(() {
-            _selectedPlayerId = newValue;
-          });
-          final selectedPlayer = widget.players.firstWhere(
-            (e) => e.name == newValue,
-            orElse: () => widget.players.first,
-          );
-          widget.onChanged(selectedPlayer);
+    return DropdownButton<PlayerStandingModel>(
+      value: selectedPlayer ?? players.first,
+      onChanged: (player) {
+        if (player != null) {
+          ref.read(selectedPlayerProvider.notifier).state = player;
         }
       },
       items:
-          widget.players.asMap().entries.map<DropdownMenuItem<String>>((entry) {
-            final index = entry.key;
-            final player = entry.value;
-            final isLast = index == widget.players.length - 1;
-
-            return DropdownMenuItem<String>(
-              value: player.name,
-              child: Column(
-                children: [
-                  Container(
-                    padding: EdgeInsets.symmetric(vertical: 8.h),
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      player.name,
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: kWhiteColor,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+          players.map(
+            (player) {
+              final isLast = player == players.last;
+              return DropdownMenuItem<PlayerStandingModel>(
+                value: player,
+                child: Container(
+                  padding: EdgeInsets.symmetric(vertical: 8.h),
+                  decoration: BoxDecoration(
+                    border:
+                        isLast
+                            ? null
+                            : Border(
+                              bottom: BorderSide(
+                                color: kWhiteColor.withOpacity(0.05),
+                                width: 1,
+                              ),
+                            ),
                   ),
-                  if (!isLast)
-                    Divider(
-                      height: 1,
-                      color: kWhiteColor.withOpacity(0.05),
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    player.name,
+                    style: AppTypography.textXsRegular.copyWith(
+                      color: kWhiteColor,
                     ),
-                ],
-              ),
-            );
-          }).toList(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              );
+            },
+          ).toList(),
+
       underline: Container(),
       icon: Icon(
         Icons.keyboard_arrow_down_outlined,
@@ -150,20 +120,6 @@ class _PlayerDropdownState extends State<_PlayerDropdown> {
       dropdownColor: kBlack2Color,
       borderRadius: BorderRadius.circular(20.br),
       isExpanded: true,
-      style: AppTypography.textMdBold,
-      selectedItemBuilder: (BuildContext context) {
-        return widget.players.map((e) => e.name).map<Widget>((name) {
-          return Container(
-            padding: EdgeInsets.symmetric(horizontal: 12.sp),
-            alignment: Alignment.center,
-            child: Text(
-              name,
-              style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
-              overflow: TextOverflow.ellipsis,
-            ),
-          );
-        }).toList();
-      },
     );
   }
 }

@@ -2,6 +2,7 @@ import 'package:chessever2/repository/local_storage/tournament/games/games_local
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/tournaments/model/about_tour_model.dart';
 import 'package:chessever2/screens/tournaments/model/games_tour_model.dart';
+import 'package:chessever2/screens/tournaments/model/tour_detail_view_model.dart';
 import 'package:chessever2/screens/tournaments/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/pintop_storage.dart';
 import 'package:chessever2/screens/tournaments/providers/tour_detail_screen_provider.dart';
@@ -12,36 +13,36 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 // Provider to track scroll position for round changes
 final roundScrollPositionProvider = StateProvider<int?>((ref) => null);
 
-// Updated provider - no more round filtering, shows all games
+// Fixed provider with proper null handling and dependency management
 final gamesTourScreenProvider = StateNotifierProvider.autoDispose<
   GamesTourScreenProvider,
   AsyncValue<GamesScreenModel>
 >((ref) {
-  // Watch dependencies and handle loading states properly
-  final gamesAppBarAsync = ref.watch(gamesAppBarProvider);
+  // Watch tour details first - this is the primary dependency
   final tourDetailAsync = ref.watch(tourDetailScreenProvider);
-
-  // Return error state if dependencies have errors
-  if (gamesAppBarAsync.hasError || tourDetailAsync.hasError) {
-    final error = gamesAppBarAsync.error ?? tourDetailAsync.error;
-
-    throw Exception(error);
+  
+  // Only proceed if tour details are loaded and valid
+  if (tourDetailAsync.isLoading) {
+    return GamesTourScreenProvider.loading(ref: ref);
   }
 
-  // Get values safely - we still track selected round for scrolling
-  final selectedRound = gamesAppBarAsync.valueOrNull?.selectedId;
+  if (tourDetailAsync.hasError) {
+    return GamesTourScreenProvider.withError(ref: ref, error: tourDetailAsync.error!);
+  }
+
   final aboutTourModel = tourDetailAsync.valueOrNull?.aboutTourModel;
-
-  // Return error state if required dependencies are missing
   if (aboutTourModel == null) {
-    throw Exception(
-      'Tour details are not available. Please select a tournament.',
-    );
+    return GamesTourScreenProvider.loading(ref: ref);
   }
 
+  // Now watch app bar - it's secondary to tour details
+  final gamesAppBarAsync = ref.watch(gamesAppBarProvider);
+  final selectedRound = gamesAppBarAsync.valueOrNull?.selectedId;
+
+  // Don't block on app bar loading/errors - games can load without round selection
   return GamesTourScreenProvider(
     ref: ref,
-    selectedRoundId: selectedRound, // Now used for scrolling, not filtering
+    selectedRoundId: selectedRound,
     aboutTourModel: aboutTourModel,
   );
 });
@@ -52,13 +53,33 @@ class GamesTourScreenProvider
     required this.ref,
     required this.selectedRoundId,
     required this.aboutTourModel,
-  }) : super(const AsyncValue.loading()) {
+  }) : error = null,
+       super(const AsyncValue.loading()) {
     _init();
   }
 
+  // Constructor for loading state
+  GamesTourScreenProvider.loading({
+    required this.ref,
+  }) : selectedRoundId = null,
+       aboutTourModel = null,
+       error = null,
+       super(const AsyncValue.loading()) {
+    _waitForDependencies();
+  }
+
+  // Constructor for error state
+  GamesTourScreenProvider.withError({
+    required this.ref,
+    required Object this.error,
+  }) : selectedRoundId = null,
+       aboutTourModel = null,
+       super(AsyncValue.error(error, StackTrace.current));
+
   final Ref ref;
-  final String? selectedRoundId; // Used for scrolling to round position
-  final AboutTourModel aboutTourModel;
+  final String? selectedRoundId;
+  final AboutTourModel? aboutTourModel;
+  final Object? error;
 
   // Cache for reducing redundant operations
   List<Games>? _cachedGames;
@@ -66,9 +87,31 @@ class GamesTourScreenProvider
 
   // Search mode tracking
   bool _isSearchMode = false;
-  List<Games>? _originalGamesBeforeSearch; // Store original games before search
+  List<Games>? _originalGamesBeforeSearch;
+
+  Future<void> _waitForDependencies() async {
+    // Listen for changes to tour details (primary dependency)
+    ref.listen<AsyncValue<TourDetailViewModel>>(tourDetailScreenProvider, (previous, next) {
+      if (mounted && next.hasValue && next.valueOrNull?.aboutTourModel != null) {
+        debugPrint('Tour details now available, invalidating games provider');
+        // Dependencies are now available, invalidate to recreate provider
+        ref.invalidateSelf();
+      }
+    });
+
+    // Set initial loading state while waiting
+    if (mounted) {
+      state = const AsyncValue.loading();
+    }
+  }
 
   Future<void> togglePinGame(String gameId) async {
+    // Check if we have the required dependencies
+    if (aboutTourModel == null) {
+      debugPrint('Cannot toggle pin: tour details not available');
+      return;
+    }
+
     try {
       final pinnedStorage = ref.read(pinnedGamesStorageProvider);
       final currentPinnedIds = await pinnedStorage.getPinnedGameIds();
@@ -96,21 +139,18 @@ class GamesTourScreenProvider
     debugPrint('🔍 clearSearch called - resetting to all games');
 
     if (_isSearchMode && _originalGamesBeforeSearch != null) {
-      // Immediately restore from cached games instead of doing a full refresh
       debugPrint(
         '🔍 Restoring from cached games: ${_originalGamesBeforeSearch!.length} games',
       );
       _isSearchMode = false;
       _updateState(_originalGamesBeforeSearch!);
     } else if (_cachedGames != null) {
-      // Fallback: use current cached games
       debugPrint(
         '🔍 Restoring from current cache: ${_cachedGames!.length} games',
       );
       _isSearchMode = false;
       _updateState(_cachedGames!);
     } else {
-      // Last resort: refresh from storage
       debugPrint('🔍 No cache available, refreshing from storage');
       _isSearchMode = false;
       refreshGames();
@@ -150,7 +190,6 @@ class GamesTourScreenProvider
           await ref.read(pinnedGamesStorageProvider).getPinnedGameIds();
       _cachedPinnedIds = pinnedIds;
 
-      // NO MORE FILTERING - Show ALL games from ALL rounds
       // Sort games by round first, then by other criteria
       final sortedGames = List<Games>.from(allGames);
 
@@ -210,7 +249,7 @@ class GamesTourScreenProvider
           GamesScreenModel(
             gamesTourModels: gamesTourModels,
             pinnedGamedIs:
-                _isSearchMode ? [] : pinnedIds, // No pins in search mode
+                _isSearchMode ? [] : pinnedIds,
             scrollToIndex: scrollToIndex,
           ),
         );
@@ -228,10 +267,8 @@ class GamesTourScreenProvider
 
   // Helper method to compare round IDs (round1, round2, etc.)
   int _compareRounds(String roundIdA, String roundIdB) {
-    // Extract round numbers for proper sorting
     final roundNumberA = _extractRoundNumber(roundIdA);
     final roundNumberB = _extractRoundNumber(roundIdB);
-
     return roundNumberA.compareTo(roundNumberB);
   }
 
@@ -244,19 +281,16 @@ class GamesTourScreenProvider
     if (match != null) {
       return int.tryParse(match.group(1) ?? '0') ?? 0;
     }
-    // Fallback: try to extract any number from the string
     final numberMatch = RegExp(r'(\d+)').firstMatch(roundId);
     if (numberMatch != null) {
       return int.tryParse(numberMatch.group(1) ?? '0') ?? 0;
     }
-    return 0; // Default for non-numeric rounds
+    return 0;
   }
 
   // Find the first game index for a specific round
   int? _findFirstGameIndexForRound(List<GamesTourModel> games, String roundId) {
     for (int i = 0; i < games.length; i++) {
-      // You'll need to add roundId to GamesTourModel or access it differently
-      // For now, assuming you can access the original game data
       if (_cachedGames != null) {
         final originalGame = _cachedGames!.firstWhere(
           (game) => game.id == games[i].gameId,
@@ -271,10 +305,16 @@ class GamesTourScreenProvider
   }
 
   Future<void> _init() async {
+    // Check if we have the required dependencies
+    if (aboutTourModel == null) {
+      await _waitForDependencies();
+      return;
+    }
+
     try {
       final gamesLocalStorageProvider = ref.read(gamesLocalStorage);
       final allGames = await gamesLocalStorageProvider.fetchAndSaveGames(
-        aboutTourModel.id,
+        aboutTourModel!.id,
       );
       await _updateState(allGames);
     } catch (e, st) {
@@ -285,14 +325,19 @@ class GamesTourScreenProvider
   }
 
   Future<void> searchGamesEnhanced(String query) async {
+    // Check if we have the required dependencies
+    if (aboutTourModel == null) {
+      debugPrint('Cannot search: tour details not available');
+      return;
+    }
+
     try {
       if (query.isEmpty) {
-        // Return to normal state if query is empty
         clearSearch();
         return;
       }
 
-      // Store original games before entering search mode (if not already stored)
+      // Store original games before entering search mode
       if (!_isSearchMode && _cachedGames != null) {
         _originalGamesBeforeSearch = List<Games>.from(_cachedGames!);
         debugPrint(
@@ -307,7 +352,6 @@ class GamesTourScreenProvider
         throw Exception('No tournament selected');
       }
 
-      // Use the enhanced search with scoring
       final gamesLocalStorageProvider = ref.read(gamesLocalStorage);
       final searchResult = await gamesLocalStorageProvider
           .searchGamesWithScoring(
@@ -315,7 +359,6 @@ class GamesTourScreenProvider
             query: query,
           );
 
-      // Extract games from search results (already sorted by score)
       final games = searchResult.results.map((result) => result.game).toList();
       debugPrint('🔍 Search found: ${games.length} games');
 
@@ -334,8 +377,8 @@ class GamesTourScreenProvider
         state = AsyncValue.data(
           GamesScreenModel(
             gamesTourModels: gamesTourModels,
-            pinnedGamedIs: [], // Don't show pins in search results
-            scrollToIndex: null, // No scrolling for search results
+            pinnedGamedIs: [],
+            scrollToIndex: null,
           ),
         );
       }
@@ -347,6 +390,12 @@ class GamesTourScreenProvider
   }
 
   Future<void> refreshGames() async {
+    // Check if we have the required dependencies
+    if (aboutTourModel == null) {
+      debugPrint('Cannot refresh: tour details not available');
+      return;
+    }
+
     try {
       // Clear cache to force fresh data
       _cachedGames = null;
@@ -354,7 +403,7 @@ class GamesTourScreenProvider
 
       final gamesLocalStorageProvider = ref.read(gamesLocalStorage);
       final allGames = await gamesLocalStorageProvider.refresh(
-        aboutTourModel.id,
+        aboutTourModel!.id,
       );
       await _updateState(allGames);
     } catch (e, st) {

@@ -72,67 +72,137 @@ class ChessBoardScreenNotifier
   void _initializeState() async {
     print("Initializing game: ${game.gameId}\nPGN: ${game.pgn}");
 
-    // Create base game from PGN
-    final baseGame = chess.Chess();
-    final uciMoves = <String>[];
-    final sanMoves = <String>[];
+    try {
+      // Create initial loading state with basic board setup
+      final initialController = ChessBoardController();
+      initialController.loadGameFromFEN(chess.Chess.DEFAULT_POSITION);
 
-    final gameWithPGn = await ref
-        .read(gameRepositoryProvider)
-        .getGameById(game.gameId);
+      // Set initial state with loading moves flag
+      state = AsyncValue.data(
+        ChessBoardState(
+          baseGame: chess.Chess(),
+          chessBoardController: initialController,
+          uciMoves: [],
+          sanMoves: [],
+          currentMoveIndex: 0,
+          isPlaying: false,
+          isBoardFlipped: false,
+          evaluations: 0.0,
+          isLoadingMoves: true, // Show loading skeleton
+        ),
+      );
 
-    game = GamesTourModel.fromGame(gameWithPGn);
+      // Now load the actual game data
+      await _loadGameData();
+    } catch (e) {
+      print('Error initializing chess board: $e');
+      state = AsyncValue.error(e, StackTrace.current);
+    }
+  }
 
-    if (game.pgn != null && game.pgn!.isNotEmpty) {
-      try {
-        baseGame.load_pgn(game.pgn!);
+  Future<void> _loadGameData() async {
+    try {
+      // Create base game from PGN
+      final baseGame = chess.Chess();
+      final uciMoves = <String>[];
+      final sanMoves = <String>[];
 
-        // Extract moves from history
-        final history = baseGame.getHistory({'verbose': true});
-        for (var move in history) {
-          final from = move['from'] ?? '';
-          final to = move['to'] ?? '';
-          final promotion = move['promotion'] ?? '';
+      // Fetch fresh game data from database
+      final gameWithPGn = await ref
+          .read(gameRepositoryProvider)
+          .getGameById(game.gameId);
 
-          String uciMove = '$from$to';
-          if (promotion.isNotEmpty) {
-            uciMove += promotion.toLowerCase();
+      game = GamesTourModel.fromGame(gameWithPGn);
+
+      // Process PGN if available
+      if (game.pgn != null && game.pgn!.isNotEmpty) {
+        try {
+          baseGame.load_pgn(game.pgn!);
+
+          // Extract moves from history
+          final history = baseGame.getHistory({'verbose': true});
+          for (var move in history) {
+            final from = move['from'] ?? '';
+            final to = move['to'] ?? '';
+            final promotion = move['promotion'] ?? '';
+
+            String uciMove = '$from$to';
+            if (promotion.isNotEmpty) {
+              uciMove += promotion.toLowerCase();
+            }
+
+            uciMoves.add(uciMove);
+            sanMoves.add(move['san'] ?? '');
           }
-
-          uciMoves.add(uciMove);
-          sanMoves.add(move['san'] ?? '');
+        } catch (e) {
+          print('Error loading PGN: $e');
         }
-      } catch (e) {
-        print('Error loading PGN: $e');
+      }
+
+      // Create controller and set to final position initially
+      final controller = ChessBoardController();
+      controller.loadGameFromFEN(baseGame.fen);
+
+      // Start at the end of the game
+      final initialMoveIndex = uciMoves.length;
+
+      // Update state with loaded data and turn off loading
+      state = AsyncValue.data(
+        ChessBoardState(
+          baseGame: baseGame,
+          chessBoardController: controller,
+          uciMoves: uciMoves,
+          sanMoves: sanMoves,
+          currentMoveIndex: initialMoveIndex,
+          isPlaying: false,
+          isBoardFlipped: false,
+          evaluations: 0.0,
+          isLoadingMoves: false, // Loading complete
+        ),
+      );
+
+      // Start evaluation for the current position
+      _updateEvaluation();
+    } catch (e) {
+      print('Error loading game data: $e');
+
+      // Set error state but keep the basic board visible
+      if (mounted) {
+        final currentState = state.value;
+        if (currentState != null) {
+          state = AsyncValue.data(
+            currentState.copyWith(
+              isLoadingMoves: false,
+              sanMoves: [], // Empty moves list
+            ),
+          );
+        } else {
+          state = AsyncValue.error(e, StackTrace.current);
+        }
       }
     }
+  }
 
-    // Create controller and set to final position initially
-    final controller = ChessBoardController();
-    controller.loadGameFromFEN(baseGame.fen);
+  // Method to refresh game data (useful for pull-to-refresh)
+  Future<void> refreshGameData() async {
+    final currentState = state.value;
+    if (currentState == null) return;
 
-    // Start at the end of the game
-    final initialMoveIndex = uciMoves.length;
-
+    // Set loading state
     state = AsyncValue.data(
-      ChessBoardState(
-        baseGame: baseGame,
-        chessBoardController: controller,
-        uciMoves: uciMoves,
-        sanMoves: sanMoves,
-        currentMoveIndex: initialMoveIndex,
-        isPlaying: false,
-        isBoardFlipped: false,
-        evaluations: 0.0,
-      ),
+      currentState.copyWith(isLoadingMoves: true),
     );
 
-    _updateEvaluation();
+    // Reload game data
+    await _loadGameData();
   }
 
   // Core navigation method - builds position from scratch
   void _navigateToMoveIndex(int targetMoveIndex) {
     final st = state.value!;
+
+    // Don't navigate while loading
+    if (st.isLoadingMoves) return;
 
     // Validate bounds
     if (targetMoveIndex < 0 || targetMoveIndex > st.totalMoves) return;
@@ -167,29 +237,37 @@ class ChessBoardScreenNotifier
   // Public navigation methods
   void moveForward() {
     final st = state.value!;
-    if (!st.canMoveForward) return;
+    if (!st.canMoveForward || st.isLoadingMoves) return;
     _navigateToMoveIndex(st.currentMoveIndex + 1);
   }
 
   void moveBackward() {
     final st = state.value!;
-    if (!st.canMoveBackward) return;
+    if (!st.canMoveBackward || st.isLoadingMoves) return;
     _navigateToMoveIndex(st.currentMoveIndex - 1);
   }
 
   void navigateToMove(int sanMoveIndex) {
+    final st = state.value!;
+    if (st.isLoadingMoves) return;
+
     // Convert SAN move index to position index
     // sanMoveIndex 0 = first move, we want to be at position 1 (after first move)
     _navigateToMoveIndex(sanMoveIndex + 1);
   }
 
   void resetGame() {
+    final st = state.value!;
+    if (st.isLoadingMoves) return;
+
     pauseGame();
     _navigateToMoveIndex(0);
   }
 
   void jumpToEnd() {
     final st = state.value!;
+    if (st.isLoadingMoves) return;
+
     pauseGame();
     _navigateToMoveIndex(st.totalMoves);
   }
@@ -197,6 +275,7 @@ class ChessBoardScreenNotifier
   // Auto-play functionality
   void togglePlayPause() {
     final st = state.value!;
+    if (st.isLoadingMoves) return;
 
     if (st.isPlaying) {
       pauseGame();
@@ -207,14 +286,15 @@ class ChessBoardScreenNotifier
 
   void startAutoPlay() {
     final st = state.value!;
-    if (st.isAtEnd) return; // Can't play from end
+    if (st.isAtEnd || st.isLoadingMoves)
+      return; // Can't play from end or while loading
 
     final timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       final currentSt = state.value!;
-      if (currentSt.canMoveForward) {
+      if (currentSt.canMoveForward && !currentSt.isLoadingMoves) {
         moveForward();
       } else {
-        // Reached end, stop auto-play
+        // Reached end or loading started, stop auto-play
         timer.cancel();
         state = AsyncValue.data(
           currentSt.copyWith(isPlaying: false, autoPlayTimer: null),
@@ -239,13 +319,14 @@ class ChessBoardScreenNotifier
 
   // Long press navigation
   void startLongPressForward() {
-    if (_isLongPressing) return;
+    final st = state.value!;
+    if (_isLongPressing || st.isLoadingMoves) return;
     _isLongPressing = true;
 
     moveForward();
     _longPressTimer = Timer.periodic(const Duration(milliseconds: 150), (_) {
-      final st = state.value!;
-      if (st.canMoveForward) {
+      final currentSt = state.value!;
+      if (currentSt.canMoveForward && !currentSt.isLoadingMoves) {
         moveForward();
       } else {
         stopLongPress();
@@ -254,13 +335,14 @@ class ChessBoardScreenNotifier
   }
 
   void startLongPressBackward() {
-    if (_isLongPressing) return;
+    final st = state.value!;
+    if (_isLongPressing || st.isLoadingMoves) return;
     _isLongPressing = true;
 
     moveBackward();
     _longPressTimer = Timer.periodic(const Duration(milliseconds: 150), (_) {
-      final st = state.value!;
-      if (st.canMoveBackward) {
+      final currentSt = state.value!;
+      if (currentSt.canMoveBackward && !currentSt.isLoadingMoves) {
         moveBackward();
       } else {
         stopLongPress();
@@ -293,6 +375,8 @@ class ChessBoardScreenNotifier
       () async {
         try {
           final st = state.value!;
+          if (st.isLoadingMoves) return; // Don't evaluate while loading
+
           final fen = st.currentPosition.fen;
           final ev = await StockfishSingleton().evaluatePosition(fen);
 
@@ -315,6 +399,11 @@ class ChessBoardScreenNotifier
 
   Color getMoveColor(String move, int moveIndex) {
     final st = state.value!;
+
+    // During loading, show dimmed colors
+    if (st.isLoadingMoves) {
+      return kWhiteColor.withOpacity(0.3);
+    }
 
     // Current move gets white color
     if (moveIndex == st.currentMoveIndex - 1) {
