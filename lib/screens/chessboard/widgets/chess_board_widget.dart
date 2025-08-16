@@ -1,4 +1,5 @@
-import 'package:advanced_chess_board/chess_board_controller.dart';
+import 'package:chessground/chessground.dart';
+import 'package:dartchess/dartchess.dart' as chess;
 import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
@@ -9,8 +10,6 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../providers/board_settings_provider.dart';
-
-import 'package:advanced_chess_board/advanced_chess_board.dart';
 
 class ChessBoardFromFEN extends ConsumerStatefulWidget {
   const ChessBoardFromFEN({
@@ -27,7 +26,7 @@ class ChessBoardFromFEN extends ConsumerStatefulWidget {
 }
 
 class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFEN> {
-  late ChessBoardController chessBoardController;
+  late chess.Game _game;
 
   /// Last-move squares (algebraic). Null if no move yet.
   String? _lastMove;
@@ -36,9 +35,9 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFEN> {
   void initState() {
     super.initState();
 
-    chessBoardController =
-        ChessBoardController()
-          ..loadGameFromFEN(widget.gamesTourModel.fen ?? '');
+    _game = chess.Game.fromFen(
+      widget.gamesTourModel.fen ?? chess.StartingFen,
+    );
     _lastMove = widget.gamesTourModel.lastMove;
   }
 
@@ -48,12 +47,11 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFEN> {
     if (oldWidget.gamesTourModel.lastMove != widget.gamesTourModel.lastMove) {
       _lastMove = widget.gamesTourModel.lastMove;
     }
-  }
-
-  @override
-  void dispose() {
-    chessBoardController.dispose();
-    super.dispose();
+    if (oldWidget.gamesTourModel.fen != widget.gamesTourModel.fen) {
+      _game = chess.Game.fromFen(
+        widget.gamesTourModel.fen ?? chess.StartingFen,
+      );
+    }
   }
 
   @override
@@ -108,17 +106,20 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFEN> {
                   SizedBox(
                     height: boardSize,
                     width: boardSize,
-                    child: AbsorbPointer(
-                      child: AdvancedChessBoard(
-                        controller: chessBoardController,
-                        lightSquareColor: boardTheme.lightSquareColor,
-                        darkSquareColor: boardTheme.darkSquareColor,
-                        enableMoves: false,
-                        kingBackgroundColorOnCheckmate: kpinColor,
-                        lastMoveFrom: fromSquare,
-                        lastMoveTo: toSquare,
-                        lastMoveFromColor: kPrimaryColor,
-                        lastMoveToColor: kPrimaryColor,
+                    child: Chessboard(
+                      size: boardSize,
+                      fen: _game.fen,
+                      orientation: Side.white,
+                      lastMove: fromSquare != null && toSquare != null
+                          ? [
+                              Square.fromName(fromSquare),
+                              Square.fromName(toSquare),
+                            ]
+                          : null,
+                      settings: BoardSettings(
+                        lightSquare: boardTheme.lightSquareColor,
+                        darkSquare: boardTheme.darkSquareColor,
+                        draggable: false,
                       ),
                     ),
                   ),

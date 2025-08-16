@@ -1,11 +1,10 @@
 import 'dart:async';
-import 'package:chess/chess.dart' as chess;
-import 'package:advanced_chess_board/chess_board_controller.dart';
+import 'package:dartchess/dartchess.dart' as chess;
 
 // Enhanced State class with clear semantics
 class ChessBoardState {
-  final chess.Chess baseGame; // The complete game loaded from PGN
-  final ChessBoardController chessBoardController;
+  final chess.Game baseGame; // The complete game loaded from PGN
+  final chess.Game currentGame; // Current position of the board
   final List<String> uciMoves; // UCI format moves (e2e4)
   final List<String> sanMoves; // SAN format moves (e4)
   final int currentMoveIndex; // 0 = start, 1 = after first move, etc.
@@ -17,7 +16,7 @@ class ChessBoardState {
 
   ChessBoardState({
     required this.baseGame,
-    required this.chessBoardController,
+    required this.currentGame,
     required this.uciMoves,
     required this.sanMoves,
     required this.currentMoveIndex,
@@ -29,7 +28,7 @@ class ChessBoardState {
   });
 
   // Convenience getters
-  chess.Chess get currentPosition => chessBoardController.game;
+  chess.Game get currentPosition => currentGame;
   int get totalMoves => uciMoves.length;
   bool get canMoveForward => currentMoveIndex < totalMoves;
   bool get canMoveBackward => currentMoveIndex > 0;
@@ -53,8 +52,8 @@ class ChessBoardState {
   }
 
   ChessBoardState copyWith({
-    chess.Chess? baseGame,
-    ChessBoardController? chessBoardController,
+    chess.Game? baseGame,
+    chess.Game? currentGame,
     List<String>? uciMoves,
     List<String>? sanMoves,
     int? currentMoveIndex,
@@ -66,7 +65,7 @@ class ChessBoardState {
   }) {
     return ChessBoardState(
       baseGame: baseGame ?? this.baseGame,
-      chessBoardController: chessBoardController ?? this.chessBoardController,
+      currentGame: currentGame ?? this.currentGame,
       uciMoves: uciMoves ?? this.uciMoves,
       sanMoves: sanMoves ?? this.sanMoves,
       currentMoveIndex: currentMoveIndex ?? this.currentMoveIndex,
@@ -79,7 +78,6 @@ class ChessBoardState {
   }
 
   void dispose() {
-    chessBoardController.dispose();
     autoPlayTimer?.cancel();
   }
 }

@@ -1,6 +1,5 @@
 import 'dart:async';
-import 'package:chess/chess.dart' as chess;
-import 'package:advanced_chess_board/chess_board_controller.dart';
+import 'package:dartchess/dartchess.dart' as chess;
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
@@ -74,15 +73,13 @@ class ChessBoardScreenNotifier
 
     try {
       // Create initial loading state with basic board setup
-      final initialController = ChessBoardController();
-      initialController.loadGameFromFEN(chess.Chess.DEFAULT_POSITION);
-
+      final initialGame = chess.Game();
 
       // Set initial state with loading moves flag
       state = AsyncValue.data(
         ChessBoardState(
-          baseGame: chess.Chess(),
-          chessBoardController: initialController,
+          baseGame: initialGame,
+          currentGame: initialGame,
           uciMoves: [],
           sanMoves: [],
           currentMoveIndex: 0,
@@ -104,7 +101,7 @@ class ChessBoardScreenNotifier
   Future<void> _loadGameData() async {
     try {
       // Create base game from PGN
-      final baseGame = chess.Chess();
+      final baseGame = chess.Game();
       final uciMoves = <String>[];
       final sanMoves = <String>[];
 
@@ -118,31 +115,27 @@ class ChessBoardScreenNotifier
       // Process PGN if available
       if (game.pgn != null && game.pgn!.isNotEmpty) {
         try {
-          baseGame.load_pgn(game.pgn!);
+          baseGame.loadPgn(game.pgn!);
 
           // Extract moves from history
-          final history = baseGame.getHistory({'verbose': true});
+          final history = baseGame.history();
           for (var move in history) {
-            final from = move['from'] ?? '';
-            final to = move['to'] ?? '';
-            final promotion = move['promotion'] ?? '';
+            final from = move.from.name;
+            final to = move.to.name;
+            final promotion = move.promotion?.toLowerCase() ?? '';
 
             String uciMove = '$from$to';
             if (promotion.isNotEmpty) {
-              uciMove += promotion.toLowerCase();
+              uciMove += promotion;
             }
 
             uciMoves.add(uciMove);
-            sanMoves.add(move['san'] ?? '');
+            sanMoves.add(move.san);
           }
         } catch (e) {
           print('Error loading PGN: $e');
         }
       }
-
-      // Create controller and set to final position initially
-      final controller = ChessBoardController();
-      controller.loadGameFromFEN(baseGame.fen);
 
       // Start at the end of the game
       final initialMoveIndex = uciMoves.length;
@@ -151,7 +144,7 @@ class ChessBoardScreenNotifier
       state = AsyncValue.data(
         ChessBoardState(
           baseGame: baseGame,
-          chessBoardController: controller,
+          currentGame: chess.Game.fromFen(baseGame.fen),
           uciMoves: uciMoves,
           sanMoves: sanMoves,
           currentMoveIndex: initialMoveIndex,
@@ -210,25 +203,21 @@ class ChessBoardScreenNotifier
     if (targetMoveIndex == st.currentMoveIndex) return;
 
     // Build position by replaying moves from start
-    final positionGame = chess.Chess();
+    final positionGame = chess.Game();
 
     for (int i = 0; i < targetMoveIndex; i++) {
       try {
-        positionGame.move(st.sanMoves[i]);
+        positionGame.playSan(st.sanMoves[i]);
       } catch (e) {
         print('Error replaying move ${st.sanMoves[i]}: $e');
         return;
       }
     }
 
-    // Create new controller with the position
-    final newController = ChessBoardController();
-    newController.loadGameFromFEN(positionGame.fen);
-
     state = AsyncValue.data(
       st.copyWith(
         currentMoveIndex: targetMoveIndex,
-        chessBoardController: newController,
+        currentGame: positionGame,
       ),
     );
 
