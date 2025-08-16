@@ -93,10 +93,8 @@ dependencies:
 
   #for launching url
   url_launcher: ^6.3.1
-  advanced_chess_board:
-    path : advanced_chess_board
-
-  chess: ^0.8.1
+  chessground: any
+  dartchess: any
   stockfish: ^1.7.1
   flutter_local_notifications: ^19.3.0
 

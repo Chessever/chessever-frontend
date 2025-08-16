@@ -1,5 +1,5 @@
-import 'package:advanced_chess_board/advanced_chess_board.dart';
-import 'package:advanced_chess_board/models/enums.dart';
+import 'package:chessground/chessground.dart';
+import 'package:dartchess/dartchess.dart' as chess;
 import 'package:chessever2/providers/board_settings_provider.dart';
 import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider.dart';
@@ -633,21 +633,24 @@ class _ChessBoard extends ConsumerWidget {
     return SizedBox(
       height: size,
       width: size,
-      child: AdvancedChessBoard(
+      child: Chessboard(
         key: ValueKey(
           'chess_board_${chessBoardState.currentMoveIndex}_${chessBoardState.currentPosition.fen}',
         ),
-        controller: chessBoardState.chessBoardController,
-        lightSquareColor: boardTheme.lightSquareColor,
-        darkSquareColor: boardTheme.darkSquareColor,
-        boardOrientation: isFlipped ? PlayerColor.black : PlayerColor.white,
-        enableMoves: false,
-        // Read-only for game viewing
-        highlightLastMove: true,
-        lastMoveFrom: fromSquare,
-        lastMoveTo: toSquare,
-        lastMoveFromColor: kPrimaryColor,
-        lastMoveToColor: kPrimaryColor,
+        size: size,
+        fen: chessBoardState.currentPosition.fen,
+        orientation: isFlipped ? Side.black : Side.white,
+        lastMove: fromSquare != null && toSquare != null
+            ? [
+                Square.fromName(fromSquare),
+                Square.fromName(toSquare),
+              ]
+            : null,
+        settings: BoardSettings(
+          lightSquare: boardTheme.lightSquareColor,
+          darkSquare: boardTheme.darkSquareColor,
+          draggable: false,
+        ),
       ),
     );
   }
