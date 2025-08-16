@@ -77,7 +77,6 @@ class ChessBoardScreenNotifier
       final initialController = ChessBoardController();
       initialController.loadGameFromFEN(chess.Chess.DEFAULT_POSITION);
 
-
       // Set initial state with loading moves flag
       state = AsyncValue.data(
         ChessBoardState(
@@ -118,7 +117,8 @@ class ChessBoardScreenNotifier
       // Process PGN if available
       if (game.pgn != null && game.pgn!.isNotEmpty) {
         try {
-          baseGame.load_pgn(game.pgn!);
+          final cleanedPGN = cleanPgnKeepMoveNumbers(game.pgn!);
+          baseGame.load_pgn(cleanedPGN);
 
           // Extract moves from history
           final history = baseGame.getHistory({'verbose': true});
@@ -184,15 +184,58 @@ class ChessBoardScreenNotifier
     }
   }
 
+  String cleanPgnKeepMoveNumbers(String pgn) {
+    if (pgn.isEmpty) return pgn;
+
+    String s = pgn;
+
+    // Capture result if present anywhere
+    final resultRe = RegExp(r'\b(1-0|0-1|1/2-1/2|\*)\b');
+    String? result = resultRe.firstMatch(s)?.group(1);
+
+    // 1) Remove PGN headers like [Event "…"]
+    s = s.replaceAll(RegExp(r'^\s*\[.*?\]\s*', multiLine: true), ' ');
+
+    // 2) Remove comments: {...} and ';' to end of line
+    s = s.replaceAll(RegExp(r'\{[^}]*\}'), ' ');
+    s = s.replaceAll(RegExp(r';[^\r\n]*'), ' ');
+
+    // 3) Remove all parenthesized variations (handle nesting by iterating)
+    final paren = RegExp(r'\([^()]*\)');
+    while (paren.hasMatch(s)) {
+      s = s.replaceAll(paren, ' ');
+    }
+
+    // 4) Remove NAGs like $1, $23
+    s = s.replaceAll(RegExp(r'\$\d+'), ' ');
+
+    // 5) DO NOT remove move numbers. (Intentionally left in.)
+
+    // 6) Remove any result tokens that might be embedded; we'll re-append one at the end
+    s = s.replaceAll(resultRe, ' ');
+
+    // 7) Strip '!' and '?' annotations but keep '+' and '#'
+    s = s.replaceAll(RegExp(r'[!?]+'), '');
+
+    // 8) Collapse whitespace
+    s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+    // 9) Ensure a single termination marker at the end
+    final endResult = result ?? '*';
+    if (s.isNotEmpty && !s.endsWith(endResult)) {
+      s = '$s $endResult';
+    }
+
+    return s;
+  }
+
   // Method to refresh game data (useful for pull-to-refresh)
   Future<void> refreshGameData() async {
     final currentState = state.value;
     if (currentState == null) return;
 
     // Set loading state
-    state = AsyncValue.data(
-      currentState.copyWith(isLoadingMoves: true),
-    );
+    state = AsyncValue.data(currentState.copyWith(isLoadingMoves: true));
 
     // Reload game data
     await _loadGameData();
@@ -303,9 +346,7 @@ class ChessBoardScreenNotifier
       }
     });
 
-    state = AsyncValue.data(
-      st.copyWith(isPlaying: true, autoPlayTimer: timer),
-    );
+    state = AsyncValue.data(st.copyWith(isPlaying: true, autoPlayTimer: timer));
   }
 
   void pauseGame() {
@@ -362,9 +403,7 @@ class ChessBoardScreenNotifier
   // Board orientation
   void flipBoard(int gameIndex) {
     final st = state.value!;
-    state = AsyncValue.data(
-      st.copyWith(isBoardFlipped: !st.isBoardFlipped),
-    );
+    state = AsyncValue.data(st.copyWith(isBoardFlipped: !st.isBoardFlipped));
   }
 
   // Evaluation
