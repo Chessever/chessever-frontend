@@ -266,7 +266,7 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
         const Spacer(),
         SizedBox(
           height: 32.h,
-          width: 180.w,
+          width: 230.w,
           child: TextDropDownWidget(
             items: _buildDropdownItems(data.tours),
             selectedId: selectedTourId ?? defaultTourId,
