@@ -2,8 +2,11 @@ import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/repository/local_storage/group_broadcast/group_broadcast_local_storage.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
+import 'package:chessever2/screens/tournaments/providers/games_app_bar_provider.dart';
+import 'package:chessever2/screens/tournaments/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/sorting_all_event_provider.dart';
+import 'package:chessever2/screens/tournaments/providers/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/tournament_detail_screen.dart';
 import 'package:chessever2/screens/tournaments/tournament_screen.dart';
 import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
@@ -11,6 +14,8 @@ import 'package:chessever2/widgets/search/search_result_model.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+import '../../standings/standing_screen_provider.dart';
 
 final tournamentNotifierProvider = AutoDisposeStateNotifierProvider<
   _TournamentScreenController,
@@ -152,18 +157,35 @@ class _TournamentScreenController
   }
 
   //todo:
+  // void onSelectTournament({required BuildContext context, required String id}) {
+  //   final selectedBroadcast = _groupBroadcastList.firstWhere(
+  //     (broadcast) => broadcast.id == id,
+  //     orElse: () => _groupBroadcastList.first,
+  //   );
+  //   if (selectedBroadcast.id.isNotEmpty) {
+  //     ref.read(selectedBroadcastModelProvider.notifier).state =
+  //         selectedBroadcast;
+  //   } else {
+  //     ref.read(selectedBroadcastModelProvider.notifier).state =
+  //         selectedBroadcast;
+  //   }
+  //   Navigator.pushNamed(context, '/tournament_detail_screen');
+  // }
+
   void onSelectTournament({required BuildContext context, required String id}) {
     final selectedBroadcast = _groupBroadcastList.firstWhere(
       (broadcast) => broadcast.id == id,
       orElse: () => _groupBroadcastList.first,
     );
-    if (selectedBroadcast.id.isNotEmpty) {
-      ref.read(selectedBroadcastModelProvider.notifier).state =
-          selectedBroadcast;
-    } else {
-      ref.read(selectedBroadcastModelProvider.notifier).state =
-          selectedBroadcast;
-    }
+
+    ref.read(selectedTourIdProvider.notifier).state = selectedBroadcast.id;
+    ref.read(selectedBroadcastModelProvider.notifier).state = selectedBroadcast;
+
+    ref.invalidate(gamesAppBarProvider);
+    ref.invalidate(gamesTourScreenProvider);
+    ref.invalidate(standingScreenProvider);
+    ref.invalidate(tourDetailScreenProvider);
+
     Navigator.pushNamed(context, '/tournament_detail_screen');
   }
 
