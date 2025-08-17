@@ -120,7 +120,7 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher>
         widget.selectedBackgroundColor ?? kBackgroundColor;
     final textColor = widget.textColor ?? kInactiveTabColor;
     final selectedTextColor = widget.selectedTextColor ?? kWhiteColor;
-    final borderRadius = widget.borderRadius ?? 8.0;
+    final borderRadius = widget.borderRadius ?? 8.br;
 
     final defaultTextStyle =
         widget.textStyle ??

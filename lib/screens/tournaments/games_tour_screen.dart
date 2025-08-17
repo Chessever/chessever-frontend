@@ -24,19 +24,14 @@ class GamesTourScreen extends ConsumerStatefulWidget {
 
 class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
   bool _hasPerformedInitialScroll = false;
-
   late ScrollController _scrollController;
-
-  // Keep last loaded model to avoid loading flash
+  final GlobalKey _listViewKey = GlobalKey();
   GamesScreenModel? _lastGamesData;
-
-  // Track round changes for scrolling
   String? _lastSelectedRound;
   String? _pendingScrollToRound;
   bool _isScrolling = false;
-
-  // Store header keys for each round
   final Map<String, GlobalKey> _headerKeys = {};
+  final Map<String, bool> _expandedRounds = {}; // Track expanded state
 
   @override
   void initState() {
@@ -53,16 +48,26 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Reset scroll state for new tournament
     _lastSelectedRound = null;
     _pendingScrollToRound = null;
     _isScrolling = false;
-    _hasPerformedInitialScroll = false; // Reset initial scroll flag
+    _hasPerformedInitialScroll = false;
     _headerKeys.clear();
+    _expandedRounds.clear();
   }
 
   GlobalKey _getHeaderKey(String roundId) {
     return _headerKeys.putIfAbsent(roundId, () => GlobalKey());
+  }
+
+  void _toggleRoundExpansion(String roundId) {
+    setState(() {
+      _expandedRounds[roundId] = !(_expandedRounds[roundId] ?? true);
+    });
+  }
+
+  bool _isRoundExpanded(String roundId) {
+    return _expandedRounds[roundId] ?? true; // Default to expanded
   }
 
   @override
@@ -71,69 +76,28 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     final gamesAppBarAsync = ref.watch(gamesAppBarProvider);
     final gamesTourAsync = ref.watch(gamesTourScreenProvider);
 
-    // Debug logging to understand loading sequence
-    debugPrint(
-      '  - App bar: ${gamesAppBarAsync.isLoading
-          ? "loading"
-          : gamesAppBarAsync.hasValue
-          ? "loaded"
-          : "error"}',
-    );
-    debugPrint(
-      '  - Games: ${gamesTourAsync.isLoading
-          ? "loading"
-          : gamesTourAsync.hasValue
-          ? "loaded"
-          : "error"}',
-    );
-
-    // Handle round changes (including initial load)
     _handleRoundChange(gamesAppBarAsync);
-
-    // Handle initial scroll when data is first loaded
     _handleInitialScroll(gamesAppBarAsync, gamesTourAsync);
 
     return RefreshIndicator(
       onRefresh: () async {
-        debugPrint('🔄 Refresh triggered');
+        debugPrint('[GamesTourScreen] 🔄 Refresh triggered');
         FocusScope.of(context).unfocus();
-
         final futures = <Future>[];
-
-        // Always try to refresh tour details first
         try {
           futures.add(
             ref.read(tourDetailScreenProvider.notifier).refreshTourDetails(),
           );
-        } catch (e) {
-          debugPrint('Error refreshing tour details: $e');
-        }
-
-        // Then refresh app bar if available
+        } catch (_) {}
         if (gamesAppBarAsync.hasValue) {
-          try {
-            futures.add(ref.read(gamesAppBarProvider.notifier).refreshRounds());
-          } catch (e) {
-            debugPrint('Error refreshing app bar: $e');
-          }
+          futures.add(ref.read(gamesAppBarProvider.notifier).refreshRounds());
         }
-
-        // Finally refresh games if available
         if (gamesTourAsync.hasValue) {
-          try {
-            futures.add(
-              ref.read(gamesTourScreenProvider.notifier).refreshGames(),
-            );
-          } catch (e) {
-            debugPrint('Error refreshing games: $e');
-          }
+          futures.add(
+            ref.read(gamesTourScreenProvider.notifier).refreshGames(),
+          );
         }
-
-        if (futures.isNotEmpty) {
-          await Future.wait(futures);
-        }
-
-        debugPrint('🔄 Refresh completed');
+        if (futures.isNotEmpty) await Future.wait(futures);
       },
       color: kWhiteColor70,
       backgroundColor: kDarkGreyColor,
@@ -149,201 +113,102 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     );
   }
 
+  /// Handle initial scroll after first load
   void _handleInitialScroll(
     AsyncValue gamesAppBarAsync,
     AsyncValue<GamesScreenModel> gamesTourAsync,
   ) {
-    // Only perform initial scroll once and when both data are loaded
     if (_hasPerformedInitialScroll ||
         !gamesAppBarAsync.hasValue ||
-        !gamesTourAsync.hasValue) {
+        !gamesTourAsync.hasValue)
       return;
-    }
 
     final selectedRoundId = gamesAppBarAsync.valueOrNull?.selectedId;
-
-    if (selectedRoundId == null) {
-      debugPrint('No selected round for initial scroll');
-      return;
-    }
-
-    debugPrint('Performing initial scroll to selected round: $selectedRoundId');
+    if (selectedRoundId == null) return;
 
     _hasPerformedInitialScroll = true;
     _lastSelectedRound = selectedRoundId;
     _pendingScrollToRound = selectedRoundId;
-
-    // Schedule initial scroll after the UI is built
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Give extra time for SingleChildScrollView to build all widgets
-      Future.delayed(const Duration(milliseconds: 100), () {
+      Future.delayed(const Duration(milliseconds: 500), () {
         if (mounted && _pendingScrollToRound == selectedRoundId) {
-          debugPrint('Executing initial scroll to: $selectedRoundId');
           _performScrollToRound(selectedRoundId);
         }
       });
     });
   }
 
-  /* --------------------------------------------------------------------------
-   * ROUND CHANGE + SCROLL LOGIC
-   * -------------------------------------------------------------------------- */
+  /// Handle round changes (scroll to new round)
   void _handleRoundChange(AsyncValue gamesAppBarAsync) {
     final current = gamesAppBarAsync.valueOrNull?.selectedId;
-
-    // No current selection
-    if (current == null) return;
-
-    // Skip if this is the initial load (handled by _handleInitialScroll)
-    if (!_hasPerformedInitialScroll) {
+    if (current == null ||
+        !_hasPerformedInitialScroll ||
+        current == _lastSelectedRound)
       return;
-    }
-
-    // No change from last selected round
-    if (current == _lastSelectedRound) return;
-
-    debugPrint('Round changed from $_lastSelectedRound to $current');
 
     _lastSelectedRound = current;
     _pendingScrollToRound = current;
-
-    // Reset scroll state
     _isScrolling = false;
 
-    // Schedule scroll
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future.delayed(const Duration(milliseconds: 300), () {
-        if (mounted && _pendingScrollToRound == current) {
-          _performScrollToRound(current);
-        }
+    // Ensure round is expanded before scrolling
+    if (!_isRoundExpanded(current)) {
+      setState(() {
+        _expandedRounds[current] = true;
       });
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _pendingScrollToRound == current) {
+        _performScrollToRound(current);
+      }
     });
   }
 
   Future<void> _performScrollToRound(String roundId) async {
-    // Prevent multiple concurrent scrolls
     if (_isScrolling || !mounted) return;
-
     _isScrolling = true;
 
     try {
-      // Ensure scroll controller is attached
-      if (!_scrollController.hasClients) {
-        debugPrint('ScrollController not attached');
-        return;
-      }
+      if (!_scrollController.hasClients) return;
 
-      debugPrint('Scrolling to round: $roundId');
+      // First, ensure the header key exists and is generated
+      final headerKey = _getHeaderKey(roundId);
 
-      // Get the header key - should always exist and have context now
-      final headerKey = _headerKeys[roundId];
+      // Wait for the widget tree to be built and keys to be attached
+      for (int retry = 0; retry < 30; retry++) {
+        await Future.delayed(const Duration(milliseconds: 100));
 
-      if (headerKey?.currentContext == null) {
-        debugPrint('ERROR: Header context not available for round $roundId');
-
-        // Last resort: wait longer and try again
-        await Future.delayed(const Duration(milliseconds: 500));
-
-        if (headerKey?.currentContext == null) {
+        if (headerKey.currentContext != null) {
           debugPrint(
-            'CRITICAL: Header context still not available after extended delay',
+            '[GamesTourScreen] Found header context for round: $roundId, attempting scroll...',
           );
 
-          // Ultimate fallback: try to scroll by estimated position
-          await _scrollToRoundByEstimation(roundId);
-          return;
+          await Scrollable.ensureVisible(
+            headerKey.currentContext!,
+            alignment: 0.0,
+            duration: const Duration(milliseconds: 0),
+            curve: Curves.easeInOut,
+            alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
+          );
+
+          debugPrint(
+            '[GamesTourScreen] Successfully scrolled to round: $roundId',
+          );
+          break;
         }
+
+        debugPrint(
+          '[GamesTourScreen] Retry $retry: Header context not found for round: $roundId',
+        );
       }
-
-      debugPrint('Found header context for round $roundId, scrolling...');
-
-      // Scroll to the header
-      await Scrollable.ensureVisible(
-        headerKey!.currentContext!,
-        alignment: 0.0,
-        duration: const Duration(milliseconds: 600),
-        curve: Curves.easeInOutCubic,
-        alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
-      );
-
-      debugPrint('Successfully scrolled to round: $roundId');
     } catch (e) {
-      debugPrint('Scroll error: $e');
-      // Fallback to estimation
-      await _scrollToRoundByEstimation(roundId);
+      debugPrint('[GamesTourScreen] Scroll error: $e');
     } finally {
       _isScrolling = false;
       _pendingScrollToRound = null;
     }
   }
 
-  Future<void> _scrollToRoundByEstimation(String roundId) async {
-    try {
-      debugPrint('Using estimation fallback for round: $roundId');
-
-      final rounds =
-          ref.read(gamesAppBarProvider).value?.gamesAppBarModels ?? [];
-      final gamesData = _lastGamesData;
-
-      if (gamesData == null || rounds.isEmpty) {
-        debugPrint('No data available for estimation');
-        return;
-      }
-
-      // Find the target round index
-      int targetRoundIndex = rounds.indexWhere((round) => round.id == roundId);
-
-      if (targetRoundIndex == -1) {
-        debugPrint('Round $roundId not found in rounds list');
-        return;
-      }
-
-      // Calculate estimated scroll position
-      double estimatedOffset = 0.0;
-      const double headerHeight = 76.0; // Header + margins
-      const double gameHeight = 140.0; // Game card + padding
-      const double emptyRoundHeight = 60.0; // Empty round message height
-
-      for (int i = 0; i < targetRoundIndex; i++) {
-        final round = rounds[i];
-
-        // Add header height
-        estimatedOffset += headerHeight;
-
-        // Add height for all games in this round
-        final gamesInRound =
-            gamesData.gamesTourModels
-                .where((game) => game.roundId == round.id)
-                .length;
-
-        if (gamesInRound == 0) {
-          estimatedOffset += emptyRoundHeight;
-        } else {
-          estimatedOffset += gamesInRound * gameHeight;
-        }
-      }
-
-      // Clamp the offset to valid range
-      estimatedOffset = estimatedOffset.clamp(
-        0.0,
-        _scrollController.position.maxScrollExtent,
-      );
-
-      debugPrint('Scrolling to estimated offset: $estimatedOffset');
-
-      await _scrollController.animateTo(
-        estimatedOffset,
-        duration: const Duration(milliseconds: 600),
-        curve: Curves.easeInOutCubic,
-      );
-    } catch (e) {
-      debugPrint('Estimation fallback error: $e');
-    }
-  }
-
-  /* --------------------------------------------------------------------------
-   * UI BUILDERS
-   * -------------------------------------------------------------------------- */
   Widget _buildContent(
     BuildContext context,
     WidgetRef ref,
@@ -351,120 +216,224 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     AsyncValue<GamesScreenModel> gamesTourAsync,
     bool isChessBoardVisible,
   ) {
-    // Check critical dependencies first
     final tourId = ref.watch(selectedTourIdProvider);
     final tourDetails = ref.watch(tourDetailScreenProvider);
 
-    // Show loading for missing critical dependencies
-    if (tourId == null) {
-      return const TourLoadingWidget();
-    }
-
-    // Show loading while tour details are loading
-    if (tourDetails.isLoading) {
-      return const TourLoadingWidget();
-    }
-
-    // Handle tour details errors
-    if (tourDetails.hasError) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error, color: Colors.red, size: 48),
-            const SizedBox(height: 16),
-            Text(
-              'Error loading tournament: ${tourDetails.error}',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white70),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () {
-                ref
-                    .read(tourDetailScreenProvider.notifier)
-                    .refreshTourDetails();
-              },
-              child: const Text('Retry'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // Check if tour details are available
-    if (!tourDetails.hasValue ||
+    if (tourId == null ||
+        tourDetails.isLoading ||
+        !tourDetails.hasValue ||
         tourDetails.valueOrNull?.aboutTourModel == null) {
       return const TourLoadingWidget();
     }
 
-    // Keep the last valid model even when refreshing
+    if (tourDetails.hasError) {
+      return GamesErrorWidget(
+        errorMessage: 'Error loading tournament: ${tourDetails.error}',
+        retryAppBar: false,
+        retryGames: false,
+      );
+    }
+
     if (gamesTourAsync.hasValue) {
       _lastGamesData = gamesTourAsync.valueOrNull;
     }
 
-    // Show loading for app bar if it's still loading and we don't have cached data
-    if (gamesAppBarAsync.isLoading && _lastGamesData == null) {
+    if ((gamesAppBarAsync.isLoading || gamesTourAsync.isLoading) &&
+        _lastGamesData == null) {
       return const TourLoadingWidget();
     }
 
-    // Show loading for games if loading and no cached data
-    if (gamesTourAsync.isLoading && _lastGamesData == null) {
-      return const TourLoadingWidget();
+    if (gamesAppBarAsync.hasError || gamesTourAsync.hasError) {
+      return GamesErrorWidget(
+        errorMessage:
+            gamesAppBarAsync.error?.toString() ??
+            gamesTourAsync.error?.toString() ??
+            "An error occurred",
+        retryAppBar: gamesAppBarAsync.hasError,
+        retryGames: gamesTourAsync.hasError,
+      );
     }
 
-    // Handle app bar errors
-    if (gamesAppBarAsync.hasError) {
-      return _buildErrorWidget(context, ref, gamesAppBarAsync, gamesTourAsync);
-    }
-
-    // Handle games errors
-    if (gamesTourAsync.hasError) {
-      return _buildErrorWidget(context, ref, gamesAppBarAsync, gamesTourAsync);
-    }
-
-    // Get games data (use cached if available)
     final gamesData = _lastGamesData ?? gamesTourAsync.valueOrNull;
+    if (gamesData == null) return const TourLoadingWidget();
 
-    // Still show loading if no games data at all
-    if (gamesData == null) {
-      return const TourLoadingWidget();
+    if (gamesData.gamesTourModels.isEmpty && !gamesTourAsync.isLoading) {
+      return const EmptyWidget(
+        title:
+            "No games available yet. Check back soon or set a\nreminder for updates.",
+      );
     }
 
-    // Show empty state only if we have confirmed empty games
-    if (gamesData.gamesTourModels.isEmpty && !gamesTourAsync.isLoading) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            EmptyWidget(
-              title:
-                  "No games available yet. Check back soon or set a\nreminder for updates.",
+    final rounds =
+        ref.watch(gamesAppBarProvider).value?.gamesAppBarModels ?? [];
+    final games = gamesData.gamesTourModels;
+    final gamesByRound = <String, List<GamesTourModel>>{};
+    for (final game in games) {
+      gamesByRound.putIfAbsent(game.roundId, () => []).add(game);
+    }
+
+    final visibleRounds =
+        rounds
+            .where((round) => (gamesByRound[round.id]?.isNotEmpty ?? false))
+            .toList();
+
+    return GamesListView(
+      rounds: visibleRounds,
+      gamesByRound: gamesByRound,
+      gamesData: gamesData,
+      isChessBoardVisible: isChessBoardVisible,
+      scrollController: _scrollController,
+      listViewKey: _listViewKey,
+      headerKeys: _headerKeys,
+      expandedRounds: _expandedRounds,
+      onToggleExpansion: _toggleRoundExpansion,
+      getHeaderKey: _getHeaderKey, // Pass the method to ensure key generation
+    );
+  }
+}
+
+class RoundHeader extends StatelessWidget {
+  final String roundId;
+  final String roundName;
+  final GlobalKey headerKey;
+  final bool isExpanded;
+  final VoidCallback onTap;
+  final int gamesCount;
+
+  const RoundHeader({
+    super.key,
+    required this.roundId,
+    required this.roundName,
+    required this.headerKey,
+    required this.isExpanded,
+    required this.onTap,
+    required this.gamesCount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        key: headerKey,
+        margin: EdgeInsets.only(top: 16.h, bottom: 8.h),
+        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+        decoration: BoxDecoration(
+          color: kDarkGreyColor,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: kWhiteColor.withOpacity(0.1)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
             ),
           ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              width: 4.w,
+              height: 20.h,
+              decoration: BoxDecoration(
+                color: kPrimaryColor,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            SizedBox(width: 12.w),
+            Expanded(
+              child: Text(
+                '$roundName ⚫ $gamesCount games',
+                style: TextStyle(
+                  color: kWhiteColor,
+                  fontSize: 16.sp,
+                  fontWeight: FontWeight.w600,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            AnimatedRotation(
+              turns: isExpanded ? 0.5 : 0.0,
+              duration: const Duration(milliseconds: 200),
+              child: Icon(
+                Icons.keyboard_arrow_down,
+                color: kWhiteColor70,
+                size: 24.sp,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class GameCardWrapper extends ConsumerWidget {
+  final GamesTourModel game;
+  final GamesScreenModel gamesData;
+  final int gameIndex;
+  final bool isChessBoardVisible;
+
+  const GameCardWrapper({
+    super.key,
+    required this.game,
+    required this.gamesData,
+    required this.gameIndex,
+    required this.isChessBoardVisible,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    void navigateToChessBoard() {
+      ref.read(chessboardViewFromProvider.notifier).state = ChessboardView.tour;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder:
+              (_) => ChessBoardScreen(
+                games: gamesData.gamesTourModels,
+                currentIndex: gameIndex,
+              ),
         ),
       );
     }
 
-    return _buildGamesList(context, ref, gamesData, isChessBoardVisible);
-  }
-
-  Widget _buildErrorWidget(
-    BuildContext context,
-    WidgetRef ref,
-    AsyncValue gamesAppBarAsync,
-    AsyncValue<GamesScreenModel> gamesTourAsync,
-  ) {
-    final appBarError = gamesAppBarAsync.error;
-    final gamesError = gamesTourAsync.error;
-
-    String errorMessage = 'An error occurred';
-    if (appBarError != null) {
-      errorMessage = 'App bar error: ${appBarError.toString()}';
-    } else if (gamesError != null) {
-      errorMessage = 'Games error: ${gamesError.toString()}';
+    Future<void> handlePinToggle() async {
+      await ref
+          .read(gamesTourScreenProvider.notifier)
+          .togglePinGame(game.gameId);
     }
 
+    return isChessBoardVisible
+        ? ChessBoardFromFEN(
+          gamesTourModel: game,
+          onChanged: navigateToChessBoard,
+        )
+        : GameCard(
+          gamesTourModel: game,
+          pinnedIds: gamesData.pinnedGamedIs,
+          onPinToggle: (_) => handlePinToggle(),
+          onTap: navigateToChessBoard,
+        );
+  }
+}
+
+class GamesErrorWidget extends ConsumerWidget {
+  final String errorMessage;
+  final bool retryAppBar;
+  final bool retryGames;
+
+  const GamesErrorWidget({
+    super.key,
+    required this.errorMessage,
+    this.retryAppBar = false,
+    this.retryGames = false,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -479,24 +448,11 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
           SizedBox(height: 16.h),
           ElevatedButton(
             onPressed: () async {
-              try {
-                if (gamesAppBarAsync.hasError) {
-                  await ref.read(gamesAppBarProvider.notifier).refreshRounds();
-                }
-                if (gamesTourAsync.hasError) {
-                  await ref
-                      .read(gamesTourScreenProvider.notifier)
-                      .refreshGames();
-                }
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Retry failed: ${e.toString()}'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
+              if (retryAppBar) {
+                await ref.read(gamesAppBarProvider.notifier).refreshRounds();
+              }
+              if (retryGames) {
+                await ref.read(gamesTourScreenProvider.notifier).refreshGames();
               }
             },
             child: const Text('Retry'),
@@ -505,232 +461,105 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
       ),
     );
   }
+}
 
-  Widget _buildGamesList(
-    BuildContext context,
-    WidgetRef ref,
-    GamesScreenModel gamesData,
-    bool isChessBoardVisible,
-  ) {
-    // Pre-build all items
-    final allItems = _buildAllItems(
-      context,
-      ref,
-      gamesData,
-      isChessBoardVisible,
-    );
+class GamesListView extends StatelessWidget {
+  final List rounds;
+  final Map<String, List<GamesTourModel>> gamesByRound;
+  final GamesScreenModel gamesData;
+  final bool isChessBoardVisible;
+  final ScrollController scrollController;
+  final GlobalKey listViewKey;
+  final Map<String, GlobalKey> headerKeys;
+  final Map<String, bool> expandedRounds;
+  final Function(String) onToggleExpansion;
+  final GlobalKey Function(String) getHeaderKey; // Added this parameter
 
-    return SingleChildScrollView(
-      controller: _scrollController,
+  const GamesListView({
+    super.key,
+    required this.rounds,
+    required this.gamesByRound,
+    required this.gamesData,
+    required this.isChessBoardVisible,
+    required this.scrollController,
+    required this.listViewKey,
+    required this.headerKeys,
+    required this.expandedRounds,
+    required this.onToggleExpansion,
+    required this.getHeaderKey, // Added this parameter
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Calculate total items including headers and games (only expanded ones)
+    int itemCount = 0;
+    for (final round in rounds) {
+      itemCount += 1; // Header
+      final isExpanded = expandedRounds[round.id] ?? true;
+      if (isExpanded) {
+        itemCount += gamesByRound[round.id]?.length ?? 0; // Games
+      }
+    }
+
+    return ListView.builder(
+      key: listViewKey,
+      controller: scrollController,
       padding: EdgeInsets.only(
         left: 20.sp,
         right: 20.sp,
         top: 16.sp,
         bottom: MediaQuery.of(context).viewPadding.bottom,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: allItems,
-      ),
-    );
-  }
+      cacheExtent: 30000.0,
+      itemCount: itemCount,
+      itemBuilder: (context, index) {
+        int currentIndex = 0;
 
-  List<Widget> _buildAllItems(
-    BuildContext context,
-    WidgetRef ref,
-    GamesScreenModel gamesData,
-    bool isChessBoardVisible,
-  ) {
-    final items = <Widget>[];
-    final rounds =
-        ref.watch(gamesAppBarProvider).value?.gamesAppBarModels ?? [];
-    final games = gamesData.gamesTourModels;
+        for (final round in rounds) {
+          final isExpanded = expandedRounds[round.id] ?? true;
+          final roundGames = gamesByRound[round.id] ?? [];
 
-    // Group games by round
-    final gamesByRound = <String, List<GamesTourModel>>{};
-    for (final game in games) {
-      gamesByRound.putIfAbsent(game.roundId, () => []).add(game);
-    }
+          // Check if this is the header
+          if (index == currentIndex) {
+            return RoundHeader(
+              roundId: round.id,
+              roundName: round.name,
+              headerKey: getHeaderKey(round.id),
+              // Use the method to ensure key generation
+              isExpanded: isExpanded,
+              gamesCount: roundGames.length,
+              onTap: () => onToggleExpansion(round.id),
+            );
+          }
+          currentIndex += 1;
 
-    debugPrint('Building items for ${rounds.length} rounds');
+          // If expanded, show games
+          if (isExpanded) {
+            if (index < currentIndex + roundGames.length) {
+              final gameIndexInRound = index - currentIndex;
+              final game = roundGames[gameIndexInRound];
+              final globalGameIndex = gamesData.gamesTourModels.indexOf(game);
 
-    // Build items for each round - INCLUDING empty rounds
-    for (final round in rounds) {
-      final roundGames = gamesByRound[round.id] ?? [];
-
-      if (roundGames.isEmpty) {
-        debugPrint('Skipping empty round ${round.id} (${round.name})');
-        continue;
-      }
-
-      debugPrint(
-        'Building round ${round.id} (${round.name}) with ${roundGames.length} games',
-      );
-
-      // ALWAYS add round header, even if no games
-      items.add(
-        _buildRoundHeader({
-          'roundId': round.id,
-          'roundName': round.name,
-        }),
-      );
-
-      if (roundGames.isEmpty) {
-        // Add an empty state widget for rounds with no games
-        items.add(
-          Padding(
-            padding: EdgeInsets.symmetric(vertical: 8.h, horizontal: 16.w),
-            child: Container(
-              padding: EdgeInsets.all(16.sp),
-              decoration: BoxDecoration(
-                color: kDarkGreyColor.withOpacity(0.3),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: kWhiteColor.withOpacity(0.1)),
-              ),
-              child: Text(
-                'No games scheduled for this round',
-                style: TextStyle(
-                  color: kWhiteColor70,
-                  fontSize: 14.sp,
-                  fontStyle: FontStyle.italic,
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: 12.sp),
+                  child: GameCardWrapper(
+                    game: game,
+                    gamesData: gamesData,
+                    gameIndex: globalGameIndex,
+                    isChessBoardVisible: isChessBoardVisible,
+                  ),
                 ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ),
-        );
-      } else {
-        // Add all games for this round
-        for (int i = 0; i < roundGames.length; i++) {
-          final game = roundGames[i];
-          final globalGameIndex = games.indexOf(game);
-
-          items.add(
-            Padding(
-              padding: EdgeInsets.only(bottom: 12.sp),
-              child: _buildGameCard(
-                context,
-                ref,
-                game,
-                gamesData,
-                globalGameIndex,
-                isChessBoardVisible,
-              ),
-            ),
-          );
+              );
+            }
+            currentIndex += roundGames.length;
+          }
         }
-      }
-    }
 
-    debugPrint('Built ${items.length} total items');
-    return items;
-  }
-
-  /* --------------------------------------------------------------------------
-   * ITEM HELPERS
-   * -------------------------------------------------------------------------- */
-
-  Widget _buildRoundHeader(Map<String, dynamic> round) {
-    final roundId = round['roundId'] as String;
-    final headerKey = _getHeaderKey(roundId);
-
-    return Container(
-      key: headerKey,
-      margin: EdgeInsets.only(top: 16.h, bottom: 8.h),
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-      decoration: BoxDecoration(
-        color: kDarkGreyColor,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: kWhiteColor.withOpacity(0.1)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 4.w,
-            height: 20.h,
-            decoration: BoxDecoration(
-              color: kPrimaryColor,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          SizedBox(width: 12.w),
-          Text(
-            (round['roundName'] ?? round['roundId']).toString(),
-            style: TextStyle(
-              color: kWhiteColor,
-              fontSize: 16.sp,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
+        return const SizedBox.shrink();
+      },
     );
-  }
-
-  Widget _buildGameCard(
-    BuildContext context,
-    WidgetRef ref,
-    GamesTourModel gamesTourModel,
-    GamesScreenModel gamesData,
-    int gameIndex,
-    bool isChessBoardVisible,
-  ) {
-    void navigateToChessBoard() {
-      try {
-        ref.read(chessboardViewFromProvider.notifier).state =
-            ChessboardView.tour;
-
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder:
-                (_) => ChessBoardScreen(
-                  games: gamesData.gamesTourModels,
-                  currentIndex: gameIndex,
-                ),
-          ),
-        );
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to open chess board: ${e.toString()}'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    }
-
-    Future<void> handlePinToggle() async {
-      try {
-        await ref
-            .read(gamesTourScreenProvider.notifier)
-            .togglePinGame(gamesTourModel.gameId);
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to toggle pin: ${e.toString()}'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    }
-
-    if (isChessBoardVisible) {
-      return ChessBoardFromFEN(
-        gamesTourModel: gamesTourModel,
-        onChanged: navigateToChessBoard,
-      );
-    } else {
-      return GameCard(
-        gamesTourModel: gamesTourModel,
-        pinnedIds: gamesData.pinnedGamedIs,
-        onPinToggle: (_) => handlePinToggle(),
-        onTap: navigateToChessBoard,
-      );
-    }
   }
 }

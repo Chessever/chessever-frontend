@@ -138,6 +138,7 @@ class _GamePage extends StatelessWidget {
   final void Function(int) onGameChanged;
   final VoidCallback onSwipeLeft;
   final VoidCallback onSwipeRight;
+
   const _GamePage({
     required this.index,
     required this.game,
@@ -196,7 +197,7 @@ class _LoadingScreen extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             CircularProgressIndicator(color: kGreenColor),
-            const SizedBox(height: 16),
+            SizedBox(height: 16.h),
             Text('Loading game...', style: AppTypography.textSmMedium),
           ],
         ),
@@ -224,10 +225,9 @@ class _AppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     return AppBar(
-      backgroundColor: kDarkGreyColor,
       elevation: 0,
       leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
+        icon: const Icon(Icons.arrow_back_ios_new, color: kWhiteColor),
         onPressed: () => Navigator.pop(context),
       ),
       title: _GameSelectionDropdown(
@@ -237,17 +237,8 @@ class _AppBar extends StatelessWidget implements PreferredSizeWidget {
         isLoading: isLoading,
       ),
       actions: [
-        IconButton(
-          icon: const Icon(Icons.settings, color: Colors.white),
-          onPressed:
-              isLoading
-                  ? null
-                  : () {
-                    // Settings functionality
-                  },
-        ),
         PopupMenuButton<String>(
-          icon: const Icon(Icons.more_vert, color: Colors.white),
+          icon: const Icon(Icons.more_vert, color: kWhiteColor),
           enabled: !isLoading,
           onSelected: (value) {
             switch (value) {
@@ -264,32 +255,32 @@ class _AppBar extends StatelessWidget implements PreferredSizeWidget {
           },
           itemBuilder:
               (context) => [
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'share',
                   child: Row(
                     children: [
-                      Icon(Icons.share, color: Colors.white),
-                      SizedBox(width: 8),
+                      Icon(Icons.share, color: kWhiteColor),
+                      SizedBox(width: 8.w),
                       Text('Share Game'),
                     ],
                   ),
                 ),
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'analyze',
                   child: Row(
                     children: [
-                      Icon(Icons.analytics, color: Colors.white),
-                      SizedBox(width: 8),
+                      Icon(Icons.analytics, color: kWhiteColor),
+                      SizedBox(width: 8.w),
                       Text('Analyze'),
                     ],
                   ),
                 ),
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'copy_pgn',
                   child: Row(
                     children: [
-                      Icon(Icons.copy, color: Colors.white),
-                      SizedBox(width: 8),
+                      Icon(Icons.copy, color: kWhiteColor),
+                      SizedBox(width: 8.w),
                       Text('Copy PGN'),
                     ],
                   ),
@@ -426,9 +417,9 @@ class _GameDropdownItem extends StatelessWidget {
         // Completed games (any result)
         return SvgPicture.asset(
           SvgAsset.check,
-           width: 16.w,
+          width: 16.w,
           height: 16.h,
-          );
+        );
       case GameStatus.ongoing:
         // Ongoing/Live games
         return SvgPicture.asset(
@@ -524,6 +515,7 @@ class _GameBody extends StatelessWidget {
   final ChessBoardState state;
   final VoidCallback onSwipeLeft;
   final VoidCallback onSwipeRight;
+
   _GameBody({
     required this.index,
     required this.game,
@@ -531,6 +523,7 @@ class _GameBody extends StatelessWidget {
     required this.onSwipeLeft,
     required this.onSwipeRight,
   });
+
   Offset? _panStartPosition;
   double _totalHorizontalDelta = 0.0;
   double _totalVerticalDelta = 0.0;
@@ -603,13 +596,13 @@ class _GameBody extends StatelessWidget {
           onPanEnd: (details) {
             if (!_canSwipe()) {
               _resetSwipeTracking();
-              _panStartPosition = null; 
+              _panStartPosition = null;
               return;
             }
 
             if (!_isHorizontalSwipe) {
               _resetSwipeTracking();
-              _panStartPosition = null; 
+              _panStartPosition = null;
               return;
             }
             // Calculate final swipe metrics
@@ -634,13 +627,13 @@ class _GameBody extends StatelessWidget {
                 // Swiping left - go to next game
                 onSwipeLeft.call();
               }
-            } 
+            }
             _resetSwipeTracking();
-            _panStartPosition = null; 
+            _panStartPosition = null;
           },
           onPanCancel: () {
             _resetSwipeTracking();
-            _panStartPosition = null; 
+            _panStartPosition = null;
           },
           child: _BoardWithSidebar(index: index, state: state),
         ),
