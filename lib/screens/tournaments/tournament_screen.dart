@@ -47,7 +47,6 @@ class TournamentScreen extends HookConsumerWidget {
       color: kWhiteColor70,
       backgroundColor: kDarkGreyColor,
       displacement: 60.h,
-      // Distance from top where indicator appears
       strokeWidth: 3.w,
       child: Material(
         color: kBackgroundColor,
@@ -55,9 +54,7 @@ class TournamentScreen extends HookConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Add top padding
             SizedBox(height: 16.h + MediaQuery.of(context).viewPadding.top),
-            // Search bar
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 20.sp),
               child: Hero(
@@ -79,11 +76,18 @@ class TournamentScreen extends HookConsumerWidget {
                           id: tournament.id,
                         );
                   },
+                  onPlayerSelected: (player) {
+                    ref
+                        .read(tournamentNotifierProvider.notifier)
+                        .onSelectPlayer(
+                      context: context,
+                      player: player,
+                    );
+                  },
                   onFilterTap: () {
                     _showFilterPopup(context);
                   },
                   onProfileTap: () {
-                    // Open hamburger menu drawer using the static _scaffoldKey
                     HomeScreen.scaffoldKey.currentState?.openDrawer();
                   },
                 ),
@@ -92,7 +96,6 @@ class TournamentScreen extends HookConsumerWidget {
 
             SizedBox(height: 16.h),
 
-            // Segmented switcher for "All Events" and "Upcoming Events"
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 20.sp),
               child: SegmentedSwitcher(
@@ -111,7 +114,6 @@ class TournamentScreen extends HookConsumerWidget {
 
             SizedBox(height: 12.h),
 
-            // Tournament list
             ref
                 .watch(tournamentNotifierProvider)
                 .when(

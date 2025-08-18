@@ -69,10 +69,30 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
     );
   }
 
+  // Add these methods to handle swipes
+  void _handleSwipeLeft() {
+    if (_currentPageIndex < widget.games.length - 1) {
+      _pageController.nextPage(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
+  void _handleSwipeRight() {
+    if (_currentPageIndex > 0) {
+      _pageController.previousPage(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: PageView.builder(
+        physics: const NeverScrollableScrollPhysics(),
         controller: _pageController,
         onPageChanged: _onPageChanged,
         itemCount: widget.games.length,
@@ -91,6 +111,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreen> {
                     games: widget.games,
                     currentGameIndex: _currentPageIndex,
                     onGameChanged: _navigateToGame,
+                    onSwipeLeft: _handleSwipeLeft,
+                    onSwipeRight: _handleSwipeRight,
                   );
                 },
                 error: (e, _) => ErrorWidget(e),
@@ -114,6 +136,8 @@ class _GamePage extends StatelessWidget {
   final List<GamesTourModel> games;
   final int currentGameIndex;
   final void Function(int) onGameChanged;
+  final VoidCallback onSwipeLeft;
+  final VoidCallback onSwipeRight;
 
   const _GamePage({
     required this.index,
@@ -122,6 +146,8 @@ class _GamePage extends StatelessWidget {
     required this.games,
     required this.currentGameIndex,
     required this.onGameChanged,
+    required this.onSwipeLeft,
+    required this.onSwipeRight,
   });
 
   @override
@@ -134,7 +160,13 @@ class _GamePage extends StatelessWidget {
         currentGameIndex: currentGameIndex,
         onGameChanged: onGameChanged,
       ),
-      body: _GameBody(index: index, game: game, state: state),
+      body: _GameBody(
+        index: index,
+        game: game,
+        state: state,
+        onSwipeLeft: onSwipeLeft,
+        onSwipeRight: onSwipeRight,
+      ),
     );
   }
 }
@@ -165,7 +197,7 @@ class _LoadingScreen extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             CircularProgressIndicator(color: kGreenColor),
-            const SizedBox(height: 16),
+            SizedBox(height: 16.h),
             Text('Loading game...', style: AppTypography.textSmMedium),
           ],
         ),
@@ -193,10 +225,9 @@ class _AppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     return AppBar(
-      backgroundColor: kDarkGreyColor,
       elevation: 0,
       leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
+        icon: const Icon(Icons.arrow_back_ios_new, color: kWhiteColor),
         onPressed: () => Navigator.pop(context),
       ),
       title: _GameSelectionDropdown(
@@ -206,17 +237,8 @@ class _AppBar extends StatelessWidget implements PreferredSizeWidget {
         isLoading: isLoading,
       ),
       actions: [
-        IconButton(
-          icon: const Icon(Icons.settings, color: Colors.white),
-          onPressed:
-              isLoading
-                  ? null
-                  : () {
-                    // Settings functionality
-                  },
-        ),
         PopupMenuButton<String>(
-          icon: const Icon(Icons.more_vert, color: Colors.white),
+          icon: const Icon(Icons.more_vert, color: kWhiteColor),
           enabled: !isLoading,
           onSelected: (value) {
             switch (value) {
@@ -233,32 +255,32 @@ class _AppBar extends StatelessWidget implements PreferredSizeWidget {
           },
           itemBuilder:
               (context) => [
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'share',
                   child: Row(
                     children: [
-                      Icon(Icons.share, color: Colors.white),
-                      SizedBox(width: 8),
+                      Icon(Icons.share, color: kWhiteColor),
+                      SizedBox(width: 8.w),
                       Text('Share Game'),
                     ],
                   ),
                 ),
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'analyze',
                   child: Row(
                     children: [
-                      Icon(Icons.analytics, color: Colors.white),
-                      SizedBox(width: 8),
+                      Icon(Icons.analytics, color: kWhiteColor),
+                      SizedBox(width: 8.w),
                       Text('Analyze'),
                     ],
                   ),
                 ),
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'copy_pgn',
                   child: Row(
                     children: [
-                      Icon(Icons.copy, color: Colors.white),
-                      SizedBox(width: 8),
+                      Icon(Icons.copy, color: kWhiteColor),
+                      SizedBox(width: 8.w),
                       Text('Copy PGN'),
                     ],
                   ),
@@ -491,12 +513,39 @@ class _GameBody extends StatelessWidget {
   final int index;
   final GamesTourModel game;
   final ChessBoardState state;
+  final VoidCallback onSwipeLeft;
+  final VoidCallback onSwipeRight;
 
-  const _GameBody({
+  _GameBody({
     required this.index,
     required this.game,
     required this.state,
+    required this.onSwipeLeft,
+    required this.onSwipeRight,
   });
+
+  Offset? _panStartPosition;
+  double _totalHorizontalDelta = 0.0;
+  double _totalVerticalDelta = 0.0;
+  bool _isHorizontalSwipe = false;
+  DateTime? _lastSwipeTime;
+
+  static const Duration _swipeDebounceTime = Duration(milliseconds: 300);
+
+  void _resetSwipeTracking() {
+    _totalHorizontalDelta = 0.0;
+    _totalVerticalDelta = 0.0;
+    _isHorizontalSwipe = false;
+  }
+
+  bool _canSwipe() {
+    if (_lastSwipeTime == null) return true;
+    return DateTime.now().difference(_lastSwipeTime!) > _swipeDebounceTime;
+  }
+
+  void _recordSwipe() {
+    _lastSwipeTime = DateTime.now();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -508,7 +557,86 @@ class _GameBody extends StatelessWidget {
           blackPlayer: false,
         ),
         SizedBox(height: 2.h),
-        _BoardWithSidebar(index: index, state: state),
+        GestureDetector(
+          // Make sure we can receive pan gestures
+          behavior: HitTestBehavior.translucent,
+          onPanStart: (details) {
+            _panStartPosition = details.globalPosition;
+            _resetSwipeTracking();
+          },
+          onPanUpdate: (details) {
+            if (_panStartPosition == null) {
+              return;
+            }
+
+            // Accumulate deltas to track total movement
+            _totalHorizontalDelta += details.delta.dx;
+            _totalVerticalDelta += details.delta.dy;
+
+            // Check if this is primarily a horizontal movement
+            const double minHorizontalMovement = 5.0; // Reduced threshold
+            const double maxVerticalTolerance = 80.0; // Increased tolerance
+
+            // More lenient horizontal detection
+            if (_totalHorizontalDelta.abs() > minHorizontalMovement) {
+              // Check if horizontal movement is dominant
+              if (_totalVerticalDelta.abs() == 0 ||
+                  _totalHorizontalDelta.abs() >
+                      _totalVerticalDelta.abs() * 0.7) {
+                _isHorizontalSwipe = true;
+              }
+            }
+
+            if (_totalVerticalDelta.abs() > maxVerticalTolerance &&
+                _totalVerticalDelta.abs() > _totalHorizontalDelta.abs() * 2) {
+              // Too much vertical movement - definitely not a horizontal swipe
+              _isHorizontalSwipe = false;
+            }
+          },
+          onPanEnd: (details) {
+            if (!_canSwipe()) {
+              _resetSwipeTracking();
+              _panStartPosition = null;
+              return;
+            }
+
+            if (!_isHorizontalSwipe) {
+              _resetSwipeTracking();
+              _panStartPosition = null;
+              return;
+            }
+            // Calculate final swipe metrics
+            const double minSwipeDistance = 30.0; // Reduced minimum distance
+            const double minSwipeVelocity = 200.0; // Reduced minimum velocity
+
+            double velocity = details.velocity.pixelsPerSecond.dx;
+            double totalDistance = _totalHorizontalDelta.abs();
+
+            // Require either sufficient distance OR velocity for a swipe
+            bool isValidSwipe =
+                totalDistance > minSwipeDistance ||
+                velocity.abs() > minSwipeVelocity;
+
+            if (isValidSwipe) {
+              _recordSwipe();
+              // Determine direction based on accumulated delta (more reliable than velocity alone)
+              if (_totalHorizontalDelta > 0) {
+                // Swiping right - go to previous game
+                onSwipeRight.call();
+              } else {
+                // Swiping left - go to next game
+                onSwipeLeft.call();
+              }
+            }
+            _resetSwipeTracking();
+            _panStartPosition = null;
+          },
+          onPanCancel: () {
+            _resetSwipeTracking();
+            _panStartPosition = null;
+          },
+          child: _BoardWithSidebar(index: index, state: state),
+        ),
         SizedBox(height: 2.h),
         _PlayerWidget(
           game: game,
@@ -571,10 +699,7 @@ class _BoardWithSidebar extends StatelessWidget {
   final int index;
   final ChessBoardState state;
 
-  const _BoardWithSidebar({
-    required this.index,
-    required this.state,
-  });
+  const _BoardWithSidebar({required this.index, required this.state});
 
   @override
   Widget build(BuildContext context) {
@@ -744,11 +869,7 @@ class _MovesDisplay extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Title skeleton
-          _SkeletonContainer(
-            height: 16.h,
-            width: 80.w,
-            borderRadius: 4.sp,
-          ),
+          _SkeletonContainer(height: 16.h, width: 80.w, borderRadius: 4.sp),
           SizedBox(height: 12.h),
           // Moves skeleton - simulate move notation layout
           ...List.generate(6, (rowIndex) {
@@ -819,14 +940,8 @@ class _SkeletonContainerState extends State<_SkeletonContainer>
       duration: const Duration(milliseconds: 1200),
       vsync: this,
     );
-    _animation = Tween<double>(
-      begin: 0.3,
-      end: 0.7,
-    ).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: Curves.easeInOut,
-      ),
+    _animation = Tween<double>(begin: 0.3, end: 0.7).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
     _animationController.repeat(reverse: true);
   }
