@@ -112,29 +112,29 @@ class AboutTourScreen extends ConsumerWidget {
                                 : null,
                         description: data.aboutTourModel.location,
                       ),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          InkWell(
-                            onTap: () {},
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                shape: BoxShape.circle,
-                              ),
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 10.sp,
-                                vertical: 10.sp,
-                              ),
-                              child: SvgWidget(
-                                SvgAsset.boat,
-                                height: 32.h,
-                                width: 32.w,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                      // Row(
+                      //   mainAxisAlignment: MainAxisAlignment.end,
+                      //   children: [
+                      //     InkWell(
+                      //       onTap: () {},
+                      //       child: Container(
+                      //         decoration: BoxDecoration(
+                      //           color: Colors.white,
+                      //           shape: BoxShape.circle,
+                      //         ),
+                      //         padding: EdgeInsets.symmetric(
+                      //           horizontal: 10.sp,
+                      //           vertical: 10.sp,
+                      //         ),
+                      //         child: SvgWidget(
+                      //           SvgAsset.boat,
+                      //           height: 32.h,
+                      //           width: 32.w,
+                      //         ),
+                      //       ),
+                      //     ),
+                      //   ],
+                      // ),
                       SizedBox(
                         height: MediaQuery.of(context).viewPadding.bottom,
                       ),
