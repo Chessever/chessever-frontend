@@ -1,4 +1,4 @@
-import 'package:chessever2/screens/tournaments/tournament_screen.dart';
+import 'package:chessever2/screens/tournaments/group_event_screen.dart';
 import 'package:flutter/material.dart';
 // import 'tournament_list_screen.dart';
 
@@ -7,7 +7,7 @@ class SignInScreen extends StatelessWidget {
 
   void _continue(BuildContext context) {
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const TournamentScreen()),
+      MaterialPageRoute(builder: (_) => const GroupEventScreen()),
     );
   }
 

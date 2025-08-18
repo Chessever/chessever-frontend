@@ -6,7 +6,7 @@ import 'package:chessever2/screens/premium/provider/premium_screen_provider.dart
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../../tournaments/tournament_screen.dart';
+import '../../tournaments/group_event_screen.dart';
 import '../../tournaments/widget/bottom_nav_bar.dart';
 
 class HomeScreen extends ConsumerWidget {
@@ -140,7 +140,7 @@ class _BottomNavBarViewState extends ConsumerState<BottomNavBarView>
   Widget _buildScreen(BottomNavBarItem item) {
     switch (item) {
       case BottomNavBarItem.tournaments:
-        return const TournamentScreen();
+        return const GroupEventScreen();
       case BottomNavBarItem.calendar:
         return const CalendarScreen();
       case BottomNavBarItem.library:

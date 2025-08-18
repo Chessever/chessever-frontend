@@ -1,7 +1,7 @@
 import 'package:chessever2/screens/calendar_screen.dart';
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/tournaments/providers/calendar_tour_view_provider.dart';
-import 'package:chessever2/screens/tournaments/tournament_screen.dart';
+import 'package:chessever2/screens/tournaments/group_event_screen.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/month_converter.dart';
@@ -112,7 +112,7 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
                 );
               },
               loading: () {
-                final mockData = TourEventCardModel(
+                final mockData = GroupEventCardModel(
                   id: 'tour_001',
                   title: 'World Chess Championship 2025',
                   dates: '2025-03-15',

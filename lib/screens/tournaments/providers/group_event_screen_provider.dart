@@ -9,7 +9,7 @@ import 'package:chessever2/screens/tournaments/providers/live_group_broadcast_id
 import 'package:chessever2/screens/tournaments/providers/sorting_all_event_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/tournament_detail_screen.dart';
-import 'package:chessever2/screens/tournaments/tournament_screen.dart';
+import 'package:chessever2/screens/tournaments/group_event_screen.dart';
 import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
 import 'package:chessever2/widgets/search/search_result_model.dart';
 import 'package:country_picker/country_picker.dart';
@@ -18,11 +18,11 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../standings/standing_screen_provider.dart';
 
-final tournamentNotifierProvider = AutoDisposeStateNotifierProvider<
-  _TournamentScreenController,
-  AsyncValue<List<TourEventCardModel>>
+final groupEventScreenProvider = AutoDisposeStateNotifierProvider<
+  _GroupEventScreenController,
+  AsyncValue<List<GroupEventCardModel>>
 >((ref) {
-  final tourEventCategory = ref.watch(selectedTourEventProvider);
+  final tourEventCategory = ref.watch(selectedGroupCategoryProvider);
   var liveBroadcastId = <String>[];
   ref
       .watch(liveGroupBroadcastIdsProvider)
@@ -33,16 +33,16 @@ final tournamentNotifierProvider = AutoDisposeStateNotifierProvider<
         error: (error, _) {},
         loading: () {},
       );
-  return _TournamentScreenController(
+  return _GroupEventScreenController(
     ref: ref,
     tourEventCategory: tourEventCategory,
     liveBroadcastId: liveBroadcastId,
   );
 });
 
-class _TournamentScreenController
-    extends StateNotifier<AsyncValue<List<TourEventCardModel>>> {
-  _TournamentScreenController({
+class _GroupEventScreenController
+    extends StateNotifier<AsyncValue<List<GroupEventCardModel>>> {
+  _GroupEventScreenController({
     required this.ref,
     required this.tourEventCategory,
     required this.liveBroadcastId,
@@ -51,7 +51,7 @@ class _TournamentScreenController
   }
 
   final Ref ref;
-  final TournamentCategory tourEventCategory;
+  final GroupEventCategory tourEventCategory;
   final List<String> liveBroadcastId;
 
   /// This will be populated every time we fetch the tournaments
@@ -68,7 +68,7 @@ class _TournamentScreenController
                   .read(groupBroadcastLocalStorage(tourEventCategory))
                   .fetchGroupBroadcasts());
       if (tour.isEmpty) {
-        state = AsyncValue.data(<TourEventCardModel>[]);
+        state = AsyncValue.data(<GroupEventCardModel>[]);
       }
 
       _groupBroadcastList = tour;
@@ -82,12 +82,12 @@ class _TournamentScreenController
             tour
                 .map(
                   (t) =>
-                      TourEventCardModel.fromGroupBroadcast(t, liveBroadcastId),
+                      GroupEventCardModel.fromGroupBroadcast(t, liveBroadcastId),
                 )
                 .toList();
 
         final sortedTours =
-            tourEventCategory == TournamentCategory.upcoming
+            tourEventCategory == GroupEventCategory.upcoming
                 ? sortingService.sortUpcomingTours(
                   tourEventCardModel,
                   selectedCountry,
@@ -124,7 +124,7 @@ class _TournamentScreenController
         _groupBroadcastList = tour;
         final tourEventCardModel =
             tour.map((t) {
-              return TourEventCardModel.fromGroupBroadcast(t, liveBroadcastId);
+              return GroupEventCardModel.fromGroupBroadcast(t, liveBroadcastId);
             }).toList();
 
         final countryAsync = ref.watch(countryDropdownProvider);
@@ -134,7 +134,7 @@ class _TournamentScreenController
           final selectedCountry = countryAsync.value.name.toLowerCase();
 
           final sortingService = ref.read(tournamentSortingServiceProvider);
-          if (tourEventCategory == TournamentCategory.upcoming) {
+          if (tourEventCategory == GroupEventCategory.upcoming) {
             final sortedTours = sortingService.sortUpcomingTours(
               tourEventCardModel,
               selectedCountry,
@@ -197,7 +197,7 @@ class _TournamentScreenController
 
   Future<void> searchForTournament(
       String query,
-      TournamentCategory tourEventCategory,
+      GroupEventCategory tourEventCategory,
       ) async {
     if (query.isEmpty) {
       await loadTournaments(tourEventCategory);
@@ -227,9 +227,9 @@ class _TournamentScreenController
 
       final filteredResults =
       uniqueResults.values.where((result) {
-        if (tourEventCategory == TournamentCategory.current) {
+        if (tourEventCategory == GroupEventCategory.current) {
           return true;
-        } else if (tourEventCategory == TournamentCategory.upcoming) {
+        } else if (tourEventCategory == GroupEventCategory.upcoming) {
           return result.tournament.tourEventCategory ==
               TourEventCategory.upcoming;
         } else {
@@ -246,7 +246,7 @@ class _TournamentScreenController
     }
   }
 
-  Future<void> loadTournaments(TournamentCategory tourEventCategory) async {
+  Future<void> loadTournaments(GroupEventCategory tourEventCategory) async {
     state = const AsyncValue.loading();
 
     try {
@@ -259,12 +259,12 @@ class _TournamentScreenController
       groupBroadcast
           .map(
             (e) =>
-            TourEventCardModel.fromGroupBroadcast(e, liveBroadcastId),
+            GroupEventCardModel.fromGroupBroadcast(e, liveBroadcastId),
       )
           .where((tour) {
-        if (tourEventCategory == TournamentCategory.current) {
+        if (tourEventCategory == GroupEventCategory.current) {
           return true;
-        } else if (tourEventCategory == TournamentCategory.upcoming) {
+        } else if (tourEventCategory == GroupEventCategory.upcoming) {
           return tour.tourEventCategory == TourEventCategory.upcoming;
         } else {
           return true;

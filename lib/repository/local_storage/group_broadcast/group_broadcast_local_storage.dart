@@ -3,12 +3,12 @@ import 'dart:convert';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
-import 'package:chessever2/screens/tournaments/tournament_screen.dart';
+import 'package:chessever2/screens/tournaments/group_event_screen.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final groupBroadcastLocalStorage = Provider.family<
   GroupBroadcastLocalStorage,
-  TournamentCategory
+  GroupEventCategory
 >((ref, category) => GroupBroadcastLocalStorage(ref: ref, category: category));
 
 enum _LocalGroupBroadcastStorage { upcoming, current }
@@ -17,17 +17,17 @@ class GroupBroadcastLocalStorage {
   GroupBroadcastLocalStorage({required this.ref, required this.category});
 
   final Ref ref;
-  final TournamentCategory category;
+  final GroupEventCategory category;
 
   String get localStorageName =>
-      category == TournamentCategory.upcoming
+      category == GroupEventCategory.upcoming
           ? _LocalGroupBroadcastStorage.upcoming.name
           : _LocalGroupBroadcastStorage.current.name;
 
   Future<void> fetchAndSaveGroupBroadcasts() async {
     try {
       final broadcasts =
-          category == TournamentCategory.upcoming
+          category == GroupEventCategory.upcoming
               ? await ref
                   .read(groupBroadcastRepositoryProvider)
                   .getUpcomingGroupBroadcasts()

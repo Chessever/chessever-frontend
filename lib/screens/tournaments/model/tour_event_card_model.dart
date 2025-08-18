@@ -9,8 +9,8 @@ enum TourEventCategory {
   completed,
 }
 
-class TourEventCardModel extends Equatable {
-  const TourEventCardModel({
+class GroupEventCardModel extends Equatable {
+  const GroupEventCardModel({
     required this.id,
     required this.title,
     required this.dates,
@@ -28,11 +28,11 @@ class TourEventCardModel extends Equatable {
   final TourEventCategory tourEventCategory;
   final String timeControl;
 
-  factory TourEventCardModel.fromGroupBroadcast(
+  factory GroupEventCardModel.fromGroupBroadcast(
     GroupBroadcast groupBroadcast,
     List<String> liveGroupIds,
   ) {
-    return TourEventCardModel(
+    return GroupEventCardModel(
       id: groupBroadcast.id,
       title: groupBroadcast.name,
       dates: convertDates(groupBroadcast.dateStart, groupBroadcast.dateEnd),

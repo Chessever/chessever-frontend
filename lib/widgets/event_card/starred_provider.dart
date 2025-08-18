@@ -1,12 +1,12 @@
 import 'dart:ui';
 
 import 'package:chessever2/repository/local_storage/starred_repository/starred_repository.dart';
-import 'package:chessever2/screens/tournaments/tournament_screen.dart';
+import 'package:chessever2/screens/tournaments/group_event_screen.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final starredProvider = StateNotifierProvider<_StarredRepository, List<String>>(
   (ref) {
-    final currentEvent = ref.watch(selectedTourEventProvider);
+    final currentEvent = ref.watch(selectedGroupCategoryProvider);
     return _StarredRepository(ref: ref, tournamentCategory: currentEvent);
   },
 );
@@ -18,12 +18,12 @@ class _StarredRepository extends StateNotifier<List<String>> {
   }
 
   final Ref ref;
-  final TournamentCategory tournamentCategory;
+  final GroupEventCategory tournamentCategory;
 
   Future<void> init() async {
     try {
       final key =
-          tournamentCategory == TournamentCategory.upcoming
+          tournamentCategory == GroupEventCategory.upcoming
               ? StarRepoKey.upcomingEvent.name
               : StarRepoKey.liveEvent.name;
       final starredList = await ref.read(starredRepository).getStar(key);
@@ -46,7 +46,7 @@ class _StarredRepository extends StateNotifier<List<String>> {
       }
 
       final key =
-          tournamentCategory == TournamentCategory.upcoming
+          tournamentCategory == GroupEventCategory.upcoming
               ? StarRepoKey.upcomingEvent.name
               : StarRepoKey.liveEvent.name;
 

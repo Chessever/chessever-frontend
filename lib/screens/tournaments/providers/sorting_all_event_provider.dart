@@ -13,8 +13,8 @@ class TournamentSortingService {
 
   TournamentSortingService(this.ref);
 
-  List<TourEventCardModel> sortAllTours(
-    List<TourEventCardModel> tours,
+  List<GroupEventCardModel> sortAllTours(
+    List<GroupEventCardModel> tours,
     String dropDownSelectedCountry, {
     bool sortByFavorites = false, // Add this optional flag
   }) {
@@ -79,8 +79,8 @@ class TournamentSortingService {
     return filteredList;
   }
 
-  List<TourEventCardModel> sortUpcomingTours(
-    List<TourEventCardModel> tours,
+  List<GroupEventCardModel> sortUpcomingTours(
+    List<GroupEventCardModel> tours,
     String dropDownSelectedCountry,
   ) {
     final favorites = ref.watch(

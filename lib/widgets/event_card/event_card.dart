@@ -1,5 +1,5 @@
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
-import 'package:chessever2/screens/tournaments/providers/tournament_screen_provider.dart';
+import 'package:chessever2/screens/tournaments/providers/group_event_screen_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -11,7 +11,7 @@ import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class EventCard extends ConsumerWidget {  
-  final TourEventCardModel tourEventCardModel;
+  final GroupEventCardModel tourEventCardModel;
   final VoidCallback? onTap;
   final bool isFavorite;
   final VoidCallback? onFavoritePressed;
@@ -126,7 +126,7 @@ class EventCard extends ConsumerWidget {
 class _ShowStatus extends ConsumerWidget {
   const _ShowStatus({required this.tourEventCardModel});
 
-  final TourEventCardModel tourEventCardModel;
+  final GroupEventCardModel tourEventCardModel;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -146,7 +146,7 @@ class _ShowStatus extends ConsumerWidget {
 class _UpcomingTag extends StatelessWidget {
   const _UpcomingTag({required this.tourEventCardModel});
 
-  final TourEventCardModel tourEventCardModel;
+  final GroupEventCardModel tourEventCardModel;
 
   @override
   Widget build(BuildContext context) {
@@ -204,7 +204,7 @@ class _BuildTrailingButton extends ConsumerWidget {
     this.onMorePressed,
   });
 
-  final TourEventCardModel tourEventCardModel;
+  final GroupEventCardModel tourEventCardModel;
   final VoidCallback? onMorePressed;
 
   @override
@@ -255,7 +255,7 @@ class _BuildTrailingButton extends ConsumerWidget {
 class _StarWidget extends ConsumerStatefulWidget {
   const _StarWidget({required this.tourEventCardModel});
 
-  final TourEventCardModel tourEventCardModel;
+  final GroupEventCardModel tourEventCardModel;
 
   @override
   ConsumerState<_StarWidget> createState() => _StarWidgetState();
@@ -283,7 +283,7 @@ class _StarWidgetState extends ConsumerState<_StarWidget> {
               widget.tourEventCardModel.id,
               onStarToggled: () {
                 ref
-                    .read(tournamentNotifierProvider.notifier)
+                    .read(groupEventScreenProvider.notifier)
                     .loadTours(sortByFavorites: true);
               },
             );

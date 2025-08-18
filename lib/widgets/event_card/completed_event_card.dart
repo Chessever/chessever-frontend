@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 import 'event_card.dart';
 
 class CompletedEventCard extends StatelessWidget {
-  final TourEventCardModel tourEventCardModel;
+  final GroupEventCardModel tourEventCardModel;
   final VoidCallback? onTap;
   final VoidCallback? onDownloadTournament;
   final VoidCallback? onAddToLibrary;
