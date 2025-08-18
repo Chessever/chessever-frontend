@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
+import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -15,6 +16,7 @@ class EnhancedRoundedSearchBar extends ConsumerStatefulWidget {
   final Function(TourEventCardModel)? onTournamentSelected;
   final String hintText;
   final bool autofocus;
+  final Function(SearchPlayer)? onPlayerSelected;
   final VoidCallback? onFilterTap;
   final VoidCallback? onProfileTap;
   final bool showProfile;
@@ -23,6 +25,7 @@ class EnhancedRoundedSearchBar extends ConsumerStatefulWidget {
   const EnhancedRoundedSearchBar({
     super.key,
     required this.controller,
+    this.onPlayerSelected,
     this.onChanged,
     this.onTournamentSelected,
     this.hintText = 'Search tournaments or players',
@@ -56,7 +59,6 @@ class _EnhancedRoundedSearchBarState
     _focusNode.addListener(_onFocusChange);
     widget.controller.addListener(_onTextChange);
 
-    // Initialize animation controllers
     _overlayController = AnimationController(
       duration: const Duration(milliseconds: 300),
       vsync: this,
@@ -67,7 +69,6 @@ class _EnhancedRoundedSearchBarState
       vsync: this,
     );
 
-    // Setup animations
     _overlayAnimation = CurvedAnimation(
       parent: _overlayController,
       curve: Curves.easeInOut,
@@ -150,12 +151,17 @@ class _EnhancedRoundedSearchBarState
     widget.onTournamentSelected?.call(tournament);
   }
 
+  void _onPlayerSelected(SearchPlayer player) {
+    _hideOverlay();
+    widget.onPlayerSelected?.call(player);
+  }
+
+
   @override
   Widget build(BuildContext context) {
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        // Invisible barrier to detect taps outside
         if (_showOverlay)
           Positioned.fill(
             child: GestureDetector(
@@ -168,7 +174,6 @@ class _EnhancedRoundedSearchBarState
 
         Column(
           children: [
-            // Animated search bar
             AnimatedBuilder(
               animation: _searchBarController,
               builder: (context, child) {
@@ -185,7 +190,6 @@ class _EnhancedRoundedSearchBarState
               },
             ),
 
-            // Animated search overlay
             AnimatedBuilder(
               animation: _overlayAnimation,
               builder: (context, child) {
@@ -202,6 +206,7 @@ class _EnhancedRoundedSearchBarState
                           child: SearchOverlay(
                             query: widget.controller.text,
                             onTournamentTap: _onTournamentSelected,
+                            onPlayerTap: _onPlayerSelected,
                           ),
                         ),
                       ),
@@ -227,7 +232,6 @@ class _EnhancedRoundedSearchBarState
               SizedBox(width: 16.w),
             ],
 
-            // Search bar container
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
@@ -316,7 +320,6 @@ class _EnhancedRoundedSearchBarState
             ),
           ),
 
-          // Clear button with animation
           AnimatedScale(
             scale: widget.controller.text.isNotEmpty ? 1.0 : 0.0,
             duration: const Duration(milliseconds: 200),
