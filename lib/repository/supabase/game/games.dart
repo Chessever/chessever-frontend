@@ -183,3 +183,167 @@ class Player {
     };
   }
 }
+class SearchPlayer {
+  final String id;
+  final String name;
+  final String? title;
+  final int? rating;
+  final int? fideId;
+  final String? fed;
+  final String tournamentId;
+  final String tournamentName;
+  final String? gameId;
+  final String? roundId;
+  final bool isWhitePlayer;
+
+  const SearchPlayer({
+    required this.id,
+    required this.name,
+    this.title,
+    this.rating,
+    this.fideId,
+    this.fed,
+    required this.tournamentId,
+    required this.tournamentName,
+    this.gameId,
+    this.roundId,
+    this.isWhitePlayer = true,
+  });
+
+  // Create from your existing Player model
+  factory SearchPlayer.fromPlayer(
+      Player player,
+      String tournamentId,
+      String tournamentName, {
+        String? gameId,
+        String? roundId,
+        bool isWhitePlayer = true,
+      }) {
+    return SearchPlayer(
+      id: '${tournamentId}_${player.fideId}_${gameId ?? ''}',
+      name: player.name,
+      title: player.title.isNotEmpty ? player.title : null,
+      rating: player.rating > 0 ? player.rating : null,
+      fideId: player.fideId > 0 ? player.fideId : null,
+      fed: player.fed.isNotEmpty ? player.fed : null,
+      tournamentId: tournamentId,
+      tournamentName: tournamentName,
+      gameId: gameId,
+      roundId: roundId,
+      isWhitePlayer: isWhitePlayer,
+    );
+  }
+
+  factory SearchPlayer.fromSearchTerm(
+      String searchTerm,
+      String tournamentId,
+      String tournamentName,
+      ) {
+    return SearchPlayer(
+      id: '${tournamentId}_${searchTerm.hashCode}',
+      name: searchTerm,
+      tournamentId: tournamentId,
+      tournamentName: tournamentName,
+    );
+  }
+
+  factory SearchPlayer.fromJson(
+      Map<String, dynamic> json,
+      String tournamentId,
+      String tournamentName,
+      ) {
+    return SearchPlayer(
+      id: json['id']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
+      title: json['title']?.toString(),
+      rating: json['rating'] != null ? int.tryParse(json['rating'].toString()) : null,
+      fideId: json['fideId'] != null ? int.tryParse(json['fideId'].toString()) : null,
+      fed: json['fed']?.toString(),
+      tournamentId: tournamentId,
+      tournamentName: tournamentName,
+      gameId: json['gameId']?.toString(),
+      roundId: json['roundId']?.toString(),
+      isWhitePlayer: json['isWhitePlayer'] ?? true,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'title': title,
+      'rating': rating,
+      'fideId': fideId,
+      'fed': fed,
+      'tournament_id': tournamentId,
+      'tournament_name': tournamentName,
+      'game_id': gameId,
+      'round_id': roundId,
+      'is_white_player': isWhitePlayer,
+    };
+  }
+
+  SearchPlayer copyWith({
+    String? id,
+    String? name,
+    String? title,
+    int? rating,
+    int? fideId,
+    String? fed,
+    String? tournamentId,
+    String? tournamentName,
+    String? gameId,
+    String? roundId,
+    bool? isWhitePlayer,
+  }) {
+    return SearchPlayer(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      title: title ?? this.title,
+      rating: rating ?? this.rating,
+      fideId: fideId ?? this.fideId,
+      fed: fed ?? this.fed,
+      tournamentId: tournamentId ?? this.tournamentId,
+      tournamentName: tournamentName ?? this.tournamentName,
+      gameId: gameId ?? this.gameId,
+      roundId: roundId ?? this.roundId,
+      isWhitePlayer: isWhitePlayer ?? this.isWhitePlayer,
+    );
+  }
+
+  @override
+  String toString() {
+    return 'SearchPlayer(id: $id, name: $name, rating: $rating, tournament: $tournamentName)';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is SearchPlayer && other.id == id;
+  }
+
+  @override
+  int get hashCode => id.hashCode;
+
+  // Helper getters
+  String get displayName {
+    if (title != null && title!.isNotEmpty) {
+      return '$title $name';
+    }
+    return name;
+  }
+
+  String get displayRating {
+    return rating?.toString() ?? 'Unrated';
+  }
+
+  String get displayFederation {
+    return fed ?? 'Unknown';
+  }
+
+  bool get hasTitle => title != null && title!.isNotEmpty;
+
+  bool get isRated => rating != null && rating! > 0;
+
+  bool get hasFideId => fideId != null && fideId! > 0;
+}
