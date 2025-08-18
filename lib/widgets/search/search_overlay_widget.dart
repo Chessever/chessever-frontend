@@ -1,7 +1,7 @@
 import 'package:chessever2/repository/local_storage/group_broadcast/group_broadcast_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
-import 'package:chessever2/screens/tournaments/tournament_screen.dart';
+import 'package:chessever2/screens/tournaments/group_event_screen.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
 import 'package:chessever2/widgets/search/search_result_model.dart';
@@ -12,7 +12,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class SearchOverlay extends ConsumerWidget {
   final String query;
-  final Function(TourEventCardModel) onTournamentTap;
+  final Function(GroupEventCardModel) onTournamentTap;
   final Function(SearchPlayer)? onPlayerTap;
 
   const SearchOverlay({
@@ -34,7 +34,7 @@ class SearchOverlay extends ConsumerWidget {
         borderRadius: BorderRadius.circular(16),
         child: FutureBuilder<EnhancedSearchResult>(
           future: ref
-              .read(groupBroadcastLocalStorage(TournamentCategory.current))
+              .read(groupBroadcastLocalStorage(GroupEventCategory.current))
               .searchWithScoring(query),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {

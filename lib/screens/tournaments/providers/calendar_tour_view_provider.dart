@@ -2,7 +2,7 @@ import 'package:chessever2/repository/local_storage/group_broadcast/group_broadc
 import 'package:chessever2/screens/calendar_screen.dart';
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/tournaments/providers/live_group_broadcast_id_provider.dart';
-import 'package:chessever2/screens/tournaments/tournament_screen.dart';
+import 'package:chessever2/screens/tournaments/group_event_screen.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final calendarTourViewProvider = AutoDisposeStateNotifierProvider.family((
@@ -28,7 +28,7 @@ final calendarTourViewProvider = AutoDisposeStateNotifierProvider.family((
 });
 
 class _CalendarTourViewController
-    extends StateNotifier<AsyncValue<List<TourEventCardModel>>> {
+    extends StateNotifier<AsyncValue<List<GroupEventCardModel>>> {
   _CalendarTourViewController({
     required this.ref,
     required this.month,
@@ -47,11 +47,11 @@ class _CalendarTourViewController
     try {
       final allBroadCast =
           await ref
-              .read(groupBroadcastLocalStorage(TournamentCategory.current))
+              .read(groupBroadcastLocalStorage(GroupEventCategory.current))
               .getGroupBroadcasts();
       final upcomingBroadCast =
           await ref
-              .read(groupBroadcastLocalStorage(TournamentCategory.current))
+              .read(groupBroadcastLocalStorage(GroupEventCategory.current))
               .getGroupBroadcasts();
 
       if (allBroadCast.isEmpty && upcomingBroadCast.isEmpty) {
@@ -84,7 +84,7 @@ class _CalendarTourViewController
           filteredTours
               .map(
                 (t) =>
-                    TourEventCardModel.fromGroupBroadcast(t, liveBroadcastId),
+                    GroupEventCardModel.fromGroupBroadcast(t, liveBroadcastId),
               )
               .toList();
 
@@ -99,11 +99,11 @@ class _CalendarTourViewController
     try {
       final allBroadCast =
           await ref
-              .read(groupBroadcastLocalStorage(TournamentCategory.current))
+              .read(groupBroadcastLocalStorage(GroupEventCategory.current))
               .getGroupBroadcasts();
       final upcomingBroadCast =
           await ref
-              .read(groupBroadcastLocalStorage(TournamentCategory.current))
+              .read(groupBroadcastLocalStorage(GroupEventCategory.current))
               .getGroupBroadcasts();
 
       if (query.isEmpty) {
@@ -133,7 +133,7 @@ class _CalendarTourViewController
           filteredTours
               .map(
                 (t) =>
-                    TourEventCardModel.fromGroupBroadcast(t, liveBroadcastId),
+                    GroupEventCardModel.fromGroupBroadcast(t, liveBroadcastId),
               )
               .toList();
 

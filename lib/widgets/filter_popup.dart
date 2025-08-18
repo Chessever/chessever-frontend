@@ -1,6 +1,6 @@
 import 'package:chessever2/screens/tournaments/providers/filter_provider.dart';
-import 'package:chessever2/screens/tournaments/providers/tournament_screen_provider.dart';
-import 'package:chessever2/screens/tournaments/tournament_screen.dart';
+import 'package:chessever2/screens/tournaments/providers/group_event_screen_provider.dart';
+import 'package:chessever2/screens/tournaments/group_event_screen.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:flutter/material.dart';
@@ -29,7 +29,7 @@ class _FilterPopupState extends ConsumerState<FilterPopup> {
 
   @override
   Widget build(BuildContext context) {
-    final selectedTourEvent = ref.watch(selectedTourEventProvider);
+    final selectedTourEvent = ref.watch(selectedGroupCategoryProvider);
     final dialogWidth = 280.w;
     final horizontalPadding = 20.w;
     final verticalPadding = 16.h;
@@ -297,7 +297,7 @@ class _FilterPopupState extends ConsumerState<FilterPopup> {
                                     _endDate = null;
                                   });
                                   await ref
-                                      .read(tournamentNotifierProvider.notifier)
+                                      .read(groupEventScreenProvider.notifier)
                                       .resetFilters();
                                   Navigator.of(context).pop();
                                 },
@@ -339,7 +339,7 @@ class _FilterPopupState extends ConsumerState<FilterPopup> {
                                       );
 
                                   await ref
-                                      .read(tournamentNotifierProvider.notifier)
+                                      .read(groupEventScreenProvider.notifier)
                                       .setFilteredModels(filteredTours);
 
                                   Navigator.of(context).pop(filteredTours);

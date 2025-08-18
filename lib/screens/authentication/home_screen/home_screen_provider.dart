@@ -1,4 +1,4 @@
-import 'package:chessever2/screens/tournaments/providers/tournament_screen_provider.dart';
+import 'package:chessever2/screens/tournaments/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/widget/bottom_nav_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -18,7 +18,7 @@ class _HomeScreenController {
     // Handle refresh based on current screen
     switch (currentItem) {
       case BottomNavBarItem.tournaments:
-        ref.read(tournamentNotifierProvider.notifier).onRefresh();
+        ref.read(groupEventScreenProvider.notifier).onRefresh();
         break;
       case BottomNavBarItem.calendar:
         debugPrint('Refreshing calendar...');

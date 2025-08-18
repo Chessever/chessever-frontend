@@ -1,12 +1,12 @@
 import 'package:chessever2/repository/local_storage/group_broadcast/group_broadcast_local_storage.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
-import 'package:chessever2/screens/tournaments/tournament_screen.dart';
+import 'package:chessever2/screens/tournaments/group_event_screen.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:flutter/material.dart';
 
 // Filter controller provider
 final tourFormatRepositoryProvider =
-AutoDisposeProvider.family<FilterController, TournamentCategory>((
+AutoDisposeProvider.family<FilterController, GroupEventCategory>((
     ref,
     tournamentCategory,
     ) {
@@ -15,7 +15,7 @@ AutoDisposeProvider.family<FilterController, TournamentCategory>((
 
 // Formats provider
 final tourFormatsProvider =
-AutoDisposeFutureProvider.family<List<String>, TournamentCategory>((
+AutoDisposeFutureProvider.family<List<String>, GroupEventCategory>((
     ref,
     tournamentCategory,
     ) async {
@@ -29,7 +29,7 @@ class FilterController {
   FilterController({required this.ref, required this.tournamentCategory});
 
   final Ref ref;
-  final TournamentCategory tournamentCategory;
+  final GroupEventCategory tournamentCategory;
 
   Future<List<String>> getFormats() async {
     final groupBroadcast =
