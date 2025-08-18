@@ -13,7 +13,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 class EnhancedRoundedSearchBar extends ConsumerStatefulWidget {
   final TextEditingController controller;
   final Function(String)? onChanged;
-  final Function(TourEventCardModel)? onTournamentSelected;
+  final Function(GroupEventCardModel)? onTournamentSelected;
   final String hintText;
   final bool autofocus;
   final Function(SearchPlayer)? onPlayerSelected;
@@ -146,7 +146,7 @@ class _EnhancedRoundedSearchBarState
     _searchBarController.reverse();
   }
 
-  void _onTournamentSelected(TourEventCardModel tournament) {
+  void _onTournamentSelected(GroupEventCardModel tournament) {
     _hideOverlay();
     widget.onTournamentSelected?.call(tournament);
   }

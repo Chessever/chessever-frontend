@@ -13,7 +13,7 @@ import 'package:chessever2/screens/score_card/pages/score_card_page.dart';
 import 'package:chessever2/screens/splash/splash_screen.dart';
 import 'package:chessever2/screens/standings/standings_screen.dart';
 import 'package:chessever2/screens/tournaments/tournament_detail_screen.dart';
-import 'package:chessever2/screens/tournaments/tournament_screen.dart';
+import 'package:chessever2/screens/tournaments/group_event_screen.dart';
 import 'package:chessever2/screens/calendar_screen.dart';
 import 'package:chessever2/services/notification_service.dart';
 import 'package:chessever2/services/settings_manager.dart';
@@ -127,7 +127,7 @@ class _MyAppState extends ConsumerState<MyApp> {
         '/': (context) => const SplashScreen(),
         '/auth_screen': (context) => const AuthScreen(),
         '/home_screen': (context) => const HomeScreen(),
-        '/tournament_screen': (context) => const TournamentScreen(),
+        '/group_event_screen': (context) => const GroupEventScreen(),
         '/tournament_detail_screen':
             (context) => const TournamentDetailScreen(),
         '/calendar_screen': (context) => const CalendarScreen(),

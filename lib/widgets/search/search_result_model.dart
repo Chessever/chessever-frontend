@@ -2,7 +2,7 @@ import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
 
 class SearchResult {
-  final TourEventCardModel tournament;
+  final GroupEventCardModel tournament;
   final double score;
   final String matchedText;
   final SearchResultType type;

@@ -1,6 +1,6 @@
 import 'package:chessever2/screens/authentication/home_screen/home_screen.dart';
 import 'package:chessever2/screens/authentication/home_screen/home_screen_provider.dart';
-import 'package:chessever2/screens/tournaments/providers/tournament_screen_provider.dart';
+import 'package:chessever2/screens/tournaments/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -15,19 +15,19 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../widgets/segmented_switcher.dart';
 import '../../widgets/event_card/completed_event_card.dart';
 
-enum TournamentCategory { current, upcoming }
+enum GroupEventCategory { current, upcoming }
 
 final _mappedName = {
-  TournamentCategory.current: 'Current',
-  TournamentCategory.upcoming: 'Upcoming',
+  GroupEventCategory.current: 'Current',
+  GroupEventCategory.upcoming: 'Upcoming',
 };
 
-final selectedTourEventProvider = StateProvider<TournamentCategory>(
-  (ref) => TournamentCategory.current,
+final selectedGroupCategoryProvider = StateProvider<GroupEventCategory>(
+  (ref) => GroupEventCategory.current,
 );
 
-class TournamentScreen extends HookConsumerWidget {
-  const TournamentScreen({super.key});
+class GroupEventScreen extends HookConsumerWidget {
+  const GroupEventScreen({super.key});
 
   void _showFilterPopup(BuildContext context) {
     showDialog(
@@ -40,7 +40,7 @@ class TournamentScreen extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final searchController = useTextEditingController();
-    final selectedTourEvent = ref.watch(selectedTourEventProvider);
+    final selectedTourEvent = ref.watch(selectedGroupCategoryProvider);
 
     return RefreshIndicator(
       onRefresh: ref.read(homeScreenProvider).onPullRefresh,
@@ -65,12 +65,12 @@ class TournamentScreen extends HookConsumerWidget {
                   hintText: 'Search Events or Players',
                   onChanged: (value) {
                     ref
-                        .read(tournamentNotifierProvider.notifier)
+                        .read(groupEventScreenProvider.notifier)
                         .searchForTournament(value, selectedTourEvent);
                   },
                   onTournamentSelected: (tournament) {
                     ref
-                        .read(tournamentNotifierProvider.notifier)
+                        .read(groupEventScreenProvider.notifier)
                         .onSelectTournament(
                           context: context,
                           id: tournament.id,
@@ -78,11 +78,8 @@ class TournamentScreen extends HookConsumerWidget {
                   },
                   onPlayerSelected: (player) {
                     ref
-                        .read(tournamentNotifierProvider.notifier)
-                        .onSelectPlayer(
-                      context: context,
-                      player: player,
-                    );
+                        .read(groupEventScreenProvider.notifier)
+                        .onSelectPlayer(context: context, player: player);
                   },
                   onFilterTap: () {
                     _showFilterPopup(context);
@@ -106,8 +103,8 @@ class TournamentScreen extends HookConsumerWidget {
                   _mappedName[selectedTourEvent]!,
                 ),
                 onSelectionChanged: (index) {
-                  ref.read(selectedTourEventProvider.notifier).state =
-                      TournamentCategory.values[index];
+                  ref.read(selectedGroupCategoryProvider.notifier).state =
+                      GroupEventCategory.values[index];
                 },
               ),
             ),
@@ -115,7 +112,7 @@ class TournamentScreen extends HookConsumerWidget {
             SizedBox(height: 12.h),
 
             ref
-                .watch(tournamentNotifierProvider)
+                .watch(groupEventScreenProvider)
                 .when(
                   data: (filteredEvents) {
                     return Expanded(
@@ -123,7 +120,7 @@ class TournamentScreen extends HookConsumerWidget {
                         filteredEvents: filteredEvents,
                         onSelect:
                             (tourEventCardModel) => ref
-                                .read(tournamentNotifierProvider.notifier)
+                                .read(groupEventScreenProvider.notifier)
                                 .onSelectTournament(
                                   context: context,
                                   id: tourEventCardModel.id,
@@ -132,7 +129,7 @@ class TournamentScreen extends HookConsumerWidget {
                     );
                   },
                   loading: () {
-                    final mockData = TourEventCardModel(
+                    final mockData = GroupEventCardModel(
                       id: 'tour_001',
                       title: 'World Chess Championship 2025',
                       dates: 'Mar 15 - 25,2025',
@@ -169,8 +166,8 @@ class AllEventsTabWidget extends ConsumerWidget {
     super.key,
   });
 
-  final List<TourEventCardModel> filteredEvents;
-  final ValueChanged<TourEventCardModel> onSelect;
+  final List<GroupEventCardModel> filteredEvents;
+  final ValueChanged<GroupEventCardModel> onSelect;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

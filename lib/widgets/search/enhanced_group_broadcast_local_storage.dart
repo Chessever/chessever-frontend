@@ -50,7 +50,7 @@ extension GroupBroadcastLocalStorageSearch on GroupBroadcastLocalStorage {
       final Map<String, Map<String, List<SearchPlayer>>> playersByFirstNamePerTournament = {};
 
       for (final gb in broadcasts) {
-        final tourEventModel = TourEventCardModel.fromGroupBroadcast(
+        final tourEventModel = GroupEventCardModel.fromGroupBroadcast(
           gb,
           liveBroadcastId ?? [],
         );
@@ -104,7 +104,7 @@ extension GroupBroadcastLocalStorageSearch on GroupBroadcastLocalStorage {
       final processedPlayerKeys = <String>{};
 
       for (final gb in broadcasts) {
-        final tourEventModel = TourEventCardModel.fromGroupBroadcast(
+        final tourEventModel = GroupEventCardModel.fromGroupBroadcast(
           gb,
           liveBroadcastId ?? [],
         );
@@ -186,7 +186,7 @@ extension GroupBroadcastLocalStorageSearch on GroupBroadcastLocalStorage {
                         );
 
                         if (duplicateScore > 5.0) {
-                          final duplicateTournament = TourEventCardModel.fromGroupBroadcast(
+                          final duplicateTournament = GroupEventCardModel.fromGroupBroadcast(
                             broadcasts.firstWhere((b) => b.id == duplicatePlayer.tournamentId),
                             liveBroadcastId ?? [],
                           );
