@@ -31,31 +31,36 @@ class AboutTourScreen extends ConsumerWidget {
                 padding: EdgeInsets.only(
                   bottom: MediaQuery.of(context).viewPadding.bottom,
                 ),
-                child: GestureDetector(
-                  onTap:
-                      () => ref
-                          .read(urlLauncherProvider)
-                          .launchCustomUrl(data.aboutTourModel.websiteUrl),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      SvgWidget(
-                        SvgAsset.websiteIcon,
-                        height: 12.h,
-                        width: 12.h,
-                      ),
-                      SizedBox(width: 4.w),
-                      Text(
-                        data.aboutTourModel.extractDomain(),
-                        maxLines: 1,
-                        style: AppTypography.textXsMedium.copyWith(
-                          color: kPrimaryColor,
-                          overflow: TextOverflow.ellipsis,
+                child:
+                    data.aboutTourModel.extractDomain().isEmpty
+                        ? SizedBox.shrink()
+                        : GestureDetector(
+                          onTap:
+                              () => ref
+                                  .read(urlLauncherProvider)
+                                  .launchCustomUrl(
+                                    data.aboutTourModel.websiteUrl,
+                                  ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SvgWidget(
+                                SvgAsset.websiteIcon,
+                                height: 12.h,
+                                width: 12.h,
+                              ),
+                              SizedBox(width: 4.w),
+                              Text(
+                                data.aboutTourModel.extractDomain(),
+                                maxLines: 1,
+                                style: AppTypography.textXsMedium.copyWith(
+                                  color: kPrimaryColor,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
               ),
               body: Container(
                 margin: EdgeInsets.symmetric(horizontal: 20.sp),
