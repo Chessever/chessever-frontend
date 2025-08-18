@@ -1,5 +1,6 @@
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/repository/local_storage/group_broadcast/group_broadcast_local_storage.dart';
+import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/tournaments/providers/games_app_bar_provider.dart';
@@ -156,22 +157,6 @@ class _TournamentScreenController
     }
   }
 
-  //todo:
-  // void onSelectTournament({required BuildContext context, required String id}) {
-  //   final selectedBroadcast = _groupBroadcastList.firstWhere(
-  //     (broadcast) => broadcast.id == id,
-  //     orElse: () => _groupBroadcastList.first,
-  //   );
-  //   if (selectedBroadcast.id.isNotEmpty) {
-  //     ref.read(selectedBroadcastModelProvider.notifier).state =
-  //         selectedBroadcast;
-  //   } else {
-  //     ref.read(selectedBroadcastModelProvider.notifier).state =
-  //         selectedBroadcast;
-  //   }
-  //   Navigator.pushNamed(context, '/tournament_detail_screen');
-  // }
-
   void onSelectTournament({required BuildContext context, required String id}) {
     final selectedBroadcast = _groupBroadcastList.firstWhere(
       (broadcast) => broadcast.id == id,
@@ -189,57 +174,32 @@ class _TournamentScreenController
     Navigator.pushNamed(context, '/tournament_detail_screen');
   }
 
-  // Get filtered tournaments based on search query and tab selection
-  // Future<void> searchForTournament(
-  //   String query,
-  //   TournamentCategory tourEventCategory,
-  // ) async {
-  //   state = const AsyncValue.loading();
+  void onSelectPlayer({
+    required BuildContext context,
+    required SearchPlayer player
+  }) {
+    final selectedBroadcast = _groupBroadcastList.firstWhere(
+          (broadcast) => broadcast.id == player.tournamentId,
+      orElse: () => _groupBroadcastList.first,
+    );
 
-  //   try {
-  //     final groupBroadcast = await ref
-  //         .read(groupBroadcastLocalStorage(tourEventCategory))
-  //         .searchGroupBroadcastsByName(query);
+    ref.read(selectedTourIdProvider.notifier).state = selectedBroadcast.id;
+    ref.read(selectedBroadcastModelProvider.notifier).state = selectedBroadcast;
 
-  //     final filteredTours =
-  //         groupBroadcast.where((tour) {
-  //           final tourCardModel = TourEventCardModel.fromGroupBroadcast(
-  //             tour,
-  //             liveBroadcastId,
-  //           );
+    ref.invalidate(gamesAppBarProvider);
+    ref.invalidate(gamesTourScreenProvider);
+    ref.invalidate(standingScreenProvider);
+    ref.invalidate(tourDetailScreenProvider);
 
-  //           // Filter by category
-  //           if (tourEventCategory == TournamentCategory.current) {
-  //             return true;
-  //           } else if (tourEventCategory == TournamentCategory.upcoming) {
-  //             return tourCardModel.tourEventCategory ==
-  //                 TourEventCategory.upcoming;
-  //           } else {
-  //             // Add other category checks here if needed
-  //             return true;
-  //           }
-  //         }).toList();
+    Navigator.pushNamed(context, '/tournament_detail_screen');
 
-  //     final filteredTournaments =
-  //         filteredTours
-  //             .map(
-  //               (e) =>
-  //                   TourEventCardModel.fromGroupBroadcast(e, liveBroadcastId),
-  //             )
-  //             .toList();
-
-  //     state = AsyncValue.data(filteredTournaments);
-  //   } catch (error, stackTrace) {
-  //     state = AsyncValue.error(error, stackTrace);
-  //   }
-  // }
+  }
 
   Future<void> searchForTournament(
-    String query,
-    TournamentCategory tourEventCategory,
-  ) async {
+      String query,
+      TournamentCategory tourEventCategory,
+      ) async {
     if (query.isEmpty) {
-      // Load all tournaments when query is empty
       await loadTournaments(tourEventCategory);
       return;
     }
@@ -251,13 +211,11 @@ class _TournamentScreenController
           .read(groupBroadcastLocalStorage(tourEventCategory))
           .searchWithScoring(query);
 
-      // Combine both tournament and player results, prioritizing tournament matches
       final allResults = [
         ...searchResult.tournamentResults,
         ...searchResult.playerResults,
       ];
 
-      // Remove duplicates while preserving the highest score for each tournament
       final Map<String, SearchResult> uniqueResults = {};
       for (final result in allResults) {
         final key = result.tournament.id;
@@ -267,20 +225,18 @@ class _TournamentScreenController
         }
       }
 
-      // Apply category filter
       final filteredResults =
-          uniqueResults.values.where((result) {
-            if (tourEventCategory == TournamentCategory.current) {
-              return true;
-            } else if (tourEventCategory == TournamentCategory.upcoming) {
-              return result.tournament.tourEventCategory ==
-                  TourEventCategory.upcoming;
-            } else {
-              return true;
-            }
-          }).toList();
+      uniqueResults.values.where((result) {
+        if (tourEventCategory == TournamentCategory.current) {
+          return true;
+        } else if (tourEventCategory == TournamentCategory.upcoming) {
+          return result.tournament.tourEventCategory ==
+              TourEventCategory.upcoming;
+        } else {
+          return true;
+        }
+      }).toList();
 
-      // Sort by score and extract tournaments
       filteredResults.sort((a, b) => b.score.compareTo(a.score));
       final tournaments = filteredResults.map((r) => r.tournament).toList();
 
@@ -291,35 +247,128 @@ class _TournamentScreenController
   }
 
   Future<void> loadTournaments(TournamentCategory tourEventCategory) async {
-    // Original logic to load all tournaments
     state = const AsyncValue.loading();
 
     try {
       final groupBroadcast =
-          await ref
-              .read(groupBroadcastLocalStorage(tourEventCategory))
-              .getGroupBroadcasts();
+      await ref
+          .read(groupBroadcastLocalStorage(tourEventCategory))
+          .getGroupBroadcasts();
 
       final filteredTournaments =
-          groupBroadcast
-              .map(
-                (e) =>
-                    TourEventCardModel.fromGroupBroadcast(e, liveBroadcastId),
-              )
-              .where((tour) {
-                if (tourEventCategory == TournamentCategory.current) {
-                  return true;
-                } else if (tourEventCategory == TournamentCategory.upcoming) {
-                  return tour.tourEventCategory == TourEventCategory.upcoming;
-                } else {
-                  return true;
-                }
-              })
-              .toList();
+      groupBroadcast
+          .map(
+            (e) =>
+            TourEventCardModel.fromGroupBroadcast(e, liveBroadcastId),
+      )
+          .where((tour) {
+        if (tourEventCategory == TournamentCategory.current) {
+          return true;
+        } else if (tourEventCategory == TournamentCategory.upcoming) {
+          return tour.tourEventCategory == TourEventCategory.upcoming;
+        } else {
+          return true;
+        }
+      })
+          .toList();
 
       state = AsyncValue.data(filteredTournaments);
     } catch (error, stackTrace) {
       state = AsyncValue.error(error, stackTrace);
     }
   }
+
+  Future<List<SearchPlayer>> getAllPlayersFromCurrentTournaments() async {
+    try {
+      final allPlayers = <SearchPlayer>[];
+
+      for (final broadcast in _groupBroadcastList) {
+        final players = await _fetchPlayersFromTournament(broadcast.id);
+        allPlayers.addAll(players);
+      }
+
+      return allPlayers;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  Future<List<SearchPlayer>> _fetchPlayersFromTournament(String tournamentId) async {
+    try {
+      final broadcast = _groupBroadcastList.firstWhere(
+            (b) => b.id == tournamentId,
+        orElse: () => throw Exception('Tournament not found'),
+      );
+
+      final players = <SearchPlayer>[];
+      for (final searchTerm in broadcast.search) {
+        if (_isPlayerName(searchTerm)) {
+          players.add(SearchPlayer.fromSearchTerm(
+            searchTerm,
+            tournamentId,
+            broadcast.name,
+          ));
+        }
+      }
+
+      return players;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  bool _isPlayerName(String searchTerm) {
+    final lowerTerm = searchTerm.toLowerCase();
+
+    if (lowerTerm.contains('chess') ||
+        lowerTerm.contains('tournament') ||
+        lowerTerm.contains('championship') ||
+        lowerTerm.contains('festival') ||
+        lowerTerm.contains('open') ||
+        lowerTerm.contains('classic')) {
+      return false;
+    }
+
+    final words = searchTerm.trim().split(' ');
+    if (words.length >= 2 && words.length <= 4) {
+      return words.every((word) =>
+      word.isNotEmpty &&
+          word[0] == word[0].toUpperCase() &&
+          word.length > 1
+      );
+    }
+
+    return false;
+  }
+
+  Future<List<SearchPlayer>> searchPlayersOnly(String query) async {
+    if (query.isEmpty) return [];
+
+    try {
+      final allPlayers = await getAllPlayersFromCurrentTournaments();
+      final queryLower = query.toLowerCase().trim();
+
+      return allPlayers.where((player) {
+        return player.name.toLowerCase().contains(queryLower);
+      }).toList()
+        ..sort((a, b) {
+          final aExact = a.name.toLowerCase() == queryLower;
+          final bExact = b.name.toLowerCase() == queryLower;
+
+          if (aExact && !bExact) return -1;
+          if (!aExact && bExact) return 1;
+
+          final aStarts = a.name.toLowerCase().startsWith(queryLower);
+          final bStarts = b.name.toLowerCase().startsWith(queryLower);
+
+          if (aStarts && !bStarts) return -1;
+          if (!aStarts && bStarts) return 1;
+
+          return a.name.compareTo(b.name);
+        });
+    } catch (e) {
+      return [];
+    }
+  }
+
 }
