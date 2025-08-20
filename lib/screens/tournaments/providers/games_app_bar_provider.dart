@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
+import 'package:chessever2/screens/gamesTourScreen/providers/games_tour_scroll_state_provider.dart';
 import 'package:chessever2/screens/tournaments/model/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tournaments/providers/live_rounds_id_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/tour_detail_screen_provider.dart';
@@ -238,5 +239,36 @@ class GamesAppBarNotifier
     _cachedRounds = null;
     _lastTourId = null;
     super.dispose();
+  }
+
+  void selectNewRoundSilently(GamesAppBarModel gamesAppBarModel) {
+    try {
+      print('🔄 Silent selection called for round: ${gamesAppBarModel.id}');
+
+      // Update state without marking as user selected to prevent auto-scroll
+      final currentState = state.valueOrNull;
+      if (currentState != null) {
+        state = AsyncValue.data(
+          GamesAppBarViewModel(
+            gamesAppBarModels: currentState.gamesAppBarModels,
+            selectedId: gamesAppBarModel.id,
+            userSelectedId:
+                false, // Keep as false - this is from scroll detection
+          ),
+        );
+
+        print('✅ Provider state updated to: ${gamesAppBarModel.id}');
+
+        // Update the scroll state to track the new selection
+        ref
+            .read(scrollStateProvider.notifier)
+            .updateSelectedRound(gamesAppBarModel.id);
+      }
+    } catch (e, st) {
+      print('❌ Error in selectNewRoundSilently: $e');
+      if (mounted) {
+        state = AsyncValue.error(e, st);
+      }
+    }
   }
 }

@@ -7,6 +7,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../theme/app_theme.dart';
+import '../players/providers/player_providers.dart';
 import '../tournaments/model/games_tour_model.dart';
 import '../tournaments/providers/games_tour_screen_provider.dart';
 
@@ -15,7 +16,8 @@ final selectedPlayerProvider = StateProvider<PlayerStandingModel?>(
 );
 
 class ScoreCardScreen extends ConsumerWidget {
-  const ScoreCardScreen({super.key});
+  final String name;
+  const ScoreCardScreen({super.key,required this.name});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -60,7 +62,9 @@ class ScoreCardScreen extends ConsumerWidget {
       body: Column(
         children: [
           SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
-          const ScoreboardAppbar(),
+          ScoreboardAppbar(
+            playerName: name ?? 'Unknown',
+          ),
           SizedBox(height: 16.h),
           Padding(
             padding: EdgeInsets.symmetric(horizontal: 20.0.sp),

@@ -52,7 +52,9 @@ class PlayerSecondRowDetailWidget extends ConsumerWidget {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => ScoreCardScreen(),
+              builder: (_) => ScoreCardScreen(
+                name: name,
+              ),
             ),
           );
         });

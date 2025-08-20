@@ -136,50 +136,20 @@ class GamesSearchOverlay extends ConsumerWidget {
   Widget _buildSearchResults(List<GameSearchResult> results) {
     return Container(
       constraints: const BoxConstraints(maxHeight: 400),
-      child: Column(
-        children: [
-          _buildHeader(results.length),
-          Expanded(
-            child: ListView.builder(
-              padding: EdgeInsets.zero,
-              itemCount: results.length,
-              itemBuilder: (context, index) {
-                return AnimatedContainer(
-                  duration: Duration(milliseconds: 100 + (index * 50)),
-                  child: _GameSearchResultTile(
-                    result: results[index],
-                    onTap: () => onGameTap(results[index].game),
-                  ),
-                );
-              },
+      child: ListView.builder(
+        shrinkWrap: true,
+        physics: const ClampingScrollPhysics(),
+        padding: EdgeInsets.zero,
+        itemCount: results.length,
+        itemBuilder: (context, index) {
+          return AnimatedContainer(
+            duration: Duration(milliseconds: 100 + (index * 50)),
+            child: _GameSearchResultTile(
+              result: results[index],
+              onTap: () => onGameTap(results[index].game),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeader(int resultCount) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: Colors.white.withOpacity(0.1)),
-        ),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.videogame_asset, size: 16, color: Colors.blue),
-          const SizedBox(width: 8),
-          Text(
-            '$resultCount game${resultCount != 1 ? 's' : ''} found for "$query"',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -252,8 +222,10 @@ class _GameSearchResultTileState extends State<_GameSearchResultTile>
               onTap: widget.onTap,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
-                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color:
                       _isHovered
@@ -281,98 +253,7 @@ class _GameSearchResultTileState extends State<_GameSearchResultTile>
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-
-                    const SizedBox(height: 6),
-
-                    // Matched text highlight
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        'Match: ${widget.result.matchedText}',
-                        style: const TextStyle(
-                          color: Colors.blue,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-
-                    const SizedBox(height: 8),
-
-                    // Bottom row with game info and score
-                    Row(
-                      children: [
-                        if (game.boardNr != null) ...[
-                          Icon(
-                            Icons.grid_view,
-                            size: 12,
-                            color: Colors.grey[400],
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Board ${game.boardNr}',
-                            style: TextStyle(
-                              color: Colors.grey[400],
-                              fontSize: 12,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                        ],
-
-                        if (game.status != null) ...[
-                          Icon(
-                            Icons.info_outline,
-                            size: 12,
-                            color: Colors.grey[400],
-                          ),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              game.status!,
-                              style: TextStyle(
-                                color: Colors.grey[400],
-                                fontSize: 12,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-
-                        // Match score badge
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                Colors.blue.withOpacity(0.8),
-                                Colors.purple.withOpacity(0.8),
-                              ],
-                            ),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            '${widget.result.score.toInt()}%',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                    Divider(),
                   ],
                 ),
               ),
