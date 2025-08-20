@@ -115,7 +115,7 @@ class StandingsScreen extends ConsumerWidget {
                                 MaterialPageRoute(
                                   builder:
                                       (_) => ScoreCardScreen(
-                                       
+                                        name: player.name,
                                       ),
                                 ),
                               );
