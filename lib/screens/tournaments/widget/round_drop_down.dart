@@ -18,29 +18,26 @@ class RoundDropDown extends ConsumerWidget {
     return SizedBox(
       height: 32.h,
       width: 120.w,
-
       child: ref
           .watch(gamesAppBarProvider)
           .when(
-            data:
-                (data) => _RoundDropdown(
-                  rounds: data.gamesAppBarModels,
-                  selectedRoundId: data.selectedId,
-                  onChanged: (model) {
-                    ref
-                        .read(gamesAppBarProvider.notifier)
-                        .selectNewRound(model);
-                  },
+            data: (data) => _RoundDropdown(
+              rounds: data.gamesAppBarModels,
+              selectedRoundId: data.selectedId,
+              onChanged: (model) {
+                ref
+                    .read(gamesAppBarProvider.notifier)
+                    .selectNewRound(model);
+              },
+            ),
+            error: (e, _) => Center(
+              child: Text(
+                'Error loading rounds',
+                style: AppTypography.textXsRegular.copyWith(
+                  color: kWhiteColor70,
                 ),
-            error:
-                (e, _) => Center(
-                  child: Text(
-                    'Error loading rounds',
-                    style: AppTypography.textXsRegular.copyWith(
-                      color: kWhiteColor70,
-                    ),
-                  ),
-                ),
+              ),
+            ),
             loading: () {
               final loadingRound = GamesAppBarViewModel(
                 gamesAppBarModels: [
@@ -86,15 +83,39 @@ class _RoundDropdownState extends State<_RoundDropdown> {
 
   @override
   void initState() {
-    // Ensure the selected round exists in the rounds list\
-    _selectedRoundId =
-        widget.rounds
-            .firstWhere(
-              (round) => round.id == widget.selectedRoundId,
-              orElse: () => widget.rounds.first,
-            )
-            .id;
+    // Ensure the selected round exists in the rounds list
+    _selectedRoundId = widget.rounds
+        .firstWhere(
+          (round) => round.id == widget.selectedRoundId,
+          orElse: () => widget.rounds.first,
+        )
+        .id;
     super.initState();
+  }
+
+  @override
+  void didUpdateWidget(_RoundDropdown oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    
+    // CRITICAL FIX: Update local state when provider state changes
+    if (oldWidget.selectedRoundId != widget.selectedRoundId) {
+      // Ensure the new selected round exists in the rounds list
+      final newSelection = widget.rounds
+          .firstWhere(
+            (round) => round.id == widget.selectedRoundId,
+            orElse: () => widget.rounds.first,
+          )
+          .id;
+      
+      if (_selectedRoundId != newSelection) {
+        setState(() {
+          _selectedRoundId = newSelection;
+        });
+        
+        // Add debug log to confirm updates
+        print('🔄 Dropdown updated to: $newSelection');
+      }
+    }
   }
 
   Widget _buildDropdownItem(GamesAppBarModel round) {
@@ -173,31 +194,28 @@ class _RoundDropdownState extends State<_RoundDropdown> {
           widget.onChanged(widget.rounds.firstWhere((e) => e.id == newValue));
         }
       },
-      items:
-          widget.rounds.asMap().entries.map<DropdownMenuItem<String>>((entry) {
-            final index = entry.key;
-            final round = entry.value;
-            final isLast = index == widget.rounds.length - 1;
+      items: widget.rounds.asMap().entries.map<DropdownMenuItem<String>>((entry) {
+        final index = entry.key;
+        final round = entry.value;
+        final isLast = index == widget.rounds.length - 1;
 
-            return DropdownMenuItem<String>(
-              value: round.id,
-              child: SingleChildScrollView(
-                physics: const NeverScrollableScrollPhysics(),
-                child: Column(
-                  // crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildDropdownItem(round),
-                    if (!isLast)
-                      Padding(
-                        padding: EdgeInsets.symmetric(vertical: 5.h),
-                        child: DividerWidget(),
-                      ),
-                  ],
-                ),
-              ),
-            );
-          }).toList(),
-
+        return DropdownMenuItem<String>(
+          value: round.id,
+          child: SingleChildScrollView(
+            physics: const NeverScrollableScrollPhysics(),
+            child: Column(
+              children: [
+                _buildDropdownItem(round),
+                if (!isLast)
+                  Padding(
+                    padding: EdgeInsets.symmetric(vertical: 5.h),
+                    child: DividerWidget(),
+                  ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
       underline: Container(),
       icon: Icon(
         Icons.keyboard_arrow_down_outlined,

@@ -2,7 +2,7 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.d
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/standings/standings_screen.dart';
 import 'package:chessever2/screens/tournaments/about_tour_screen.dart';
-import 'package:chessever2/screens/tournaments/games_tour_screen.dart';
+import 'package:chessever2/screens/gamesTourScreen/views/games_tour_screen.dart';
 import 'package:chessever2/screens/tournaments/model/tour_detail_view_model.dart';
 import 'package:chessever2/screens/tournaments/providers/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/widget/games_app_bar_widget.dart';

@@ -8,7 +8,7 @@ class FavoriteCard extends StatefulWidget {
   final String playerName;
   final String countryCode;
   final int elo;
-  final int age;
+  final String age;
   final VoidCallback? onRemoveFavorite;
 
   const FavoriteCard({
@@ -59,12 +59,6 @@ class _FavoriteCardState extends State<FavoriteCard> {
               textAlign: TextAlign.left,
               text: TextSpan(
                 children: [
-                  TextSpan(
-                    text: 'GM ',
-                    style: AppTypography.textXsMedium.copyWith(
-                      color: kWhiteColor,
-                    ),
-                  ),
                   TextSpan(
                     text: widget.playerName,
                     style: AppTypography.textXsMedium.copyWith(

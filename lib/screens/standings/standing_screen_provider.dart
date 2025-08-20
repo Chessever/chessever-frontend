@@ -5,6 +5,8 @@ import 'package:chessever2/screens/tournaments/providers/tour_detail_screen_prov
 import 'package:chessever2/screens/tournaments/tournament_detail_screen.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import '../../services/favourate_standings_player_services.dart';
+
 // Provider for the standings state
 final standingScreenProvider = StateNotifierProvider<
   StandingScreenNotifier,
@@ -71,3 +73,24 @@ class StandingScreenNotifier
     }
   }
 }
+
+final favoritesServiceProvider = Provider<FavourateStandingsPlayerServices>((
+  ref,
+) {
+  return FavourateStandingsPlayerServices();
+});
+
+final favoritePlayersProvider = FutureProvider<List<PlayerStandingModel>>((
+  ref,
+) async {
+  final favoritesService = ref.read(favoritesServiceProvider);
+  return await favoritesService.getFavoritePlayers();
+});
+
+final isPlayerFavoriteProvider = FutureProvider.family<bool, String>((
+  ref,
+  playerName,
+) async {
+  final favoritesService = ref.read(favoritesServiceProvider);
+  return await favoritesService.isFavorite(playerName);
+});

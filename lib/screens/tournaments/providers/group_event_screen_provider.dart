@@ -56,11 +56,13 @@ class _GroupEventScreenController
 
   /// This will be populated every time we fetch the tournaments
   var _groupBroadcastList = <GroupBroadcast>[];
+  bool _sortByFavorites = false;
 
   Future<void> loadTours({
     List<GroupBroadcast>? inputBroadcast,
-    bool sortByFavorites = false,
+    bool? sortByFavorites,
   }) async {
+    _sortByFavorites = sortByFavorites ?? _sortByFavorites;
     try {
       final tour =
           (inputBroadcast ??
@@ -81,8 +83,10 @@ class _GroupEventScreenController
         final tourEventCardModel =
             tour
                 .map(
-                  (t) =>
-                      GroupEventCardModel.fromGroupBroadcast(t, liveBroadcastId),
+                  (t) => GroupEventCardModel.fromGroupBroadcast(
+                    t,
+                    liveBroadcastId,
+                  ),
                 )
                 .toList();
 
@@ -95,7 +99,7 @@ class _GroupEventScreenController
                 : sortingService.sortAllTours(
                   tourEventCardModel,
                   selectedCountry,
-                  sortByFavorites: sortByFavorites,
+                  sortByFavorites: _sortByFavorites,
                 );
 
         state = AsyncValue.data(sortedTours);
@@ -115,42 +119,49 @@ class _GroupEventScreenController
 
   Future<void> onRefresh() async {
     try {
-      state = AsyncValue.loading();
+      state = const AsyncValue.loading();
+
       final tour =
           await ref
               .read(groupBroadcastLocalStorage(tourEventCategory))
               .refresh();
-      if (tour.isNotEmpty) {
-        _groupBroadcastList = tour;
-        final tourEventCardModel =
-            tour.map((t) {
-              return GroupEventCardModel.fromGroupBroadcast(t, liveBroadcastId);
-            }).toList();
 
-        final countryAsync = ref.watch(countryDropdownProvider);
+      if (tour.isEmpty) {
+        state = AsyncValue.data(<GroupEventCardModel>[]);
+        return;
+      }
 
-        // Check if country data is loaded
-        if (countryAsync is AsyncData<Country>) {
-          final selectedCountry = countryAsync.value.name.toLowerCase();
+      _groupBroadcastList = tour;
 
-          final sortingService = ref.read(tournamentSortingServiceProvider);
-          if (tourEventCategory == GroupEventCategory.upcoming) {
-            final sortedTours = sortingService.sortUpcomingTours(
-              tourEventCardModel,
-              selectedCountry,
-            );
-            state = AsyncValue.data(sortedTours);
-          } else {
-            final sortedTours = sortingService.sortAllTours(
-              tourEventCardModel,
-              selectedCountry,
-            );
+      final tourEventCardModel =
+          tour
+              .map(
+                (t) =>
+                    GroupEventCardModel.fromGroupBroadcast(t, liveBroadcastId),
+              )
+              .toList();
 
-            state = AsyncValue.data(sortedTours);
-          }
-        } else {
-          state = AsyncValue.loading();
-        }
+      final countryAsync = ref.watch(countryDropdownProvider);
+
+      if (countryAsync is AsyncData<Country>) {
+        final selectedCountry = countryAsync.value.name.toLowerCase();
+        final sortingService = ref.read(tournamentSortingServiceProvider);
+
+        final sortedTours =
+            tourEventCategory == GroupEventCategory.upcoming
+                ? sortingService.sortUpcomingTours(
+                  tourEventCardModel,
+                  selectedCountry,
+                )
+                : sortingService.sortAllTours(
+                  tourEventCardModel,
+                  selectedCountry,
+                  sortByFavorites: _sortByFavorites,
+                );
+
+        state = AsyncValue.data(sortedTours);
+      } else {
+        state = const AsyncValue.loading();
       }
     } catch (error, _) {
       print(error);
@@ -176,10 +187,10 @@ class _GroupEventScreenController
 
   void onSelectPlayer({
     required BuildContext context,
-    required SearchPlayer player
+    required SearchPlayer player,
   }) {
     final selectedBroadcast = _groupBroadcastList.firstWhere(
-          (broadcast) => broadcast.id == player.tournamentId,
+      (broadcast) => broadcast.id == player.tournamentId,
       orElse: () => _groupBroadcastList.first,
     );
 
@@ -192,13 +203,12 @@ class _GroupEventScreenController
     ref.invalidate(tourDetailScreenProvider);
 
     Navigator.pushNamed(context, '/tournament_detail_screen');
-
   }
 
   Future<void> searchForTournament(
-      String query,
-      GroupEventCategory tourEventCategory,
-      ) async {
+    String query,
+    GroupEventCategory tourEventCategory,
+  ) async {
     if (query.isEmpty) {
       await loadTournaments(tourEventCategory);
       return;
@@ -226,16 +236,16 @@ class _GroupEventScreenController
       }
 
       final filteredResults =
-      uniqueResults.values.where((result) {
-        if (tourEventCategory == GroupEventCategory.current) {
-          return true;
-        } else if (tourEventCategory == GroupEventCategory.upcoming) {
-          return result.tournament.tourEventCategory ==
-              TourEventCategory.upcoming;
-        } else {
-          return true;
-        }
-      }).toList();
+          uniqueResults.values.where((result) {
+            if (tourEventCategory == GroupEventCategory.current) {
+              return true;
+            } else if (tourEventCategory == GroupEventCategory.upcoming) {
+              return result.tournament.tourEventCategory ==
+                  TourEventCategory.upcoming;
+            } else {
+              return true;
+            }
+          }).toList();
 
       filteredResults.sort((a, b) => b.score.compareTo(a.score));
       final tournaments = filteredResults.map((r) => r.tournament).toList();
@@ -251,26 +261,26 @@ class _GroupEventScreenController
 
     try {
       final groupBroadcast =
-      await ref
-          .read(groupBroadcastLocalStorage(tourEventCategory))
-          .getGroupBroadcasts();
+          await ref
+              .read(groupBroadcastLocalStorage(tourEventCategory))
+              .getGroupBroadcasts();
 
       final filteredTournaments =
-      groupBroadcast
-          .map(
-            (e) =>
-            GroupEventCardModel.fromGroupBroadcast(e, liveBroadcastId),
-      )
-          .where((tour) {
-        if (tourEventCategory == GroupEventCategory.current) {
-          return true;
-        } else if (tourEventCategory == GroupEventCategory.upcoming) {
-          return tour.tourEventCategory == TourEventCategory.upcoming;
-        } else {
-          return true;
-        }
-      })
-          .toList();
+          groupBroadcast
+              .map(
+                (e) =>
+                    GroupEventCardModel.fromGroupBroadcast(e, liveBroadcastId),
+              )
+              .where((tour) {
+                if (tourEventCategory == GroupEventCategory.current) {
+                  return true;
+                } else if (tourEventCategory == GroupEventCategory.upcoming) {
+                  return tour.tourEventCategory == TourEventCategory.upcoming;
+                } else {
+                  return true;
+                }
+              })
+              .toList();
 
       state = AsyncValue.data(filteredTournaments);
     } catch (error, stackTrace) {
@@ -293,21 +303,25 @@ class _GroupEventScreenController
     }
   }
 
-  Future<List<SearchPlayer>> _fetchPlayersFromTournament(String tournamentId) async {
+  Future<List<SearchPlayer>> _fetchPlayersFromTournament(
+    String tournamentId,
+  ) async {
     try {
       final broadcast = _groupBroadcastList.firstWhere(
-            (b) => b.id == tournamentId,
+        (b) => b.id == tournamentId,
         orElse: () => throw Exception('Tournament not found'),
       );
 
       final players = <SearchPlayer>[];
       for (final searchTerm in broadcast.search) {
         if (_isPlayerName(searchTerm)) {
-          players.add(SearchPlayer.fromSearchTerm(
-            searchTerm,
-            tournamentId,
-            broadcast.name,
-          ));
+          players.add(
+            SearchPlayer.fromSearchTerm(
+              searchTerm,
+              tournamentId,
+              broadcast.name,
+            ),
+          );
         }
       }
 
@@ -331,10 +345,11 @@ class _GroupEventScreenController
 
     final words = searchTerm.trim().split(' ');
     if (words.length >= 2 && words.length <= 4) {
-      return words.every((word) =>
-      word.isNotEmpty &&
-          word[0] == word[0].toUpperCase() &&
-          word.length > 1
+      return words.every(
+        (word) =>
+            word.isNotEmpty &&
+            word[0] == word[0].toUpperCase() &&
+            word.length > 1,
       );
     }
 
@@ -349,8 +364,8 @@ class _GroupEventScreenController
       final queryLower = query.toLowerCase().trim();
 
       return allPlayers.where((player) {
-        return player.name.toLowerCase().contains(queryLower);
-      }).toList()
+          return player.name.toLowerCase().contains(queryLower);
+        }).toList()
         ..sort((a, b) {
           final aExact = a.name.toLowerCase() == queryLower;
           final bExact = b.name.toLowerCase() == queryLower;
@@ -370,5 +385,4 @@ class _GroupEventScreenController
       return [];
     }
   }
-
 }
