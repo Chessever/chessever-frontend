@@ -23,7 +23,6 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
-  bool _isFavorite = false;
 
   @override
   void initState() {
@@ -38,28 +37,6 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
     _scaleAnimation = Tween<double>(begin: 1.0, end: 1.2).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
-
-    _loadFavoriteStatus();
-  }
-
-  Future<void> _loadFavoriteStatus() async {
-    final favoritesService = ref.read(favoritesServiceProvider);
-    final favorites = await favoritesService.getFavoritePlayers();
-    if (mounted) {
-      setState(() {
-        _isFavorite = favorites.any(
-          (player) => player.name == widget.playerName,
-        );
-      });
-    }
-  }
-
-  @override
-  void didUpdateWidget(ScoreboardAppbar oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.playerName != widget.playerName) {
-      _loadFavoriteStatus();
-    }
   }
 
   @override
@@ -74,16 +51,11 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
 
     if (player != null) {
       await favoritesService.toggleFavorite(player);
-
       ref.invalidate(favoritePlayersProvider);
+      final favorites = await favoritesService.getFavoritePlayers();
+      final isNowFavorite = favorites.any((fav) => fav.name == player.name);
 
-      if (mounted) {
-        setState(() {
-          _isFavorite = !_isFavorite;
-        });
-      }
-
-      if (_isFavorite) {
+      if (isNowFavorite) {
         _animationController.forward().then(
           (_) => _animationController.reverse(),
         );
@@ -93,6 +65,15 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
 
   @override
   Widget build(BuildContext context) {
+    final player = ref.watch(selectedPlayerProvider);
+    final favoritesAsync = ref.watch(favoritePlayersProvider);
+    final isFavorite = favoritesAsync.maybeWhen(
+      data:
+          (favorites) =>
+              player != null && favorites.any((fav) => fav.name == player.name),
+      orElse: () => false,
+    );
+
     return Row(
       children: [
         SizedBox(width: 16.w),
@@ -118,7 +99,7 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
             child: ScaleTransition(
               scale: _scaleAnimation,
               child: SvgWidget(
-                _isFavorite
+                isFavorite
                     ? SvgAsset.favouriteRedIcon
                     : SvgAsset.favouriteIcon2,
                 semanticsLabel: 'Favorite Icon',
