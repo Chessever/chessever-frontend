@@ -27,19 +27,6 @@ class TournamentSortingService {
             .toList();
 
     filteredList.sort((a, b) {
-      // HIGHEST PRIORITY: Starred live tours come first
-      final isStarredLiveA =
-          favorites.contains(a.id) &&
-          a.tourEventCategory == TourEventCategory.live;
-      final isStarredLiveB =
-          favorites.contains(b.id) &&
-          b.tourEventCategory == TourEventCategory.live;
-
-      if (isStarredLiveA && !isStarredLiveB) return -1;
-      if (!isStarredLiveA && isStarredLiveB) return 1;
-
-      // If both are starred live tours, continue with other sorting criteria below
-
       // SECOND PRIORITY: General favorites (if sortByFavorites is enabled)
       if (sortByFavorites && hasFavorites) {
         final isFavoriteA = favorites.contains(a.id);
@@ -49,28 +36,16 @@ class TournamentSortingService {
         if (!isFavoriteA && isFavoriteB) return 1;
       }
 
-      // THIRD PRIORITY: Tournament status (live > completed > others)
-      final statusPriorityA = _getTournamentStatusPriority(a.tourEventCategory);
-      final statusPriorityB = _getTournamentStatusPriority(b.tourEventCategory);
+      final isHighEloA = a.maxAvgElo > 3200;
+      final isHighEloB = b.maxAvgElo > 3200;
 
-      final statusComparison = statusPriorityA.compareTo(statusPriorityB);
-      if (statusComparison != 0) return statusComparison;
+      // If one has high ELO and the other doesn't, put high ELO at the end
+      if (isHighEloA && !isHighEloB) return 1;
+      if (!isHighEloA && isHighEloB) return -1;
 
-      // FOURTH PRIORITY: Within the same status category, sort by maxElo (descending)
-      if (a.tourEventCategory == TourEventCategory.live ||
-          a.tourEventCategory == TourEventCategory.completed) {
-        // Special handling for tournaments with maxElo > 3200
-        final isHighEloA = a.maxAvgElo > 3200;
-        final isHighEloB = b.maxAvgElo > 3200;
-
-        // If one has high ELO and the other doesn't, put high ELO at the end
-        if (isHighEloA && !isHighEloB) return 1;
-        if (!isHighEloA && isHighEloB) return -1;
-
-        // If both are high ELO or both are normal ELO, sort by ELO descending
-        final eloComparison = b.maxAvgElo.compareTo(a.maxAvgElo);
-        if (eloComparison != 0) return eloComparison;
-      }
+      // If both are high ELO or both are normal ELO, sort by ELO descending
+      final eloComparison = b.maxAvgElo.compareTo(a.maxAvgElo);
+      if (eloComparison != 0) return eloComparison;
 
       // FINAL PRIORITY: Sort by title if everything else is equal
       return a.title.toLowerCase().compareTo(b.title.toLowerCase());
@@ -123,18 +98,5 @@ class TournamentSortingService {
     });
 
     return filteredList;
-  }
-
-  int _getTournamentStatusPriority(TourEventCategory category) {
-    switch (category) {
-      case TourEventCategory.live:
-        return 1;
-      case TourEventCategory.ongoing:
-        return 2;
-      case TourEventCategory.completed:
-        return 3;
-      case TourEventCategory.upcoming:
-        return 4;
-    }
   }
 }
