@@ -1,4 +1,4 @@
-import 'package:chessever2/screens/gamesTourScreen/models/scroll_state_model.dart';
+import 'package:chessever2/screens/games_tour_screen/models/scroll_state_model.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final scrollStateProvider =
