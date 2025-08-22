@@ -1,5 +1,5 @@
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
-import 'package:chessever2/screens/gamesTourScreen/providers/games_tour_scroll_state_provider.dart';
+import 'package:chessever2/screens/games_tour_screen/providers/games_tour_scroll_state_provider.dart';
 import 'package:chessever2/screens/tournaments/model/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tournaments/providers/live_rounds_id_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/tour_detail_screen_provider.dart';
