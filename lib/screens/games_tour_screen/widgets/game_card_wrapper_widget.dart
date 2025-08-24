@@ -1,5 +1,5 @@
-import 'package:chessever2/screens/chessboard/chess_board_screen.dart';
-import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider.dart';
+import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_widget.dart';
 import 'package:chessever2/screens/tournaments/model/games_tour_model.dart';
 import 'package:chessever2/screens/tournaments/providers/games_tour_screen_provider.dart';
@@ -53,12 +53,12 @@ class GameCardWrapperWidget extends ConsumerWidget {
   }
 
   void _navigateToChessBoard(BuildContext context, WidgetRef ref) {
-    ref.read(chessboardViewFromProvider.notifier).state = ChessboardView.tour;
+    ref.read(chessboardViewFromProviderNew.notifier).state = ChessboardView.tour;
     Navigator.push(
       context,
       MaterialPageRoute(
         builder:
-            (_) => ChessBoardScreen(
+            (_) => ChessBoardScreenNew(
               games: gamesData.gamesTourModels,
               currentIndex: gameIndex,
             ),
