@@ -1,6 +1,7 @@
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_widget.dart';
+import 'package:chessever2/screens/chessboard/widgets/chess_board_widget_new.dart';
 import 'package:chessever2/screens/tournaments/model/games_tour_model.dart';
 import 'package:chessever2/screens/tournaments/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/widget/game_card.dart';
@@ -37,7 +38,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
       },
       child:
           isChessBoardVisible
-              ? ChessBoardFromFEN(
+              ? ChessBoardFromFENNew(
                 key: ValueKey('${keyValue}_board'),
                 gamesTourModel: game,
                 onChanged: () => _navigateToChessBoard(context, ref),
