@@ -107,6 +107,8 @@ dependencies:
   logger: ^2.6.1
   collection: ^1.19.1
 
+  chessground: ^7.1.6
+  dartchess: ^0.11.1
 dev_dependencies:
   flutter_test:
     sdk: flutter
