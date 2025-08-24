@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'package:chessever2/screens/chessboard/chess_board_screen.dart';
-import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider.dart';
+import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/tournaments/providers/chess_board_visibility_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/widget/appbar_icons_widget.dart';
@@ -150,7 +150,7 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
             return;
           }
 
-          ref.read(chessboardViewFromProvider.notifier).state =
+          ref.read(chessboardViewFromProviderNew.notifier).state =
               ChessboardView.tour;
 
           debugPrint(
@@ -161,7 +161,7 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
             context,
             MaterialPageRoute(
               builder:
-                  (_) => ChessBoardScreen(
+                  (_) => ChessBoardScreenNew(
                     games: allGames,
                     currentIndex: gameIndex,
                   ),
