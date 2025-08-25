@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+
 class SearchOverlay extends ConsumerWidget {
   final String query;
   final Function(GroupEventCardModel) onTournamentTap;
@@ -41,12 +42,29 @@ class SearchOverlay extends ConsumerWidget {
               return _buildLoadingState();
             }
 
-            final searchResult = snapshot.data ??
+            if (snapshot.hasError) {
+              return _buildErrorState(snapshot.error.toString());
+            }
+
+            final searchResult =
+                snapshot.data ??
                 const EnhancedSearchResult(
                   tournamentResults: [],
                   playerResults: [],
                   allPlayers: [],
                 );
+
+            if (kDebugMode) {
+              print(
+                'Tournament results: ${searchResult.tournamentResults.length}',
+              );
+              print('Player results: ${searchResult.playerResults.length}');
+              searchResult.playerResults.forEach((result) {
+                print(
+                  'Player: ${result.player?.name}, ID: ${result.player?.id}',
+                );
+              });
+            }
 
             if (searchResult.tournamentResults.isEmpty &&
                 searchResult.playerResults.isEmpty) {
@@ -65,14 +83,15 @@ class SearchOverlay extends ConsumerWidget {
     final hasPlayers = searchResult.playerResults.isNotEmpty;
 
     return Container(
-      height: 400,
+      constraints: BoxConstraints(maxHeight: 400.h),
       child: Column(
         children: [
-          _buildHeader(searchResult),
+          _buildHeader(searchResult, hasTournaments, hasPlayers),
           Expanded(
-            child: hasTournaments && hasPlayers
-                ? _buildTwoColumnLayout(searchResult)
-                : _buildSingleColumnLayout(searchResult),
+            child:
+                hasTournaments && hasPlayers
+                    ? _buildTwoColumnLayout(searchResult)
+                    : _buildSingleColumnLayout(searchResult, hasTournaments),
           ),
         ],
       ),
@@ -89,19 +108,23 @@ class SearchOverlay extends ConsumerWidget {
             count: searchResult.tournamentResults.length,
             results: searchResult.tournamentResults,
             icon: Icons.emoji_events,
+            isPlayerSection: false,
           ),
         ),
 
         Container(
           width: 1,
           color: Colors.white.withOpacity(0.1),
+          margin: EdgeInsets.symmetric(vertical: 8.h),
         ),
 
         Expanded(
           child: _buildResultColumn(
             title: 'Players',
             count: searchResult.playerResults.length,
-            results: _groupPlayerResults(searchResult.playerResults), // Added grouping
+            results:
+                searchResult
+                    .playerResults,
             icon: Icons.person,
             isPlayerSection: true,
           ),
@@ -110,17 +133,20 @@ class SearchOverlay extends ConsumerWidget {
     );
   }
 
-  Widget _buildSingleColumnLayout(EnhancedSearchResult searchResult) {
-    final hasTournaments = searchResult.tournamentResults.isNotEmpty;
-    final results = hasTournaments
-        ? searchResult.tournamentResults
-        : _groupPlayerResults(searchResult.playerResults);
+  Widget _buildSingleColumnLayout(
+    EnhancedSearchResult searchResult,
+    bool hasTournaments,
+  ) {
+    final results =
+        hasTournaments
+            ? searchResult.tournamentResults
+            : searchResult.playerResults; 
     final title = hasTournaments ? 'Events' : 'Players';
     final icon = hasTournaments ? Icons.emoji_events : Icons.person;
 
     return _buildResultColumn(
       title: title,
-      count: hasTournaments ? results.length : searchResult.playerResults.length,
+      count: results.length,
       results: results,
       icon: icon,
       isFullWidth: true,
@@ -136,24 +162,41 @@ class SearchOverlay extends ConsumerWidget {
     bool isFullWidth = false,
     bool isPlayerSection = false,
   }) {
+    final filteredResults =
+        isPlayerSection
+            ? results.where((result) => result.player != null).toList()
+            : results;
+
+    if (filteredResults.isEmpty) {
+      return Center(
+        child: Text(
+          'No $title found',
+          style: TextStyle(
+            color: Colors.grey[400],
+            fontSize: 14,
+          ),
+        ),
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.all(4),
+          padding: EdgeInsets.all(12.sp),
           child: Row(
             children: [
               Icon(
                 icon,
-                size: 16,
+                size: 16.ic,
                 color: Colors.blue,
               ),
-              const SizedBox(width: 8),
+              SizedBox(width: 8.w),
               Text(
-                '$title ($count)',
-                style: const TextStyle(
+                '$title (${filteredResults.length})',
+                style: TextStyle(
                   color: Colors.white,
-                  fontSize: 14,
+                  fontSize: 14.sp,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -164,18 +207,17 @@ class SearchOverlay extends ConsumerWidget {
         Expanded(
           child: ListView.builder(
             padding: EdgeInsets.zero,
-            itemCount: results.length,
+            itemCount: filteredResults.length,
             itemBuilder: (context, index) {
-              return AnimatedContainer(
-                duration: Duration(milliseconds: 100 + (index * 50)),
-                child: SearchResultTile(
-                  result: results[index],
-                  onTap: isPlayerSection && results[index].player != null
-                      ? () => onPlayerTap?.call(results[index].player!)
-                      : () => onTournamentTap(results[index].tournament),
-                  isPlayerResult: isPlayerSection,
-                  isFullWidth: isFullWidth,
-                ),
+              final result = filteredResults[index];
+              return SearchResultTile(
+                result: result,
+                onTap:
+                    isPlayerSection
+                        ? () => onPlayerTap?.call(result.player!)
+                        : () => onTournamentTap(result.tournament),
+                isPlayerResult: isPlayerSection,
+                isFullWidth: isFullWidth,
               );
             },
           ),
@@ -184,13 +226,17 @@ class SearchOverlay extends ConsumerWidget {
     );
   }
 
-  Widget _buildHeader(EnhancedSearchResult searchResult) {
+  Widget _buildHeader(
+    EnhancedSearchResult searchResult,
+    bool hasTournaments,
+    bool hasPlayers,
+  ) {
     final totalResults =
         searchResult.tournamentResults.length +
-            searchResult.playerResults.length;
+        searchResult.playerResults.length;
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(16.sp),
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(
@@ -202,16 +248,18 @@ class SearchOverlay extends ConsumerWidget {
         children: [
           Icon(
             Icons.search,
-            size: 16,
+            size: 16.ic,
             color: Colors.blue,
           ),
-          const SizedBox(width: 8),
-          Text(
-            '$totalResults result${totalResults != 1 ? 's' : ''} for "$query"',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
+          SizedBox(width: 8.w),
+          Expanded(
+            child: Text(
+              '$totalResults result${totalResults != 1 ? 's' : ''} for "$query"',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 14.sp,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ],
@@ -221,8 +269,8 @@ class SearchOverlay extends ConsumerWidget {
 
   Widget _buildLoadingState() {
     return Container(
-      height: 300,
-      child: const Center(
+      height: 200.h,
+      child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -230,13 +278,50 @@ class SearchOverlay extends ConsumerWidget {
               valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
               strokeWidth: 2,
             ),
-            SizedBox(height: 16),
+            SizedBox(height: 16.h),
             Text(
               'Searching...',
               style: TextStyle(
                 color: Colors.white70,
-                fontSize: 14,
+                fontSize: 14.sp,
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorState(String error) {
+    return Container(
+      height: 200.h,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 48.ic,
+              color: Colors.red,
+            ),
+            SizedBox(height: 16.h),
+            Text(
+              'Search failed',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16.sp,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            SizedBox(height: 8.h),
+            Text(
+              error,
+              style: TextStyle(
+                color: Colors.grey[400],
+                fontSize: 12.sp,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 2,
             ),
           ],
         ),
@@ -246,31 +331,31 @@ class SearchOverlay extends ConsumerWidget {
 
   Widget _buildEmptyState() {
     return Container(
-      height: 200,
+      height: 200.h,
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
               Icons.search_off,
-              size: 48,
+              size: 48.ic,
               color: Colors.grey[600],
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: 16.h),
             Text(
               'No results found',
               style: TextStyle(
                 color: Colors.white,
-                fontSize: 16,
+                fontSize: 16.sp,
                 fontWeight: FontWeight.w500,
               ),
             ),
-            const SizedBox(height: 4),
+            SizedBox(height: 8.h),
             Text(
               'Try different keywords for "$query"',
               style: TextStyle(
                 color: Colors.grey[400],
-                fontSize: 14,
+                fontSize: 14.sp,
               ),
               textAlign: TextAlign.center,
             ),
@@ -279,39 +364,4 @@ class SearchOverlay extends ConsumerWidget {
       ),
     );
   }
-
-  List<SearchResult> _groupPlayerResults(List<SearchResult> results) {
-    final sortedResults = List<SearchResult>.from(results);
-    sortedResults.sort((a, b) {
-      final aDuplicateType = _getDuplicateTypeFromResult(a);
-      final bDuplicateType = _getDuplicateTypeFromResult(b);
-
-      final aTypeOrder = aDuplicateType == 'same_tournament' ? 0 :
-      aDuplicateType == 'cross_tournament' ? 1 : 2;
-      final bTypeOrder = bDuplicateType == 'same_tournament' ? 0 :
-      bDuplicateType == 'cross_tournament' ? 1 : 2;
-
-      if (aTypeOrder != bTypeOrder) return aTypeOrder.compareTo(bTypeOrder);
-
-      final tournamentCompare = a.tournament.title.compareTo(b.tournament.title);
-      if (tournamentCompare != 0) return tournamentCompare;
-
-      return b.score.compareTo(a.score);
-    });
-
-    return sortedResults;
-  }
-
-  String _getDuplicateTypeFromResult(SearchResult result) {
-    final playerId = result.player?.id ?? '';
-
-    if (playerId.contains('_same_tournament')) {
-      return 'same_tournament';
-    } else if (playerId.contains('_cross_tournament')) {
-      return 'cross_tournament';
-    }
-
-    return 'none';
-  }
 }
-
