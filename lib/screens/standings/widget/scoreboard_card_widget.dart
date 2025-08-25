@@ -1,10 +1,12 @@
+import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:country_flags/country_flags.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/app_typography.dart';
 
-class ScoreboardCardWidget extends StatelessWidget {
+class ScoreboardCardWidget extends ConsumerWidget {
   final String countryCode;
   final String? title; // Player title (e.g., "GM") - made nullable
   final String name; // Player name
@@ -31,7 +33,11 @@ class ScoreboardCardWidget extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final validCountryCode = ref
+        .read(locationServiceProvider)
+        .getValidCountryCode(countryCode);
+
     final Color backgroundColor =
         index.isOdd ? kBlack2Color : Color(0xff111111);
     BorderRadius? borderRadius;
@@ -64,12 +70,12 @@ class ScoreboardCardWidget extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  if (countryCode.isNotEmpty) ...[
+                  if (validCountryCode.isNotEmpty) ...[
                     SizedBox(
                       width: 16.w,
                       height: 12.h,
                       child: CountryFlag.fromCountryCode(
-                        countryCode,
+                        validCountryCode,
                         height: 12.h,
                         width: 16.w,
                       ),
