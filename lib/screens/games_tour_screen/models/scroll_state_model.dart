@@ -3,7 +3,9 @@ class ScrollState {
   final String? lastSelectedRound;
   final String? pendingScrollToRound;
   final bool isScrolling;
-  final bool isUserScrolling; // New: Track if user is manually scrolling
+  final bool isUserScrolling;
+  final bool isProgrammaticScroll;
+  final bool isListViewBuilt;
 
   const ScrollState({
     this.hasPerformedInitialScroll = false,
@@ -11,6 +13,8 @@ class ScrollState {
     this.pendingScrollToRound,
     this.isScrolling = false,
     this.isUserScrolling = false,
+    this.isProgrammaticScroll = false,
+    this.isListViewBuilt = false,
   });
 
   ScrollState copyWith({
@@ -19,6 +23,8 @@ class ScrollState {
     String? pendingScrollToRound,
     bool? isScrolling,
     bool? isUserScrolling,
+    bool? isProgrammaticScroll,
+    bool? isListViewBuilt,
   }) {
     return ScrollState(
       hasPerformedInitialScroll:
@@ -27,6 +33,8 @@ class ScrollState {
       pendingScrollToRound: pendingScrollToRound ?? this.pendingScrollToRound,
       isScrolling: isScrolling ?? this.isScrolling,
       isUserScrolling: isUserScrolling ?? this.isUserScrolling,
+      isProgrammaticScroll: isProgrammaticScroll ?? this.isProgrammaticScroll,
+      isListViewBuilt: isListViewBuilt ?? this.isListViewBuilt,
     );
   }
 }
