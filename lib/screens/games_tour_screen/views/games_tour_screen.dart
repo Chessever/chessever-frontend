@@ -32,11 +32,10 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
   final Map<String, List<GlobalKey>> _gameKeys = {};
   GamesScreenModel? _lastGamesData;
 
-  // Performance optimization
   Timer? _visibilityCheckTimer;
   bool _isScrolling = false;
 
-  // View switch position preservation
+  
   String? _topVisibleGameId;
   bool _isViewSwitching = false;
 
@@ -55,7 +54,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
         ref.read(scrollStateProvider.notifier).setUserScrolling(true);
       }
 
-      // Debounce visibility checks for better performance
       _visibilityCheckTimer?.cancel();
       _visibilityCheckTimer = Timer(const Duration(milliseconds: 100), () {
         if (mounted && !_isViewSwitching) {
@@ -66,7 +64,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
   }
 
   void _setupViewSwitchListener() {
-    // Listen to chess board visibility changes
     ref.listenManual(chessBoardVisibilityProvider, (previous, next) {
       if (previous != null && previous != next) {
         _handleViewSwitch();
@@ -79,10 +76,8 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
 
     _isViewSwitching = true;
 
-    // Store the currently visible top game before switching
     _topVisibleGameId = _findTopVisibleGameId();
 
-    // Wait for the UI to rebuild with new view
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && _topVisibleGameId != null) {
         _scrollToGameAfterViewSwitch(_topVisibleGameId!);
@@ -98,15 +93,12 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     final screenHeight = MediaQuery.of(context).size.height;
     final topPadding = MediaQuery.of(context).padding.top;
     final appBarHeight = kToolbarHeight;
-    final visibleAreaTop = topPadding + appBarHeight + 50; // Small buffer
-
-    // Group games by round
+    final visibleAreaTop = topPadding + appBarHeight + 50;
     final gamesByRound = <String, List<GamesTourModel>>{};
     for (final game in gamesData.gamesTourModels) {
       gamesByRound.putIfAbsent(game.roundId, () => []).add(game);
     }
 
-    // Check each round's games
     for (final roundId in gamesByRound.keys) {
       final roundGames = gamesByRound[roundId] ?? [];
 
@@ -123,7 +115,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
             final gameTop = gamePosition.dy;
             final gameBottom = gamePosition.dy + gameSize.height;
 
-            // Check if this game is visible in the top area
+            
             if (gameBottom > visibleAreaTop && gameTop < visibleAreaTop + 100) {
               return roundGames[gameIndex].gameId;
             }
@@ -136,7 +128,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
   }
 
   Future<void> _scrollToGameAfterViewSwitch(String gameId) async {
-    // Wait for the new view to be built
     await Future.delayed(const Duration(milliseconds: 300));
 
     if (!mounted) return;
@@ -145,12 +136,10 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
         _lastGamesData ?? ref.read(gamesTourScreenProvider).valueOrNull;
     if (gamesData == null) return;
 
-    // Find the game and its position
     GamesTourModel? targetGame;
     String? targetRoundId;
     int? targetGameIndex;
 
-    // Group games by round to find the target game
     final gamesByRound = <String, List<GamesTourModel>>{};
     for (final game in gamesData.gamesTourModels) {
       gamesByRound.putIfAbsent(game.roundId, () => []).add(game);
@@ -165,7 +154,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
       return;
     }
 
-    // Find the game's index within its round
     final roundGames = gamesByRound[targetRoundId] ?? [];
     targetGameIndex = roundGames.indexOf(targetGame);
 
@@ -174,7 +162,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
       return;
     }
 
-    // Try to scroll to the target game
+   
     final gameKey = _getGameKey(targetRoundId, targetGameIndex);
 
     for (int retry = 0; retry < 20; retry++) {
@@ -184,7 +172,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
         try {
           await Scrollable.ensureVisible(
             gameKey.currentContext!,
-            alignment: 0.0, // Align to top
+            alignment: 0.0,
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeInOut,
             alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
@@ -196,7 +184,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
       }
     }
 
-    // Reset view switching flag
     Future.delayed(const Duration(milliseconds: 500), () {
       _isViewSwitching = false;
       _topVisibleGameId = null;
@@ -206,7 +193,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
   void _checkRoundContentVisibility() {
     final scrollState = ref.read(scrollStateProvider);
 
-    // Only check during user scrolling, not programmatic scrolling
     if (!scrollState.isUserScrolling ||
         scrollState.isScrolling ||
         _isViewSwitching)
@@ -216,32 +202,37 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
         _lastGamesData ?? ref.read(gamesTourScreenProvider).valueOrNull;
     if (gamesData == null) return;
 
-    // Group games by round
     final gamesByRound = <String, List<GamesTourModel>>{};
     for (final game in gamesData.gamesTourModels) {
       gamesByRound.putIfAbsent(game.roundId, () => []).add(game);
     }
 
+    final rounds = ref.read(gamesAppBarProvider).value?.gamesAppBarModels ?? [];
+    final visibleRounds =
+        rounds
+            .where((round) => (gamesByRound[round.id]?.isNotEmpty ?? false))
+            .toList();
+    final reversedRounds =
+        visibleRounds.reversed.toList(); 
+
     String? mostVisibleRound;
     double maxVisibilityScore = 0;
 
-    // Check each round's content visibility
-    for (final roundId in gamesByRound.keys) {
-      final roundGames = gamesByRound[roundId] ?? [];
+    for (final round in reversedRounds) {
+      final roundGames = gamesByRound[round.id] ?? [];
       if (roundGames.isEmpty) continue;
 
       final visibilityScore = _calculateRoundContentVisibility(
-        roundId,
+        round.id,
         roundGames,
       );
 
       if (visibilityScore > maxVisibilityScore) {
         maxVisibilityScore = visibilityScore;
-        mostVisibleRound = roundId;
+        mostVisibleRound = round.id;
       }
     }
 
-    // Update only if we have a significant visibility score
     if (mostVisibleRound != null && maxVisibilityScore > 0.1) {
       final currentVisible = ref.read(currentVisibleRoundProvider);
       if (currentVisible != mostVisibleRound) {
@@ -271,7 +262,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     double totalRoundHeight = 0;
     int itemsChecked = 0;
 
-    // Check header visibility first
     final headerKey = _getHeaderKey(roundId);
     final headerContext = headerKey.currentContext;
     if (headerContext != null) {
@@ -282,7 +272,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
 
         totalRoundHeight += headerSize.height;
 
-        // Calculate visible portion of header
         final headerTop = headerPosition.dy;
         final headerBottom = headerPosition.dy + headerSize.height;
 
@@ -302,7 +291,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
       }
     }
 
-    // Check game cards visibility (sample some games for performance)
     final gamesToCheck =
         roundGames.length > 10
             ? [
@@ -325,7 +313,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
 
           totalRoundHeight += gameSize.height;
 
-          // Calculate visible portion of game card
           final gameTop = gamePosition.dy;
           final gameBottom = gamePosition.dy + gameSize.height;
 
@@ -348,10 +335,8 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
 
     if (itemsChecked == 0 || totalRoundHeight == 0) return 0;
 
-    // Calculate base visibility score
     double visibilityScore = totalVisibleHeight / totalRoundHeight;
 
-    // Bonus for having content in the upper portion of screen (more natural)
     final _headerKey = _getHeaderKey(roundId);
     final _headerContext = headerKey.currentContext;
 
@@ -360,7 +345,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
       if (headerRenderBox?.attached == true) {
         final headerPosition = headerRenderBox!.localToGlobal(Offset.zero);
 
-        // Bonus if header or content is in upper 60% of visible area
         if (headerPosition.dy >= visibleAreaTop &&
             headerPosition.dy <= visibleAreaTop + (visibleAreaHeight * 0.6)) {
           visibilityScore += 0.2;
@@ -379,7 +363,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     _gameKeys.putIfAbsent(roundId, () => []);
     final gameList = _gameKeys[roundId]!;
 
-    // Extend list if needed
     while (gameList.length <= gameIndex) {
       gameList.add(GlobalKey());
     }
@@ -414,7 +397,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     final gamesTourAsync = ref.watch(gamesTourScreenProvider);
     final scrollState = ref.watch(scrollStateProvider);
 
-    // Listen for visible round changes and update dropdown
     ref.listen<String?>(currentVisibleRoundProvider, (previous, next) {
       if (next != null && next != previous) {
         final scrollState = ref.read(scrollStateProvider);
@@ -441,7 +423,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
       }
     });
 
-    // Handle scroll logic after build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && !_isViewSwitching) {
         _handleScrollLogic(gamesAppBarAsync, gamesTourAsync, scrollState);
@@ -455,7 +436,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
           ref.read(scrollStateProvider.notifier).setUserScrolling(true);
         } else if (notification is ScrollEndNotification && !_isViewSwitching) {
           _isScrolling = false;
-          // Final check when scrolling ends
           Future.delayed(const Duration(milliseconds: 50), () {
             if (mounted && !_isViewSwitching) {
               _checkRoundContentVisibility();
@@ -488,7 +468,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     );
   }
 
-  // Rest of the methods remain the same...
   void _handleScrollLogic(
     AsyncValue gamesAppBarAsync,
     AsyncValue<GamesScreenModel> gamesTourAsync,
@@ -589,7 +568,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     AsyncValue gamesAppBarAsync,
     AsyncValue<GamesScreenModel> gamesTourAsync,
   ) async {
-    debugPrint('[GamesTourScreen] 🔄 Refresh triggered');
+    debugPrint('[GamesTourScreen] Refresh triggered');
     FocusScope.of(context).unfocus();
 
     final futures = <Future>[];
@@ -616,7 +595,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
   }
 }
 
-// Rest of the classes remain exactly the same...
 class GamesTourContentBody extends ConsumerWidget {
   final AsyncValue gamesAppBarAsync;
   final AsyncValue<GamesScreenModel> gamesTourAsync;
@@ -648,7 +626,6 @@ class GamesTourContentBody extends ConsumerWidget {
     final tourId = ref.watch(selectedTourIdProvider);
     final tourDetails = ref.watch(tourDetailScreenProvider);
 
-    // Loading states
     if (tourId == null ||
         tourDetails.isLoading ||
         !tourDetails.hasValue ||
@@ -656,25 +633,21 @@ class GamesTourContentBody extends ConsumerWidget {
       return const TourLoadingWidget();
     }
 
-    // Error states
     if (tourDetails.hasError) {
       return GamesErrorWidget(
         errorMessage: 'Error loading tournament: ${tourDetails.error}',
       );
     }
 
-    // Update cached games data
     if (gamesTourAsync.hasValue) {
       onGamesDataUpdate(gamesTourAsync.valueOrNull);
     }
 
-    // Loading with cached data
     if ((gamesAppBarAsync.isLoading || gamesTourAsync.isLoading) &&
         lastGamesData == null) {
       return const TourLoadingWidget();
     }
 
-    // Error handling
     if (gamesAppBarAsync.hasError || gamesTourAsync.hasError) {
       return GamesErrorWidget(
         errorMessage:
@@ -734,7 +707,6 @@ class GamesTourMainContent extends ConsumerWidget {
     final rounds =
         ref.watch(gamesAppBarProvider).value?.gamesAppBarModels ?? [];
 
-    // Group games by round
     final gamesByRound = <String, List<GamesTourModel>>{};
     for (final game in gamesData.gamesTourModels) {
       gamesByRound.putIfAbsent(game.roundId, () => []).add(game);
@@ -745,8 +717,9 @@ class GamesTourMainContent extends ConsumerWidget {
             .where((round) => (gamesByRound[round.id]?.isNotEmpty ?? false))
             .toList();
 
+  
     return GamesListView(
-      rounds: visibleRounds,
+      rounds: visibleRounds, 
       gamesByRound: gamesByRound,
       gamesData: gamesData,
       isChessBoardVisible: isChessBoardVisible,
@@ -785,11 +758,18 @@ class GamesListView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Calculate total items (all rounds are always expanded)
+ 
+    final reversedRounds = rounds.reversed.toList();
+    final roundPositionMap = <String, int>{};
+    for (int i = 0; i < reversedRounds.length; i++) {
+      roundPositionMap[reversedRounds[i].id] = i;
+    }
+
+    
     int itemCount = 0;
-    for (final round in rounds) {
-      itemCount += 1; // Header
-      itemCount += gamesByRound[round.id]?.length ?? 0; // Games
+    for (final round in reversedRounds) {
+      itemCount += 1; 
+      itemCount += gamesByRound[round.id]?.length ?? 0; 
     }
 
     return ListView.builder(
@@ -804,12 +784,14 @@ class GamesListView extends ConsumerWidget {
       itemBuilder:
           (context, index) => GameListItemBuilder(
             index: index,
-            rounds: rounds,
+            rounds: reversedRounds, 
+            originalRounds: rounds,
             gamesByRound: gamesByRound,
             gamesData: gamesData,
             isChessBoardVisible: isChessBoardVisible,
             getHeaderKey: getHeaderKey,
             getGameKey: getGameKey,
+            roundPositionMap: roundPositionMap,
           ),
     );
   }
@@ -817,22 +799,26 @@ class GamesListView extends ConsumerWidget {
 
 class GameListItemBuilder extends ConsumerWidget {
   final int index;
-  final List rounds;
+  final List rounds; 
+  final List originalRounds; 
   final Map<String, List<GamesTourModel>> gamesByRound;
   final GamesScreenModel gamesData;
   final bool isChessBoardVisible;
   final GlobalKey Function(String) getHeaderKey;
   final GlobalKey Function(String, int) getGameKey;
+  final Map<String, int> roundPositionMap;
 
   const GameListItemBuilder({
     super.key,
     required this.index,
     required this.rounds,
+    required this.originalRounds,
     required this.gamesByRound,
     required this.gamesData,
     required this.isChessBoardVisible,
     required this.getHeaderKey,
     required this.getGameKey,
+    required this.roundPositionMap,
   });
 
   @override
@@ -842,24 +828,25 @@ class GameListItemBuilder extends ConsumerWidget {
     for (final round in rounds) {
       final roundGames = gamesByRound[round.id] ?? [];
 
-      // Check if this is the header
       if (index == currentIndex) {
         return RoundHeader(
           round: round,
           roundGames: roundGames,
-          headerKey: getHeaderKey(round.id),
+          headerKey: getHeaderKey(round.id), 
         );
       }
       currentIndex += 1;
 
-      // Show games (always expanded now)
       if (index < currentIndex + roundGames.length) {
         final gameIndexInRound = index - currentIndex;
         final game = roundGames[gameIndexInRound];
         final globalGameIndex = gamesData.gamesTourModels.indexOf(game);
 
         return Container(
-          key: getGameKey(round.id, gameIndexInRound), // Add game key here
+          key: getGameKey(
+            round.id,
+            gameIndexInRound,
+          ), 
           child: Padding(
             padding: EdgeInsets.only(bottom: 12.sp),
             child: GameCardWrapperWidget(

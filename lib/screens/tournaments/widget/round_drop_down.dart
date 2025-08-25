@@ -7,6 +7,7 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -21,23 +22,25 @@ class RoundDropDown extends ConsumerWidget {
       child: ref
           .watch(gamesAppBarProvider)
           .when(
-            data: (data) => _RoundDropdown(
-              rounds: data.gamesAppBarModels,
-              selectedRoundId: data.selectedId,
-              onChanged: (model) {
-                ref
-                    .read(gamesAppBarProvider.notifier)
-                    .selectNewRound(model);
-              },
-            ),
-            error: (e, _) => Center(
-              child: Text(
-                'Error loading rounds',
-                style: AppTypography.textXsRegular.copyWith(
-                  color: kWhiteColor70,
+            data:
+                (data) => _RoundDropdown(
+                  rounds: data.gamesAppBarModels,
+                  selectedRoundId: data.selectedId,
+                  onChanged: (model) {
+                    ref
+                        .read(gamesAppBarProvider.notifier)
+                        .selectNewRound(model);
+                  },
                 ),
-              ),
-            ),
+            error:
+                (e, _) => Center(
+                  child: Text(
+                    'Error loading rounds',
+                    style: AppTypography.textXsRegular.copyWith(
+                      color: kWhiteColor70,
+                    ),
+                  ),
+                ),
             loading: () {
               final loadingRound = GamesAppBarViewModel(
                 gamesAppBarModels: [
@@ -63,7 +66,7 @@ class RoundDropDown extends ConsumerWidget {
   }
 }
 
-class _RoundDropdown extends StatefulWidget {
+class _RoundDropdown extends HookConsumerWidget {
   final List<GamesAppBarModel> rounds;
   final String selectedRoundId;
   final ValueChanged<GamesAppBarModel> onChanged;
@@ -74,53 +77,8 @@ class _RoundDropdown extends StatefulWidget {
     required this.onChanged,
   });
 
-  @override
-  State<_RoundDropdown> createState() => _RoundDropdownState();
-}
-
-class _RoundDropdownState extends State<_RoundDropdown> {
-  late String _selectedRoundId;
-
-  @override
-  void initState() {
-    // Ensure the selected round exists in the rounds list
-    _selectedRoundId = widget.rounds
-        .firstWhere(
-          (round) => round.id == widget.selectedRoundId,
-          orElse: () => widget.rounds.first,
-        )
-        .id;
-    super.initState();
-  }
-
-  @override
-  void didUpdateWidget(_RoundDropdown oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    
-    // CRITICAL FIX: Update local state when provider state changes
-    if (oldWidget.selectedRoundId != widget.selectedRoundId) {
-      // Ensure the new selected round exists in the rounds list
-      final newSelection = widget.rounds
-          .firstWhere(
-            (round) => round.id == widget.selectedRoundId,
-            orElse: () => widget.rounds.first,
-          )
-          .id;
-      
-      if (_selectedRoundId != newSelection) {
-        setState(() {
-          _selectedRoundId = newSelection;
-        });
-        
-        // Add debug log to confirm updates
-        print('🔄 Dropdown updated to: $newSelection');
-      }
-    }
-  }
-
-  Widget _buildDropdownItem(GamesAppBarModel round) {
+  Widget _buildRow(GamesAppBarModel round, bool showDivider) {
     Widget trailingIcon;
-
     switch (round.roundStatus) {
       case RoundStatus.completed:
         trailingIcon = SvgPicture.asset(
@@ -130,12 +88,6 @@ class _RoundDropdownState extends State<_RoundDropdown> {
         );
         break;
       case RoundStatus.live:
-        trailingIcon = SvgPicture.asset(
-          SvgAsset.selectedSvg,
-          width: 16.w,
-          height: 16.h,
-        );
-        break;
       case RoundStatus.ongoing:
         trailingIcon = SvgPicture.asset(
           SvgAsset.selectedSvg,
@@ -152,93 +104,195 @@ class _RoundDropdownState extends State<_RoundDropdown> {
         break;
     }
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Flexible(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                round.name,
-                style: AppTypography.textXsRegular.copyWith(color: kWhiteColor),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    round.name,
+                    style: AppTypography.textXsRegular.copyWith(
+                      color: kWhiteColor,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  SizedBox(height: 2.h),
+                  Text(
+                    round.formattedStartDate,
+                    style: AppTypography.textXsRegular.copyWith(
+                      color: kWhiteColor70,
+                    ),
+                    maxLines: 1,
+                  ),
+                ],
               ),
-              SizedBox(height: 2.h),
-              Text(
-                round.formattedStartDate,
-                style: AppTypography.textXsRegular.copyWith(
-                  color: kWhiteColor70,
-                ),
-                maxLines: 1,
-              ),
-            ],
-          ),
+            ),
+            SizedBox(width: 8.w),
+            trailingIcon,
+          ],
         ),
-        SizedBox(width: 8.w),
-        trailingIcon,
+        if (showDivider)
+          Padding(
+            padding: EdgeInsets.symmetric(vertical: 5.h),
+            child: DividerWidget(),
+          ),
       ],
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return DropdownButton<String>(
-      value: _selectedRoundId,
-      onChanged: (newValue) {
-        if (newValue != null) {
-          setState(() {
-            _selectedRoundId = newValue;
-          });
-          widget.onChanged(widget.rounds.firstWhere((e) => e.id == newValue));
-        }
-      },
-      items: widget.rounds.asMap().entries.map<DropdownMenuItem<String>>((entry) {
-        final index = entry.key;
-        final round = entry.value;
-        final isLast = index == widget.rounds.length - 1;
+  void _showOverlay(
+    BuildContext context,
+    LayerLink layerLink,
+    ValueNotifier<bool> isOpen,
+  ) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!context.mounted) return;
 
-        return DropdownMenuItem<String>(
-          value: round.id,
-          child: SingleChildScrollView(
-            physics: const NeverScrollableScrollPhysics(),
-            child: Column(
-              children: [
-                _buildDropdownItem(round),
-                if (!isLast)
-                  Padding(
-                    padding: EdgeInsets.symmetric(vertical: 5.h),
-                    child: DividerWidget(),
+      final overlay = Overlay.of(context);
+      if (overlay == null) return;
+
+      final renderBox = context.findRenderObject() as RenderBox?;
+      if (renderBox == null) return;
+
+      final size = renderBox.size;
+      final offset = renderBox.localToGlobal(Offset.zero);
+
+      final availableHeight =
+          MediaQuery.of(context).size.height - offset.dy - size.height - 20;
+
+      final reversedRounds = rounds.reversed.toList();
+
+      final entry = OverlayEntry(
+        builder:
+            (context) => GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: () => isOpen.value = false,
+              child: Stack(
+                children: [
+                  Positioned(
+                    left: offset.dx,
+                    top: offset.dy + size.height,
+                    width: 135.w,
+                    child: CompositedTransformFollower(
+                      link: layerLink,
+                      showWhenUnlinked: false,
+                      offset: Offset(0, size.height),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxHeight: availableHeight,
+                            minWidth: size.width,
+                          ),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: kBlack2Color,
+                              borderRadius: BorderRadius.circular(20.br),
+                            ),
+                            padding: EdgeInsets.symmetric(vertical: 8.h),
+                            child: ListView.separated(
+                              padding: EdgeInsets.zero,
+                              shrinkWrap: true,
+                              itemCount: reversedRounds.length,
+                              separatorBuilder: (context, index) {
+                                return Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 5.h),
+                                  child: DividerWidget(),
+                                );
+                              },
+                              itemBuilder: (context, index) {
+                                final round = reversedRounds[index];
+                                return InkWell(
+                                  onTap: () {
+                                    onChanged(round);
+                                    isOpen.value = false;
+                                  },
+                                  child: Padding(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 12.w,
+                                    ),
+                                    child: _buildRow(round, false),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
-              ],
+                ],
+              ),
             ),
+      );
+
+      overlay.insert(entry);
+      isOpen.addListener(() {
+        if (!isOpen.value && entry.mounted) {
+          entry.remove();
+        }
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final layerLink = useMemoized(() => LayerLink());
+    final isOpen = useState(false);
+
+    final selected = rounds.firstWhere(
+      (r) => r.id == selectedRoundId,
+      orElse: () => rounds.first,
+    );
+
+    return CompositedTransformTarget(
+      link: layerLink,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          if (isOpen.value) {
+            isOpen.value = false;
+          } else {
+            isOpen.value = true;
+            _showOverlay(context, layerLink, isOpen);
+          }
+        },
+        child: Container(
+          height: 32.h,
+          width: 180.w,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: kBlack2Color,
+            borderRadius: BorderRadius.circular(10.br),
           ),
-        );
-      }).toList(),
-      underline: Container(),
-      icon: Icon(
-        Icons.keyboard_arrow_down_outlined,
-        color: kWhiteColor,
-        size: 20.ic,
+          padding: EdgeInsets.symmetric(horizontal: 12.w),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  selected.name,
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: kWhiteColor,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Icon(
+                Icons.keyboard_arrow_down_outlined,
+                color: kWhiteColor,
+                size: 20.ic,
+              ),
+            ],
+          ),
+        ),
       ),
-      dropdownColor: kBlack2Color,
-      borderRadius: BorderRadius.circular(20.br),
-      isExpanded: true,
-      style: AppTypography.textMdBold,
-      selectedItemBuilder: (BuildContext context) {
-        return widget.rounds.map((e) => e.id).map<Widget>((id) {
-          return Container(
-            padding: EdgeInsets.symmetric(horizontal: 12.sp),
-            alignment: Alignment.center,
-            child: Text(
-              widget.rounds.firstWhere((e) => e.id == id).name,
-              style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
-              overflow: TextOverflow.ellipsis,
-            ),
-          );
-        }).toList();
-      },
     );
   }
 }

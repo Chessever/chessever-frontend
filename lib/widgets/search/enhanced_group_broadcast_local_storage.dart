@@ -28,9 +28,9 @@ class EnhancedSearchResult {
 
 extension GroupBroadcastLocalStorageSearch on GroupBroadcastLocalStorage {
   Future<EnhancedSearchResult> searchWithScoring(
-      String query, [
-        List<String>? liveBroadcastId,
-      ]) async {
+    String query, [
+    List<String>? liveBroadcastId,
+  ]) async {
     try {
       final broadcasts = await getGroupBroadcasts();
       if (query.isEmpty) {
@@ -47,7 +47,8 @@ extension GroupBroadcastLocalStorageSearch on GroupBroadcastLocalStorage {
       final allPlayers = <SearchPlayer>[];
 
       final Map<String, List<SearchPlayer>> playersByFirstNameGlobal = {};
-      final Map<String, Map<String, List<SearchPlayer>>> playersByFirstNamePerTournament = {};
+      final Map<String, Map<String, List<SearchPlayer>>>
+      playersByFirstNamePerTournament = {};
 
       for (final gb in broadcasts) {
         final tourEventModel = GroupEventCardModel.fromGroupBroadcast(
@@ -93,7 +94,9 @@ extension GroupBroadcastLocalStorageSearch on GroupBroadcastLocalStorage {
             }
             playersByFirstNameGlobal[firstName]!.add(player);
 
-            if (!playersByFirstNamePerTournament[gb.id]!.containsKey(firstName)) {
+            if (!playersByFirstNamePerTournament[gb.id]!.containsKey(
+              firstName,
+            )) {
               playersByFirstNamePerTournament[gb.id]![firstName] = [];
             }
             playersByFirstNamePerTournament[gb.id]![firstName]!.add(player);
@@ -118,7 +121,8 @@ extension GroupBroadcastLocalStorageSearch on GroupBroadcastLocalStorage {
             );
 
             final firstName = _getFirstName(player.name);
-            final playersWithSameFirstNameGlobal = playersByFirstNameGlobal[firstName] ?? [];
+            final playersWithSameFirstNameGlobal =
+                playersByFirstNameGlobal[firstName] ?? [];
             final playersWithSameFirstNameInTournament =
                 playersByFirstNamePerTournament[gb.id]?[firstName] ?? [];
 
@@ -128,7 +132,8 @@ extension GroupBroadcastLocalStorageSearch on GroupBroadcastLocalStorage {
               SearchResultType.player,
             );
 
-            final queryMatchesFirstName = firstName.toLowerCase().contains(queryLower) ||
+            final queryMatchesFirstName =
+                firstName.toLowerCase().contains(queryLower) ||
                 queryLower.contains(firstName.toLowerCase());
 
             if (playerScore > 10.0) {
@@ -142,8 +147,10 @@ extension GroupBroadcastLocalStorageSearch on GroupBroadcastLocalStorage {
                 if (playersWithSameFirstNameInTournament.length > 1) {
                   final tournamentKey = '${firstName}_${gb.id}';
                   if (!processedPlayerKeys.contains(tournamentKey)) {
-                    for (final duplicatePlayer in playersWithSameFirstNameInTournament) {
-                      final duplicateKey = '${duplicatePlayer.name}_${duplicatePlayer.tournamentId}';
+                    for (final duplicatePlayer
+                        in playersWithSameFirstNameInTournament) {
+                      final duplicateKey =
+                          '${duplicatePlayer.name}_${duplicatePlayer.tournamentId}';
                       if (!processedPlayerKeys.contains(duplicateKey)) {
                         processedPlayerKeys.add(duplicateKey);
 
@@ -170,12 +177,13 @@ extension GroupBroadcastLocalStorageSearch on GroupBroadcastLocalStorage {
                     }
                     processedPlayerKeys.add(tournamentKey);
                   }
-                }
-                else if (playersWithSameFirstNameGlobal.length > 1) {
+                } else if (playersWithSameFirstNameGlobal.length > 1) {
                   final globalKey = '${firstName}_global';
                   if (!processedPlayerKeys.contains(globalKey)) {
-                    for (final duplicatePlayer in playersWithSameFirstNameGlobal) {
-                      final duplicateKey = '${duplicatePlayer.name}_${duplicatePlayer.tournamentId}';
+                    for (final duplicatePlayer
+                        in playersWithSameFirstNameGlobal) {
+                      final duplicateKey =
+                          '${duplicatePlayer.name}_${duplicatePlayer.tournamentId}';
                       if (!processedPlayerKeys.contains(duplicateKey)) {
                         processedPlayerKeys.add(duplicateKey);
 
@@ -186,10 +194,13 @@ extension GroupBroadcastLocalStorageSearch on GroupBroadcastLocalStorage {
                         );
 
                         if (duplicateScore > 5.0) {
-                          final duplicateTournament = GroupEventCardModel.fromGroupBroadcast(
-                            broadcasts.firstWhere((b) => b.id == duplicatePlayer.tournamentId),
-                            liveBroadcastId ?? [],
-                          );
+                          final duplicateTournament =
+                              GroupEventCardModel.fromGroupBroadcast(
+                                broadcasts.firstWhere(
+                                  (b) => b.id == duplicatePlayer.tournamentId,
+                                ),
+                                liveBroadcastId ?? [],
+                              );
 
                           playerResults.add(
                             SearchResult(
@@ -207,8 +218,7 @@ extension GroupBroadcastLocalStorageSearch on GroupBroadcastLocalStorage {
                     }
                     processedPlayerKeys.add(globalKey);
                   }
-                }
-                else {
+                } else {
                   processedPlayerKeys.add(playerKey);
                   playerResults.add(
                     SearchResult(
@@ -310,33 +320,54 @@ extension GroupBroadcastLocalStorageSearch on GroupBroadcastLocalStorage {
     }
 
     return {
-      'globalDuplicates': playersByFirstName.entries
-          .where((entry) => entry.value.length > 1)
-          .map((entry) => {
-        'firstName': entry.key,
-        'count': entry.value.length,
-        'players': entry.value.map((p) => {
-          'name': p.name,
-          'tournament': p.tournamentName,
-        }).toList(),
-      }).toList(),
-      'sameTournamentDuplicates': tournamentGroups.entries
-          .map((tournamentEntry) => {
-        'tournamentId': tournamentEntry.key,
-        'duplicates': tournamentEntry.value.entries
-            .where((nameEntry) => nameEntry.value.length > 1)
-            .map((nameEntry) => {
-          'firstName': nameEntry.key,
-          'count': nameEntry.value.length,
-          'players': nameEntry.value.map((p) => p.name).toList(),
-        }).toList(),
-      })
-          .where((tournament) => (tournament['duplicates'] as List).isNotEmpty)
-          .toList(),
+      'globalDuplicates':
+          playersByFirstName.entries
+              .where((entry) => entry.value.length > 1)
+              .map(
+                (entry) => {
+                  'firstName': entry.key,
+                  'count': entry.value.length,
+                  'players':
+                      entry.value
+                          .map(
+                            (p) => {
+                              'name': p.name,
+                              'tournament': p.tournamentName,
+                            },
+                          )
+                          .toList(),
+                },
+              )
+              .toList(),
+      'sameTournamentDuplicates':
+          tournamentGroups.entries
+              .map(
+                (tournamentEntry) => {
+                  'tournamentId': tournamentEntry.key,
+                  'duplicates':
+                      tournamentEntry.value.entries
+                          .where((nameEntry) => nameEntry.value.length > 1)
+                          .map(
+                            (nameEntry) => {
+                              'firstName': nameEntry.key,
+                              'count': nameEntry.value.length,
+                              'players':
+                                  nameEntry.value.map((p) => p.name).toList(),
+                            },
+                          )
+                          .toList(),
+                },
+              )
+              .where(
+                (tournament) => (tournament['duplicates'] as List).isNotEmpty,
+              )
+              .toList(),
     };
   }
 
-  Future<List<SearchPlayer>> getAllPlayers([List<String>? liveBroadcastId]) async {
+  Future<List<SearchPlayer>> getAllPlayers([
+    List<String>? liveBroadcastId,
+  ]) async {
     try {
       final broadcasts = await getGroupBroadcasts();
       final allPlayers = <SearchPlayer>[];
