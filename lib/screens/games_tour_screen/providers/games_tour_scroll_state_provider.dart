@@ -9,6 +9,10 @@ final scrollStateProvider =
 class ScrollStateNotifier extends StateNotifier<ScrollState> {
   ScrollStateNotifier() : super(const ScrollState());
 
+  void setListViewBuilt() {
+    state = state.copyWith(isListViewBuilt: true);
+  }
+
   void setInitialScrollPerformed() {
     state = state.copyWith(hasPerformedInitialScroll: true);
   }
@@ -25,9 +29,39 @@ class ScrollStateNotifier extends StateNotifier<ScrollState> {
     state = state.copyWith(isScrolling: isScrolling);
   }
 
-  // New: Track user scrolling state
   void setUserScrolling(bool isUserScrolling) {
     state = state.copyWith(isUserScrolling: isUserScrolling);
+  }
+
+  void setProgrammaticScroll(bool isProgrammaticScroll) {
+    state = state.copyWith(isProgrammaticScroll: isProgrammaticScroll);
+  }
+
+  void resetScrollFlags() {
+    state = state.copyWith(
+      isScrolling: false,
+      isUserScrolling: false,
+      pendingScrollToRound: null,
+      isProgrammaticScroll: false,
+    );
+  }
+
+  void prepareForProgrammaticScroll(String roundId) {
+    state = state.copyWith(
+      isScrolling: true,
+      isUserScrolling: false,
+      isProgrammaticScroll: true,
+      lastSelectedRound: roundId,
+      pendingScrollToRound: roundId,
+    );
+  }
+
+  void completeProgrammaticScroll() {
+    state = state.copyWith(
+      isScrolling: false,
+      isProgrammaticScroll: false,
+      pendingScrollToRound: null,
+    );
   }
 
   void reset() {

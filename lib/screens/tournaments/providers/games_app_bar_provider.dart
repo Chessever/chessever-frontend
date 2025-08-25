@@ -3,6 +3,7 @@ import 'package:chessever2/screens/games_tour_screen/providers/games_tour_scroll
 import 'package:chessever2/screens/tournaments/model/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tournaments/providers/live_rounds_id_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/tour_detail_screen_provider.dart';
+import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 // Stores the currently selected round ID and whether the user has selected it
@@ -162,51 +163,38 @@ class GamesAppBarNotifier
     }
   }
 
-  // void selectNewRound(GamesAppBarModel gamesAppBarModel) {
-  //   try {
-  //     // Persist user selection
-  //     ref.read(userSelectedRoundProvider.notifier).state = (
-  //       id: gamesAppBarModel.id,
-  //       userSelected: true,
-  //     );
-
-  //     // Safely update local state
-  //     final currentState = state.valueOrNull;
-  //     if (currentState != null) {
-  //       state = AsyncValue.data(
-  //         GamesAppBarViewModel(
-  //           gamesAppBarModels: currentState.gamesAppBarModels,
-  //           selectedId: gamesAppBarModel.id,
-  //           userSelectedId: true,
-  //         ),
-  //       );
-  //     }
-  //   } catch (e, st) {
-  //     if (mounted) {
-  //       state = AsyncValue.error(e, st);
-  //     }
-  //   }
-  // }
+  // FIXED: Enhanced selectNewRound method with better state management
   void selectNewRound(GamesAppBarModel gamesAppBarModel) {
     try {
-      // Persist user selection
+      debugPrint('🎯 User selected round: ${gamesAppBarModel.id}');
+
+      // Always mark as user selected and persist
       ref.read(userSelectedRoundProvider.notifier).state = (
         id: gamesAppBarModel.id,
         userSelected: true,
       );
 
-      // Update state without triggering a full refresh
+      // Update state immediately with userSelectedId = true
       final currentState = state.valueOrNull;
       if (currentState != null) {
         state = AsyncValue.data(
           GamesAppBarViewModel(
             gamesAppBarModels: currentState.gamesAppBarModels,
             selectedId: gamesAppBarModel.id,
-            userSelectedId: true,
+            userSelectedId: true, // CRITICAL: Mark as user-initiated
           ),
         );
+
+        debugPrint(
+          '🎯 Provider state updated with userSelectedId=true for round: ${gamesAppBarModel.id}',
+        );
       }
+
+      // Clear any scroll state that might interfere
+      ref.read(scrollStateProvider.notifier).setUserScrolling(false);
+      ref.read(scrollStateProvider.notifier).setScrolling(false);
     } catch (e, st) {
+      debugPrint('❌ Error in selectNewRound: $e');
       if (mounted) {
         state = AsyncValue.error(e, st);
       }
@@ -216,7 +204,7 @@ class GamesAppBarNotifier
   // Method to refresh rounds if needed
   Future<void> refreshRounds() async {
     if (tourId == null) {
-      print('Cannot refresh rounds: Tournament ID not available');
+      debugPrint('Cannot refresh rounds: Tournament ID not available');
       return;
     }
 
@@ -241,31 +229,30 @@ class GamesAppBarNotifier
     super.dispose();
   }
 
+  // FIXED: Enhanced selectNewRoundSilently method
   void selectNewRoundSilently(GamesAppBarModel gamesAppBarModel) {
     try {
-      print('🔄 Silent selection called for round: ${gamesAppBarModel.id}');
+      debugPrint(
+        '🔄 Silent selection called for round: ${gamesAppBarModel.id}',
+      );
 
-      // Update state without marking as user selected to prevent auto-scroll
+      // Update state without marking as user selected (keep existing userSelectedId)
       final currentState = state.valueOrNull;
       if (currentState != null) {
         state = AsyncValue.data(
           GamesAppBarViewModel(
             gamesAppBarModels: currentState.gamesAppBarModels,
             selectedId: gamesAppBarModel.id,
-            userSelectedId:
-                false, // Keep as false - this is from scroll detection
+            userSelectedId: false, // CRITICAL: Keep as false for silent updates
           ),
         );
 
-        print('✅ Provider state updated to: ${gamesAppBarModel.id}');
-
-        // Update the scroll state to track the new selection
-        ref
-            .read(scrollStateProvider.notifier)
-            .updateSelectedRound(gamesAppBarModel.id);
+        debugPrint(
+          '✅ Provider state updated silently to: ${gamesAppBarModel.id}',
+        );
       }
     } catch (e, st) {
-      print('❌ Error in selectNewRoundSilently: $e');
+      debugPrint('❌ Error in selectNewRoundSilently: $e');
       if (mounted) {
         state = AsyncValue.error(e, st);
       }
