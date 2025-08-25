@@ -17,7 +17,7 @@ final selectedPlayerProvider = StateProvider<PlayerStandingModel?>(
 
 class ScoreCardScreen extends ConsumerWidget {
   final String name;
-  const ScoreCardScreen({super.key,required this.name});
+  const ScoreCardScreen({super.key, required this.name});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -65,7 +65,7 @@ class ScoreCardScreen extends ConsumerWidget {
           ScoreboardAppbar(
             playerName: name ?? 'Unknown',
           ),
-          SizedBox(height: 16.h),
+          SizedBox(height: 24.h),
           Padding(
             padding: EdgeInsets.symmetric(horizontal: 20.0.sp),
             child: Row(

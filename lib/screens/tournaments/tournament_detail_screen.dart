@@ -31,7 +31,7 @@ enum _TournamentDetailScreenMode { about, games, standings }
 const _mappedName = {
   _TournamentDetailScreenMode.about: 'About',
   _TournamentDetailScreenMode.games: 'Games',
-  _TournamentDetailScreenMode.standings: 'Standings',
+  _TournamentDetailScreenMode.standings: 'Players',
 };
 
 class TournamentDetailScreen extends ConsumerStatefulWidget {
