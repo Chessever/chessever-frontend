@@ -96,52 +96,52 @@ class CountrymanCard extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget getCountryFlag(String countryCode) {
-    // Simple country flag implementation
-    // In a real app, you would use a proper flag package like country_icons
-    switch (countryCode) {
-      case 'NO':
-        return Image.network(
-          'https://flagcdn.com/w20/no.png',
-          width: 20,
-          height: 14,
-          errorBuilder:
-              (context, error, stackTrace) =>
-                  Text('🇳🇴', style: TextStyle(fontSize: 16)),
-        );
-      case 'US':
-        return Image.network(
-          'https://flagcdn.com/w20/us.png',
-          width: 20,
-          height: 14,
-          errorBuilder:
-              (context, error, stackTrace) =>
-                  Text('🇺🇸', style: TextStyle(fontSize: 16)),
-        );
-      case 'IN':
-        return Image.network(
-          'https://flagcdn.com/w20/in.png',
-          width: 20,
-          height: 14,
-          errorBuilder:
-              (context, error, stackTrace) =>
-                  Text('🇮🇳', style: TextStyle(fontSize: 16)),
-        );
-      case 'UZ':
-        return Image.network(
-          'https://flagcdn.com/w20/uz.png',
-          width: 20,
-          height: 14,
-          errorBuilder:
-              (context, error, stackTrace) =>
-                  Text('🇺🇿', style: TextStyle(fontSize: 16)),
-        );
-      default:
-        return Text(
-          countryCode,
-          style: TextStyle(fontSize: 12, color: Colors.white),
-        );
-    }
+Widget getCountryFlag(String countryCode) {
+  // Simple country flag implementation
+  // In a real app, you would use a proper flag package like country_icons
+  switch (countryCode) {
+    case 'NO':
+      return Image.network(
+        'https://flagcdn.com/w20/no.png',
+        width: 20,
+        height: 14,
+        errorBuilder:
+            (context, error, stackTrace) =>
+                Text('🇳🇴', style: TextStyle(fontSize: 16)),
+      );
+    case 'US':
+      return Image.network(
+        'https://flagcdn.com/w20/us.png',
+        width: 20,
+        height: 14,
+        errorBuilder:
+            (context, error, stackTrace) =>
+                Text('🇺🇸', style: TextStyle(fontSize: 16)),
+      );
+    case 'IN':
+      return Image.network(
+        'https://flagcdn.com/w20/in.png',
+        width: 20,
+        height: 14,
+        errorBuilder:
+            (context, error, stackTrace) =>
+                Text('🇮🇳', style: TextStyle(fontSize: 16)),
+      );
+    case 'UZ':
+      return Image.network(
+        'https://flagcdn.com/w20/uz.png',
+        width: 20,
+        height: 14,
+        errorBuilder:
+            (context, error, stackTrace) =>
+                Text('🇺🇿', style: TextStyle(fontSize: 16)),
+      );
+    default:
+      return Text(
+        countryCode,
+        style: TextStyle(fontSize: 12, color: Colors.white),
+      );
   }
 }
