@@ -1,6 +1,4 @@
 import 'dart:async';
-
-import 'package:chessever2/screens/games_tour_screen/models/scroll_state_model.dart';
 import 'package:chessever2/screens/games_tour_screen/providers/games_tour_scroll_state_provider.dart';
 import 'package:chessever2/screens/games_tour_screen/providers/games_tour_visibility_provider.dart';
 import 'package:chessever2/screens/games_tour_screen/widgets/game_card_wrapper_widget.dart';
@@ -18,6 +16,8 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import '../../tournaments/model/games_app_bar_view_model.dart';
+
 class GamesTourScreen extends ConsumerStatefulWidget {
   const GamesTourScreen({super.key});
 
@@ -34,10 +34,11 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
 
   Timer? _visibilityCheckTimer;
   bool _isScrolling = false;
+  bool _isInitialized = false;
 
-  
   String? _topVisibleGameId;
   bool _isViewSwitching = false;
+  bool _isProgrammaticScroll = false;
 
   @override
   void initState() {
@@ -45,18 +46,91 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     _scrollController = ScrollController();
     _setupScrollListener();
     _setupViewSwitchListener();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _synchronizeInitialSelection();
+    });
+  }
+
+  void _synchronizeInitialSelection() {
+    if (!mounted || _isInitialized) return;
+
+    final gamesAppBarAsync = ref.read(gamesAppBarProvider);
+    final gamesTourAsync = ref.read(gamesTourScreenProvider);
+
+    if (!gamesAppBarAsync.hasValue || !gamesTourAsync.hasValue) {
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (mounted && !_isInitialized) _synchronizeInitialSelection();
+      });
+      return;
+    }
+
+    final gamesData = gamesTourAsync.valueOrNull;
+    final appBarData = gamesAppBarAsync.valueOrNull;
+
+    if (gamesData == null || appBarData == null) {
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (mounted && !_isInitialized) _synchronizeInitialSelection();
+      });
+      return;
+    }
+
+    final selectedRoundId = appBarData.selectedId;
+    debugPrint('🎯 Selected round ID from dropdown: $selectedRoundId');
+
+    final gamesByRound = <String, List<GamesTourModel>>{};
+    for (final game in gamesData.gamesTourModels) {
+      gamesByRound.putIfAbsent(game.roundId, () => []).add(game);
+    }
+
+    String? targetRoundId;
+
+    if (selectedRoundId != null &&
+        gamesByRound[selectedRoundId]?.isNotEmpty == true) {
+      targetRoundId = selectedRoundId;
+      debugPrint('🎯 Using selected round: $targetRoundId');
+    } else {
+      final rounds = appBarData.gamesAppBarModels;
+      final visibleRounds =
+          rounds
+              .where((round) => (gamesByRound[round.id]?.isNotEmpty ?? false))
+              .toList();
+
+      if (visibleRounds.isNotEmpty) {
+        final targetRound = visibleRounds.reversed.first;
+        targetRoundId = targetRound.id;
+
+        ref
+            .read(gamesAppBarProvider.notifier)
+            .selectNewRoundSilently(targetRound);
+      }
+    }
+
+    if (targetRoundId != null) {
+      _isInitialized = true;
+
+      ref.read(scrollStateProvider.notifier).setInitialScrollPerformed();
+      ref.read(scrollStateProvider.notifier).updateSelectedRound(targetRoundId);
+      ref.read(scrollStateProvider.notifier).setUserScrolling(false);
+
+      Future.delayed(const Duration(milliseconds: 1000), () {
+        if (mounted) {
+          _scrollToRound(targetRoundId!);
+        }
+      });
+    }
   }
 
   void _setupScrollListener() {
     _scrollController.addListener(() {
-      if (!_isScrolling && !_isViewSwitching) {
+      if (!_isScrolling && !_isViewSwitching && !_isProgrammaticScroll) {
         _isScrolling = true;
         ref.read(scrollStateProvider.notifier).setUserScrolling(true);
       }
 
       _visibilityCheckTimer?.cancel();
       _visibilityCheckTimer = Timer(const Duration(milliseconds: 100), () {
-        if (mounted && !_isViewSwitching) {
+        if (mounted && !_isViewSwitching && !_isProgrammaticScroll) {
           _checkRoundContentVisibility();
         }
       });
@@ -115,7 +189,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
             final gameTop = gamePosition.dy;
             final gameBottom = gamePosition.dy + gameSize.height;
 
-            
             if (gameBottom > visibleAreaTop && gameTop < visibleAreaTop + 100) {
               return roundGames[gameIndex].gameId;
             }
@@ -162,7 +235,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
       return;
     }
 
-   
     final gameKey = _getGameKey(targetRoundId, targetGameIndex);
 
     for (int retry = 0; retry < 20; retry++) {
@@ -195,7 +267,8 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
 
     if (!scrollState.isUserScrolling ||
         scrollState.isScrolling ||
-        _isViewSwitching)
+        _isViewSwitching ||
+        _isProgrammaticScroll)
       return;
 
     final gamesData =
@@ -212,8 +285,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
         rounds
             .where((round) => (gamesByRound[round.id]?.isNotEmpty ?? false))
             .toList();
-    final reversedRounds =
-        visibleRounds.reversed.toList(); 
+    final reversedRounds = visibleRounds.reversed.toList();
 
     String? mostVisibleRound;
     double maxVisibilityScore = 0;
@@ -236,7 +308,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     if (mostVisibleRound != null && maxVisibilityScore > 0.1) {
       final currentVisible = ref.read(currentVisibleRoundProvider);
       if (currentVisible != mostVisibleRound) {
-        print(
+        debugPrint(
           '🎯 Most visible round: $mostVisibleRound (score: ${maxVisibilityScore.toStringAsFixed(2)})',
         );
         ref
@@ -337,11 +409,10 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
 
     double visibilityScore = totalVisibleHeight / totalRoundHeight;
 
-    final _headerKey = _getHeaderKey(roundId);
-    final _headerContext = headerKey.currentContext;
+    final headerContext2 = headerKey.currentContext;
 
-    if (headerContext != null) {
-      final headerRenderBox = headerContext.findRenderObject() as RenderBox?;
+    if (headerContext2 != null) {
+      final headerRenderBox = headerContext2.findRenderObject() as RenderBox?;
       if (headerRenderBox?.attached == true) {
         final headerPosition = headerRenderBox!.localToGlobal(Offset.zero);
 
@@ -386,6 +457,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
         ref.read(currentVisibleRoundProvider.notifier).state = null;
         _headerKeys.clear();
         _gameKeys.clear();
+        _isInitialized = false;
       }
     });
   }
@@ -397,15 +469,42 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     final gamesTourAsync = ref.watch(gamesTourScreenProvider);
     final scrollState = ref.watch(scrollStateProvider);
 
+    ref.listen<AsyncValue<GamesAppBarViewModel>>(gamesAppBarProvider, (
+      previous,
+      next,
+    ) {
+      if (!_isInitialized) return;
+
+      final previousSelected = previous?.valueOrNull?.selectedId;
+      final currentSelected = next.valueOrNull?.selectedId;
+
+      if (currentSelected != null &&
+          currentSelected != previousSelected &&
+          next.valueOrNull?.userSelectedId == true) {
+        ref.read(scrollStateProvider.notifier).setUserScrolling(false);
+        ref.read(scrollStateProvider.notifier).setScrolling(false);
+        ref
+            .read(scrollStateProvider.notifier)
+            .updateSelectedRound(currentSelected);
+
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            _scrollToRound(currentSelected);
+          }
+        });
+      }
+    });
+
     ref.listen<String?>(currentVisibleRoundProvider, (previous, next) {
-      if (next != null && next != previous) {
+      if (next != null && next != previous && _isInitialized) {
         final scrollState = ref.read(scrollStateProvider);
         final currentSelected = gamesAppBarAsync.valueOrNull?.selectedId;
 
         if (scrollState.isUserScrolling &&
             !scrollState.isScrolling &&
             currentSelected != next &&
-            !_isViewSwitching) {
+            !_isViewSwitching &&
+            !_isProgrammaticScroll) {
           final gamesAppBarData = gamesAppBarAsync.valueOrNull;
           if (gamesAppBarData != null) {
             final targetRound =
@@ -423,19 +522,16 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
       }
     });
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && !_isViewSwitching) {
-        _handleScrollLogic(gamesAppBarAsync, gamesTourAsync, scrollState);
-      }
-    });
-
     return NotificationListener<ScrollNotification>(
       onNotification: (notification) {
-        if (notification is ScrollStartNotification && !_isViewSwitching) {
+        if (notification is ScrollStartNotification &&
+            !_isViewSwitching &&
+            !_isProgrammaticScroll) {
           _isScrolling = true;
           ref.read(scrollStateProvider.notifier).setUserScrolling(true);
         } else if (notification is ScrollEndNotification && !_isViewSwitching) {
           _isScrolling = false;
+          _isProgrammaticScroll = false;
           Future.delayed(const Duration(milliseconds: 50), () {
             if (mounted && !_isViewSwitching) {
               _checkRoundContentVisibility();
@@ -468,99 +564,118 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     );
   }
 
-  void _handleScrollLogic(
-    AsyncValue gamesAppBarAsync,
-    AsyncValue<GamesScreenModel> gamesTourAsync,
-    ScrollState scrollState,
-  ) {
-    final current = gamesAppBarAsync.valueOrNull?.selectedId;
-
-    if (!scrollState.hasPerformedInitialScroll &&
-        gamesAppBarAsync.hasValue &&
-        gamesTourAsync.hasValue &&
-        current != null) {
-      _performInitialScroll(current);
-      return;
-    }
-
-    if (current != null &&
-        scrollState.hasPerformedInitialScroll &&
-        current != scrollState.lastSelectedRound &&
-        !scrollState.isUserScrolling) {
-      _performRoundChangeScroll(current);
-    }
-  }
-
-  void _performInitialScroll(String roundId) {
-    Future.microtask(() {
-      if (mounted) {
-        ref.read(scrollStateProvider.notifier).setInitialScrollPerformed();
-        ref.read(scrollStateProvider.notifier).updateSelectedRound(roundId);
-        ref.read(scrollStateProvider.notifier).setPendingScroll(roundId);
-
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (mounted) {
-            _scrollToRound(roundId);
-          }
-        });
-      }
-    });
-  }
-
-  void _performRoundChangeScroll(String roundId) {
-    Future.microtask(() {
-      if (mounted) {
-        ref.read(scrollStateProvider.notifier).updateSelectedRound(roundId);
-        ref.read(scrollStateProvider.notifier).setPendingScroll(roundId);
-
-        Future.delayed(const Duration(milliseconds: 100), () {
-          if (mounted) {
-            _scrollToRound(roundId);
-          }
-        });
-      }
-    });
-  }
-
   Future<void> _scrollToRound(String roundId) async {
-    final scrollState = ref.read(scrollStateProvider);
-    if (scrollState.isScrolling || !mounted || _isViewSwitching) return;
+    if (!mounted || _isViewSwitching) return;
 
-    Future.microtask(() {
-      if (mounted) {
-        ref.read(scrollStateProvider.notifier).setScrolling(true);
-        ref.read(scrollStateProvider.notifier).setUserScrolling(false);
-      }
-    });
+    _isProgrammaticScroll = true;
+
+    ref.read(scrollStateProvider.notifier).setScrolling(true);
+    ref.read(scrollStateProvider.notifier).setUserScrolling(false);
+    ref.read(scrollStateProvider.notifier).updateSelectedRound(roundId);
 
     try {
       if (!_scrollController.hasClients) return;
 
       final headerKey = _getHeaderKey(roundId);
 
+      final position = _calculateScrollPositionForRound(roundId);
+      if (position != null && position >= 0) {
+        await _scrollController.animateTo(
+          position,
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeInOut,
+        );
+      }
+
+      bool found = false;
+
       for (int retry = 0; retry < 30; retry++) {
-        await Future.delayed(const Duration(milliseconds: 100));
+        await Future.delayed(const Duration(milliseconds: 50));
 
         if (headerKey.currentContext != null) {
-          await Scrollable.ensureVisible(
-            headerKey.currentContext!,
-            alignment: 0.0,
-            duration: const Duration(milliseconds: 0),
-            curve: Curves.easeInOut,
-            alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
-          );
-          break;
+          try {
+            await Scrollable.ensureVisible(
+              headerKey.currentContext!,
+              alignment: 0.0,
+              duration: const Duration(milliseconds: 400),
+              curve: Curves.easeInOut,
+              alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
+            );
+            found = true;
+
+            break;
+          } catch (e) {
+            debugPrint(
+              '[GamesTourScreen] Scroll error with key on retry $retry: $e',
+            );
+          }
+        } else {
+          debugPrint(' Key not found on retry $retry for round $roundId');
         }
+      }
+
+      if (!found) {
+        debugPrint(' Failed to scroll to round: $roundId after all attempts');
       }
     } catch (e) {
       debugPrint('[GamesTourScreen] Scroll error: $e');
     } finally {
-      Future.microtask(() {
+      Future.delayed(const Duration(milliseconds: 500), () {
         if (mounted) {
           ref.read(scrollStateProvider.notifier).setScrolling(false);
-          ref.read(scrollStateProvider.notifier).setPendingScroll(null);
+          _isProgrammaticScroll = false;
         }
       });
+    }
+  }
+
+  double? _calculateScrollPositionForRound(String roundId) {
+    try {
+      final gamesData =
+          _lastGamesData ?? ref.read(gamesTourScreenProvider).valueOrNull;
+      if (gamesData == null) return null;
+
+      final rounds =
+          ref.read(gamesAppBarProvider).value?.gamesAppBarModels ?? [];
+      final gamesByRound = <String, List<GamesTourModel>>{};
+
+      for (final game in gamesData.gamesTourModels) {
+        gamesByRound.putIfAbsent(game.roundId, () => []).add(game);
+      }
+
+      final visibleRounds =
+          rounds
+              .where((round) => (gamesByRound[round.id]?.isNotEmpty ?? false))
+              .toList()
+              .reversed
+              .toList();
+
+      double position = 0;
+      const double headerHeight = 50;
+      const double gameHeight = 120;
+      const double padding = 16;
+      position += padding;
+
+      for (final round in visibleRounds) {
+        debugPrint('🎯 Position before ${round.name} (${round.id}): $position');
+        if (round.id == roundId) {
+          return position;
+        }
+
+        position += headerHeight;
+
+        final games = gamesByRound[round.id] ?? [];
+        position += games.length * (gameHeight + 12);
+
+        if (position > _scrollController.position.maxScrollExtent) {
+          return _scrollController.position.maxScrollExtent;
+        }
+      }
+
+      return null;
+    } catch (e) {
+      debugPrint('Error calculating scroll position: $e');
+      return null;
     }
   }
 
@@ -592,6 +707,13 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     if (futures.isNotEmpty) {
       await Future.wait(futures);
     }
+
+    _isInitialized = false;
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        _synchronizeInitialSelection();
+      }
+    });
   }
 }
 
@@ -660,7 +782,6 @@ class GamesTourContentBody extends ConsumerWidget {
     final gamesData = lastGamesData ?? gamesTourAsync.valueOrNull;
     if (gamesData == null) return const TourLoadingWidget();
 
-    // Empty state
     if (gamesData.gamesTourModels.isEmpty && !gamesTourAsync.isLoading) {
       return const Center(
         child: EmptyWidget(
@@ -717,9 +838,8 @@ class GamesTourMainContent extends ConsumerWidget {
             .where((round) => (gamesByRound[round.id]?.isNotEmpty ?? false))
             .toList();
 
-  
     return GamesListView(
-      rounds: visibleRounds, 
+      rounds: visibleRounds,
       gamesByRound: gamesByRound,
       gamesData: gamesData,
       isChessBoardVisible: isChessBoardVisible,
@@ -758,22 +878,21 @@ class GamesListView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
- 
     final reversedRounds = rounds.reversed.toList();
     final roundPositionMap = <String, int>{};
     for (int i = 0; i < reversedRounds.length; i++) {
       roundPositionMap[reversedRounds[i].id] = i;
     }
 
-    
     int itemCount = 0;
     for (final round in reversedRounds) {
-      itemCount += 1; 
-      itemCount += gamesByRound[round.id]?.length ?? 0; 
+      itemCount += 1;
+      itemCount += gamesByRound[round.id]?.length ?? 0;
     }
 
     return ListView.builder(
       controller: scrollController,
+      cacheExtent: MediaQuery.of(context).size.height * 2,
       padding: EdgeInsets.only(
         left: 20.sp,
         right: 20.sp,
@@ -784,7 +903,7 @@ class GamesListView extends ConsumerWidget {
       itemBuilder:
           (context, index) => GameListItemBuilder(
             index: index,
-            rounds: reversedRounds, 
+            rounds: reversedRounds,
             originalRounds: rounds,
             gamesByRound: gamesByRound,
             gamesData: gamesData,
@@ -799,8 +918,8 @@ class GamesListView extends ConsumerWidget {
 
 class GameListItemBuilder extends ConsumerWidget {
   final int index;
-  final List rounds; 
-  final List originalRounds; 
+  final List rounds;
+  final List originalRounds;
   final Map<String, List<GamesTourModel>> gamesByRound;
   final GamesScreenModel gamesData;
   final bool isChessBoardVisible;
@@ -832,7 +951,7 @@ class GameListItemBuilder extends ConsumerWidget {
         return RoundHeader(
           round: round,
           roundGames: roundGames,
-          headerKey: getHeaderKey(round.id), 
+          headerKey: getHeaderKey(round.id),
         );
       }
       currentIndex += 1;
@@ -846,7 +965,7 @@ class GameListItemBuilder extends ConsumerWidget {
           key: getGameKey(
             round.id,
             gameIndexInRound,
-          ), 
+          ),
           child: Padding(
             padding: EdgeInsets.only(bottom: 12.sp),
             child: GameCardWrapperWidget(

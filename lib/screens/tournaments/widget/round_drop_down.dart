@@ -22,36 +22,36 @@ class RoundDropDown extends ConsumerWidget {
       child: ref
           .watch(gamesAppBarProvider)
           .when(
-            data:
-                (data) => _RoundDropdown(
-                  rounds: data.gamesAppBarModels,
-                  selectedRoundId: data.selectedId,
-                  onChanged: (model) {
-                    ref
-                        .read(gamesAppBarProvider.notifier)
-                        .selectNewRound(model);
-                  },
-                ),
-            error:
-                (e, _) => Center(
-                  child: Text(
-                    'Error loading rounds',
-                    style: AppTypography.textXsRegular.copyWith(
-                      color: kWhiteColor70,
-                    ),
+            data: (data) {
+              return _RoundDropdown(
+                rounds: data.gamesAppBarModels,
+                selectedRoundId: data.selectedId,
+                onChanged: (model) {
+                  ref.read(gamesAppBarProvider.notifier).selectNewRound(model);
+                },
+              );
+            },
+            error: (e, _) {
+              return Center(
+                child: Text(
+                  'Error loading rounds',
+                  style: AppTypography.textXsRegular.copyWith(
+                    color: kWhiteColor70,
                   ),
                 ),
+              );
+            },
             loading: () {
               final loadingRound = GamesAppBarViewModel(
                 gamesAppBarModels: [
                   GamesAppBarModel(
-                    id: 'qdBcMm1h',
-                    name: 'round-1',
-                    roundStatus: RoundStatus.live,
+                    id: 'loading',
+                    name: 'Loading...',
+                    roundStatus: RoundStatus.upcoming,
                     startsAt: DateTime.now(),
                   ),
                 ],
-                selectedId: 'qdBcMm1h',
+                selectedId: 'loading',
               );
               return SkeletonWidget(
                 child: _RoundDropdown(
@@ -68,7 +68,7 @@ class RoundDropDown extends ConsumerWidget {
 
 class _RoundDropdown extends HookConsumerWidget {
   final List<GamesAppBarModel> rounds;
-  final String selectedRoundId;
+  final String? selectedRoundId;
   final ValueChanged<GamesAppBarModel> onChanged;
 
   const _RoundDropdown({
@@ -208,14 +208,23 @@ class _RoundDropdown extends HookConsumerWidget {
                               },
                               itemBuilder: (context, index) {
                                 final round = reversedRounds[index];
+                                final isSelected = round.id == selectedRoundId;
+
                                 return InkWell(
                                   onTap: () {
-                                    onChanged(round);
+                                    if (!isSelected) {
+                                      onChanged(round);
+                                    }
                                     isOpen.value = false;
                                   },
-                                  child: Padding(
+                                  child: Container(
+                                    color:
+                                        isSelected
+                                            ? kBlack2Color.withOpacity(0.5)
+                                            : Colors.transparent,
                                     padding: EdgeInsets.symmetric(
                                       horizontal: 12.w,
+                                      vertical: 4.h,
                                     ),
                                     child: _buildRow(round, false),
                                   ),
@@ -233,9 +242,18 @@ class _RoundDropdown extends HookConsumerWidget {
       );
 
       overlay.insert(entry);
-      isOpen.addListener(() {
-        if (!isOpen.value && entry.mounted) {
+
+      final removeListener = () {
+        if (entry.mounted) {
           entry.remove();
+        }
+      };
+
+      isOpen.addListener(removeListener);
+
+      entry.addListener(() {
+        if (!entry.mounted) {
+          isOpen.removeListener(removeListener);
         }
       });
     });
@@ -245,10 +263,19 @@ class _RoundDropdown extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final layerLink = useMemoized(() => LayerLink());
     final isOpen = useState(false);
-
-    final selected = rounds.firstWhere(
+    final reversedRounds = rounds.reversed.toList();
+    final selected = reversedRounds.firstWhere(
       (r) => r.id == selectedRoundId,
-      orElse: () => rounds.first,
+      orElse:
+          () =>
+              rounds.isNotEmpty
+                  ? reversedRounds.first
+                  : GamesAppBarModel(
+                    id: 'default',
+                    name: 'No rounds',
+                    roundStatus: RoundStatus.upcoming,
+                    startsAt: DateTime.now(),
+                  ),
     );
 
     return CompositedTransformTarget(
@@ -256,6 +283,7 @@ class _RoundDropdown extends HookConsumerWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () {
+          if (rounds.length <= 1) return;
           if (isOpen.value) {
             isOpen.value = false;
           } else {
@@ -284,11 +312,12 @@ class _RoundDropdown extends HookConsumerWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              Icon(
-                Icons.keyboard_arrow_down_outlined,
-                color: kWhiteColor,
-                size: 20.ic,
-              ),
+              if (rounds.length > 1)
+                Icon(
+                  Icons.keyboard_arrow_down_outlined,
+                  color: kWhiteColor,
+                  size: 20.ic,
+                ),
             ],
           ),
         ),
