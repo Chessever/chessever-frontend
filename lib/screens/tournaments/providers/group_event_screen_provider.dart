@@ -18,6 +18,9 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../standings/standing_screen_provider.dart';
 
+// New provider for selected player name
+final selectedPlayerNameProvider = StateProvider<String?>((ref) => null);
+
 final groupEventScreenProvider = AutoDisposeStateNotifierProvider<
   _GroupEventScreenController,
   AsyncValue<List<GroupEventCardModel>>
@@ -196,6 +199,9 @@ class _GroupEventScreenController
 
     ref.read(selectedTourIdProvider.notifier).state = selectedBroadcast.id;
     ref.read(selectedBroadcastModelProvider.notifier).state = selectedBroadcast;
+
+    // Store the selected player's name for use in GamesTourScreen
+    ref.read(selectedPlayerNameProvider.notifier).state = player.name;
 
     ref.invalidate(gamesAppBarProvider);
     ref.invalidate(gamesTourScreenProvider);
