@@ -85,7 +85,7 @@ class EvaluationBarWidget extends ConsumerWidget {
                         .characters
                         .take(4)
                         .string, // Show negative values directly
-                maxLines: 1,
+                maxLines: 2,
                 textAlign: TextAlign.center,
                 style: AppTypography.textSmRegular.copyWith(
                   color: Colors.white,
@@ -129,16 +129,18 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
               ),
             );
           },
-          error:
-              (_, _) => SkeletonWidget(
-                child: _Bars(
-                  width: width,
-                  height: height,
-                  whiteHeight: height * 0.5,
-                  blackHeight: height * 0.5,
-                  evaluation: 0.0,
-                ),
+          error: (_, _) {
+            //No Evaluation
+            return SkeletonWidget(
+              child: _Bars(
+                width: width,
+                height: height,
+                whiteHeight: height * 0.5,
+                blackHeight: height * 0.5,
+                evaluation: 0.0,
               ),
+            );
+          },
           data: (cloud) {
             final pv = cloud.pvs.firstOrNull;
             if (pv == null) {
