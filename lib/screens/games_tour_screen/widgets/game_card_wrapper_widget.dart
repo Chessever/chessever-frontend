@@ -1,12 +1,12 @@
-import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
-import 'package:chessever2/screens/chessboard/widgets/chess_board_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_widget_new.dart';
 import 'package:chessever2/screens/tournaments/model/games_tour_model.dart';
 import 'package:chessever2/screens/tournaments/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/widget/game_card.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+import '../../chessboard/chess_board_screen_new.dart';
 
 class GameCardWrapperWidget extends ConsumerWidget {
   final GamesTourModel game;
@@ -24,37 +24,27 @@ class GameCardWrapperWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Use consistent keys based on game ID to help with position tracking
     final keyValue =
         'game_${game.gameId}_${isChessBoardVisible ? 'chess' : 'card'}';
 
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 200),
-      transitionBuilder: (Widget child, Animation<double> animation) {
-        return FadeTransition(
-          opacity: animation,
-          child: child,
+    return isChessBoardVisible
+        ? ChessBoardFromFENNew(
+          key: ValueKey('${keyValue}_board'),
+          gamesTourModel: game,
+          onChanged: () => _navigateToChessBoard(context, ref),
+        )
+        : GameCard(
+          key: ValueKey('${keyValue}_card'),
+          gamesTourModel: game,
+          pinnedIds: gamesData.pinnedGamedIs,
+          onPinToggle: (_) => _handlePinToggle(ref),
+          onTap: () => _navigateToChessBoard(context, ref),
         );
-      },
-      child:
-          isChessBoardVisible
-              ? ChessBoardFromFENNew(
-                key: ValueKey('${keyValue}_board'),
-                gamesTourModel: game,
-                onChanged: () => _navigateToChessBoard(context, ref),
-              )
-              : GameCard(
-                key: ValueKey('${keyValue}_card'),
-                gamesTourModel: game,
-                pinnedIds: gamesData.pinnedGamedIs,
-                onPinToggle: (_) => _handlePinToggle(ref),
-                onTap: () => _navigateToChessBoard(context, ref),
-              ),
-    );
   }
 
   void _navigateToChessBoard(BuildContext context, WidgetRef ref) {
-    ref.read(chessboardViewFromProviderNew.notifier).state = ChessboardView.tour;
+    ref.read(chessboardViewFromProviderNew.notifier).state =
+        ChessboardView.tour;
     Navigator.push(
       context,
       MaterialPageRoute(
