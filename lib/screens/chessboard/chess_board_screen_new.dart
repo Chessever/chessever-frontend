@@ -519,6 +519,7 @@ class _GameBody extends StatelessWidget {
     required this.onSwipeLeft,
     required this.onSwipeRight,
   });
+
   Offset? _panStartPosition;
   double _totalHorizontalDelta = 0.0;
   double _totalVerticalDelta = 0.0;
@@ -710,6 +711,7 @@ class _PlayerWidget extends StatelessWidget {
 class _BoardWithSidebar extends StatelessWidget {
   final int index;
   final ChessBoardStateNew state;
+
   const _BoardWithSidebar({required this.index, required this.state});
 
   @override
@@ -749,6 +751,7 @@ class _ChessBoardNew extends ConsumerWidget {
   final double size;
   final ChessBoardStateNew chessBoardState;
   final bool isFlipped;
+
   const _ChessBoardNew({
     required this.size,
     required this.chessBoardState,
@@ -782,6 +785,7 @@ class _MovesDisplay extends ConsumerWidget {
   final ChessBoardStateNew state;
   final List<String> sanMoves;
   final int currentMoveIndex;
+
   const _MovesDisplay({
     required this.state,
     required this.index,

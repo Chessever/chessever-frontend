@@ -52,3 +52,8 @@ flutter pub run build_runner build --delete-conflicting-outputs
 
 This command will generate assets using `build_runner`
 
+
+
+#### Project Knowledge
+///pvs -> moves from the current position []
+///knodes -> 1000 nodes, nodes are the number of positions that the engine has looked at

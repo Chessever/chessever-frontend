@@ -407,27 +407,28 @@ class ChessBoardScreenNotifier
   }
 
   // Evaluation
+  @deprecated
   Future<void> _updateEvaluation() async {
-    const debounceTag = 'eval-debounce';
-    EasyDebounce.debounce(
-      debounceTag,
-      const Duration(milliseconds: 300),
-      () async {
-        try {
-          final st = state.value!;
-          if (st.isLoadingMoves) return; // Don't evaluate while loading
-
-          final fen = st.currentPosition.fen;
-          final ev = await StockfishSingleton().evaluatePosition(fen);
-
-          if (mounted) {
-            state = AsyncValue.data(st.copyWith(evaluations: ev));
-          }
-        } catch (e) {
-          print('Evaluation error: $e');
-        }
-      },
-    );
+    // const debounceTag = 'eval-debounce';
+    // EasyDebounce.debounce(
+    //   debounceTag,
+    //   const Duration(milliseconds: 300),
+    //   () async {
+    //     try {
+    //       final st = state.value!;
+    //       if (st.isLoadingMoves) return; // Don't evaluate while loading
+    //
+    //       final fen = st.currentPosition.fen;
+    //       final ev = await StockfishSingleton().evaluatePosition(fen,depth: 17);
+    //
+    //       if (mounted) {
+    //         state = AsyncValue.data(st.copyWith(evaluations: ev));
+    //       }
+    //     } catch (e) {
+    //       print('Evaluation error: $e');
+    //     }
+    //   },
+    // );
   }
 
   // Utility methods for UI

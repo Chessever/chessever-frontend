@@ -5,10 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class ChessProgressBar extends ConsumerStatefulWidget {
-  const ChessProgressBar({
-    required this.fen,
-    super.key,
-  });
+  const ChessProgressBar({required this.fen, super.key});
 
   final String fen;
 
@@ -17,31 +14,30 @@ class ChessProgressBar extends ConsumerStatefulWidget {
 }
 
 class _ChessProgressBarState extends ConsumerState<ChessProgressBar> {
-  /// Returns a valid FEN or the standard start position.
-  String _validFenOrStart(String? fen) {
-    const start = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-    if (fen == null || fen.isEmpty) return start;
-
-    // Must contain exactly 7 slashes (8 ranks)
-    final slashCount = fen.split('/').length - 1;
-    if (slashCount != 7) return start;
-
-    return fen;
-  }
-
   @override
   Widget build(BuildContext context) {
-    final evalAsync = ref.watch(
-      cascadeEvalProvider(_validFenOrStart(widget.fen)),
-    );
+    final evalAsync = ref.watch(cascadeEvalProvider(widget.fen ?? ''));
 
     final evaluation = evalAsync.when(
       loading: () => 0.0,
       error: (_, __) => 0.0,
       data: (cloud) {
         final pv = cloud.pvs.firstOrNull;
-        print(pv?.cp ?? 0);
-        return pv == null ? 0.0 : (pv.cp * 10 / 100).clamp(-10, 10) / 10;
+
+        // Handle evaluation based on cp value
+        double evaluation;
+        if (pv?.cp.abs() == 100000) {
+          // This is a mate score (converted from mate in X moves)
+          evaluation = (pv?.cp ?? 0) > 0 ? 10.0 : -10.0;
+        } else {
+          // Normal centipawn score - convert to pawn units
+          evaluation = (pv?.cp ?? 0) / 100.0;
+        }
+
+        // Calculate ratios (fixed to sum to 1.0)
+        final normalized = (evaluation.clamp(-5.0, 5.0) + 5.0) / 10.0;
+        final whiteRatio = normalized;
+        return whiteRatio;
       },
     );
 

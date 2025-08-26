@@ -415,11 +415,7 @@ class _GameDropdownItem extends StatelessWidget {
       case GameStatus.blackWins:
       case GameStatus.draw:
         // Completed games (any result)
-        return SvgPicture.asset(
-          SvgAsset.check,
-          width: 16.w,
-          height: 16.h,
-        );
+        return SvgPicture.asset(SvgAsset.check, width: 16.w, height: 16.h);
       case GameStatus.ongoing:
         // Ongoing/Live games
         return SvgPicture.asset(

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:collection';
 import 'dart:ui';
+import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:stockfish/stockfish.dart';
 
 class StockfishSingleton {
@@ -12,9 +13,9 @@ class StockfishSingleton {
   final Queue<_EvalJob> _queue = Queue<_EvalJob>();
   bool _isWorking = false;
 
-  Future<double> evaluatePosition(String fen) async {
-    final completer = Completer<double>();
-    _queue.add(_EvalJob(fen, completer));
+  Future<CloudEval> evaluatePosition(String fen, {int depth = 15}) async {
+    final completer = Completer<CloudEval>();
+    _queue.add(_EvalJob(fen, depth, completer));
     _processQueue();
     return completer.future;
   }
@@ -33,30 +34,83 @@ class StockfishSingleton {
     while (_queue.isNotEmpty) {
       final job = _queue.removeFirst();
       final fen = job.fen;
+      final depth = job.depth;
       final completer = job.completer;
 
-      double result = 0.0;
+      final List<Pv> pvs = [];
+      int knodes = 0;
+      int finalDepth = 0;
+
       final sub = _engine!.stdout.listen((line) {
-        final cp = RegExp(r'score cp (-?\d+)').firstMatch(line)?.group(1);
-        if (cp != null) {
-          result = int.parse(cp) / 100.0;
-        } else {
-          final mate = RegExp(r'score mate (-?\d+)').firstMatch(line)?.group(1);
-          if (mate != null) result = int.parse(mate).sign * 10.0;
+        // Parse info lines for analysis data
+        if (line.startsWith('info depth')) {
+          final depthMatch = RegExp(r'depth (\d+)').firstMatch(line);
+          if (depthMatch != null) {
+            finalDepth = int.parse(depthMatch.group(1)!);
+          }
+
+          final knodesMatch = RegExp(r'nodes (\d+)').firstMatch(line);
+          if (knodesMatch != null) {
+            knodes = (int.parse(knodesMatch.group(1)!) / 1000).round();
+          }
+
+          // Parse score and moves for the principal variation
+          final pvMatch = RegExp(r'pv (.+)').firstMatch(line);
+          if (pvMatch != null) {
+            final moves = pvMatch.group(1)!.trim();
+
+            // Parse score (either cp or mate)
+            final cpMatch = RegExp(r'score cp (-?\d+)').firstMatch(line);
+            final mateMatch = RegExp(r'score mate (-?\d+)').firstMatch(line);
+
+            if (cpMatch != null) {
+              final cp = int.parse(cpMatch.group(1)!);
+              final pv = Pv(moves: moves, cp: cp, isMate: false);
+              // Replace or add the main PV (depth-based)
+              if (pvs.isEmpty) {
+                pvs.add(pv);
+              } else {
+                pvs[0] = pv; // Update main line
+              }
+            } else if (mateMatch != null) {
+              final mate = int.parse(mateMatch.group(1)!);
+              final cp = mate.sign * 100000; // Convert mate to large cp value
+              final pv = Pv(moves: moves, cp: cp, isMate: true);
+              if (pvs.isEmpty) {
+                pvs.add(pv);
+              } else {
+                pvs[0] = pv; // Update main line
+              }
+            }
+          }
         }
+
+        // When analysis is complete
         if (line.startsWith('bestmove')) {
+          final result = CloudEval(
+            fen: fen,
+            knodes: knodes,
+            depth: finalDepth,
+            pvs: pvs.isEmpty ? [Pv(moves: '', cp: 0)] : pvs,
+          );
           if (!completer.isCompleted) completer.complete(result);
         }
       });
 
       _engine!.stdin = 'position fen $fen';
-      _engine!.stdin = 'go depth 10';
+      _engine!.stdin = 'go depth $depth';
 
       await completer.future.timeout(
-        const Duration(seconds: 3),
+        const Duration(seconds: 10),
         onTimeout: () {
-          if (!completer.isCompleted) completer.complete(0.0);
-          return 0.0;
+          final fallbackResult = CloudEval(
+            fen: fen,
+            knodes: knodes,
+            depth: finalDepth,
+            pvs: pvs.isEmpty ? [Pv(moves: '', cp: 0)] : pvs,
+          );
+          if (!completer.isCompleted) completer.complete(fallbackResult);
+          return fallbackResult;
         },
       );
 
@@ -88,6 +142,7 @@ class StockfishSingleton {
 
 class _EvalJob {
   final String fen;
-  final Completer<double> completer;
-  _EvalJob(this.fen, this.completer);
+  final int depth;
+  final Completer<CloudEval> completer;
+  _EvalJob(this.fen, this.depth, this.completer);
 }

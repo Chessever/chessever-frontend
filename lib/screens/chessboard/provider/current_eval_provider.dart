@@ -27,17 +27,58 @@ final cascadeEvalProvider = FutureProvider.family<CloudEval, String>((
   if (supabaseEval != null) {
     final cloud = await ref
         .read(evalsRepositoryProvider)
-        .evalsToCloudEval(
-          fen,
-          supabaseEval,
-        );
+        .evalsToCloudEval(fen, supabaseEval);
     await local.save(fen, cloud); // keep local in sync
     return cloud;
   }
 
   // 3️⃣  Lichess → Supabase → local
   final cloud = await lichess.getEval(fen);
-  await persist.call(fen, cloud); // writes positions, evals, pvs
-  await local.save(fen, cloud); // local cache
+  Future.wait<void>([
+    persist.call(fen, cloud), // writes positions, evals, pvs
+    local.save(fen, cloud), // local cache
+  ]);
+
   return cloud;
+});
+
+/// local → 2. Supabase → 3. lichess -> 4. Fallback -> Local Stockfish
+final cascadeEvalProviderForBoard = FutureProvider.family<CloudEval, String>((
+  ref,
+  fen,
+) async {
+  final local = ref.read(localEvalCacheProvider);
+  final persist = ref.read(persistCloudEvalProvider);
+  final lichess = ref.read(lichessEvalRepoProvider);
+  try {
+    if (fen.isEmpty) throw Exception('Empty FEN');
+
+    // 1️⃣  Local cache
+    final cached = await local.fetch(fen);
+    if (cached != null) return cached;
+
+
+    // 2️⃣  Supabase
+    final supabaseEval = await ref
+        .read(evalsRepositoryProvider)
+        .fetchFromSupabase(fen);
+    if (supabaseEval != null) {
+      final cloud = await ref
+          .read(evalsRepositoryProvider)
+          .evalsToCloudEval(fen, supabaseEval);
+      await local.save(fen, cloud); // keep local in sync
+      return cloud;
+    }
+
+    // 3️⃣  Lichess → Supabase → local
+    final cloud = await lichess.getEval(fen);
+    Future.wait<void>([
+      persist.call(fen, cloud), // writes positions, evals, pvs
+      local.save(fen, cloud), // local cache
+    ]);
+
+    return cloud;
+  } catch (error, _) {
+    rethrow ;
+  }
 });

@@ -33,26 +33,33 @@ class CloudEval {
 
 class Pv {
   final String moves;
-  final int cp;   // centipawns (positive = white advantage)
+  final int cp; // centipawns (positive = white advantage)
+  final bool isMate;
 
-  Pv({required this.moves, required this.cp});
+  Pv({required this.moves, required this.cp, this.isMate = false});
 
   factory Pv.fromJson(Map<String, dynamic> json) {
     final moves = json['moves'] as String;
 
     int cp;
+    bool isMate;
     if (json.containsKey('mate')) {
       // convert “mate in X” to a big centipawn score
       final mate = int.parse(json['mate'].toString());
       cp = mate.sign * 100_000;
+      isMate = true;
     } else {
       // normal centipawn score
       cp = int.parse(json['cp'].toString());
+      isMate = false;
     }
 
-    return Pv(moves: moves, cp: cp);
+    return Pv(moves: moves, cp: cp, isMate: isMate);
   }
 
-  Map<String, dynamic> toJson() =>
-      {'moves': moves, if (cp.abs() != 100_000) 'cp': cp};
+  Map<String, dynamic> toJson() => {
+    'moves': moves,
+    if (cp.abs() != 100_000) 'cp': cp,
+    'isMate': isMate,
+  };
 }
