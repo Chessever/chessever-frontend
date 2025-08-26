@@ -1,6 +1,10 @@
 import 'dart:ui';
 
+import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
+import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.dart';
+import 'package:chessever2/repository/supabase/evals/persist_cloud_eval.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
+import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
@@ -108,7 +112,7 @@ class ChessBoardScreenNotifierNew
   void goToMove(int moveIndex) {
     final currentState = state.value;
     if (currentState == null) return;
-    if(currentState.isLoadingMoves) return;
+    if (currentState.isLoadingMoves) return;
 
     if (moveIndex < -1 || moveIndex >= currentState.allMoves.length) return;
 
@@ -249,10 +253,60 @@ class ChessBoardScreenNotifierNew
           final fen = currentState.position?.fen;
           if (fen == null) return;
 
-          final evaluation = await StockfishSingleton().evaluatePosition(fen);
+          CloudEval? cloudEval;
+          double evaluation = 0.0;
+
+          try {
+            // Try to get evaluation from cascade provider first
+            cloudEval = await ref.read(cascadeEvalProviderForBoard(fen).future);
+
+            // Extract evaluation from CloudEval
+            if (cloudEval?.pvs.isNotEmpty ?? false) {
+              evaluation =
+                  cloudEval!.pvs.first.cp /
+                  100.0; // Convert centipawns to pawns
+            }
+          } catch (e) {
+            print('Cascade eval failed, using local stockfish: $e');
+
+            // Fallback to local Stockfish
+            final result = await StockfishSingleton().evaluatePosition(
+              fen,
+              depth: 17,
+            );
+
+            // Extract evaluation from CloudEval
+            if (result.pvs.isNotEmpty) {
+              evaluation =
+                  result.pvs.first.cp / 100.0; // Convert centipawns to pawns
+
+              // Adjust for black's turn
+              List<String> fenParts = fen.split(' ');
+              final isBlackTurn = fenParts[1] == 'b';
+              if (isBlackTurn) {
+                evaluation = -evaluation;
+              }
+            }
+
+            // Create CloudEval for caching
+            cloudEval = result;
+
+            // Cache the result
+            try {
+              final local = ref.read(localEvalCacheProvider);
+              final persist = ref.read(persistCloudEvalProvider);
+
+              Future.wait<void>([
+                persist.call(fen, cloudEval), // writes positions, evals, pvs
+                local.save(fen, cloudEval), // local cache
+              ]);
+            } catch (cacheError) {
+              print('Cache error: $cacheError');
+            }
+          }
 
           // Check if the state is still valid before updating
-          if (state.value != null) {
+          if (state.value != null && mounted) {
             state = AsyncValue.data(
               currentState.copyWith(evaluation: evaluation),
             );
