@@ -9,6 +9,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/svg_asset.dart';
@@ -33,15 +34,32 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   late PageController _pageController;
   int _currentPageIndex = 0;
 
+  /// Keep manual subscriptions to preloaded pages alive
+  final Map<int, ProviderSubscription<AsyncValue<ChessBoardStateNew>>>
+  _prefetchSubs = {};
+
+  static const int _prefetchRadius = 2; // preload prev2 and next2
+
   @override
   void initState() {
-    _currentPageIndex = widget.currentIndex;
-    _pageController = PageController(initialPage: widget.currentIndex);
     super.initState();
+    _currentPageIndex = widget.currentIndex;
+    _pageController = PageController(
+      initialPage: widget.currentIndex,
+      viewportFraction: 1.0, // full page; no peek
+    );
+
+    // Prime current & neighbors
+    _prefetchAround(_currentPageIndex);
   }
 
   @override
   void dispose() {
+    // Cancel all prefetch subscriptions
+    for (final sub in _prefetchSubs.values) {
+      sub.close();
+    }
+    _prefetchSubs.clear();
     _pageController.dispose();
     super.dispose();
   }
@@ -49,21 +67,26 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   void _onPageChanged(int newIndex) {
     if (_currentPageIndex == newIndex) return;
 
-    ref
-        .read(chessBoardScreenProviderNew(_currentPageIndex).notifier)
-        .pauseGame();
-    _currentPageIndex = newIndex;
-  }
-
-  void _navigateToGame(int gameIndex) {
-    if (gameIndex == _currentPageIndex) return;
-
     // Pause current game
     ref
         .read(chessBoardScreenProviderNew(_currentPageIndex).notifier)
         .pauseGame();
 
-    // Navigate to new game
+    setState(() {
+      _currentPageIndex = newIndex;
+    });
+
+    // Preload window around new index
+    _prefetchAround(newIndex);
+  }
+
+  void _navigateToGame(int gameIndex) {
+    if (gameIndex == _currentPageIndex) return;
+
+    ref
+        .read(chessBoardScreenProviderNew(_currentPageIndex).notifier)
+        .pauseGame();
+
     _pageController.animateToPage(
       gameIndex,
       duration: const Duration(milliseconds: 300),
@@ -71,61 +94,87 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
     );
   }
 
-  // Add these methods to handle swipes
-  void _handleSwipeLeft() {
-    if (_currentPageIndex < widget.games.length - 1) {
-      _pageController.nextPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
+  /// Preload providers for [index-2 .. index+2] and keep them alive
+  void _prefetchAround(int center) {
+    final start = (center - _prefetchRadius).clamp(0, widget.games.length - 1);
+    final end = (center + _prefetchRadius).clamp(0, widget.games.length - 1);
+
+    // Start/keep subscriptions for the target window
+    for (int i = start; i <= end; i++) {
+      if (_prefetchSubs.containsKey(i)) continue;
+      // Start listening manually; this keeps the AutoDispose provider alive
+      final sub = ref.listenManual<AsyncValue<ChessBoardStateNew>>(
+        chessBoardScreenProviderNew(i),
+        (_, __) {},
+        fireImmediately: false,
       );
+      _prefetchSubs[i] = sub;
+    }
+
+    // Cancel subscriptions that are now out of window
+    final toRemove = <int>[];
+    _prefetchSubs.forEach((idx, sub) {
+      if (idx < start || idx > end) {
+        sub.close();
+        toRemove.add(idx);
+      }
+    });
+    for (final idx in toRemove) {
+      _prefetchSubs.remove(idx);
     }
   }
 
-  void _handleSwipeRight() {
-    if (_currentPageIndex > 0) {
-      _pageController.previousPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
-    }
-  }
-
-  // ChessBoardStateNew chessBoardState
   @override
   Widget build(BuildContext context) {
+    // Keep horizontal paging strict (PageView handles it well already).
+    // Optional: block vertical drags from triggering page change by using a RawGestureDetector.
     return Scaffold(
-      body: PageView.builder(
-        physics: const NeverScrollableScrollPhysics(),
-        controller: _pageController,
-        onPageChanged: _onPageChanged,
-        itemCount: widget.games.length,
-        itemBuilder: (context, index) {
-          if ((index - _currentPageIndex).abs() > 1) {
-            return Container();
-          }
-          return ref
-              .watch(chessBoardScreenProviderNew(index))
-              .when(
-                data: (chessBoardState) {
-                  return _GamePage(
-                    game: widget.games[index],
-                    state: chessBoardState,
-                    games: widget.games,
-                    currentGameIndex: _currentPageIndex,
-                    onGameChanged: _navigateToGame,
-                    onSwipeLeft: _handleSwipeLeft,
-                    onSwipeRight: _handleSwipeRight,
-                  );
-                },
-                error: (e, _) => ErrorWidget(e),
-                loading:
-                    () => _LoadingScreen(
-                      games: widget.games,
-                      currentGameIndex: _currentPageIndex,
-                      onGameChanged: _navigateToGame,
-                    ),
-              );
+      body: RawGestureDetector(
+        gestures: <Type, GestureRecognizerFactory>{
+          HorizontalDragGestureRecognizer: GestureRecognizerFactoryWithHandlers<
+            HorizontalDragGestureRecognizer
+          >(
+            () => HorizontalDragGestureRecognizer(),
+            (HorizontalDragGestureRecognizer instance) {
+              instance.onStart = (_) {};
+              instance.onUpdate = (_) {};
+              instance.onEnd = (_) {};
+            },
+          ),
         },
+        behavior: HitTestBehavior.translucent,
+        child: PageView.builder(
+          padEnds: true,
+          allowImplicitScrolling: true, // helps the framework build ahead
+          physics: const PageScrollPhysics(),
+          controller: _pageController,
+          onPageChanged: _onPageChanged,
+          itemCount: widget.games.length,
+          itemBuilder: (context, index) {
+            // (Optionally keep your existing "+/-1 only build" optimization;
+            // the prefetch ensures state is ready when the page appears.)
+            return ref
+                .watch(chessBoardScreenProviderNew(index))
+                .when(
+                  data: (chessBoardState) {
+                    return _GamePage(
+                      game: widget.games[index],
+                      state: chessBoardState,
+                      games: widget.games,
+                      currentGameIndex: index,
+                      onGameChanged: _navigateToGame,
+                    );
+                  },
+                  error: (e, _) => ErrorWidget(e),
+                  loading:
+                      () => _LoadingScreen(
+                        games: widget.games,
+                        currentGameIndex: index,
+                        onGameChanged: _navigateToGame,
+                      ),
+                );
+          },
+        ),
       ),
     );
   }
@@ -137,8 +186,6 @@ class _GamePage extends StatelessWidget {
   final List<GamesTourModel> games;
   final int currentGameIndex;
   final void Function(int) onGameChanged;
-  final VoidCallback onSwipeLeft;
-  final VoidCallback onSwipeRight;
 
   const _GamePage({
     required this.game,
@@ -146,8 +193,6 @@ class _GamePage extends StatelessWidget {
     required this.games,
     required this.currentGameIndex,
     required this.onGameChanged,
-    required this.onSwipeLeft,
-    required this.onSwipeRight,
   });
 
   @override
@@ -164,8 +209,6 @@ class _GamePage extends StatelessWidget {
         index: currentGameIndex,
         game: game,
         state: state,
-        onSwipeLeft: onSwipeLeft,
-        onSwipeRight: onSwipeRight,
       ),
     );
   }
@@ -206,7 +249,6 @@ class _LoadingScreen extends StatelessWidget {
   }
 }
 
-// Enhanced App Bar with Game Selection Dropdown
 class _AppBar extends StatelessWidget implements PreferredSizeWidget {
   final GamesTourModel game;
   final List<GamesTourModel> games;
@@ -240,19 +282,7 @@ class _AppBar extends StatelessWidget implements PreferredSizeWidget {
         PopupMenuButton<String>(
           icon: const Icon(Icons.more_vert, color: kWhiteColor),
           enabled: !isLoading,
-          onSelected: (value) {
-            switch (value) {
-              case 'share':
-                // Share game functionality
-                break;
-              case 'analyze':
-                // Analyze game functionality
-                break;
-              case 'copy_pgn':
-                // Copy PGN functionality
-                break;
-            }
-          },
+          onSelected: (_) {},
           itemBuilder:
               (context) => [
                 PopupMenuItem(
@@ -261,7 +291,7 @@ class _AppBar extends StatelessWidget implements PreferredSizeWidget {
                     children: [
                       Icon(Icons.share, color: kWhiteColor),
                       SizedBox(width: 8.w),
-                      Text('Share Game'),
+                      const Text('Share Game'),
                     ],
                   ),
                 ),
@@ -271,7 +301,7 @@ class _AppBar extends StatelessWidget implements PreferredSizeWidget {
                     children: [
                       Icon(Icons.analytics, color: kWhiteColor),
                       SizedBox(width: 8.w),
-                      Text('Analyze'),
+                      const Text('Analyze'),
                     ],
                   ),
                 ),
@@ -281,7 +311,7 @@ class _AppBar extends StatelessWidget implements PreferredSizeWidget {
                     children: [
                       Icon(Icons.copy, color: kWhiteColor),
                       SizedBox(width: 8.w),
-                      Text('Copy PGN'),
+                      const Text('Copy PGN'),
                     ],
                   ),
                 ),
@@ -295,7 +325,6 @@ class _AppBar extends StatelessWidget implements PreferredSizeWidget {
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
 }
 
-// Game Selection Dropdown Widget
 class _GameSelectionDropdown extends StatelessWidget {
   final List<GamesTourModel> games;
   final int currentGameIndex;
@@ -336,7 +365,6 @@ class _GameSelectionDropdown extends StatelessWidget {
                 },
         selectedItemBuilder: (BuildContext context) {
           return games.asMap().entries.map<Widget>((entry) {
-            // final index = entry.key;
             final game = entry.value;
 
             return Container(
@@ -383,7 +411,6 @@ class _GameSelectionDropdown extends StatelessWidget {
   }
 }
 
-// Individual Game Dropdown Item
 class _GameDropdownItem extends StatelessWidget {
   final GamesTourModel game;
   final int gameNumber;
@@ -402,29 +429,25 @@ class _GameDropdownItem extends StatelessWidget {
       return SizedBox(
         width: 16.w,
         height: 16.h,
-        child: CircularProgressIndicator(
+        child: const CircularProgressIndicator(
           strokeWidth: 1.5,
           color: kPrimaryColor,
         ),
       );
     }
 
-    // Use the correct GameStatus enum values
     switch (game.gameStatus) {
       case GameStatus.whiteWins:
       case GameStatus.blackWins:
       case GameStatus.draw:
-        // Completed games (any result)
         return SvgPicture.asset(SvgAsset.check, width: 16.w, height: 16.h);
       case GameStatus.ongoing:
-        // Ongoing/Live games
         return SvgPicture.asset(
           SvgAsset.selectedSvg,
           width: 16.w,
           height: 16.h,
         );
       case GameStatus.unknown:
-        // Unknown status - use calendar icon
         return SvgPicture.asset(
           SvgAsset.calendarIcon,
           width: 16.w,
@@ -439,27 +462,11 @@ class _GameDropdownItem extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Flexible(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // // Game title with round info
-              // Text(
-              //   'Game $gameNumber - ${game.roundDisplayName}',
-              //   style: AppTypography.textXsRegular.copyWith(color: kWhiteColor),
-              //   maxLines: 1,
-              //   overflow: TextOverflow.ellipsis,
-              // ),
-              // SizedBox(height: 2.h),
-              // // Player names
-              Text(
-                '${game.whitePlayer.name} vs ${game.blackPlayer.name}',
-                style: AppTypography.textXsRegular.copyWith(
-                  color: kWhiteColor70,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
+          child: Text(
+            '${game.whitePlayer.name} vs ${game.blackPlayer.name}',
+            style: AppTypography.textXsRegular.copyWith(color: kWhiteColor70),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
         SizedBox(width: 8.w),
@@ -469,11 +476,6 @@ class _GameDropdownItem extends StatelessWidget {
   }
 }
 
-// You'll need to add these imports at the top of the file
-
-// Remove the _GameStatusIndicator class as we're now using SVG icons directly
-
-// Enhanced bottom navigation bar with proper state integration
 class _BottomNavBar extends ConsumerWidget {
   final int index;
   final ChessBoardStateNew state;
@@ -504,121 +506,16 @@ class _BottomNavBar extends ConsumerWidget {
   }
 }
 
-// ignore: must_be_immutable
 class _GameBody extends StatelessWidget {
   final int index;
   final GamesTourModel game;
   final ChessBoardStateNew state;
-  final VoidCallback onSwipeLeft;
-  final VoidCallback onSwipeRight;
 
-  _GameBody({
+  const _GameBody({
     required this.index,
     required this.game,
     required this.state,
-    required this.onSwipeLeft,
-    required this.onSwipeRight,
   });
-
-  Offset? _panStartPosition;
-  double _totalHorizontalDelta = 0.0;
-  double _totalVerticalDelta = 0.0;
-  bool _isHorizontalSwipe = false;
-  DateTime? _lastSwipeTime;
-
-  static const Duration _swipeDebounceTime = Duration(milliseconds: 300);
-
-  void _resetSwipeTracking() {
-    _totalHorizontalDelta = 0.0;
-    _totalVerticalDelta = 0.0;
-    _isHorizontalSwipe = false;
-  }
-
-  bool _canSwipe() {
-    if (_lastSwipeTime == null) return true;
-    return DateTime.now().difference(_lastSwipeTime!) > _swipeDebounceTime;
-  }
-
-  void _recordSwipe() {
-    _lastSwipeTime = DateTime.now();
-  }
-
-  onPanStart(DragStartDetails details) {
-    _panStartPosition = details.globalPosition;
-    _resetSwipeTracking();
-  }
-
-  onPanUpdate(DragUpdateDetails details) {
-    if (_panStartPosition == null) {
-      return;
-    }
-
-    // Accumulate deltas to track total movement
-    _totalHorizontalDelta += details.delta.dx;
-    _totalVerticalDelta += details.delta.dy;
-
-    // Check if this is primarily a horizontal movement
-    const double minHorizontalMovement = 5.0; // Reduced threshold
-    const double maxVerticalTolerance = 80.0; // Increased tolerance
-
-    // More lenient horizontal detection
-    if (_totalHorizontalDelta.abs() > minHorizontalMovement) {
-      // Check if horizontal movement is dominant
-      if (_totalVerticalDelta.abs() == 0 ||
-          _totalHorizontalDelta.abs() > _totalVerticalDelta.abs() * 0.7) {
-        _isHorizontalSwipe = true;
-      }
-    }
-
-    if (_totalVerticalDelta.abs() > maxVerticalTolerance &&
-        _totalVerticalDelta.abs() > _totalHorizontalDelta.abs() * 2) {
-      // Too much vertical movement - definitely not a horizontal swipe
-      _isHorizontalSwipe = false;
-    }
-  }
-
-  onPanEnd(DragEndDetails details) {
-    if (!_canSwipe()) {
-      _resetSwipeTracking();
-      _panStartPosition = null;
-      return;
-    }
-
-    if (!_isHorizontalSwipe) {
-      _resetSwipeTracking();
-      _panStartPosition = null;
-      return;
-    }
-    // Calculate final swipe metrics
-    const double minSwipeDistance = 30.0; // Reduced minimum distance
-    const double minSwipeVelocity = 200.0; // Reduced minimum velocity
-
-    double velocity = details.velocity.pixelsPerSecond.dx;
-    double totalDistance = _totalHorizontalDelta.abs();
-
-    // Require either sufficient distance OR velocity for a swipe
-    bool isValidSwipe =
-        totalDistance > minSwipeDistance || velocity.abs() > minSwipeVelocity;
-
-    if (isValidSwipe) {
-      _recordSwipe();
-      // Determine direction based on accumulated delta (more reliable than velocity alone)
-      if (_totalHorizontalDelta > 0) {
-        // Swiping right - go to previous game
-        onSwipeRight.call();
-      } else {
-        // Swiping left - go to next game
-        onSwipeLeft.call();
-      }
-    }
-    _resetSwipeTracking();
-    _panStartPosition = null;
-  }
-
-  onPanCancel() {
-    _resetSwipeTracking();
-    _panStartPosition = null;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -630,28 +527,13 @@ class _GameBody extends StatelessWidget {
           blackPlayer: false,
         ),
         SizedBox(height: 2.h),
-        GestureDetector(
-          // Make sure we can receive pan gestures
-          behavior: HitTestBehavior.translucent,
-          onPanStart: (details) {
-            onPanStart(details);
-          },
-          onPanUpdate: (details) {
-            onPanUpdate(details);
-          },
-          onPanEnd: (details) {
-            onPanEnd(details);
-          },
-          onPanCancel: onPanCancel,
-          child: _BoardWithSidebar(index: index, state: state),
-        ),
+        _BoardWithSidebar(index: index, state: state),
         SizedBox(height: 2.h),
         _PlayerWidget(
           game: game,
           isFlipped: state.isBoardFlipped,
           blackPlayer: true,
         ),
-        // Moves section with consistent height to prevent layout shifts
         Expanded(
           child: Container(
             width: double.infinity,
@@ -662,12 +544,30 @@ class _GameBody extends StatelessWidget {
                 topRight: Radius.circular(12.sp),
               ),
             ),
-            child: SingleChildScrollView(
-              child: _MovesDisplay(
-                index: index,
-                state: state,
-                sanMoves: state.moveSans,
-                currentMoveIndex: state.currentMoveIndex,
+            child: NotificationListener<ScrollNotification>(
+              onNotification: (notification) {
+                // Allow only vertical scrolling
+                if (notification is ScrollStartNotification) {
+                  // You can add additional logic here if needed
+                }
+                return false; // Allow the notification to continue bubbling up
+              },
+              child: SingleChildScrollView(
+                scrollDirection: Axis.vertical,
+                physics: const ClampingScrollPhysics(),
+                dragStartBehavior: DragStartBehavior.down, // Start drag from down gesture
+                child: GestureDetector(
+                  onHorizontalDragStart: (_) {}, // Consume horizontal gestures
+                  onHorizontalDragUpdate: (_) {},
+                  onHorizontalDragEnd: (_) {},
+                  behavior: HitTestBehavior.translucent,
+                  child: _MovesDisplay(
+                    index: index,
+                    state: state,
+                    sanMoves: state.moveSans,
+                    currentMoveIndex: state.currentMoveIndex,
+                  ),
+                ),
               ),
             ),
           ),
@@ -746,7 +646,6 @@ class _BoardWithSidebar extends StatelessWidget {
   }
 }
 
-//
 class _ChessBoardNew extends ConsumerWidget {
   final double size;
   final ChessBoardStateNew chessBoardState;
@@ -779,7 +678,6 @@ class _ChessBoardNew extends ConsumerWidget {
   }
 }
 
-// Enhanced moves display with proper highlighting and navigation
 class _MovesDisplay extends ConsumerWidget {
   final int index;
   final ChessBoardStateNew state;
@@ -797,12 +695,10 @@ class _MovesDisplay extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final notifier = ref.read(chessBoardScreenProviderNew(index).notifier);
 
-    // Show loading skeleton while moves are being fetched
     if (state.isLoadingMoves) {
       return _buildMovesLoadingSkeleton();
     }
 
-    // Show empty state only when loading is complete and no moves exist
     if (sanMoves.isEmpty && !state.isLoadingMoves) {
       return Container(
         alignment: Alignment.center,
@@ -828,7 +724,6 @@ class _MovesDisplay extends ConsumerWidget {
               final moveIndex = entry.key;
               final move = entry.value;
 
-              // Check if this move is currently displayed on board
               final isCurrentMove = moveIndex == currentMoveIndex;
               final fullMoveNumber = (moveIndex / 2).floor() + 1;
               final isWhiteMove = moveIndex % 2 == 0;
@@ -873,26 +768,22 @@ class _MovesDisplay extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Title skeleton
           _SkeletonContainer(height: 16.h, width: 80.w, borderRadius: 4.sp),
           SizedBox(height: 12.h),
-          // Moves skeleton - simulate move notation layout
           ...List.generate(6, (rowIndex) {
             return Padding(
               padding: EdgeInsets.only(bottom: 8.h),
               child: Wrap(
                 spacing: 8.sp,
                 children: [
-                  // Move number + white move
                   _SkeletonContainer(
                     height: 14.h,
-                    width: (60 + (rowIndex % 3) * 20).w, // Varying widths
+                    width: (60 + (rowIndex % 3) * 20).w,
                     borderRadius: 3.sp,
                   ),
-                  // Black move
                   _SkeletonContainer(
                     height: 14.h,
-                    width: (45 + (rowIndex % 4) * 15).w, // Varying widths
+                    width: (45 + (rowIndex % 4) * 15).w,
                     borderRadius: 3.sp,
                   ),
                 ],
@@ -900,7 +791,6 @@ class _MovesDisplay extends ConsumerWidget {
             );
           }),
           SizedBox(height: 8.h),
-          // Additional skeleton moves
           Wrap(
             spacing: 6.sp,
             runSpacing: 6.sp,

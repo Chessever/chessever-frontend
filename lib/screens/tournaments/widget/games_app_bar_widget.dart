@@ -35,7 +35,6 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
     _menuKey = GlobalKey();
     super.initState();
 
-    // Clear search state on widget initialization
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         ref.read(gamesTourScreenProvider.notifier).clearSearch();
@@ -48,12 +47,10 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
       isSearching = true;
     });
 
-    // Clear everything when starting search
     _currentSearchQuery = '';
     _searchController.clear();
     ref.read(gamesTourScreenProvider.notifier).clearSearch();
 
-    // Request focus after a short delay to ensure widget is built
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNode.requestFocus();
     });
@@ -64,36 +61,26 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
       isSearching = false;
     });
 
-    // Clear all search state
     _searchController.clear();
     _currentSearchQuery = '';
     _debounceTimer?.cancel();
 
-    // Refresh games and unfocus
     await ref.read(gamesTourScreenProvider.notifier).refreshGames();
     _focusNode.unfocus();
   }
 
   void _handleSearchInput(String query) {
-    debugPrint('🎯 _handleSearchInput called with: "$query"');
 
-    // Cancel previous timer
     _debounceTimer?.cancel();
-
-    // Update current query immediately
     _currentSearchQuery = query;
 
-    // If query is empty, clear results immediately
     if (query.isEmpty || query.trim().isEmpty) {
-      debugPrint('🎯 Empty query, clearing search');
       ref.read(gamesTourScreenProvider.notifier).clearSearch();
       return;
     }
 
-    // Use debounced search
     _debounceTimer = Timer(const Duration(milliseconds: 300), () {
       if (mounted && _currentSearchQuery == query) {
-        debugPrint('🎯 Executing ENHANCED search for: "$query"');
         ref.read(gamesTourScreenProvider.notifier).searchGamesEnhanced(query);
       }
     });
@@ -103,59 +90,38 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
     try {
       final provider = ref.read(gamesTourScreenProvider.notifier);
 
-      debugPrint(
-        '🎯 Before clearSearch - Current state games count: ${ref.read(gamesTourScreenProvider).valueOrNull?.gamesTourModels.length ?? 0}',
-      );
+  
 
-      // Clear search to get full games list
       provider.clearSearch();
 
-      // Give it a moment to update - but use a callback to ensure completion
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        // Add slight delay to ensure state is updated
         Future.delayed(const Duration(milliseconds: 150), () {
           final gamesTourAsync = ref.read(gamesTourScreenProvider);
 
-          debugPrint(
-            '🎯 After clearSearch - State has value: ${gamesTourAsync.hasValue}',
-          );
+        
 
           if (!gamesTourAsync.hasValue) {
-            debugPrint('🎯 ERROR: Games data not available after clearSearch');
             return;
           }
 
           final gamesData = gamesTourAsync.value!;
           final allGames = gamesData.gamesTourModels;
 
-          debugPrint(
-            '🎯 Games available after clearSearch: ${allGames.length}',
-          );
-          debugPrint('🎯 Looking for game with ID: ${game.id}');
 
-          // Find the game index in the full games list
           final gameIndex = allGames.indexWhere(
             (tourGame) => tourGame.gameId == game.id,
           );
 
-          debugPrint('🎯 Found game at index: $gameIndex');
 
           if (gameIndex == -1) {
-            debugPrint(
-              '🎯 ERROR: Selected game not found in current games list',
-            );
-            debugPrint(
-              '🎯 Available game IDs: ${allGames.map((g) => g.gameId).take(5).toList()}...',
-            );
+        
             return;
           }
 
           ref.read(chessboardViewFromProviderNew.notifier).state =
               ChessboardView.tour;
 
-          debugPrint(
-            '🎯 Navigating with ${allGames.length} games, index $gameIndex',
-          );
+         
 
           Navigator.push(
             context,
@@ -172,7 +138,6 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
         });
       });
     } catch (e) {
-      debugPrint('🎯 ERROR in _handleGameSelection: $e');
     }
   }
 
@@ -212,8 +177,7 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
                       child: EnhancedGamesSearchBar(
                         controller: _searchController,
                         hintText: "Search players or games...",
-                        onChanged:
-                            _handleSearchInput, // Direct method reference
+                        onChanged: _handleSearchInput,
                         onGameSelected: _handleGameSelection,
                         onClose: _closeSearch,
                         autofocus: true,

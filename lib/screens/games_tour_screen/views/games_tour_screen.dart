@@ -1,22 +1,18 @@
 import 'dart:async';
 import 'package:chessever2/screens/games_tour_screen/providers/games_tour_scroll_state_provider.dart';
 import 'package:chessever2/screens/games_tour_screen/providers/games_tour_visibility_provider.dart';
-import 'package:chessever2/screens/games_tour_screen/widgets/game_card_wrapper_widget.dart';
-import 'package:chessever2/screens/games_tour_screen/widgets/game_error_widget.dart';
-import 'package:chessever2/screens/games_tour_screen/widgets/round_header_widget.dart';
+import 'package:chessever2/screens/games_tour_screen/widgets/games_tour_content_body.dart';
 import 'package:chessever2/screens/tournaments/model/games_tour_model.dart';
 import 'package:chessever2/screens/tournaments/providers/chess_board_visibility_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/tour_detail_screen_provider.dart';
-import 'package:chessever2/screens/tournaments/widget/empty_widget.dart';
-import 'package:chessever2/screens/tournaments/widget/tour_loading_widget.dart';
+import 'package:chessever2/screens/tournaments/providers/group_event_screen_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-
-import '../../tournaments/model/games_app_bar_view_model.dart';
+import 'package:chessever2/screens/tournaments/model/games_app_bar_view_model.dart';
 
 class GamesTourScreen extends ConsumerStatefulWidget {
   const GamesTourScreen({super.key});
@@ -36,7 +32,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
   bool _isScrolling = false;
   bool _isInitialized = false;
 
-  String? _topVisibleGameId;
   bool _isViewSwitching = false;
   bool _isProgrammaticScroll = false;
 
@@ -44,23 +39,180 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
   void initState() {
     super.initState();
     _scrollController = ScrollController();
-    _setupScrollListener();
-    _setupViewSwitchListener();
+    setupScrollListener(); // Using extension method
+    setupViewSwitchListener(); // Using extension method
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _synchronizeInitialSelection();
+      synchronizeInitialSelection(); // Using extension method
     });
   }
 
-  void _synchronizeInitialSelection() {
+  @override
+  void dispose() {
+    _visibilityCheckTimer?.cancel();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    Future.microtask(() {
+      if (mounted) {
+        ref.read(scrollStateProvider.notifier).reset();
+        ref.read(currentVisibleRoundProvider.notifier).state = null;
+        _headerKeys.clear();
+        _gameKeys.clear();
+        _isInitialized = false;
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isChessBoardVisible = ref.watch(chessBoardVisibilityProvider);
+    final gamesAppBarAsync = ref.watch(gamesAppBarProvider);
+    final gamesTourAsync = ref.watch(gamesTourScreenProvider);
+    final scrollState = ref.watch(scrollStateProvider);
+
+    // Listen to app bar changes and scroll to selected round
+    ref.listen<AsyncValue<GamesAppBarViewModel>>(gamesAppBarProvider, (
+      previous,
+      next,
+    ) {
+      if (!_isInitialized) return;
+
+      final previousSelected = previous?.valueOrNull?.selectedId;
+      final currentSelected = next.valueOrNull?.selectedId;
+
+      if (currentSelected != null &&
+          currentSelected != previousSelected &&
+          next.valueOrNull?.userSelectedId == true) {
+        ref.read(scrollStateProvider.notifier).setUserScrolling(false);
+        ref.read(scrollStateProvider.notifier).setScrolling(false);
+        ref
+            .read(scrollStateProvider.notifier)
+            .updateSelectedRound(currentSelected);
+
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            scrollToRound(currentSelected); // Using extension method
+          }
+        });
+      }
+    });
+
+    // Listen to visible round changes and update app bar selection
+    ref.listen<String?>(currentVisibleRoundProvider, (previous, next) {
+      if (next != null && next != previous && _isInitialized) {
+        final scrollState = ref.read(scrollStateProvider);
+        final currentSelected = gamesAppBarAsync.valueOrNull?.selectedId;
+
+        if (scrollState.isUserScrolling &&
+            !scrollState.isScrolling &&
+            currentSelected != next &&
+            !_isViewSwitching &&
+            !_isProgrammaticScroll) {
+          final gamesAppBarData = gamesAppBarAsync.valueOrNull;
+          if (gamesAppBarData != null) {
+            final targetRound =
+                gamesAppBarData.gamesAppBarModels
+                    .where((round) => round.id == next)
+                    .firstOrNull;
+
+            if (targetRound != null) {
+              ref
+                  .read(gamesAppBarProvider.notifier)
+                  .selectNewRoundSilently(targetRound);
+            }
+          }
+        }
+      }
+    });
+
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification is ScrollStartNotification &&
+            !_isViewSwitching &&
+            !_isProgrammaticScroll) {
+          _isScrolling = true;
+          ref.read(scrollStateProvider.notifier).setUserScrolling(true);
+        } else if (notification is ScrollEndNotification && !_isViewSwitching) {
+          _isScrolling = false;
+          _isProgrammaticScroll = false;
+          Future.delayed(const Duration(milliseconds: 50), () {
+            if (mounted && !_isViewSwitching) {
+              checkRoundContentVisibility(); // Using extension method
+              ref.read(scrollStateProvider.notifier).setUserScrolling(false);
+            }
+          });
+        }
+
+        return false;
+      },
+      child: RefreshIndicator(
+        onRefresh:
+            () => handleRefresh(
+              gamesAppBarAsync,
+              gamesTourAsync,
+            ), // Using extension method
+        color: kWhiteColor70,
+        backgroundColor: kDarkGreyColor,
+        displacement: 60.h,
+        strokeWidth: 3.w,
+        child: GamesTourContentBody(
+          gamesAppBarAsync: gamesAppBarAsync,
+          gamesTourAsync: gamesTourAsync,
+          isChessBoardVisible: isChessBoardVisible,
+          scrollController: _scrollController,
+          headerKeys: _headerKeys,
+          gameKeys: _gameKeys,
+          getHeaderKey: getHeaderKey, // Using extension method
+          getGameKey: getGameKey, // Using extension method
+          lastGamesData: _lastGamesData,
+          onGamesDataUpdate: (data) => _lastGamesData = data,
+        ),
+      ),
+    );
+  }
+}
+
+
+
+
+// Enum to identify the type of top-most visible item
+enum TopMostItemType { header, game }
+
+// Data class to hold information about the top-most visible item
+class TopMostVisibleItem {
+  final TopMostItemType type;
+  final String roundId;
+  final int? gameIndex;
+  final String? gameId;
+  final double scrollOffset;
+  final double? relativePosition; // Position relative to visible area top
+
+  TopMostVisibleItem({
+    required this.type,
+    required this.roundId,
+    this.gameIndex,
+    this.gameId,
+    required this.scrollOffset,
+    this.relativePosition,
+  });
+}
+
+extension GamesTourScreenLogic on _GamesTourScreenState {
+  void synchronizeInitialSelection() {
     if (!mounted || _isInitialized) return;
 
     final gamesAppBarAsync = ref.read(gamesAppBarProvider);
     final gamesTourAsync = ref.read(gamesTourScreenProvider);
+    final selectedPlayerName = ref.read(selectedPlayerNameProvider);
 
     if (!gamesAppBarAsync.hasValue || !gamesTourAsync.hasValue) {
       Future.delayed(const Duration(milliseconds: 300), () {
-        if (mounted && !_isInitialized) _synchronizeInitialSelection();
+        if (mounted && !_isInitialized) synchronizeInitialSelection();
       });
       return;
     }
@@ -70,13 +222,10 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
 
     if (gamesData == null || appBarData == null) {
       Future.delayed(const Duration(milliseconds: 300), () {
-        if (mounted && !_isInitialized) _synchronizeInitialSelection();
+        if (mounted && !_isInitialized) synchronizeInitialSelection();
       });
       return;
     }
-
-    final selectedRoundId = appBarData.selectedId;
-    debugPrint('🎯 Selected round ID from dropdown: $selectedRoundId');
 
     final gamesByRound = <String, List<GamesTourModel>>{};
     for (final game in gamesData.gamesTourModels) {
@@ -84,25 +233,51 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     }
 
     String? targetRoundId;
+    int? targetGameIndex;
 
-    if (selectedRoundId != null &&
-        gamesByRound[selectedRoundId]?.isNotEmpty == true) {
-      targetRoundId = selectedRoundId;
-      debugPrint('🎯 Using selected round: $targetRoundId');
-    } else {
-      final rounds = appBarData.gamesAppBarModels;
-      final visibleRounds =
-          rounds
-              .where((round) => (gamesByRound[round.id]?.isNotEmpty ?? false))
-              .toList();
+    if (selectedPlayerName != null) {
+      final normalizedPlayerName = selectedPlayerName.toLowerCase().trim();
+      for (final roundId in gamesByRound.keys) {
+        final roundGames = gamesByRound[roundId] ?? [];
+        for (int i = 0; i < roundGames.length; i++) {
+          final game = roundGames[i];
+          final white = game.whitePlayer.name.toLowerCase().trim();
+          final black = game.blackPlayer.name.toLowerCase().trim();
+          if (white.contains(normalizedPlayerName) ||
+              black.contains(normalizedPlayerName)) {
+            targetRoundId = roundId;
+            targetGameIndex = i;
+            break;
+          }
+        }
+        if (targetRoundId != null) break;
+      }
+      if (targetRoundId == null) {
+        debugPrint(
+          '⚠️ Player "$normalizedPlayerName" not found in any game. Falling back to round selection.',
+        );
+      }
+    }
 
-      if (visibleRounds.isNotEmpty) {
-        final targetRound = visibleRounds.reversed.first;
-        targetRoundId = targetRound.id;
+    if (targetRoundId == null) {
+      final selectedRoundId = appBarData.selectedId;
 
-        ref
-            .read(gamesAppBarProvider.notifier)
-            .selectNewRoundSilently(targetRound);
+      if (selectedRoundId != null &&
+          gamesByRound[selectedRoundId]?.isNotEmpty == true) {
+        targetRoundId = selectedRoundId;
+      } else {
+        final rounds = appBarData.gamesAppBarModels;
+        final visibleRounds = rounds
+            .where((round) => (gamesByRound[round.id]?.isNotEmpty ?? false))
+            .toList();
+
+        if (visibleRounds.isNotEmpty) {
+          final targetRound = visibleRounds.reversed.first;
+          targetRoundId = targetRound.id;
+          ref
+              .read(gamesAppBarProvider.notifier)
+              .selectNewRoundSilently(targetRound);
+        }
       }
     }
 
@@ -115,13 +290,81 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
 
       Future.delayed(const Duration(milliseconds: 1000), () {
         if (mounted) {
-          _scrollToRound(targetRoundId!);
+          if (targetGameIndex != null && selectedPlayerName != null) {
+            scrollToGame(targetRoundId!, targetGameIndex);
+          } else {
+            scrollToRound(targetRoundId!);
+          }
+          ref.read(selectedPlayerNameProvider.notifier).state = null;
+        }
+      });
+    } else {
+      debugPrint('No target round found for scrolling.');
+    }
+  }
+
+  Future<void> scrollToGame(String roundId, int gameIndex) async {
+    if (!mounted || _isViewSwitching) return;
+
+    _isProgrammaticScroll = true;
+
+    ref.read(scrollStateProvider.notifier).setScrolling(true);
+    ref.read(scrollStateProvider.notifier).setUserScrolling(false);
+    ref.read(scrollStateProvider.notifier).updateSelectedRound(roundId);
+
+    try {
+      if (!_scrollController.hasClients) {
+        return;
+      }
+
+      final gameKey = getGameKey(roundId, gameIndex);
+
+      bool found = false;
+      for (int retry = 0; retry < 30; retry++) {
+        await Future.delayed(const Duration(milliseconds: 50));
+
+        if (gameKey.currentContext != null) {
+          try {
+            // Remove animation - instant scroll
+            Scrollable.ensureVisible(
+              gameKey.currentContext!,
+              alignment: 0.0,
+              duration: Duration.zero, // Instant scroll
+              alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
+            );
+
+            found = true;
+            break;
+          } catch (e) {
+            debugPrint(
+              '[GamesTourScreen] Game scroll error on retry $retry: $e',
+            );
+          }
+        } else {
+          debugPrint(
+            'Game key not found on retry $retry for round $roundId, index $gameIndex',
+          );
+        }
+      }
+      if (!found) {
+        debugPrint(
+          'Failed to scroll to game in round $roundId, index $gameIndex after all attempts. Falling back to round scroll.',
+        );
+        await scrollToRound(roundId);
+      }
+    } catch (e) {
+      debugPrint('[GamesTourScreen] Game scroll error: $e');
+    } finally {
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          ref.read(scrollStateProvider.notifier).setScrolling(false);
+          _isProgrammaticScroll = false;
         }
       });
     }
   }
 
-  void _setupScrollListener() {
+  void setupScrollListener() {
     _scrollController.addListener(() {
       if (!_isScrolling && !_isViewSwitching && !_isProgrammaticScroll) {
         _isScrolling = true;
@@ -131,35 +374,47 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
       _visibilityCheckTimer?.cancel();
       _visibilityCheckTimer = Timer(const Duration(milliseconds: 100), () {
         if (mounted && !_isViewSwitching && !_isProgrammaticScroll) {
-          _checkRoundContentVisibility();
+          checkRoundContentVisibility();
         }
       });
     });
   }
 
-  void _setupViewSwitchListener() {
+  void setupViewSwitchListener() {
     ref.listenManual(chessBoardVisibilityProvider, (previous, next) {
-      if (previous != null && previous != next) {
-        _handleViewSwitch();
+      if (previous != next) {
+        handleViewSwitch();
       }
     });
   }
 
-  void _handleViewSwitch() {
+  void handleViewSwitch() {
     if (!mounted || !_scrollController.hasClients) return;
 
     _isViewSwitching = true;
 
-    _topVisibleGameId = _findTopVisibleGameId();
-
+    // Always capture the top-most visible item before view switch
+    final topMostVisibleItem = findTopMostVisibleItem();
+    
+    debugPrint('🔄 View switching - captured item: ${topMostVisibleItem?.type} at round ${topMostVisibleItem?.roundId}');
+    
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _topVisibleGameId != null) {
-        _scrollToGameAfterViewSwitch(_topVisibleGameId!);
+      if (mounted) {
+        // Wait longer to ensure AnimatedSwitcher completes and new widgets are built
+        Future.delayed(const Duration(milliseconds: 1200), () {
+          if (mounted && topMostVisibleItem != null) {
+            scrollToTopMostVisibleItemAfterViewSwitch(topMostVisibleItem);
+          } else {
+            debugPrint('⚠️ No top-most item found or widget unmounted');
+            _isViewSwitching = false;
+          }
+        });
       }
     });
   }
 
-  String? _findTopVisibleGameId() {
+  // Enhanced data class to hold more precise position information
+  TopMostVisibleItem? findTopMostVisibleItem() {
     final gamesData =
         _lastGamesData ?? ref.read(gamesTourScreenProvider).valueOrNull;
     if (gamesData == null) return null;
@@ -167,109 +422,394 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     final screenHeight = MediaQuery.of(context).size.height;
     final topPadding = MediaQuery.of(context).padding.top;
     final appBarHeight = kToolbarHeight;
-    final visibleAreaTop = topPadding + appBarHeight + 50;
+    final visibleAreaTop = topPadding + appBarHeight;
+    
     final gamesByRound = <String, List<GamesTourModel>>{};
     for (final game in gamesData.gamesTourModels) {
       gamesByRound.putIfAbsent(game.roundId, () => []).add(game);
     }
 
-    for (final roundId in gamesByRound.keys) {
+    // Get current scroll position
+    final currentScrollOffset = _scrollController.hasClients 
+        ? _scrollController.offset 
+        : 0.0;
+
+    // Check all rounds in order
+    final rounds = ref.read(gamesAppBarProvider).value?.gamesAppBarModels ?? [];
+    final visibleRounds = rounds
+        .where((round) => (gamesByRound[round.id]?.isNotEmpty ?? false))
+        .toList()
+        .reversed
+        .toList();
+
+    TopMostVisibleItem? topMostItem;
+    double topMostPosition = double.infinity;
+
+    for (final round in visibleRounds) {
+      final roundId = round.id;
       final roundGames = gamesByRound[roundId] ?? [];
 
+      // Check header first
+      final headerKey = getHeaderKey(roundId);
+      final headerContext = headerKey.currentContext;
+      if (headerContext != null) {
+        final headerRenderBox = headerContext.findRenderObject() as RenderBox?;
+        if (headerRenderBox?.attached == true) {
+          final headerPosition = headerRenderBox!.localToGlobal(Offset.zero);
+          final headerTop = headerPosition.dy;
+          final headerBottom = headerPosition.dy + headerRenderBox.size.height;
+
+          // If header is visible and is the topmost so far
+          if (headerBottom > visibleAreaTop && 
+              headerTop < topMostPosition && 
+              headerTop >= visibleAreaTop - 200) { // Increased tolerance
+            topMostPosition = headerTop;
+            topMostItem = TopMostVisibleItem(
+              type: TopMostItemType.header,
+              roundId: roundId,
+              gameIndex: null,
+              gameId: null,
+              scrollOffset: currentScrollOffset,
+              relativePosition: headerTop - visibleAreaTop,
+            );
+          }
+        }
+      }
+
+      // Check games in this round
       for (int gameIndex = 0; gameIndex < roundGames.length; gameIndex++) {
-        final gameKey = _getGameKey(roundId, gameIndex);
+        final game = roundGames[gameIndex];
+        final gameKey = getGameKey(roundId, gameIndex);
         final gameContext = gameKey.currentContext;
 
         if (gameContext != null) {
           final gameRenderBox = gameContext.findRenderObject() as RenderBox?;
           if (gameRenderBox?.attached == true) {
             final gamePosition = gameRenderBox!.localToGlobal(Offset.zero);
-            final gameSize = gameRenderBox.size;
-
             final gameTop = gamePosition.dy;
-            final gameBottom = gamePosition.dy + gameSize.height;
+            final gameBottom = gamePosition.dy + gameRenderBox.size.height;
 
-            if (gameBottom > visibleAreaTop && gameTop < visibleAreaTop + 100) {
-              return roundGames[gameIndex].gameId;
+            // If game is visible and is the topmost so far
+            if (gameBottom > visibleAreaTop && 
+                gameTop < topMostPosition && 
+                gameTop >= visibleAreaTop - 200) { // Increased tolerance
+              topMostPosition = gameTop;
+              topMostItem = TopMostVisibleItem(
+                type: TopMostItemType.game,
+                roundId: roundId,
+                gameIndex: gameIndex,
+                gameId: game.gameId,
+                scrollOffset: currentScrollOffset,
+                relativePosition: gameTop - visibleAreaTop,
+              );
             }
           }
         }
       }
     }
 
-    return null;
+    debugPrint('🎯 Found top-most visible item: ${topMostItem?.type} - Round: ${topMostItem?.roundId}, GameIndex: ${topMostItem?.gameIndex}, RelativePos: ${topMostItem?.relativePosition}');
+    return topMostItem;
   }
 
-  Future<void> _scrollToGameAfterViewSwitch(String gameId) async {
+  Future<void> scrollToTopMostVisibleItemAfterViewSwitch(TopMostVisibleItem item) async {
+    debugPrint('Starting view switch scroll to: ${item.type} - Round: ${item.roundId}${item.type == TopMostItemType.game ? ', Game: ${item.gameIndex}' : ''}');
+    
     await Future.delayed(const Duration(milliseconds: 300));
 
-    if (!mounted) return;
+    if (!mounted) {
+      _isViewSwitching = false;
+      return;
+    }
 
-    final gamesData =
-        _lastGamesData ?? ref.read(gamesTourScreenProvider).valueOrNull;
-    if (gamesData == null) return;
-
-    GamesTourModel? targetGame;
-    String? targetRoundId;
-    int? targetGameIndex;
-
-    final gamesByRound = <String, List<GamesTourModel>>{};
-    for (final game in gamesData.gamesTourModels) {
-      gamesByRound.putIfAbsent(game.roundId, () => []).add(game);
-      if (game.gameId == gameId) {
-        targetGame = game;
-        targetRoundId = game.roundId;
+    try {
+      // For game widgets, use enhanced positioning strategy
+      if (item.type == TopMostItemType.game) {
+        await _scrollToGameWithPrecisePositioning(item);
+      } else {
+        await _scrollToHeaderWithStandardPositioning(item);
       }
+
+      debugPrint('View switch scroll completed');
+    } catch (e) {
+      debugPrint('[GamesTourScreen] Error scrolling to top-most item: $e');
+    } finally {
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          _isViewSwitching = false;
+        }
+      });
+    }
+  }
+
+  // Enhanced game-specific positioning
+  Future<void> _scrollToGameWithPrecisePositioning(TopMostVisibleItem item) async {
+    if (item.gameIndex == null) return;
+
+    // Step 1: Calculate target position based on new widget heights
+    final targetOffset = calculateTargetScrollOffsetForGame(item);
+    if (targetOffset != null && _scrollController.hasClients) {
+      final maxOffset = _scrollController.position.maxScrollExtent;
+      final clampedOffset = targetOffset.clamp(0.0, maxOffset);
+      
+      debugPrint('Calculated target offset for game: $clampedOffset');
+      _scrollController.jumpTo(clampedOffset);
+      
+      await Future.delayed(const Duration(milliseconds: 300));
     }
 
-    if (targetGame == null || targetRoundId == null) {
-      _isViewSwitching = false;
-      return;
-    }
-
-    final roundGames = gamesByRound[targetRoundId] ?? [];
-    targetGameIndex = roundGames.indexOf(targetGame);
-
-    if (targetGameIndex == -1) {
-      _isViewSwitching = false;
-      return;
-    }
-
-    final gameKey = _getGameKey(targetRoundId, targetGameIndex);
-
+    // Step 2: Fine-tune using widget keys with enhanced retry logic
+    final gameKey = getGameKey(item.roundId, item.gameIndex!);
+    
+    bool positionAchieved = false;
     for (int retry = 0; retry < 20; retry++) {
-      await Future.delayed(const Duration(milliseconds: 100));
+      await Future.delayed(const Duration(milliseconds: 150));
 
       if (gameKey.currentContext != null) {
         try {
-          await Scrollable.ensureVisible(
-            gameKey.currentContext!,
-            alignment: 0.0,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
-            alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
-          );
-          break;
+          final renderBox = gameKey.currentContext!.findRenderObject() as RenderBox?;
+          if (renderBox?.attached == true) {
+            final position = renderBox!.localToGlobal(Offset.zero);
+            final topPadding = MediaQuery.of(context).padding.top;
+            final appBarHeight = kToolbarHeight;
+            final visibleAreaTop = topPadding + appBarHeight;
+            
+            final currentRelativePosition = position.dy - visibleAreaTop;
+            
+            // For game widgets, aim to keep them precisely at the top (within 10px tolerance)
+            if (currentRelativePosition.abs() <= 10) {
+              positionAchieved = true;
+              debugPrint('Game widget positioned correctly at relative position: ${currentRelativePosition.toStringAsFixed(1)}');
+              break;
+            }
+            
+            // If not positioned correctly, adjust
+            if (_scrollController.hasClients) {
+              final adjustment = currentRelativePosition; // Scroll by this amount to bring to top
+              final currentOffset = _scrollController.offset;
+              final newOffset = currentOffset + adjustment;
+              final maxOffset = _scrollController.position.maxScrollExtent;
+              final clampedOffset = newOffset.clamp(0.0, maxOffset);
+              
+              debugPrint('Adjusting game position: current: ${currentOffset.toStringAsFixed(1)}, adjustment: ${adjustment.toStringAsFixed(1)}, new: ${clampedOffset.toStringAsFixed(1)}');
+              
+              _scrollController.jumpTo(clampedOffset);
+            }
+          }
         } catch (e) {
-          debugPrint('[GamesTourScreen] View switch scroll error: $e');
+          debugPrint('[GamesTourScreen] Game positioning error: $e');
         }
+      } else {
+        debugPrint('Game key not available, retry $retry/20');
       }
     }
 
-    Future.delayed(const Duration(milliseconds: 500), () {
-      _isViewSwitching = false;
-      _topVisibleGameId = null;
-    });
+    if (!positionAchieved) {
+      debugPrint('Warning: Could not achieve precise game positioning after all retries');
+    }
   }
 
-  void _checkRoundContentVisibility() {
+  // Standard header positioning (existing logic)
+  Future<void> _scrollToHeaderWithStandardPositioning(TopMostVisibleItem item) async {
+    final targetOffset = calculateTargetScrollOffset(item);
+    if (targetOffset != null && _scrollController.hasClients) {
+      final maxOffset = _scrollController.position.maxScrollExtent;
+      final clampedOffset = targetOffset.clamp(0.0, maxOffset);
+      
+      _scrollController.jumpTo(clampedOffset);
+      await Future.delayed(const Duration(milliseconds: 200));
+    }
+
+    final headerKey = getHeaderKey(item.roundId);
+    
+    for (int retry = 0; retry < 15; retry++) {
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      if (headerKey.currentContext != null) {
+        try {
+          final renderBox = headerKey.currentContext!.findRenderObject() as RenderBox?;
+          if (renderBox?.attached == true) {
+            final position = renderBox!.localToGlobal(Offset.zero);
+            final topPadding = MediaQuery.of(context).padding.top;
+            final appBarHeight = kToolbarHeight;
+            final visibleAreaTop = topPadding + appBarHeight;
+            
+            final currentRelativePosition = position.dy - visibleAreaTop;
+            final desiredRelativePosition = item.relativePosition ?? 0;
+            final adjustment = currentRelativePosition - desiredRelativePosition;
+            
+            if (_scrollController.hasClients && adjustment.abs() > 10) {
+              final currentOffset = _scrollController.offset;
+              final newOffset = currentOffset + adjustment;
+              final maxOffset = _scrollController.position.maxScrollExtent;
+              final clampedOffset = newOffset.clamp(0.0, maxOffset);
+              
+              _scrollController.jumpTo(clampedOffset);
+            }
+            break;
+          }
+        } catch (e) {
+          debugPrint('[GamesTourScreen] Header positioning error: $e');
+        }
+      }
+    }
+  }
+
+  // Enhanced calculation specifically for game widgets
+  double? calculateTargetScrollOffsetForGame(TopMostVisibleItem item) {
+    try {
+      final gamesData = _lastGamesData ?? ref.read(gamesTourScreenProvider).valueOrNull;
+      if (gamesData == null || item.gameIndex == null) return null;
+
+      final rounds = ref.read(gamesAppBarProvider).value?.gamesAppBarModels ?? [];
+      final gamesByRound = <String, List<GamesTourModel>>{};
+
+      for (final game in gamesData.gamesTourModels) {
+        gamesByRound.putIfAbsent(game.roundId, () => []).add(game);
+      }
+
+      final visibleRounds = rounds
+          .where((round) => (gamesByRound[round.id]?.isNotEmpty ?? false))
+          .toList()
+          .reversed
+          .toList();
+
+      double calculatedOffset = 0;
+      const double headerHeight = 50;
+      const double padding = 16;
+      const double gameSpacing = 12;
+      
+      // Get heights for current view mode
+      final bool isCurrentlyChessBoard = ref.read(chessBoardVisibilityProvider);
+      final double gameHeight = isCurrentlyChessBoard ? 300 : 120;
+      
+      calculatedOffset += padding;
+
+      bool foundTargetRound = false;
+      
+      for (final round in visibleRounds) {
+        if (round.id == item.roundId) {
+          foundTargetRound = true;
+          
+          // Add header height
+          calculatedOffset += headerHeight;
+          
+          // Add height for games before the target game
+          calculatedOffset += item.gameIndex! * (gameHeight + gameSpacing);
+          
+          // For game widgets, we want them precisely at the top, so no relative position adjustment
+          break;
+        }
+
+        if (!foundTargetRound) {
+          calculatedOffset += headerHeight;
+          final games = gamesByRound[round.id] ?? [];
+          calculatedOffset += games.length * (gameHeight + gameSpacing);
+        }
+      }
+
+      if (_scrollController.hasClients) {
+        final maxOffset = _scrollController.position.maxScrollExtent;
+        calculatedOffset = calculatedOffset.clamp(0.0, maxOffset);
+      }
+
+      return calculatedOffset;
+    } catch (e) {
+      debugPrint('Error calculating target scroll offset for game: $e');
+      return null;
+    }
+  }
+
+  // Calculate target scroll offset based on the item and view mode
+  double? calculateTargetScrollOffset(TopMostVisibleItem item) {
+    try {
+      final gamesData =
+          _lastGamesData ?? ref.read(gamesTourScreenProvider).valueOrNull;
+      if (gamesData == null) return null;
+
+      final rounds =
+          ref.read(gamesAppBarProvider).value?.gamesAppBarModels ?? [];
+      final gamesByRound = <String, List<GamesTourModel>>{};
+
+      for (final game in gamesData.gamesTourModels) {
+        gamesByRound.putIfAbsent(game.roundId, () => []).add(game);
+      }
+
+      final visibleRounds = rounds
+          .where((round) => (gamesByRound[round.id]?.isNotEmpty ?? false))
+          .toList()
+          .reversed
+          .toList();
+
+      double calculatedOffset = 0;
+      const double headerHeight = 50;
+      const double padding = 16;
+      
+      // Different heights for different view modes
+      final bool isCurrentlyChessBoard = ref.read(chessBoardVisibilityProvider);
+      final double gameCardHeight = 120;
+      final double chessBoardHeight = 300;
+      final double gameSpacing = 12;
+      
+      calculatedOffset += padding;
+
+      bool foundTargetRound = false;
+      
+      for (final round in visibleRounds) {
+        if (round.id == item.roundId) {
+          foundTargetRound = true;
+          
+          // Add header height if we're looking for a game, not the header itself
+          if (item.type == TopMostItemType.game) {
+            calculatedOffset += headerHeight;
+            
+            // Add height for games before the target game
+            if (item.gameIndex != null) {
+              final targetGameHeight = isCurrentlyChessBoard ? chessBoardHeight : gameCardHeight;
+              calculatedOffset += item.gameIndex! * (targetGameHeight + gameSpacing);
+            }
+          }
+          
+          // Adjust for relative position within the item
+          if (item.relativePosition != null && item.relativePosition! > 0) {
+            // If the item was partially visible, maintain that partial visibility
+            calculatedOffset -= item.relativePosition!;
+          }
+          
+          break;
+        }
+
+        if (!foundTargetRound) {
+          // Add header height
+          calculatedOffset += headerHeight;
+
+          // Add all games height for this round
+          final games = gamesByRound[round.id] ?? [];
+          final gameHeight = isCurrentlyChessBoard ? chessBoardHeight : gameCardHeight;
+          calculatedOffset += games.length * (gameHeight + gameSpacing);
+        }
+      }
+
+      // Ensure we don't exceed bounds
+      if (_scrollController.hasClients) {
+        final maxOffset = _scrollController.position.maxScrollExtent;
+        calculatedOffset = calculatedOffset.clamp(0.0, maxOffset);
+      }
+
+      return calculatedOffset;
+    } catch (e) {
+      debugPrint('Error calculating target scroll offset: $e');
+      return null;
+    }
+  }
+
+  void checkRoundContentVisibility() {
     final scrollState = ref.read(scrollStateProvider);
 
     if (!scrollState.isUserScrolling ||
         scrollState.isScrolling ||
         _isViewSwitching ||
-        _isProgrammaticScroll)
-      return;
+        _isProgrammaticScroll) return;
 
     final gamesData =
         _lastGamesData ?? ref.read(gamesTourScreenProvider).valueOrNull;
@@ -281,10 +821,9 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     }
 
     final rounds = ref.read(gamesAppBarProvider).value?.gamesAppBarModels ?? [];
-    final visibleRounds =
-        rounds
-            .where((round) => (gamesByRound[round.id]?.isNotEmpty ?? false))
-            .toList();
+    final visibleRounds = rounds
+        .where((round) => (gamesByRound[round.id]?.isNotEmpty ?? false))
+        .toList();
     final reversedRounds = visibleRounds.reversed.toList();
 
     String? mostVisibleRound;
@@ -294,7 +833,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
       final roundGames = gamesByRound[round.id] ?? [];
       if (roundGames.isEmpty) continue;
 
-      final visibilityScore = _calculateRoundContentVisibility(
+      final visibilityScore = calculateRoundContentVisibility(
         round.id,
         roundGames,
       );
@@ -308,9 +847,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     if (mostVisibleRound != null && maxVisibilityScore > 0.1) {
       final currentVisible = ref.read(currentVisibleRoundProvider);
       if (currentVisible != mostVisibleRound) {
-        debugPrint(
-          '🎯 Most visible round: $mostVisibleRound (score: ${maxVisibilityScore.toStringAsFixed(2)})',
-        );
         ref
             .read(roundVisibilityNotifierProvider)
             .updateVisibleRound(mostVisibleRound);
@@ -318,7 +854,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     }
   }
 
-  double _calculateRoundContentVisibility(
+  double calculateRoundContentVisibility(
     String roundId,
     List<GamesTourModel> roundGames,
   ) {
@@ -334,7 +870,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     double totalRoundHeight = 0;
     int itemsChecked = 0;
 
-    final headerKey = _getHeaderKey(roundId);
+    final headerKey = getHeaderKey(roundId);
     final headerContext = headerKey.currentContext;
     if (headerContext != null) {
       final headerRenderBox = headerContext.findRenderObject() as RenderBox?;
@@ -363,18 +899,17 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
       }
     }
 
-    final gamesToCheck =
-        roundGames.length > 10
-            ? [
-              roundGames.first,
-              ...roundGames.skip(roundGames.length ~/ 2).take(5),
-              roundGames.last,
-            ]
-            : roundGames;
+    final gamesToCheck = roundGames.length > 10
+        ? [
+            roundGames.first,
+            ...roundGames.skip(roundGames.length ~/ 2).take(5),
+            roundGames.last,
+          ]
+        : roundGames;
 
     for (final game in gamesToCheck) {
       final gameIndex = roundGames.indexOf(game);
-      final gameKey = _getGameKey(roundId, gameIndex);
+      final gameKey = getGameKey(roundId, gameIndex);
       final gameContext = gameKey.currentContext;
 
       if (gameContext != null) {
@@ -426,11 +961,11 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     return visibilityScore.clamp(0.0, 1.0);
   }
 
-  GlobalKey _getHeaderKey(String roundId) {
+  GlobalKey getHeaderKey(String roundId) {
     return _headerKeys.putIfAbsent(roundId, () => GlobalKey());
   }
 
-  GlobalKey _getGameKey(String roundId, int gameIndex) {
+  GlobalKey getGameKey(String roundId, int gameIndex) {
     _gameKeys.putIfAbsent(roundId, () => []);
     final gameList = _gameKeys[roundId]!;
 
@@ -441,130 +976,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     return gameList[gameIndex];
   }
 
-  @override
-  void dispose() {
-    _visibilityCheckTimer?.cancel();
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    Future.microtask(() {
-      if (mounted) {
-        ref.read(scrollStateProvider.notifier).reset();
-        ref.read(currentVisibleRoundProvider.notifier).state = null;
-        _headerKeys.clear();
-        _gameKeys.clear();
-        _isInitialized = false;
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isChessBoardVisible = ref.watch(chessBoardVisibilityProvider);
-    final gamesAppBarAsync = ref.watch(gamesAppBarProvider);
-    final gamesTourAsync = ref.watch(gamesTourScreenProvider);
-    final scrollState = ref.watch(scrollStateProvider);
-
-    ref.listen<AsyncValue<GamesAppBarViewModel>>(gamesAppBarProvider, (
-      previous,
-      next,
-    ) {
-      if (!_isInitialized) return;
-
-      final previousSelected = previous?.valueOrNull?.selectedId;
-      final currentSelected = next.valueOrNull?.selectedId;
-
-      if (currentSelected != null &&
-          currentSelected != previousSelected &&
-          next.valueOrNull?.userSelectedId == true) {
-        ref.read(scrollStateProvider.notifier).setUserScrolling(false);
-        ref.read(scrollStateProvider.notifier).setScrolling(false);
-        ref
-            .read(scrollStateProvider.notifier)
-            .updateSelectedRound(currentSelected);
-
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (mounted) {
-            _scrollToRound(currentSelected);
-          }
-        });
-      }
-    });
-
-    ref.listen<String?>(currentVisibleRoundProvider, (previous, next) {
-      if (next != null && next != previous && _isInitialized) {
-        final scrollState = ref.read(scrollStateProvider);
-        final currentSelected = gamesAppBarAsync.valueOrNull?.selectedId;
-
-        if (scrollState.isUserScrolling &&
-            !scrollState.isScrolling &&
-            currentSelected != next &&
-            !_isViewSwitching &&
-            !_isProgrammaticScroll) {
-          final gamesAppBarData = gamesAppBarAsync.valueOrNull;
-          if (gamesAppBarData != null) {
-            final targetRound =
-                gamesAppBarData.gamesAppBarModels
-                    .where((round) => round.id == next)
-                    .firstOrNull;
-
-            if (targetRound != null) {
-              ref
-                  .read(gamesAppBarProvider.notifier)
-                  .selectNewRoundSilently(targetRound);
-            }
-          }
-        }
-      }
-    });
-
-    return NotificationListener<ScrollNotification>(
-      onNotification: (notification) {
-        if (notification is ScrollStartNotification &&
-            !_isViewSwitching &&
-            !_isProgrammaticScroll) {
-          _isScrolling = true;
-          ref.read(scrollStateProvider.notifier).setUserScrolling(true);
-        } else if (notification is ScrollEndNotification && !_isViewSwitching) {
-          _isScrolling = false;
-          _isProgrammaticScroll = false;
-          Future.delayed(const Duration(milliseconds: 50), () {
-            if (mounted && !_isViewSwitching) {
-              _checkRoundContentVisibility();
-              ref.read(scrollStateProvider.notifier).setUserScrolling(false);
-            }
-          });
-        }
-
-        return false;
-      },
-      child: RefreshIndicator(
-        onRefresh: () => _handleRefresh(gamesAppBarAsync, gamesTourAsync),
-        color: kWhiteColor70,
-        backgroundColor: kDarkGreyColor,
-        displacement: 60.h,
-        strokeWidth: 3.w,
-        child: GamesTourContentBody(
-          gamesAppBarAsync: gamesAppBarAsync,
-          gamesTourAsync: gamesTourAsync,
-          isChessBoardVisible: isChessBoardVisible,
-          scrollController: _scrollController,
-          headerKeys: _headerKeys,
-          gameKeys: _gameKeys,
-          getHeaderKey: _getHeaderKey,
-          getGameKey: _getGameKey,
-          lastGamesData: _lastGamesData,
-          onGamesDataUpdate: (data) => _lastGamesData = data,
-        ),
-      ),
-    );
-  }
-
-  Future<void> _scrollToRound(String roundId) async {
+  Future<void> scrollToRound(String roundId) async {
     if (!mounted || _isViewSwitching) return;
 
     _isProgrammaticScroll = true;
@@ -574,17 +986,16 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     ref.read(scrollStateProvider.notifier).updateSelectedRound(roundId);
 
     try {
-      if (!_scrollController.hasClients) return;
+      if (!_scrollController.hasClients) {
+        return;
+      }
 
-      final headerKey = _getHeaderKey(roundId);
+      final headerKey = getHeaderKey(roundId);
+      final position = calculateScrollPositionForRound(roundId);
 
-      final position = _calculateScrollPositionForRound(roundId);
       if (position != null && position >= 0) {
-        await _scrollController.animateTo(
-          position,
-          duration: const Duration(milliseconds: 400),
-          curve: Curves.easeInOut,
-        );
+        // Remove animation - instant jump to position
+        _scrollController.jumpTo(position);
       }
 
       bool found = false;
@@ -594,15 +1005,14 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
 
         if (headerKey.currentContext != null) {
           try {
-            await Scrollable.ensureVisible(
+            // Remove animation - instant scroll
+            Scrollable.ensureVisible(
               headerKey.currentContext!,
               alignment: 0.0,
-              duration: const Duration(milliseconds: 400),
-              curve: Curves.easeInOut,
+              duration: Duration.zero, // Instant scroll
               alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
             );
             found = true;
-
             break;
           } catch (e) {
             debugPrint(
@@ -610,12 +1020,12 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
             );
           }
         } else {
-          debugPrint(' Key not found on retry $retry for round $roundId');
+          debugPrint('Key not found on retry $retry for round $roundId');
         }
       }
 
       if (!found) {
-        debugPrint(' Failed to scroll to round: $roundId after all attempts');
+        debugPrint('Failed to scroll to round: $roundId after all attempts');
       }
     } catch (e) {
       debugPrint('[GamesTourScreen] Scroll error: $e');
@@ -629,7 +1039,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     }
   }
 
-  double? _calculateScrollPositionForRound(String roundId) {
+  double? calculateScrollPositionForRound(String roundId) {
     try {
       final gamesData =
           _lastGamesData ?? ref.read(gamesTourScreenProvider).valueOrNull;
@@ -643,21 +1053,19 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
         gamesByRound.putIfAbsent(game.roundId, () => []).add(game);
       }
 
-      final visibleRounds =
-          rounds
-              .where((round) => (gamesByRound[round.id]?.isNotEmpty ?? false))
-              .toList()
-              .reversed
-              .toList();
+      final visibleRounds = rounds
+          .where((round) => (gamesByRound[round.id]?.isNotEmpty ?? false))
+          .toList()
+          .reversed
+          .toList();
 
       double position = 0;
       const double headerHeight = 50;
-      const double gameHeight = 120;
+      final double gameHeight = ref.read(chessBoardVisibilityProvider) ? 300 : 120;
       const double padding = 16;
       position += padding;
 
       for (final round in visibleRounds) {
-        debugPrint('🎯 Position before ${round.name} (${round.id}): $position');
         if (round.id == roundId) {
           return position;
         }
@@ -667,7 +1075,8 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
         final games = gamesByRound[round.id] ?? [];
         position += games.length * (gameHeight + 12);
 
-        if (position > _scrollController.position.maxScrollExtent) {
+        if (_scrollController.hasClients &&
+            position > _scrollController.position.maxScrollExtent) {
           return _scrollController.position.maxScrollExtent;
         }
       }
@@ -679,11 +1088,10 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     }
   }
 
-  Future<void> _handleRefresh(
+  Future<void> handleRefresh(
     AsyncValue gamesAppBarAsync,
     AsyncValue<GamesScreenModel> gamesTourAsync,
   ) async {
-    debugPrint('[GamesTourScreen] Refresh triggered');
     FocusScope.of(context).unfocus();
 
     final futures = <Future>[];
@@ -699,9 +1107,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     }
 
     if (gamesTourAsync.hasValue) {
-      futures.add(
-        ref.read(gamesTourScreenProvider.notifier).refreshGames(),
-      );
+      futures.add(ref.read(gamesTourScreenProvider.notifier).refreshGames());
     }
 
     if (futures.isNotEmpty) {
@@ -711,275 +1117,8 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     _isInitialized = false;
     Future.delayed(const Duration(milliseconds: 500), () {
       if (mounted) {
-        _synchronizeInitialSelection();
+        synchronizeInitialSelection();
       }
     });
-  }
-}
-
-class GamesTourContentBody extends ConsumerWidget {
-  final AsyncValue gamesAppBarAsync;
-  final AsyncValue<GamesScreenModel> gamesTourAsync;
-  final bool isChessBoardVisible;
-  final ScrollController scrollController;
-  final Map<String, GlobalKey> headerKeys;
-  final Map<String, List<GlobalKey>> gameKeys;
-  final GlobalKey Function(String) getHeaderKey;
-  final GlobalKey Function(String, int) getGameKey;
-  final GamesScreenModel? lastGamesData;
-  final Function(GamesScreenModel?) onGamesDataUpdate;
-
-  const GamesTourContentBody({
-    super.key,
-    required this.gamesAppBarAsync,
-    required this.gamesTourAsync,
-    required this.isChessBoardVisible,
-    required this.scrollController,
-    required this.headerKeys,
-    required this.gameKeys,
-    required this.getHeaderKey,
-    required this.getGameKey,
-    required this.lastGamesData,
-    required this.onGamesDataUpdate,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final tourId = ref.watch(selectedTourIdProvider);
-    final tourDetails = ref.watch(tourDetailScreenProvider);
-
-    if (tourId == null ||
-        tourDetails.isLoading ||
-        !tourDetails.hasValue ||
-        tourDetails.valueOrNull?.aboutTourModel == null) {
-      return const TourLoadingWidget();
-    }
-
-    if (tourDetails.hasError) {
-      return GamesErrorWidget(
-        errorMessage: 'Error loading tournament: ${tourDetails.error}',
-      );
-    }
-
-    if (gamesTourAsync.hasValue) {
-      onGamesDataUpdate(gamesTourAsync.valueOrNull);
-    }
-
-    if ((gamesAppBarAsync.isLoading || gamesTourAsync.isLoading) &&
-        lastGamesData == null) {
-      return const TourLoadingWidget();
-    }
-
-    if (gamesAppBarAsync.hasError || gamesTourAsync.hasError) {
-      return GamesErrorWidget(
-        errorMessage:
-            gamesAppBarAsync.error?.toString() ??
-            gamesTourAsync.error?.toString() ??
-            "An error occurred",
-      );
-    }
-
-    final gamesData = lastGamesData ?? gamesTourAsync.valueOrNull;
-    if (gamesData == null) return const TourLoadingWidget();
-
-    if (gamesData.gamesTourModels.isEmpty && !gamesTourAsync.isLoading) {
-      return const Center(
-        child: EmptyWidget(
-          title:
-              "No games available yet. Check back soon or set a\nreminder for updates.",
-        ),
-      );
-    }
-
-    return GamesTourMainContent(
-      gamesData: gamesData,
-      isChessBoardVisible: isChessBoardVisible,
-      scrollController: scrollController,
-      headerKeys: headerKeys,
-      gameKeys: gameKeys,
-      getHeaderKey: getHeaderKey,
-      getGameKey: getGameKey,
-    );
-  }
-}
-
-class GamesTourMainContent extends ConsumerWidget {
-  final GamesScreenModel gamesData;
-  final bool isChessBoardVisible;
-  final ScrollController scrollController;
-  final Map<String, GlobalKey> headerKeys;
-  final Map<String, List<GlobalKey>> gameKeys;
-  final GlobalKey Function(String) getHeaderKey;
-  final GlobalKey Function(String, int) getGameKey;
-
-  const GamesTourMainContent({
-    super.key,
-    required this.gamesData,
-    required this.isChessBoardVisible,
-    required this.scrollController,
-    required this.headerKeys,
-    required this.gameKeys,
-    required this.getHeaderKey,
-    required this.getGameKey,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final rounds =
-        ref.watch(gamesAppBarProvider).value?.gamesAppBarModels ?? [];
-
-    final gamesByRound = <String, List<GamesTourModel>>{};
-    for (final game in gamesData.gamesTourModels) {
-      gamesByRound.putIfAbsent(game.roundId, () => []).add(game);
-    }
-
-    final visibleRounds =
-        rounds
-            .where((round) => (gamesByRound[round.id]?.isNotEmpty ?? false))
-            .toList();
-
-    return GamesListView(
-      rounds: visibleRounds,
-      gamesByRound: gamesByRound,
-      gamesData: gamesData,
-      isChessBoardVisible: isChessBoardVisible,
-      scrollController: scrollController,
-      headerKeys: headerKeys,
-      gameKeys: gameKeys,
-      getHeaderKey: getHeaderKey,
-      getGameKey: getGameKey,
-    );
-  }
-}
-
-class GamesListView extends ConsumerWidget {
-  final List rounds;
-  final Map<String, List<GamesTourModel>> gamesByRound;
-  final GamesScreenModel gamesData;
-  final bool isChessBoardVisible;
-  final ScrollController scrollController;
-  final Map<String, GlobalKey> headerKeys;
-  final Map<String, List<GlobalKey>> gameKeys;
-  final GlobalKey Function(String) getHeaderKey;
-  final GlobalKey Function(String, int) getGameKey;
-
-  const GamesListView({
-    super.key,
-    required this.rounds,
-    required this.gamesByRound,
-    required this.gamesData,
-    required this.isChessBoardVisible,
-    required this.scrollController,
-    required this.headerKeys,
-    required this.gameKeys,
-    required this.getHeaderKey,
-    required this.getGameKey,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final reversedRounds = rounds.reversed.toList();
-    final roundPositionMap = <String, int>{};
-    for (int i = 0; i < reversedRounds.length; i++) {
-      roundPositionMap[reversedRounds[i].id] = i;
-    }
-
-    int itemCount = 0;
-    for (final round in reversedRounds) {
-      itemCount += 1;
-      itemCount += gamesByRound[round.id]?.length ?? 0;
-    }
-
-    return ListView.builder(
-      controller: scrollController,
-      cacheExtent: MediaQuery.of(context).size.height * 2,
-      padding: EdgeInsets.only(
-        left: 20.sp,
-        right: 20.sp,
-        top: 16.sp,
-        bottom: MediaQuery.of(context).viewPadding.bottom,
-      ),
-      itemCount: itemCount,
-      itemBuilder:
-          (context, index) => GameListItemBuilder(
-            index: index,
-            rounds: reversedRounds,
-            originalRounds: rounds,
-            gamesByRound: gamesByRound,
-            gamesData: gamesData,
-            isChessBoardVisible: isChessBoardVisible,
-            getHeaderKey: getHeaderKey,
-            getGameKey: getGameKey,
-            roundPositionMap: roundPositionMap,
-          ),
-    );
-  }
-}
-
-class GameListItemBuilder extends ConsumerWidget {
-  final int index;
-  final List rounds;
-  final List originalRounds;
-  final Map<String, List<GamesTourModel>> gamesByRound;
-  final GamesScreenModel gamesData;
-  final bool isChessBoardVisible;
-  final GlobalKey Function(String) getHeaderKey;
-  final GlobalKey Function(String, int) getGameKey;
-  final Map<String, int> roundPositionMap;
-
-  const GameListItemBuilder({
-    super.key,
-    required this.index,
-    required this.rounds,
-    required this.originalRounds,
-    required this.gamesByRound,
-    required this.gamesData,
-    required this.isChessBoardVisible,
-    required this.getHeaderKey,
-    required this.getGameKey,
-    required this.roundPositionMap,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    int currentIndex = 0;
-
-    for (final round in rounds) {
-      final roundGames = gamesByRound[round.id] ?? [];
-
-      if (index == currentIndex) {
-        return RoundHeader(
-          round: round,
-          roundGames: roundGames,
-          headerKey: getHeaderKey(round.id),
-        );
-      }
-      currentIndex += 1;
-
-      if (index < currentIndex + roundGames.length) {
-        final gameIndexInRound = index - currentIndex;
-        final game = roundGames[gameIndexInRound];
-        final globalGameIndex = gamesData.gamesTourModels.indexOf(game);
-
-        return Container(
-          key: getGameKey(
-            round.id,
-            gameIndexInRound,
-          ),
-          child: Padding(
-            padding: EdgeInsets.only(bottom: 12.sp),
-            child: GameCardWrapperWidget(
-              game: game,
-              gamesData: gamesData,
-              gameIndex: globalGameIndex,
-              isChessBoardVisible: isChessBoardVisible,
-            ),
-          ),
-        );
-      }
-      currentIndex += roundGames.length;
-    }
-
-    return const SizedBox.shrink();
   }
 }

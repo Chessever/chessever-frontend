@@ -85,7 +85,7 @@ class EvaluationBarWidget extends ConsumerWidget {
                         .characters
                         .take(4)
                         .string, // Show negative values directly
-                maxLines: 2,
+                maxLines: 1,
                 textAlign: TextAlign.center,
                 style: AppTypography.textSmRegular.copyWith(
                   color: Colors.white,
