@@ -25,16 +25,16 @@ class GameCardWrapperWidget extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final keyValue =
-        'game_${game.gameId}_${isChessBoardVisible ? 'chess' : 'card'}';
+        'game_${game.gameId}_${gameIndex}_${isChessBoardVisible ? 'chess' : 'card'}';
 
     return isChessBoardVisible
         ? ChessBoardFromFENNew(
-          key: ValueKey('${keyValue}_board'),
+          key: ValueKey(keyValue),
           gamesTourModel: game,
           onChanged: () => _navigateToChessBoard(context, ref),
         )
         : GameCard(
-          key: ValueKey('${keyValue}_card'),
+          key: ValueKey(keyValue),
           gamesTourModel: game,
           pinnedIds: gamesData.pinnedGamedIs,
           onPinToggle: (_) => _handlePinToggle(ref),

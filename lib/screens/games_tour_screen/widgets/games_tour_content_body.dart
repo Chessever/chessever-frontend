@@ -118,7 +118,6 @@ class GamesTourMainContent extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final rounds =
         ref.watch(gamesAppBarProvider).value?.gamesAppBarModels ?? [];
-
     final gamesByRound = <String, List<GamesTourModel>>{};
     for (final game in gamesData.gamesTourModels) {
       gamesByRound.putIfAbsent(game.roundId, () => []).add(game);
@@ -130,6 +129,7 @@ class GamesTourMainContent extends ConsumerWidget {
             .toList();
 
     return GamesListView(
+      key: ValueKey('games_list_${isChessBoardVisible ? 'chess' : 'card'}'),
       rounds: visibleRounds,
       gamesByRound: gamesByRound,
       gamesData: gamesData,
