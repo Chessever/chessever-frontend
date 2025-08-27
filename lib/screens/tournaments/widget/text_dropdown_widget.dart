@@ -82,15 +82,20 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
     return Row(
       children: [
         Expanded(
+          flex: 8, 
           child: Text(
             text,
-            style: AppTypography.textXsRegular.copyWith(color: kWhiteColor),
+            style: AppTypography.textXsRegular.copyWith(
+              color: kWhiteColor
+            ),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
         ),
-        const Spacer(),
-        trailingIcon,
+        Expanded(
+          flex: 2, 
+          child: Align(alignment: Alignment.centerRight, child: trailingIcon),
+        ),
       ],
     );
   }
