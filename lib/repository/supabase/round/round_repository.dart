@@ -160,35 +160,40 @@ class RoundRepository extends BaseRepository {
         "🔹 Total rounds for tour $tourId: ${rounds.map((r) => r.id).toList()}",
       );
 
-      Round? latestRoundWithNullMove;
+      Round? latestRoundWithMove;
 
-      for (final round in rounds.reversed) {
+      for (final round in rounds) {
         final gamesResponse = await supabase
             .from('games')
             .select('id, last_move')
             .eq('round_id', round.id)
-            .isFilter('last_move', null)
+            .not('last_move', 'is', null)
             .limit(1);
 
-        final nullMoveCount = (gamesResponse as List).length;
+        final nonNullMoveCount = (gamesResponse as List).length;
         print(
-          "Checking round ${round.id} → games with null last_move: $nullMoveCount",
+          "Checking round ${round.id} → games with non-null last_move: $nonNullMoveCount",
         );
 
-        if (nullMoveCount > 0) {
-          latestRoundWithNullMove = round;
-          print(" Selected latest round with null last_move: ${round.id}");
+        if (nonNullMoveCount > 0) {
+          latestRoundWithMove = round;
+          print("Found round with non-null last_move: ${round.id}");
           break;
         }
       }
-      if (latestRoundWithNullMove == null) {
-        latestRoundWithNullMove = rounds.last;
+
+      if (latestRoundWithMove == null) {
+        latestRoundWithMove = rounds.last;
         print(
-          "⚠️ No round with last_move null found, fallback to newest: ${rounds.last.id}",
+          " No round with last_move (non-null) found, fallback to newest: ${rounds.last.id}",
+        );
+      } else {
+        print(
+          " Final selected round : ${latestRoundWithMove.id}",
         );
       }
 
-      return latestRoundWithNullMove;
+      return latestRoundWithMove;
     });
   }
 }

@@ -44,40 +44,39 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   void initState() {
     super.initState();
     _currentPageIndex = widget.currentIndex;
-    _pageController = PageController(
-      initialPage: widget.currentIndex,
-      viewportFraction: 1.0, // full page; no peek
-    );
-
-    // Prime current & neighbors
+    _pageController = PageController(initialPage: widget.currentIndex);
     _prefetchAround(_currentPageIndex);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref
+          .read(chessBoardScreenProviderNew(_currentPageIndex).notifier)
+          .parseMoves();
+    });
+  }
+
+  void _onPageChanged(int newIndex) {
+    if (_currentPageIndex == newIndex) return;
+
+    ref
+        .read(chessBoardScreenProviderNew(_currentPageIndex).notifier)
+        .pauseGame();
+    setState(() => _currentPageIndex = newIndex);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(chessBoardScreenProviderNew(newIndex).notifier).parseMoves();
+    });
+
+    _prefetchAround(newIndex);
   }
 
   @override
   void dispose() {
-    // Cancel all prefetch subscriptions
     for (final sub in _prefetchSubs.values) {
       sub.close();
     }
     _prefetchSubs.clear();
     _pageController.dispose();
     super.dispose();
-  }
-
-  void _onPageChanged(int newIndex) {
-    if (_currentPageIndex == newIndex) return;
-
-    // Pause current game
-    ref
-        .read(chessBoardScreenProviderNew(_currentPageIndex).notifier)
-        .pauseGame();
-
-    setState(() {
-      _currentPageIndex = newIndex;
-    });
-
-    // Preload window around new index
-    _prefetchAround(newIndex);
   }
 
   void _navigateToGame(int gameIndex) {
@@ -133,19 +132,19 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
         gestures: <Type, GestureRecognizerFactory>{
           HorizontalDragGestureRecognizer: GestureRecognizerFactoryWithHandlers<
             HorizontalDragGestureRecognizer
-          >(() => HorizontalDragGestureRecognizer(), (
-            HorizontalDragGestureRecognizer instance,
-          ) {
-            instance.onStart = (_) {};
-            instance.onUpdate = (_) {};
-            instance.onEnd = (_) {};
-          }),
+          >(
+            () => HorizontalDragGestureRecognizer(),
+            (HorizontalDragGestureRecognizer instance) {
+              instance.onStart = (_) {};
+              instance.onUpdate = (_) {};
+              instance.onEnd = (_) {};
+            },
+          ),
         },
         behavior: HitTestBehavior.translucent,
         child: PageView.builder(
           padEnds: true,
-          allowImplicitScrolling: true,
-          // helps the framework build ahead
+          allowImplicitScrolling: true, // helps the framework build ahead
           physics: const PageScrollPhysics(),
           controller: _pageController,
           onPageChanged: _onPageChanged,
@@ -205,7 +204,11 @@ class _GamePage extends StatelessWidget {
         currentGameIndex: currentGameIndex,
         onGameChanged: onGameChanged,
       ),
-      body: _GameBody(index: currentGameIndex, game: game, state: state),
+      body: _GameBody(
+        index: currentGameIndex,
+        game: game,
+        state: state,
+      ),
     );
   }
 }
@@ -551,11 +554,10 @@ class _GameBody extends StatelessWidget {
               child: SingleChildScrollView(
                 scrollDirection: Axis.vertical,
                 physics: const ClampingScrollPhysics(),
-                dragStartBehavior: DragStartBehavior.down,
-                // Start drag from down gesture
+                dragStartBehavior:
+                    DragStartBehavior.down, // Start drag from down gesture
                 child: GestureDetector(
-                  onHorizontalDragStart: (_) {},
-                  // Consume horizontal gestures
+                  onHorizontalDragStart: (_) {}, // Consume horizontal gestures
                   onHorizontalDragUpdate: (_) {},
                   onHorizontalDragEnd: (_) {},
                   behavior: HitTestBehavior.translucent,

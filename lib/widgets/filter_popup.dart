@@ -1,13 +1,12 @@
 import 'package:chessever2/screens/tournaments/providers/filter_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/group_event_screen_provider.dart';
-import 'package:chessever2/screens/tournaments/group_event_screen.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/back_drop_filter_widget.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import '../screens/tournaments/group_event_screen.dart';
 
 class FilterPopup extends ConsumerStatefulWidget {
   const FilterPopup({super.key});
@@ -17,8 +16,7 @@ class FilterPopup extends ConsumerStatefulWidget {
 }
 
 class _FilterPopupState extends ConsumerState<FilterPopup> {
-  bool _isFormatExpanded = false;
-  String _selectedFormat = 'All Formats';
+  final Set<String> _selectedFormats = {};
 
   // ELO slider state
   RangeValues _eloRange = const RangeValues(800, 3200);
@@ -48,7 +46,6 @@ class _FilterPopupState extends ConsumerState<FilterPopup> {
               child: Container(
                 width: dialogWidth,
                 constraints: BoxConstraints(maxHeight: 500.h),
-                // Increased height
                 decoration: BoxDecoration(
                   color: kBlackColor,
                   borderRadius: BorderRadius.circular(4.br),
@@ -69,7 +66,6 @@ class _FilterPopupState extends ConsumerState<FilterPopup> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            // Format Section
                             Text(
                               'Format',
                               style: AppTypography.textXsMedium.copyWith(
@@ -77,143 +73,77 @@ class _FilterPopupState extends ConsumerState<FilterPopup> {
                               ),
                             ),
                             SizedBox(height: 8.h),
-                            GestureDetector(
-                              onTap:
-                                  () => setState(
-                                    () =>
-                                        _isFormatExpanded = !_isFormatExpanded,
-                                  ),
-                              child: Container(
-                                height: 40.h,
-                                decoration: BoxDecoration(
-                                  color:
-                                      _isFormatExpanded
-                                          ? kPrimaryColor
-                                          : kBlack2Color,
-                                  borderRadius: BorderRadius.circular(8.br),
-                                ),
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: 16.sp,
-                                ),
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      _selectedFormat,
-                                      style: AppTypography.textXsMedium
-                                          .copyWith(
-                                            color:
-                                                _isFormatExpanded
-                                                    ? kBlackColor
-                                                    : kWhiteColor,
-                                          ),
-                                    ),
-                                    Icon(
-                                      _isFormatExpanded
-                                          ? Icons.keyboard_arrow_up
-                                          : Icons.keyboard_arrow_down,
-                                      color:
-                                          _isFormatExpanded
-                                              ? kBlackColor
-                                              : kWhiteColor,
-                                      size: 24.ic,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-
-                            // Format expansion
-                            AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              height: _isFormatExpanded ? null : 0,
-                              child:
-                                  _isFormatExpanded
-                                      ? Container(
-                                        margin: EdgeInsets.only(top: 4.sp),
+                            formatsAsync.when(
+                              data: (List<String> formats) {
+                                return GridView.builder(
+                                  shrinkWrap: true,
+                                  padding: EdgeInsets.zero,
+                                  gridDelegate:
+                                      SliverGridDelegateWithFixedCrossAxisCount(
+                                        crossAxisCount: 2,
+                                        mainAxisSpacing: 8.h,
+                                        crossAxisSpacing: 8.w,
+                                        childAspectRatio: 2.5,
+                                      ),
+                                  itemCount: formats.length,
+                                  itemBuilder: (context, index) {
+                                    final format = formats[index];
+                                    final isSelected = _selectedFormats
+                                        .contains(format);
+                                    return GestureDetector(
+                                      onTap: () {
+                                        setState(() {
+                                          if (isSelected) {
+                                            _selectedFormats.remove(format);
+                                          } else {
+                                            _selectedFormats.add(format);
+                                          }
+                                        });
+                                      },
+                                      child: AnimatedContainer(
+                                        duration: const Duration(
+                                          milliseconds: 150,
+                                        ),
+                                        alignment: Alignment.center,
                                         decoration: BoxDecoration(
-                                          color: kBlack2Color,
+                                          color:
+                                              isSelected
+                                                  ? kPrimaryColor
+                                                  : kBlack2Color,
                                           borderRadius: BorderRadius.circular(
                                             8.br,
                                           ),
                                         ),
-                                        child: formatsAsync.when(
-                                          data:
-                                              (formats) => Column(
-                                                children:
-                                                    formats.map((format) {
-                                                      final isSelected =
-                                                          _selectedFormat ==
-                                                          format;
-                                                      return Column(
-                                                        children: [
-                                                          GestureDetector(
-                                                            onTap:
-                                                                () => setState(() {
-                                                                  _selectedFormat =
-                                                                      format;
-                                                                  _isFormatExpanded =
-                                                                      false;
-                                                                }),
-                                                            child: Container(
-                                                              height: 40.h,
-                                                              alignment:
-                                                                  Alignment
-                                                                      .centerLeft,
-                                                              padding:
-                                                                  EdgeInsets.symmetric(
-                                                                    horizontal:
-                                                                        16.sp,
-                                                                  ),
-                                                              decoration: BoxDecoration(
-                                                                color:
-                                                                    isSelected
-                                                                        ? kDividerColor
-                                                                        : Colors
-                                                                            .transparent,
-                                                              ),
-                                                              child: Text(
-                                                                format,
-                                                                style: AppTypography
-                                                                    .textXsMedium
-                                                                    .copyWith(
-                                                                      color:
-                                                                          kWhiteColor,
-                                                                    ),
-                                                              ),
-                                                            ),
-                                                          ),
-                                                          if (format !=
-                                                              formats.last)
-                                                            DividerWidget(),
-                                                        ],
-                                                      );
-                                                    }).toList(),
-                                              ),
-                                          loading:
-                                              () => const Padding(
-                                                padding: EdgeInsets.all(8.0),
-                                                child: Center(
-                                                  child:
-                                                      CircularProgressIndicator(),
-                                                ),
-                                              ),
-                                          error:
-                                              (e, st) => Padding(
-                                                padding: const EdgeInsets.all(
-                                                  8.0,
-                                                ),
-                                                child: Text(
-                                                  'Failed to load formats',
-                                                  style: TextStyle(
-                                                    color: Colors.red,
-                                                  ),
-                                                ),
+                                        child: Text(
+                                          format,
+                                          style: AppTypography.textXsMedium
+                                              .copyWith(
+                                                color:
+                                                    isSelected
+                                                        ? kBlackColor
+                                                        : kWhiteColor,
                                               ),
                                         ),
-                                      )
-                                      : const SizedBox.shrink(),
+                                      ),
+                                    );
+                                  },
+                                );
+                              },
+                              loading:
+                                  () => const Padding(
+                                    padding: EdgeInsets.all(8.0),
+                                    child: Center(
+                                      child: CircularProgressIndicator(),
+                                    ),
+                                  ),
+                              error:
+                                  (e, st) => Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: Text(
+                                      'Failed to load formats',
+                                      style: TextStyle(color: Colors.red),
+                                    ),
+                                  ),
                             ),
 
                             // ELO Range Slider
@@ -265,9 +195,6 @@ class _FilterPopupState extends ConsumerState<FilterPopup> {
                                     inactiveColor: kDividerColor,
                                     onChanged: (values) {
                                       setState(() => _eloRange = values);
-                                      print(
-                                        'ELO Range changed: ${values.start.round()}-${values.end.round()}',
-                                      );
                                     },
                                   ),
                                 ],
@@ -290,9 +217,8 @@ class _FilterPopupState extends ConsumerState<FilterPopup> {
                               child: OutlinedButton(
                                 onPressed: () async {
                                   setState(() {
-                                    _selectedFormat = 'All Formats';
-                                    _isFormatExpanded = false;
-                                    _eloRange = const RangeValues(1000, 3000);
+                                    // _selectedFormats.clear();
+                                    _eloRange = const RangeValues(800, 3200);
                                     _startDate = null;
                                     _endDate = null;
                                   });
@@ -332,7 +258,10 @@ class _FilterPopupState extends ConsumerState<FilterPopup> {
                                         ),
                                       )
                                       .applyAllFilters(
-                                        format: _selectedFormat,
+                                        format:
+                                            _selectedFormats.isEmpty
+                                                ? null
+                                                : _selectedFormats.toList(),
                                         eloRange: _eloRange,
                                         startDate: _startDate,
                                         endDate: _endDate,

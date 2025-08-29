@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
@@ -35,76 +36,71 @@ class ChessBoardScreenNotifierNew
   final Ref ref;
   GamesTourModel game;
   final int index;
+  Timer? _longPressTimer;
+  bool _hasParsedMoves = false;
 
   void _initializeState() {
-    Future.microtask(() async {
-      try {
-        state = AsyncValue.data(
-          ChessBoardStateNew(game: game, isLoadingMoves: true),
-        );
-
-        await _initializeGame();
-      } catch (error, stackTrace) {
-        // Check if still mounted before setting state
-        if (mounted) {
-          state = AsyncValue.error(error, stackTrace);
-        }
-      }
-    });
+    state = AsyncValue.data(
+      ChessBoardStateNew(
+        game: game,
+        pgnData: null,
+        isLoadingMoves: true,
+      ),
+    );
   }
 
-  Future<void> _initializeGame() async {
+  Future<void> parseMoves() async {
+    if (_hasParsedMoves) return;
+    _hasParsedMoves = true;
+
+    final currentState = state.value;
+    if (currentState == null) return;
+
     try {
-      if (!mounted) return;
       final gameWithPGn = await ref
           .read(gameRepositoryProvider)
           .getGameById(game.gameId);
-      game = GamesTourModel.fromGame(gameWithPGn);
-      if (!mounted) return;
-      final pgnData = game.pgn ?? _getSamplePgnData();
-      final gameData = PgnGame.parsePgn(pgnData);
+      final pgn = gameWithPGn.pgn ?? _getSamplePgnData();
+
+      final gameData = PgnGame.parsePgn(pgn);
       final startingPos = PgnGame.startingPosition(gameData.headers);
 
-      // Parse all moves and store them
-      Position tempPosition = startingPos;
+      Position tempPos = startingPos;
       List<Move> allMoves = [];
       List<String> moveSans = [];
 
       for (final node in gameData.moves.mainline()) {
-        final move = tempPosition.parseSan(node.san);
-        if (move == null) break; // Illegal move
+        final move = tempPos.parseSan(node.san);
+        if (move == null) break;
         allMoves.add(move);
         moveSans.add(node.san);
-        tempPosition = tempPosition.play(move);
+        tempPos = tempPos.play(move);
       }
 
-      // Set to the last position initially
       final lastMoveIndex = allMoves.length - 1;
       Move? lastMove;
-      Position finalPosition = startingPos;
-
-      // Replay to final position
+      Position finalPos = startingPos;
       for (int i = 0; i <= lastMoveIndex; i++) {
         lastMove = allMoves[i];
-        finalPosition = finalPosition.play(allMoves[i]);
+        finalPos = finalPos.play(allMoves[i]);
       }
 
       state = AsyncValue.data(
-        ChessBoardStateNew(
-          game: game,
-          position: finalPosition,
+        currentState.copyWith(
+          position: finalPos,
           startingPosition: startingPos,
           lastMove: lastMove,
           allMoves: allMoves,
           moveSans: moveSans,
           currentMoveIndex: lastMoveIndex,
+          pgnData: pgn,
           isLoadingMoves: false,
         ),
       );
-      // Trigger initial evaluation
+
       _updateEvaluation();
-    } catch (error, stackTrace) {
-      state = AsyncValue.error(error, stackTrace);
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
     }
   }
 
@@ -316,6 +312,47 @@ class ChessBoardScreenNotifierNew
         }
       },
     );
+  }
+
+  void startLongPressForward() {
+    _longPressTimer?.cancel();
+    _longPressTimer = Timer.periodic(
+      const Duration(milliseconds: 150),
+      (_) {
+        try {
+          if (state.value?.canMoveForward == true) moveForward();
+        } on StateError {
+          _longPressTimer?.cancel();
+          _longPressTimer = null;
+        }
+      },
+    );
+  }
+
+  void startLongPressBackward() {
+    _longPressTimer?.cancel();
+    _longPressTimer = Timer.periodic(
+      const Duration(milliseconds: 150),
+      (_) {
+        try {
+          if (state.value?.canMoveBackward == true) moveBackward();
+        } on StateError {
+          _longPressTimer?.cancel();
+          _longPressTimer = null;
+        }
+      },
+    );
+  }
+
+  void stopLongPress() {
+    _longPressTimer?.cancel();
+    _longPressTimer = null;
+  }
+
+  @override
+  void dispose() {
+    stopLongPress();
+    super.dispose();
   }
 }
 

@@ -331,7 +331,7 @@ class _AuthCountryDropdownWidgetState
                 child: FadeTransition(
                   opacity: _fadeAnimation,
                   child: ClipRRect(
-                    borderRadius: BorderRadius.vertical(
+                    borderRadius: const BorderRadius.vertical(
                       top: Radius.circular(25),
                     ),
                     child: Container(
@@ -344,62 +344,64 @@ class _AuthCountryDropdownWidgetState
                       child: Container(
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(12),
-                          // Enhanced glow effect with multiple shadows
                           boxShadow: [
-                            // Inner glow
                             BoxShadow(
                               color: kWhiteColor.withOpacity(0.8),
                               blurRadius: 8,
                               spreadRadius: 2,
-                              offset: Offset(-1, 0),
+                              offset: const Offset(-1, 0),
                             ),
-                            // // Outer glow - larger
                             BoxShadow(
                               color: kWhiteColor.withOpacity(0.5),
                               blurRadius: 20,
                               spreadRadius: 2,
-                              offset: Offset(0, 2),
+                              offset: const Offset(0, 2),
                             ),
-                            // Additional outer glow for stronger effect
                             BoxShadow(
                               color: kWhiteColor.withOpacity(0.3),
                               blurRadius: 35,
                               spreadRadius: 2,
-                              offset: Offset(0, 4),
+                              offset: const Offset(0, 4),
                             ),
-                            // Subtle bottom shadow for depth
                             BoxShadow(
                               color: kBlackColor.withOpacity(0.2),
                               blurRadius: 15,
                               spreadRadius: 1,
-                              offset: Offset(0, 8),
+                              offset: const Offset(0, 8),
                             ),
                           ],
                         ),
                         child: ElevatedButton(
-                          onPressed: () async {
-                            await _dismissWithAnimation();
-
-                            if (mounted) {
-                              notifier.hideCountrySelection();
-                              Navigator.of(context).pop();
-                              Navigator.pushReplacementNamed(
-                                context,
-                                '/home_screen',
-                              );
-                            }
-                          },
+                          onPressed: countryState.maybeWhen(
+                            loading: () => null,
+                            orElse:
+                                () => () async {
+                                  await _dismissWithAnimation();
+                                  if (mounted) {
+                                    notifier.hideCountrySelection();
+                                    Navigator.of(context).pop();
+                                    Navigator.pushReplacementNamed(
+                                      context,
+                                      '/home_screen',
+                                    );
+                                  }
+                                },
+                          ),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: kWhiteColor,
+                            backgroundColor: countryState.maybeWhen(
+                              loading:
+                                  () => kWhiteColor.withOpacity(
+                                    0.4,
+                                  ),
+                              orElse: () => kWhiteColor,
+                            ),
                             foregroundColor: kBlackColor,
                             padding: EdgeInsets.symmetric(vertical: 16.sp),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12.br),
                             ),
                             elevation: 0,
-                            // Remove default elevation since we're using custom shadows
-                            shadowColor:
-                                Colors.transparent, // Remove default shadow
+                            shadowColor: Colors.transparent,
                           ),
                           child: Text(
                             'Continue',
