@@ -178,11 +178,11 @@ class _RoundDropdown extends HookConsumerWidget {
                   Positioned(
                     left: offset.dx,
                     top: offset.dy + size.height,
-                    width: 135.w,
+                    width: 225.w,
                     child: CompositedTransformFollower(
                       link: layerLink,
                       showWhenUnlinked: false,
-                      offset: Offset(0, size.height),
+                      offset: Offset(-28.w, size.height),
                       child: Material(
                         color: Colors.transparent,
                         child: ConstrainedBox(
@@ -293,7 +293,7 @@ class _RoundDropdown extends HookConsumerWidget {
         },
         child: Container(
           height: 32.h,
-          width: 180.w,
+          width: 250.w,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: kBlack2Color,
