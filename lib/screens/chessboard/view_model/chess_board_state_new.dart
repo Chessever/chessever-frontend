@@ -13,6 +13,7 @@ class ChessBoardStateNew {
   final bool isLoadingMoves;
   final double evaluation;
   final GamesTourModel game;
+  final String? pgnData; 
   
   // Computed properties
   bool get canMoveForward => currentMoveIndex < allMoves.length - 1;
@@ -33,6 +34,7 @@ class ChessBoardStateNew {
     this.isLoadingMoves = false,
     this.evaluation = 0,
     required this.game,
+    this.pgnData
   });
 
   ChessBoardStateNew copyWith({
@@ -47,6 +49,7 @@ class ChessBoardStateNew {
     bool? isLoadingMoves,
     double? evaluation,
     GamesTourModel? game,
+    String? pgnData,
   }) {
     return ChessBoardStateNew(
       position: position ?? this.position,
@@ -60,6 +63,7 @@ class ChessBoardStateNew {
       isLoadingMoves: isLoadingMoves ?? this.isLoadingMoves,
       evaluation: evaluation ?? 0,
       game: game ?? this.game,
+      pgnData: pgnData ?? this.pgnData,
     );
   }
 }

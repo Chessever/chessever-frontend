@@ -90,7 +90,6 @@ class GamesAppBarNotifier
     }
 
     try {
-      // Use cache if same tour ID
       List<GamesAppBarModel> gamesAppBarModels;
 
       if (_cachedRounds != null && _lastTourId == tourId) {
@@ -143,6 +142,7 @@ class GamesAppBarNotifier
 
           if (liveRound != null) {
             selectedId = liveRound.id;
+            print("Selected live round: $selectedId");
           } else {
             final roundRepository = ref.read(roundRepositoryProvider);
             final latestRound = await roundRepository.getLatestRoundByLastMove(
@@ -152,13 +152,12 @@ class GamesAppBarNotifier
             if (latestRound != null) {
               selectedId = latestRound.id;
               print(
-                " Latest round with null last_move selected: $selectedId",
+                " Latest round with non-null last_move selected: $selectedId",
               );
             } else {
-              // Step 3: Fallback to the newest round
               selectedId = gamesAppBarModels.last.id;
               print(
-                " No live or null-move round found, fallback to newest: $selectedId",
+                "No live or non-null-move round found, fallback to newest: $selectedId",
               );
             }
           }
