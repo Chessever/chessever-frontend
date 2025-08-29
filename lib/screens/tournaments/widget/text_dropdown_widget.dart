@@ -80,22 +80,17 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
     }
 
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Expanded(
-          flex: 8, 
           child: Text(
             text,
-            style: AppTypography.textXsRegular.copyWith(
-              color: kWhiteColor
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+            style: AppTypography.textXsRegular.copyWith(color: kWhiteColor),
+            softWrap: true,
           ),
         ),
-        Expanded(
-          flex: 2, 
-          child: Align(alignment: Alignment.centerRight, child: trailingIcon),
-        ),
+        const SizedBox(width: 8),
+        trailingIcon,
       ],
     );
   }
@@ -163,12 +158,15 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
       selectedItemBuilder: (BuildContext context) {
         return widget.items.map((item) {
           return Container(
-            padding: EdgeInsets.symmetric(horizontal: 10.sp),
-            alignment: Alignment.center,
+            padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 4.h),
+            alignment: Alignment.centerLeft,
+            constraints: BoxConstraints(minHeight: 44.h),
             child: Text(
-              item['value']!, // Display the name/value in the selected item
+              item['value']!,
               style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
-              overflow: TextOverflow.ellipsis,
+              maxLines: 3,
+              overflow: TextOverflow.visible,
+              softWrap: true,
             ),
           );
         }).toList();

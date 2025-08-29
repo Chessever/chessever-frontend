@@ -78,7 +78,8 @@ class GamesAppBarModel extends Equatable {
   String get formattedStartDate {
     if (startsAt == null) return 'TBD';
 
-    final formatter = DateFormat('d MMMM y');
+    // final formatter = DateFormat('d MMMM y');
+    final formatter = DateFormat('d MMMM y, h:mm a');
     return formatter.format(startsAt!);
   }
 
