@@ -2,12 +2,7 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.d
 import 'package:equatable/equatable.dart';
 import 'package:intl/intl.dart';
 
-enum TourEventCategory {
-  live,
-  ongoing,
-  upcoming,
-  completed,
-}
+enum TourEventCategory { live, ongoing, upcoming, completed }
 
 class GroupEventCardModel extends Equatable {
   const GroupEventCardModel({
@@ -18,16 +13,11 @@ class GroupEventCardModel extends Equatable {
     required this.timeUntilStart,
     required this.tourEventCategory,
     required this.timeControl,
-    required this.startDate,
-    required this.endDate,
-
   });
 
   final String id;
   final String title;
   final String dates;
-  final DateTime? startDate;
-  final DateTime? endDate;
   final int maxAvgElo;
   final String timeUntilStart;
   final TourEventCategory tourEventCategory;
@@ -41,8 +31,6 @@ class GroupEventCardModel extends Equatable {
       id: groupBroadcast.id,
       title: groupBroadcast.name,
       dates: convertDates(groupBroadcast.dateStart, groupBroadcast.dateEnd),
-      startDate: groupBroadcast.dateStart,
-      endDate: groupBroadcast.dateEnd,
       maxAvgElo: groupBroadcast.maxAvgElo ?? 0,
       timeUntilStart: getTimeUntilStart(groupBroadcast.dateStart),
       tourEventCategory: getCategory(

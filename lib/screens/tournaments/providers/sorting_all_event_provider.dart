@@ -24,16 +24,6 @@ class TournamentSortingService {
     final filteredList =
         tours
             .where((t) => t.tourEventCategory != TourEventCategory.upcoming)
-            .toList()
-            .where((t) {
-              if (t.tourEventCategory == TourEventCategory.live) {
-                return t.endDate?.isBefore(
-                      DateTime.now().add(const Duration(days: 2)),
-                    ) ??
-                    false;
-              }
-              return true;
-            })
             .toList();
 
     filteredList.sort((a, b) {
@@ -76,8 +66,6 @@ class TournamentSortingService {
     final filteredList =
         tours
             .where((t) => t.tourEventCategory == TourEventCategory.upcoming)
-            .toList()
-            .where((p) => p.maxAvgElo > 0)
             .toList();
 
     filteredList.sort((a, b) {

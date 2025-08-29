@@ -137,8 +137,6 @@ class GroupEventScreen extends HookConsumerWidget {
                       tourEventCategory: TourEventCategory.live,
                       maxAvgElo: 0,
                       timeControl: 'Standard',
-                      startDate: DateTime(2025, 3, 15),
-                      endDate: DateTime.now(),
                     );
                     return Expanded(
                       child: SkeletonWidget(
