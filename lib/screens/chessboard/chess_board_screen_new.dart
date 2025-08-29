@@ -1,5 +1,3 @@
-import 'package:chessever2/providers/board_settings_provider.dart';
-import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
@@ -135,13 +133,14 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
         gestures: <Type, GestureRecognizerFactory>{
           HorizontalDragGestureRecognizer: GestureRecognizerFactoryWithHandlers<
             HorizontalDragGestureRecognizer
-          >(() => HorizontalDragGestureRecognizer(), (
-            HorizontalDragGestureRecognizer instance,
-          ) {
-            instance.onStart = (_) {};
-            instance.onUpdate = (_) {};
-            instance.onEnd = (_) {};
-          }),
+          >(
+            () => HorizontalDragGestureRecognizer(),
+            (HorizontalDragGestureRecognizer instance) {
+              instance.onStart = (_) {};
+              instance.onUpdate = (_) {};
+              instance.onEnd = (_) {};
+            },
+          ),
         },
         behavior: HitTestBehavior.translucent,
         child: PageView.builder(
@@ -206,7 +205,11 @@ class _GamePage extends StatelessWidget {
         currentGameIndex: currentGameIndex,
         onGameChanged: onGameChanged,
       ),
-      body: _GameBody(index: currentGameIndex, game: game, state: state),
+      body: _GameBody(
+        index: currentGameIndex,
+        game: game,
+        state: state,
+      ),
     );
   }
 }
@@ -552,8 +555,7 @@ class _GameBody extends StatelessWidget {
               child: SingleChildScrollView(
                 scrollDirection: Axis.vertical,
                 physics: const ClampingScrollPhysics(),
-                dragStartBehavior:
-                    DragStartBehavior.down, // Start drag from down gesture
+                dragStartBehavior: DragStartBehavior.down, // Start drag from down gesture
                 child: GestureDetector(
                   onHorizontalDragStart: (_) {}, // Consume horizontal gestures
                   onHorizontalDragUpdate: (_) {},
@@ -657,37 +659,9 @@ class _ChessBoardNew extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final boardSettingsValue = ref.watch(boardSettingsProvider);
-    final boardTheme = ref
-        .read(boardSettingsRepository)
-        .getBoardTheme(boardSettingsValue.boardColor);
     return Chessboard.fixed(
       size: size,
-      settings: ChessboardSettings(
-        colorScheme: ChessboardColorScheme(
-          lightSquare: boardTheme.lightSquareColor,
-          darkSquare: boardTheme.darkSquareColor,
-          background: SolidColorChessboardBackground(
-            lightSquare: boardTheme.lightSquareColor,
-            darkSquare: boardTheme.darkSquareColor,
-          ),
-          whiteCoordBackground: SolidColorChessboardBackground(
-            lightSquare: boardTheme.lightSquareColor,
-            darkSquare: boardTheme.darkSquareColor,
-            coordinates: true,
-            orientation: Side.white,
-          ),
-          blackCoordBackground: SolidColorChessboardBackground(
-            lightSquare: boardTheme.lightSquareColor,
-            darkSquare: boardTheme.darkSquareColor,
-            coordinates: true,
-            orientation: Side.black,
-          ),
-          lastMove:  HighlightDetails(solidColor: kPrimaryColor),
-          selected: const HighlightDetails(solidColor: kPrimaryColor),
-          validMoves: kPrimaryColor,
-          validPremoves: kPrimaryColor,
-        ),
+      settings: const ChessboardSettings(
         enableCoordinates: true,
         animationDuration: Duration(milliseconds: 200),
         dragFeedbackScale: 1.0,

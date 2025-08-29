@@ -148,4 +148,47 @@ class RoundRepository extends BaseRepository {
       };
     });
   }
+
+  Future<Round?> getLatestRoundByLastMove(String tourId) async {
+    return handleApiCall(() async {
+      final rounds = await getRoundsByTourId(tourId);
+
+      if (rounds.isEmpty) {
+        return null;
+      }
+      print(
+        "🔹 Total rounds for tour $tourId: ${rounds.map((r) => r.id).toList()}",
+      );
+
+      Round? latestRoundWithNullMove;
+
+      for (final round in rounds.reversed) {
+        final gamesResponse = await supabase
+            .from('games')
+            .select('id, last_move')
+            .eq('round_id', round.id)
+            .isFilter('last_move', null)
+            .limit(1);
+
+        final nullMoveCount = (gamesResponse as List).length;
+        print(
+          "Checking round ${round.id} → games with null last_move: $nullMoveCount",
+        );
+
+        if (nullMoveCount > 0) {
+          latestRoundWithNullMove = round;
+          print(" Selected latest round with null last_move: ${round.id}");
+          break;
+        }
+      }
+      if (latestRoundWithNullMove == null) {
+        latestRoundWithNullMove = rounds.last;
+        print(
+          "⚠️ No round with last_move null found, fallback to newest: ${rounds.last.id}",
+        );
+      }
+
+      return latestRoundWithNullMove;
+    });
+  }
 }

@@ -117,33 +117,51 @@ class GamesAppBarNotifier
                 .map((round) => GamesAppBarModel.fromRound(round, liveRounds))
                 .toList();
 
-        // Cache the results
         _cachedRounds = gamesAppBarModels;
         _lastTourId = tourId;
       }
 
-      // Determine selected round with better logic
       String selectedId = '';
       bool userSelectedId = false;
 
       if (gamesAppBarModels.isNotEmpty) {
-        // Default to first round
-        selectedId = gamesAppBarModels.first.id;
-
-        // Check if user had previously selected a round for this tour
         final userSelection = ref.read(userSelectedRoundProvider);
+
         if (userSelection != null &&
             userSelection.userSelected &&
             gamesAppBarModels.any((model) => model.id == userSelection.id)) {
           selectedId = userSelection.id;
           userSelectedId = true;
         } else {
-          // Auto-select a live round if available and no user selection
-          final liveRound = gamesAppBarModels.firstWhere(
-            (model) => liveRounds.contains(model.id),
-            orElse: () => gamesAppBarModels.first,
-          );
-          selectedId = liveRound.id;
+          GamesAppBarModel? liveRound;
+          for (var model in gamesAppBarModels) {
+            if (liveRounds.contains(model.id)) {
+              liveRound = model;
+              break;
+            }
+          }
+
+          if (liveRound != null) {
+            selectedId = liveRound.id;
+          } else {
+            final roundRepository = ref.read(roundRepositoryProvider);
+            final latestRound = await roundRepository.getLatestRoundByLastMove(
+              tourId!,
+            );
+
+            if (latestRound != null) {
+              selectedId = latestRound.id;
+              print(
+                " Latest round with null last_move selected: $selectedId",
+              );
+            } else {
+              // Step 3: Fallback to the newest round
+              selectedId = gamesAppBarModels.last.id;
+              print(
+                " No live or null-move round found, fallback to newest: $selectedId",
+              );
+            }
+          }
         }
       }
 
