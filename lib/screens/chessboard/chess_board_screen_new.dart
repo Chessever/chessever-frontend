@@ -133,19 +133,19 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
         gestures: <Type, GestureRecognizerFactory>{
           HorizontalDragGestureRecognizer: GestureRecognizerFactoryWithHandlers<
             HorizontalDragGestureRecognizer
-          >(
-            () => HorizontalDragGestureRecognizer(),
-            (HorizontalDragGestureRecognizer instance) {
-              instance.onStart = (_) {};
-              instance.onUpdate = (_) {};
-              instance.onEnd = (_) {};
-            },
-          ),
+          >(() => HorizontalDragGestureRecognizer(), (
+            HorizontalDragGestureRecognizer instance,
+          ) {
+            instance.onStart = (_) {};
+            instance.onUpdate = (_) {};
+            instance.onEnd = (_) {};
+          }),
         },
         behavior: HitTestBehavior.translucent,
         child: PageView.builder(
           padEnds: true,
-          allowImplicitScrolling: true, // helps the framework build ahead
+          allowImplicitScrolling: true,
+          // helps the framework build ahead
           physics: const PageScrollPhysics(),
           controller: _pageController,
           onPageChanged: _onPageChanged,
@@ -205,11 +205,7 @@ class _GamePage extends StatelessWidget {
         currentGameIndex: currentGameIndex,
         onGameChanged: onGameChanged,
       ),
-      body: _GameBody(
-        index: currentGameIndex,
-        game: game,
-        state: state,
-      ),
+      body: _GameBody(index: currentGameIndex, game: game, state: state),
     );
   }
 }
@@ -555,9 +551,11 @@ class _GameBody extends StatelessWidget {
               child: SingleChildScrollView(
                 scrollDirection: Axis.vertical,
                 physics: const ClampingScrollPhysics(),
-                dragStartBehavior: DragStartBehavior.down, // Start drag from down gesture
+                dragStartBehavior: DragStartBehavior.down,
+                // Start drag from down gesture
                 child: GestureDetector(
-                  onHorizontalDragStart: (_) {}, // Consume horizontal gestures
+                  onHorizontalDragStart: (_) {},
+                  // Consume horizontal gestures
                   onHorizontalDragUpdate: (_) {},
                   onHorizontalDragEnd: (_) {},
                   behavior: HitTestBehavior.translucent,
