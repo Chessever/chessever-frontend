@@ -79,10 +79,11 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
         break;
     }
 
-     return Row(
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Expanded(
+          flex: 8,
           child: Text(
             text,
             style: AppTypography.textXsRegular.copyWith(color: kWhiteColor),
@@ -90,7 +91,10 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
           ),
         ),
         const SizedBox(width: 8),
-        trailingIcon,
+        Expanded(
+          flex: 2,
+          child: Align(alignment: Alignment.centerRight, child: trailingIcon),
+        ),
       ],
     );
   }
@@ -130,10 +134,7 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
                   Container(
                     padding: EdgeInsets.symmetric(horizontal: 10.sp),
                     alignment: Alignment.center,
-                    child: _buildDropdownItem(
-                      item['value']!,
-                      item['status']!,
-                    ),
+                    child: _buildDropdownItem(item['value']!, item['status']!),
                   ),
                   Spacer(),
                   if (!isLast)

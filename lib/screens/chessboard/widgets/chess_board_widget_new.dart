@@ -4,6 +4,7 @@ import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_second_row_detail_widget.dart';
 import 'package:chessever2/screens/tournaments/model/games_tour_model.dart';
+import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
@@ -29,6 +30,7 @@ class ChessBoardFromFENNew extends ConsumerStatefulWidget {
 class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFENNew> {
   Move? lastMove;
   Position? finalPosition;
+
   @override
   void initState() {
     super.initState();
@@ -138,15 +140,37 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFENNew> {
                     child: AbsorbPointer(
                       child: Chessboard.fixed(
                         size: boardSize,
-                        settings: const ChessboardSettings(
-                          enableCoordinates: true,
-                          animationDuration: Duration(milliseconds: 200),
-                          dragFeedbackScale: 1.0,
-                          dragTargetKind: DragTargetKind.none,
-                          pieceShiftMethod: PieceShiftMethod.either,
-                          autoQueenPromotionOnPremove: false,
-                          pieceOrientationBehavior:
-                              PieceOrientationBehavior.facingUser,
+                        settings: ChessboardSettings(
+                          colorScheme: ChessboardColorScheme(
+                            lightSquare: boardTheme.lightSquareColor,
+                            darkSquare: boardTheme.darkSquareColor,
+                            background: SolidColorChessboardBackground(
+                              lightSquare: boardTheme.lightSquareColor,
+                              darkSquare: boardTheme.darkSquareColor,
+                            ),
+                            whiteCoordBackground:
+                                SolidColorChessboardBackground(
+                                  lightSquare: boardTheme.lightSquareColor,
+                                  darkSquare: boardTheme.darkSquareColor,
+                                  coordinates: true,
+                                  orientation: Side.white,
+                                ),
+                            blackCoordBackground:
+                                SolidColorChessboardBackground(
+                                  lightSquare: boardTheme.lightSquareColor,
+                                  darkSquare: boardTheme.darkSquareColor,
+                                  coordinates: true,
+                                  orientation: Side.black,
+                                ),
+                            lastMove: HighlightDetails(
+                              solidColor: kPrimaryColor,
+                            ),
+                            selected: const HighlightDetails(
+                              solidColor: kPrimaryColor,
+                            ),
+                            validMoves: kPrimaryColor,
+                            validPremoves: kPrimaryColor,
+                          ),
                         ),
                         orientation: Side.white,
                         fen: finalPosition?.fen ?? "",
