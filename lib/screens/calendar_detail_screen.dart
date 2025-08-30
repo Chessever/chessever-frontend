@@ -1,7 +1,7 @@
 import 'package:chessever2/screens/calendar_screen.dart';
-import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
-import 'package:chessever2/screens/tournaments/providers/calendar_tour_view_provider.dart';
-import 'package:chessever2/screens/tournaments/group_event_screen.dart';
+import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:chessever2/screens/group_event/providers/calendar_tour_view_provider.dart';
+import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/month_converter.dart';

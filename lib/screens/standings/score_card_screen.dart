@@ -8,8 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../theme/app_theme.dart';
 import '../players/providers/player_providers.dart';
-import '../tournaments/model/games_tour_model.dart';
-import '../tournaments/providers/games_tour_screen_provider.dart';
+import '../group_event/model/games_tour_model.dart';
+import '../group_event/providers/games_tour_screen_provider.dart';
 
 final selectedPlayerProvider = StateProvider<PlayerStandingModel?>(
   (ref) => null,

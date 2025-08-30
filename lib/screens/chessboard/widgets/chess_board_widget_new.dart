@@ -3,7 +3,7 @@ import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_second_row_detail_widget.dart';
-import 'package:chessever2/screens/tournaments/model/games_tour_model.dart';
+import 'package:chessever2/screens/group_event/model/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessground/chessground.dart';

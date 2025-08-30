@@ -1,4 +1,4 @@
-import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider.dart';
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -39,10 +39,10 @@ class EvaluationBarWidget extends ConsumerWidget {
                   height *
                   (isFlipped
                       ? ref
-                          .read(chessBoardScreenProvider(index).notifier)
+                          .read(chessBoardScreenProviderNew(index).notifier)
                           .getWhiteRatio(evaluation)
                       : ref
-                          .read(chessBoardScreenProvider(index).notifier)
+                          .read(chessBoardScreenProviderNew(index).notifier)
                           .getBlackRatio(evaluation)),
               color: isFlipped ? kWhiteColor : kPopUpColor,
             ),
@@ -56,10 +56,10 @@ class EvaluationBarWidget extends ConsumerWidget {
                   height *
                   (isFlipped
                       ? ref
-                          .read(chessBoardScreenProvider(index).notifier)
+                          .read(chessBoardScreenProviderNew(index).notifier)
                           .getBlackRatio(evaluation)
                       : ref
-                          .read(chessBoardScreenProvider(index).notifier)
+                          .read(chessBoardScreenProviderNew(index).notifier)
                           .getWhiteRatio(evaluation)),
               color: isFlipped ? kPopUpColor : kWhiteColor,
             ),
