@@ -1,5 +1,5 @@
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
-import 'package:chessever2/screens/group_event/widget/bottom_nav_bar.dart';
+import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
