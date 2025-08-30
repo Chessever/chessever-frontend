@@ -85,8 +85,14 @@ class TournamentSortingService {
       final isFavoriteB = favorites.contains(b.id);
 
       if (hasFavorites) {
-        if (isFavoriteA && !isFavoriteB) return -1;
-        if (!isFavoriteA && isFavoriteB) return 1;
+        if (isFavoriteA &&
+            !isFavoriteB &&
+            a.tourEventCategory != TourEventCategory.completed)
+          return -1;
+        if (!isFavoriteA &&
+            isFavoriteB &&
+            b.tourEventCategory != TourEventCategory.completed)
+          return 1;
       }
 
       return a.title.toLowerCase().compareTo(b.title.toLowerCase());
