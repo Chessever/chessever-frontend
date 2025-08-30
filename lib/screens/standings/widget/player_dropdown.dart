@@ -1,4 +1,4 @@
-import 'package:chessever2/screens/standings/standing_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -18,7 +18,7 @@ class PlayerDropDown extends ConsumerWidget {
       height: 32.h,
       width: 200.w,
       child: ref
-          .watch(standingScreenProvider)
+          .watch(playerTourScreenProvider)
           .when(
             data: (players) => _PlayerDropdown(players: players),
             error:

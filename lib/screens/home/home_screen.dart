@@ -1,5 +1,5 @@
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
-import 'package:chessever2/screens/calendar_screen.dart';
+import 'package:chessever2/screens/calendar/calendar_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/premium/premium_screen.dart'; // Import premium screen
 import 'package:chessever2/screens/premium/provider/premium_screen_provider.dart';
@@ -7,7 +7,7 @@ import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../group_event/group_event_screen.dart';
-import '../group_event/widget/bottom_nav_bar.dart';
+import 'widget/bottom_nav_bar.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});

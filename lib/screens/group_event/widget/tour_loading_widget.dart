@@ -1,5 +1,5 @@
-import 'package:chessever2/screens/group_event/model/games_tour_model.dart';
-import 'package:chessever2/screens/group_event/widget/game_card.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';

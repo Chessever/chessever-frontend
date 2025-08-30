@@ -1,4 +1,4 @@
-import 'package:chessever2/screens/group_event/model/games_app_bar_view_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/widgets/round_selector.dart';
 import 'package:intl/intl.dart';
 
