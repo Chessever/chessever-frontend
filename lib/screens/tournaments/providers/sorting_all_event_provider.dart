@@ -1,5 +1,4 @@
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
-import 'package:chessever2/widgets/event_card/starred_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final tournamentSortingServiceProvider = Provider<TournamentSortingService>((
@@ -16,25 +15,13 @@ class TournamentSortingService {
   List<GroupEventCardModel> sortAllTours({
     required List<GroupEventCardModel> tours,
     required String dropDownSelectedCountry,
-    required List<String> favorites,
   }) {
-    final hasFavorites = favorites.isNotEmpty;
-
     final filteredList =
         tours
             .where((t) => t.tourEventCategory != TourEventCategory.upcoming)
             .toList();
 
     filteredList.sort((a, b) {
-      // SECOND PRIORITY: General favorites (if sortByFavorites is enabled)
-      if (hasFavorites) {
-        final isFavoriteA = favorites.contains(a.id);
-        final isFavoriteB = favorites.contains(b.id);
-
-        if (isFavoriteA && !isFavoriteB) return -1;
-        if (!isFavoriteA && isFavoriteB) return 1;
-      }
-
       final isHighEloA = a.maxAvgElo > 3200;
       final isHighEloB = b.maxAvgElo > 3200;
 
@@ -55,25 +42,14 @@ class TournamentSortingService {
 
   List<GroupEventCardModel> sortUpcomingTours({
     required List<GroupEventCardModel> tours,
-    required List<String> favorites,
     required String dropDownSelectedCountry,
   }) {
-    final hasFavorites = favorites.isNotEmpty;
-
     final filteredList =
         tours
             .where((t) => t.tourEventCategory == TourEventCategory.upcoming)
             .toList();
 
     filteredList.sort((a, b) {
-      final isFavoriteA = favorites.contains(a.id);
-      final isFavoriteB = favorites.contains(b.id);
-
-      if (hasFavorites) {
-        if (isFavoriteA && !isFavoriteB) return -1;
-        if (!isFavoriteA && isFavoriteB) return 1;
-      }
-
       // For upcoming tournaments, also sort by maxElo after favorites
       // Special handling for tournaments with maxElo > 3200
       final eloA = a.maxAvgElo;
@@ -95,5 +71,27 @@ class TournamentSortingService {
     });
 
     return filteredList;
+  }
+
+  List<GroupEventCardModel> sortBasedOnFavorite({
+    required List<GroupEventCardModel> tours,
+    required List<String> favorites,
+  }) {
+    final hasFavorites = favorites.isNotEmpty;
+
+    var sortedEvents = tours.toList();
+    sortedEvents.sort((a, b) {
+      final isFavoriteA = favorites.contains(a.id);
+      final isFavoriteB = favorites.contains(b.id);
+
+      if (hasFavorites) {
+        if (isFavoriteA && !isFavoriteB) return -1;
+        if (!isFavoriteA && isFavoriteB) return 1;
+      }
+
+      return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+    });
+
+    return sortedEvents;
   }
 }

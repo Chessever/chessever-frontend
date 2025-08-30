@@ -29,7 +29,6 @@ final groupEventScreenProvider = AutoDisposeStateNotifierProvider<
 >((ref) {
   final tourEventCategory = ref.watch(selectedGroupCategoryProvider);
 
-  final favorites = ref.watch(starredProvider); // Get the list of favorited ids
   var liveBroadcastId = <String>[];
   ref
       .watch(liveGroupBroadcastIdsProvider)
@@ -44,7 +43,6 @@ final groupEventScreenProvider = AutoDisposeStateNotifierProvider<
     ref: ref,
     tourEventCategory: tourEventCategory,
     liveBroadcastId: liveBroadcastId,
-    favorites: favorites,
   );
 });
 
@@ -55,7 +53,6 @@ class _GroupEventScreenController
     required this.ref,
     required this.tourEventCategory,
     required this.liveBroadcastId,
-    required this.favorites,
   }) : super(const AsyncValue.loading()) {
     loadTours();
   }
@@ -66,8 +63,6 @@ class _GroupEventScreenController
   final GroupEventCategory tourEventCategory;
   @override
   final List<String> liveBroadcastId;
-  @override
-  final List<String> favorites;
 
   /// This will be populated every time we fetch the tournaments
   var _groupBroadcastList = <GroupBroadcast>[];
@@ -106,12 +101,10 @@ class _GroupEventScreenController
                 ? sortingService.sortUpcomingTours(
                   tours: tourEventCardModel,
                   dropDownSelectedCountry: selectedCountry,
-                  favorites: favorites,
                 )
                 : sortingService.sortAllTours(
                   tours: tourEventCardModel,
                   dropDownSelectedCountry: selectedCountry,
-                  favorites: favorites,
                 );
 
         state = AsyncValue.data(sortedTours);
@@ -167,12 +160,10 @@ class _GroupEventScreenController
                 ? sortingService.sortUpcomingTours(
                   tours: tourEventCardModel,
                   dropDownSelectedCountry: selectedCountry,
-                  favorites: favorites,
                 )
                 : sortingService.sortAllTours(
                   tours: tourEventCardModel,
                   dropDownSelectedCountry: selectedCountry,
-                  favorites: favorites,
                 );
 
         state = AsyncValue.data(sortedTours);

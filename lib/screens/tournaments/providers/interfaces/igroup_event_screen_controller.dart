@@ -17,8 +17,6 @@ abstract class IGroupEventScreenController {
   /// List of live broadcast IDs
   List<String> get liveBroadcastId;
 
-  /// List of user's favorite tournament IDs
-  List<String> get favorites;
 
   /// Loads tournaments based on the current category and filters
   ///
