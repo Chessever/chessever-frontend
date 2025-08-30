@@ -152,11 +152,8 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
         return false;
       },
       child: RefreshIndicator(
-        onRefresh:
-            () => handleRefresh(
-              gamesAppBarAsync,
-              gamesTourAsync,
-            ), // Using extension method
+        onRefresh: () => handleRefresh(gamesAppBarAsync, gamesTourAsync),
+        // Using extension method
         color: kWhiteColor70,
         backgroundColor: kDarkGreyColor,
         displacement: 60.h,
@@ -168,8 +165,10 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
           scrollController: _scrollController,
           headerKeys: _headerKeys,
           gameKeys: _gameKeys,
-          getHeaderKey: getHeaderKey, // Using extension method
-          getGameKey: getGameKey, // Using extension method
+          getHeaderKey: getHeaderKey,
+          // Using extension method
+          getGameKey: getGameKey,
+          // Using extension method
           lastGamesData: _lastGamesData,
           onGamesDataUpdate: (data) => _lastGamesData = data,
         ),
@@ -1176,4 +1175,3 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
     });
   }
 }
-
