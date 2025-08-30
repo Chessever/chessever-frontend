@@ -13,12 +13,11 @@ class TournamentSortingService {
 
   TournamentSortingService(this.ref);
 
-  List<GroupEventCardModel> sortAllTours(
-    List<GroupEventCardModel> tours,
-    String dropDownSelectedCountry, {
-    bool sortByFavorites = false, // Add this optional flag
+  List<GroupEventCardModel> sortAllTours({
+    required List<GroupEventCardModel> tours,
+    required String dropDownSelectedCountry,
+    required List<String> favorites,
   }) {
-    final favorites = ref.watch(starredProvider);
     final hasFavorites = favorites.isNotEmpty;
 
     final filteredList =
@@ -28,7 +27,7 @@ class TournamentSortingService {
 
     filteredList.sort((a, b) {
       // SECOND PRIORITY: General favorites (if sortByFavorites is enabled)
-      if (sortByFavorites && hasFavorites) {
+      if (hasFavorites) {
         final isFavoriteA = favorites.contains(a.id);
         final isFavoriteB = favorites.contains(b.id);
 
@@ -54,13 +53,11 @@ class TournamentSortingService {
     return filteredList;
   }
 
-  List<GroupEventCardModel> sortUpcomingTours(
-    List<GroupEventCardModel> tours,
-    String dropDownSelectedCountry,
-  ) {
-    final favorites = ref.watch(
-      starredProvider,
-    ); // Get the list of favorited ids
+  List<GroupEventCardModel> sortUpcomingTours({
+    required List<GroupEventCardModel> tours,
+    required List<String> favorites,
+    required String dropDownSelectedCountry,
+  }) {
     final hasFavorites = favorites.isNotEmpty;
 
     final filteredList =

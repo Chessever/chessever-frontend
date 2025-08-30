@@ -10,7 +10,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-
 class SearchOverlay extends ConsumerWidget {
   final String query;
   final Function(GroupEventCardModel) onTournamentTap;
@@ -122,9 +121,7 @@ class SearchOverlay extends ConsumerWidget {
           child: _buildResultColumn(
             title: 'Players',
             count: searchResult.playerResults.length,
-            results:
-                searchResult
-                    .playerResults,
+            results: searchResult.playerResults,
             icon: Icons.person,
             isPlayerSection: true,
           ),
@@ -140,7 +137,7 @@ class SearchOverlay extends ConsumerWidget {
     final results =
         hasTournaments
             ? searchResult.tournamentResults
-            : searchResult.playerResults; 
+            : searchResult.playerResults;
     final title = hasTournaments ? 'Events' : 'Players';
     final icon = hasTournaments ? Icons.emoji_events : Icons.person;
 
@@ -171,10 +168,7 @@ class SearchOverlay extends ConsumerWidget {
       return Center(
         child: Text(
           'No $title found',
-          style: TextStyle(
-            color: Colors.grey[400],
-            fontSize: 14,
-          ),
+          style: TextStyle(color: Colors.grey[400], fontSize: 14),
         ),
       );
     }
@@ -186,11 +180,7 @@ class SearchOverlay extends ConsumerWidget {
           padding: EdgeInsets.all(12.sp),
           child: Row(
             children: [
-              Icon(
-                icon,
-                size: 16.ic,
-                color: Colors.blue,
-              ),
+              Icon(icon, size: 16.ic, color: Colors.blue),
               SizedBox(width: 8.w),
               Text(
                 '$title (${filteredResults.length})',
@@ -239,18 +229,12 @@ class SearchOverlay extends ConsumerWidget {
       padding: EdgeInsets.all(16.sp),
       decoration: BoxDecoration(
         border: Border(
-          bottom: BorderSide(
-            color: Colors.white.withOpacity(0.1),
-          ),
+          bottom: BorderSide(color: Colors.white.withOpacity(0.1)),
         ),
       ),
       child: Row(
         children: [
-          Icon(
-            Icons.search,
-            size: 16.ic,
-            color: Colors.blue,
-          ),
+          Icon(Icons.search, size: 16.ic, color: Colors.blue),
           SizedBox(width: 8.w),
           Expanded(
             child: Text(
@@ -268,7 +252,7 @@ class SearchOverlay extends ConsumerWidget {
   }
 
   Widget _buildLoadingState() {
-    return Container(
+    return SizedBox(
       height: 200.h,
       child: Center(
         child: Column(
@@ -281,10 +265,7 @@ class SearchOverlay extends ConsumerWidget {
             SizedBox(height: 16.h),
             Text(
               'Searching...',
-              style: TextStyle(
-                color: Colors.white70,
-                fontSize: 14.sp,
-              ),
+              style: TextStyle(color: Colors.white70, fontSize: 14.sp),
             ),
           ],
         ),
@@ -293,17 +274,13 @@ class SearchOverlay extends ConsumerWidget {
   }
 
   Widget _buildErrorState(String error) {
-    return Container(
+    return SizedBox(
       height: 200.h,
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.error_outline,
-              size: 48.ic,
-              color: Colors.red,
-            ),
+            Icon(Icons.error_outline, size: 48.ic, color: Colors.red),
             SizedBox(height: 16.h),
             Text(
               'Search failed',
@@ -316,10 +293,7 @@ class SearchOverlay extends ConsumerWidget {
             SizedBox(height: 8.h),
             Text(
               error,
-              style: TextStyle(
-                color: Colors.grey[400],
-                fontSize: 12.sp,
-              ),
+              style: TextStyle(color: Colors.grey[400], fontSize: 12.sp),
               textAlign: TextAlign.center,
               maxLines: 2,
             ),
@@ -330,17 +304,13 @@ class SearchOverlay extends ConsumerWidget {
   }
 
   Widget _buildEmptyState() {
-    return Container(
+    return SizedBox(
       height: 200.h,
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.search_off,
-              size: 48.ic,
-              color: Colors.grey[600],
-            ),
+            Icon(Icons.search_off, size: 48.ic, color: Colors.grey[600]),
             SizedBox(height: 16.h),
             Text(
               'No results found',
@@ -353,10 +323,7 @@ class SearchOverlay extends ConsumerWidget {
             SizedBox(height: 8.h),
             Text(
               'Try different keywords for "$query"',
-              style: TextStyle(
-                color: Colors.grey[400],
-                fontSize: 14.sp,
-              ),
+              style: TextStyle(color: Colors.grey[400], fontSize: 14.sp),
               textAlign: TextAlign.center,
             ),
           ],
