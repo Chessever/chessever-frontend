@@ -83,7 +83,7 @@ class _FilterPopupState extends ConsumerState<FilterPopup> {
                                         crossAxisCount: 2,
                                         mainAxisSpacing: 8.h,
                                         crossAxisSpacing: 8.w,
-                                        childAspectRatio: 2.5,
+                                        childAspectRatio: 3,
                                       ),
                                   itemCount: formats.length,
                                   itemBuilder: (context, index) {

@@ -10,6 +10,7 @@ import 'package:chessever2/screens/tournaments/providers/sorting_all_event_provi
 import 'package:chessever2/screens/tournaments/providers/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/tournament_detail_screen.dart';
 import 'package:chessever2/screens/tournaments/group_event_screen.dart';
+import 'package:chessever2/widgets/event_card/starred_provider.dart';
 import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
 import 'package:chessever2/widgets/search/search_result_model.dart';
 import 'package:country_picker/country_picker.dart';
@@ -26,6 +27,8 @@ final groupEventScreenProvider = AutoDisposeStateNotifierProvider<
   AsyncValue<List<GroupEventCardModel>>
 >((ref) {
   final tourEventCategory = ref.watch(selectedGroupCategoryProvider);
+
+  final favorites = ref.watch(starredProvider); // Get the list of favorited ids
   var liveBroadcastId = <String>[];
   ref
       .watch(liveGroupBroadcastIdsProvider)
@@ -40,6 +43,7 @@ final groupEventScreenProvider = AutoDisposeStateNotifierProvider<
     ref: ref,
     tourEventCategory: tourEventCategory,
     liveBroadcastId: liveBroadcastId,
+    favorites: favorites,
   );
 });
 
@@ -49,6 +53,7 @@ class _GroupEventScreenController
     required this.ref,
     required this.tourEventCategory,
     required this.liveBroadcastId,
+    required this.favorites,
   }) : super(const AsyncValue.loading()) {
     loadTours();
   }
@@ -56,16 +61,15 @@ class _GroupEventScreenController
   final Ref ref;
   final GroupEventCategory tourEventCategory;
   final List<String> liveBroadcastId;
+  final List<String> favorites;
 
   /// This will be populated every time we fetch the tournaments
   var _groupBroadcastList = <GroupBroadcast>[];
-  bool _sortByFavorites = false;
 
   Future<void> loadTours({
     List<GroupBroadcast>? inputBroadcast,
     bool? sortByFavorites,
   }) async {
-    _sortByFavorites = sortByFavorites ?? _sortByFavorites;
     try {
       final tour =
           (inputBroadcast ??
@@ -96,13 +100,14 @@ class _GroupEventScreenController
         final sortedTours =
             tourEventCategory == GroupEventCategory.upcoming
                 ? sortingService.sortUpcomingTours(
-                  tourEventCardModel,
-                  selectedCountry,
+                  tours: tourEventCardModel,
+                  dropDownSelectedCountry: selectedCountry,
+                  favorites: favorites,
                 )
                 : sortingService.sortAllTours(
-                  tourEventCardModel,
-                  selectedCountry,
-                  sortByFavorites: _sortByFavorites,
+                  tours: tourEventCardModel,
+                  dropDownSelectedCountry: selectedCountry,
+                  favorites: favorites,
                 );
 
         state = AsyncValue.data(sortedTours);
@@ -153,13 +158,14 @@ class _GroupEventScreenController
         final sortedTours =
             tourEventCategory == GroupEventCategory.upcoming
                 ? sortingService.sortUpcomingTours(
-                  tourEventCardModel,
-                  selectedCountry,
+                  tours: tourEventCardModel,
+                  dropDownSelectedCountry: selectedCountry,
+                  favorites: favorites,
                 )
                 : sortingService.sortAllTours(
-                  tourEventCardModel,
-                  selectedCountry,
-                  sortByFavorites: _sortByFavorites,
+                  tours: tourEventCardModel,
+                  dropDownSelectedCountry: selectedCountry,
+                  favorites: favorites,
                 );
 
         state = AsyncValue.data(sortedTours);
