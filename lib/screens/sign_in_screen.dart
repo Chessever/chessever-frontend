@@ -1,4 +1,4 @@
-import 'package:chessever2/screens/tournaments/group_event_screen.dart';
+import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:flutter/material.dart';
 // import 'tournament_list_screen.dart';
 

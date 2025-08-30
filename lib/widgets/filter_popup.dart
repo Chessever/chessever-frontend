@@ -1,12 +1,12 @@
-import 'package:chessever2/screens/tournaments/providers/filter_provider.dart';
-import 'package:chessever2/screens/tournaments/providers/group_event_screen_provider.dart';
+import 'package:chessever2/screens/group_event/providers/filter_provider.dart';
+import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/back_drop_filter_widget.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../screens/tournaments/group_event_screen.dart';
+import '../screens/group_event/group_event_screen.dart';
 
 class FilterPopup extends ConsumerStatefulWidget {
   const FilterPopup({super.key});

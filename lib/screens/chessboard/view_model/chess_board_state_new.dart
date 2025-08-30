@@ -1,4 +1,4 @@
-import 'package:chessever2/screens/tournaments/model/games_tour_model.dart';
+import 'package:chessever2/screens/group_event/model/games_tour_model.dart';
 import 'package:dartchess/dartchess.dart';
 
 class ChessBoardStateNew {
