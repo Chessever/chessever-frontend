@@ -5,6 +5,7 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.d
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/tournaments/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tournaments/providers/interfaces/igroup_event_screen_controller.dart';
 import 'package:chessever2/screens/tournaments/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/sorting_all_event_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/tour_detail_screen_provider.dart';
@@ -48,7 +49,8 @@ final groupEventScreenProvider = AutoDisposeStateNotifierProvider<
 });
 
 class _GroupEventScreenController
-    extends StateNotifier<AsyncValue<List<GroupEventCardModel>>> {
+    extends StateNotifier<AsyncValue<List<GroupEventCardModel>>>
+    implements IGroupEventScreenController {
   _GroupEventScreenController({
     required this.ref,
     required this.tourEventCategory,
@@ -58,18 +60,20 @@ class _GroupEventScreenController
     loadTours();
   }
 
+  @override
   final Ref ref;
+  @override
   final GroupEventCategory tourEventCategory;
+  @override
   final List<String> liveBroadcastId;
+  @override
   final List<String> favorites;
 
   /// This will be populated every time we fetch the tournaments
   var _groupBroadcastList = <GroupBroadcast>[];
 
-  Future<void> loadTours({
-    List<GroupBroadcast>? inputBroadcast,
-    bool? sortByFavorites,
-  }) async {
+  @override
+  Future<void> loadTours({List<GroupBroadcast>? inputBroadcast}) async {
     try {
       final tour =
           (inputBroadcast ??
@@ -117,14 +121,17 @@ class _GroupEventScreenController
     }
   }
 
+  @override
   Future<void> setFilteredModels(List<GroupBroadcast> filterBroadcast) async {
     await loadTours(inputBroadcast: filterBroadcast);
   }
 
+  @override
   Future<void> resetFilters() async {
     await loadTours();
   }
 
+  @override
   Future<void> onRefresh() async {
     try {
       state = const AsyncValue.loading();
@@ -177,6 +184,7 @@ class _GroupEventScreenController
     }
   }
 
+  @override
   void onSelectTournament({required BuildContext context, required String id}) {
     final selectedBroadcast = _groupBroadcastList.firstWhere(
       (broadcast) => broadcast.id == id,
@@ -194,6 +202,7 @@ class _GroupEventScreenController
     Navigator.pushNamed(context, '/tournament_detail_screen');
   }
 
+  @override
   void onSelectPlayer({
     required BuildContext context,
     required SearchPlayer player,
@@ -217,6 +226,7 @@ class _GroupEventScreenController
     Navigator.pushNamed(context, '/tournament_detail_screen');
   }
 
+  @override
   Future<void> searchForTournament(
     String query,
     GroupEventCategory tourEventCategory,
@@ -268,6 +278,7 @@ class _GroupEventScreenController
     }
   }
 
+  @override
   Future<void> loadTournaments(GroupEventCategory tourEventCategory) async {
     state = const AsyncValue.loading();
 
@@ -300,6 +311,7 @@ class _GroupEventScreenController
     }
   }
 
+  @override
   Future<List<SearchPlayer>> getAllPlayersFromCurrentTournaments() async {
     try {
       final allPlayers = <SearchPlayer>[];
@@ -310,6 +322,37 @@ class _GroupEventScreenController
       }
 
       return allPlayers;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  @override
+  Future<List<SearchPlayer>> searchPlayersOnly(String query) async {
+    if (query.isEmpty) return [];
+
+    try {
+      final allPlayers = await getAllPlayersFromCurrentTournaments();
+      final queryLower = query.toLowerCase().trim();
+
+      return allPlayers.where((player) {
+          return player.name.toLowerCase().contains(queryLower);
+        }).toList()
+        ..sort((a, b) {
+          final aExact = a.name.toLowerCase() == queryLower;
+          final bExact = b.name.toLowerCase() == queryLower;
+
+          if (aExact && !bExact) return -1;
+          if (!aExact && bExact) return 1;
+
+          final aStarts = a.name.toLowerCase().startsWith(queryLower);
+          final bStarts = b.name.toLowerCase().startsWith(queryLower);
+
+          if (aStarts && !bStarts) return -1;
+          if (!aStarts && bStarts) return 1;
+
+          return a.name.compareTo(b.name);
+        });
     } catch (e) {
       return [];
     }
@@ -366,35 +409,5 @@ class _GroupEventScreenController
     }
 
     return false;
-  }
-
-  Future<List<SearchPlayer>> searchPlayersOnly(String query) async {
-    if (query.isEmpty) return [];
-
-    try {
-      final allPlayers = await getAllPlayersFromCurrentTournaments();
-      final queryLower = query.toLowerCase().trim();
-
-      return allPlayers.where((player) {
-          return player.name.toLowerCase().contains(queryLower);
-        }).toList()
-        ..sort((a, b) {
-          final aExact = a.name.toLowerCase() == queryLower;
-          final bExact = b.name.toLowerCase() == queryLower;
-
-          if (aExact && !bExact) return -1;
-          if (!aExact && bExact) return 1;
-
-          final aStarts = a.name.toLowerCase().startsWith(queryLower);
-          final bStarts = b.name.toLowerCase().startsWith(queryLower);
-
-          if (aStarts && !bStarts) return -1;
-          if (!aStarts && bStarts) return 1;
-
-          return a.name.compareTo(b.name);
-        });
-    } catch (e) {
-      return [];
-    }
   }
 }

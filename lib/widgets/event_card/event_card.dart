@@ -1,5 +1,4 @@
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
-import 'package:chessever2/screens/tournaments/providers/group_event_screen_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -10,7 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-class EventCard extends ConsumerWidget {  
+class EventCard extends ConsumerWidget {
   final GroupEventCardModel tourEventCardModel;
   final VoidCallback? onTap;
   final bool isFavorite;
@@ -190,11 +189,7 @@ class _LiveTag extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SvgPicture.asset(
-      SvgAsset.selectedSvg,
-      width: 16.w,
-      height: 16.h,
-    );
+    return SvgPicture.asset(SvgAsset.selectedSvg, width: 16.w, height: 16.h);
   }
 }
 
@@ -279,14 +274,7 @@ class _StarWidgetState extends ConsumerState<_StarWidget> {
         });
         ref
             .read(starredProvider.notifier)
-            .toggleStarred(
-              widget.tourEventCardModel.id,
-              onStarToggled: () {
-                ref
-                    .read(groupEventScreenProvider.notifier)
-                    .loadTours(sortByFavorites: true);
-              },
-            );
+            .toggleStarred(widget.tourEventCardModel.id);
       },
       child: Container(
         alignment: Alignment.centerRight,
