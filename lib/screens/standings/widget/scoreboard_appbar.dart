@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
 import 'package:chessever2/screens/standings/widget/player_dropdown.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -5,15 +6,12 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../utils/svg_asset.dart';
 import '../../../widgets/svg_widget.dart';
 import '../score_card_screen.dart';
-import '../standing_screen_provider.dart';
+import '../../tour_detail/player_tour/player_tour_screen_provider.dart';
 
 class ScoreboardAppbar extends ConsumerStatefulWidget {
   final String playerName;
 
-  const ScoreboardAppbar({
-    required this.playerName,
-    super.key,
-  });
+  const ScoreboardAppbar({required this.playerName, super.key});
 
   @override
   ConsumerState<ScoreboardAppbar> createState() => _ScoreboardAppbarState();
@@ -46,7 +44,7 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
   }
 
   Future<void> _toggleFavorite() async {
-    final favoritesService = ref.read(favoritesServiceProvider);
+    final favoritesService = ref.read(favoriteStandingsPlayerService);
     final player = ref.read(selectedPlayerProvider);
 
     if (player != null) {
@@ -83,10 +81,7 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
           onPressed: () {
             Navigator.of(context).pop();
           },
-          icon: Icon(
-            Icons.arrow_back_ios_new_outlined,
-            size: 24.ic,
-          ),
+          icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24.ic),
         ),
         const Spacer(),
         const PlayerDropDown(),

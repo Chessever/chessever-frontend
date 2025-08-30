@@ -2,8 +2,8 @@ import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
-import 'package:chessever2/screens/group_event/model/games_tour_model.dart';
-import 'package:chessever2/screens/group_event/providers/pintop_storage.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/repository/local_storage/tournament/games/pin_games_local_storage.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final countrymanGamesTourScreenProvider = StateNotifierProvider.autoDispose<
@@ -36,7 +36,7 @@ class CountrymanGamesTourScreenProvider
         .getCountrymanGames('USA'); // or currentCountry ?? 'USA'
 
     final pinnedIds =
-        await ref.read(pinnedGamesStorageProvider).getPinnedGameIds();
+        await ref.read(pinGameLocalStorage).getPinnedGameIds();
 
     // Sort initial games: pinned on top
     initialGames.sort((a, b) {
@@ -61,7 +61,7 @@ class CountrymanGamesTourScreenProvider
     ref.listen<List<Games>>(fullGamesProvider, (previous, next) async {
       if (next.length > initialGames.length) {
         final pinnedIds =
-            await ref.read(pinnedGamesStorageProvider).getPinnedGameIds();
+            await ref.read(pinGameLocalStorage).getPinnedGameIds();
 
         final sortedGames = [...next]..sort((a, b) {
           final aPinned = pinnedIds.contains(a.id);
@@ -88,19 +88,19 @@ class CountrymanGamesTourScreenProvider
     print('Toggle pin called for gameId: $gameId');
 
     final pinnedIds =
-        await ref.read(pinnedGamesStorageProvider).getPinnedGameIds();
+        await ref.read(pinGameLocalStorage).getPinnedGameIds();
     print('Currently pinned IDs before toggle: $pinnedIds');
 
     if (pinnedIds.contains(gameId)) {
       print('Game is already pinned, removing pin for gameId: $gameId');
-      await ref.read(pinnedGamesStorageProvider).removePinnedGameId(gameId);
+      await ref.read(pinGameLocalStorage).removePinnedGameId(gameId);
     } else {
       print('Game is not pinned, adding pin for gameId: $gameId');
-      await ref.read(pinnedGamesStorageProvider).addPinnedGameId(gameId);
+      await ref.read(pinGameLocalStorage).addPinnedGameId(gameId);
     }
 
     final updatedPinnedIds =
-        await ref.read(pinnedGamesStorageProvider).getPinnedGameIds();
+        await ref.read(pinGameLocalStorage).getPinnedGameIds();
     print('Pinned IDs after toggle: $updatedPinnedIds');
 
     print('Refreshing games list...');
@@ -110,7 +110,7 @@ class CountrymanGamesTourScreenProvider
 
   Future<void> unpinAllGames() async {
     print("Unpin All tapped");
-    await ref.read(pinnedGamesStorageProvider).clearAllPinnedGames();
+    await ref.read(pinGameLocalStorage).clearAllPinnedGames();
     await _init();
   }
 

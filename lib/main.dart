@@ -1,7 +1,7 @@
 import 'package:chessever2/l10n/app_localizations.dart';
 import 'package:chessever2/localization/locale_provider.dart';
 import 'package:chessever2/screens/authentication/auth_screen.dart';
-import 'package:chessever2/screens/calendar_detail_screen.dart';
+import 'package:chessever2/screens/calendar/calendar_detail_screen.dart';
 import 'package:chessever2/screens/home/home_screen.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/countryman_games_screen.dart';
@@ -10,12 +10,11 @@ import 'package:chessever2/screens/players/player_screen.dart';
 import 'package:chessever2/screens/players/providers/player_providers.dart';
 import 'package:chessever2/screens/favorites/favorite_screen.dart';
 import 'package:chessever2/screens/splash/splash_screen.dart';
-import 'package:chessever2/screens/standings/standings_screen.dart';
-import 'package:chessever2/screens/group_event/tournament_detail_screen.dart';
+import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen.dart';
+import 'package:chessever2/screens/tour_detail/tournament_detail_screen.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
-import 'package:chessever2/screens/calendar_screen.dart';
-import 'package:chessever2/services/notification_service.dart';
-import 'package:chessever2/services/settings_manager.dart';
+import 'package:chessever2/screens/calendar/calendar_screen.dart';
+import 'package:chessever2/utils/notification_service.dart';
 import 'package:chessever2/utils/lifecycle_event_handler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/board_color_dialog.dart';
@@ -90,7 +89,6 @@ class _MyAppState extends ConsumerState<MyApp> {
     super.initState();
     // Initialize settings from persistent storage
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      SettingsManager.initializeSettings(ref);
       // Initialize the favorites service
       _initializeFavoritesService();
     });
@@ -134,12 +132,12 @@ class _MyAppState extends ConsumerState<MyApp> {
         // '/chess_screen': (context) => const ChessScreen(),
 
         // New Screen
-        '/player_list_screen': (context) => const PlayerScreen(),
+        '/player_list_screen': (context) => const PlayerListScreen(),
         // Updated to use the navigation component
         '/favorites_screen': (context) => const FavoriteScreen(),
         // Updated to use the new FavoriteScreen
         '/countryman_games_screen': (context) => const CountrymanGamesScreen(),
-        '/standings': (context) => const StandingsScreen(),
+        '/standings': (context) => const PlayerTourScreen(),
         '/calendar_detail_screen': (context) => CalendarDetailsScreen(),
         '/Board_sheet': (context) => BoardColorDialog(),
       },

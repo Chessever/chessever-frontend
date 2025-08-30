@@ -1,6 +1,6 @@
 // filepath: /Users/p1/Desktop/chessever/lib/screens/favorites/providers/favorite_provider.dart
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import '../controllers/favorite_controller.dart';
+import 'favorite_controller.dart';
 
 part 'favorite_provider.g.dart';
 

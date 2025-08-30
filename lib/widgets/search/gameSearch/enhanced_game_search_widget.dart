@@ -1,5 +1,5 @@
 import 'package:chessever2/repository/supabase/game/games.dart';
-import 'package:chessever2/screens/group_event/model/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/widgets/search/gameSearch/game_search_overlay.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';

@@ -3,22 +3,21 @@ import 'package:chessever2/repository/local_storage/group_broadcast/group_broadc
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
-import 'package:chessever2/screens/group_event/providers/games_app_bar_provider.dart';
-import 'package:chessever2/screens/group_event/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/group_event/providers/interfaces/igroup_event_screen_controller.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
-import 'package:chessever2/screens/group_event/providers/tour_detail_screen_provider.dart';
-import 'package:chessever2/screens/group_event/tournament_detail_screen.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/tournament_detail_screen.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
-import 'package:chessever2/widgets/event_card/starred_provider.dart';
 import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
 import 'package:chessever2/widgets/search/search_result_model.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-import '../../standings/standing_screen_provider.dart';
+import '../../tour_detail/player_tour/player_tour_screen_provider.dart';
 
 // New provider for selected player name
 final selectedPlayerNameProvider = StateProvider<String?>((ref) => null);
@@ -187,7 +186,7 @@ class _GroupEventScreenController
 
     ref.invalidate(gamesAppBarProvider);
     ref.invalidate(gamesTourScreenProvider);
-    ref.invalidate(standingScreenProvider);
+    ref.invalidate(playerTourScreenProvider);
     ref.invalidate(tourDetailScreenProvider);
 
     Navigator.pushNamed(context, '/tournament_detail_screen');
@@ -211,7 +210,7 @@ class _GroupEventScreenController
 
     ref.invalidate(gamesAppBarProvider);
     ref.invalidate(gamesTourScreenProvider);
-    ref.invalidate(standingScreenProvider);
+    ref.invalidate(playerTourScreenProvider);
     ref.invalidate(tourDetailScreenProvider);
 
     Navigator.pushNamed(context, '/tournament_detail_screen');
