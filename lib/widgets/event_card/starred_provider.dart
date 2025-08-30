@@ -34,9 +34,7 @@ class _StarredRepository extends StateNotifier<List<String>> {
   }
 
   Future<void> toggleStarred(
-    String value, {
-    VoidCallback? onStarToggled,
-  }) async {
+    String value) async {
     try {
       final currentSaved = List<String>.from(state);
       if (currentSaved.contains(value)) {
@@ -52,11 +50,6 @@ class _StarredRepository extends StateNotifier<List<String>> {
 
       await ref.read(starredRepository).toggleStar(key, value);
       state = currentSaved;
-
-      // Refresh the tour list if needed
-      if (onStarToggled != null) {
-        onStarToggled();
-      }
     } catch (error, _) {
       rethrow;
     }
