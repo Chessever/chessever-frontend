@@ -2,9 +2,11 @@ import 'package:chessever2/screens/authentication/home_screen/home_screen.dart';
 import 'package:chessever2/screens/authentication/home_screen/home_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/tournaments/model/tour_event_card_model.dart';
+import 'package:chessever2/screens/tournaments/providers/sorting_all_event_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
+import 'package:chessever2/widgets/event_card/starred_provider.dart';
 import 'package:chessever2/widgets/filter_popup.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
@@ -115,9 +117,18 @@ class GroupEventScreen extends HookConsumerWidget {
                 .watch(groupEventScreenProvider)
                 .when(
                   data: (filteredEvents) {
+                    final favorites = ref.watch(starredProvider);
+
+                    final sortedEvents = ref
+                        .read(tournamentSortingServiceProvider)
+                        .sortBasedOnFavorite(
+                          tours: filteredEvents,
+                          favorites: favorites,
+                        );
+
                     return Expanded(
                       child: AllEventsTabWidget(
-                        filteredEvents: filteredEvents,
+                        filteredEvents: sortedEvents,
                         onSelect:
                             (tourEventCardModel) => ref
                                 .read(groupEventScreenProvider.notifier)
@@ -159,7 +170,7 @@ class GroupEventScreen extends HookConsumerWidget {
   }
 }
 
-class AllEventsTabWidget extends ConsumerWidget {
+class AllEventsTabWidget extends ConsumerStatefulWidget {
   const AllEventsTabWidget({
     required this.filteredEvents,
     required this.onSelect,
@@ -170,8 +181,36 @@ class AllEventsTabWidget extends ConsumerWidget {
   final ValueChanged<GroupEventCardModel> onSelect;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    if (filteredEvents.isEmpty) {
+  ConsumerState<AllEventsTabWidget> createState() => _AllEventsTabWidgetState();
+}
+
+class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 200),
+      vsync: this,
+    );
+
+    // Start animation when widget is built
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _animationController.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.filteredEvents.isEmpty) {
       return const Center(
         child: Text(
           'No tournaments found',
@@ -179,64 +218,92 @@ class AllEventsTabWidget extends ConsumerWidget {
         ),
       );
     }
+
     return ListView.builder(
       padding: EdgeInsets.only(
         left: 20.sp,
         right: 20.sp,
         bottom: MediaQuery.of(context).viewPadding.bottom + 12.sp,
       ),
-      itemCount: filteredEvents.length,
+      itemCount: widget.filteredEvents.length,
       itemBuilder: (context, index) {
-        // if (index == 0) {
-        //   return SizedBox.shrink();
-        //   return CountrymenCardWidget();
-        // }
+        final tourEventCardModel = widget.filteredEvents[index];
 
-        // final tourEventCardModel = filteredEvents[index - 1];
-        final tourEventCardModel = filteredEvents[index];
+        // Create staggered animation for each item
+        final itemAnimation = Tween<Offset>(
+          begin: const Offset(0, -0.5),
+          end: Offset.zero,
+        ).animate(
+          CurvedAnimation(
+            parent: _animationController,
+            curve: Interval(
+              (index * 0.1).clamp(0.0, 1.0), // Stagger start times
+              ((index * 0.1) + 0.6).clamp(0.0, 1.0), // Stagger end times
+              curve: Curves.easeOutCubic,
+            ),
+          ),
+        );
 
+        final fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+          CurvedAnimation(
+            parent: _animationController,
+            curve: Interval(
+              (index * 0.1).clamp(0.0, 1.0),
+              ((index * 0.1) + 0.6).clamp(0.0, 1.0),
+              curve: Curves.easeOut,
+            ),
+          ),
+        );
+
+        Widget eventCard;
         switch (tourEventCardModel.tourEventCategory) {
           case TourEventCategory.live:
-            return Padding(
-              padding: EdgeInsets.only(bottom: 12.sp),
-              child: EventCard(
-                tourEventCardModel: tourEventCardModel,
-                onTap: () => onSelect(tourEventCardModel),
-              ),
+            eventCard = EventCard(
+              tourEventCardModel: tourEventCardModel,
+              onTap: () => widget.onSelect(tourEventCardModel),
             );
+            break;
           case TourEventCategory.upcoming:
-            return Padding(
-              padding: EdgeInsets.only(bottom: 12.sp),
-              child: EventCard(
-                tourEventCardModel: tourEventCardModel,
-                //todo:
-                onTap: () => onSelect(tourEventCardModel),
-              ),
+            eventCard = EventCard(
+              tourEventCardModel: tourEventCardModel,
+              onTap: () => widget.onSelect(tourEventCardModel),
             );
+            break;
           case TourEventCategory.ongoing:
-            return Padding(
-              padding: EdgeInsets.only(bottom: 12.sp),
-              child: EventCard(
-                tourEventCardModel: tourEventCardModel,
-                //todo:
-                onTap: () => onSelect(tourEventCardModel),
-              ),
+            eventCard = EventCard(
+              tourEventCardModel: tourEventCardModel,
+              onTap: () => widget.onSelect(tourEventCardModel),
             );
+            break;
           case TourEventCategory.completed:
-            return Padding(
-              padding: EdgeInsets.only(bottom: 12.sp),
-              child: CompletedEventCard(
-                tourEventCardModel: tourEventCardModel,
-                onTap: () => onSelect(tourEventCardModel),
-                onDownloadTournament: () {
-                  // Download tournament
-                },
-                onAddToLibrary: () {
-                  // Add to library
-                },
+            eventCard = CompletedEventCard(
+              tourEventCardModel: tourEventCardModel,
+              onTap: () => widget.onSelect(tourEventCardModel),
+              onDownloadTournament: () {
+                // Download tournament
+              },
+              onAddToLibrary: () {
+                // Add to library
+              },
+            );
+            break;
+        }
+
+        return AnimatedBuilder(
+          animation: _animationController,
+          builder: (context, child) {
+            return SlideTransition(
+              position: itemAnimation,
+              child: FadeTransition(
+                opacity: fadeAnimation,
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: 12.sp),
+                  child: eventCard,
+                ),
               ),
             );
-        }
+          },
+        );
       },
     );
   }
