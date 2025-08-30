@@ -1,8 +1,8 @@
 import 'package:chessever2/repository/local_storage/tournament/tour_local_storage.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
-import 'package:chessever2/screens/tournaments/providers/tour_detail_screen_provider.dart';
-import 'package:chessever2/screens/tournaments/tournament_detail_screen.dart';
+import 'package:chessever2/screens/group_event/providers/tour_detail_screen_provider.dart';
+import 'package:chessever2/screens/group_event/tournament_detail_screen.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../services/favourate_standings_player_services.dart';
