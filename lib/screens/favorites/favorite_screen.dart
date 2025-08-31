@@ -1,5 +1,6 @@
+import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
-import 'package:chessever2/screens/standings/standing_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -222,7 +223,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
   }
 
   void _toggleFavorite(PlayerStandingModel player) async {
-    final favoritesService = ref.read(favoritesServiceProvider);
+    final favoritesService = ref.read(favoriteStandingsPlayerService);
     await favoritesService.toggleFavorite(player);
 
     ref.invalidate(favoritePlayersProvider);

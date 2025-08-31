@@ -1,5 +1,7 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../view_models/player_view_model.dart';
+import 'package:chessever2/screens/players/view_models/player_view_model.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+
 
 final favoritePlayersProvider = Provider<List<Map<String, dynamic>>>((ref) {
   final playersState = ref.watch(playerPaginationProvider);

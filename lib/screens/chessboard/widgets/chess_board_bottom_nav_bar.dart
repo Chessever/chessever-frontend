@@ -1,4 +1,3 @@
-import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_navbar.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -46,7 +45,6 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final notifier = ref.read(chessBoardScreenProvider(gameIndex).notifier);
 
     return Container(
       padding: EdgeInsets.symmetric(vertical: 8.sp),

@@ -1,18 +1,17 @@
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
-import 'package:chessever2/screens/chessboard/widgets/chess_board_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_widget_new.dart';
-import 'package:chessever2/screens/tournaments/model/games_tour_model.dart';
-import 'package:chessever2/screens/tournaments/providers/chess_board_visibility_provider.dart';
-import 'package:chessever2/screens/tournaments/providers/countryman_games_tour_screen_provider.dart';
-import 'package:chessever2/screens/tournaments/providers/game_fen_stream_provider.dart';
-import 'package:chessever2/screens/tournaments/widget/empty_widget.dart';
-import 'package:chessever2/screens/tournaments/widget/game_card.dart';
-import 'package:chessever2/screens/tournaments/widget/tour_loading_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/chess_board_visibility_provider.dart';
+import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/game_fen_stream_provider.dart';
+import 'package:chessever2/screens/group_event/widget/empty_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart';
+import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
-import 'package:chessever2/screens/tournaments/widget/appbar_icons_widget.dart';
+import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -126,9 +125,7 @@ class CountrymanGamesList extends ConsumerWidget {
                                   .read(
                                     countrymanGamesTourScreenProvider.notifier,
                                   )
-                                  .togglePinGame(
-                                    gamesTourModel.gameId,
-                                  );
+                                  .togglePinGame(gamesTourModel.gameId);
                             },
                           ),
                 );
