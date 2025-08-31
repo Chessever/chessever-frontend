@@ -1,12 +1,12 @@
-import 'package:chessever2/screens/tournaments/providers/filter_provider.dart';
-import 'package:chessever2/screens/tournaments/providers/group_event_screen_provider.dart';
+import 'package:chessever2/screens/group_event/providers/group_event_filter_provider.dart';
+import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/back_drop_filter_widget.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../screens/tournaments/group_event_screen.dart';
+import '../screens/group_event/group_event_screen.dart';
 
 class FilterPopup extends ConsumerStatefulWidget {
   const FilterPopup({super.key});
@@ -31,7 +31,7 @@ class _FilterPopupState extends ConsumerState<FilterPopup> {
     final dialogWidth = 280.w;
     final horizontalPadding = 20.w;
     final verticalPadding = 16.h;
-    final formatsAsync = ref.watch(tourFormatsProvider(selectedTourEvent));
+    final formatsAsync = ref.watch(groupEventFormatProvider(selectedTourEvent));
 
     return GestureDetector(
       onTap: () => Navigator.of(context).pop(),
@@ -253,7 +253,7 @@ class _FilterPopupState extends ConsumerState<FilterPopup> {
                                 onPressed: () async {
                                   final filteredTours = await ref
                                       .read(
-                                        tourFormatRepositoryProvider(
+                                        groupEventFilterProvider(
                                           selectedTourEvent,
                                         ),
                                       )

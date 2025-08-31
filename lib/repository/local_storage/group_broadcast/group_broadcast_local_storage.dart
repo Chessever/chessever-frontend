@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
-import 'package:chessever2/screens/tournaments/group_event_screen.dart';
+import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final groupBroadcastLocalStorage = Provider.family<

@@ -7,14 +7,14 @@ import '../../widgets/rounded_search_bar.dart';
 import 'widgets/player_card.dart';
 import 'providers/player_providers.dart';
 
-class PlayerScreen extends ConsumerStatefulWidget {
-  const PlayerScreen({super.key});
+class PlayerListScreen extends ConsumerStatefulWidget {
+  const PlayerListScreen({super.key});
 
   @override
-  ConsumerState<PlayerScreen> createState() => _PlayerScreenState();
+  ConsumerState<PlayerListScreen> createState() => _PlayerScreenState();
 }
 
-class _PlayerScreenState extends ConsumerState<PlayerScreen> {
+class _PlayerScreenState extends ConsumerState<PlayerListScreen> {
   late final TextEditingController _searchController;
   final ScrollController _scrollController = ScrollController();
   final double _scrollThreshold = 200.0;
