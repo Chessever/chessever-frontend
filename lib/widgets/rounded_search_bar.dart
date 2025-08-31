@@ -2,33 +2,30 @@ import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
-import 'package:chessever2/widgets/filter_popup.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-
 import '../repository/local_storage/sesions_manager/session_manager.dart'; // Import for gradient and colors
 
 class RoundedSearchBar extends ConsumerStatefulWidget {
   final TextEditingController controller;
+  final VoidCallback? onFilterTap;
   final Function(String)? onChanged;
   final String hintText;
   final bool autofocus;
-  final VoidCallback? onFilterTap;
   final VoidCallback? onProfileTap;
-
   final bool showProfile;
   final bool showFilter;
 
   const RoundedSearchBar({
     super.key,
     required this.controller,
+    required this.onFilterTap,
     this.onChanged,
     this.hintText = 'Search tournaments or players',
     this.autofocus = false,
-    this.onFilterTap,
     this.onProfileTap,
     this.showProfile = true,
     this.showFilter = true,
@@ -39,14 +36,6 @@ class RoundedSearchBar extends ConsumerStatefulWidget {
 }
 
 class _RoundedSearchBarState extends ConsumerState<RoundedSearchBar> {
-  void _showFilterPopup(BuildContext context) {
-    showDialog(
-      context: context,
-      barrierColor: Colors.black.withOpacity(0.5),
-      builder: (context) => const FilterPopup(),
-    );
-  }
-
   String selectedCountryCode = 'US';
 
   @override
@@ -134,7 +123,7 @@ class _RoundedSearchBarState extends ConsumerState<RoundedSearchBar> {
                   Padding(
                     padding: EdgeInsets.only(right: 10.sp),
                     child: InkWell(
-                      onTap: () => _showFilterPopup(context),
+                      onTap: widget.onFilterTap,
                       borderRadius: BorderRadius.zero,
                       child: SvgWidget(
                         SvgAsset.listFilterIcon,
