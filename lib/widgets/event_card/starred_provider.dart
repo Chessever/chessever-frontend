@@ -1,7 +1,7 @@
 import 'dart:ui';
 
 import 'package:chessever2/repository/local_storage/starred_repository/starred_repository.dart';
-import 'package:chessever2/screens/tournaments/group_event_screen.dart';
+import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final starredProvider = StateNotifierProvider<_StarredRepository, List<String>>(

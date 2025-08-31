@@ -1,6 +1,6 @@
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
-import 'package:chessever2/screens/standings/standing_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
@@ -30,7 +30,7 @@ class PlayerFirstRowDetailWidget extends ConsumerWidget {
         .getValidCountryCode(countryCode);
     return GestureDetector(
       onTap: () {
-        final standingsAsync = ref.read(standingScreenProvider);
+        final standingsAsync = ref.read(playerTourScreenProvider);
 
         standingsAsync.whenData((standings) {
           final playerStanding = standings.firstWhere(
