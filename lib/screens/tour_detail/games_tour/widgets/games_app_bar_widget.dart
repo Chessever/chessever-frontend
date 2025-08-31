@@ -70,7 +70,6 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
   }
 
   void _handleSearchInput(String query) {
-
     _debounceTimer?.cancel();
     _currentSearchQuery = query;
 
@@ -90,15 +89,11 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
     try {
       final provider = ref.read(gamesTourScreenProvider.notifier);
 
-  
-
       provider.clearSearch();
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
         Future.delayed(const Duration(milliseconds: 150), () {
           final gamesTourAsync = ref.read(gamesTourScreenProvider);
-
-        
 
           if (!gamesTourAsync.hasValue) {
             return;
@@ -107,21 +102,16 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
           final gamesData = gamesTourAsync.value!;
           final allGames = gamesData.gamesTourModels;
 
-
           final gameIndex = allGames.indexWhere(
             (tourGame) => tourGame.gameId == game.id,
           );
 
-
           if (gameIndex == -1) {
-        
             return;
           }
 
           ref.read(chessboardViewFromProviderNew.notifier).state =
               ChessboardView.tour;
-
-         
 
           Navigator.push(
             context,
@@ -133,12 +123,10 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
                   ),
             ),
           );
-
           _closeSearch();
         });
       });
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   @override

@@ -2,7 +2,6 @@ import 'package:chessever2/repository/local_storage/tournament/games/games_local
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
-import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/repository/local_storage/tournament/games/pin_games_local_storage.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
@@ -14,20 +13,23 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 final roundScrollPositionProvider = StateProvider<int?>((ref) => null);
 
 // Fixed provider with proper null handling and dependency management
-final gamesTourScreenProvider = StateNotifierProvider.autoDispose<
+final gamesTourScreenProvider = AutoDisposeStateNotifierProvider<
   GamesTourScreenProvider,
   AsyncValue<GamesScreenModel>
 >((ref) {
   // Watch tour details first - this is the primary dependency
   final tourDetailAsync = ref.watch(tourDetailScreenProvider);
-  
+
   // Only proceed if tour details are loaded and valid
   if (tourDetailAsync.isLoading) {
     return GamesTourScreenProvider.loading(ref: ref);
   }
 
   if (tourDetailAsync.hasError) {
-    return GamesTourScreenProvider.withError(ref: ref, error: tourDetailAsync.error!);
+    return GamesTourScreenProvider.withError(
+      ref: ref,
+      error: tourDetailAsync.error!,
+    );
   }
 
   final aboutTourModel = tourDetailAsync.valueOrNull?.aboutTourModel;
@@ -64,9 +66,7 @@ class GamesTourScreenProvider
   }) : selectedRoundId = null,
        aboutTourModel = null,
        error = null,
-       super(const AsyncValue.loading()) {
-    _waitForDependencies();
-  }
+       super(const AsyncValue.loading());
 
   // Constructor for error state
   GamesTourScreenProvider.withError({
@@ -88,22 +88,6 @@ class GamesTourScreenProvider
   // Search mode tracking
   bool _isSearchMode = false;
   List<Games>? _originalGamesBeforeSearch;
-
-  Future<void> _waitForDependencies() async {
-    // Listen for changes to tour details (primary dependency)
-    ref.listen<AsyncValue<TourDetailViewModel>>(tourDetailScreenProvider, (previous, next) {
-      if (mounted && next.hasValue && next.valueOrNull?.aboutTourModel != null) {
-        debugPrint('Tour details now available, invalidating games provider');
-        // Dependencies are now available, invalidate to recreate provider
-        ref.invalidateSelf();
-      }
-    });
-
-    // Set initial loading state while waiting
-    if (mounted) {
-      state = const AsyncValue.loading();
-    }
-  }
 
   Future<void> togglePinGame(String gameId) async {
     // Check if we have the required dependencies
@@ -186,8 +170,7 @@ class GamesTourScreenProvider
       }
 
       // Get pinned IDs
-      final pinnedIds =
-          await ref.read(pinGameLocalStorage).getPinnedGameIds();
+      final pinnedIds = await ref.read(pinGameLocalStorage).getPinnedGameIds();
       _cachedPinnedIds = pinnedIds;
 
       // Sort games by round first, then by other criteria
@@ -248,8 +231,7 @@ class GamesTourScreenProvider
         state = AsyncValue.data(
           GamesScreenModel(
             gamesTourModels: gamesTourModels,
-            pinnedGamedIs:
-                _isSearchMode ? [] : pinnedIds,
+            pinnedGamedIs: _isSearchMode ? [] : pinnedIds,
             scrollToIndex: scrollToIndex,
           ),
         );
@@ -305,12 +287,6 @@ class GamesTourScreenProvider
   }
 
   Future<void> _init() async {
-    // Check if we have the required dependencies
-    if (aboutTourModel == null) {
-      await _waitForDependencies();
-      return;
-    }
-
     try {
       final gamesLocalStorageProvider = ref.read(gamesLocalStorage);
       final allGames = await gamesLocalStorageProvider.fetchAndSaveGames(

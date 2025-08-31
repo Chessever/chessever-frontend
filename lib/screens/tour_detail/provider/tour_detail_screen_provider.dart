@@ -5,254 +5,246 @@ import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_tour_id_provider.dart';
-import 'package:chessever2/screens/tour_detail/tournament_detail_screen.dart';
+import 'package:chessever2/screens/tour_detail/provider/interface/itour_detail_provider.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+// State providers
 final selectedTourIdProvider = StateProvider<String?>((ref) => null);
 
-// Optimized provider with better null safety and error handling
 final tourDetailScreenProvider = StateNotifierProvider.autoDispose<
-  TourDetailScreenProvider,
+  TourDetailScreenNotifier,
   AsyncValue<TourDetailViewModel>
 >((ref) {
-  final groupBroadcast = ref.read(selectedBroadcastModelProvider);
-
-  // Null safety check for groupBroadcast
-  if (groupBroadcast == null) {
-    throw Exception('Group broadcast is not available');
-  }
-
-  // Get live tour IDs with fallback
+  final groupBroadcast = ref.read(selectedBroadcastModelProvider)!;
   final liveTourIdAsync = ref.watch(liveTourIdProvider);
   final liveTourId = liveTourIdAsync.valueOrNull ?? <String>[];
 
-  return TourDetailScreenProvider(
+  return TourDetailScreenNotifier(
     ref: ref,
     groupBroadcast: groupBroadcast,
     liveTourId: liveTourId,
   );
 });
 
-// Error provider for when dependencies are not available
-class _ErrorTourDetailScreenProvider
-    extends StateNotifier<AsyncValue<TourDetailViewModel>> {
-  _ErrorTourDetailScreenProvider(String errorMessage)
-    : super(AsyncValue.error(Exception(errorMessage), StackTrace.current));
-}
-
-class TourDetailScreenProvider
-    extends StateNotifier<AsyncValue<TourDetailViewModel>> {
-  TourDetailScreenProvider({
+// Main provider implementation
+class TourDetailScreenNotifier
+    extends StateNotifier<AsyncValue<TourDetailViewModel>>
+    implements ITourDetailProvider {
+  TourDetailScreenNotifier({
     required this.ref,
     required this.groupBroadcast,
     required this.liveTourId,
   }) : super(const AsyncValue.loading()) {
-    loadTourDetails();
+    _initialize();
   }
 
   final Ref ref;
   final GroupBroadcast groupBroadcast;
   final List<String> liveTourId;
 
-  // Cache for optimization
-  List<Tour>? _cachedTours;
-  String? _lastGroupId;
+  // Private initialization method
+  void _initialize() {
+    loadTourDetails();
+  }
 
+  @override
   Future<void> loadTourDetails() async {
+    if (!mounted) return;
+
     try {
-      // Use cache if same group ID
-      List<Tour> tours;
-
-      if (_cachedTours != null && _lastGroupId == groupBroadcast.id) {
-        tours = _cachedTours!;
-      } else {
-        final tourLocalStorage = ref.read(tourLocalStorageProvider);
-        tours = await tourLocalStorage.getToursBasedOnGroupId(
-          groupBroadcast.id,
-        );
-
-        // Cache the results
-        _cachedTours = tours;
-        _lastGroupId = groupBroadcast.id;
-      }
+      final tours = await ref
+          .read(tourLocalStorageProvider)
+          .getTours(groupBroadcast.id);
 
       if (tours.isEmpty) {
-        if (mounted) {
-          state = AsyncValue.error(
-            Exception('No tournaments found for this group'),
-            StackTrace.current,
-          );
-        }
+        _setErrorState('No tournaments found for this group');
         return;
       }
 
-      final now = DateTime.now();
-
-      // Process tour models with better error handling
-      final tourModels = <TourModel>[];
-
-      for (final tour in tours) {
-        try {
-          // Skip tours with empty dates but log it
-          if (tour.dates.isEmpty) {
-            print('Warning: Tour ${tour.id} has empty dates, skipping');
-            continue;
-          }
-
-          final startDate = tour.dates.first;
-          final endDate = tour.dates.last;
-
-          RoundStatus roundStatus;
-
-          if (liveTourId.contains(tour.id)) {
-            roundStatus = RoundStatus.live;
-          } else if (now.isBefore(startDate)) {
-            roundStatus = RoundStatus.upcoming;
-          } else if (now.isAfter(endDate)) {
-            roundStatus = RoundStatus.completed;
-          } else {
-            roundStatus = RoundStatus.ongoing;
-          }
-
-          tourModels.add(
-            TourModel(
-              tour: tour,
-              roundStatus: roundStatus,
-            ),
-          );
-        } catch (e) {
-          print('Error processing tour ${tour.id}: $e');
-          // Continue with other tours
-        }
-      }
+      final tourModels = await _processTours(tours);
 
       if (tourModels.isEmpty) {
-        if (mounted) {
-          state = AsyncValue.error(
-            Exception('No valid tournaments found'),
-            StackTrace.current,
-          );
-        }
+        _setErrorState('No valid tournaments found');
         return;
       }
 
-      // Determine selected tour with better logic
-      String selectedTourId;
-      Tour selectedTour;
+      final selectedTour = _determineSelectedTour(tourModels);
+      final tourDetailViewModel = _createViewModel(selectedTour, tourModels);
 
-      // Check if a tour is already selected and valid
-      final currentSelectedId = ref.read(selectedTourIdProvider);
-      final validSelectedTour =
-          tourModels
-              .where((model) => model.tour.id == currentSelectedId)
-              .firstOrNull;
-
-      if (validSelectedTour != null) {
-        selectedTourId = validSelectedTour.tour.id;
-        selectedTour = validSelectedTour.tour;
-      } else {
-        // Priority: live tours > ongoing > upcoming > completed
-        final liveTour =
-            tourModels
-                .where((model) => liveTourId.contains(model.tour.id))
-                .firstOrNull;
-
-        final ongoingTour =
-            tourModels
-                .where((model) => model.roundStatus == RoundStatus.ongoing)
-                .firstOrNull;
-
-        final upcomingTour =
-            tourModels
-                .where((model) => model.roundStatus == RoundStatus.upcoming)
-                .firstOrNull;
-
-        final selectedModel =
-            liveTour ?? ongoingTour ?? upcomingTour ?? tourModels.first;
-
-        selectedTourId = selectedModel.tour.id;
-        selectedTour = selectedModel.tour;
-
-        // Update the selected tour ID
-        ref.read(selectedTourIdProvider.notifier).state = selectedTourId;
-      }
-
-      final tourDetailViewModel = TourDetailViewModel(
-        aboutTourModel: AboutTourModel.fromTour(selectedTour),
-        liveTourIds: liveTourId,
-        tours: tourModels,
-      );
-
-      if (mounted) {
-        state = AsyncValue.data(tourDetailViewModel);
-      }
+      _setDataState(tourDetailViewModel);
     } catch (e, st) {
-      if (mounted) {
-        state = AsyncValue.error(e, st);
-      }
-    }
-  }
-
-  void updateSelection(String tourId) {
-    try {
-      // Safely get current state
-      final currentState = state.valueOrNull;
-      if (currentState == null) {
-        print('Cannot update selection: current state is null');
-        return;
-      }
-
-      // Find the selected tour
-      final selectedTourModel =
-          currentState.tours
-              .where((model) => model.tour.id == tourId)
-              .firstOrNull;
-
-      if (selectedTourModel == null) {
-        print('Cannot find tour with ID: $tourId');
-        return;
-      }
-
-      // Update selected tour ID
-      ref.read(selectedTourIdProvider.notifier).state = tourId;
-
-      // Create new view model
-      final updatedViewModel = TourDetailViewModel(
-        aboutTourModel: AboutTourModel.fromTour(selectedTourModel.tour),
-        liveTourIds: liveTourId,
-        tours: currentState.tours,
-      );
-
-      if (mounted) {
-        state = AsyncValue.data(updatedViewModel);
-      }
-    } catch (e, st) {
-      if (mounted) {
-        state = AsyncValue.error(e, st);
-      }
-    }
-  }
-
-  // Method to refresh tour details
-  Future<void> refreshTourDetails() async {
-    try {
-      // Clear cache to force fresh data
-      _cachedTours = null;
-      _lastGroupId = null;
-
-      await loadTourDetails();
-    } catch (e, st) {
-      if (mounted) {
-        state = AsyncValue.error(e, st);
-      }
+      _setErrorState(e, st);
     }
   }
 
   @override
-  void dispose() {
-    // Clear cache on dispose
-    _cachedTours = null;
-    _lastGroupId = null;
-    super.dispose();
+  void updateSelection(String tourId) {
+    final currentState = state.valueOrNull;
+    if (currentState == null) {
+      _logWarning('Cannot update selection: current state is null');
+      return;
+    }
+
+    try {
+      final selectedTourModel = _findTourModel(currentState.tours, tourId);
+      if (selectedTourModel == null) {
+        _logWarning('Cannot find tour with ID: $tourId');
+        return;
+      }
+
+      _updateSelectedTourId(tourId);
+      final updatedViewModel = _createViewModelFromExisting(
+        currentState,
+        selectedTourModel.tour,
+      );
+      _setDataState(updatedViewModel);
+    } catch (e, st) {
+      _setErrorState(e, st);
+    }
+  }
+
+  @override
+  Future<void> refreshTourDetails() async {
+    await loadTourDetails();
+  }
+
+  // Private helper methods
+  Future<List<TourModel>> _processTours(List<Tour> tours) async {
+    final tourModels = <TourModel>[];
+    final now = DateTime.now();
+
+    for (final tour in tours) {
+      try {
+        final tourModel = _processSingleTour(tour, now);
+        if (tourModel != null) {
+          tourModels.add(tourModel);
+        }
+      } catch (e) {
+        _logWarning('Error processing tour ${tour.id}: $e');
+      }
+    }
+
+    return tourModels;
+  }
+
+  TourModel? _processSingleTour(Tour tour, DateTime now) {
+    if (tour.dates.isEmpty) {
+      _logWarning('Tour ${tour.id} has empty dates, skipping');
+      return null;
+    }
+
+    final startDate = tour.dates.first;
+    final endDate = tour.dates.last;
+    final roundStatus = _calculateRoundStatus(tour.id, now, startDate, endDate);
+
+    return TourModel(
+      tour: tour,
+      roundStatus: roundStatus,
+    );
+  }
+
+  RoundStatus _calculateRoundStatus(
+    String tourId,
+    DateTime now,
+    DateTime startDate,
+    DateTime endDate,
+  ) {
+    if (liveTourId.contains(tourId)) {
+      return RoundStatus.live;
+    } else if (now.isBefore(startDate)) {
+      return RoundStatus.upcoming;
+    } else if (now.isAfter(endDate)) {
+      return RoundStatus.completed;
+    } else {
+      return RoundStatus.ongoing;
+    }
+  }
+
+  Tour _determineSelectedTour(List<TourModel> tourModels) {
+    final currentSelectedId = ref.read(selectedTourIdProvider);
+
+    // Check if current selection is still valid
+    if (currentSelectedId != null) {
+      final validSelectedTour = _findTourModel(tourModels, currentSelectedId);
+      if (validSelectedTour != null) {
+        return validSelectedTour.tour;
+      }
+    }
+
+    // Find best tour based on priority
+    final selectedModel = _findBestTour(tourModels);
+    _updateSelectedTourId(selectedModel.tour.id);
+
+    return selectedModel.tour;
+  }
+
+  TourModel _findBestTour(List<TourModel> tourModels) {
+    // Priority: live tours > ongoing > upcoming > completed
+    final liveTour =
+        tourModels
+            .where((model) => liveTourId.contains(model.tour.id))
+            .firstOrNull;
+
+    final ongoingTour =
+        tourModels
+            .where((model) => model.roundStatus == RoundStatus.ongoing)
+            .firstOrNull;
+
+    final upcomingTour =
+        tourModels
+            .where((model) => model.roundStatus == RoundStatus.upcoming)
+            .firstOrNull;
+
+    return liveTour ?? ongoingTour ?? upcomingTour ?? tourModels.first;
+  }
+
+  TourModel? _findTourModel(List<TourModel> tourModels, String tourId) {
+    return tourModels.where((model) => model.tour.id == tourId).firstOrNull;
+  }
+
+  TourDetailViewModel _createViewModel(
+    Tour selectedTour,
+    List<TourModel> tourModels,
+  ) {
+    return TourDetailViewModel(
+      aboutTourModel: AboutTourModel.fromTour(selectedTour),
+      liveTourIds: liveTourId,
+      tours: tourModels,
+    );
+  }
+
+  TourDetailViewModel _createViewModelFromExisting(
+    TourDetailViewModel currentState,
+    Tour selectedTour,
+  ) {
+    return TourDetailViewModel(
+      aboutTourModel: AboutTourModel.fromTour(selectedTour),
+      liveTourIds: liveTourId,
+      tours: currentState.tours,
+    );
+  }
+
+  void _updateSelectedTourId(String tourId) {
+    ref.read(selectedTourIdProvider.notifier).state = tourId;
+  }
+
+  void _setDataState(TourDetailViewModel viewModel) {
+    if (mounted) {
+      state = AsyncValue.data(viewModel);
+    }
+  }
+
+  void _setErrorState(Object error, [StackTrace? stackTrace]) {
+    if (mounted) {
+      state = AsyncValue.error(
+        error is String ? Exception(error) : error,
+        stackTrace ?? StackTrace.current,
+      );
+    }
+  }
+
+  void _logWarning(String message) {
+    print('TourDetailScreenNotifier: $message');
   }
 }

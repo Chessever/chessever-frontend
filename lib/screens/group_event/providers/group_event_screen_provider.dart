@@ -8,8 +8,8 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:chessever2/screens/group_event/providers/interfaces/igroup_event_screen_controller.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
-import 'package:chessever2/screens/tour_detail/tournament_detail_screen.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
 import 'package:chessever2/widgets/search/search_result_model.dart';
@@ -181,7 +181,6 @@ class _GroupEventScreenController
       orElse: () => _groupBroadcastList.first,
     );
 
-    ref.read(selectedTourIdProvider.notifier).state = selectedBroadcast.id;
     ref.read(selectedBroadcastModelProvider.notifier).state = selectedBroadcast;
 
     ref.invalidate(gamesAppBarProvider);
@@ -189,7 +188,9 @@ class _GroupEventScreenController
     ref.invalidate(playerTourScreenProvider);
     ref.invalidate(tourDetailScreenProvider);
 
-    Navigator.pushNamed(context, '/tournament_detail_screen');
+    if (ref.read(selectedBroadcastModelProvider) != null) {
+      Navigator.pushNamed(context, '/tournament_detail_screen');
+    }
   }
 
   @override
@@ -202,7 +203,6 @@ class _GroupEventScreenController
       orElse: () => _groupBroadcastList.first,
     );
 
-    ref.read(selectedTourIdProvider.notifier).state = selectedBroadcast.id;
     ref.read(selectedBroadcastModelProvider.notifier).state = selectedBroadcast;
 
     // Store the selected player's name for use in GamesTourScreen
@@ -213,7 +213,9 @@ class _GroupEventScreenController
     ref.invalidate(playerTourScreenProvider);
     ref.invalidate(tourDetailScreenProvider);
 
-    Navigator.pushNamed(context, '/tournament_detail_screen');
+    if (ref.read(selectedBroadcastModelProvider) != null) {
+      Navigator.pushNamed(context, '/tournament_detail_screen');
+    }
   }
 
   @override
