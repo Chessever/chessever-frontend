@@ -1,9 +1,10 @@
-import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen.dart';
 import 'package:chessever2/screens/tour_detail/about_tour_screen.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/views/games_tour_screen.dart';
 import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_app_bar_widget.dart';
 import 'package:chessever2/screens/tour_detail/widget/text_dropdown_widget.dart';
@@ -16,24 +17,6 @@ import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-final selectedBroadcastModelProvider = StateProvider<GroupBroadcast?>(
-  (ref) => null,
-);
-
-final selectedTourModeProvider =
-    AutoDisposeStateProvider<_TournamentDetailScreenMode>(
-      (ref) => _TournamentDetailScreenMode.games,
-    );
-
-/// For Tabs
-enum _TournamentDetailScreenMode { about, games, standings }
-
-const _mappedName = {
-  _TournamentDetailScreenMode.about: 'About',
-  _TournamentDetailScreenMode.games: 'Games',
-  _TournamentDetailScreenMode.standings: 'Players',
-};
-
 class TournamentDetailScreen extends ConsumerStatefulWidget {
   const TournamentDetailScreen({super.key});
 
@@ -42,10 +25,8 @@ class TournamentDetailScreen extends ConsumerStatefulWidget {
       _TournamentDetailViewState();
 }
 
-class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
-    with TickerProviderStateMixin {
+class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen> {
   late PageController pageController;
-  bool _isDisposed = false;
 
   // Define the pages for the PageView
   final List<Widget> _pages = const [
@@ -56,19 +37,10 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
 
   @override
   void initState() {
-    super.initState();
-    _initializePageController();
-  }
-
-  void _initializePageController() {
-    final selectedTourMode = ref.read(selectedTourModeProvider);
-    final initialPage = _TournamentDetailScreenMode.values.indexOf(
-      selectedTourMode,
-    );
-
     pageController = PageController(
-      initialPage: initialPage.clamp(1, _pages.length - 1),
+      initialPage: 1,
     );
+    super.initState();
   }
 
   @override
@@ -81,6 +53,8 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     try {
       ref.invalidate(selectedTourModeProvider);
       ref.invalidate(selectedTourIdProvider);
+      ref.invalidate(selectedBroadcastModelProvider);
+      ref.invalidate(userSelectedRoundProvider);
     } catch (e) {
       // Ignore errors during cleanup
       print('Error during provider cleanup: $e');
@@ -89,7 +63,6 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
 
   @override
   void dispose() {
-    _isDisposed = true;
     pageController.dispose();
     super.dispose();
   }
@@ -98,45 +71,60 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   Widget build(BuildContext context) {
     final selectedTourMode = ref.watch(selectedTourModeProvider);
     final tourDetailAsync = ref.watch(tourDetailScreenProvider);
-
+    print("Selected tab is in Build ${selectedTourMode.name}");
     return ScreenWrapper(
       child: Scaffold(
         body: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
-            _buildAppBar(tourDetailAsync, selectedTourMode),
-            _buildContent(tourDetailAsync, selectedTourMode),
+            tourDetailAsync.when(
+              data: (data) => _buildSuccessAppBar(data, selectedTourMode),
+              error: (error, stackTrace) => _buildErrorAppBar(error),
+              loading: () => const _LoadingAppBarWithTitle(title: "Chessever"),
+            ),
+            Expanded(
+              child: PageView.builder(
+                controller: pageController,
+                itemCount: _pages.length,
+                onPageChanged: (index) => _handlePageChanged(index),
+                itemBuilder: (context, index) {
+                  // Return pages directly without error boundary
+                  if (index >= 0 && index < _pages.length) {
+                    return _pages[index];
+                  }
+                  // Fallback for invalid index
+                  return Center(
+                    child: Text(
+                      'Invalid page index: $index',
+                      style: TextStyle(color: kWhiteColor),
+                    ),
+                  );
+                },
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildAppBar(
-    AsyncValue<TourDetailViewModel> tourDetailAsync,
-    _TournamentDetailScreenMode selectedTourMode,
-  ) {
-    return tourDetailAsync.when(
-      data: (data) => _buildSuccessAppBar(data, selectedTourMode),
-      error: (error, stackTrace) => _buildErrorAppBar(error),
-      loading: () => const LoadingAppBarWithTitle(title: "Chessever"),
-    );
-  }
-
   Widget _buildSuccessAppBar(
     TourDetailViewModel data,
-    _TournamentDetailScreenMode selectedTourMode,
+    TournamentDetailScreenMode selectedTourMode,
   ) {
     return Column(
       children: [
-        selectedTourMode == _TournamentDetailScreenMode.about
+        selectedTourMode == TournamentDetailScreenMode.about
             ? _TourDetailDropDownAppBar(data: data)
-            : selectedTourMode == _TournamentDetailScreenMode.games
+            : selectedTourMode == TournamentDetailScreenMode.games
             ? const GamesAppBarWidget()
             : _TourDetailDropDownAppBar(data: data),
         SizedBox(height: 8.h),
-        _buildSegmentedSwitcher(selectedTourMode),
+        _buildSegmentedSwitcher(
+          selectedTourMode,
+          (index) => _handleTabSelection(index),
+        ),
       ],
     );
   }
@@ -144,16 +132,22 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   Widget _buildErrorAppBar(Object error) {
     return Column(
       children: [
-        LoadingAppBarWithTitle(
+        _LoadingAppBarWithTitle(
           title: "Error: ${error.toString().substring(0, 20)}...",
         ),
         SizedBox(height: 8.h),
-        _buildSegmentedSwitcher(_TournamentDetailScreenMode.about),
+        _buildSegmentedSwitcher(
+          TournamentDetailScreenMode.games,
+          (index) {},
+        ),
       ],
     );
   }
 
-  Widget _buildSegmentedSwitcher(_TournamentDetailScreenMode selectedTourMode) {
+  Widget _buildSegmentedSwitcher(
+    TournamentDetailScreenMode selectedTourMode,
+    ValueChanged<int> onChanged,
+  ) {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 20.sp),
       child: SegmentedSwitcher(
@@ -164,71 +158,39 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
         initialSelection: _mappedName.values.toList().indexOf(
           _mappedName[selectedTourMode]!,
         ),
-        onSelectionChanged: (index) => _handleTabSelection(index),
+        onSelectionChanged: onChanged,
       ),
     );
   }
 
   void _handleTabSelection(int index) {
-    if (_isDisposed || index < 0 || index >= _pages.length) return;
-
     try {
+      // Update state after animation starts
+      ref
+          .read(selectedTourModeProvider.notifier)
+          .update((_) => TournamentDetailScreenMode.values[index]);
       // Animate to the selected page first
       pageController.animateToPage(
         index,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
-
-      // Update state after animation starts
-      ref.read(selectedTourModeProvider.notifier).state =
-          _TournamentDetailScreenMode.values[index];
     } catch (e) {
       print('Error handling tab selection: $e');
     }
   }
 
-  Widget _buildContent(
-    AsyncValue<TourDetailViewModel> tourDetailAsync,
-    _TournamentDetailScreenMode selectedTourMode,
-  ) {
-    return Expanded(
-      child: PageView.builder(
-        controller: pageController,
-        itemCount: _pages.length,
-        onPageChanged: (index) => _handlePageChanged(index),
-        itemBuilder: (context, index) {
-          // Return pages directly without error boundary
-          if (index >= 0 && index < _pages.length) {
-            return _pages[index];
-          }
-          // Fallback for invalid index
-          return Center(
-            child: Text(
-              'Invalid page index: $index',
-              style: TextStyle(color: kWhiteColor),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
   void _handlePageChanged(int index) {
-    if (_isDisposed ||
-        index < 0 ||
-        index >= _TournamentDetailScreenMode.values.length)
-      return;
-
     try {
       // Update the selected mode when page changes (from swiping)
-      final currentModeIndex = _TournamentDetailScreenMode.values.indexOf(
+      final currentModeIndex = TournamentDetailScreenMode.values.indexOf(
         ref.read(selectedTourModeProvider),
       );
 
       if (currentModeIndex != index) {
-        ref.read(selectedTourModeProvider.notifier).state =
-            _TournamentDetailScreenMode.values[index];
+        ref
+            .read(selectedTourModeProvider.notifier)
+            .update((_) => TournamentDetailScreenMode.values[index]);
       }
     } catch (e) {
       print('Error handling page change: $e');
@@ -331,8 +293,8 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
   }
 }
 
-class LoadingAppBarWithTitle extends StatelessWidget {
-  const LoadingAppBarWithTitle({required this.title, super.key});
+class _LoadingAppBarWithTitle extends StatelessWidget {
+  const _LoadingAppBarWithTitle({required this.title, super.key});
 
   final String title;
 
@@ -365,3 +327,9 @@ class LoadingAppBarWithTitle extends StatelessWidget {
     );
   }
 }
+
+const _mappedName = {
+  TournamentDetailScreenMode.about: 'About',
+  TournamentDetailScreenMode.games: 'Games',
+  TournamentDetailScreenMode.standings: 'Players',
+};

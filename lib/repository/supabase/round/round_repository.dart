@@ -178,7 +178,6 @@ class RoundRepository extends BaseRepository {
         if (nonNullMoveCount > 0) {
           latestRoundWithMove = round;
           print("Found round with non-null last_move: ${round.id}");
-          break;
         }
       }
 
