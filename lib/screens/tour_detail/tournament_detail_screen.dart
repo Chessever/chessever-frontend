@@ -237,10 +237,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
 }
 
 class _TourDetailDropDownAppBar extends ConsumerWidget {
-  const _TourDetailDropDownAppBar({
-    required this.data,
-    super.key,
-  });
+  const _TourDetailDropDownAppBar({required this.data, super.key});
 
   final TourDetailViewModel data;
 
@@ -261,7 +258,7 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
           iconSize: 24.ic,
           padding: EdgeInsets.zero,
           onPressed: () => _handleBackPress(context),
-          icon: const Icon(Icons.arrow_back_ios_new_outlined, size: 24),
+          icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24.ic),
         ),
         const Spacer(),
         SizedBox(
@@ -320,7 +317,7 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
           iconSize: 24.ic,
           padding: EdgeInsets.zero,
           onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.arrow_back_ios_new_outlined, size: 24),
+          icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24.ic),
         ),
         const Spacer(),
         Text(
@@ -343,9 +340,9 @@ class LoadingAppBarWithTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        const SizedBox(width: 20),
+        SizedBox(width: 20.ic),
         IconButton(
-          iconSize: 24,
+          iconSize: 24.ic,
           padding: EdgeInsets.zero,
           onPressed: () {
             try {
@@ -354,16 +351,16 @@ class LoadingAppBarWithTitle extends StatelessWidget {
               print('Error navigating back from loading state: $e');
             }
           },
-          icon: const Icon(Icons.arrow_back_ios_new_outlined, size: 24),
+          icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24.ic),
         ),
-        const SizedBox(width: 44),
+        SizedBox(width: 44.w),
         SkeletonWidget(
           child: Text(
             title,
             style: AppTypography.textMdRegular.copyWith(color: kWhiteColor),
           ),
         ),
-        const SizedBox(width: 44),
+        SizedBox(width: 44.w),
       ],
     );
   }
