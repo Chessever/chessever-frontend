@@ -1,8 +1,8 @@
 import 'dart:math' as math;
+import 'package:intl/intl.dart' show NumberFormat;
 
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 
 class EnhancedGameSearchResult {
   final List<GameSearchResult> results;

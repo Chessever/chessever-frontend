@@ -48,10 +48,7 @@ class GamesAppBarNotifier
     required this.ref,
   }) : tourId = null,
        liveRounds = <String>[],
-       super(const AsyncValue.loading()) {
-    // Wait for tourId to become available
-    _waitForTourId();
-  }
+       super(const AsyncValue.loading());
 
   final Ref ref;
   final String? tourId;
@@ -61,34 +58,7 @@ class GamesAppBarNotifier
   List<GamesAppBarModel>? _cachedRounds;
   String? _lastTourId;
 
-  Future<void> _waitForTourId() async {
-    // Listen for changes to selectedTourIdProvider
-    ref.listen<String?>(selectedTourIdProvider, (previous, next) {
-      if (next != null && mounted) {
-        // Tournament ID is now available, recreate the provider
-        // This will trigger a rebuild of the dependent widgets
-        ref.invalidateSelf();
-      }
-    });
-
-    // Set initial empty state
-    if (mounted) {
-      state = AsyncValue.data(
-        GamesAppBarViewModel(
-          gamesAppBarModels: [],
-          selectedId: '',
-          userSelectedId: false,
-        ),
-      );
-    }
-  }
-
   Future<void> _init() async {
-    if (tourId == null) {
-      await _waitForTourId();
-      return;
-    }
-
     try {
       List<GamesAppBarModel> gamesAppBarModels;
 
@@ -226,6 +196,7 @@ class GamesAppBarNotifier
     }
 
     try {
+      state = AsyncValue.loading();
       // Clear cache to force fresh data
       _cachedRounds = null;
       _lastTourId = null;
