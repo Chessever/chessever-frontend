@@ -53,19 +53,30 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
           padding: EdgeInsets.symmetric(horizontal: 16.sp),
           child: Column(
             children: [
-              // Search bar
-              Padding(
-                padding: EdgeInsets.symmetric(vertical: 16.sp),
-                child: RoundedSearchBar(
-                  showProfile: false,
-                  controller: _searchController,
-                  onChanged: (value) {},
-                  hintText: 'Search favorites',
-                  onFilterTap: () {},
-                  onProfileTap: () {},
-                ),
+              Row(
+                children: [
+                  IconButton(
+                    iconSize: 24.ic,
+                    padding: EdgeInsets.zero,
+                    onPressed: () => _handleBackPress(context),
+                    icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24.ic),
+                  ),
+                  // Search bar
+                  Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 16.sp),
+                      child: RoundedSearchBar(
+                        showProfile: false,
+                        controller: _searchController,
+                        onChanged: (value) {},
+                        hintText: 'Search favorites',
+                        onFilterTap: () {},
+                        onProfileTap: () {},
+                      ),
+                    ),
+                  ),
+                ],
               ),
-
               favoritePlayersAsync.when(
                 data: (favoritePlayers) {
                   return Expanded(
@@ -86,6 +97,14 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
         ),
       ),
     );
+  }
+
+  void _handleBackPress(BuildContext context) {
+    try {
+      Navigator.of(context).pop();
+    } catch (e) {
+      print('Error navigating back: $e');
+    }
   }
 
   Widget _buildFavoritesList(
@@ -143,9 +162,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
         Padding(
           padding: EdgeInsets.only(bottom: 16.sp, top: 8.sp),
           child: DefaultTextStyle(
-            style: AppTypography.textSmMedium.copyWith(
-              color: kWhiteColor,
-            ),
+            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
             child: Row(
               children: [
                 // Rank header
@@ -161,10 +178,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
 
                 // Player header
                 Expanded(
-                  child: Text(
-                    'Player',
-                    style: AppTypography.textSmMedium,
-                  ),
+                  child: Text('Player', style: AppTypography.textSmMedium),
                 ),
 
                 // Elo header

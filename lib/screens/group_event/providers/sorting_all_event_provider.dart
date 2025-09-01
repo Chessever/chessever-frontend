@@ -84,6 +84,7 @@ class TournamentSortingService {
       final isFavoriteA = favorites.contains(a.id);
       final isFavoriteB = favorites.contains(b.id);
 
+      // FIRST PRIORITY: Favorites (only for non-completed tournaments)
       if (hasFavorites) {
         if (isFavoriteA &&
             !isFavoriteB &&
@@ -95,6 +96,19 @@ class TournamentSortingService {
           return 1;
       }
 
+      // SECOND PRIORITY: ELO sorting (same logic as your other methods)
+      final isHighEloA = a.maxAvgElo > 3200;
+      final isHighEloB = b.maxAvgElo > 3200;
+
+      // If one has high ELO and the other doesn't, put high ELO at the end
+      if (isHighEloA && !isHighEloB) return 1;
+      if (!isHighEloA && isHighEloB) return -1;
+
+      // If both are high ELO or both are normal ELO, sort by ELO descending
+      final eloComparison = b.maxAvgElo.compareTo(a.maxAvgElo);
+      if (eloComparison != 0) return eloComparison;
+
+      // THIRD PRIORITY: Title alphabetically
       return a.title.toLowerCase().compareTo(b.title.toLowerCase());
     });
 
