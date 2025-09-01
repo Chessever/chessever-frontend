@@ -1,6 +1,5 @@
 import 'dart:async';
-import 'dart:ui';
-
+import 'package:async/async.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.dart';
 import 'package:chessever2/repository/supabase/evals/persist_cloud_eval.dart';
@@ -15,6 +14,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:easy_debounce/easy_debounce.dart';
+import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 enum ChessboardView { tour, countryman }
@@ -38,6 +38,10 @@ class ChessBoardScreenNotifierNew
   final int index;
   Timer? _longPressTimer;
   bool _hasParsedMoves = false;
+  bool _isProcessingMove = false;
+  bool _isLongPressing = false;
+  CancelableOperation<void>? _evalOperation;
+  bool _cancelEvaluation = false;
 
   void _initializeState() {
     state = AsyncValue.data(
@@ -57,10 +61,10 @@ class ChessBoardScreenNotifierNew
     if (currentState == null) return;
 
     try {
-      final gameWithPGn = await ref
+      final gameWithPgn = await ref
           .read(gameRepositoryProvider)
           .getGameById(game.gameId);
-      final pgn = gameWithPGn.pgn ?? _getSamplePgnData();
+      final pgn = gameWithPgn.pgn ?? _getSamplePgnData();
 
       final gameData = PgnGame.parsePgn(pgn);
       final startingPos = PgnGame.startingPosition(gameData.headers);
@@ -104,15 +108,23 @@ class ChessBoardScreenNotifierNew
     }
   }
 
-  // Navigation methods
   void goToMove(int moveIndex) {
+    if (_isProcessingMove) return;
+    _isProcessingMove = true;
+
     final currentState = state.value;
-    if (currentState == null) return;
-    if (currentState.isLoadingMoves) return;
+    if (currentState == null || currentState.isLoadingMoves) {
+      _isProcessingMove = false;
+      return;
+    }
+    if (moveIndex < -1 || moveIndex >= currentState.allMoves.length) {
+      _isProcessingMove = false;
+      return;
+    }
 
-    if (moveIndex < -1 || moveIndex >= currentState.allMoves.length) return;
+    _evalOperation?.cancel();
+    _cancelEvaluation = true;
 
-    // Replay the game up to the current move
     Position newPosition = currentState.startingPosition!;
     Move? newLastMove;
 
@@ -128,7 +140,10 @@ class ChessBoardScreenNotifierNew
         currentMoveIndex: moveIndex,
       ),
     );
+
+    _cancelEvaluation = false;
     _updateEvaluation();
+    _isProcessingMove = false;
   }
 
   void evaluateCurrentPosition() {
@@ -137,15 +152,21 @@ class ChessBoardScreenNotifierNew
 
   void moveForward() {
     final currentState = state.value;
-    if (currentState == null || !currentState.canMoveForward) return;
-
-    goToMove(currentState.currentMoveIndex + 1);
+    if (currentState == null ||
+        !currentState.canMoveForward ||
+        _isProcessingMove) {
+      return;
+    }
+    goToMove(currentState.currentMoveIndex + 1); 
   }
 
   void moveBackward() {
     final currentState = state.value;
-    if (currentState == null || !currentState.canMoveBackward) return;
-
+    if (currentState == null ||
+        !currentState.canMoveBackward ||
+        _isProcessingMove) {
+      return;
+    }
     goToMove(currentState.currentMoveIndex - 1);
   }
 
@@ -156,7 +177,6 @@ class ChessBoardScreenNotifierNew
   void jumpToEnd() {
     final currentState = state.value;
     if (currentState == null) return;
-
     goToMove(currentState.allMoves.length - 1);
   }
 
@@ -164,11 +184,9 @@ class ChessBoardScreenNotifierNew
     jumpToStart();
   }
 
-  // Board control methods
   void flipBoard() {
     final currentState = state.value;
     if (currentState == null) return;
-
     state = AsyncValue.data(
       currentState.copyWith(isBoardFlipped: !currentState.isBoardFlipped),
     );
@@ -177,7 +195,6 @@ class ChessBoardScreenNotifierNew
   void togglePlayPause() {
     final currentState = state.value;
     if (currentState == null) return;
-
     state = AsyncValue.data(
       currentState.copyWith(isPlaying: !currentState.isPlaying),
     );
@@ -186,32 +203,21 @@ class ChessBoardScreenNotifierNew
   void pauseGame() {
     final currentState = state.value;
     if (currentState == null || !currentState.isPlaying) return;
-
     state = AsyncValue.data(currentState.copyWith(isPlaying: false));
   }
 
-  // Helper methods
   Color getMoveColor(String move, int moveIndex) {
     final st = state.value!;
-
-    // During loading, show dimmed colors
     if (st.isLoadingMoves) {
       return kWhiteColor.withOpacity(0.3);
     }
-
-    // Current move gets white color
     if (moveIndex == st.currentMoveIndex - 1) {
       return kWhiteColor;
     }
-
-    // Capture moves get pink
     if (move.contains('x')) return kLightPink;
-
-    // Past moves get white, future moves get dimmed
     if (moveIndex < st.currentMoveIndex - 1) {
       return kWhiteColor;
     }
-
     return kWhiteColor70;
   }
 
@@ -236,109 +242,117 @@ class ChessBoardScreenNotifierNew
 ''';
   }
 
-  Future<void> _updateEvaluation() async {
-    const debounceTag = 'eval-debounce';
-    EasyDebounce.debounce(
-      debounceTag,
-      const Duration(milliseconds: 300),
-      () async {
-        try {
-          final currentState = state.value;
-          if (currentState == null || currentState.isLoadingMoves) return;
+  Future<void> _evaluatePosition(int targetMoveIndex) async {
+    try {
+      final currentState = state.value;
+      if (currentState == null || currentState.isLoadingMoves) return;
 
-          final fen = currentState.position?.fen;
-          if (fen == null) return;
+      final fen = currentState.position?.fen;
+      if (fen == null) return;
 
-          CloudEval? cloudEval;
-          double evaluation = 0.0;
+      CloudEval? cloudEval;
+      double evaluation = 0.0;
 
-          try {
-            // Try to get evaluation from cascade provider first
-            cloudEval = await ref.read(cascadeEvalProviderForBoard(fen).future);
-
-            // Extract evaluation from CloudEval
-            if (cloudEval?.pvs.isNotEmpty ?? false) {
-              evaluation =
-                  cloudEval!.pvs.first.cp /
-                  100.0; // Convert centipawns to pawns
-            }
-          } catch (e) {
-            print('Cascade eval failed, using local stockfish: $e');
-
-            // Fallback to local Stockfish
-            final result = await StockfishSingleton().evaluatePosition(
-              fen,
-              depth: 17,
-            );
-
-            // Extract evaluation from CloudEval
-            if (result.pvs.isNotEmpty) {
-              evaluation =
-                  result.pvs.first.cp / 100.0; // Convert centipawns to pawns
-
-              // Adjust for black's turn
-              List<String> fenParts = fen.split(' ');
-              final isBlackTurn = fenParts[1] == 'b';
-              if (isBlackTurn) {
-                evaluation = -evaluation;
-              }
-            }
-
-            // Create CloudEval for caching
-            cloudEval = result;
-
-            // Cache the result
-            try {
-              final local = ref.read(localEvalCacheProvider);
-              final persist = ref.read(persistCloudEvalProvider);
-
-              Future.wait<void>([
-                persist.call(fen, cloudEval), // writes positions, evals, pvs
-                local.save(fen, cloudEval), // local cache
-              ]);
-            } catch (cacheError) {
-              print('Cache error: $cacheError');
-            }
-          }
-
-          // Check if the state is still valid before updating
-          if (state.value != null && mounted) {
-            state = AsyncValue.data(
-              currentState.copyWith(evaluation: evaluation),
-            );
-          }
-        } catch (e) {
-          print('Evaluation error: $e');
+      try {
+        cloudEval = await ref.read(cascadeEvalProviderForBoard(fen).future);
+        if (cloudEval?.pvs.isNotEmpty ?? false) {
+          evaluation = cloudEval!.pvs.first.cp / 100.0;
         }
+      } catch (e) {
+        print('Cascade eval failed, using local stockfish: $e');
+        final result = await StockfishSingleton().evaluatePosition(
+          fen,
+          depth: 15, // Reduced depth for faster evaluation
+        );
+        if (result.pvs.isNotEmpty) {
+          evaluation = result.pvs.first.cp / 100.0;
+          List<String> fenParts = fen.split(' ');
+          final isBlackTurn = fenParts[1] == 'b';
+          if (isBlackTurn) {
+            evaluation = -evaluation;
+          }
+        }
+        cloudEval = result;
+        try {
+          final local = ref.read(localEvalCacheProvider);
+          final persist = ref.read(persistCloudEvalProvider);
+          await Future.wait([
+            persist.call(fen, cloudEval),
+            local.save(fen, cloudEval),
+          ]);
+        } catch (cacheError) {
+          print('Cache error: $cacheError');
+        }
+      }
+
+      // Only update state if the evaluation corresponds to the current move index
+      if (_cancelEvaluation || state.value == null || !mounted) return;
+      final currentMoveIndex = state.value!.currentMoveIndex;
+      if (targetMoveIndex != currentMoveIndex) {
+        print('Skipping evaluation for outdated move index: $targetMoveIndex');
+        return;
+      }
+
+      state = AsyncValue.data(
+        currentState!.copyWith(evaluation: evaluation),
+      );
+    } catch (e) {
+      if (!_cancelEvaluation) {
+        print('Evaluation error: $e');
+      }
+    }
+  }
+
+  void _updateEvaluation() {
+    if (_isLongPressing) return;
+    _cancelEvaluation = false;
+    _evalOperation?.cancel();
+
+    EasyDebounce.debounce(
+      'evaluation-$index',
+      const Duration(milliseconds: 100),
+      () {
+        if (_cancelEvaluation || state.value == null || !mounted) return;
+        _evalOperation = CancelableOperation.fromFuture(
+          _evaluatePosition(state.value!.currentMoveIndex),
+        );
       },
     );
   }
 
   void startLongPressForward() {
+    _isLongPressing = true;
     _longPressTimer?.cancel();
     _longPressTimer = Timer.periodic(
-      const Duration(milliseconds: 150),
+      const Duration(milliseconds: 300),
       (_) {
         try {
-          if (state.value?.canMoveForward == true) moveForward();
+          if (state.value?.canMoveForward == true && !_isProcessingMove) {
+            moveForward();
+          } else {
+            stopLongPress();
+          }
         } on StateError {
-          _longPressTimer?.cancel();
-          _longPressTimer = null;
+          stopLongPress();
         }
       },
     );
   }
 
   void startLongPressBackward() {
+    _isLongPressing = true;
     _longPressTimer?.cancel();
     _longPressTimer = Timer.periodic(
-      const Duration(milliseconds: 150),
+      const Duration(milliseconds: 300),
       (_) {
         try {
-          if (state.value?.canMoveBackward == true) moveBackward();
+          if (state.value?.canMoveBackward == true && !_isProcessingMove) {
+            moveBackward();
+          } else {
+            stopLongPress();
+          }
         } on StateError {
-          _longPressTimer?.cancel();
-          _longPressTimer = null;
+          stopLongPress();
         }
       },
     );
@@ -353,6 +367,14 @@ class ChessBoardScreenNotifierNew
   void stopLongPress() {
     _longPressTimer?.cancel();
     _longPressTimer = null;
+    _evalOperation?.cancel();
+    _evalOperation = null;
+    _cancelEvaluation = true;
+    if (_isLongPressing) {
+      _isLongPressing = false;
+      _cancelEvaluation = false;
+      _updateEvaluation();
+    }
   }
 
   @override
