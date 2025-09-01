@@ -42,6 +42,19 @@ class AboutTourModel extends Equatable {
       websiteUrl: tour.info.website ?? '',
     );
   }
+  factory AboutTourModel.empty() {
+    return const AboutTourModel(
+      id: '',
+      name: 'No Tournament',
+      description: 'Currently no tournaments available',
+      imageUrl: '',
+      players: [],
+      timeControl: '',
+      date: '',
+      location: '',
+      websiteUrl: '',
+    );
+  }
 
   String extractDomain() {
     try {
