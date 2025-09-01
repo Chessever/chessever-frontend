@@ -23,8 +23,22 @@ class EvaluationBarWidget extends ConsumerWidget {
     super.key,
   });
 
+  double getWhiteRatio(double eval) => (eval.clamp(-5.0, 5.0) + 5.0) / 10.0;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final whiteRatio = getWhiteRatio(evaluation);
+    final blackRatio = 1.0 - whiteRatio;
+
+    final whiteHeight = whiteRatio * height;
+    final blackHeight = blackRatio * height;
+
+    final topHeight = isFlipped ? whiteHeight : blackHeight;
+    final bottomHeight = isFlipped ? blackHeight : whiteHeight;
+
+    final topColor = isFlipped ? kWhiteColor : kPopUpColor;
+    final bottomColor = isFlipped ? kPopUpColor : kWhiteColor;
+
     return SizedBox(
       width: width,
       height: height,
@@ -33,58 +47,47 @@ class EvaluationBarWidget extends ConsumerWidget {
           Align(
             alignment: Alignment.topCenter,
             child: AnimatedContainer(
-              duration: Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              height:
-                  height *
-                  (isFlipped
-                      ? ref
-                          .read(chessBoardScreenProviderNew(index).notifier)
-                          .getWhiteRatio(evaluation)
-                      : ref
-                          .read(chessBoardScreenProviderNew(index).notifier)
-                          .getBlackRatio(evaluation)),
-              color: isFlipped ? kWhiteColor : kPopUpColor,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.linear,
+              width: width,
+              height: topHeight,
+              color: topColor,
             ),
           ),
+
           Align(
             alignment: Alignment.bottomCenter,
             child: AnimatedContainer(
-              duration: Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              height:
-                  height *
-                  (isFlipped
-                      ? ref
-                          .read(chessBoardScreenProviderNew(index).notifier)
-                          .getBlackRatio(evaluation)
-                      : ref
-                          .read(chessBoardScreenProviderNew(index).notifier)
-                          .getWhiteRatio(evaluation)),
-              color: isFlipped ? kPopUpColor : kWhiteColor,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.linear,
+              width: width,
+              height: bottomHeight,
+              color: bottomColor,
             ),
           ),
-          Align(
-            alignment: Alignment.center,
-            child: Container(height: 4.h, color: kRedColor),
-          ),
-          // Evaluation number display
-          Align(
-            alignment: Alignment.center,
+
+          Center(
             child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 1.w, vertical: 0.5.h),
+              width: width,
+              height: 2,
+              color: kRedColor,
+            ),
+          ),
+
+          Center(
+            child: Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: 1.w,
+                vertical: 0.5.h,
+              ),
               decoration: BoxDecoration(
                 color: kPrimaryColor,
                 borderRadius: BorderRadius.circular(2.br),
               ),
               child: Text(
                 evaluation.abs() >= 10.0
-                    ? (evaluation > 0 ? "M" : "-M") // Show "M" or "-M" for mate
-                    : evaluation
-                        .toString()
-                        .characters
-                        .take(4)
-                        .string, // Show negative values directly
+                    ? (evaluation > 0 ? "M" : "-M")
+                    : evaluation.toStringAsFixed(1),
                 maxLines: 1,
                 textAlign: TextAlign.center,
                 style: AppTypography.textSmRegular.copyWith(
