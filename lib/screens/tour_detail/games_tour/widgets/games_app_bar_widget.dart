@@ -14,6 +14,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import '../../provider/tour_detail_screen_provider.dart';
+
 class GamesAppBarWidget extends ConsumerStatefulWidget {
   const GamesAppBarWidget({super.key});
 
@@ -26,7 +28,6 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   late final GlobalKey _menuKey;
-
   Timer? _debounceTimer;
   String _currentSearchQuery = '';
 
@@ -46,11 +47,9 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
     setState(() {
       isSearching = true;
     });
-
     _currentSearchQuery = '';
     _searchController.clear();
     ref.read(gamesTourScreenProvider.notifier).clearSearch();
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNode.requestFocus();
     });
@@ -60,11 +59,9 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
     setState(() {
       isSearching = false;
     });
-
     _searchController.clear();
     _currentSearchQuery = '';
     _debounceTimer?.cancel();
-
     await ref.read(gamesTourScreenProvider.notifier).refreshGames();
     _focusNode.unfocus();
   }
@@ -73,7 +70,7 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
     _debounceTimer?.cancel();
     _currentSearchQuery = query;
 
-    if (query.isEmpty || query.trim().isEmpty) {
+    if (query.trim().isEmpty) {
       ref.read(gamesTourScreenProvider.notifier).clearSearch();
       return;
     }
@@ -88,27 +85,19 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
   void _handleGameSelection(game) {
     try {
       final provider = ref.read(gamesTourScreenProvider.notifier);
-
       provider.clearSearch();
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
         Future.delayed(const Duration(milliseconds: 150), () {
           final gamesTourAsync = ref.read(gamesTourScreenProvider);
-
-          if (!gamesTourAsync.hasValue) {
-            return;
-          }
+          if (!gamesTourAsync.hasValue) return;
 
           final gamesData = gamesTourAsync.value!;
           final allGames = gamesData.gamesTourModels;
-
           final gameIndex = allGames.indexWhere(
             (tourGame) => tourGame.gameId == game.id,
           );
-
-          if (gameIndex == -1) {
-            return;
-          }
+          if (gameIndex == -1) return;
 
           ref.read(chessboardViewFromProviderNew.notifier).state =
               ChessboardView.tour;
@@ -139,165 +128,191 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onTap: () {
-        if (isSearching) _closeSearch();
-      },
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 300),
-        transitionBuilder: (child, animation) {
-          return FadeTransition(
-            opacity: animation,
-            child: SizeTransition(
-              sizeFactor: animation,
-              axis: Axis.horizontal,
-              child: child,
-            ),
-          );
-        },
-        child:
-            isSearching
-                ? Row(
-                  key: const ValueKey('search_mode'),
-                  children: [
-                    Expanded(
-                      child: EnhancedGamesSearchBar(
-                        controller: _searchController,
-                        hintText: "Search players or games...",
-                        onChanged: _handleSearchInput,
-                        onGameSelected: _handleGameSelection,
-                        onClose: _closeSearch,
-                        autofocus: true,
-                      ),
-                    ),
-                  ],
-                )
-                : Row(
-                  key: const ValueKey('app_bar_mode'),
-                  children: [
-                    SizedBox(width: 16.w),
-                    IconButton(
-                      iconSize: 24.ic,
-                      padding: EdgeInsets.zero,
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                      },
-                      icon: Icon(
-                        Icons.arrow_back_ios_new_outlined,
-                        size: 24.ic,
-                      ),
-                    ),
-                    const Spacer(),
-                    RoundDropDown(),
-                    const Spacer(),
-                    AppBarIcons(
-                      image: SvgAsset.searchIcon,
-                      onTap: _startSearch,
-                    ),
-                    SizedBox(width: 18.w),
-                    AppBarIcons(
-                      image: SvgAsset.chase_grid,
-                      onTap: () {
-                        final current = ref.read(chessBoardVisibilityProvider);
-                        ref.read(chessBoardVisibilityProvider.notifier).state =
-                            !current;
-                      },
-                    ),
-                    SizedBox(width: 18.w),
-                    AppBarIcons(
-                      key: _menuKey,
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 2.sp,
-                        vertical: 1.sp,
-                      ),
-                      image: SvgAsset.threeDots,
-                      onTap: () {
-                        final RenderBox? renderBox =
-                            _menuKey.currentContext?.findRenderObject()
-                                as RenderBox?;
+    final tourDetailAsync = ref.watch(tourDetailScreenProvider);
 
-                        if (renderBox != null) {
-                          final Offset offset = renderBox.localToGlobal(
-                            Offset.zero,
-                          );
+    return tourDetailAsync.when(
+      data: (tourData) {
+        final hasTours = tourData.tours.isNotEmpty;
 
-                          showMenu(
-                            context: context,
-                            position: RelativeRect.fromLTRB(
-                              offset.dx,
-                              offset.dy + renderBox.size.height,
-                              offset.dx + renderBox.size.width,
-                              offset.dy,
+        return GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () {
+            if (isSearching) _closeSearch();
+          },
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            transitionBuilder: (child, animation) {
+              return FadeTransition(
+                opacity: animation,
+                child: SizeTransition(
+                  sizeFactor: animation,
+                  axis: Axis.horizontal,
+                  child: child,
+                ),
+              );
+            },
+            child:
+                isSearching
+                    ? Row(
+                      key: const ValueKey('search_mode'),
+                      children: [
+                        Expanded(
+                          child: EnhancedGamesSearchBar(
+                            controller: _searchController,
+                            hintText: "Search players or games...",
+                            onChanged: _handleSearchInput,
+                            onGameSelected: _handleGameSelection,
+                            onClose: _closeSearch,
+                            autofocus: true,
+                          ),
+                        ),
+                      ],
+                    )
+                    : Row(
+                      key: const ValueKey('app_bar_mode'),
+                      children: [
+                        SizedBox(width: 16.w),
+                        IconButton(
+                          iconSize: 24.ic,
+                          padding: EdgeInsets.zero,
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: Icon(
+                            Icons.arrow_back_ios_new_outlined,
+                            size: 24.ic,
+                          ),
+                        ),
+
+                        if (hasTours) ...[
+                          const Spacer(),
+                          RoundDropDown(),
+                          const Spacer(),
+                          AppBarIcons(
+                            image: SvgAsset.searchIcon,
+                            onTap: _startSearch,
+                          ),
+                          SizedBox(width: 18.w),
+                          AppBarIcons(
+                            image: SvgAsset.chase_grid,
+                            onTap: () {
+                              final current = ref.read(
+                                chessBoardVisibilityProvider,
+                              );
+                              ref
+                                  .read(chessBoardVisibilityProvider.notifier)
+                                  .state = !current;
+                            },
+                          ),
+                          SizedBox(width: 18.w),
+                          AppBarIcons(
+                            key: _menuKey,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 2.sp,
+                              vertical: 1.sp,
                             ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12.br),
-                            ),
-                            color: kBlack2Color,
-                            items: <PopupMenuEntry<String>>[
-                              PopupMenuItem<String>(
-                                value: 'Unpin all',
-                                child: InkWell(
-                                  onTap: () {
-                                    Navigator.pop(context);
-                                    ref
-                                        .read(gamesTourScreenProvider.notifier)
-                                        .unpinAllGames();
-                                  },
-                                  child: SizedBox(
-                                    width: 200,
-                                    child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(
-                                          "Unpin all",
-                                          style: AppTypography.textXsMedium
-                                              .copyWith(color: kWhiteColor),
-                                        ),
-                                        SvgPicture.asset(
-                                          SvgAsset.unpine,
-                                          height: 13.h,
-                                          width: 13.w,
-                                        ),
-                                      ],
-                                    ),
+                            image: SvgAsset.threeDots,
+                            onTap: () {
+                              final RenderBox? renderBox =
+                                  _menuKey.currentContext?.findRenderObject()
+                                      as RenderBox?;
+
+                              if (renderBox != null) {
+                                final Offset offset = renderBox.localToGlobal(
+                                  Offset.zero,
+                                );
+
+                                showMenu(
+                                  context: context,
+                                  position: RelativeRect.fromLTRB(
+                                    offset.dx,
+                                    offset.dy + renderBox.size.height,
+                                    offset.dx + renderBox.size.width,
+                                    offset.dy,
                                   ),
-                                ),
-                              ),
-                              PopupMenuDivider(
-                                height: 1.h,
-                                thickness: 0.5.w,
-                                color: kDividerColor,
-                              ),
-                              PopupMenuItem<String>(
-                                value: 'share',
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      "Active games on top",
-                                      style: AppTypography.textXsMedium
-                                          .copyWith(color: kWhiteColor),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12.br),
+                                  ),
+                                  color: kBlack2Color,
+                                  items: <PopupMenuEntry<String>>[
+                                    PopupMenuItem<String>(
+                                      value: 'Unpin all',
+                                      child: InkWell(
+                                        onTap: () {
+                                          Navigator.pop(context);
+                                          ref
+                                              .read(
+                                                gamesTourScreenProvider
+                                                    .notifier,
+                                              )
+                                              .unpinAllGames();
+                                        },
+                                        child: SizedBox(
+                                          width: 200,
+                                          child: Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Text(
+                                                "Unpin all",
+                                                style: AppTypography
+                                                    .textXsMedium
+                                                    .copyWith(
+                                                      color: kWhiteColor,
+                                                    ),
+                                              ),
+                                              SvgPicture.asset(
+                                                SvgAsset.unpine,
+                                                height: 13.h,
+                                                width: 13.w,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
                                     ),
-                                    SvgPicture.asset(
-                                      SvgAsset.active,
-                                      height: 13.h,
-                                      width: 13.w,
+                                    PopupMenuDivider(
+                                      height: 1.h,
+                                      thickness: 0.5.w,
+                                      color: kDividerColor,
+                                    ),
+                                    PopupMenuItem<String>(
+                                      value: 'share',
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            "Active games on top",
+                                            style: AppTypography.textXsMedium
+                                                .copyWith(color: kWhiteColor),
+                                          ),
+                                          SvgPicture.asset(
+                                            SvgAsset.active,
+                                            height: 13.h,
+                                            width: 13.w,
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ],
-                                ),
-                              ),
-                            ],
-                          );
-                        }
-                      },
+                                );
+                              }
+                            },
+                          ),
+                          SizedBox(width: 20.w),
+                        ],
+                      ],
                     ),
-                    SizedBox(width: 20.w),
-                  ],
-                ),
-      ),
+          ),
+        );
+      },
+      loading: () => SizedBox.shrink(),
+      error:
+          (e, _) => Center(
+            child: Text(
+              'Error loading tours',
+              style: AppTypography.textXsRegular.copyWith(color: kWhiteColor70),
+            ),
+          ),
     );
   }
 }
