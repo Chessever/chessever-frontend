@@ -88,12 +88,14 @@ class TournamentSortingService {
       if (hasFavorites) {
         if (isFavoriteA &&
             !isFavoriteB &&
-            a.tourEventCategory != TourEventCategory.completed)
+            a.tourEventCategory != TourEventCategory.completed) {
           return -1;
+        }
         if (!isFavoriteA &&
             isFavoriteB &&
-            b.tourEventCategory != TourEventCategory.completed)
+            b.tourEventCategory != TourEventCategory.completed) {
           return 1;
+        }
       }
 
       // SECOND PRIORITY: ELO sorting (same logic as your other methods)

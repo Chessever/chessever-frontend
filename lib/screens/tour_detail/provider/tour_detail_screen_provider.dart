@@ -49,6 +49,7 @@ class TourDetailScreenNotifier
   }
 
   @override
+  @override
   Future<void> loadTourDetails() async {
     if (!mounted) return;
 
@@ -58,14 +59,26 @@ class TourDetailScreenNotifier
           .getTours(groupBroadcast.id);
 
       if (tours.isEmpty) {
-        _setErrorState('No tournaments found for this group');
+        _setDataState(
+          TourDetailViewModel(
+            aboutTourModel: AboutTourModel.empty(),
+            liveTourIds: liveTourId,
+            tours: [],
+          ),
+        );
         return;
       }
 
       final tourModels = await _processTours(tours);
 
       if (tourModels.isEmpty) {
-        _setErrorState('No valid tournaments found');
+        _setDataState(
+          TourDetailViewModel(
+            aboutTourModel: AboutTourModel.empty(),
+            liveTourIds: liveTourId,
+            tours: [],
+          ),
+        );
         return;
       }
 
