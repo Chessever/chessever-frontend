@@ -12,8 +12,11 @@ import 'package:chessever2/screens/group_event/providers/group_event_screen_prov
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
+import '../../../../utils/app_typography.dart';
+import '../../../../utils/svg_asset.dart';
 import '../widgets/top_most_visible_item_model.dart';
 
 class GamesTourScreen extends ConsumerStatefulWidget {
@@ -76,103 +79,145 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     final gamesAppBarAsync = ref.watch(gamesAppBarProvider);
     final gamesTourAsync = ref.watch(gamesTourScreenProvider);
     final scrollState = ref.watch(scrollStateProvider);
+    final tourDetailAsync = ref.watch(tourDetailScreenProvider);
 
-    // Listen to app bar changes and scroll to selected round
-    ref.listen<AsyncValue<GamesAppBarViewModel>>(gamesAppBarProvider, (
-      previous,
-      next,
-    ) {
-      if (!_isInitialized) return;
+    return tourDetailAsync.when(
+      data: (data) {
+        if (data.tours.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SvgPicture.asset(
+                  SvgAsset.tournamentIcon,
+                  height: 35,
+                  width: 35,
+                ),
+                SizedBox(height: 10),
+                Text(
+                  'Currently there are no tournaments going on , come back later!',
+                  style: AppTypography.textMdRegular.copyWith(
+                    color: kWhiteColor,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          );
+        }
+        // Listen to app bar changes and scroll to selected round
+        ref.listen<AsyncValue<GamesAppBarViewModel>>(gamesAppBarProvider, (
+          previous,
+          next,
+        ) {
+          if (!_isInitialized) return;
 
-      final previousSelected = previous?.valueOrNull?.selectedId;
-      final currentSelected = next.valueOrNull?.selectedId;
+          final previousSelected = previous?.valueOrNull?.selectedId;
+          final currentSelected = next.valueOrNull?.selectedId;
 
-      if (currentSelected != null &&
-          currentSelected != previousSelected &&
-          next.valueOrNull?.userSelectedId == true) {
-        ref.read(scrollStateProvider.notifier).setUserScrolling(false);
-        ref.read(scrollStateProvider.notifier).setScrolling(false);
-        ref
-            .read(scrollStateProvider.notifier)
-            .updateSelectedRound(currentSelected);
+          if (currentSelected != null &&
+              currentSelected != previousSelected &&
+              next.valueOrNull?.userSelectedId == true) {
+            ref.read(scrollStateProvider.notifier).setUserScrolling(false);
+            ref.read(scrollStateProvider.notifier).setScrolling(false);
+            ref
+                .read(scrollStateProvider.notifier)
+                .updateSelectedRound(currentSelected);
 
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (mounted) {
-            scrollToRound(currentSelected);
+            Future.delayed(const Duration(milliseconds: 500), () {
+              if (mounted) {
+                scrollToRound(currentSelected);
+              }
+            });
           }
         });
-      }
-    });
 
-    ref.listen<String?>(currentVisibleRoundProvider, (previous, next) {
-      if (next != null && next != previous && _isInitialized) {
-        final scrollState = ref.read(scrollStateProvider);
-        final currentSelected = gamesAppBarAsync.valueOrNull?.selectedId;
+        ref.listen<String?>(currentVisibleRoundProvider, (previous, next) {
+          if (next != null && next != previous && _isInitialized) {
+            final scrollState = ref.read(scrollStateProvider);
+            final currentSelected = gamesAppBarAsync.valueOrNull?.selectedId;
 
-        if (scrollState.isUserScrolling &&
-            !scrollState.isScrolling &&
-            currentSelected != next &&
-            !_isViewSwitching &&
-            !_isProgrammaticScroll) {
-          final gamesAppBarData = gamesAppBarAsync.valueOrNull;
-          if (gamesAppBarData != null) {
-            final targetRound =
-                gamesAppBarData.gamesAppBarModels
-                    .where((round) => round.id == next)
-                    .firstOrNull;
+            if (scrollState.isUserScrolling &&
+                !scrollState.isScrolling &&
+                currentSelected != next &&
+                !_isViewSwitching &&
+                !_isProgrammaticScroll) {
+              final gamesAppBarData = gamesAppBarAsync.valueOrNull;
+              if (gamesAppBarData != null) {
+                final targetRound =
+                    gamesAppBarData.gamesAppBarModels
+                        .where((round) => round.id == next)
+                        .firstOrNull;
 
-            if (targetRound != null) {
-              ref
-                  .read(gamesAppBarProvider.notifier)
-                  .selectNewRoundSilently(targetRound);
+                if (targetRound != null) {
+                  ref
+                      .read(gamesAppBarProvider.notifier)
+                      .selectNewRoundSilently(targetRound);
+                }
+              }
             }
           }
-        }
-      }
-    });
+        });
 
-    return NotificationListener<ScrollNotification>(
-      onNotification: (notification) {
-        if (notification is ScrollStartNotification &&
-            !_isViewSwitching &&
-            !_isProgrammaticScroll) {
-          _isScrolling = true;
-          ref.read(scrollStateProvider.notifier).setUserScrolling(true);
-        } else if (notification is ScrollEndNotification && !_isViewSwitching) {
-          _isScrolling = false;
-          _isProgrammaticScroll = false;
-          Future.delayed(const Duration(milliseconds: 50), () {
-            if (mounted && !_isViewSwitching) {
-              checkRoundContentVisibility(); // Using extension method
-              ref.read(scrollStateProvider.notifier).setUserScrolling(false);
+        return NotificationListener<ScrollNotification>(
+          onNotification: (notification) {
+            if (notification is ScrollStartNotification &&
+                !_isViewSwitching &&
+                !_isProgrammaticScroll) {
+              _isScrolling = true;
+              ref.read(scrollStateProvider.notifier).setUserScrolling(true);
+            } else if (notification is ScrollEndNotification &&
+                !_isViewSwitching) {
+              _isScrolling = false;
+              _isProgrammaticScroll = false;
+              Future.delayed(const Duration(milliseconds: 50), () {
+                if (mounted && !_isViewSwitching) {
+                  checkRoundContentVisibility(); // Using extension method
+                  ref
+                      .read(scrollStateProvider.notifier)
+                      .setUserScrolling(false);
+                }
+              });
             }
-          });
-        }
 
-        return false;
+            return false;
+          },
+          child: RefreshIndicator(
+            onRefresh: () => handleRefresh(gamesAppBarAsync, gamesTourAsync),
+            // Using extension method
+            color: kWhiteColor70,
+            backgroundColor: kDarkGreyColor,
+            displacement: 60.h,
+            strokeWidth: 3.w,
+            child: GamesTourContentBody(
+              gamesAppBarAsync: gamesAppBarAsync,
+              gamesTourAsync: gamesTourAsync,
+              isChessBoardVisible: isChessBoardVisible,
+              scrollController: _scrollController,
+              headerKeys: _headerKeys,
+              gameKeys: _gameKeys,
+              getHeaderKey: getHeaderKey,
+              // Using extension method
+              getGameKey: getGameKey,
+              // Using extension method
+              lastGamesData: _lastGamesData,
+              onGamesDataUpdate: (data) => _lastGamesData = data,
+            ),
+          ),
+        );
       },
-      child: RefreshIndicator(
-        onRefresh: () => handleRefresh(gamesAppBarAsync, gamesTourAsync),
-        // Using extension method
-        color: kWhiteColor70,
-        backgroundColor: kDarkGreyColor,
-        displacement: 60.h,
-        strokeWidth: 3.w,
-        child: GamesTourContentBody(
-          gamesAppBarAsync: gamesAppBarAsync,
-          gamesTourAsync: gamesTourAsync,
-          isChessBoardVisible: isChessBoardVisible,
-          scrollController: _scrollController,
-          headerKeys: _headerKeys,
-          gameKeys: _gameKeys,
-          getHeaderKey: getHeaderKey,
-          // Using extension method
-          getGameKey: getGameKey,
-          // Using extension method
-          lastGamesData: _lastGamesData,
-          onGamesDataUpdate: (data) => _lastGamesData = data,
-        ),
-      ),
+      error:
+          (error, stackTrace) => Center(
+            child: Text(
+              'Error: $error',
+              style: AppTypography.textMdRegular.copyWith(color: kWhiteColor),
+              textAlign: TextAlign.center,
+            ),
+          ),
+      loading: () {
+        return SizedBox.shrink();
+      },
     );
   }
 }
