@@ -8,6 +8,7 @@ import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
+import 'package:chessever2/widgets/app_button.dart';
 import 'package:chessever2/widgets/auth_button.dart';
 import 'package:chessever2/widgets/blur_background.dart';
 import 'package:chessever2/widgets/country_dropdown.dart';
@@ -194,23 +195,13 @@ class _AuthCountryDropdownWidgetState
     _fadeAnimation = Tween<double>(
       begin: 0.0,
       end: 1.0,
-    ).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: Curves.easeOut,
-      ),
-    );
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
 
     // Minimal slide animation from top
     _slideAnimation = Tween<Offset>(
       begin: const Offset(0, -0.1),
       end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: Curves.easeOutCubic,
-      ),
-    );
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
 
     // Start animation
     _controller.forward();
@@ -240,10 +231,7 @@ class _AuthCountryDropdownWidgetState
           return Stack(
             children: [
               // Background content with subtle fade
-              Opacity(
-                opacity: _fadeAnimation.value,
-                child: BlurBackground(),
-              ),
+              Opacity(opacity: _fadeAnimation.value, child: BlurBackground()),
 
               // Main content with minimal slide
               FadeTransition(
@@ -275,29 +263,21 @@ class _AuthCountryDropdownWidgetState
                                 horizontal: 10.sp,
                                 vertical: 5.sp,
                               ),
-                              // child: CountryDropdown(
-                              //   selectedCountryCode: 'US',
-                              //   onChanged: (Country country) async {
-                              //     await ref
-                              //         .read(countryDropdownProvider.notifier)
-                              //         .selectCountry(country.countryCode);
-                              //   },
-                              // ),
                               child: countryState.when(
                                 loading:
                                     () => CountryDropdown(
                                       selectedCountryCode: '',
-                                      onChanged:
-                                          (
-                                            _,
-                                          ) {},
+                                      onChanged: (_) {},
                                       hintText: 'Loading country...',
                                       isLoading: true,
                                     ),
                                 error:
-                                    (err, _) => Text(
-                                      'Error loading countries',
-                                      style: TextStyle(color: Colors.red),
+                                    (err, _) => AppButton(
+                                      padding: EdgeInsets.symmetric(horizontal: 16.sp),
+                                      text: 'Retry Getting Countries',
+                                      onPressed: () {
+                                        ref.invalidate(countryDropdownProvider);
+                                      },
                                     ),
                                 data: (country) {
                                   return CountryDropdown(
@@ -389,10 +369,7 @@ class _AuthCountryDropdownWidgetState
                           ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: countryState.maybeWhen(
-                              loading:
-                                  () => kWhiteColor.withOpacity(
-                                    0.4,
-                                  ),
+                              loading: () => kWhiteColor.withOpacity(0.4),
                               orElse: () => kWhiteColor,
                             ),
                             foregroundColor: kBlackColor,
