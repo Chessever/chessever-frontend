@@ -16,6 +16,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
   final VoidCallback onFlip;
   final VoidCallback? onJumpToStart;
   final VoidCallback? onJumpToEnd;
+  final VoidCallback? toggleAnalysisMode;
   final bool isPlaying;
   final int currentMove;
   final int totalMoves;
@@ -23,7 +24,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
   final bool canMoveBackward;
   final bool isAtStart;
   final bool isAtEnd;
-
+final bool isAnalysisMode;
   const ChessBoardBottomNavBar({
     super.key,
     required this.gameIndex,
@@ -41,6 +42,8 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
     required this.canMoveBackward,
     required this.isAtStart,
     required this.isAtEnd,
+    required this.toggleAnalysisMode,
+    required this.isAnalysisMode,
   });
 
   @override
@@ -57,8 +60,10 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
           children: [
             // Reset Game Button
             ChessSvgBottomNavbar(
-              svgPath: SvgAsset.laptop,
-              onPressed: () {},
+              svgPath: isAnalysisMode? SvgAsset.bookIcon : SvgAsset.laptop,
+              onPressed: () {
+                toggleAnalysisMode?.call();
+              },
             ),
 
             // Flip Board Button
