@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:chessever2/screens/group_event/widget/all_events_tab_widget.dart';
 import 'package:chessever2/screens/home/home_screen.dart';
 import 'package:chessever2/screens/home/home_screen_provider.dart';
@@ -144,22 +146,24 @@ class GroupEventScreen extends HookConsumerWidget {
                     );
                   },
                   loading: () {
-                    final mockData = GroupEventCardModel(
-                      id: 'tour_001',
-                      title: 'World Chess Championship 2025',
-                      dates: 'Mar 15 - 25,2025',
-                      timeUntilStart: 'Starts in 8 months',
-                      tourEventCategory: TourEventCategory.live,
-                      maxAvgElo: 0,
-                      timeControl: 'Standard',
-                    );
                     return Expanded(
                       child: SkeletonWidget(
                         child: AllEventsTabWidget(
                           onSelect: (_) {},
                           filteredEvents: List.generate(
                             10,
-                            (index) => mockData,
+                            (index) => GroupEventCardModel(
+                              id: 'tour_001',
+                              title: 'World Chess Championship 2025',
+                              dates: 'Mar 15 - 25,2025',
+                              timeUntilStart: 'Starts in 8 months',
+                              tourEventCategory:
+                                  TourEventCategory.values[Random().nextInt(
+                                    TourEventCategory.values.length,
+                                  )],
+                              maxAvgElo: 0,
+                              timeControl: 'Standard',
+                            ),
                           ),
                         ),
                       ),
