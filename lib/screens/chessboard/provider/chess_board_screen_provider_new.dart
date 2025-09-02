@@ -45,7 +45,12 @@ class ChessBoardScreenNotifierNew
 
   void _initializeState() {
     state = AsyncValue.data(
-      ChessBoardStateNew(game: game, pgnData: null, isLoadingMoves: true),
+      ChessBoardStateNew(
+        game: game,
+        pgnData: null,
+        isLoadingMoves: true,
+        fenData: game.fen,
+      ),
     );
   }
 
