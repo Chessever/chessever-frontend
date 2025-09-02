@@ -153,7 +153,7 @@ class ChessBoardScreenNotifierNew
       ),
     );
     _cancelEvaluation = false;
-    _updateEvaluation();
+    //_updateEvaluation();
     _isProcessingMove = false;
   }
 
@@ -191,7 +191,7 @@ class ChessBoardScreenNotifierNew
     );
 
     _cancelEvaluation = false;
-   // _updateEvaluation();
+    _updateEvaluation();
     _isProcessingMove = false;
   }
 
