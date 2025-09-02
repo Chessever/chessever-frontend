@@ -122,7 +122,7 @@ class _MyAppState extends ConsumerState<MyApp> {
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeMode,
-      initialRoute: '/',
+      initialRoute: '/home_screen',
       routes: {
         '/': (context) => const SplashScreen(),
         '/auth_screen': (context) => const AuthScreen(),

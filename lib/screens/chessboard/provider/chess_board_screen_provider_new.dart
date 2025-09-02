@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ffi';
 import 'dart:ui';
 
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
@@ -38,18 +39,16 @@ class ChessBoardScreenNotifierNew
   final int index;
   Timer? _longPressTimer;
   bool _hasParsedMoves = false;
-
   void _initializeState() {
     state = AsyncValue.data(
-      ChessBoardStateNew(
-        game: game,
-        pgnData: null,
-        isLoadingMoves: true,
-      ),
+      ChessBoardStateNew(game: game, pgnData: null, isLoadingMoves: true),
     );
   }
 
   Future<void> parseMoves() async {
+    if (state.value?.isAnalysisMode == true) {
+      return;
+    }
     if (_hasParsedMoves) return;
     _hasParsedMoves = true;
 
@@ -95,6 +94,7 @@ class ChessBoardScreenNotifierNew
           currentMoveIndex: lastMoveIndex,
           pgnData: pgn,
           isLoadingMoves: false,
+          analysisState: AnalysisBoardState(startingPosition: startingPos),
         ),
       );
 
@@ -106,6 +106,43 @@ class ChessBoardScreenNotifierNew
 
   // Navigation methods
   void goToMove(int moveIndex) {
+    if (state.value?.isAnalysisMode == true) {
+      analysisModeGoToMove(moveIndex);
+    } else {
+      normalModeGoToMove(moveIndex);
+    }
+  }
+
+  void analysisModeGoToMove(int moveIndex) {
+    final currentState = state.value;
+    if (currentState == null) return;
+    if (currentState.isLoadingMoves) return;
+
+    if (moveIndex < -1 ||
+        moveIndex >= currentState.analysisState.allMoves.length) {
+      return;
+    }
+    Position newPosition = currentState.analysisState.startingPosition!;
+    Move? newLastMove;
+
+    for (int i = 0; i <= moveIndex; i++) {
+      newLastMove = currentState.analysisState.allMoves[i];
+      newPosition = newPosition.play(currentState.analysisState.allMoves[i]);
+    }
+
+    state = AsyncValue.data(
+      currentState.copyWith(
+        analysisState: currentState.analysisState.copyWith(
+          position: newPosition,
+          lastMove: newLastMove,
+          currentMoveIndex: moveIndex,
+        ),
+      ),
+    );
+    _updateEvaluation();
+  }
+
+  void normalModeGoToMove(int moveIndex) {
     final currentState = state.value;
     if (currentState == null) return;
     if (currentState.isLoadingMoves) return;
@@ -137,16 +174,32 @@ class ChessBoardScreenNotifierNew
 
   void moveForward() {
     final currentState = state.value;
-    if (currentState == null || !currentState.canMoveForward) return;
-
-    goToMove(currentState.currentMoveIndex + 1);
+    if (currentState?.isAnalysisMode == true) {
+      if (currentState == null || !currentState.analysisState.canMoveForward) {
+        return;
+      }
+      goToMove(currentState.analysisState.currentMoveIndex + 1);
+    } else {
+      if (currentState == null || !currentState.canMoveForward) {
+        return;
+      }
+      goToMove(currentState.currentMoveIndex + 1);
+    }
   }
 
   void moveBackward() {
     final currentState = state.value;
-    if (currentState == null || !currentState.canMoveBackward) return;
-
-    goToMove(currentState.currentMoveIndex - 1);
+    if (currentState?.isAnalysisMode == true) {
+      if (currentState == null || !currentState.analysisState.canMoveBackward) {
+        return;
+      }
+      goToMove(currentState.analysisState.currentMoveIndex - 1);
+    } else {
+      if (currentState == null || !currentState.canMoveBackward) {
+        return;
+      }
+      goToMove(currentState.currentMoveIndex - 1);
+    }
   }
 
   void jumpToStart() {
@@ -162,6 +215,20 @@ class ChessBoardScreenNotifierNew
 
   void resetGame() {
     jumpToStart();
+  }
+
+  void toggleAnalysisMode() {
+    if (state.value?.isAnalysisMode == false) {
+      initializeAnalysisBoard();
+    }
+    togglePlayPause();
+    final currentState = state.value;
+
+    if (currentState == null) return;
+
+    state = AsyncValue.data(
+      currentState.copyWith(isAnalysisMode: !currentState.isAnalysisMode),
+    );
   }
 
   // Board control methods
@@ -237,6 +304,7 @@ class ChessBoardScreenNotifierNew
   }
 
   Future<void> _updateEvaluation() async {
+    return;
     const debounceTag = 'eval-debounce';
     EasyDebounce.debounce(
       debounceTag,
@@ -246,7 +314,10 @@ class ChessBoardScreenNotifierNew
           final currentState = state.value;
           if (currentState == null || currentState.isLoadingMoves) return;
 
-          final fen = currentState.position?.fen;
+          final fen =
+              currentState.isAnalysisMode
+                  ? currentState.analysisState.position.fen
+                  : currentState.position?.fen;
           if (fen == null) return;
 
           CloudEval? cloudEval;
@@ -316,32 +387,26 @@ class ChessBoardScreenNotifierNew
 
   void startLongPressForward() {
     _longPressTimer?.cancel();
-    _longPressTimer = Timer.periodic(
-      const Duration(milliseconds: 150),
-      (_) {
-        try {
-          if (state.value?.canMoveForward == true) moveForward();
-        } on StateError {
-          _longPressTimer?.cancel();
-          _longPressTimer = null;
-        }
-      },
-    );
+    _longPressTimer = Timer.periodic(const Duration(milliseconds: 150), (_) {
+      try {
+        if (state.value?.canMoveForward == true) moveForward();
+      } on StateError {
+        _longPressTimer?.cancel();
+        _longPressTimer = null;
+      }
+    });
   }
 
   void startLongPressBackward() {
     _longPressTimer?.cancel();
-    _longPressTimer = Timer.periodic(
-      const Duration(milliseconds: 150),
-      (_) {
-        try {
-          if (state.value?.canMoveBackward == true) moveBackward();
-        } on StateError {
-          _longPressTimer?.cancel();
-          _longPressTimer = null;
-        }
-      },
-    );
+    _longPressTimer = Timer.periodic(const Duration(milliseconds: 150), (_) {
+      try {
+        if (state.value?.canMoveBackward == true) moveBackward();
+      } on StateError {
+        _longPressTimer?.cancel();
+        _longPressTimer = null;
+      }
+    });
   }
 
   void stopLongPress() {
@@ -353,6 +418,170 @@ class ChessBoardScreenNotifierNew
   void dispose() {
     stopLongPress();
     super.dispose();
+  }
+
+  void initializeAnalysisBoard() {
+    final currentState = state.value;
+    if (currentState == null || currentState.position == null) return;
+
+    state = AsyncValue.data(
+      currentState.copyWith(
+        analysisState: AnalysisBoardState(
+          position: currentState.position!,
+          validMoves: makeLegalMoves(currentState.position!),
+          promotionMove: null,
+          lastMove: currentState.lastMove,
+          currentMoveIndex: currentState.currentMoveIndex,
+          allMoves: currentState.allMoves.sublist(
+            0,
+            currentState.currentMoveIndex + 1,
+          ),
+          moveSans: currentState.moveSans.sublist(
+            0,
+            currentState.currentMoveIndex + 1,
+          ),
+        ),
+      ),
+    );
+  }
+
+  bool isPromotionPawnMove(NormalMove move) {
+    var currentState = state.value;
+    if (currentState == null) return false;
+    Position pos =
+        currentState.isAnalysisMode
+            ? currentState.analysisState.position
+            : currentState.position!;
+    return move.promotion == null &&
+        pos.board.roleAt(move.from) == Role.pawn &&
+        ((move.to.rank == Rank.first && pos.turn == Side.black) ||
+            (move.to.rank == Rank.eighth && pos.turn == Side.white));
+  }
+
+  void onAnalysisMove(NormalMove move, {bool? isDrop, bool? isPremove}) {
+    var currentState = state.value;
+    if (currentState == null) return;
+    Position pos =
+        currentState.isAnalysisMode
+            ? currentState.analysisState.position
+            : currentState.position!;
+    AnalysisBoardState analysisState = currentState.analysisState;
+    if (isPromotionPawnMove(move)) {
+      state = AsyncValue.data(
+        currentState.copyWith(
+          analysisState: currentState.analysisState.copyWith(
+            promotionMove: move,
+          ),
+        ),
+      );
+    } else if (pos.isLegal(move)) {
+      var positionHistory = analysisState.positionHistory;
+      var moveSans = analysisState.moveSans;
+      var allMoves = analysisState.allMoves;
+      if (analysisState.currentMoveIndex <
+          analysisState.positionHistory.length - 1) {
+        positionHistory = analysisState.positionHistory.sublist(
+          0,
+          analysisState.currentMoveIndex + 1,
+        );
+        moveSans = analysisState.moveSans.sublist(
+          0,
+          analysisState.currentMoveIndex,
+        );
+        allMoves = analysisState.allMoves.sublist(
+          0,
+          analysisState.currentMoveIndex + 1,
+        );
+      }
+
+      final newPosition = pos.playUnchecked(move);
+      final sanMove = pos.makeSan(move);
+
+      pos = newPosition;
+
+      // Add to history
+      final newPositionHistory = List<Position>.from(positionHistory)..add(pos);
+      final newMoveSans = List<String>.from(moveSans)..add(sanMove.$2);
+      final newAllMoves = List<Move>.from(allMoves)..add(move);
+      var currentMoveIndex = analysisState.currentMoveIndex + 1;
+      state = AsyncValue.data(
+        currentState.copyWith(
+          analysisState: currentState.analysisState.copyWith(
+            currentMoveIndex: currentMoveIndex,
+            lastMove: move,
+            validMoves: makeLegalMoves(pos),
+            promotionMove: null,
+            position: pos,
+            positionHistory: newPositionHistory,
+            moveSans: newMoveSans,
+            allMoves: newAllMoves,
+          ),
+        ),
+      );
+    }
+  }
+
+  void onAnalysisPromotionSelection(Role? role) {
+    var currentState = state.value;
+    if (currentState == null) return;
+    if (role == null) {
+      state = AsyncValue.data(
+        currentState.copyWith(
+          analysisState: currentState.analysisState.copyWith(
+            promotionMove: null,
+          ),
+        ),
+      );
+    } else if (currentState.analysisState.promotionMove != null) {
+      AnalysisBoardState analysisState = currentState.analysisState;
+
+      final move = analysisState.promotionMove!.withPromotion(role);
+      // Remove any future moves if we're in the middle of history
+      var positionHistory = analysisState.positionHistory;
+      var moveSans = analysisState.moveSans;
+      var allMoves = analysisState.allMoves;
+      if (analysisState.currentMoveIndex <
+          analysisState.positionHistory.length - 1) {
+        positionHistory = analysisState.positionHistory.sublist(
+          0,
+          analysisState.currentMoveIndex + 1,
+        );
+        moveSans = analysisState.moveSans.sublist(
+          0,
+          analysisState.currentMoveIndex,
+        );
+        allMoves = analysisState.allMoves.sublist(
+          0,
+          analysisState.currentMoveIndex + 1,
+        );
+      }
+      Position pos =
+          currentState.isAnalysisMode
+              ? currentState.analysisState.position
+              : currentState.position!;
+      final newPosition = pos.playUnchecked(move);
+      final sanMove = pos.makeSan(move);
+      pos = newPosition;
+
+      final newPositionHistory = List<Position>.from(positionHistory)..add(pos);
+      final newMoveSans = List<String>.from(moveSans)..add(sanMove.$2);
+      final newAllMoves = List<Move>.from(allMoves)..add(move);
+      var currentMoveIndex = analysisState.currentMoveIndex + 1;
+      state = AsyncValue.data(
+        currentState.copyWith(
+          analysisState: currentState.analysisState.copyWith(
+            currentMoveIndex: currentMoveIndex,
+            lastMove: move,
+            validMoves: makeLegalMoves(pos),
+            promotionMove: null,
+            position: pos,
+            positionHistory: newPositionHistory,
+            moveSans: newMoveSans,
+            allMoves: newAllMoves,
+          ),
+        ),
+      );
+    }
   }
 }
 

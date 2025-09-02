@@ -125,6 +125,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
     }
   }
 
+  bool analysisMode = false;
   @override
   Widget build(BuildContext context) {
     // Keep horizontal paging strict (PageView handles it well already).
@@ -147,7 +148,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
           padEnds: true,
           allowImplicitScrolling: true,
           // helps the framework build ahead
-          physics: const PageScrollPhysics(),
+          physics:
+              analysisMode
+                  ? NeverScrollableScrollPhysics()
+                  : const PageScrollPhysics(),
           controller: _pageController,
           onPageChanged: _onPageChanged,
           itemCount: widget.games.length,
@@ -158,6 +162,15 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
                 .watch(chessBoardScreenProviderNew(index))
                 .when(
                   data: (chessBoardState) {
+                    if (chessBoardState.isAnalysisMode != analysisMode) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) {
+                          setState(() {
+                            analysisMode = chessBoardState.isAnalysisMode;
+                          });
+                        }
+                      });
+                    }
                     return _GamePage(
                       game: widget.games[index],
                       state: chessBoardState,
@@ -499,6 +512,8 @@ class _BottomNavBar extends ConsumerWidget {
       canMoveBackward: state.canMoveBackward,
       isAtStart: state.isAtStart,
       isAtEnd: state.isAtEnd,
+      isAnalysisMode: state.isAnalysisMode,
+      toggleAnalysisMode: () => notifier.toggleAnalysisMode(),
     );
   }
 }
@@ -563,8 +578,8 @@ class _GameBody extends StatelessWidget {
                   child: _MovesDisplay(
                     index: index,
                     state: state,
-                    sanMoves: state.moveSans,
-                    currentMoveIndex: state.currentMoveIndex,
+                    sanMoves: state.isAnalysisMode? state.analysisState.moveSans: state.moveSans,
+                    currentMoveIndex:  state.isAnalysisMode? state.analysisState.currentMoveIndex : state.currentMoveIndex,
                   ),
                 ),
               ),
@@ -632,15 +647,97 @@ class _BoardWithSidebar extends StatelessWidget {
                 isFlipped: state.isBoardFlipped,
                 evaluation: state.evaluation,
               ),
-              _ChessBoardNew(
-                size: boardSize,
-                chessBoardState: state,
-                isFlipped: state.isBoardFlipped,
-              ),
+              state.isAnalysisMode
+                  ? _AnalysisBoard(
+                    size: boardSize,
+                    chessBoardState: state,
+                    isFlipped: state.isBoardFlipped,
+                    index: index,
+                  )
+                  : _ChessBoardNew(
+                    size: boardSize,
+                    chessBoardState: state,
+                    isFlipped: state.isBoardFlipped,
+                  ),
             ],
           ),
         );
       },
+    );
+  }
+}
+
+class _AnalysisBoard extends ConsumerWidget {
+  final double size;
+  final ChessBoardStateNew chessBoardState;
+  final bool isFlipped;
+  final int index;
+  const _AnalysisBoard({
+    required this.size,
+    required this.chessBoardState,
+    this.isFlipped = false,
+    required this.index,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final boardSettingsValue = ref.watch(boardSettingsProvider);
+    final boardTheme = ref
+        .read(boardSettingsRepository)
+        .getBoardTheme(boardSettingsValue.boardColor);
+    final notifier = ref.read(chessBoardScreenProviderNew(index).notifier);
+
+    return Chessboard(
+      size: size,
+      settings: ChessboardSettings(
+        enableCoordinates: true,
+      
+        animationDuration: const Duration(milliseconds: 200),
+        dragFeedbackScale: 1,
+        dragTargetKind: DragTargetKind.none,
+        pieceShiftMethod: PieceShiftMethod.either,
+        autoQueenPromotionOnPremove: false,
+        pieceOrientationBehavior: PieceOrientationBehavior.facingUser,
+        colorScheme: ChessboardColorScheme(
+          lightSquare: boardTheme.lightSquareColor,
+          darkSquare: boardTheme.darkSquareColor,
+          background: SolidColorChessboardBackground(
+            lightSquare: boardTheme.lightSquareColor,
+            darkSquare: boardTheme.darkSquareColor,
+          ),
+          whiteCoordBackground: SolidColorChessboardBackground(
+            lightSquare: boardTheme.lightSquareColor,
+            darkSquare: boardTheme.darkSquareColor,
+            coordinates: true,
+            orientation: Side.white,
+          ),
+          blackCoordBackground: SolidColorChessboardBackground(
+            lightSquare: boardTheme.lightSquareColor,
+            darkSquare: boardTheme.darkSquareColor,
+            coordinates: true,
+            orientation: Side.black,
+          ),
+          lastMove: HighlightDetails(solidColor: kPrimaryColor),
+          selected: const HighlightDetails(solidColor: kPrimaryColor),
+          validMoves: kPrimaryColor,
+          validPremoves: kPrimaryColor,
+        ),
+      ),
+      orientation: isFlipped ? Side.black : Side.white,
+      fen: chessBoardState.analysisState.position.fen,
+      lastMove: chessBoardState.analysisState.lastMove,
+      game: GameData(
+        playerSide:
+            chessBoardState.analysisState.position.turn == Side.white
+                ? PlayerSide.white
+                : PlayerSide.black,
+        validMoves: chessBoardState.analysisState.validMoves,
+        sideToMove: chessBoardState.analysisState.position.turn,
+        isCheck: chessBoardState.analysisState.position.isCheck,
+        promotionMove: chessBoardState.analysisState.promotionMove,
+        onMove: notifier.onAnalysisMove,
+        onPromotionSelection: notifier.onAnalysisPromotionSelection,
+      ),
     );
   }
 }

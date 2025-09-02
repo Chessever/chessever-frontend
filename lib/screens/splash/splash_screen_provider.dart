@@ -36,7 +36,7 @@ class _SplashScreenProvider {
     if (isLoggedIn) {
       Navigator.pushReplacementNamed(context, '/home_screen');
     } else {
-      Navigator.pushReplacementNamed(context, '/auth_screen');
+      Navigator.pushReplacementNamed(context, '/home_screen');
     }
   }
 }
