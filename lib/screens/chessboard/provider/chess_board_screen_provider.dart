@@ -70,6 +70,7 @@ class ChessBoardScreenNotifier
   bool _isLongPressing = false;
 
   void _initializeState() async {
+    return;
     print("Initializing game: ${game.gameId}\nPGN: ${game.pgn}");
 
     try {

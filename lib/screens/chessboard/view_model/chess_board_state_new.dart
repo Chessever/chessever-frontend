@@ -1,5 +1,60 @@
 import 'package:chessever2/screens/tournaments/model/games_tour_model.dart';
+import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
+import 'package:fast_immutable_collections/fast_immutable_collections.dart';
+
+class AnalysisBoardState {
+  final Move? lastMove;
+  final NormalMove? promotionMove;
+  final ValidMoves validMoves;
+  final List<Position> positionHistory;
+  final List<String> moveSans;
+  final List<Move> allMoves;
+  final Position position;
+  final Position? startingPosition;
+  final int currentMoveIndex;
+  bool get canMoveForward => currentMoveIndex < allMoves.length - 1;
+  bool get canMoveBackward => currentMoveIndex >= 0;
+  bool get isAtStart => currentMoveIndex == -1;
+  bool get isAtEnd => currentMoveIndex == allMoves.length - 1;
+  int get totalMoves => allMoves.length;
+  const AnalysisBoardState({
+    this.lastMove,
+    this.promotionMove,
+    this.validMoves = const IMap.empty(),
+    this.positionHistory = const [],
+    this.moveSans = const [],
+    this.allMoves = const [],
+    this.position = Chess.initial,
+    this.currentMoveIndex = -1,
+    this.startingPosition,
+  });
+
+  AnalysisBoardState copyWith({
+    String? fen,
+    Move? lastMove,
+    NormalMove? promotionMove,
+    ValidMoves? validMoves,
+    List<Position>? positionHistory,
+    List<String>? moveSans,
+    List<Move>? allMoves,
+    Position? position,
+    int? currentMoveIndex,
+    Position? startingPosition,
+  }) {
+    return AnalysisBoardState(
+      lastMove: lastMove ?? this.lastMove,
+      promotionMove: promotionMove ?? this.promotionMove,
+      validMoves: validMoves ?? this.validMoves,
+      positionHistory: positionHistory ?? this.positionHistory,
+      moveSans: moveSans ?? this.moveSans,
+      allMoves: allMoves ?? this.allMoves,
+      position: position ?? this.position,
+      currentMoveIndex: currentMoveIndex ?? this.currentMoveIndex,
+      startingPosition: startingPosition ?? this.startingPosition,
+    );
+  }
+}
 
 class ChessBoardStateNew {
   final Position? position;
@@ -13,8 +68,11 @@ class ChessBoardStateNew {
   final bool isLoadingMoves;
   final double evaluation;
   final GamesTourModel game;
-  final String? pgnData; 
-  
+  final String? pgnData;
+
+  // New field to track if in analysis mode
+  final bool isAnalysisMode;
+  final AnalysisBoardState analysisState;
   // Computed properties
   bool get canMoveForward => currentMoveIndex < allMoves.length - 1;
   bool get canMoveBackward => currentMoveIndex >= 0;
@@ -34,7 +92,9 @@ class ChessBoardStateNew {
     this.isLoadingMoves = false,
     this.evaluation = 0,
     required this.game,
-    this.pgnData
+    this.pgnData,
+    this.isAnalysisMode = false,
+    this.analysisState = const AnalysisBoardState(),
   });
 
   ChessBoardStateNew copyWith({
@@ -50,6 +110,8 @@ class ChessBoardStateNew {
     double? evaluation,
     GamesTourModel? game,
     String? pgnData,
+    bool? isAnalysisMode,
+    AnalysisBoardState? analysisState,
   }) {
     return ChessBoardStateNew(
       position: position ?? this.position,
@@ -64,6 +126,23 @@ class ChessBoardStateNew {
       evaluation: evaluation ?? 0,
       game: game ?? this.game,
       pgnData: pgnData ?? this.pgnData,
+      isAnalysisMode: isAnalysisMode ?? this.isAnalysisMode,
+      analysisState:
+          analysisState != null
+              ? analysisState.copyWith(
+                lastMove: analysisState.lastMove ?? this.analysisState.lastMove,
+                promotionMove:
+                    analysisState.promotionMove ??
+                    this.analysisState.promotionMove,
+                validMoves: analysisState.validMoves,
+                positionHistory: analysisState.positionHistory,
+                moveSans: analysisState.moveSans,
+                allMoves: analysisState.allMoves,
+                position: analysisState.position,
+                currentMoveIndex: analysisState.currentMoveIndex,
+                startingPosition: analysisState.startingPosition ?? this.analysisState.startingPosition,
+              )
+              : this.analysisState,
     );
   }
 }

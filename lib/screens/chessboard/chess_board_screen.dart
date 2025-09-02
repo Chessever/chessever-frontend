@@ -501,6 +501,8 @@ class _BottomNavBar extends ConsumerWidget {
       canMoveBackward: state.canMoveBackward,
       isAtStart: state.isAtStart,
       isAtEnd: state.isAtEnd,
+      isAnalysisMode: false,
+      toggleAnalysisMode: () => {},
     );
   }
 }
@@ -535,6 +537,7 @@ class _GameBody extends StatelessWidget {
   }
 
   bool _canSwipe() {
+    
     if (_lastSwipeTime == null) return true;
     return DateTime.now().difference(_lastSwipeTime!) > _swipeDebounceTime;
   }
