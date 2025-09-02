@@ -62,15 +62,16 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    Future.microtask(() {
-      if (mounted) {
-        ref.read(scrollStateProvider.notifier).reset();
-        ref.read(currentVisibleRoundProvider.notifier).state = null;
-        _headerKeys.clear();
-        _gameKeys.clear();
-        _isInitialized = false;
-      }
-    });
+    if (!_isInitialized) {
+      Future.microtask(() {
+        if (mounted) {
+          ref.read(scrollStateProvider.notifier).reset();
+          ref.read(currentVisibleRoundProvider.notifier).state = null;
+          _headerKeys.clear();
+          _gameKeys.clear();
+        }
+      });
+    }
   }
 
   @override

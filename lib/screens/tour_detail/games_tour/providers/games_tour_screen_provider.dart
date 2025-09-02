@@ -13,7 +13,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 final roundScrollPositionProvider = StateProvider<int?>((ref) => null);
 
 // Fixed provider with proper null handling and dependency management
-final gamesTourScreenProvider = AutoDisposeStateNotifierProvider<
+final gamesTourScreenProvider = StateNotifierProvider<
   GamesTourScreenProvider,
   AsyncValue<GamesScreenModel>
 >((ref) {
