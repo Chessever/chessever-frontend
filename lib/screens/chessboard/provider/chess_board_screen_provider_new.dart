@@ -127,6 +127,7 @@ class ChessBoardScreenNotifierNew
           currentMoveIndex: lastMoveIndex,
           pgnData: pgn,
           isLoadingMoves: false,
+          evaluation: currentState.evaluation,
           analysisState: AnalysisBoardState(startingPosition: startingPos),
         ),
       );
@@ -214,6 +215,7 @@ class ChessBoardScreenNotifierNew
         position: newPosition,
         lastMove: newLastMove,
         currentMoveIndex: moveIndex,
+        evaluation: currentState.evaluation,
       ),
     );
 
@@ -568,7 +570,7 @@ class ChessBoardScreenNotifierNew
         return;
       }
 
-      state = AsyncValue.data(currentState!.copyWith(evaluation: evaluation));
+      state = AsyncValue.data(currentState.copyWith(evaluation: evaluation));
     } catch (e) {
       if (!_cancelEvaluation) {
         print('Evaluation error: $e');
@@ -666,35 +668,4 @@ final chessBoardScreenProviderNew = AutoDisposeStateNotifierProvider.family<
   // Create notifier with the game at the specific index
   // The notifier will handle PGN stream updates internally
   return ChessBoardScreenNotifierNew(ref, game: games[index], index: index);
-});
-
-// Convenience providers for easy access to specific state parts
-final currentMoveIndexProvider = Provider.family<int, int>((ref, index) {
-  return ref
-      .watch(chessBoardScreenProviderNew(index))
-      .maybeWhen(data: (state) => state.currentMoveIndex, orElse: () => -1);
-});
-
-final canMoveForwardProvider = Provider.family<bool, int>((ref, index) {
-  return ref
-      .watch(chessBoardScreenProviderNew(index))
-      .maybeWhen(data: (state) => state.canMoveForward, orElse: () => false);
-});
-
-final canMoveBackwardProvider = Provider.family<bool, int>((ref, index) {
-  return ref
-      .watch(chessBoardScreenProviderNew(index))
-      .maybeWhen(data: (state) => state.canMoveBackward, orElse: () => false);
-});
-
-final moveSansProvider = Provider.family<List<String>, int>((ref, index) {
-  return ref
-      .watch(chessBoardScreenProviderNew(index))
-      .maybeWhen(data: (state) => state.moveSans, orElse: () => []);
-});
-
-final boardPositionProvider = Provider.family<Position?, int>((ref, index) {
-  return ref
-      .watch(chessBoardScreenProviderNew(index))
-      .maybeWhen(data: (state) => state.position, orElse: () => null);
 });
