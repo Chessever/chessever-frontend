@@ -32,10 +32,15 @@ class SelectedCountryNotifier extends StateNotifier<AsyncValue<Country>> {
         final country = CountryService().findByCode(countryCode);
         state = AsyncValue.data(country ?? CountryService().getAll().first);
       }
-      print('Country dropdown state set: ${state.value?.name}');
     } catch (e) {
-      print('Error loading saved country: $e');
-      state = AsyncValue.error(e, StackTrace.current);
+      try {
+        final country = CountryService().findByCode('US');
+        state = AsyncValue.data(
+          country ?? CountryService().findByName('United States')!,
+        );
+      } catch (e, st) {
+        state = AsyncValue.error(e, st);
+      }
     }
   }
 

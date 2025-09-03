@@ -2,6 +2,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:fast_immutable_collections/fast_immutable_collections.dart';
+
 class AnalysisBoardState {
   final Move? lastMove;
   final NormalMove? promotionMove;
@@ -12,11 +13,17 @@ class AnalysisBoardState {
   final Position position;
   final Position? startingPosition;
   final int currentMoveIndex;
+
   bool get canMoveForward => currentMoveIndex < allMoves.length - 1;
+
   bool get canMoveBackward => currentMoveIndex >= 0;
+
   bool get isAtStart => currentMoveIndex == -1;
+
   bool get isAtEnd => currentMoveIndex == allMoves.length - 1;
+
   int get totalMoves => allMoves.length;
+
   const AnalysisBoardState({
     this.lastMove,
     this.promotionMove,
@@ -54,6 +61,7 @@ class AnalysisBoardState {
     );
   }
 }
+
 class ChessBoardStateNew {
   final Position? position;
   final Position? startingPosition;
@@ -66,15 +74,22 @@ class ChessBoardStateNew {
   final bool isLoadingMoves;
   final double evaluation;
   final GamesTourModel game;
-  final String? pgnData; 
+  final String? pgnData;
+  final String? fenData;
+
   // New field to track if in analysis mode
   final bool isAnalysisMode;
   final AnalysisBoardState analysisState;
+
   // Computed properties
   bool get canMoveForward => currentMoveIndex < allMoves.length - 1;
+
   bool get canMoveBackward => currentMoveIndex >= 0;
+
   bool get isAtStart => currentMoveIndex == -1;
+
   bool get isAtEnd => currentMoveIndex == allMoves.length - 1;
+
   int get totalMoves => allMoves.length;
 
   const ChessBoardStateNew({
@@ -90,6 +105,7 @@ class ChessBoardStateNew {
     this.evaluation = 0,
     required this.game,
     this.pgnData,
+    this.fenData,
     this.isAnalysisMode = false,
     this.analysisState = const AnalysisBoardState(),
   });
@@ -107,6 +123,7 @@ class ChessBoardStateNew {
     double? evaluation,
     GamesTourModel? game,
     String? pgnData,
+    String? fenData,
     bool? isAnalysisMode,
     AnalysisBoardState? analysisState,
   }) {
@@ -123,7 +140,8 @@ class ChessBoardStateNew {
       evaluation: evaluation ?? 0,
       game: game ?? this.game,
       pgnData: pgnData ?? this.pgnData,
-       isAnalysisMode: isAnalysisMode ?? this.isAnalysisMode,
+      fenData: fenData ?? this.fenData,
+      isAnalysisMode: isAnalysisMode ?? this.isAnalysisMode,
       analysisState:
           analysisState != null
               ? analysisState.copyWith(
@@ -137,7 +155,10 @@ class ChessBoardStateNew {
                 allMoves: analysisState.allMoves,
                 position: analysisState.position,
                 currentMoveIndex: analysisState.currentMoveIndex,
-                startingPosition: analysisState.startingPosition ?? this.analysisState.startingPosition,
+                startingPosition:
+                    analysisState.startingPosition ??
+                    this.analysisState.startingPosition,
+                fen: fenData ?? this.fenData,
               )
               : this.analysisState,
     );
