@@ -31,6 +31,7 @@ class ChessBoardScreenNotifierNew
     required this.index,
   }) : super(const AsyncValue.loading()) {
     _initializeState();
+    _setupPgnStreamListener();
   }
 
   final Ref ref;
@@ -45,8 +46,30 @@ class ChessBoardScreenNotifierNew
 
   void _initializeState() {
     state = AsyncValue.data(
-      ChessBoardStateNew(game: game, pgnData: null, isLoadingMoves: true),
+      ChessBoardStateNew(
+        game: game,
+        pgnData: null,
+        isLoadingMoves: true,
+        fenData: game.fen,
+      ),
     );
+  }
+
+  void _setupPgnStreamListener() {
+    // Only listen to PGN stream if the game is ongoing
+    if (game.gameStatus == GameStatus.ongoing) {
+      ref.listen(gamePgnStreamProvider(game.gameId), (previous, next) {
+        next.whenData((pgnData) {
+          if (pgnData != null && pgnData != game.pgn) {
+            // Update the game with new PGN data
+            game = game.copyWith(pgn: pgnData);
+            // Re-parse moves with new PGN data
+            _hasParsedMoves = false;
+            parseMoves();
+          }
+        });
+      });
+    }
   }
 
   Future<void> parseMoves() async {
@@ -60,10 +83,16 @@ class ChessBoardScreenNotifierNew
     if (currentState == null) return;
 
     try {
-      final gameWithPgn = await ref
-          .read(gameRepositoryProvider)
-          .getGameById(game.gameId);
-      final pgn = gameWithPgn.pgn ?? _getSamplePgnData();
+      // Use the current game's PGN if available, otherwise fetch from repository
+      String pgn = game.pgn ?? '';
+
+      // If no PGN in the current game object, fetch from repository
+      if (pgn.isEmpty) {
+        final gameWithPgn = await ref
+            .read(gameRepositoryProvider)
+            .getGameById(game.gameId);
+        pgn = gameWithPgn.pgn ?? _getSamplePgnData();
+      }
 
       final gameData = PgnGame.parsePgn(pgn);
       final startingPos = PgnGame.startingPosition(gameData.headers);
@@ -123,14 +152,12 @@ class ChessBoardScreenNotifierNew
     if (currentState == null) return;
     if (currentState.isLoadingMoves) {
       _isProcessingMove = false;
-
       return;
     }
 
     if (moveIndex < -1 ||
         moveIndex >= currentState.analysisState.allMoves.length) {
       _isProcessingMove = false;
-
       return;
     }
     _evalOperation?.cancel();
@@ -624,37 +651,20 @@ class ChessBoardScreenNotifierNew
   }
 }
 
-// Updated provider
+// Updated provider - now cleaner and prevents rebuilds
 final chessBoardScreenProviderNew = AutoDisposeStateNotifierProvider.family<
   ChessBoardScreenNotifierNew,
   AsyncValue<ChessBoardStateNew>,
   int
 >((ref, index) {
   final view = ref.watch(chessboardViewFromProviderNew);
-  var games =
+  final games =
       view == ChessboardView.tour
           ? ref.watch(gamesTourScreenProvider).value!.gamesTourModels
           : ref.watch(countrymanGamesTourScreenProvider).value!.gamesTourModels;
 
-  if (games[index].gameStatus == GameStatus.ongoing) {
-    final subscribedStream = ref.watch(
-      gamePgnStreamProvider(games[index].gameId),
-    );
-    subscribedStream.when(
-      data: (data) {
-        if (data != null) {
-          games[index] = games[index].copyWith(pgn: data);
-        }
-      },
-      error: (error, _) {
-        print('Error loading PGN stream: $error');
-      },
-      loading: () {
-        print('Loading PGN stream...');
-      },
-    );
-  }
-
+  // Create notifier with the game at the specific index
+  // The notifier will handle PGN stream updates internally
   return ChessBoardScreenNotifierNew(ref, game: games[index], index: index);
 });
 

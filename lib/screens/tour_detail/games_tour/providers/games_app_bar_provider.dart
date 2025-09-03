@@ -26,11 +26,7 @@ final gamesAppBarProvider = AutoDisposeStateNotifierProvider<
   final liveRoundsAsync = ref.watch(liveRoundsIdProvider);
   final liveRounds = liveRoundsAsync.valueOrNull ?? <String>[];
 
-  return GamesAppBarNotifier(
-    ref: ref,
-    tourId: tourId,
-    liveRounds: liveRounds,
-  );
+  return GamesAppBarNotifier(ref: ref, tourId: tourId, liveRounds: liveRounds);
 });
 
 class GamesAppBarNotifier
@@ -44,11 +40,10 @@ class GamesAppBarNotifier
   }
 
   // Constructor for when tourId is not available
-  GamesAppBarNotifier.withoutTourId({
-    required this.ref,
-  }) : tourId = null,
-       liveRounds = <String>[],
-       super(const AsyncValue.loading());
+  GamesAppBarNotifier.withoutTourId({required this.ref})
+    : tourId = null,
+      liveRounds = <String>[],
+      super(const AsyncValue.loading());
 
   final Ref ref;
   final String? tourId;
@@ -176,7 +171,6 @@ class GamesAppBarNotifier
           '🎯 Provider state updated with userSelectedId=true for round: ${gamesAppBarModel.id}',
         );
       }
-
       // Clear any scroll state that might interfere
       ref.read(scrollStateProvider.notifier).setUserScrolling(false);
       ref.read(scrollStateProvider.notifier).setScrolling(false);
