@@ -24,6 +24,7 @@ class SearchOverlay extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final currentTab = ref.watch(selectedGroupCategoryProvider);
     return Container(
       decoration: BoxDecoration(
         color: Colors.grey[900],
@@ -34,7 +35,7 @@ class SearchOverlay extends ConsumerWidget {
         borderRadius: BorderRadius.circular(16),
         child: FutureBuilder<EnhancedSearchResult>(
           future: ref
-              .read(groupBroadcastLocalStorage(GroupEventCategory.current))
+              .read(groupBroadcastLocalStorage(currentTab))
               .searchWithScoring(query),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
@@ -81,12 +82,13 @@ class SearchOverlay extends ConsumerWidget {
     final hasTournaments = searchResult.tournamentResults.isNotEmpty;
     final hasPlayers = searchResult.playerResults.isNotEmpty;
 
-    return Container(
+    return ConstrainedBox(
       constraints: BoxConstraints(maxHeight: 400.h),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           _buildHeader(searchResult, hasTournaments, hasPlayers),
-          Expanded(
+          Flexible(
             child:
                 hasTournaments && hasPlayers
                     ? _buildTwoColumnLayout(searchResult)
@@ -175,6 +177,7 @@ class SearchOverlay extends ConsumerWidget {
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
         Padding(
           padding: EdgeInsets.all(12.sp),
@@ -194,8 +197,9 @@ class SearchOverlay extends ConsumerWidget {
           ),
         ),
 
-        Expanded(
+        Flexible(
           child: ListView.builder(
+            shrinkWrap: true,
             padding: EdgeInsets.zero,
             itemCount: filteredResults.length,
             itemBuilder: (context, index) {

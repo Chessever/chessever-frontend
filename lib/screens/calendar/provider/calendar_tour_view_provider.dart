@@ -5,25 +5,19 @@ import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-final calendarTourViewProvider = AutoDisposeStateNotifierProvider.family((
-  ref,
-  CalendarFilterArgs args,
-) {
-  var liveBroadcastId = <String>[];
-  ref
-      .watch(liveGroupBroadcastIdsProvider)
-      .when(
-        data: (liveIds) {
-          liveBroadcastId = liveIds;
-        },
-        error: (error, _) {},
-        loading: () {},
-      );
+import '../../../repository/supabase/group_broadcast/group_broadcast.dart';
+
+final calendarTourViewProvider = StateNotifierProvider.family<
+  _CalendarTourViewController,
+  AsyncValue<List<GroupEventCardModel>>,
+  CalendarFilterArgs
+>((ref, args) {
+  final liveIdsAsync = ref.watch(liveGroupBroadcastIdsProvider);
   return _CalendarTourViewController(
     ref: ref,
     month: args.month,
     year: args.year,
-    liveBroadcastId: liveBroadcastId,
+    liveIdsAsync: liveIdsAsync,
   );
 });
 
@@ -33,7 +27,7 @@ class _CalendarTourViewController
     required this.ref,
     required this.month,
     required this.year,
-    required this.liveBroadcastId,
+    required this.liveIdsAsync,
   }) : super(const AsyncValue.loading()) {
     _init();
   }
@@ -41,20 +35,24 @@ class _CalendarTourViewController
   final Ref ref;
   final int? month;
   final int? year;
-  final List<String> liveBroadcastId;
+  final AsyncValue<List<String>> liveIdsAsync;
 
   Future<void> _init() async {
     try {
-      final allBroadCast =
+      final liveIds = liveIdsAsync.value ?? <String>[];
+
+      final current =
           await ref
               .read(groupBroadcastLocalStorage(GroupEventCategory.current))
               .getGroupBroadcasts();
-      final upcomingBroadCast =
+      final upcoming =
           await ref
-              .read(groupBroadcastLocalStorage(GroupEventCategory.current))
+              .read(groupBroadcastLocalStorage(GroupEventCategory.upcoming))
               .getGroupBroadcasts();
 
-      if (allBroadCast.isEmpty && upcomingBroadCast.isEmpty) {
+      final tours = [...current, ...upcoming];
+
+      if (tours.isEmpty) {
         state = const AsyncValue.data([]);
         return;
       }
@@ -62,82 +60,92 @@ class _CalendarTourViewController
       final selectedMonth = ref.read(selectedMonthProvider);
       final selectedYear = ref.read(selectedYearProvider);
 
-      var tours = [...allBroadCast, ...upcomingBroadCast];
+      final filtered =
+          tours.where((t) {
+            if (t.dateStart == null || t.dateEnd == null) return false;
 
-      final filteredTours =
-          tours.where((tour) {
-            if (tour.dateStart == null || tour.dateEnd == null) return false;
-
-            final startDate = tour.dateStart!;
-            final endDate = tour.dateEnd!;
-
-            // Create date range for selected month
             final monthStart = DateTime(selectedYear, selectedMonth, 1);
             final monthEnd = DateTime(selectedYear, selectedMonth + 1, 0);
 
-            // Check if tournament date range overlaps with selected month
-            return startDate.isBefore(monthEnd.add(Duration(days: 1))) &&
-                endDate.isAfter(monthStart.subtract(Duration(days: 1)));
+            return t.dateStart!.isBefore(
+                  monthEnd.add(const Duration(days: 1)),
+                ) &&
+                t.dateEnd!.isAfter(
+                  monthStart.subtract(const Duration(days: 1)),
+                );
           }).toList();
 
-      final filteredTourEventCards =
-          filteredTours
-              .map(
-                (t) =>
-                    GroupEventCardModel.fromGroupBroadcast(t, liveBroadcastId),
-              )
+      final cards =
+          filtered
+              .map((t) => GroupEventCardModel.fromGroupBroadcast(t, liveIds))
               .toList();
 
-      state = AsyncValue.data(filteredTourEventCards);
+      state = AsyncValue.data(cards);
     } catch (e, st) {
       state = AsyncValue.error(e, st);
     }
   }
 
-  //todo:
   Future<void> search(String query) async {
     try {
-      final allBroadCast =
+      final liveIds = liveIdsAsync.value ?? <String>[];
+      final current =
           await ref
               .read(groupBroadcastLocalStorage(GroupEventCategory.current))
               .getGroupBroadcasts();
-      final upcomingBroadCast =
+      final upcoming =
           await ref
-              .read(groupBroadcastLocalStorage(GroupEventCategory.current))
+              .read(groupBroadcastLocalStorage(GroupEventCategory.upcoming))
               .getGroupBroadcasts();
 
-      if (query.isEmpty) {
-        _init(); // fallback to filtered list if query is empty
-        return;
-      }
+      final tours = [...current, ...upcoming];
 
-      var tours = [...allBroadCast, ...upcomingBroadCast];
-      final filteredTours =
-          tours.where((tour) {
-            final matchesText =
-                tour.name.toLowerCase().contains(query.toLowerCase()) ||
-                (tour.timeControl?.toLowerCase().contains(
-                      query.toLowerCase(),
-                    ) ??
-                    false);
+      final selectedMonth = ref.read(selectedMonthProvider);
+      final selectedYear = ref.read(selectedYearProvider);
 
-            if (tour.dateStart == null || tour.dateStart == null) return true;
-            if (month == null || year == null) return true;
-            final matchesDate =
-                tour.dateStart!.month == month && tour.dateStart!.year == year;
+      final monthStart = DateTime(selectedYear, selectedMonth, 1);
+      final monthEnd = DateTime(selectedYear, selectedMonth + 1, 0);
 
-            return matchesText && matchesDate;
+      var filtered =
+          tours.where((t) {
+            if (t.dateStart == null || t.dateEnd == null) return false;
+            return t.dateStart!.isBefore(
+                  monthEnd.add(const Duration(days: 1)),
+                ) &&
+                t.dateEnd!.isAfter(
+                  monthStart.subtract(const Duration(days: 1)),
+                );
           }).toList();
 
-      final filteredTourEventCards =
-          filteredTours
-              .map(
-                (t) =>
-                    GroupEventCardModel.fromGroupBroadcast(t, liveBroadcastId),
-              )
+      final q = query.trim().toLowerCase();
+      if (q.isNotEmpty) {
+        filtered =
+            filtered.where((t) {
+              final nameMatch = t.name.toLowerCase().contains(q);
+              final tcMatch = t.timeControl?.toLowerCase().contains(q) ?? false;
+              return nameMatch || tcMatch;
+            }).toList();
+
+        filtered.sort((a, b) {
+          int score(GroupBroadcast t) {
+            final name = t.name.toLowerCase();
+            final tc = t.timeControl?.toLowerCase() ?? '';
+
+            if (name == q || tc == q) return 100;
+            if (name.startsWith(q) || tc.startsWith(q)) return 10;
+            if (name.contains(q) || tc.contains(q)) return 1;
+            return 0;
+          }
+
+          return score(b).compareTo(score(a));
+        });
+      }
+      final cards =
+          filtered
+              .map((t) => GroupEventCardModel.fromGroupBroadcast(t, liveIds))
               .toList();
 
-      state = AsyncValue.data(filteredTourEventCards);
+      state = AsyncValue.data(cards);
     } catch (e, st) {
       state = AsyncValue.error(e, st);
     }

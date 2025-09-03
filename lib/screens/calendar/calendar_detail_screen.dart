@@ -56,8 +56,21 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
+                      SizedBox(
+                        width: 24.ic,
+                        height: 24.ic,
+                        child: IconButton(
+                          padding: EdgeInsets.zero,
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: Icon(
+                            Icons.arrow_back_ios_new_outlined,
+                            size: 24.ic,
+                          ),
+                        ),
+                      ),
+
+                      SizedBox(width: 11.w),
                       Expanded(
-                        flex: 7,
                         child: Hero(
                           tag: 'search_bar',
                           child: SimpleSearchBar(
