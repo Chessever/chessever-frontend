@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:advanced_chess_board/models/enums.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_visibility_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_body.dart';
@@ -62,15 +61,16 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    Future.microtask(() {
-      if (mounted) {
-        ref.read(scrollStateProvider.notifier).reset();
-        ref.read(currentVisibleRoundProvider.notifier).state = null;
-        _headerKeys.clear();
-        _gameKeys.clear();
-        _isInitialized = false;
-      }
-    });
+    if (!_isInitialized) {
+      Future.microtask(() {
+        if (mounted) {
+          ref.read(scrollStateProvider.notifier).reset();
+          ref.read(currentVisibleRoundProvider.notifier).state = null;
+          _headerKeys.clear();
+          _gameKeys.clear();
+        }
+      });
+    }
   }
 
   @override

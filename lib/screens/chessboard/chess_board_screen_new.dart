@@ -36,6 +36,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   late PageController _pageController;
   int _currentPageIndex = 0;
   bool analysisMode = false;
+
   /// Keep manual subscriptions to preloaded pages alive
   final Map<int, ProviderSubscription<AsyncValue<ChessBoardStateNew>>>
   _prefetchSubs = {};
@@ -577,8 +578,14 @@ class _GameBody extends StatelessWidget {
                   child: _MovesDisplay(
                     index: index,
                     state: state,
-                    sanMoves: state.isAnalysisMode? state.analysisState.moveSans: state.moveSans,
-                    currentMoveIndex:  state.isAnalysisMode? state.analysisState.currentMoveIndex : state.currentMoveIndex,
+                    sanMoves:
+                        state.isAnalysisMode
+                            ? state.analysisState.moveSans
+                            : state.moveSans,
+                    currentMoveIndex:
+                        state.isAnalysisMode
+                            ? state.analysisState.currentMoveIndex
+                            : state.currentMoveIndex,
                   ),
                 ),
               ),
@@ -646,7 +653,7 @@ class _BoardWithSidebar extends StatelessWidget {
                 isFlipped: state.isBoardFlipped,
                 evaluation: state.evaluation,
               ),
-             state.isAnalysisMode
+              state.isAnalysisMode
                   ? _AnalysisBoard(
                     size: boardSize,
                     chessBoardState: state,
@@ -713,7 +720,10 @@ class _ChessBoardNew extends ConsumerWidget {
         ),
       ),
       orientation: isFlipped ? Side.black : Side.white,
-      fen: chessBoardState.isLoadingMoves ? "" : chessBoardState.position!.fen,
+      fen:
+          chessBoardState.isLoadingMoves
+              ? (chessBoardState.fenData ?? "")
+              : chessBoardState.position!.fen,
       lastMove:
           chessBoardState.isLoadingMoves ? null : chessBoardState.lastMove,
     );
@@ -725,6 +735,7 @@ class _AnalysisBoard extends ConsumerWidget {
   final ChessBoardStateNew chessBoardState;
   final bool isFlipped;
   final int index;
+
   const _AnalysisBoard({
     required this.size,
     required this.chessBoardState,

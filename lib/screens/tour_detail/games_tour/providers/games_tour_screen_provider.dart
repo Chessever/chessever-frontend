@@ -13,7 +13,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 final roundScrollPositionProvider = StateProvider<int?>((ref) => null);
 
 // Fixed provider with proper null handling and dependency management
-final gamesTourScreenProvider = AutoDisposeStateNotifierProvider<
+final gamesTourScreenProvider = StateNotifierProvider<
   GamesTourScreenProvider,
   AsyncValue<GamesScreenModel>
 >((ref) {
@@ -41,6 +41,10 @@ final gamesTourScreenProvider = AutoDisposeStateNotifierProvider<
   final gamesAppBarAsync = ref.watch(gamesAppBarProvider);
   final selectedRound = gamesAppBarAsync.valueOrNull?.selectedId;
 
+  if (selectedRound == null) {
+    return GamesTourScreenProvider.loading(ref: ref);
+  }
+
   // Don't block on app bar loading/errors - games can load without round selection
   return GamesTourScreenProvider(
     ref: ref,
@@ -61,12 +65,11 @@ class GamesTourScreenProvider
   }
 
   // Constructor for loading state
-  GamesTourScreenProvider.loading({
-    required this.ref,
-  }) : selectedRoundId = null,
-       aboutTourModel = null,
-       error = null,
-       super(const AsyncValue.loading());
+  GamesTourScreenProvider.loading({required this.ref})
+    : selectedRoundId = null,
+      aboutTourModel = null,
+      error = null,
+      super(const AsyncValue.loading());
 
   // Constructor for error state
   GamesTourScreenProvider.withError({
@@ -330,10 +333,7 @@ class GamesTourScreenProvider
 
       final gamesLocalStorageProvider = ref.read(gamesLocalStorage);
       final searchResult = await gamesLocalStorageProvider
-          .searchGamesWithScoring(
-            tourId: selectedTourId,
-            query: query,
-          );
+          .searchGamesWithScoring(tourId: selectedTourId, query: query);
 
       final games = searchResult.results.map((result) => result.game).toList();
       debugPrint('🔍 Search found: ${games.length} games');

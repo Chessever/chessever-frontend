@@ -1,5 +1,3 @@
-import 'package:advanced_chess_board/models/enums.dart';
-
 class TopMostVisibleItem {
   final TopMostItemType type;
   final String roundId;
@@ -17,3 +15,5 @@ class TopMostVisibleItem {
     this.relativePosition,
   });
 }
+
+enum TopMostItemType { game, header }
