@@ -39,9 +39,14 @@ class GamesListView extends ConsumerWidget {
     }
 
     // Always include all round headers and all games
+    List<GamesTourModel> gameTourModel = [];
     int itemCount = reversedRounds.length;
     for (final round in reversedRounds) {
       itemCount += gamesByRound[round.id]?.length ?? 0;
+      final games = gamesByRound[round.id];
+      if (games != null && games.isNotEmpty) {
+        gameTourModel.addAll(games);
+      }
     }
 
     return ListView.builder(
@@ -60,7 +65,7 @@ class GamesListView extends ConsumerWidget {
             rounds: reversedRounds,
             originalRounds: rounds,
             gamesByRound: gamesByRound,
-            gamesData: gamesData,
+            gamesData: gamesData.copyWith(gamesTourModels: gameTourModel),
             isChessBoardVisible: isChessBoardVisible,
             getHeaderKey: getHeaderKey,
             getGameKey: getGameKey,
