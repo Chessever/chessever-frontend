@@ -1,5 +1,4 @@
 import 'dart:math';
-
 import 'package:chessever2/screens/group_event/widget/all_events_tab_widget.dart';
 import 'package:chessever2/screens/home/home_screen.dart';
 import 'package:chessever2/screens/home/home_screen_provider.dart';
@@ -45,6 +44,15 @@ class GroupEventScreen extends HookConsumerWidget {
     final searchController = useTextEditingController();
     final selectedTourEvent = ref.watch(selectedGroupCategoryProvider);
 
+    final isSearching = useState(false);
+    final focusNode = useFocusNode();
+
+    useEffect(() {
+      void onFocus() => isSearching.value = focusNode.hasFocus;
+      focusNode.addListener(onFocus);
+      return () => focusNode.removeListener(onFocus);
+    }, [focusNode]);
+
     return RefreshIndicator(
       onRefresh: ref.read(homeScreenProvider).onPullRefresh,
       color: kWhiteColor70,
@@ -60,56 +68,72 @@ class GroupEventScreen extends HookConsumerWidget {
             SizedBox(height: 16.h + MediaQuery.of(context).viewPadding.top),
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 20.sp),
-              child: Hero(
-                tag: 'search_bar',
-                child: EnhancedRoundedSearchBar(
-                  showFilter: true,
-                  controller: searchController,
-                  hintText: 'Search Events or Players',
-                  onChanged: (value) {
-                    ref
-                        .read(groupEventScreenProvider.notifier)
-                        .searchForTournament(value, selectedTourEvent);
-                  },
-                  onTournamentSelected: (tournament) {
-                    ref
-                        .read(groupEventScreenProvider.notifier)
-                        .onSelectTournament(
-                          context: context,
-                          id: tournament.id,
-                        );
-                  },
-                  onPlayerSelected: (player) {
-                    ref
-                        .read(groupEventScreenProvider.notifier)
-                        .onSelectPlayer(context: context, player: player);
-                  },
-                  onFilterTap: () {
-                    _showFilterPopup(context);
-                  },
-                  onProfileTap: () {
-                    HomeScreen.scaffoldKey.currentState?.openDrawer();
-                  },
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                switchInCurve: Curves.easeOut,
+                switchOutCurve: Curves.easeIn,
+                transitionBuilder:
+                    (Widget child, Animation<double> animation) =>
+                        FadeTransition(
+                          opacity: animation,
+                          child: SizeTransition(
+                            sizeFactor: animation,
+                            axis: Axis.horizontal,
+                            child: child,
+                          ),
+                        ),
+                child: SizedBox(
+                  width: double.infinity,
+                  key: const ValueKey('search_bar'),
+                  child: EnhancedRoundedSearchBar(
+                    focusNode: focusNode,
+                    controller: searchController,
+                    hintText: 'Search Events or Players',
+                    showProfile: !isSearching.value,
+                    onChanged:
+                        (value) => ref
+                            .read(groupEventScreenProvider.notifier)
+                            .searchForTournament(value, selectedTourEvent),
+                    onTournamentSelected:
+                        (t) => ref
+                            .read(groupEventScreenProvider.notifier)
+                            .onSelectTournament(context: context, id: t.id),
+                    onPlayerSelected:
+                        (player) => ref
+                            .read(groupEventScreenProvider.notifier)
+                            .onSelectPlayer(context: context, player: player),
+                    onFilterTap: () => _showFilterPopup(context),
+                    onProfileTap:
+                        () => HomeScreen.scaffoldKey.currentState?.openDrawer(),
+                  ),
                 ),
               ),
             ),
 
             SizedBox(height: 16.h),
 
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20.sp),
-              child: SegmentedSwitcher(
-                backgroundColor: kBlackColor,
-                selectedBackgroundColor: kBlackColor,
-                options: _mappedName.values.toList(),
-                initialSelection: _mappedName.values.toList().indexOf(
-                  _mappedName[selectedTourEvent]!,
-                ),
-                onSelectionChanged: (index) {
-                  ref.read(selectedGroupCategoryProvider.notifier).state =
-                      GroupEventCategory.values[index];
-                },
-              ),
+            Consumer(
+              builder: (context, ref, child) {
+                final isSearching = ref.watch(isSearchingProvider);
+                return isSearching
+                    ? SizedBox.shrink()
+                    : Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 20.sp),
+                      child: SegmentedSwitcher(
+                        backgroundColor: kBlackColor,
+                        selectedBackgroundColor: kBlackColor,
+                        options: _mappedName.values.toList(),
+                        initialSelection: _mappedName.values.toList().indexOf(
+                          _mappedName[selectedTourEvent]!,
+                        ),
+                        onSelectionChanged: (index) {
+                          ref
+                              .read(selectedGroupCategoryProvider.notifier)
+                              .state = GroupEventCategory.values[index];
+                        },
+                      ),
+                    );
+              },
             ),
 
             SizedBox(height: 12.h),
