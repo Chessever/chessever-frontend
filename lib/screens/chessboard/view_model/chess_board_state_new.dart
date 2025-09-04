@@ -68,6 +68,7 @@ class ChessBoardStateNew {
   final Move? lastMove;
   final List<Move> allMoves;
   final List<String> moveSans;
+  final List<String> moveTimes;
   final int currentMoveIndex;
   final bool isPlaying;
   final bool isBoardFlipped;
@@ -98,6 +99,7 @@ class ChessBoardStateNew {
     this.lastMove,
     this.allMoves = const [],
     this.moveSans = const [],
+    this.moveTimes = const [],
     this.currentMoveIndex = -1,
     this.isPlaying = false,
     this.isBoardFlipped = false,
@@ -116,6 +118,7 @@ class ChessBoardStateNew {
     Move? lastMove,
     List<Move>? allMoves,
     List<String>? moveSans,
+    List<String>? moveTimes,
     int? currentMoveIndex,
     bool? isPlaying,
     bool? isBoardFlipped,
@@ -133,6 +136,7 @@ class ChessBoardStateNew {
       lastMove: lastMove ?? this.lastMove,
       allMoves: allMoves ?? this.allMoves,
       moveSans: moveSans ?? this.moveSans,
+      moveTimes: moveTimes ?? this.moveTimes,
       currentMoveIndex: currentMoveIndex ?? this.currentMoveIndex,
       isPlaying: isPlaying ?? this.isPlaying,
       isBoardFlipped: isBoardFlipped ?? this.isBoardFlipped,

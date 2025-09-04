@@ -71,26 +71,6 @@ final bool isAnalysisMode;
               svgPath: SvgAsset.refresh,
               onPressed: onFlip,
             ),
-
-            // Previous Move Button with Long Press
-            // ChessSvgBottomNavbarWithLongPress(
-            //   svgPath: SvgAsset.left_arrow,
-            //   onPressed: canMoveBackward ? onLeftMove : null,
-            //   onLongPressStart: canMoveBackward
-            //       ? () => notifier.startLongPressBackward()
-            //       : null,
-            //   onLongPressEnd: () => notifier.stopLongPress(),
-            // ),
-
-            // // Next Move Button with Long Press
-            // ChessSvgBottomNavbarWithLongPress(
-            //   svgPath: SvgAsset.right_arrow,
-            //   onPressed: canMoveForward ? onRightMove : null,
-            //   onLongPressStart: canMoveForward
-            //       ? () => notifier.startLongPressForward()
-            //       : null,
-            //   onLongPressEnd: () => notifier.stopLongPress(),
-            // ),
             ChessSvgBottomNavbarWithLongPress(
               svgPath: SvgAsset.left_arrow,
               onPressed: canMoveBackward ? onLeftMove : null,

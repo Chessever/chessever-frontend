@@ -537,6 +537,7 @@ class _GameBody extends StatelessWidget {
           game: game,
           isFlipped: state.isBoardFlipped,
           blackPlayer: false,
+          state: state,
         ),
         SizedBox(height: 2.h),
         _BoardWithSidebar(index: index, state: state),
@@ -545,6 +546,7 @@ class _GameBody extends StatelessWidget {
           game: game,
           isFlipped: state.isBoardFlipped,
           blackPlayer: true,
+          state: state,
         ),
         Expanded(
           child: Container(
@@ -601,29 +603,50 @@ class _PlayerWidget extends StatelessWidget {
   final GamesTourModel game;
   final bool isFlipped;
   final bool blackPlayer;
+  final ChessBoardStateNew state;
 
   const _PlayerWidget({
     required this.game,
     required this.isFlipped,
     required this.blackPlayer,
+    required this.state,
   });
 
   @override
   Widget build(BuildContext context) {
-    final player =
-        (blackPlayer && !isFlipped) || (!blackPlayer && isFlipped)
-            ? game.whitePlayer
-            : game.blackPlayer;
-    final time =
-        (blackPlayer && !isFlipped) || (!blackPlayer && isFlipped)
-            ? game.whiteTimeDisplay
-            : game.blackTimeDisplay;
+    final player = (blackPlayer && !isFlipped) || (!blackPlayer && isFlipped)
+        ? game.whitePlayer
+        : game.blackPlayer;
+
+    // Determine if this is the white player
+    final isWhitePlayer = (blackPlayer && !isFlipped) || (!blackPlayer && isFlipped);
+
+    // Check whose turn it is currently
+    final currentTurn = state.position?.turn ?? Side.white;
+    final isCurrentPlayer = (isWhitePlayer && currentTurn == Side.white) ||
+        (!isWhitePlayer && currentTurn == Side.black);
+
+    // Get the time for this player's most recent move
+    String? moveTime;
+    if (state.moveTimes.isNotEmpty && state.currentMoveIndex >= 0) {
+      // Look for this player's most recent move
+      for (int i = state.currentMoveIndex; i >= 0; i--) {
+        final wasMoveByThisPlayer = (i % 2 == 0 && isWhitePlayer) ||
+            (i % 2 == 1 && !isWhitePlayer);
+
+        if (wasMoveByThisPlayer && i < state.moveTimes.length) {
+          moveTime = state.moveTimes[i];
+          break;
+        }
+      }
+    }
 
     return PlayerFirstRowDetailWidget(
       name: player.name,
       firstGmRank: player.title,
       countryCode: player.countryCode,
-      time: time,
+      isCurrentPlayer: isCurrentPlayer,
+      moveTime: moveTime,
     );
   }
 }

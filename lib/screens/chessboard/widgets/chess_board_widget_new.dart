@@ -186,7 +186,6 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFENNew> {
               name: widget.gamesTourModel.whitePlayer.displayName,
               firstGmRank: widget.gamesTourModel.whitePlayer.title,
               countryCode: widget.gamesTourModel.whitePlayer.countryCode,
-              time: widget.gamesTourModel.whiteTimeDisplay,
             ),
           ],
         ),

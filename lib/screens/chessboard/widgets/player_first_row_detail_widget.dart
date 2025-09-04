@@ -12,15 +12,19 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 class PlayerFirstRowDetailWidget extends ConsumerWidget {
   final String name;
   final String firstGmRank;
-  final String time;
   final String countryCode;
+  final bool isCurrentPlayer;
+  final bool showMoveTime;
+  final String? moveTime;
 
   const PlayerFirstRowDetailWidget({
     super.key,
     required this.name,
     required this.firstGmRank,
-    required this.time,
     required this.countryCode,
+    this.isCurrentPlayer = false,
+    this.showMoveTime = false,
+    this.moveTime,
   });
 
   @override
@@ -28,6 +32,7 @@ class PlayerFirstRowDetailWidget extends ConsumerWidget {
     final validCountryCode = ref
         .read(locationServiceProvider)
         .getValidCountryCode(countryCode);
+
     return GestureDetector(
       onTap: () {
         final standingsAsync = ref.read(playerTourScreenProvider);
@@ -40,7 +45,8 @@ class PlayerFirstRowDetailWidget extends ConsumerWidget {
                   countryCode: countryCode,
                   title: firstGmRank.isNotEmpty ? firstGmRank : null,
                   name: name,
-                  score: 0, // Fallback if not found in standings
+                  score: 0,
+                  // Fallback if not found in standings
                   scoreChange: 0,
                   matchScore: null,
                 ),
@@ -50,9 +56,7 @@ class PlayerFirstRowDetailWidget extends ConsumerWidget {
 
           Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (_) => ScoreCardScreen(name: name,),
-            ),
+            MaterialPageRoute(builder: (_) => ScoreCardScreen(name: name)),
           );
         });
       },
@@ -79,11 +83,29 @@ class PlayerFirstRowDetailWidget extends ConsumerWidget {
               ),
             ),
           ),
-          Text(
-            time,
-            style: AppTypography.textXsMedium.copyWith(
-              color: kWhiteColor70,
-              fontSize: 9.f,
+
+          // Show move time when available
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: isCurrentPlayer ? kLightBlue : Colors.transparent,
+                width: 1,
+              ),
+              borderRadius: BorderRadius.circular(4.br),
+              color:
+                  isCurrentPlayer
+                      ? kLightBlue.withOpacity(0.1)
+                      : Colors.transparent,
+            ),
+            child: Text(
+              moveTime ?? '00:00',
+              style: AppTypography.textXsMedium.copyWith(
+                color: isCurrentPlayer ? kLightBlue : kWhiteColor70,
+                fontSize: 9.f,
+                fontWeight:
+                    isCurrentPlayer ? FontWeight.w600 : FontWeight.normal,
+              ),
             ),
           ),
           SizedBox(width: 8.w),
