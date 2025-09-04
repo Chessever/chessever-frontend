@@ -1,7 +1,5 @@
-import 'package:chessever2/repository/local_storage/group_broadcast/group_broadcast_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
-import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
 import 'package:chessever2/widgets/search/search_result_model.dart';
@@ -9,6 +7,7 @@ import 'package:chessever2/widgets/search/widgets/search_result_title.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import '../../screens/group_event/providers/combined_search_provider.dart';
 
 class SearchOverlay extends ConsumerWidget {
   final String query;
@@ -24,7 +23,6 @@ class SearchOverlay extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final currentTab = ref.watch(selectedGroupCategoryProvider);
     return Container(
       decoration: BoxDecoration(
         color: Colors.grey[900],
@@ -33,47 +31,24 @@ class SearchOverlay extends ConsumerWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
-        child: FutureBuilder<EnhancedSearchResult>(
-          future: ref
-              .read(groupBroadcastLocalStorage(currentTab))
-              .searchWithScoring(query),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return _buildLoadingState();
-            }
+        child: ref
+            .watch(combinedSearchProvider(query))
+            .when(
+              loading: () => _buildLoadingState(),
+              error: (e, _) => _buildErrorState(e.toString()),
+              data: (searchResult) {
+                if (kDebugMode) {
+                  print(
+                    'Tournament results: ${searchResult.tournamentResults.length}',
+                  );
+                  print('Player results: ${searchResult.playerResults.length}');
+                }
 
-            if (snapshot.hasError) {
-              return _buildErrorState(snapshot.error.toString());
-            }
+                if (searchResult.isEmpty) return _buildEmptyState();
 
-            final searchResult =
-                snapshot.data ??
-                const EnhancedSearchResult(
-                  tournamentResults: [],
-                  playerResults: [],
-                  allPlayers: [],
-                );
-
-            if (kDebugMode) {
-              print(
-                'Tournament results: ${searchResult.tournamentResults.length}',
-              );
-              print('Player results: ${searchResult.playerResults.length}');
-              searchResult.playerResults.forEach((result) {
-                print(
-                  'Player: ${result.player?.name}, ID: ${result.player?.id}',
-                );
-              });
-            }
-
-            if (searchResult.tournamentResults.isEmpty &&
-                searchResult.playerResults.isEmpty) {
-              return _buildEmptyState();
-            }
-
-            return _buildSearchResults(searchResult);
-          },
-        ),
+                return _buildSearchResults(searchResult);
+              },
+            ),
       ),
     );
   }
