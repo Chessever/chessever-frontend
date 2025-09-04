@@ -4,6 +4,8 @@ import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart'
 import 'package:chessever2/widgets/search/search_result_model.dart';
 import 'package:chessever2/widgets/search/search_scorer.dart';
 
+import '../../screens/group_event/group_event_screen.dart';
+
 class EnhancedSearchResult {
   final List<SearchResult> tournamentResults;
   final List<SearchResult> playerResults;
@@ -287,10 +289,11 @@ extension GroupBroadcastLocalStorageSearch on GroupBroadcastLocalStorage {
 
     final words = searchTerm.trim().split(' ');
     if (words.length >= 2 && words.length <= 4) {
-      return words.every((word) =>
-      word.isNotEmpty &&
-          word[0] == word[0].toUpperCase() &&
-          word.length > 1
+      return words.every(
+        (word) =>
+            word.isNotEmpty &&
+            word[0] == word[0].toUpperCase() &&
+            word.length > 1,
       );
     }
 
