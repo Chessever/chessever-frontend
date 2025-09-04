@@ -51,12 +51,9 @@ class ChessSvgBottomNavbarWithLongPress extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onPressed,
-      onLongPressStart: onLongPressStart != null
-          ? (_) => onLongPressStart!()
-          : null,
-      onLongPressEnd: onLongPressEnd != null
-          ? (_) => onLongPressEnd!()
-          : null,
+      onLongPressStart:
+          onLongPressStart != null ? (_) => onLongPressStart!() : null,
+      onLongPressEnd: onLongPressEnd != null ? (_) => onLongPressEnd!() : null,
       onLongPressCancel: onLongPressEnd,
       child: Container(
         padding: EdgeInsets.all(8.sp),
