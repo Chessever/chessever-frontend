@@ -170,7 +170,7 @@ class ChessBoardScreenNotifierNew
           times.add(_formatDisplayTime(timeString));
         } else {
           times.add(
-            _formatDisplayTime('-:--:--'),
+            '-:--:--',
           ); // Default for moves without time
         }
       }

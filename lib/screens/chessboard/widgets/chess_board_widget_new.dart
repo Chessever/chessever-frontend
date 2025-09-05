@@ -2,7 +2,6 @@ import 'package:chessever2/repository/local_storage/board_settings_repository/bo
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
-import 'package:chessever2/screens/chessboard/widgets/player_second_row_detail_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -110,12 +109,14 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFENNew> {
         onTap: widget.onChanged,
         child: Column(
           children: [
-            PlayerSecondRowDetailWidget(
+            PlayerFirstRowDetailWidget(
               name: widget.gamesTourModel.blackPlayer.displayName,
+              firstGmRank: widget.gamesTourModel.blackPlayer.title,
               countryCode: widget.gamesTourModel.blackPlayer.countryCode,
-              time: widget.gamesTourModel.blackTimeDisplay,
-              secondGmRank: widget.gamesTourModel.blackPlayer.title,
               rating: widget.gamesTourModel.blackPlayer.rating,
+              moveTime: widget.gamesTourModel.blackTimeDisplay,
+              isCurrentPlayer: widget.gamesTourModel.activePlayer == Side.black,
+              playerView: PlayerView.listView,
             ),
             SizedBox(height: 4.h),
             Container(
@@ -188,6 +189,9 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFENNew> {
               firstGmRank: widget.gamesTourModel.whitePlayer.title,
               countryCode: widget.gamesTourModel.whitePlayer.countryCode,
               rating: widget.gamesTourModel.whitePlayer.rating,
+                   moveTime: widget.gamesTourModel.whiteTimeDisplay,
+              isCurrentPlayer: widget.gamesTourModel.activePlayer == Side.white,
+              playerView: PlayerView.listView,
             ),
           ],
         ),

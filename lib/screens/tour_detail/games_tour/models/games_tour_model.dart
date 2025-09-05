@@ -1,5 +1,6 @@
 // models/game_card.dart
 import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:dartchess/dartchess.dart';
 
 class GamesScreenModel {
   GamesScreenModel({
@@ -172,6 +173,18 @@ class GamesTourModel {
       RegExp(r'\b\w'),
       (match) => match.group(0)!.toUpperCase(),
     );
+  }
+
+ Side? get activePlayer {
+    if (fen == null || fen!.isEmpty) return Side.white; // Default to white
+    
+    try {
+       final setup = Setup.parseFen(fen!);
+       return setup.turn;
+    } catch (e) {
+      // Fallback if FEN is invalid
+      return null;
+    }
   }
 
   @override
