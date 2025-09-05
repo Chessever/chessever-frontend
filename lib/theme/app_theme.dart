@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 
 // Color constants
 const Color kPrimaryColor = Color(0xFF0FB4E5); // PRIMARY COLOR
-const Color kLightBlue = Color(0xFF86FFFD); // PRIMARY COLOR
+const Color kDarkBlue = Color(0xFF17AAD6);
 const Color kBlackColor = Color(0xFF000000); // BACKGROUND
 const Color kBackgroundColor = Color(0xFF0C0C0E); // BACKGROUND
+const Color kLightYellowColor = Color(0xFFE9EDCC); // BACKGROUND
 const Color kWhiteColor = Color(0xFFFFFFFF); // WHITE
 const Color kPopUpColor = Color(0xff111111);
 const Color kWhiteColor70 = Color(

@@ -1,6 +1,5 @@
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_navbar.dart';
 import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -11,56 +10,38 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
   final int gameIndex;
   final VoidCallback? onLeftMove;
   final VoidCallback? onRightMove;
-  final VoidCallback onPlayPause;
-  final VoidCallback onReset;
   final VoidCallback onFlip;
-  final VoidCallback? onJumpToStart;
-  final VoidCallback? onJumpToEnd;
   final VoidCallback? toggleAnalysisMode;
-  final bool isPlaying;
-  final int currentMove;
-  final int totalMoves;
   final bool canMoveForward;
   final bool canMoveBackward;
-  final bool isAtStart;
-  final bool isAtEnd;
-final bool isAnalysisMode;
+  final bool isAnalysisMode;
+
   const ChessBoardBottomNavBar({
     super.key,
     required this.gameIndex,
     required this.onLeftMove,
     required this.onRightMove,
-    required this.onPlayPause,
-    required this.onReset,
     required this.onFlip,
-    this.onJumpToStart,
-    this.onJumpToEnd,
-    required this.isPlaying,
-    required this.currentMove,
-    required this.totalMoves,
     required this.canMoveForward,
     required this.canMoveBackward,
-    required this.isAtStart,
-    required this.isAtEnd,
     required this.toggleAnalysisMode,
     required this.isAnalysisMode,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-
+    final width = MediaQuery.of(context).size.width / 5;
     return Container(
-      padding: EdgeInsets.symmetric(vertical: 8.sp),
       width: MediaQuery.of(context).size.width,
       decoration: const BoxDecoration(color: kBlackColor),
       child: SafeArea(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
             // Reset Game Button
             ChessSvgBottomNavbar(
-              svgPath: isAnalysisMode? SvgAsset.bookIcon : SvgAsset.laptop,
+              width: width,
+              svgPath: isAnalysisMode ? SvgAsset.bookIcon : SvgAsset.laptop,
               onPressed: () {
                 toggleAnalysisMode?.call();
               },
@@ -68,11 +49,13 @@ final bool isAnalysisMode;
 
             // Flip Board Button
             ChessSvgBottomNavbar(
+              width: width,
               svgPath: SvgAsset.refresh,
               onPressed: onFlip,
             ),
             ChessSvgBottomNavbarWithLongPress(
               svgPath: SvgAsset.left_arrow,
+              width: width,
               onPressed: canMoveBackward ? onLeftMove : null,
               onLongPressStart:
                   canMoveBackward
@@ -92,6 +75,7 @@ final bool isAnalysisMode;
 
             ChessSvgBottomNavbarWithLongPress(
               svgPath: SvgAsset.right_arrow,
+              width: width,
               onPressed: canMoveForward ? onRightMove : null,
               onLongPressStart:
                   canMoveForward
@@ -111,6 +95,7 @@ final bool isAnalysisMode;
 
             // Chat Button
             ChessSvgBottomNavbar(
+              width: width,
               svgPath: SvgAsset.chat,
               onPressed: () {},
             ),

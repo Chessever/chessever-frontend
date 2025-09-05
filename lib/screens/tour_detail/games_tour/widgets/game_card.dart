@@ -551,7 +551,7 @@ class _TimerWidget extends StatelessWidget {
     return Text(
       time,
       style: AppTypography.textXsMedium.copyWith(
-        color: turn ? kLightBlue : kWhiteColor,
+        color: turn ? kPrimaryColor : kWhiteColor,
       ),
     );
   }
