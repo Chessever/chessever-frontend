@@ -195,8 +195,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
               gamesTourAsync: gamesTourAsync,
               isChessBoardVisible: isChessBoardVisible,
               scrollController: _scrollController,
-              headerKeys: _headerKeys,
-              gameKeys: _gameKeys,
               getHeaderKey: getHeaderKey,
               // Using extension method
               getGameKey: getGameKey,
