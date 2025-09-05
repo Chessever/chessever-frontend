@@ -156,37 +156,41 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
           onPageChanged: _onPageChanged,
           itemCount: widget.games.length,
           itemBuilder: (context, index) {
-            // (Optionally keep your existing "+/-1 only build" optimization;
-            // the prefetch ensures state is ready when the page appears.)
-            return ref
-                .watch(chessBoardScreenProviderNew(index))
-                .when(
-                  data: (chessBoardState) {
-                    if (chessBoardState.isAnalysisMode != analysisMode) {
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (mounted) {
-                          setState(() {
-                            analysisMode = chessBoardState.isAnalysisMode;
-                          });
-                        }
-                      });
-                    }
-                    return _GamePage(
-                      game: widget.games[index],
-                      state: chessBoardState,
-                      games: widget.games,
-                      currentGameIndex: index,
-                      onGameChanged: _navigateToGame,
-                    );
-                  },
-                  error: (e, _) => ErrorWidget(e),
-                  loading:
-                      () => _LoadingScreen(
+            if (index == _currentPageIndex - 1 ||
+                index == _currentPageIndex + 1 ||
+                index == _currentPageIndex) {
+              return ref
+                  .watch(chessBoardScreenProviderNew(index))
+                  .when(
+                    data: (chessBoardState) {
+                      if (chessBoardState.isAnalysisMode != analysisMode) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) {
+                            setState(() {
+                              analysisMode = chessBoardState.isAnalysisMode;
+                            });
+                          }
+                        });
+                      }
+                      return _GamePage(
+                        game: widget.games[index],
+                        state: chessBoardState,
                         games: widget.games,
                         currentGameIndex: index,
                         onGameChanged: _navigateToGame,
-                      ),
-                );
+                      );
+                    },
+                    error: (e, _) => ErrorWidget(e),
+                    loading:
+                        () => _LoadingScreen(
+                          games: widget.games,
+                          currentGameIndex: index,
+                          onGameChanged: _navigateToGame,
+                        ),
+                  );
+            } else {
+              return SizedBox.shrink();
+            }
           },
         ),
       ),
