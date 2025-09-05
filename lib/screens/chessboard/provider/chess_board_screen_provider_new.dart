@@ -730,7 +730,6 @@ class ChessBoardScreenNotifierNew
   }
 }
 
-// Updated provider - now cleaner and prevents rebuilds
 final chessBoardScreenProviderNew = AutoDisposeStateNotifierProvider.family<
   ChessBoardScreenNotifierNew,
   AsyncValue<ChessBoardStateNew>,
@@ -742,7 +741,5 @@ final chessBoardScreenProviderNew = AutoDisposeStateNotifierProvider.family<
           ? ref.watch(gamesTourScreenProvider).value!.gamesTourModels
           : ref.watch(countrymanGamesTourScreenProvider).value!.gamesTourModels;
 
-  // Create notifier with the game at the specific index
-  // The notifier will handle PGN stream updates internally
   return ChessBoardScreenNotifierNew(ref, game: games[index], index: index);
 });

@@ -13,6 +13,7 @@ class PlayerFirstRowDetailWidget extends ConsumerWidget {
   final String name;
   final String firstGmRank;
   final String countryCode;
+  final int rating;
   final bool isCurrentPlayer;
   final bool showMoveTime;
   final String? moveTime;
@@ -22,6 +23,7 @@ class PlayerFirstRowDetailWidget extends ConsumerWidget {
     required this.name,
     required this.firstGmRank,
     required this.countryCode,
+    required this.rating,
     this.isCurrentPlayer = false,
     this.showMoveTime = false,
     this.moveTime,
@@ -62,7 +64,7 @@ class PlayerFirstRowDetailWidget extends ConsumerWidget {
       },
       child: Row(
         mainAxisAlignment: MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           if (validCountryCode.isNotEmpty) ...[
             SizedBox(width: 16.w),
@@ -76,7 +78,7 @@ class PlayerFirstRowDetailWidget extends ConsumerWidget {
             SizedBox(width: 16.w),
           Expanded(
             child: Text(
-              '$firstGmRank $name',
+              '$firstGmRank $name $rating',
               style: AppTypography.textXsMedium.copyWith(
                 color: kWhiteColor70,
                 fontSize: 9.f,

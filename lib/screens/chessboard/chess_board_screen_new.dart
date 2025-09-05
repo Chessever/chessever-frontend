@@ -614,16 +614,19 @@ class _PlayerWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final player = (blackPlayer && !isFlipped) || (!blackPlayer && isFlipped)
-        ? game.whitePlayer
-        : game.blackPlayer;
+    final player =
+        (blackPlayer && !isFlipped) || (!blackPlayer && isFlipped)
+            ? game.whitePlayer
+            : game.blackPlayer;
 
     // Determine if this is the white player
-    final isWhitePlayer = (blackPlayer && !isFlipped) || (!blackPlayer && isFlipped);
+    final isWhitePlayer =
+        (blackPlayer && !isFlipped) || (!blackPlayer && isFlipped);
 
     // Check whose turn it is currently
     final currentTurn = state.position?.turn ?? Side.white;
-    final isCurrentPlayer = (isWhitePlayer && currentTurn == Side.white) ||
+    final isCurrentPlayer =
+        (isWhitePlayer && currentTurn == Side.white) ||
         (!isWhitePlayer && currentTurn == Side.black);
 
     // Get the time for this player's most recent move
@@ -631,8 +634,8 @@ class _PlayerWidget extends StatelessWidget {
     if (state.moveTimes.isNotEmpty && state.currentMoveIndex >= 0) {
       // Look for this player's most recent move
       for (int i = state.currentMoveIndex; i >= 0; i--) {
-        final wasMoveByThisPlayer = (i % 2 == 0 && isWhitePlayer) ||
-            (i % 2 == 1 && !isWhitePlayer);
+        final wasMoveByThisPlayer =
+            (i % 2 == 0 && isWhitePlayer) || (i % 2 == 1 && !isWhitePlayer);
 
         if (wasMoveByThisPlayer && i < state.moveTimes.length) {
           moveTime = state.moveTimes[i];
@@ -645,6 +648,7 @@ class _PlayerWidget extends StatelessWidget {
       name: player.name,
       firstGmRank: player.title,
       countryCode: player.countryCode,
+      rating: player.rating,
       isCurrentPlayer: isCurrentPlayer,
       moveTime: moveTime,
     );
