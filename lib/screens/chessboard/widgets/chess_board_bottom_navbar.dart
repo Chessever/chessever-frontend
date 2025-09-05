@@ -5,11 +5,13 @@ import 'package:flutter/material.dart';
 
 class ChessSvgBottomNavbar extends StatelessWidget {
   final String svgPath;
+  final double width;
   final VoidCallback? onPressed;
 
   const ChessSvgBottomNavbar({
     super.key,
     required this.svgPath,
+    required this.width,
     required this.onPressed,
   });
 
@@ -18,6 +20,9 @@ class ChessSvgBottomNavbar extends StatelessWidget {
     return InkWell(
       onTap: onPressed,
       child: Container(
+        alignment: Alignment.center,
+        height: 40.h,
+        width: width,
         padding: EdgeInsets.all(8.sp),
         child: SvgWidget(
           svgPath,
@@ -35,6 +40,7 @@ class ChessSvgBottomNavbar extends StatelessWidget {
 
 class ChessSvgBottomNavbarWithLongPress extends StatelessWidget {
   final String svgPath;
+  final double width;
   final VoidCallback? onPressed;
   final VoidCallback? onLongPressStart;
   final VoidCallback? onLongPressEnd;
@@ -42,6 +48,7 @@ class ChessSvgBottomNavbarWithLongPress extends StatelessWidget {
   const ChessSvgBottomNavbarWithLongPress({
     super.key,
     required this.svgPath,
+    required this.width,
     required this.onPressed,
     this.onLongPressStart,
     this.onLongPressEnd,
@@ -56,6 +63,10 @@ class ChessSvgBottomNavbarWithLongPress extends StatelessWidget {
       onLongPressEnd: onLongPressEnd != null ? (_) => onLongPressEnd!() : null,
       onLongPressCancel: onLongPressEnd,
       child: Container(
+        color: Colors.transparent,
+        alignment: Alignment.center,
+        height: 40.h,
+        width: width,
         padding: EdgeInsets.all(8.sp),
         child: SvgWidget(
           svgPath,

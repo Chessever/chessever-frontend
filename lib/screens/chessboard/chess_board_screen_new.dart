@@ -501,17 +501,8 @@ class _BottomNavBar extends ConsumerWidget {
       onFlip: () => notifier.flipBoard(),
       onRightMove: state.canMoveForward ? () => notifier.moveForward() : null,
       onLeftMove: state.canMoveBackward ? () => notifier.moveBackward() : null,
-      onPlayPause: () => notifier.togglePlayPause(),
-      onReset: () => notifier.resetGame(),
-      onJumpToStart: state.canMoveBackward ? () => notifier.resetGame() : null,
-      onJumpToEnd: state.canMoveForward ? () => notifier.jumpToEnd() : null,
-      isPlaying: state.isPlaying,
-      currentMove: state.currentMoveIndex,
-      totalMoves: state.totalMoves,
       canMoveForward: state.canMoveForward,
       canMoveBackward: state.canMoveBackward,
-      isAtStart: state.isAtStart,
-      isAtEnd: state.isAtEnd,
       isAnalysisMode: state.isAnalysisMode,
       toggleAnalysisMode: () => notifier.toggleAnalysisMode(),
     );
@@ -651,6 +642,7 @@ class _PlayerWidget extends StatelessWidget {
       rating: player.rating,
       isCurrentPlayer: isCurrentPlayer,
       moveTime: moveTime,
+      playerView: PlayerView.boardView,
     );
   }
 }
