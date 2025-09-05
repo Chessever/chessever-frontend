@@ -12,10 +12,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 // Provider to track scroll position for round changes
 final roundScrollPositionProvider = StateProvider<int?>((ref) => null);
 
-// Fixed provider with proper null handling and dependency management
+// Updated provider with listener-based approach
 final gamesTourScreenProvider = StateNotifierProvider<
-  GamesTourScreenProvider,
-  AsyncValue<GamesScreenModel>
+    GamesTourScreenProvider,
+    AsyncValue<GamesScreenModel>
 >((ref) {
   // Watch tour details first - this is the primary dependency
   final tourDetailAsync = ref.watch(tourDetailScreenProvider);
@@ -37,18 +37,13 @@ final gamesTourScreenProvider = StateNotifierProvider<
     return GamesTourScreenProvider.loading(ref: ref);
   }
 
-  // Now watch app bar - it's secondary to tour details
-  final gamesAppBarAsync = ref.watch(gamesAppBarProvider);
-  final selectedRound = gamesAppBarAsync.valueOrNull?.selectedId;
+  // Get initial selected round without watching
+  final gamesAppBarAsync = ref.read(gamesAppBarProvider);
+  final initialSelectedRound = gamesAppBarAsync.valueOrNull?.selectedId;
 
-  if (selectedRound == null) {
-    return GamesTourScreenProvider.loading(ref: ref);
-  }
-
-  // Don't block on app bar loading/errors - games can load without round selection
   return GamesTourScreenProvider(
     ref: ref,
-    selectedRoundId: selectedRound,
+    initialSelectedRoundId: initialSelectedRound,
     aboutTourModel: aboutTourModel,
   );
 });
@@ -57,30 +52,32 @@ class GamesTourScreenProvider
     extends StateNotifier<AsyncValue<GamesScreenModel>> {
   GamesTourScreenProvider({
     required this.ref,
-    required this.selectedRoundId,
+    String? initialSelectedRoundId,
     required this.aboutTourModel,
   }) : error = null,
-       super(const AsyncValue.loading()) {
+        _selectedRoundId = initialSelectedRoundId,
+        super(const AsyncValue.loading()) {
+    _setupListeners();
     _init();
   }
 
   // Constructor for loading state
   GamesTourScreenProvider.loading({required this.ref})
-    : selectedRoundId = null,
-      aboutTourModel = null,
-      error = null,
-      super(const AsyncValue.loading());
+      : aboutTourModel = null,
+        error = null,
+        _selectedRoundId = null,
+        super(const AsyncValue.loading());
 
   // Constructor for error state
   GamesTourScreenProvider.withError({
     required this.ref,
     required Object this.error,
-  }) : selectedRoundId = null,
-       aboutTourModel = null,
-       super(AsyncValue.error(error, StackTrace.current));
+  }) : aboutTourModel = null,
+        _selectedRoundId = null,
+        super(AsyncValue.error(error, StackTrace.current));
 
   final Ref ref;
-  final String? selectedRoundId;
+  String? _selectedRoundId;
   final AboutTourModel? aboutTourModel;
   final Object? error;
 
@@ -91,6 +88,56 @@ class GamesTourScreenProvider
   // Search mode tracking
   bool _isSearchMode = false;
   List<Games>? _originalGamesBeforeSearch;
+
+  void _setupListeners() {
+    // Set up listener for games app bar changes
+    ref.listen<AsyncValue<dynamic>>(
+      gamesAppBarProvider,
+          (previous, next) {
+        final newSelectedRound = next.valueOrNull?.selectedId;
+
+        // Only update if the selected round actually changed
+        if (newSelectedRound != _selectedRoundId) {
+          debugPrint('🔄 Round changed from $_selectedRoundId to $newSelectedRound');
+          _selectedRoundId = newSelectedRound;
+
+          // Update scroll position for the new round
+          _updateScrollPositionForRound();
+        }
+      },
+    );
+  }
+
+  void _updateScrollPositionForRound() {
+    if (_selectedRoundId == null || _isSearchMode) return;
+
+    final currentState = state.valueOrNull;
+    if (currentState != null && _cachedGames != null) {
+      final scrollToIndex = _findFirstGameIndexForRound(
+        currentState.gamesTourModels,
+        _selectedRoundId!,
+      );
+
+      if (scrollToIndex != null) {
+        ref.read(roundScrollPositionProvider.notifier).state = scrollToIndex;
+        debugPrint('🔄 Updated scroll position to index: $scrollToIndex');
+      }
+    }
+  }
+
+  Future<void> _init() async {
+    try {
+      final gamesLocalStorageProvider = ref.read(gamesLocalStorage);
+      final allGames = await gamesLocalStorageProvider.fetchAndSaveGames(
+        aboutTourModel!.id,
+      );
+      await _updateState(allGames);
+    } catch (e, st) {
+      if (mounted) {
+        state = AsyncValue.error(e, st);
+      }
+    }
+  }
 
   Future<void> togglePinGame(String gameId) async {
     // Check if we have the required dependencies
@@ -218,10 +265,10 @@ class GamesTourScreenProvider
 
       // Calculate scroll position for selected round (only if not in search mode)
       int? scrollToIndex;
-      if (selectedRoundId != null && !_isSearchMode) {
+      if (_selectedRoundId != null && !_isSearchMode) {
         scrollToIndex = _findFirstGameIndexForRound(
           gamesTourModels,
-          selectedRoundId!,
+          _selectedRoundId!,
         );
       }
 
@@ -278,7 +325,7 @@ class GamesTourScreenProvider
     for (int i = 0; i < games.length; i++) {
       if (_cachedGames != null) {
         final originalGame = _cachedGames!.firstWhere(
-          (game) => game.id == games[i].gameId,
+              (game) => game.id == games[i].gameId,
           orElse: () => throw StateError('Game not found'),
         );
         if (originalGame.roundId == roundId) {
@@ -287,20 +334,6 @@ class GamesTourScreenProvider
       }
     }
     return null;
-  }
-
-  Future<void> _init() async {
-    try {
-      final gamesLocalStorageProvider = ref.read(gamesLocalStorage);
-      final allGames = await gamesLocalStorageProvider.fetchAndSaveGames(
-        aboutTourModel!.id,
-      );
-      await _updateState(allGames);
-    } catch (e, st) {
-      if (mounted) {
-        state = AsyncValue.error(e, st);
-      }
-    }
   }
 
   Future<void> searchGamesEnhanced(String query) async {
@@ -391,16 +424,8 @@ class GamesTourScreenProvider
 
   // Method to scroll to a specific round
   void scrollToRound(String roundId) {
-    final currentState = state.valueOrNull;
-    if (currentState != null && _cachedGames != null) {
-      final scrollToIndex = _findFirstGameIndexForRound(
-        currentState.gamesTourModels,
-        roundId,
-      );
-      if (scrollToIndex != null) {
-        ref.read(roundScrollPositionProvider.notifier).state = scrollToIndex;
-      }
-    }
+    _selectedRoundId = roundId;
+    _updateScrollPositionForRound();
   }
 
   @override
