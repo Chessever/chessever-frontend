@@ -115,6 +115,7 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFENNew> {
               countryCode: widget.gamesTourModel.blackPlayer.countryCode,
               time: widget.gamesTourModel.blackTimeDisplay,
               secondGmRank: widget.gamesTourModel.blackPlayer.title,
+              rating: widget.gamesTourModel.blackPlayer.rating,
             ),
             SizedBox(height: 4.h),
             Container(
@@ -186,6 +187,7 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFENNew> {
               name: widget.gamesTourModel.whitePlayer.displayName,
               firstGmRank: widget.gamesTourModel.whitePlayer.title,
               countryCode: widget.gamesTourModel.whitePlayer.countryCode,
+              rating: widget.gamesTourModel.whitePlayer.rating,
             ),
           ],
         ),

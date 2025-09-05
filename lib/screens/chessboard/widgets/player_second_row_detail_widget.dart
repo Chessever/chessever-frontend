@@ -14,6 +14,7 @@ class PlayerSecondRowDetailWidget extends ConsumerWidget {
   final String secondGmRank;
   final String time;
   final String countryCode;
+  final int rating;
 
   const PlayerSecondRowDetailWidget({
     super.key,
@@ -21,6 +22,7 @@ class PlayerSecondRowDetailWidget extends ConsumerWidget {
     required this.secondGmRank,
     required this.time,
     required this.countryCode,
+    required this.rating,
   });
 
   @override
@@ -41,7 +43,8 @@ class PlayerSecondRowDetailWidget extends ConsumerWidget {
                   countryCode: countryCode,
                   title: secondGmRank.isNotEmpty ? secondGmRank : null,
                   name: name,
-                  score: 0, // Fallback if not found in standings
+                  score: 0,
+                  // Fallback if not found in standings
                   scoreChange: 0,
                   matchScore: null,
                 ),
@@ -51,16 +54,13 @@ class PlayerSecondRowDetailWidget extends ConsumerWidget {
 
           Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (_) => ScoreCardScreen(
-                name: name,
-              ),
-            ),
+            MaterialPageRoute(builder: (_) => ScoreCardScreen(name: name)),
           );
         });
       },
       child: Row(
         mainAxisAlignment: MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           if (validCountryCode.isNotEmpty) ...[
             SizedBox(width: 16.w),
@@ -74,7 +74,7 @@ class PlayerSecondRowDetailWidget extends ConsumerWidget {
 
           Expanded(
             child: Text(
-              '$secondGmRank $name',
+              '$secondGmRank $name $rating',
               style: AppTypography.textXsMedium.copyWith(
                 color: kWhiteColor70,
                 fontSize: 9.f,
