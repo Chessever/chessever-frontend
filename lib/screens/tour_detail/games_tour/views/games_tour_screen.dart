@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_visibility_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_body.dart';
@@ -14,9 +15,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
-import '../../../../utils/app_typography.dart';
-import '../../../../utils/svg_asset.dart';
-import '../widgets/top_most_visible_item_model.dart';
+import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/top_most_visible_item_model.dart';
 
 class GamesTourScreen extends ConsumerStatefulWidget {
   const GamesTourScreen({super.key});
@@ -30,7 +31,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
   late ScrollController _scrollController;
   final Map<String, GlobalKey> _headerKeys = {};
   final Map<String, List<GlobalKey>> _gameKeys = {};
-  GamesScreenModel? _lastGamesData;
 
   Timer? _visibilityCheckTimer;
   bool _isScrolling = false;
@@ -59,31 +59,13 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (!_isInitialized) {
-      Future.microtask(() {
-        if (mounted) {
-          ref.read(scrollStateProvider.notifier).reset();
-          ref.read(currentVisibleRoundProvider.notifier).state = null;
-          _headerKeys.clear();
-          _gameKeys.clear();
-        }
-      });
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
     final isChessBoardVisible = ref.watch(chessBoardVisibilityProvider);
-    final gamesAppBarAsync = ref.watch(gamesAppBarProvider);
     final gamesTourAsync = ref.watch(gamesTourScreenProvider);
-    final scrollState = ref.watch(scrollStateProvider);
-    final tourDetailAsync = ref.watch(tourDetailScreenProvider);
 
-    return tourDetailAsync.when(
+    return gamesTourAsync.when(
       data: (data) {
-        if (data.tours.isEmpty) {
+        if (data.gamesTourModels.isEmpty) {
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Column(
@@ -106,6 +88,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
             ),
           );
         }
+
         // Listen to app bar changes and scroll to selected round
         ref.listen<AsyncValue<GamesAppBarViewModel>>(gamesAppBarProvider, (
           previous,
@@ -134,9 +117,10 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
         });
 
         ref.listen<String?>(currentVisibleRoundProvider, (previous, next) {
+          final gamesAppBarAsync = ref.read(gamesAppBarProvider);
           if (next != null && next != previous && _isInitialized) {
-            final scrollState = ref.read(scrollStateProvider);
             final currentSelected = gamesAppBarAsync.valueOrNull?.selectedId;
+            final scrollState = ref.read(scrollStateProvider);
 
             if (scrollState.isUserScrolling &&
                 !scrollState.isScrolling &&
@@ -184,37 +168,32 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
             return false;
           },
           child: RefreshIndicator(
-            onRefresh: () => handleRefresh(gamesAppBarAsync, gamesTourAsync),
-            // Using extension method
+            onRefresh: handleRefresh,
             color: kWhiteColor70,
             backgroundColor: kDarkGreyColor,
             displacement: 60.h,
             strokeWidth: 3.w,
             child: GamesTourContentBody(
-              gamesAppBarAsync: gamesAppBarAsync,
-              gamesTourAsync: gamesTourAsync,
+              gamesScreenModel: data,
               isChessBoardVisible: isChessBoardVisible,
               scrollController: _scrollController,
               getHeaderKey: getHeaderKey,
-              // Using extension method
               getGameKey: getGameKey,
-              // Using extension method
-              lastGamesData: _lastGamesData,
-              onGamesDataUpdate: (data) => _lastGamesData = data,
             ),
           ),
         );
       },
-      error:
-          (error, stackTrace) => Center(
-            child: Text(
-              'Error: $error',
-              style: AppTypography.textMdRegular.copyWith(color: kWhiteColor),
-              textAlign: TextAlign.center,
-            ),
+      error: (e, _) {
+        return Center(
+          child: Text(
+            'Error: $e',
+            style: AppTypography.textMdRegular.copyWith(color: kWhiteColor),
+            textAlign: TextAlign.center,
           ),
+        );
+      },
       loading: () {
-        return SizedBox.shrink();
+        return const TourLoadingWidget();
       },
     );
   }
@@ -307,7 +286,7 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
       ref.read(scrollStateProvider.notifier).updateSelectedRound(targetRoundId);
       ref.read(scrollStateProvider.notifier).setUserScrolling(false);
 
-      Future.delayed(const Duration(milliseconds: 1000), () {
+      Future.delayed(const Duration(milliseconds: 400), () {
         if (mounted) {
           if (targetGameIndex != null && selectedPlayerName != null) {
             scrollToGame(targetRoundId!, targetGameIndex);
@@ -427,8 +406,7 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
   }
 
   TopMostVisibleItem? findTopMostVisibleItem() {
-    final gamesData =
-        _lastGamesData ?? ref.read(gamesTourScreenProvider).valueOrNull;
+    final gamesData = ref.read(gamesTourScreenProvider).valueOrNull;
     if (gamesData == null) return null;
 
     final screenHeight = MediaQuery.of(context).size.height;
@@ -532,7 +510,7 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
   Future<void> scrollToTopMostVisibleItemAfterViewSwitch(
     TopMostVisibleItem item,
   ) async {
-    await Future.delayed(const Duration(milliseconds: 1200));
+    await Future.delayed(const Duration(milliseconds: 400));
 
     if (!mounted || !_scrollController.hasClients) {
       _isViewSwitching = false;
@@ -679,8 +657,7 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
 
   double? calculateTargetScrollOffset(TopMostVisibleItem item) {
     try {
-      final gamesData =
-          _lastGamesData ?? ref.read(gamesTourScreenProvider).valueOrNull;
+      final gamesData = ref.read(gamesTourScreenProvider).valueOrNull;
       if (gamesData == null) {
         return null;
       }
@@ -801,8 +778,7 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
 
   double? calculateTargetScrollOffsetForGame(TopMostVisibleItem item) {
     try {
-      final gamesData =
-          _lastGamesData ?? ref.read(gamesTourScreenProvider).valueOrNull;
+      final gamesData = ref.read(gamesTourScreenProvider).valueOrNull;
       if (gamesData == null || item.gameIndex == null) return null;
 
       final rounds =
@@ -870,8 +846,7 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
         _isProgrammaticScroll)
       return;
 
-    final gamesData =
-        _lastGamesData ?? ref.read(gamesTourScreenProvider).valueOrNull;
+    final gamesData = ref.read(gamesTourScreenProvider).valueOrNull;
     if (gamesData == null) return;
 
     final gamesByRound = <String, List<GamesTourModel>>{};
@@ -1101,8 +1076,7 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
 
   double? calculateScrollPositionForRound(String roundId) {
     try {
-      final gamesData =
-          _lastGamesData ?? ref.read(gamesTourScreenProvider).valueOrNull;
+      final gamesData = ref.read(gamesTourScreenProvider).valueOrNull;
       if (gamesData == null) return null;
 
       final rounds =
@@ -1184,37 +1158,22 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
     }
   }
 
-  Future<void> handleRefresh(
-    AsyncValue gamesAppBarAsync,
-    AsyncValue<GamesScreenModel> gamesTourAsync,
-  ) async {
-    FocusScope.of(context).unfocus();
-
-    final futures = <Future>[];
-
+  Future<void> handleRefresh() async {
     try {
+      FocusScope.of(context).unfocus();
+      final futures = <Future>[];
       futures.add(
         ref.read(tourDetailScreenProvider.notifier).refreshTourDetails(),
       );
-    } catch (_) {}
-
-    if (gamesAppBarAsync.hasValue) {
       futures.add(ref.read(gamesAppBarProvider.notifier).refreshRounds());
-    }
-
-    if (gamesTourAsync.hasValue) {
       futures.add(ref.read(gamesTourScreenProvider.notifier).refreshGames());
-    }
-
-    if (futures.isNotEmpty) {
       await Future.wait(futures);
-    }
-
-    _isInitialized = false;
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (mounted) {
-        synchronizeInitialSelection();
-      }
-    });
+      _isInitialized = false;
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          synchronizeInitialSelection();
+        }
+      });
+    } catch (_) {}
   }
 }
