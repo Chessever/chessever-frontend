@@ -13,8 +13,6 @@ class GamesTourContentBody extends ConsumerWidget {
   final AsyncValue<GamesScreenModel> gamesTourAsync;
   final bool isChessBoardVisible;
   final ScrollController scrollController;
-  final Map<String, GlobalKey> headerKeys;
-  final Map<String, List<GlobalKey>> gameKeys;
   final GlobalKey Function(String) getHeaderKey;
   final GlobalKey Function(String, int) getGameKey;
   final GamesScreenModel? lastGamesData;
@@ -26,8 +24,6 @@ class GamesTourContentBody extends ConsumerWidget {
     required this.gamesTourAsync,
     required this.isChessBoardVisible,
     required this.scrollController,
-    required this.headerKeys,
-    required this.gameKeys,
     required this.getHeaderKey,
     required this.getGameKey,
     required this.lastGamesData,
@@ -86,8 +82,6 @@ class GamesTourContentBody extends ConsumerWidget {
       gamesData: gamesData,
       isChessBoardVisible: isChessBoardVisible,
       scrollController: scrollController,
-      headerKeys: headerKeys,
-      gameKeys: gameKeys,
       getHeaderKey: getHeaderKey,
       getGameKey: getGameKey,
     );
@@ -98,8 +92,6 @@ class GamesTourMainContent extends ConsumerWidget {
   final GamesScreenModel gamesData;
   final bool isChessBoardVisible;
   final ScrollController scrollController;
-  final Map<String, GlobalKey> headerKeys;
-  final Map<String, List<GlobalKey>> gameKeys;
   final GlobalKey Function(String) getHeaderKey;
   final GlobalKey Function(String, int) getGameKey;
 
@@ -108,8 +100,7 @@ class GamesTourMainContent extends ConsumerWidget {
     required this.gamesData,
     required this.isChessBoardVisible,
     required this.scrollController,
-    required this.headerKeys,
-    required this.gameKeys,
+  
     required this.getHeaderKey,
     required this.getGameKey,
   });
@@ -135,8 +126,6 @@ class GamesTourMainContent extends ConsumerWidget {
       gamesData: gamesData,
       isChessBoardVisible: isChessBoardVisible,
       scrollController: scrollController,
-      headerKeys: headerKeys,
-      gameKeys: gameKeys,
       getHeaderKey: getHeaderKey,
       getGameKey: getGameKey,
     );
