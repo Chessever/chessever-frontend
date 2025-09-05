@@ -12,7 +12,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 // State providers
 final selectedTourIdProvider = StateProvider<String?>((ref) => null);
 
-final tourDetailScreenProvider = StateNotifierProvider.autoDispose<
+final tourDetailScreenProvider = StateNotifierProvider<
   TourDetailScreenNotifier,
   AsyncValue<TourDetailViewModel>
 >((ref) {
@@ -151,10 +151,7 @@ class TourDetailScreenNotifier
     final endDate = tour.dates.last;
     final roundStatus = _calculateRoundStatus(tour.id, now, startDate, endDate);
 
-    return TourModel(
-      tour: tour,
-      roundStatus: roundStatus,
-    );
+    return TourModel(tour: tour, roundStatus: roundStatus);
   }
 
   RoundStatus _calculateRoundStatus(

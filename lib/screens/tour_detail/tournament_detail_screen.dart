@@ -17,6 +17,8 @@ import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import 'games_tour/providers/games_tour_scroll_state_provider.dart';
+
 class TournamentDetailScreen extends ConsumerStatefulWidget {
   const TournamentDetailScreen({super.key});
 
@@ -37,9 +39,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen> {
 
   @override
   void initState() {
-    pageController = PageController(
-      initialPage: 1,
-    );
+    pageController = PageController(initialPage: 1);
     super.initState();
   }
 
@@ -55,6 +55,9 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen> {
       ref.invalidate(selectedTourIdProvider);
       ref.invalidate(selectedBroadcastModelProvider);
       ref.invalidate(userSelectedRoundProvider);
+      ref.invalidate(tourDetailScreenProvider);
+      ref.invalidate(gamesAppBarProvider);
+      ref.invalidate(scrollStateProvider);
     } catch (e) {
       // Ignore errors during cleanup
       print('Error during provider cleanup: $e');
@@ -71,7 +74,6 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen> {
   Widget build(BuildContext context) {
     final selectedTourMode = ref.watch(selectedTourModeProvider);
     final tourDetailAsync = ref.watch(tourDetailScreenProvider);
-    print("Selected tab is in Build ${selectedTourMode.name}");
     return ScreenWrapper(
       child: Scaffold(
         body: Column(
@@ -136,10 +138,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen> {
           title: "Error: ${error.toString().substring(0, 20)}...",
         ),
         SizedBox(height: 8.h),
-        _buildSegmentedSwitcher(
-          TournamentDetailScreenMode.games,
-          (index) {},
-        ),
+        _buildSegmentedSwitcher(TournamentDetailScreenMode.games, (index) {}),
       ],
     );
   }

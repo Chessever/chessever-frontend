@@ -11,7 +11,7 @@ final userSelectedRoundProvider =
     StateProvider<({String id, bool userSelected})?>((ref) => null);
 
 // Fixed provider with proper null handling
-final gamesAppBarProvider = AutoDisposeStateNotifierProvider<
+final gamesAppBarProvider = StateNotifierProvider<
   GamesAppBarNotifier,
   AsyncValue<GamesAppBarViewModel>
 >((ref) {
