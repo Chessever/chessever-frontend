@@ -169,4 +169,23 @@ class GroupBroadcastRepository extends BaseRepository {
           .toList();
     });
   }
+
+  Future<List<GroupBroadcast>> searchGroupBroadcastsFromSupabase(
+    String query,
+  ) async {
+    if (query.trim().isEmpty) return [];
+
+    final q = query.trim().toLowerCase();
+
+    return handleApiCall(() async {
+      final res = await supabase
+          .from('group_broadcasts')
+          .select()
+          .or('name.ilike.%$q%,search.cs.{$q}')
+          .order('max_avg_elo', ascending: false)
+          .limit(10);
+
+      return (res as List).map((e) => GroupBroadcast.fromJson(e)).toList();
+    });
+  }
 }

@@ -11,11 +11,12 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 // Provider to track scroll position for round changes
 final roundScrollPositionProvider = StateProvider<int?>((ref) => null);
+final scrollToGameIndexProvider = StateProvider<int?>((ref) => null);
 
 // Updated provider with listener-based approach
 final gamesTourScreenProvider = StateNotifierProvider<
-    GamesTourScreenProvider,
-    AsyncValue<GamesScreenModel>
+  GamesTourScreenProvider,
+  AsyncValue<GamesScreenModel>
 >((ref) {
   // Watch tour details first - this is the primary dependency
   final tourDetailAsync = ref.watch(tourDetailScreenProvider);
@@ -55,26 +56,26 @@ class GamesTourScreenProvider
     String? initialSelectedRoundId,
     required this.aboutTourModel,
   }) : error = null,
-        _selectedRoundId = initialSelectedRoundId,
-        super(const AsyncValue.loading()) {
+       _selectedRoundId = initialSelectedRoundId,
+       super(const AsyncValue.loading()) {
     _setupListeners();
     _init();
   }
 
   // Constructor for loading state
   GamesTourScreenProvider.loading({required this.ref})
-      : aboutTourModel = null,
-        error = null,
-        _selectedRoundId = null,
-        super(const AsyncValue.loading());
+    : aboutTourModel = null,
+      error = null,
+      _selectedRoundId = null,
+      super(const AsyncValue.loading());
 
   // Constructor for error state
   GamesTourScreenProvider.withError({
     required this.ref,
     required Object this.error,
   }) : aboutTourModel = null,
-        _selectedRoundId = null,
-        super(AsyncValue.error(error, StackTrace.current));
+       _selectedRoundId = null,
+       super(AsyncValue.error(error, StackTrace.current));
 
   final Ref ref;
   String? _selectedRoundId;
@@ -88,20 +89,42 @@ class GamesTourScreenProvider
   // Search mode tracking
   bool _isSearchMode = false;
   List<Games>? _originalGamesBeforeSearch;
+  int? _lastViewedGameIndex;
+
+  void setLastViewedGameIndex(int? index) {
+    if (index == null) return;
+    _lastViewedGameIndex = index;
+    _scrollToLastViewedGame();
+  }
+
+  Future<void> _scrollToLastViewedGame() async {
+    if (_lastViewedGameIndex == null) return;
+
+    final games = state.valueOrNull?.gamesTourModels;
+    if (games == null || _lastViewedGameIndex! >= games.length) return;
+
+    final game = games[_lastViewedGameIndex!];
+    final roundId = game.roundId;
+
+    final roundGames = games.where((g) => g.roundId == roundId).toList();
+    final localIndex = roundGames.indexWhere((g) => g.gameId == game.gameId);
+    if (localIndex == -1) return;
+
+    ref.read(scrollToGameIndexProvider.notifier).state = _lastViewedGameIndex;
+  }
 
   void _setupListeners() {
-    // Set up listener for games app bar changes
     ref.listen<AsyncValue<dynamic>>(
       gamesAppBarProvider,
-          (previous, next) {
+      (previous, next) {
         final newSelectedRound = next.valueOrNull?.selectedId;
 
-        // Only update if the selected round actually changed
         if (newSelectedRound != _selectedRoundId) {
-          debugPrint('🔄 Round changed from $_selectedRoundId to $newSelectedRound');
+          debugPrint(
+            '🔄 Round changed from $_selectedRoundId to $newSelectedRound',
+          );
           _selectedRoundId = newSelectedRound;
 
-          // Update scroll position for the new round
           _updateScrollPositionForRound();
         }
       },
@@ -325,7 +348,7 @@ class GamesTourScreenProvider
     for (int i = 0; i < games.length; i++) {
       if (_cachedGames != null) {
         final originalGame = _cachedGames!.firstWhere(
-              (game) => game.id == games[i].gameId,
+          (game) => game.id == games[i].gameId,
           orElse: () => throw StateError('Game not found'),
         );
         if (originalGame.roundId == roundId) {
