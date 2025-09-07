@@ -19,8 +19,11 @@ class PositionRepository extends BaseRepository {
   });
 
   Future<Position> create(String fen) => handleApiCall(() async {
-    final response =
-        await supabase.from('positions').insert({'fen': fen}).select().single();
+    final response = await supabase
+    .from('positions')
+    .upsert({'fen': fen}, onConflict: 'fen')
+    .select()
+    .single();
     return Position.fromJson(response);
   });
 
