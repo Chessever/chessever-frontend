@@ -3,31 +3,24 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_list_vie
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
-import 'package:chessever2/screens/group_event/widget/empty_widget.dart';
 import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class GamesTourContentBody extends ConsumerWidget {
-  final AsyncValue gamesAppBarAsync;
-  final AsyncValue<GamesScreenModel> gamesTourAsync;
+  final GamesScreenModel gamesScreenModel;
   final bool isChessBoardVisible;
   final ScrollController scrollController;
   final GlobalKey Function(String) getHeaderKey;
   final GlobalKey Function(String, int) getGameKey;
-  final GamesScreenModel? lastGamesData;
-  final Function(GamesScreenModel?) onGamesDataUpdate;
 
   const GamesTourContentBody({
     super.key,
-    required this.gamesAppBarAsync,
-    required this.gamesTourAsync,
+    required this.gamesScreenModel,
     required this.isChessBoardVisible,
     required this.scrollController,
     required this.getHeaderKey,
     required this.getGameKey,
-    required this.lastGamesData,
-    required this.onGamesDataUpdate,
   });
 
   @override
@@ -48,38 +41,8 @@ class GamesTourContentBody extends ConsumerWidget {
       );
     }
 
-    if (gamesTourAsync.hasValue) {
-      onGamesDataUpdate(gamesTourAsync.valueOrNull);
-    }
-
-    if ((gamesAppBarAsync.isLoading || gamesTourAsync.isLoading) &&
-        lastGamesData == null) {
-      return const TourLoadingWidget();
-    }
-
-    if (gamesAppBarAsync.hasError || gamesTourAsync.hasError) {
-      return GamesErrorWidget(
-        errorMessage:
-            gamesAppBarAsync.error?.toString() ??
-            gamesTourAsync.error?.toString() ??
-            "An error occurred",
-      );
-    }
-
-    final gamesData = lastGamesData ?? gamesTourAsync.valueOrNull;
-    if (gamesData == null) return const TourLoadingWidget();
-
-    if (gamesData.gamesTourModels.isEmpty && !gamesTourAsync.isLoading) {
-      return const Center(
-        child: EmptyWidget(
-          title:
-              "No games available yet. Check back soon or set a\nreminder for updates.",
-        ),
-      );
-    }
-
     return GamesTourMainContent(
-      gamesData: gamesData,
+      gamesData: gamesScreenModel,
       isChessBoardVisible: isChessBoardVisible,
       scrollController: scrollController,
       getHeaderKey: getHeaderKey,
@@ -100,7 +63,7 @@ class GamesTourMainContent extends ConsumerWidget {
     required this.gamesData,
     required this.isChessBoardVisible,
     required this.scrollController,
-  
+
     required this.getHeaderKey,
     required this.getGameKey,
   });
