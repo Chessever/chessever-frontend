@@ -3,7 +3,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'dart:async';
 
 final scrollStateProvider =
-StateNotifierProvider.autoDispose<ScrollStateNotifier, ScrollState>(
+StateNotifierProvider<ScrollStateNotifier, ScrollState>(
       (ref) => ScrollStateNotifier(),
 );
 
