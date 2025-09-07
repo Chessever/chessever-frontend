@@ -7,7 +7,7 @@ import 'package:chessever2/widgets/search/widgets/search_result_title.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../../screens/group_event/providers/combined_search_provider.dart';
+import '../../screens/group_event/providers/supabase_combined_search_provider.dart';
 
 class SearchOverlay extends ConsumerWidget {
   final String query;
@@ -32,7 +32,7 @@ class SearchOverlay extends ConsumerWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
         child: ref
-            .watch(combinedSearchProvider(query))
+            .watch(supabaseCombinedSearchProvider(query))
             .when(
               loading: () => _buildLoadingState(),
               error: (e, _) => _buildErrorState(e.toString()),

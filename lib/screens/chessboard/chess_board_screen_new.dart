@@ -36,6 +36,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   late PageController _pageController;
   int _currentPageIndex = 0;
   bool analysisMode = false;
+  int? _lastViewedIndex;
 
   /// Keep manual subscriptions to preloaded pages alive
   final Map<int, ProviderSubscription<AsyncValue<ChessBoardStateNew>>>
@@ -59,7 +60,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
 
   void _onPageChanged(int newIndex) {
     if (_currentPageIndex == newIndex) return;
-
+    _lastViewedIndex = newIndex;
     ref
         .read(chessBoardScreenProviderNew(_currentPageIndex).notifier)
         .pauseGame();
@@ -128,70 +129,77 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
 
   @override
   Widget build(BuildContext context) {
-    // Keep horizontal paging strict (PageView handles it well already).
-    // Optional: block vertical drags from triggering page change by using a RawGestureDetector.
-    return Scaffold(
-      body: RawGestureDetector(
-        gestures: <Type, GestureRecognizerFactory>{
-          HorizontalDragGestureRecognizer: GestureRecognizerFactoryWithHandlers<
-            HorizontalDragGestureRecognizer
-          >(() => HorizontalDragGestureRecognizer(), (
-            HorizontalDragGestureRecognizer instance,
-          ) {
-            instance.onStart = (_) {};
-            instance.onUpdate = (_) {};
-            instance.onEnd = (_) {};
-          }),
-        },
-        behavior: HitTestBehavior.translucent,
-        child: PageView.builder(
-          padEnds: true,
-          allowImplicitScrolling: true,
-          // helps the framework build ahead
-          physics:
-              analysisMode
-                  ? NeverScrollableScrollPhysics()
-                  : const PageScrollPhysics(),
-          controller: _pageController,
-          onPageChanged: _onPageChanged,
-          itemCount: widget.games.length,
-          itemBuilder: (context, index) {
-            if (index == _currentPageIndex - 1 ||
-                index == _currentPageIndex + 1 ||
-                index == _currentPageIndex) {
-              return ref
-                  .watch(chessBoardScreenProviderNew(index))
-                  .when(
-                    data: (chessBoardState) {
-                      if (chessBoardState.isAnalysisMode != analysisMode) {
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (mounted) {
-                            setState(() {
-                              analysisMode = chessBoardState.isAnalysisMode;
-                            });
-                          }
-                        });
-                      }
-                      return _GamePage(
-                        game: widget.games[index],
-                        state: chessBoardState,
-                        games: widget.games,
-                        currentGameIndex: index,
-                        onGameChanged: _navigateToGame,
-                      );
-                    },
-                    error: (e, _) => ErrorWidget(e),
-                    loading:
-                        () => _LoadingScreen(
+    return WillPopScope(
+      onWillPop: () async {
+        Navigator.of(context).pop(_lastViewedIndex);
+        return false;
+      },
+      child: Scaffold(
+        body: RawGestureDetector(
+          gestures: <Type, GestureRecognizerFactory>{
+            HorizontalDragGestureRecognizer:
+                GestureRecognizerFactoryWithHandlers<
+                  HorizontalDragGestureRecognizer
+                >(() => HorizontalDragGestureRecognizer(), (
+                  HorizontalDragGestureRecognizer instance,
+                ) {
+                  instance.onStart = (_) {};
+                  instance.onUpdate = (_) {};
+                  instance.onEnd = (_) {};
+                }),
+          },
+          behavior: HitTestBehavior.translucent,
+          child: PageView.builder(
+            padEnds: true,
+            allowImplicitScrolling: true,
+            // helps the framework build ahead
+            physics:
+                analysisMode
+                    ? NeverScrollableScrollPhysics()
+                    : const PageScrollPhysics(),
+            controller: _pageController,
+            onPageChanged: _onPageChanged,
+            itemCount: widget.games.length,
+            itemBuilder: (context, index) {
+              if (index == _currentPageIndex - 1 ||
+                  index == _currentPageIndex + 1 ||
+                  index == _currentPageIndex) {
+                return ref
+                    .watch(chessBoardScreenProviderNew(index))
+                    .when(
+                      data: (chessBoardState) {
+                        if (chessBoardState.isAnalysisMode != analysisMode) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) {
+                              setState(() {
+                                analysisMode = chessBoardState.isAnalysisMode;
+                              });
+                            }
+                          });
+                        }
+                        return _GamePage(
+                          game: widget.games[index],
+                          state: chessBoardState,
                           games: widget.games,
                           currentGameIndex: index,
                           onGameChanged: _navigateToGame,
-                        ),
-                  );
-            } else {
-              return SizedBox.shrink();
-            }
-          },
+                          lastViewedIndex: _lastViewedIndex,
+                        );
+                      },
+                      error: (e, _) => ErrorWidget(e),
+                      loading:
+                          () => _LoadingScreen(
+                            games: widget.games,
+                            currentGameIndex: index,
+                            onGameChanged: _navigateToGame,
+                            lastViewedIndex: _lastViewedIndex,
+                          ),
+                    );
+              } else {
+                return SizedBox.shrink();
+              }
+            },
+          ),
         ),
       ),
     );
@@ -204,6 +212,7 @@ class _GamePage extends StatelessWidget {
   final List<GamesTourModel> games;
   final int currentGameIndex;
   final void Function(int) onGameChanged;
+  final int? lastViewedIndex;
 
   const _GamePage({
     required this.game,
@@ -211,6 +220,7 @@ class _GamePage extends StatelessWidget {
     required this.games,
     required this.currentGameIndex,
     required this.onGameChanged,
+    this.lastViewedIndex,
   });
 
   @override
@@ -222,6 +232,7 @@ class _GamePage extends StatelessWidget {
         games: games,
         currentGameIndex: currentGameIndex,
         onGameChanged: onGameChanged,
+        lastViewedIndex: lastViewedIndex,
       ),
       body: _GameBody(index: currentGameIndex, game: game, state: state),
     );
@@ -232,11 +243,13 @@ class _LoadingScreen extends StatelessWidget {
   final List<GamesTourModel> games;
   final int currentGameIndex;
   final void Function(int) onGameChanged;
+  final int? lastViewedIndex;
 
   const _LoadingScreen({
     required this.games,
     required this.currentGameIndex,
     required this.onGameChanged,
+    this.lastViewedIndex,
   });
 
   @override
@@ -248,6 +261,7 @@ class _LoadingScreen extends StatelessWidget {
         currentGameIndex: currentGameIndex,
         onGameChanged: onGameChanged,
         isLoading: true,
+        lastViewedIndex: lastViewedIndex,
       ),
       body: Center(
         child: Column(
@@ -269,6 +283,7 @@ class _AppBar extends StatelessWidget implements PreferredSizeWidget {
   final int currentGameIndex;
   final void Function(int) onGameChanged;
   final bool isLoading;
+  final int? lastViewedIndex;
 
   const _AppBar({
     required this.game,
@@ -276,6 +291,7 @@ class _AppBar extends StatelessWidget implements PreferredSizeWidget {
     required this.currentGameIndex,
     required this.onGameChanged,
     this.isLoading = false,
+    this.lastViewedIndex,
   });
 
   @override
@@ -284,7 +300,7 @@ class _AppBar extends StatelessWidget implements PreferredSizeWidget {
       elevation: 0,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back_ios_new, color: kWhiteColor),
-        onPressed: () => Navigator.pop(context),
+        onPressed: () => Navigator.pop(context, lastViewedIndex),
       ),
       title: _GameSelectionDropdown(
         games: games,

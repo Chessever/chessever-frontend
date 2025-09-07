@@ -11,12 +11,11 @@ import 'package:chessever2/screens/group_event/providers/sorting_all_event_provi
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
-import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
-import 'package:chessever2/widgets/search/search_result_model.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import '../../../repository/supabase/group_broadcast/group_tour_repository.dart';
 import '../../tour_detail/player_tour/player_tour_screen_provider.dart';
 
 final _currentLiveIdsProvider = StateProvider<List<String>>((_) => const []);
@@ -27,6 +26,15 @@ final liveIdsProvider = Provider<List<String>>(
 
 final selectedPlayerNameProvider = StateProvider<String?>((ref) => null);
 final isSearchingProvider = StateProvider<bool>((ref) => false);
+
+final supabaseSearchProvider =
+    FutureProvider.family<List<GroupBroadcast>, String>(
+      (ref, query) async {
+        return ref
+            .read(groupBroadcastRepositoryProvider)
+            .searchGroupBroadcastsFromSupabase(query);
+      },
+    );
 
 final groupEventScreenProvider = AutoDisposeStateNotifierProvider<
   _GroupEventScreenController,
@@ -238,37 +246,17 @@ class _GroupEventScreenController
     state = const AsyncValue.loading();
 
     try {
-      final currentResults = await ref
-          .read(groupBroadcastLocalStorage(GroupEventCategory.current))
-          .searchWithScoring(query);
+      final broadcasts = await ref.read(supabaseSearchProvider(query).future);
 
-      final upcomingResults = await ref
-          .read(groupBroadcastLocalStorage(GroupEventCategory.upcoming))
-          .searchWithScoring(query);
+      final tourEventCardModel =
+          broadcasts
+              .map(
+                (b) =>
+                    GroupEventCardModel.fromGroupBroadcast(b, liveBroadcastId),
+              )
+              .toList();
 
-      final allResults = [
-        ...currentResults.tournamentResults,
-        ...upcomingResults.tournamentResults,
-        ...currentResults.playerResults,
-        ...upcomingResults.playerResults,
-      ];
-
-      final Map<String, SearchResult> uniqueResults = {};
-      for (final result in allResults) {
-        final key = result.tournament.id;
-        if (!uniqueResults.containsKey(key) ||
-            result.score > uniqueResults[key]!.score) {
-          uniqueResults[key] = result;
-        }
-      }
-
-      final filteredResults =
-          uniqueResults.values.toList()
-            ..sort((a, b) => b.score.compareTo(a.score));
-
-      final tournaments = filteredResults.map((r) => r.tournament).toList();
-
-      state = AsyncValue.data(tournaments);
+      state = AsyncValue.data(tourEventCardModel);
     } catch (error, stackTrace) {
       state = AsyncValue.error(error, stackTrace);
     }

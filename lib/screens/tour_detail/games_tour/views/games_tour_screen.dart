@@ -45,9 +45,36 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     _scrollController = ScrollController();
     setupScrollListener(); // Using extension method
     setupViewSwitchListener(); // Using extension method
+    setupScrollToGameListener();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       synchronizeInitialSelection(); // Using extension method
+    });
+  }
+
+  void setupScrollToGameListener() {
+    ref.listenManual<int?>(scrollToGameIndexProvider, (_, next) {
+      if (next == null) return;
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+
+        final games =
+            ref.read(gamesTourScreenProvider).valueOrNull?.gamesTourModels;
+        if (games == null || next >= games.length) return;
+
+        final game = games[next];
+        final roundId = game.roundId;
+        final roundGames = games.where((g) => g.roundId == roundId).toList();
+        final localIndex = roundGames.indexWhere(
+          (g) => g.gameId == game.gameId,
+        );
+        if (localIndex == -1) return;
+
+        scrollToGame(roundId, localIndex);
+      });
+
+      ref.read(scrollToGameIndexProvider.notifier).state = null;
     });
   }
 
@@ -302,6 +329,9 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
   }
 
   Future<void> scrollToGame(String roundId, int gameIndex) async {
+    debugPrint(
+      '[GamesTourScreen] scrollToGame called: round=$roundId, game=$gameIndex',
+    );
     if (!mounted || _isViewSwitching) return;
 
     _isProgrammaticScroll = true;
