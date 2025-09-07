@@ -258,7 +258,7 @@ class ChessBoardScreenNotifierNew
       ),
     );
     _cancelEvaluation = false;
-    //_updateEvaluation();
+    _updateEvaluation();
     _isProcessingMove = false;
   }
 
@@ -455,6 +455,7 @@ class ChessBoardScreenNotifierNew
           ),
         ),
       );
+      _updateEvaluation();
     }
   }
 
@@ -518,6 +519,7 @@ class ChessBoardScreenNotifierNew
           ),
         ),
       );
+      _updateEvaluation();
     }
   }
 
@@ -606,18 +608,41 @@ class ChessBoardScreenNotifierNew
 
       CloudEval? cloudEval;
       double evaluation = 0.0;
-
+print("Evaluating started for position: $fen");
       try {
+        ref.invalidate(cascadeEvalProviderForBoard(fen));
         cloudEval = await ref.read(cascadeEvalProviderForBoard(fen).future);
         if (cloudEval?.pvs.isNotEmpty ?? false) {
           evaluation = cloudEval!.pvs.first.cp / 100.0;
         }
+        print("Getting evel from cascadeEval: $fen");
       } catch (e) {
         print('Cascade eval failed, using local stockfish: $e');
-        final result = await StockfishSingleton().evaluatePosition(
-          fen,
-          depth: 15, // Reduced depth for faster evaluation
-        );
+        CloudEval result;
+        try{
+          var evaluatePosRes = await StockfishSingleton().evaluatePosition(
+            fen,
+            depth: 15, // Reduced depth for faster evaluation
+          );
+          if(evaluatePosRes.isCancelled) {
+            print('Evaluation was cancelled for ${fen}');
+            return;
+          }
+          else{
+            print('Evaluation was successful for ${fen}');
+
+          }
+          result = CloudEval(
+            fen: fen,
+            knodes: evaluatePosRes.knodes,
+            depth: evaluatePosRes.depth,
+            pvs: evaluatePosRes.pvs,
+          );
+        }
+        catch(ex){
+          print('Stockfish evaluation failed for ${fen} with error: $ex');
+          return;
+        }
         if (result.pvs.isNotEmpty) {
           evaluation = result.pvs.first.cp / 100.0;
           List<String> fenParts = fen.split(' ');
@@ -641,13 +666,13 @@ class ChessBoardScreenNotifierNew
 
       // Only update state if the evaluation corresponds to the current move index
       if (_cancelEvaluation || state.value == null || !mounted) return;
-      final currentMoveIndex = state.value!.currentMoveIndex;
-      if (targetMoveIndex != currentMoveIndex) {
-        print('Skipping evaluation for outdated move index: $targetMoveIndex');
-        return;
+      var currState = state.value;
+      if (currState == null) return;
+      if ((currState.isAnalysisMode &&
+              currState.analysisState.position.fen == fen) ||
+          (!currState.isAnalysisMode && currentState.position?.fen == fen)) {
+        state = AsyncValue.data(currState.copyWith(evaluation: evaluation));
       }
-
-      state = AsyncValue.data(currentState.copyWith(evaluation: evaluation));
     } catch (e) {
       if (!_cancelEvaluation) {
         print('Evaluation error: $e');
