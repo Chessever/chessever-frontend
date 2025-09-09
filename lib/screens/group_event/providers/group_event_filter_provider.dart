@@ -6,12 +6,17 @@ import 'package:flutter/material.dart';
 
 // Filter controller provider
 final groupEventFilterProvider =
-    AutoDisposeProvider.family<_GroupEventFilterController, GroupEventCategory>((
-      ref,
-      tournamentCategory,
-    ) {
-      return _GroupEventFilterController(ref: ref, tournamentCategory: tournamentCategory);
-    });
+    AutoDisposeProvider.family<_GroupEventFilterController, GroupEventCategory>(
+      (
+        ref,
+        tournamentCategory,
+      ) {
+        return _GroupEventFilterController(
+          ref: ref,
+          tournamentCategory: tournamentCategory,
+        );
+      },
+    );
 
 // Formats provider
 final groupEventFormatProvider =
@@ -26,26 +31,40 @@ final groupEventFormatProvider =
 
 // Filter controller
 class _GroupEventFilterController {
-  _GroupEventFilterController({required this.ref, required this.tournamentCategory});
+  _GroupEventFilterController({
+    required this.ref,
+    required this.tournamentCategory,
+  });
 
   final Ref ref;
   final GroupEventCategory tournamentCategory;
 
   Future<List<String>> getFormats() async {
-    final groupBroadcast =
+    final current =
         await ref
-            .read(groupBroadcastLocalStorage(tournamentCategory))
+            .read(groupBroadcastLocalStorage(GroupEventCategory.current))
             .getGroupBroadcasts();
+    final upcoming =
+        await ref
+            .read(groupBroadcastLocalStorage(GroupEventCategory.upcoming))
+            .getGroupBroadcasts();
+    final past =
+        await ref
+            .read(groupBroadcastLocalStorage(GroupEventCategory.past))
+            .getGroupBroadcasts();
+
+    final all = [...current, ...upcoming, ...past];
+
     final formats =
-        groupBroadcast
-            .map((tour) => tour.timeControl?.trim())
+        all
+            .map((t) => t.timeControl?.trim())
             .whereType<String>()
-            .where((format) => format.isNotEmpty)
+            .where((f) => f.isNotEmpty)
             .toSet()
             .toList()
           ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
 
-    return ['All Formats', ...formats];
+    return formats;
   }
 
   Future<List<GroupBroadcast>> applyFilter(String selectedFormat) async {
