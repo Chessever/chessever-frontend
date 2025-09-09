@@ -17,9 +17,10 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../widgets/segmented_switcher.dart';
 
-enum GroupEventCategory { current, upcoming }
+enum GroupEventCategory { past, current, upcoming }
 
 final _mappedName = {
+  GroupEventCategory.past: 'Past',
   GroupEventCategory.current: 'Current',
   GroupEventCategory.upcoming: 'Upcoming',
 };
