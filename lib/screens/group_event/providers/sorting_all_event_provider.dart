@@ -66,11 +66,33 @@ class TournamentSortingService {
       final eloComparison = eloB.compareTo(eloA);
       if (eloComparison != 0) return eloComparison;
 
+      final daysA = _extractDaysFromTimeUntilStart(a.timeUntilStart);
+      final daysB = _extractDaysFromTimeUntilStart(b.timeUntilStart);
+      final daysComparison = daysA.compareTo(daysB);
+      if (daysComparison != 0) return daysComparison;
       // Finally sort by title
       return a.title.toLowerCase().compareTo(b.title.toLowerCase());
     });
 
     return filteredList;
+  }
+
+  int _extractDaysFromTimeUntilStart(String txt) {
+    if (txt.isEmpty) return 999999;
+    final s = txt.trim().toLowerCase().replaceAll('in', '').trim();
+
+    if (s.contains('minute') || s.contains('hour')) return 0;
+
+    final dayMatch = RegExp(r'(\d+)\s*day').firstMatch(s);
+    if (dayMatch != null) return int.parse(dayMatch.group(1)!);
+
+    final monMatch = RegExp(r'(\d+)\s*month').firstMatch(s);
+    if (monMatch != null) return int.parse(monMatch.group(1)!) * 30;
+
+    final yrMatch = RegExp(r'(\d+)\s*year').firstMatch(s);
+    if (yrMatch != null) return int.parse(yrMatch.group(1)!) * 365;
+
+    return 999999;
   }
 
   List<GroupEventCardModel> sortBasedOnFavorite({
@@ -109,6 +131,11 @@ class TournamentSortingService {
       // If both are high ELO or both are normal ELO, sort by ELO descending
       final eloComparison = b.maxAvgElo.compareTo(a.maxAvgElo);
       if (eloComparison != 0) return eloComparison;
+
+      final daysA = _extractDaysFromTimeUntilStart(a.timeUntilStart);
+      final daysB = _extractDaysFromTimeUntilStart(b.timeUntilStart);
+      final daysComparison = daysA.compareTo(daysB);
+      if (daysComparison != 0) return daysComparison;
 
       // THIRD PRIORITY: Title alphabetically
       return a.title.toLowerCase().compareTo(b.title.toLowerCase());
