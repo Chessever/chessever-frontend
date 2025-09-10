@@ -32,7 +32,7 @@ class GamesErrorWidget extends ConsumerWidget {
           SizedBox(height: 16.h),
           ElevatedButton(
             onPressed: () async {
-              await ref.read(gamesAppBarProvider.notifier).refreshRounds();
+              await ref.read(gamesAppBarProvider.notifier).refresh();
               await ref.read(gamesTourScreenProvider.notifier).refreshGames();
             },
             child: const Text('Retry'),
