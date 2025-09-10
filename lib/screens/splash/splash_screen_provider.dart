@@ -23,6 +23,9 @@ class _SplashScreenProvider {
       ref
           .read(groupBroadcastLocalStorage(GroupEventCategory.upcoming))
           .fetchAndSaveGroupBroadcasts(),
+      ref
+          .read(groupBroadcastLocalStorage(GroupEventCategory.past))
+          .fetchAndSaveGroupBroadcasts(),
     ]);
 
     //Fetch all starred tournament

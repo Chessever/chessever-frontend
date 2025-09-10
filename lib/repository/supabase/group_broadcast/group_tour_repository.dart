@@ -64,6 +64,33 @@ class GroupBroadcastRepository extends BaseRepository {
     });
   }
 
+  Future<List<GroupBroadcast>> getPastGroupBroadcasts({
+    int? limit,
+    int? offset,
+    String orderBy = 'max_avg_elo',
+    bool ascending = false,
+  }) async {
+    return handleApiCall(() async {
+      PostgrestTransformBuilder<PostgrestList> query =
+          supabase.from('group_broadcasts_past').select();
+
+      query = query.order(orderBy, ascending: ascending);
+
+      if (limit != null) {
+        query = query.limit(limit);
+      }
+
+      if (offset != null) {
+        query = query.range(offset, offset + (limit ?? 100) - 1);
+      }
+
+      final response = await query;
+      return (response as List)
+          .map((json) => GroupBroadcast.fromJson(json))
+          .toList();
+    });
+  }
+
   /// Fetch a single group broadcast by its [id]
   Future<GroupBroadcast> getGroupBroadcastById(String id) async {
     return handleApiCall(() async {
@@ -167,6 +194,25 @@ class GroupBroadcastRepository extends BaseRepository {
       return (response as List)
           .map((json) => GroupBroadcast.fromJson(json))
           .toList();
+    });
+  }
+
+  Future<List<GroupBroadcast>> searchGroupBroadcastsFromSupabase(
+    String query,
+  ) async {
+    if (query.trim().isEmpty) return [];
+
+    final q = query.trim().toLowerCase();
+
+    return handleApiCall(() async {
+      final res = await supabase
+          .from('group_broadcasts')
+          .select()
+          .or('name.ilike.%$q%,search.cs.{$q}')
+          .order('max_avg_elo', ascending: false)
+          .limit(10);
+
+      return (res as List).map((e) => GroupBroadcast.fromJson(e)).toList();
     });
   }
 }

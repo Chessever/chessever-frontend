@@ -1,7 +1,6 @@
 // Games Search Overlay Widget
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search.dart';
 import 'package:flutter/material.dart';
@@ -19,7 +18,8 @@ class GamesSearchOverlay extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final selectedTourId = ref.watch(selectedTourIdProvider);
+    final selectedTourId =
+        ref.watch(tourDetailScreenProvider).value?.aboutTourModel.id;
 
     if (selectedTourId == null) {
       return _buildErrorState('No tournament selected');

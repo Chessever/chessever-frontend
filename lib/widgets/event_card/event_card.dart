@@ -88,8 +88,10 @@ class EventCard extends ConsumerWidget {
                           _buildDot(),
                         ],
                         TextSpan(text: tourEventCardModel.timeControl),
-                        _buildDot(),
-                        TextSpan(text: "Ø ${tourEventCardModel.maxAvgElo}"),
+                        if (tourEventCardModel.maxAvgElo > 0) ...[
+                          _buildDot(),
+                          TextSpan(text: "Ø ${tourEventCardModel.maxAvgElo}"),
+                        ],
                       ],
                     ),
                   ),

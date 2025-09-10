@@ -11,7 +11,7 @@ final groupBroadcastLocalStorage = Provider.family<
   GroupEventCategory
 >((ref, category) => GroupBroadcastLocalStorage(ref: ref, category: category));
 
-enum _LocalGroupBroadcastStorage { upcoming, current }
+enum _LocalGroupBroadcastStorage { upcoming, current, past }
 
 class GroupBroadcastLocalStorage {
   GroupBroadcastLocalStorage({required this.ref, required this.category});
@@ -19,23 +19,42 @@ class GroupBroadcastLocalStorage {
   final Ref ref;
   final GroupEventCategory category;
 
-  String get localStorageName =>
-      category == GroupEventCategory.upcoming
-          ? _LocalGroupBroadcastStorage.upcoming.name
-          : _LocalGroupBroadcastStorage.current.name;
+  String get localStorageName {
+    switch (category) {
+      case GroupEventCategory.upcoming:
+        return _LocalGroupBroadcastStorage.upcoming.name;
+      case GroupEventCategory.current:
+        return _LocalGroupBroadcastStorage.current.name;
+      case GroupEventCategory.past:
+        return _LocalGroupBroadcastStorage.past.name;
+    }
+  }
 
   Future<void> fetchAndSaveGroupBroadcasts() async {
     try {
-      final broadcasts =
-          category == GroupEventCategory.upcoming
-              ? await ref
+      final broadcasts;
+      switch (category) {
+        case GroupEventCategory.upcoming:
+          broadcasts =
+              await ref
                   .read(groupBroadcastRepositoryProvider)
-                  .getUpcomingGroupBroadcasts()
-              : await ref
+                  .getUpcomingGroupBroadcasts();
+          break;
+        case GroupEventCategory.current:
+          broadcasts =
+              await ref
                   .read(groupBroadcastRepositoryProvider)
                   .getCurrentGroupBroadcasts();
+          break;
+        case GroupEventCategory.past:
+          broadcasts =
+              await ref
+                  .read(groupBroadcastRepositoryProvider)
+                  .getPastGroupBroadcasts();
+          break;
+      }
 
-      broadcasts.sort((a, b) {
+      broadcasts.sort((GroupBroadcast a, GroupBroadcast b) {
         // If both have null maxAvgElo, maintain original order
         if (a.maxAvgElo == null && b.maxAvgElo == null) return 0;
 

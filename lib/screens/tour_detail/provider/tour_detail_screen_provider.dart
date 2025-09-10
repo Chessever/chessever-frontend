@@ -9,18 +9,15 @@ import 'package:chessever2/screens/tour_detail/provider/interface/itour_detail_p
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-// State providers
-final selectedTourIdProvider = StateProvider<String?>((ref) => null);
-
 final tourDetailScreenProvider = StateNotifierProvider<
-  TourDetailScreenNotifier,
+  _TourDetailScreenNotifier,
   AsyncValue<TourDetailViewModel>
 >((ref) {
   final groupBroadcast = ref.read(selectedBroadcastModelProvider)!;
   final liveTourIdAsync = ref.watch(liveTourIdProvider);
   final liveTourId = liveTourIdAsync.valueOrNull ?? <String>[];
 
-  return TourDetailScreenNotifier(
+  return _TourDetailScreenNotifier(
     ref: ref,
     groupBroadcast: groupBroadcast,
     liveTourId: liveTourId,
@@ -28,27 +25,21 @@ final tourDetailScreenProvider = StateNotifierProvider<
 });
 
 // Main provider implementation
-class TourDetailScreenNotifier
+class _TourDetailScreenNotifier
     extends StateNotifier<AsyncValue<TourDetailViewModel>>
     implements ITourDetailProvider {
-  TourDetailScreenNotifier({
+  _TourDetailScreenNotifier({
     required this.ref,
     required this.groupBroadcast,
     required this.liveTourId,
   }) : super(const AsyncValue.loading()) {
-    _initialize();
+    loadTourDetails();
   }
 
   final Ref ref;
   final GroupBroadcast groupBroadcast;
   final List<String> liveTourId;
 
-  // Private initialization method
-  void _initialize() {
-    loadTourDetails();
-  }
-
-  @override
   @override
   Future<void> loadTourDetails() async {
     if (!mounted) return;
@@ -105,8 +96,6 @@ class TourDetailScreenNotifier
         _logWarning('Cannot find tour with ID: $tourId');
         return;
       }
-
-      _updateSelectedTourId(tourId);
       final updatedViewModel = _createViewModelFromExisting(
         currentState,
         selectedTourModel.tour,
@@ -172,11 +161,10 @@ class TourDetailScreenNotifier
   }
 
   Tour _determineSelectedTour(List<TourModel> tourModels) {
-    final currentSelectedId = ref.read(selectedTourIdProvider);
 
     // Check if current selection is still valid
-    if (currentSelectedId != null) {
-      final validSelectedTour = _findTourModel(tourModels, currentSelectedId);
+    if (state.value?.aboutTourModel != null) {
+      final validSelectedTour = _findTourModel(tourModels, state.value!.aboutTourModel.id);
       if (validSelectedTour != null) {
         return validSelectedTour.tour;
       }
@@ -184,13 +172,11 @@ class TourDetailScreenNotifier
 
     // Find best tour based on priority
     final selectedModel = _findBestTour(tourModels);
-    _updateSelectedTourId(selectedModel.tour.id);
 
     return selectedModel.tour;
   }
 
   TourModel _findBestTour(List<TourModel> tourModels) {
-    // Priority: live tours > ongoing > upcoming > completed
     final liveTour =
         tourModels
             .where((model) => liveTourId.contains(model.tour.id))
@@ -235,14 +221,8 @@ class TourDetailScreenNotifier
     );
   }
 
-  void _updateSelectedTourId(String tourId) {
-    ref.read(selectedTourIdProvider.notifier).state = tourId;
-  }
-
   void _setDataState(TourDetailViewModel viewModel) {
-    if (mounted) {
-      state = AsyncValue.data(viewModel);
-    }
+    state = AsyncValue.data(viewModel);
   }
 
   void _setErrorState(Object error, [StackTrace? stackTrace]) {

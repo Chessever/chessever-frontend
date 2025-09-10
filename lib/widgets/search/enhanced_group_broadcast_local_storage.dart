@@ -16,6 +16,11 @@ class EnhancedSearchResult {
     required this.playerResults,
     this.allPlayers = const [],
   });
+    factory EnhancedSearchResult.empty() => const EnhancedSearchResult(
+        tournamentResults: [],
+        playerResults: [],
+        allPlayers: [],
+      );
 
   int get totalResults => tournamentResults.length + playerResults.length;
 

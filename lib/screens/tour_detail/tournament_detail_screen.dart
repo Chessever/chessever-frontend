@@ -1,5 +1,7 @@
 import 'package:chessever2/repository/supabase/tour/tour.dart';
+import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen.dart';
 import 'package:chessever2/screens/tour_detail/about_tour_screen.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/views/games_tour_screen.dart';
@@ -29,13 +31,7 @@ class TournamentDetailScreen extends ConsumerStatefulWidget {
 
 class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen> {
   late PageController pageController;
-
-  // Define the pages for the PageView
-  final List<Widget> _pages = const [
-    AboutTourScreen(),
-    GamesTourScreen(),
-    PlayerTourScreen(),
-  ];
+  final scrollController = ScrollController();
 
   @override
   void initState() {
@@ -52,12 +48,13 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen> {
   void _cleanupProviders() {
     try {
       ref.invalidate(selectedTourModeProvider);
-      ref.invalidate(selectedTourIdProvider);
+      ref.invalidate(gamesTourProvider);
       ref.invalidate(selectedBroadcastModelProvider);
       ref.invalidate(userSelectedRoundProvider);
       ref.invalidate(tourDetailScreenProvider);
       ref.invalidate(gamesAppBarProvider);
       ref.invalidate(scrollStateProvider);
+      ref.invalidate(searchQueryProvider);
     } catch (e) {
       // Ignore errors during cleanup
       print('Error during provider cleanup: $e');
@@ -67,6 +64,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen> {
   @override
   void dispose() {
     pageController.dispose();
+    scrollController.dispose();
     super.dispose();
   }
 
@@ -88,20 +86,23 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen> {
             Expanded(
               child: PageView.builder(
                 controller: pageController,
-                itemCount: _pages.length,
-                onPageChanged: (index) => _handlePageChanged(index),
+                itemCount: 3,
+                onPageChanged: _handlePageChanged,
                 itemBuilder: (context, index) {
-                  // Return pages directly without error boundary
-                  if (index >= 0 && index < _pages.length) {
-                    return _pages[index];
+                  if (index == 0) {
+                    return AboutTourScreen();
+                  } else if (index == 1) {
+                    return GamesTourScreen(scrollController: scrollController);
+                  } else if (index == 2) {
+                    return PlayerTourScreen();
+                  } else {
+                    return Center(
+                      child: Text(
+                        'Invalid page index: $index',
+                        style: TextStyle(color: kWhiteColor),
+                      ),
+                    );
                   }
-                  // Fallback for invalid index
-                  return Center(
-                    child: Text(
-                      'Invalid page index: $index',
-                      style: TextStyle(color: kWhiteColor),
-                    ),
-                  );
                 },
               ),
             ),
@@ -209,8 +210,10 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
       return _buildErrorAppBar(context, 'No tournaments available');
     }
 
-    final selectedTourId = ref.watch(selectedTourIdProvider);
     final defaultTourId = data.tours.first.tour.id;
+    final selectedTourId =
+        ref.watch(tourDetailScreenProvider).value?.aboutTourModel.id ??
+        defaultTourId;
 
     return Row(
       children: [
@@ -227,7 +230,7 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
           width: 230.w,
           child: TextDropDownWidget(
             items: _buildDropdownItems(data.tours),
-            selectedId: selectedTourId ?? defaultTourId,
+            selectedId: selectedTourId,
             onChanged: (value) => _handleDropdownChange(ref, value),
           ),
         ),

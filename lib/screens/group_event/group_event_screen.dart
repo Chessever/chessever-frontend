@@ -17,9 +17,10 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../widgets/segmented_switcher.dart';
 
-enum GroupEventCategory { current, upcoming }
+enum GroupEventCategory { past, current, upcoming }
 
 final _mappedName = {
+  GroupEventCategory.past: 'Past',
   GroupEventCategory.current: 'Current',
   GroupEventCategory.upcoming: 'Upcoming',
 };
@@ -43,6 +44,9 @@ class GroupEventScreen extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final searchController = useTextEditingController();
     final selectedTourEvent = ref.watch(selectedGroupCategoryProvider);
+    final pageController = usePageController(
+      initialPage: GroupEventCategory.values.indexOf(selectedTourEvent),
+    );
 
     final isSearching = useState(false);
     final focusNode = useFocusNode();
@@ -52,6 +56,18 @@ class GroupEventScreen extends HookConsumerWidget {
       focusNode.addListener(onFocus);
       return () => focusNode.removeListener(onFocus);
     }, [focusNode]);
+
+    useEffect(() {
+      final newIndex = GroupEventCategory.values.indexOf(selectedTourEvent);
+      if (pageController.hasClients) {
+        pageController.animateToPage(
+          newIndex,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+      }
+      return null;
+    }, [selectedTourEvent]);
 
     return RefreshIndicator(
       onRefresh: ref.read(homeScreenProvider).onPullRefresh,
@@ -126,10 +142,20 @@ class GroupEventScreen extends HookConsumerWidget {
                         initialSelection: _mappedName.values.toList().indexOf(
                           _mappedName[selectedTourEvent]!,
                         ),
+                        currentSelection: _mappedName.values.toList().indexOf(
+                          _mappedName[selectedTourEvent]!,
+                        ),
                         onSelectionChanged: (index) {
+                          final newCategory = GroupEventCategory.values[index];
                           ref
                               .read(selectedGroupCategoryProvider.notifier)
-                              .state = GroupEventCategory.values[index];
+                              .state = newCategory;
+
+                          pageController.animateToPage(
+                            index,
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                          );
                         },
                       ),
                     );
@@ -138,63 +164,79 @@ class GroupEventScreen extends HookConsumerWidget {
 
             SizedBox(height: 12.h),
 
-            ref
-                .watch(groupEventScreenProvider)
-                .when(
-                  data: (filteredEvents) {
-                    final favorites = ref.watch(starredProvider);
-                    final isSearching = searchController.text.trim().isNotEmpty;
-                    List<GroupEventCardModel> finalEvents;
-                    if (isSearching) {
-                      finalEvents = filteredEvents;
-                    } else {
-                      finalEvents = ref
-                          .read(tournamentSortingServiceProvider)
-                          .sortBasedOnFavorite(
-                            tours: filteredEvents,
-                            favorites: favorites,
-                          );
-                    }
+            Expanded(
+              child: PageView.builder(
+                controller: pageController,
+                itemCount: GroupEventCategory.values.length,
+                onPageChanged: (index) {
+                  final newCategory = GroupEventCategory.values[index];
+                  ref.read(selectedGroupCategoryProvider.notifier).state =
+                      newCategory;
+                },
+                itemBuilder: (context, index) {
+                  return Consumer(
+                    builder: (context, ref, child) {
+                      return ref
+                          .watch(groupEventScreenProvider)
+                          .when(
+                            data: (filteredEvents) {
+                              final favorites = ref.watch(starredProvider);
+                              final isSearching =
+                                  searchController.text.trim().isNotEmpty;
+                              List<GroupEventCardModel> finalEvents;
 
-                    return Expanded(
-                      child: AllEventsTabWidget(
-                        filteredEvents: finalEvents,
-                        onSelect:
-                            (tourEventCardModel) => ref
-                                .read(groupEventScreenProvider.notifier)
-                                .onSelectTournament(
-                                  context: context,
-                                  id: tourEventCardModel.id,
+                              if (isSearching) {
+                                finalEvents = filteredEvents;
+                              } else {
+                                finalEvents = ref
+                                    .read(tournamentSortingServiceProvider)
+                                    .sortBasedOnFavorite(
+                                      tours: filteredEvents,
+                                      favorites: favorites,
+                                    );
+                              }
+
+                              return AllEventsTabWidget(
+                                filteredEvents: finalEvents,
+                                onSelect:
+                                    (tourEventCardModel) => ref
+                                        .read(groupEventScreenProvider.notifier)
+                                        .onSelectTournament(
+                                          context: context,
+                                          id: tourEventCardModel.id,
+                                        ),
+                              );
+                            },
+                            loading: () {
+                              return SkeletonWidget(
+                                child: AllEventsTabWidget(
+                                  onSelect: (_) {},
+                                  filteredEvents: List.generate(
+                                    10,
+                                    (index) => GroupEventCardModel(
+                                      id: 'tour_001',
+                                      title: 'World Chess Championship 2025',
+                                      dates: 'Mar 15 - 25,2025',
+                                      timeUntilStart: 'Starts in 8 months',
+                                      tourEventCategory:
+                                          TourEventCategory.values[Random()
+                                              .nextInt(
+                                                TourEventCategory.values.length,
+                                              )],
+                                      maxAvgElo: 0,
+                                      timeControl: 'Standard',
+                                    ),
+                                  ),
                                 ),
-                      ),
-                    );
-                  },
-                  loading: () {
-                    return Expanded(
-                      child: SkeletonWidget(
-                        child: AllEventsTabWidget(
-                          onSelect: (_) {},
-                          filteredEvents: List.generate(
-                            10,
-                            (index) => GroupEventCardModel(
-                              id: 'tour_001',
-                              title: 'World Chess Championship 2025',
-                              dates: 'Mar 15 - 25,2025',
-                              timeUntilStart: 'Starts in 8 months',
-                              tourEventCategory:
-                                  TourEventCategory.values[Random().nextInt(
-                                    TourEventCategory.values.length,
-                                  )],
-                              maxAvgElo: 0,
-                              timeControl: 'Standard',
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                  error: (error, stackTrace) => GenericErrorWidget(),
-                ),
+                              );
+                            },
+                            error: (error, stackTrace) => GenericErrorWidget(),
+                          );
+                    },
+                  );
+                },
+              ),
+            ),
           ],
         ),
       ),

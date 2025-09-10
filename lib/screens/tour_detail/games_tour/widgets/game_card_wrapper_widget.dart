@@ -42,10 +42,11 @@ class GameCardWrapperWidget extends ConsumerWidget {
         );
   }
 
-  void _navigateToChessBoard(BuildContext context, WidgetRef ref) {
+  void _navigateToChessBoard(BuildContext context, WidgetRef ref) async {
     ref.read(chessboardViewFromProviderNew.notifier).state =
         ChessboardView.tour;
-    Navigator.push(
+
+    final lastViewedIndex = await Navigator.push<int>(
       context,
       MaterialPageRoute(
         builder:
@@ -55,6 +56,14 @@ class GameCardWrapperWidget extends ConsumerWidget {
             ),
       ),
     );
+
+    if (lastViewedIndex != null && context.mounted) {
+      ref
+          .read(gamesTourScreenProvider.notifier)
+          .setLastViewedGameIndex(lastViewedIndex);
+    } else {
+      ref.read(scrollToGameIndexProvider.notifier).state = null;
+    }
   }
 
   Future<void> _handlePinToggle(WidgetRef ref) async {
