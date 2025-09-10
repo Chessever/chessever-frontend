@@ -20,7 +20,9 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/top_most_visible_item_model.dart';
 
 class GamesTourScreen extends ConsumerStatefulWidget {
-  const GamesTourScreen({super.key});
+  const GamesTourScreen({required this.scrollController, super.key});
+
+  final ScrollController scrollController;
 
   @override
   ConsumerState<ConsumerStatefulWidget> createState() =>
@@ -28,7 +30,6 @@ class GamesTourScreen extends ConsumerStatefulWidget {
 }
 
 class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
-  late ScrollController _scrollController;
   final Map<String, GlobalKey> _headerKeys = {};
   final Map<String, List<GlobalKey>> _gameKeys = {};
 
@@ -42,7 +43,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
   @override
   void initState() {
     super.initState();
-    _scrollController = ScrollController();
     setupScrollListener(); // Using extension method
     setupViewSwitchListener(); // Using extension method
     setupScrollToGameListener();
@@ -81,7 +81,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
   @override
   void dispose() {
     _visibilityCheckTimer?.cancel();
-    _scrollController.dispose();
     super.dispose();
   }
 
@@ -164,7 +163,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
                 if (targetRound != null) {
                   ref
                       .read(gamesAppBarProvider.notifier)
-                      .selectNewRoundSilently(targetRound);
+                      .selectSilently(targetRound);
                 }
               }
             }
@@ -203,7 +202,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
             child: GamesTourContentBody(
               gamesScreenModel: data,
               isChessBoardVisible: isChessBoardVisible,
-              scrollController: _scrollController,
+              scrollController: widget.scrollController,
               getHeaderKey: getHeaderKey,
               getGameKey: getGameKey,
             ),
@@ -299,9 +298,7 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
         if (visibleRounds.isNotEmpty) {
           final targetRound = visibleRounds.reversed.first;
           targetRoundId = targetRound.id;
-          ref
-              .read(gamesAppBarProvider.notifier)
-              .selectNewRoundSilently(targetRound);
+          ref.read(gamesAppBarProvider.notifier).selectSilently(targetRound);
         }
       }
     }
@@ -341,7 +338,7 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
     ref.read(scrollStateProvider.notifier).updateSelectedRound(roundId);
 
     try {
-      if (!_scrollController.hasClients) {
+      if (!widget.scrollController.hasClients) {
         return;
       }
 
@@ -390,7 +387,7 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
   }
 
   void setupScrollListener() {
-    _scrollController.addListener(() {
+    widget.scrollController.addListener(() {
       if (!_isScrolling && !_isViewSwitching && !_isProgrammaticScroll) {
         _isScrolling = true;
         ref.read(scrollStateProvider.notifier).setUserScrolling(true);
@@ -414,7 +411,7 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
   }
 
   void handleViewSwitch() {
-    if (!mounted || !_scrollController.hasClients) {
+    if (!mounted || !widget.scrollController.hasClients) {
       return;
     }
 
@@ -450,7 +447,9 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
     }
 
     final currentScrollOffset =
-        _scrollController.hasClients ? _scrollController.offset : 0.0;
+        widget.scrollController.hasClients
+            ? widget.scrollController.offset
+            : 0.0;
 
     final rounds = ref.read(gamesAppBarProvider).value?.gamesAppBarModels ?? [];
     final visibleRounds =
@@ -542,7 +541,7 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
   ) async {
     await Future.delayed(const Duration(milliseconds: 400));
 
-    if (!mounted || !_scrollController.hasClients) {
+    if (!mounted || !widget.scrollController.hasClients) {
       _isViewSwitching = false;
       return;
     }
@@ -569,10 +568,10 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
     final desiredRelativePosition = item.relativePosition ?? 0.0;
 
     final targetOffset = calculateTargetScrollOffsetForGame(item);
-    if (targetOffset != null && _scrollController.hasClients) {
-      final maxOffset = _scrollController.position.maxScrollExtent;
+    if (targetOffset != null && widget.scrollController.hasClients) {
+      final maxOffset = widget.scrollController.position.maxScrollExtent;
       final clampedOffset = targetOffset.clamp(0.0, maxOffset);
-      _scrollController.jumpTo(clampedOffset);
+      widget.scrollController.jumpTo(clampedOffset);
       await Future.delayed(const Duration(milliseconds: 300));
     }
 
@@ -580,7 +579,7 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
     for (int retry = 0; retry < 15; retry++) {
       await Future.delayed(const Duration(milliseconds: 100));
 
-      if (!mounted || !_scrollController.hasClients) break;
+      if (!mounted || !widget.scrollController.hasClients) break;
 
       if (gameKey.currentContext != null) {
         try {
@@ -602,12 +601,12 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
               break;
             }
 
-            final currentOffset = _scrollController.offset;
+            final currentOffset = widget.scrollController.offset;
             final newOffset = currentOffset + adjustment;
-            final maxOffset = _scrollController.position.maxScrollExtent;
+            final maxOffset = widget.scrollController.position.maxScrollExtent;
             final clampedOffset = newOffset.clamp(0.0, maxOffset);
 
-            _scrollController.jumpTo(clampedOffset);
+            widget.scrollController.jumpTo(clampedOffset);
           }
         } catch (e) {
           debugPrint(
@@ -641,17 +640,17 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
     final desiredRelativePosition = item.relativePosition ?? 0.0;
 
     final targetOffset = calculateTargetScrollOffset(item);
-    if (targetOffset != null && _scrollController.hasClients) {
-      final maxOffset = _scrollController.position.maxScrollExtent;
+    if (targetOffset != null && widget.scrollController.hasClients) {
+      final maxOffset = widget.scrollController.position.maxScrollExtent;
       final clampedOffset = targetOffset.clamp(0.0, maxOffset);
-      _scrollController.jumpTo(clampedOffset);
+      widget.scrollController.jumpTo(clampedOffset);
       await Future.delayed(const Duration(milliseconds: 200));
     }
 
     for (int retry = 0; retry < 10; retry++) {
       await Future.delayed(const Duration(milliseconds: 100));
 
-      if (!mounted || !_scrollController.hasClients) break;
+      if (!mounted || !widget.scrollController.hasClients) break;
 
       if (headerKey.currentContext != null) {
         try {
@@ -671,12 +670,12 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
               break;
             }
 
-            final currentOffset = _scrollController.offset;
+            final currentOffset = widget.scrollController.offset;
             final newOffset = currentOffset + adjustment;
-            final maxOffset = _scrollController.position.maxScrollExtent;
+            final maxOffset = widget.scrollController.position.maxScrollExtent;
             final clampedOffset = newOffset.clamp(0.0, maxOffset);
 
-            _scrollController.jumpTo(clampedOffset);
+            widget.scrollController.jumpTo(clampedOffset);
           }
         } catch (e) {
           debugPrint('[GamesTourScreen] Header positioning error: $e');
@@ -795,8 +794,8 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
         }
       }
 
-      if (_scrollController.hasClients) {
-        final maxOffset = _scrollController.position.maxScrollExtent;
+      if (widget.scrollController.hasClients) {
+        final maxOffset = widget.scrollController.position.maxScrollExtent;
         calculatedOffset = calculatedOffset.clamp(0.0, maxOffset);
       }
 
@@ -856,8 +855,8 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
         }
       }
 
-      if (_scrollController.hasClients) {
-        final maxOffset = _scrollController.position.maxScrollExtent;
+      if (widget.scrollController.hasClients) {
+        final maxOffset = widget.scrollController.position.maxScrollExtent;
         calculatedOffset = calculatedOffset.clamp(0.0, maxOffset);
       }
 
@@ -1053,7 +1052,7 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
     ref.read(scrollStateProvider.notifier).updateSelectedRound(roundId);
 
     try {
-      if (!_scrollController.hasClients) {
+      if (!widget.scrollController.hasClients) {
         return;
       }
 
@@ -1061,7 +1060,7 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
       final position = calculateScrollPositionForRound(roundId);
 
       if (position != null && position >= 0) {
-        _scrollController.jumpTo(position);
+        widget.scrollController.jumpTo(position);
       }
 
       bool found = false;
@@ -1176,9 +1175,9 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
           position += roundGamesHeight;
         }
 
-        if (_scrollController.hasClients &&
-            position > _scrollController.position.maxScrollExtent) {
-          return _scrollController.position.maxScrollExtent;
+        if (widget.scrollController.hasClients &&
+            position > widget.scrollController.position.maxScrollExtent) {
+          return widget.scrollController.position.maxScrollExtent;
         }
       }
 
@@ -1195,7 +1194,7 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
       futures.add(
         ref.read(tourDetailScreenProvider.notifier).refreshTourDetails(),
       );
-      futures.add(ref.read(gamesAppBarProvider.notifier).refreshRounds());
+      futures.add(ref.read(gamesAppBarProvider.notifier).refresh());
       futures.add(ref.read(gamesTourScreenProvider.notifier).refreshGames());
       await Future.wait(futures);
       _isInitialized = false;

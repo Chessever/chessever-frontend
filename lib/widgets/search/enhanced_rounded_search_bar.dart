@@ -8,6 +8,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/search/search_overlay_widget.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
+import 'package:easy_debounce/easy_debounce.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -97,6 +98,7 @@ class _EnhancedRoundedSearchBarState
     _effectiveNode.removeListener(_onFocusChange);
     if (widget.focusNode == null) _internalFocusNode.dispose();
     widget.controller.removeListener(_onTextChange);
+    EasyDebounce.cancel('search_debounce');
     _overlayController.dispose();
     _searchBarController.dispose();
     super.dispose();
@@ -124,6 +126,7 @@ class _EnhancedRoundedSearchBarState
   void _onTextChange() {
     final hasText = widget.controller.text.isNotEmpty;
     ref.read(isSearchingProvider.notifier).state = hasText;
+    ref.read(searchQueryProvider.notifier).state = widget.controller.text;
     if (hasText != _showOverlay && _effectiveNode.hasFocus) {
       setState(() {
         _showOverlay = hasText;
@@ -135,7 +138,11 @@ class _EnhancedRoundedSearchBarState
         _overlayController.reverse();
       }
     }
-    widget.onChanged?.call(widget.controller.text);
+    EasyDebounce.debounce(
+      'search_debounce',
+      const Duration(milliseconds: 400),
+      () => widget.onChanged?.call(widget.controller.text),
+    );
   }
 
   void _hideOverlay() {

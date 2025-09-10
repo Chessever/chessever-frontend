@@ -6,6 +6,7 @@ import '../utils/app_typography.dart';
 class SegmentedSwitcher extends StatefulWidget {
   final List<String> options;
   final int initialSelection;
+  final int? currentSelection;
   final Function(int) onSelectionChanged;
   final Color? backgroundColor;
   final Color? selectedBackgroundColor;
@@ -19,6 +20,7 @@ class SegmentedSwitcher extends StatefulWidget {
     super.key,
     required this.options,
     this.initialSelection = 0,
+    this.currentSelection, // Add this parameter
     required this.onSelectionChanged,
     this.backgroundColor,
     this.selectedBackgroundColor,
@@ -28,9 +30,9 @@ class SegmentedSwitcher extends StatefulWidget {
     this.textStyle,
     this.selectedTextStyle,
   }) : assert(
-  initialSelection >= 0 && initialSelection < options.length,
-  'initialSelection must be within options range',
-  );
+         initialSelection >= 0 && initialSelection < options.length,
+         'initialSelection must be within options range',
+       );
 
   @override
   State<SegmentedSwitcher> createState() => _SegmentedSwitcherState();
@@ -50,8 +52,8 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher>
   @override
   void initState() {
     super.initState();
-    _selectedIndex = widget.initialSelection;
-    _previousIndex = widget.initialSelection;
+    _selectedIndex = widget.currentSelection ?? widget.initialSelection;
+    _previousIndex = widget.currentSelection ?? widget.initialSelection;
 
     // Main slide animation controller
     _animationController = AnimationController(
@@ -69,23 +71,35 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher>
     _slideAnimation = Tween<double>(
       begin: 0.0,
       end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeInOutCubic,
-    ));
+    ).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: Curves.easeInOutCubic,
+      ),
+    );
 
     // Text fade animation
     _textFadeAnimation = Tween<double>(
       begin: 0.0,
       end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _textAnimationController,
-      curve: Curves.easeInOut,
-    ));
+    ).animate(
+      CurvedAnimation(
+        parent: _textAnimationController,
+        curve: Curves.easeInOut,
+      ),
+    );
 
-    // Start with animation completed
     _animationController.value = 1.0;
     _textAnimationController.value = 1.0;
+  }
+
+  @override
+  void didUpdateWidget(SegmentedSwitcher oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.currentSelection != null &&
+        widget.currentSelection != _selectedIndex) {
+      _onSelectionChanged(widget.currentSelection!, fromExternal: true);
+    }
   }
 
   @override
@@ -95,7 +109,7 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher>
     super.dispose();
   }
 
-  void _onSelectionChanged(int index) {
+  void _onSelectionChanged(int index, {bool fromExternal = false}) {
     if (index == _selectedIndex) return;
 
     setState(() {
@@ -110,7 +124,9 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher>
     _animationController.forward();
     _textAnimationController.forward();
 
-    widget.onSelectionChanged(index);
+    if (!fromExternal) {
+      widget.onSelectionChanged(index);
+    }
   }
 
   @override
@@ -124,10 +140,10 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher>
 
     final defaultTextStyle =
         widget.textStyle ??
-            AppTypography.textSmMedium.copyWith(color: textColor);
+        AppTypography.textSmMedium.copyWith(color: textColor);
     final defaultSelectedTextStyle =
         widget.selectedTextStyle ??
-            AppTypography.textSmMedium.copyWith(color: selectedTextColor);
+        AppTypography.textSmMedium.copyWith(color: selectedTextColor);
 
     return Container(
       height: 40.h,
@@ -156,10 +172,12 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher>
                         duration: const Duration(milliseconds: 250),
                         curve: Curves.easeInOutCubic,
                         decoration: BoxDecoration(
-                          color: isSelected
-                              ? selectedBackgroundColor.withOpacity(
-                              0.3 + (0.7 * _slideAnimation.value))
-                              : Colors.transparent,
+                          color:
+                              isSelected
+                                  ? selectedBackgroundColor.withOpacity(
+                                    0.3 + (0.7 * _slideAnimation.value),
+                                  )
+                                  : Colors.transparent,
                           borderRadius: BorderRadius.only(
                             topLeft: Radius.circular(leftSize),
                             bottomLeft: Radius.circular(leftSize),
@@ -201,11 +219,15 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher>
                         child: AnimatedDefaultTextStyle(
                           duration: const Duration(milliseconds: 200),
                           curve: Curves.easeInOut,
-                          style: (isSelected ? defaultSelectedTextStyle : defaultTextStyle)
+                          style: (isSelected
+                                  ? defaultSelectedTextStyle
+                                  : defaultTextStyle)
                               .copyWith(
-                            color: (isSelected ? selectedTextColor : textColor)
-                                .withOpacity(textOpacity),
-                          ),
+                                color: (isSelected
+                                        ? selectedTextColor
+                                        : textColor)
+                                    .withOpacity(textOpacity),
+                              ),
                           child: Text(
                             widget.options[index],
                             maxLines: 1,
