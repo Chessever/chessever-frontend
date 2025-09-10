@@ -7,7 +7,7 @@ import '../../../widgets/search/search_result_model.dart';
 import '../model/tour_event_card_model.dart';
 
 final supabaseCombinedSearchProvider =
-    FutureProvider.family<EnhancedSearchResult, String>(
+    AutoDisposeFutureProvider.family<EnhancedSearchResult, String>(
       (ref, query) async {
         if (query.trim().isEmpty) return EnhancedSearchResult.empty();
 

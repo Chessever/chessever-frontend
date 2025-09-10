@@ -26,6 +26,7 @@ final liveIdsProvider = Provider<List<String>>(
 
 final selectedPlayerNameProvider = StateProvider<String?>((ref) => null);
 final isSearchingProvider = StateProvider<bool>((ref) => false);
+final searchQueryProvider = StateProvider<String>((ref) => '');
 
 final supabaseSearchProvider =
     FutureProvider.family<List<GroupBroadcast>, String>(

@@ -27,7 +27,7 @@ class RoundDropDown extends ConsumerWidget {
                 rounds: data.gamesAppBarModels,
                 selectedRoundId: data.selectedId,
                 onChanged: (model) {
-                  ref.read(gamesAppBarProvider.notifier).selectNewRound(model);
+                  ref.read(gamesAppBarProvider.notifier).select(model);
                 },
               );
             },
