@@ -25,7 +25,7 @@ class GamesTourContentBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tourId = ref.watch(selectedTourIdProvider);
+    final tourId = ref.watch(tourDetailScreenProvider).value?.aboutTourModel.id;
     final tourDetails = ref.watch(tourDetailScreenProvider);
 
     if (tourId == null ||
