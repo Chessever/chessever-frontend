@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_visibility_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_body.dart';
@@ -46,9 +47,40 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     setupScrollListener(); // Using extension method
     setupViewSwitchListener(); // Using extension method
     setupScrollToGameListener();
+    setupRoundScrollListener(); // Add this new listener
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       synchronizeInitialSelection(); // Using extension method
+    });
+  }
+
+  void setupRoundScrollListener() {
+    ref.listenManual<int?>(roundScrollPositionProvider, (_, next) {
+      if (next == null) return;
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+
+        debugPrint('🎯 Received scroll to index: $next');
+
+        final games =
+            ref.read(gamesTourScreenProvider).valueOrNull?.gamesTourModels;
+        if (games == null || next >= games.length) {
+          debugPrint('❌ Invalid scroll index or no games available');
+          return;
+        }
+
+        final game = games[next];
+        final roundId = game.roundId;
+
+        debugPrint('🎯 Scrolling to round: $roundId at index: $next');
+
+        // First try to scroll to the specific round header
+        scrollToRound(roundId);
+      });
+
+      // Clear the provider after handling
+      ref.read(roundScrollPositionProvider.notifier).state = null;
     });
   }
 
@@ -91,6 +123,21 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
 
     return gamesTourAsync.when(
       data: (data) {
+        final aboutTourModel =
+            ref.watch(tourDetailScreenProvider).valueOrNull?.aboutTourModel;
+
+        // Add loading check for dependencies before showing empty state
+        final tourDetailAsync = ref.watch(tourDetailScreenProvider);
+        final gamesAsync =
+            aboutTourModel != null
+                ? ref.watch(gamesTourProvider(aboutTourModel.id))
+                : const AsyncValue.loading();
+
+        // Don't show empty state if we're still loading dependencies
+        if (tourDetailAsync.isLoading || gamesAsync.isLoading) {
+          return const TourLoadingWidget();
+        }
+
         if (data.gamesTourModels.isEmpty) {
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -115,7 +162,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
           );
         }
 
-        // Listen to app bar changes and scroll to selected round
+        // Rest of the existing code remains the same...
         ref.listen<AsyncValue<GamesAppBarViewModel>>(gamesAppBarProvider, (
           previous,
           next,
@@ -183,7 +230,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
               _isProgrammaticScroll = false;
               Future.delayed(const Duration(milliseconds: 50), () {
                 if (mounted && !_isViewSwitching) {
-                  checkRoundContentVisibility(); // Using extension method
+                  checkRoundContentVisibility();
                   ref
                       .read(scrollStateProvider.notifier)
                       .setUserScrolling(false);

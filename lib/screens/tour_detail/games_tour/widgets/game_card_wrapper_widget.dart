@@ -6,7 +6,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-import '../../../chessboard/chess_board_screen_new.dart';
+import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 
 class GameCardWrapperWidget extends ConsumerWidget {
   final GamesTourModel game;
@@ -45,19 +45,24 @@ class GameCardWrapperWidget extends ConsumerWidget {
   void _navigateToChessBoard(BuildContext context, WidgetRef ref) async {
     ref.read(chessboardViewFromProviderNew.notifier).state =
         ChessboardView.tour;
+    final orderedGames = gamesData.gamesTourModels;
+
+    final indexToUse = gameIndex;
 
     final lastViewedIndex = await Navigator.push<int>(
       context,
       MaterialPageRoute(
         builder:
             (_) => ChessBoardScreenNew(
-              games: gamesData.gamesTourModels,
-              currentIndex: gameIndex,
+              games: orderedGames,
+              currentIndex: indexToUse,
             ),
       ),
     );
 
     if (lastViewedIndex != null && context.mounted) {
+      debugPrint('🎯 Returned from chess board - Index: $lastViewedIndex');
+
       ref
           .read(gamesTourScreenProvider.notifier)
           .setLastViewedGameIndex(lastViewedIndex);

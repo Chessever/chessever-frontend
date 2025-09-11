@@ -1,6 +1,7 @@
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/repository/local_storage/tournament/games/pin_games_local_storage.dart';
@@ -15,7 +16,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 final roundScrollPositionProvider = StateProvider<int?>((ref) => null);
 final scrollToGameIndexProvider = StateProvider<int?>((ref) => null);
 
-// Updated provider with listener-based approach
+// Updated provider with better null safety
 final gamesTourScreenProvider = StateNotifierProvider<
   GamesTourScreenProvider,
   AsyncValue<GamesScreenModel>
@@ -64,11 +65,14 @@ final gamesTourScreenProvider = StateNotifierProvider<
   if (gamesAsync.hasError) {
     return GamesTourScreenProvider.withError(
       ref: ref,
-      error: tourDetailAsync.error!,
+      error:
+          gamesAsync
+              .error!, // Fixed: use gamesAsync.error instead of tourDetailAsync.error
       allGames: [],
       pinndedIds: [],
     );
   }
+
   final games = gamesAsync.valueOrNull ?? [];
   final pinnedIds = ref.watch(gamesPinprovider).value ?? [];
 
@@ -149,23 +153,34 @@ class GamesTourScreenProvider
   }
 
   void _setupListeners() {
-    ref.listen<AsyncValue<dynamic>>(
+    // Only setup listeners if we have aboutTourModel (not in loading/error states)
+    if (aboutTourModel == null) return;
+
+    ref.listen<AsyncValue<GamesAppBarViewModel>>(
       gamesAppBarProvider,
       (previous, next) {
+        final previousSelected = previous?.valueOrNull?.selectedId;
         final newSelectedRound = next.valueOrNull?.selectedId;
+        final isUserSelected = next.valueOrNull?.userSelectedId ?? false;
 
-        if (newSelectedRound != _selectedRoundId) {
+        if (newSelectedRound != null &&
+            newSelectedRound != previousSelected &&
+            newSelectedRound != _selectedRoundId) {
           debugPrint(
-            '🔄 Round changed from $_selectedRoundId to $newSelectedRound',
+            '🔄 Round changed from $_selectedRoundId to $newSelectedRound (user: $isUserSelected)',
           );
           _selectedRoundId = newSelectedRound;
 
-          _updateScrollPositionForRound();
+          // Only update scroll position if this was a user selection or we need to sync
+          if (isUserSelected || previousSelected == null) {
+            _updateScrollPositionForRound();
+          }
         }
       },
     );
   }
 
+  // Rest of the methods remain the same...
   void _updateScrollPositionForRound() {
     if (_selectedRoundId == null || _isSearchMode) return;
 
@@ -351,13 +366,13 @@ class GamesTourScreenProvider
   // Find the first game index for a specific round
   int? _findFirstGameIndexForRound(List<GamesTourModel> games, String roundId) {
     for (int i = 0; i < games.length; i++) {
-        final originalGame = allGames.firstWhere(
-          (game) => game.id == games[i].gameId,
-          orElse: () => throw StateError('Game not found'),
-        );
-        if (originalGame.roundId == roundId) {
-          return i;
-        }
+      final originalGame = allGames.firstWhere(
+        (game) => game.id == games[i].gameId,
+        orElse: () => throw StateError('Game not found'),
+      );
+      if (originalGame.roundId == roundId) {
+        return i;
+      }
     }
     return null;
   }
@@ -377,7 +392,7 @@ class GamesTourScreenProvider
 
       // Store original games before entering search mode
       if (!_isSearchMode) {
-        _originalGamesBeforeSearch = List<Games>.from(allGames); 
+        _originalGamesBeforeSearch = List<Games>.from(allGames);
         debugPrint(
           '🔍 Stored original games: ${_originalGamesBeforeSearch!.length} games',
         );
