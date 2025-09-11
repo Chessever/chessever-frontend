@@ -63,7 +63,6 @@ class GamesTourMainContent extends ConsumerWidget {
     required this.gamesData,
     required this.isChessBoardVisible,
     required this.scrollController,
-
     required this.getHeaderKey,
     required this.getGameKey,
   });
@@ -72,9 +71,17 @@ class GamesTourMainContent extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final rounds =
         ref.watch(gamesAppBarProvider).value?.gamesAppBarModels ?? [];
+
     final gamesByRound = <String, List<GamesTourModel>>{};
+
+    for (final round in rounds) {
+      gamesByRound[round.id] = [];
+    }
+
     for (final game in gamesData.gamesTourModels) {
-      gamesByRound.putIfAbsent(game.roundId, () => []).add(game);
+      if (gamesByRound.containsKey(game.roundId)) {
+        gamesByRound[game.roundId]!.add(game);
+      }
     }
 
     final visibleRounds =
@@ -82,11 +89,24 @@ class GamesTourMainContent extends ConsumerWidget {
             .where((round) => (gamesByRound[round.id]?.isNotEmpty ?? false))
             .toList();
 
+    final orderedGamesForChessBoard = <GamesTourModel>[];
+
+    for (final round in visibleRounds.reversed) {
+      final roundGames = gamesByRound[round.id] ?? [];
+      orderedGamesForChessBoard.addAll(roundGames);
+    }
+
+    final orderedGamesData = GamesScreenModel(
+      gamesTourModels: orderedGamesForChessBoard,
+      pinnedGamedIs: gamesData.pinnedGamedIs,
+      scrollToIndex: gamesData.scrollToIndex,
+    );
+
     return GamesListView(
       key: ValueKey('games_list_${isChessBoardVisible ? 'chess' : 'card'}'),
       rounds: visibleRounds,
       gamesByRound: gamesByRound,
-      gamesData: gamesData,
+      gamesData: orderedGamesData,
       isChessBoardVisible: isChessBoardVisible,
       scrollController: scrollController,
       getHeaderKey: getHeaderKey,
