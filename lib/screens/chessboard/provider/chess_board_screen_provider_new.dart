@@ -53,6 +53,7 @@ class ChessBoardScreenNotifierNew
         fenData: game.fen,
       ),
     );
+    parseMoves();
   }
 
   void _setupPgnStreamListener() {
@@ -608,7 +609,7 @@ class ChessBoardScreenNotifierNew
 
       CloudEval? cloudEval;
       double evaluation = 0.0;
-print("Evaluating started for position: $fen");
+      print("Evaluating started for position: $fen");
       try {
         ref.invalidate(cascadeEvalProviderForBoard(fen));
         cloudEval = await ref.read(cascadeEvalProviderForBoard(fen).future);
@@ -619,18 +620,16 @@ print("Evaluating started for position: $fen");
       } catch (e) {
         print('Cascade eval failed, using local stockfish: $e');
         CloudEval result;
-        try{
+        try {
           var evaluatePosRes = await StockfishSingleton().evaluatePosition(
             fen,
             depth: 15, // Reduced depth for faster evaluation
           );
-          if(evaluatePosRes.isCancelled) {
+          if (evaluatePosRes.isCancelled) {
             print('Evaluation was cancelled for ${fen}');
             return;
-          }
-          else{
+          } else {
             print('Evaluation was successful for ${fen}');
-
           }
           result = CloudEval(
             fen: fen,
@@ -638,8 +637,7 @@ print("Evaluating started for position: $fen");
             depth: evaluatePosRes.depth,
             pvs: evaluatePosRes.pvs,
           );
-        }
-        catch(ex){
+        } catch (ex) {
           print('Stockfish evaluation failed for ${fen} with error: $ex');
           return;
         }

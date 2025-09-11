@@ -175,12 +175,12 @@ class GamesTourModel {
     );
   }
 
- Side? get activePlayer {
+  Side? get activePlayer {
     if (fen == null || fen!.isEmpty) return Side.white; // Default to white
-    
+
     try {
-       final setup = Setup.parseFen(fen!);
-       return setup.turn;
+      final setup = Setup.parseFen(fen!);
+      return setup.turn;
     } catch (e) {
       // Fallback if FEN is invalid
       return null;
