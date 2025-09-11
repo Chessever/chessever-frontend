@@ -162,7 +162,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
           );
         }
 
-        // Rest of the existing code remains the same...
+        // FIXED: Better listener for dropdown -> scroll synchronization
         ref.listen<AsyncValue<GamesAppBarViewModel>>(gamesAppBarProvider, (
           previous,
           next,
@@ -171,17 +171,26 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
 
           final previousSelected = previous?.valueOrNull?.selectedId;
           final currentSelected = next.valueOrNull?.selectedId;
+          final isUserSelected = next.valueOrNull?.userSelectedId ?? false;
 
+          // FIXED: Only scroll when user explicitly selects from dropdown
           if (currentSelected != null &&
               currentSelected != previousSelected &&
-              next.valueOrNull?.userSelectedId == true) {
+              isUserSelected) {
+            // This is the key fix
+
+            debugPrint(
+              '🎯 User selected round from dropdown: $currentSelected',
+            );
+
             ref.read(scrollStateProvider.notifier).setUserScrolling(false);
             ref.read(scrollStateProvider.notifier).setScrolling(false);
             ref
                 .read(scrollStateProvider.notifier)
                 .updateSelectedRound(currentSelected);
 
-            Future.delayed(const Duration(milliseconds: 500), () {
+            // FIXED: Immediate scroll without delay
+            WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) {
                 scrollToRound(currentSelected);
               }
@@ -189,17 +198,21 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
           }
         });
 
+        // FIXED: Better listener for scroll -> dropdown synchronization
         ref.listen<String?>(currentVisibleRoundProvider, (previous, next) {
           final gamesAppBarAsync = ref.read(gamesAppBarProvider);
           if (next != null && next != previous && _isInitialized) {
             final currentSelected = gamesAppBarAsync.valueOrNull?.selectedId;
             final scrollState = ref.read(scrollStateProvider);
 
+            // FIXED: Only update dropdown when user is manually scrolling
             if (scrollState.isUserScrolling &&
                 !scrollState.isScrolling &&
                 currentSelected != next &&
                 !_isViewSwitching &&
                 !_isProgrammaticScroll) {
+              debugPrint('🔄 Updating dropdown due to manual scroll: $next');
+
               final gamesAppBarData = gamesAppBarAsync.valueOrNull;
               if (gamesAppBarData != null) {
                 final targetRound =
@@ -208,6 +221,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
                         .firstOrNull;
 
                 if (targetRound != null) {
+                  // Use selectSilently to avoid triggering another scroll
                   ref
                       .read(gamesAppBarProvider.notifier)
                       .selectSilently(targetRound);
@@ -322,11 +336,6 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
         }
         if (targetRoundId != null) break;
       }
-      if (targetRoundId == null) {
-        debugPrint(
-          '⚠️ Player "$normalizedPlayerName" not found in any game. Falling back to round selection.',
-        );
-      }
     }
 
     if (targetRoundId == null) {
@@ -357,7 +366,8 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
       ref.read(scrollStateProvider.notifier).updateSelectedRound(targetRoundId);
       ref.read(scrollStateProvider.notifier).setUserScrolling(false);
 
-      Future.delayed(const Duration(milliseconds: 400), () {
+      // FIXED: Better timing for initial scroll
+      Future.delayed(const Duration(milliseconds: 600), () {
         if (mounted) {
           if (targetGameIndex != null && selectedPlayerName != null) {
             scrollToGame(targetRoundId!, targetGameIndex);
@@ -367,8 +377,6 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
           ref.read(selectedPlayerNameProvider.notifier).state = null;
         }
       });
-    } else {
-      debugPrint('No target round found for scrolling.');
     }
   }
 
@@ -431,22 +439,6 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
         }
       });
     }
-  }
-
-  void setupScrollListener() {
-    widget.scrollController.addListener(() {
-      if (!_isScrolling && !_isViewSwitching && !_isProgrammaticScroll) {
-        _isScrolling = true;
-        ref.read(scrollStateProvider.notifier).setUserScrolling(true);
-      }
-
-      _visibilityCheckTimer?.cancel();
-      _visibilityCheckTimer = Timer(const Duration(milliseconds: 100), () {
-        if (mounted && !_isViewSwitching && !_isProgrammaticScroll) {
-          checkRoundContentVisibility();
-        }
-      });
-    });
   }
 
   void setupViewSwitchListener() {
@@ -940,10 +932,52 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
     String? mostVisibleRound;
     double maxVisibilityScore = 0;
 
+    // IMPROVED: Also track header visibility specifically
+    String? headerInViewport;
+    double headerVisibilityScore = 0;
+
     for (final round in reversedRounds) {
       final roundGames = gamesByRound[round.id] ?? [];
       if (roundGames.isEmpty) continue;
 
+      // Check header visibility first
+      final headerKey = getHeaderKey(round.id);
+      final headerContext = headerKey.currentContext;
+      if (headerContext != null) {
+        final headerRenderBox = headerContext.findRenderObject() as RenderBox?;
+        if (headerRenderBox?.attached == true) {
+          final headerPosition = headerRenderBox!.localToGlobal(Offset.zero);
+          final topPadding = MediaQuery.of(context).padding.top;
+          final appBarHeight = kToolbarHeight;
+          final visibleAreaTop = topPadding + appBarHeight;
+          final visibleAreaBottom = MediaQuery.of(context).size.height;
+
+          final headerTop = headerPosition.dy;
+          final headerBottom = headerPosition.dy + headerRenderBox.size.height;
+
+          // Header is in viewport
+          if (headerBottom > visibleAreaTop && headerTop < visibleAreaBottom) {
+            final headerVisibleHeight =
+                (headerBottom.clamp(visibleAreaTop, visibleAreaBottom) -
+                        headerTop.clamp(visibleAreaTop, visibleAreaBottom))
+                    .abs();
+            final headerTotalHeight = headerRenderBox.size.height;
+            final currentHeaderScore = headerVisibleHeight / headerTotalHeight;
+
+            // IMPROVED: Prioritize headers that are near the top of viewport
+            final distanceFromTop = (headerTop - visibleAreaTop).abs();
+            final proximityBonus = distanceFromTop < 100 ? 0.5 : 0.0;
+            final adjustedHeaderScore = currentHeaderScore + proximityBonus;
+
+            if (adjustedHeaderScore > headerVisibilityScore) {
+              headerVisibilityScore = adjustedHeaderScore;
+              headerInViewport = round.id;
+            }
+          }
+        }
+      }
+
+      // Calculate overall round content visibility
       final visibilityScore = calculateRoundContentVisibility(
         round.id,
         roundGames,
@@ -955,14 +989,227 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
       }
     }
 
-    if (mostVisibleRound != null && maxVisibilityScore > 0.1) {
+    // IMPROVED: Decision logic - prioritize header visibility for dropdown updates
+    String? finalRoundToSelect;
+
+    if (headerInViewport != null && headerVisibilityScore > 0.3) {
+      // If a header is clearly visible, use it
+      finalRoundToSelect = headerInViewport;
+      debugPrint(
+        '🎯 Selected round based on header visibility: $headerInViewport (score: ${headerVisibilityScore.toStringAsFixed(2)})',
+      );
+    } else if (mostVisibleRound != null && maxVisibilityScore > 0.4) {
+      // Otherwise fall back to content visibility
+      finalRoundToSelect = mostVisibleRound;
+      debugPrint(
+        '🎯 Selected round based on content visibility: $mostVisibleRound (score: ${maxVisibilityScore.toStringAsFixed(2)})',
+      );
+    }
+
+    if (finalRoundToSelect != null) {
       final currentVisible = ref.read(currentVisibleRoundProvider);
-      if (currentVisible != mostVisibleRound) {
+      final currentSelected =
+          ref.read(gamesAppBarProvider).valueOrNull?.selectedId;
+
+      if (currentVisible != finalRoundToSelect) {
         ref
             .read(roundVisibilityNotifierProvider)
-            .updateVisibleRound(mostVisibleRound);
+            .updateVisibleRound(finalRoundToSelect);
+
+        // Update dropdown immediately if user is scrolling manually
+        if (currentSelected != finalRoundToSelect && !_isProgrammaticScroll) {
+          final gamesAppBarData = ref.read(gamesAppBarProvider).valueOrNull;
+          if (gamesAppBarData != null) {
+            final targetRound =
+                gamesAppBarData.gamesAppBarModels
+                    .where((round) => round.id == finalRoundToSelect)
+                    .firstOrNull;
+
+            if (targetRound != null) {
+              debugPrint('🔄 Updating dropdown to: ${targetRound.name}');
+              ref
+                  .read(gamesAppBarProvider.notifier)
+                  .selectSilently(targetRound);
+            }
+          }
+        }
       }
     }
+  }
+
+  // IMPROVED: Also update the scroll listener to be more responsive
+  void setupScrollListener() {
+    widget.scrollController.addListener(() {
+      if (!_isScrolling && !_isViewSwitching && !_isProgrammaticScroll) {
+        _isScrolling = true;
+        ref.read(scrollStateProvider.notifier).setUserScrolling(true);
+      }
+
+      _visibilityCheckTimer?.cancel();
+      // IMPROVED: Faster response time for better UX
+      _visibilityCheckTimer = Timer(const Duration(milliseconds: 100), () {
+        if (mounted && !_isViewSwitching && !_isProgrammaticScroll) {
+          checkRoundContentVisibility();
+        }
+      });
+    });
+  }
+
+  Future<void> scrollToRound(String roundId) async {
+    if (!mounted || _isViewSwitching) return;
+
+    debugPrint('🎯 scrollToRound called for: $roundId');
+
+    _isProgrammaticScroll = true;
+
+    ref.read(scrollStateProvider.notifier).setScrolling(true);
+    ref.read(scrollStateProvider.notifier).setUserScrolling(false);
+    ref.read(scrollStateProvider.notifier).updateSelectedRound(roundId);
+
+    try {
+      if (!widget.scrollController.hasClients) {
+        return;
+      }
+
+      // STRATEGY 1: Try calculated position first for long distances
+      final calculatedPosition = calculateScrollPositionForRound(roundId);
+      if (calculatedPosition != null) {
+        final maxOffset = widget.scrollController.position.maxScrollExtent;
+        final clampedPosition = calculatedPosition.clamp(0.0, maxOffset);
+
+        debugPrint(
+          '📐 Using calculated position: $clampedPosition for round: $roundId',
+        );
+
+        // Jump to approximate position first
+        widget.scrollController.jumpTo(clampedPosition);
+
+        // Wait for render
+        await Future.delayed(const Duration(milliseconds: 200));
+      }
+
+      // STRATEGY 2: Now try to find the exact header and fine-tune
+      final headerKey = getHeaderKey(roundId);
+      bool scrollSuccess = false;
+
+      // Give more attempts for long distances
+      for (int attempt = 0; attempt < 40; attempt++) {
+        await Future.delayed(const Duration(milliseconds: 50));
+
+        if (headerKey.currentContext != null) {
+          try {
+            final renderBox =
+                headerKey.currentContext!.findRenderObject() as RenderBox?;
+            if (renderBox?.attached == true) {
+              // Check if the header is already visible and well-positioned
+              final position = renderBox!.localToGlobal(Offset.zero);
+              final topPadding = MediaQuery.of(context).padding.top;
+              final appBarHeight = kToolbarHeight;
+              final visibleAreaTop = topPadding + appBarHeight;
+
+              // If header is already in a good position, we're done
+              if (position.dy >= visibleAreaTop &&
+                  position.dy <= visibleAreaTop + 100) {
+                scrollSuccess = true;
+                debugPrint(
+                  '✅ Header already in good position on attempt $attempt',
+                );
+                break;
+              }
+
+              // Otherwise, scroll to it
+              await Scrollable.ensureVisible(
+                headerKey.currentContext!,
+                alignment: 0.0,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+                alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
+              );
+              scrollSuccess = true;
+              debugPrint('✅ Scroll successful on attempt $attempt');
+              break;
+            }
+          } catch (e) {
+            debugPrint('❌ Scroll attempt $attempt failed: $e');
+          }
+        } else {
+          // If header context is not available, force a rebuild by scrolling slightly
+          if (attempt % 10 == 0 && attempt > 0) {
+            final currentOffset = widget.scrollController.offset;
+            widget.scrollController.jumpTo(
+              (currentOffset + 1).clamp(
+                0.0,
+                widget.scrollController.position.maxScrollExtent,
+              ),
+            );
+            await Future.delayed(const Duration(milliseconds: 100));
+          }
+        }
+      }
+
+      if (!scrollSuccess) {
+        debugPrint('❌ All scroll attempts failed for round: $roundId');
+
+        // STRATEGY 3: Fallback - try to scroll to the first game of this round
+        final gamesData = ref.read(gamesTourScreenProvider).valueOrNull;
+        if (gamesData != null) {
+          final gameIndex = _findFirstGameIndexForRound(
+            gamesData.gamesTourModels,
+            roundId,
+          );
+          if (gameIndex != null &&
+              gameIndex < gamesData.gamesTourModels.length) {
+            final game = gamesData.gamesTourModels[gameIndex];
+            final gameKey = getGameKey(
+              game.roundId,
+              gameIndex % 100,
+            ); // Approximate local index
+
+            for (int gameAttempt = 0; gameAttempt < 20; gameAttempt++) {
+              await Future.delayed(const Duration(milliseconds: 50));
+              if (gameKey.currentContext != null) {
+                try {
+                  await Scrollable.ensureVisible(
+                    gameKey.currentContext!,
+                    alignment: 0.0,
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                  );
+                  debugPrint('✅ Fallback scroll to game successful');
+                  scrollSuccess = true;
+                  break;
+                } catch (e) {
+                  debugPrint(
+                    '❌ Fallback game scroll attempt $gameAttempt failed: $e',
+                  );
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Scroll error: $e');
+    } finally {
+      // Reset flags with proper delay
+      Future.delayed(const Duration(milliseconds: 800), () {
+        if (mounted) {
+          ref.read(scrollStateProvider.notifier).setScrolling(false);
+          _isProgrammaticScroll = false;
+          debugPrint('🔄 Reset scroll flags for round: $roundId');
+        }
+      });
+    }
+  }
+
+  // Helper method to find first game index for a round
+  int? _findFirstGameIndexForRound(List<GamesTourModel> games, String roundId) {
+    for (int i = 0; i < games.length; i++) {
+      if (games[i].roundId == roundId) {
+        return i;
+      }
+    }
+    return null;
   }
 
   double calculateRoundContentVisibility(
@@ -1087,67 +1334,6 @@ extension GamesTourScreenLogic on _GamesTourScreenState {
       gameList.add(GlobalKey(debugLabel: 'game_${roundId}_$gameIndex'));
     }
     return gameList[gameIndex];
-  }
-
-  Future<void> scrollToRound(String roundId) async {
-    if (!mounted || _isViewSwitching) return;
-
-    _isProgrammaticScroll = true;
-
-    ref.read(scrollStateProvider.notifier).setScrolling(true);
-    ref.read(scrollStateProvider.notifier).setUserScrolling(false);
-    ref.read(scrollStateProvider.notifier).updateSelectedRound(roundId);
-
-    try {
-      if (!widget.scrollController.hasClients) {
-        return;
-      }
-
-      final headerKey = getHeaderKey(roundId);
-      final position = calculateScrollPositionForRound(roundId);
-
-      if (position != null && position >= 0) {
-        widget.scrollController.jumpTo(position);
-      }
-
-      bool found = false;
-
-      for (int retry = 0; retry < 30; retry++) {
-        await Future.delayed(const Duration(milliseconds: 50));
-
-        if (headerKey.currentContext != null) {
-          try {
-            Scrollable.ensureVisible(
-              headerKey.currentContext!,
-              alignment: 0.0,
-              duration: Duration.zero, // Instant scroll
-              alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
-            );
-            found = true;
-            break;
-          } catch (e) {
-            debugPrint(
-              '[GamesTourScreen] Scroll error with key on retry $retry: $e',
-            );
-          }
-        } else {
-          debugPrint('Key not found on retry $retry for round $roundId');
-        }
-      }
-
-      if (!found) {
-        debugPrint('Failed to scroll to round: $roundId after all attempts');
-      }
-    } catch (e) {
-      debugPrint('[GamesTourScreen] Scroll error: $e');
-    } finally {
-      Future.delayed(const Duration(milliseconds: 500), () {
-        if (mounted) {
-          ref.read(scrollStateProvider.notifier).setScrolling(false);
-          _isProgrammaticScroll = false;
-        }
-      });
-    }
   }
 
   double? calculateScrollPositionForRound(String roundId) {
