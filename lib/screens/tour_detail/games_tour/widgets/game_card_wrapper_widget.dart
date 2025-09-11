@@ -6,7 +6,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
+import '../../../chessboard/chess_board_screen_new.dart';
 
 class GameCardWrapperWidget extends ConsumerWidget {
   final GamesTourModel game;
@@ -45,17 +45,24 @@ class GameCardWrapperWidget extends ConsumerWidget {
   void _navigateToChessBoard(BuildContext context, WidgetRef ref) async {
     ref.read(chessboardViewFromProviderNew.notifier).state =
         ChessboardView.tour;
+
+    // The gamesData.gamesTourModels now contains games in ListView display order
     final orderedGames = gamesData.gamesTourModels;
 
+    // The gameIndex should now be correct since it's based on the ListView order
     final indexToUse = gameIndex;
+
+    debugPrint(
+      '🎯 Navigating to chess board - Game: ${game.gameId}, Index: $indexToUse',
+    );
 
     final lastViewedIndex = await Navigator.push<int>(
       context,
       MaterialPageRoute(
         builder:
             (_) => ChessBoardScreenNew(
-              games: orderedGames,
-              currentIndex: indexToUse,
+              games: orderedGames, // Pass the games in ListView display order
+              currentIndex: indexToUse, // Use the ListView index directly
             ),
       ),
     );
