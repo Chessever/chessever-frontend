@@ -36,7 +36,7 @@ final supabaseCombinedSearchProvider =
           );
 
           for (final searchTerm in gb.search) {
-            if (_isPlayerName(searchTerm)) {
+            if (_isPlayerName(searchTerm, gb.name)) {
               final player = SearchPlayer.fromSearchTerm(
                 searchTerm,
                 gb.id,
@@ -56,6 +56,19 @@ final supabaseCombinedSearchProvider =
             }
           }
         }
+        final q = query.trim().toLowerCase();
+        playerResults.sort((a, b) {
+          final aExact = a.matchedText.toLowerCase() == q;
+          final bExact = b.matchedText.toLowerCase() == q;
+          if (aExact && !bExact) return -1;
+          if (!aExact && bExact) return 1;
+
+          final aStart = a.matchedText.toLowerCase().startsWith(q);
+          final bStart = b.matchedText.toLowerCase().startsWith(q);
+          if (aStart && !bStart) return -1;
+          if (!aStart && bStart) return 1;
+          return a.matchedText.compareTo(b.matchedText);
+        });
 
         return EnhancedSearchResult(
           tournamentResults: tournamentResults,
@@ -65,24 +78,27 @@ final supabaseCombinedSearchProvider =
       },
     );
 
-bool _isPlayerName(String searchTerm) {
-  final lowerTerm = searchTerm.toLowerCase();
-  if (lowerTerm.contains('chess') ||
-      lowerTerm.contains('tournament') ||
-      lowerTerm.contains('championship') ||
-      lowerTerm.contains('festival') ||
-      lowerTerm.contains('open') ||
-      lowerTerm.contains('classic')) {
+bool _isPlayerName(String searchTerm, String tournamentName) {
+  final t = searchTerm.trim().toLowerCase();
+  final tn = tournamentName.trim().toLowerCase();
+
+  // drop exact or pipe-prefixed event-title clones
+  if (t == tn || t.startsWith('$tn |')) return false;
+
+  if ([
+    'chess',
+    'tournament',
+    'championship',
+    'festival',
+    'open',
+    'classic',
+  ].any((w) => t.contains(w)))
     return false;
-  }
+
   final words = searchTerm.trim().split(' ');
-  if (words.length >= 2 && words.length <= 4) {
-    return words.every(
-      (word) =>
-          word.isNotEmpty &&
-          word[0] == word[0].toUpperCase() &&
-          word.length > 1,
-    );
-  }
-  return false;
+  if (words.length < 2 || words.length > 4) return false;
+
+  return words.every(
+    (w) => w.isNotEmpty && w[0] == w[0].toUpperCase() && w.length > 1,
+  );
 }
