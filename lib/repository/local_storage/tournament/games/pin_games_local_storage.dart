@@ -1,42 +1,93 @@
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-
 final pinGameLocalStorage = Provider.autoDispose<_PinGameLocalStorage>(
   (ref) => _PinGameLocalStorage(),
 );
 
 class _PinGameLocalStorage {
-  static const _keyPinnedGames = 'pinned_games';
+  static const _keyPrefix = 'pinned_games_tournament_';
 
-  Future<List<String>> getPinnedGameIds() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getStringList(_keyPinnedGames) ?? [];
-  }
- 
-  Future<void> savePinnedGameIds(List<String> pinnedIds) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(_keyPinnedGames, pinnedIds);
+  // Generate key for specific tournament
+  String _getTournamentKey(String tournamentId) {
+    return '$_keyPrefix$tournamentId';
   }
 
-  Future<void> addPinnedGameId(String gameId) async {
+  // Get pinned game IDs for a specific tournament
+  Future<List<String>> getPinnedGameIds(String tournamentId) async {
     final prefs = await SharedPreferences.getInstance();
-    final pinnedIds = prefs.getStringList(_keyPinnedGames) ?? [];
+    final key = _getTournamentKey(tournamentId);
+    return prefs.getStringList(key) ?? [];
+  }
+
+  // Save pinned game IDs for a specific tournament
+  Future<void> savePinnedGameIds(
+    String tournamentId,
+    List<String> pinnedIds,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = _getTournamentKey(tournamentId);
+    await prefs.setStringList(key, pinnedIds);
+  }
+
+  // Add a pinned game ID for a specific tournament
+  Future<void> addPinnedGameId(String tournamentId, String gameId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = _getTournamentKey(tournamentId);
+    final pinnedIds = prefs.getStringList(key) ?? [];
     if (!pinnedIds.contains(gameId)) {
       pinnedIds.add(gameId);
-      await prefs.setStringList(_keyPinnedGames, pinnedIds);
+      await prefs.setStringList(key, pinnedIds);
     }
   }
 
-  Future<void> removePinnedGameId(String gameId) async {
+  // Remove a pinned game ID for a specific tournament
+  Future<void> removePinnedGameId(String tournamentId, String gameId) async {
     final prefs = await SharedPreferences.getInstance();
-    final pinnedIds = prefs.getStringList(_keyPinnedGames) ?? [];
+    final key = _getTournamentKey(tournamentId);
+    final pinnedIds = prefs.getStringList(key) ?? [];
     pinnedIds.remove(gameId);
-    await prefs.setStringList(_keyPinnedGames, pinnedIds);
+    await prefs.setStringList(key, pinnedIds);
   }
 
+  // Clear all pinned games for a specific tournament
+  Future<void> clearPinnedGames(String tournamentId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = _getTournamentKey(tournamentId);
+    await prefs.remove(key);
+  }
+
+  // Clear all pinned games for all tournaments
   Future<void> clearAllPinnedGames() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_keyPinnedGames);
+    final keys = prefs.getKeys();
+    final tournamentKeys = keys.where((key) => key.startsWith(_keyPrefix));
+
+    for (final key in tournamentKeys) {
+      await prefs.remove(key);
+    }
+  }
+
+  // Get all tournament IDs that have pinned games
+  Future<List<String>> getTournamentsWithPinnedGames() async {
+    final prefs = await SharedPreferences.getInstance();
+    final keys = prefs.getKeys();
+    final tournamentKeys = keys.where((key) => key.startsWith(_keyPrefix));
+
+    return tournamentKeys
+        .map((key) => key.replaceFirst(_keyPrefix, ''))
+        .toList();
+  }
+
+  // Check if a game is pinned in a specific tournament
+  Future<bool> isGamePinned(String tournamentId, String gameId) async {
+    final pinnedIds = await getPinnedGameIds(tournamentId);
+    return pinnedIds.contains(gameId);
+  }
+
+  // Get total count of pinned games for a tournament
+  Future<int> getPinnedGamesCount(String tournamentId) async {
+    final pinnedIds = await getPinnedGameIds(tournamentId);
+    return pinnedIds.length;
   }
 }

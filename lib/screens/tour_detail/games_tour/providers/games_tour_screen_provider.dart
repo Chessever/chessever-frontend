@@ -72,7 +72,7 @@ final gamesTourScreenProvider = StateNotifierProvider<
   }
 
   final games = gamesAsync.valueOrNull ?? [];
-  final pinnedIds = ref.watch(gamesPinprovider).value ?? [];
+  final pinnedIds = ref.watch(gamesPinprovider(aboutTourModel!.id)).value ?? [];
 
   return GamesTourScreenProvider(
     ref: ref,
@@ -179,7 +179,7 @@ class GamesTourScreenProvider
 
     // FIXED: Listen to pin changes and refresh state immediately
     ref.listen<AsyncValue<List<String>>>(
-      gamesPinprovider,
+      gamesPinprovider(aboutTourModel!.id),
       (previous, next) {
         final previousPinned = previous?.valueOrNull ?? [];
         final currentPinned = next.valueOrNull ?? [];
@@ -209,14 +209,36 @@ class GamesTourScreenProvider
 
     final currentState = state.valueOrNull;
     if (currentState != null && allGames.isNotEmpty) {
-      final scrollToIndex = _findFirstGameIndexForRound(
-        currentState.gamesTourModels,
-        _selectedRoundId!,
-      );
+      // FIXED: Find the first NON-PINNED game for the selected round
+      // to avoid scrolling to pinned games that are at the top
+      int? scrollToIndex;
+
+      for (int i = 0; i < currentState.gamesTourModels.length; i++) {
+        final game = currentState.gamesTourModels[i];
+
+        // Check if this game belongs to the selected round
+        if (game.roundId == _selectedRoundId) {
+          // Check if this game is pinned
+          final isPinned = pinndedIds.contains(game.gameId);
+
+          // If we haven't found a scroll target yet, or if this is not pinned
+          // (prefer non-pinned games for round headers)
+          if (scrollToIndex == null || !isPinned) {
+            scrollToIndex = i;
+
+            // If we found a non-pinned game, use it and break
+            if (!isPinned) {
+              break;
+            }
+          }
+        }
+      }
 
       if (scrollToIndex != null) {
         ref.read(roundScrollPositionProvider.notifier).state = scrollToIndex;
-        debugPrint('🔄 Updated scroll position to index: $scrollToIndex');
+        debugPrint(
+          '🔄 Updated scroll position to index: $scrollToIndex for round: $_selectedRoundId',
+        );
       }
     }
   }
@@ -230,6 +252,7 @@ class GamesTourScreenProvider
       }
     }
   }
+  // In GamesTourScreenProvider class, modify the togglePinGame method:
 
   Future<void> togglePinGame(String gameId) async {
     // Check if we have the required dependencies
@@ -243,11 +266,11 @@ class GamesTourScreenProvider
       final currentPinnedIds = List<String>.from(pinndedIds);
 
       if (currentPinnedIds.contains(gameId)) {
-        await pinnedStorage.removePinnedGameId(gameId);
+        await pinnedStorage.removePinnedGameId(aboutTourModel!.id, gameId);
         currentPinnedIds.remove(gameId);
         debugPrint('📌 Unpinned game: $gameId');
       } else {
-        await pinnedStorage.addPinnedGameId(gameId);
+        await pinnedStorage.addPinnedGameId(aboutTourModel!.id, gameId);
         currentPinnedIds.add(gameId);
         debugPrint('📌 Pinned game: $gameId');
       }
@@ -258,8 +281,15 @@ class GamesTourScreenProvider
       // Force refresh the pin provider to sync with storage
       ref.invalidate(gamesPinprovider);
 
+      // FIXED: Temporarily disable round scrolling during pin operations
+      final originalSelectedRoundId = _selectedRoundId;
+      _selectedRoundId = null; // Prevent scroll position update
+
       // Immediately update the display state
       await _updateState(allGames);
+
+      // Restore the selected round ID without triggering scroll
+      _selectedRoundId = originalSelectedRoundId;
     } catch (e, st) {
       debugPrint('Error toggling pin for game $gameId: $e');
       if (mounted) {
