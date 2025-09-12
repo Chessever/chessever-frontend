@@ -705,11 +705,8 @@ class _PlayerWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final player =
-        (blackPlayer && !isFlipped) || (!blackPlayer && isFlipped)
-            ? game.whitePlayer
-            : game.blackPlayer;
-
+    debugPrint("BERKAY-From chess_board_screen_new: ${game.gameStatus} ${game.gameStatus.displayText}");
+    
     // Determine if this is the white player
     final isWhitePlayer =
         (blackPlayer && !isFlipped) || (!blackPlayer && isFlipped);
@@ -720,29 +717,12 @@ class _PlayerWidget extends StatelessWidget {
         (isWhitePlayer && currentTurn == Side.white) ||
         (!isWhitePlayer && currentTurn == Side.black);
 
-    // Get the time for this player's most recent move
-    String? moveTime;
-    if (state.moveTimes.isNotEmpty && state.currentMoveIndex >= 0) {
-      // Look for this player's most recent move
-      for (int i = state.currentMoveIndex; i >= 0; i--) {
-        final wasMoveByThisPlayer =
-            (i % 2 == 0 && isWhitePlayer) || (i % 2 == 1 && !isWhitePlayer);
-
-        if (wasMoveByThisPlayer && i < state.moveTimes.length) {
-          moveTime = state.moveTimes[i];
-          break;
-        }
-      }
-    }
-
     return PlayerFirstRowDetailWidget(
-      name: player.name,
-      firstGmRank: player.title,
-      countryCode: player.countryCode,
-      rating: player.rating,
       isCurrentPlayer: isCurrentPlayer,
-      moveTime: moveTime,
+      isWhitePlayer: isWhitePlayer,
       playerView: PlayerView.boardView,
+      gamesTourModel: game,
+      chessBoardState: state, // Pass the state for move time calculation
     );
   }
 }
