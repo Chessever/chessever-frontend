@@ -14,6 +14,7 @@ import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen.da
 import 'package:chessever2/screens/tour_detail/tournament_detail_screen.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
+import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chessever2/utils/notification_service.dart';
 import 'package:chessever2/utils/lifecycle_event_handler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -39,6 +40,7 @@ Future<void> main() async {
   // Load environment variables
   await dotenv.load(fileName: ".env");
   WidgetsFlutterBinding.ensureInitialized();
+
   await NotificationService.initialize();
 
   WidgetsBinding.instance.addObserver(
@@ -48,6 +50,7 @@ Future<void> main() async {
       },
     ),
   );
+  await AudioPlayerService.instance.initializeAndLoadAllAssets();
   await _initRevenueCat();
   // Initialize Supabase
   await Supabase.initialize(

@@ -10,6 +10,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
@@ -52,6 +53,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
     _currentPageIndex = widget.currentIndex;
     _pageController = PageController(initialPage: widget.currentIndex);
     _prefetchAround(_currentPageIndex);
+    _listenForSfx();
   }
 
   void _onPageChanged(int newIndex) {
@@ -159,6 +161,20 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
     for (final idx in toRemove) {
       _prefetchSubs.remove(idx);
     }
+  }
+
+  Future<void> _listenForSfx() async {
+    ref.listenManual(chessBoardScreenProviderNew(widget.currentIndex), (
+      prev,
+      next,
+    ) {
+      if (prev?.valueOrNull?.currentMoveIndex !=
+          next.valueOrNull?.currentMoveIndex) {
+        AudioPlayerService.instance.player.play(
+          AudioPlayerService.instance.pieceMoveSfx,
+        );
+      }
+    });
   }
 
   @override
