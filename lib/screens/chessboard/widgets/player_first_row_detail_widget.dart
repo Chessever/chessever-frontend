@@ -15,15 +15,12 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 enum PlayerView { listView, boardView }
 
 class PlayerFirstRowDetailWidget extends HookConsumerWidget {
-  // final String name;
-  // final String firstGmRank;
-  // final String countryCode;
-  // final int rating;
   final bool isCurrentPlayer;
   final PlayerView playerView;
   final GamesTourModel gamesTourModel;
   final bool isWhitePlayer;
-  final ChessBoardStateNew? chessBoardState; // Optional state for move time calculation
+  final ChessBoardStateNew?
+  chessBoardState; // Optional state for move time calculation
 
   const PlayerFirstRowDetailWidget({
     super.key,
@@ -40,21 +37,21 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
       return isWhitePlayer
           ? gamesTourModel.whitePlayer
           : gamesTourModel.blackPlayer;
-    },[gamesTourModel, isWhitePlayer]);
+    }, [gamesTourModel, isWhitePlayer]);
     final validCountryCode = ref
         .read(locationServiceProvider)
         .getValidCountryCode(playerCard.countryCode);
-    
+
     // Calculate move time from state if available, otherwise use game model's time
     final moveTime = useMemoized(() {
-      if (chessBoardState != null && 
-          chessBoardState!.moveTimes.isNotEmpty && 
+      if (chessBoardState != null &&
+          chessBoardState!.moveTimes.isNotEmpty &&
           chessBoardState!.currentMoveIndex >= 0) {
         // Look for this player's most recent move
         for (int i = chessBoardState!.currentMoveIndex; i >= 0; i--) {
           final wasMoveByThisPlayer =
               (i % 2 == 0 && isWhitePlayer) || (i % 2 == 1 && !isWhitePlayer);
-          
+
           if (wasMoveByThisPlayer && i < chessBoardState!.moveTimes.length) {
             return chessBoardState!.moveTimes[i];
           }
@@ -112,24 +109,27 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     final flagWidth = playerView == PlayerView.listView ? 12.w : 16.w;
 
     // Determine if we're showing scores
-    final isShowingScore = gamesTourModel.gameStatus.isFinished && 
-                          (chessBoardState == null || chessBoardState!.isAtEnd);
-    
+    final isShowingScore =
+        gamesTourModel.gameStatus.isFinished &&
+        (chessBoardState == null || chessBoardState!.isAtEnd);
+
     final timeStyle =
         playerView == PlayerView.listView
             ? TextStyle(
               // Use same white color for both players when showing scores
-              color: isShowingScore 
-                  ? kWhiteColor 
-                  : (isCurrentPlayer ? kWhiteColor70 : kWhiteColor),
+              color:
+                  isShowingScore
+                      ? kWhiteColor
+                      : (isCurrentPlayer ? kWhiteColor70 : kWhiteColor),
               fontSize: 8.5.f,
               fontWeight: FontWeight.w500,
             )
             : AppTypography.textXsMedium.copyWith(
               // Use same white color for both players when showing scores
-              color: isShowingScore 
-                  ? kWhiteColor 
-                  : (isCurrentPlayer ? kWhiteColor70 : kWhiteColor),
+              color:
+                  isShowingScore
+                      ? kWhiteColor
+                      : (isCurrentPlayer ? kWhiteColor70 : kWhiteColor),
               fontSize: 14.f,
               fontWeight: FontWeight.w500,
             );
@@ -203,18 +203,19 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             padding: EdgeInsets.symmetric(horizontal: 4.sp),
             decoration: BoxDecoration(
               // Remove background only when showing scores, keep it when browsing history
-              color: isShowingScore 
-                  ? Colors.transparent
-                  : (isCurrentPlayer ? kDarkBlue : Colors.transparent),
+              color:
+                  isShowingScore
+                      ? Colors.transparent
+                      : (isCurrentPlayer ? kDarkBlue : Colors.transparent),
             ),
             child: Text(
               isShowingScore
-                ? (gamesTourModel.gameStatus == GameStatus.whiteWins 
-                    ? (isWhitePlayer ? '1' : '0')
-                    : gamesTourModel.gameStatus == GameStatus.blackWins
-                        ? (isWhitePlayer ? '0' : '1')
-                        : '½')
-                : (moveTime ?? '--:--'),
+                  ? (gamesTourModel.gameStatus == GameStatus.whiteWins
+                      ? (isWhitePlayer ? '1' : '0')
+                      : gamesTourModel.gameStatus == GameStatus.blackWins
+                      ? (isWhitePlayer ? '0' : '1')
+                      : '½')
+                  : (moveTime ?? '--:--'),
               style: timeStyle,
             ),
           ),
