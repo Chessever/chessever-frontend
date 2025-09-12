@@ -115,7 +115,8 @@ class LocationService {
     'GAM': 'GM',
     'MTN': 'MR',
     'IRQ': 'IQ',
-    'IRN': 'IR',
+    'IRI': 'IR',  // Iran (Islamic Republic of Iran)
+    'IRN': 'IR',  // Iran (alternative code)
     'KSA': 'SA',
     'UAE': 'AE',
     'QAT': 'QA',
