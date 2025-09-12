@@ -41,25 +41,17 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   bool analysisMode = false;
   int? _lastViewedIndex;
 
-  /// Keep manual subscriptions to preloaded pages alive
-  final Map<int, ProviderSubscription<AsyncValue<ChessBoardStateNew>>>
-  _prefetchSubs = {};
-
-  static const int _prefetchRadius = 2; // preload prev2 and next2
-
   @override
   void initState() {
     super.initState();
     _currentPageIndex = widget.currentIndex;
     _pageController = PageController(initialPage: widget.currentIndex);
-    _prefetchAround(_currentPageIndex);
     _listenForSfx();
   }
 
   void _onPageChanged(int newIndex) {
     if (_currentPageIndex == newIndex) return;
     _lastViewedIndex = newIndex;
-
     // Check if provider is available before trying to access it
     final view = ref.read(chessboardViewFromProviderNew);
     final gamesAsync =
@@ -80,16 +72,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
         ref.read(chessBoardScreenProviderNew(newIndex).notifier).parseMoves();
       }
     });
-
-    _prefetchAround(newIndex);
   }
 
   @override
   void dispose() {
-    for (final sub in _prefetchSubs.values) {
-      sub.close();
-    }
-    _prefetchSubs.clear();
     _pageController.dispose();
     super.dispose();
   }
@@ -115,52 +101,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
     );
-  }
-
-  /// Preload providers for [index-2 .. index+2] and keep them alive
-  void _prefetchAround(int center) {
-    // Check if the required data is available before prefetching
-    final view = ref.read(chessboardViewFromProviderNew);
-    final gamesAsync =
-        view == ChessboardView.tour
-            ? ref.read(gamesTourScreenProvider)
-            : ref.read(countrymanGamesTourScreenProvider);
-
-    if (!gamesAsync.hasValue || gamesAsync.value?.gamesTourModels == null) {
-      return; // Don't prefetch if data isn't ready
-    }
-
-    final start = (center - _prefetchRadius).clamp(0, widget.games.length - 1);
-    final end = (center + _prefetchRadius).clamp(0, widget.games.length - 1);
-
-    // Start/keep subscriptions for the target window
-    for (int i = start; i <= end; i++) {
-      if (_prefetchSubs.containsKey(i)) continue;
-      try {
-        // Start listening manually; this keeps the AutoDispose provider alive
-        final sub = ref.listenManual<AsyncValue<ChessBoardStateNew>>(
-          chessBoardScreenProviderNew(i),
-          (_, __) {},
-          fireImmediately: false,
-        );
-        _prefetchSubs[i] = sub;
-      } catch (e) {
-        // Handle case where provider might not be ready
-        print('Failed to prefetch provider for index $i: $e');
-      }
-    }
-
-    // Cancel subscriptions that are now out of window
-    final toRemove = <int>[];
-    _prefetchSubs.forEach((idx, sub) {
-      if (idx < start || idx > end) {
-        sub.close();
-        toRemove.add(idx);
-      }
-    });
-    for (final idx in toRemove) {
-      _prefetchSubs.remove(idx);
-    }
   }
 
   Future<void> _listenForSfx() async {
@@ -810,8 +750,10 @@ class _PlayerWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    debugPrint("BERKAY-From chess_board_screen_new: ${game.gameStatus} ${game.gameStatus.displayText}");
-    
+    debugPrint(
+      "BERKAY-From chess_board_screen_new: ${game.gameStatus} ${game.gameStatus.displayText}",
+    );
+
     // Determine if this is the white player
     final isWhitePlayer =
         (blackPlayer && !isFlipped) || (!blackPlayer && isFlipped);
