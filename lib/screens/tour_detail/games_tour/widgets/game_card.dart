@@ -474,7 +474,7 @@ class _GamesRound extends ConsumerWidget {
           children: [
             if (validCountryCode.isNotEmpty) ...<Widget>[
               CountryFlag.fromCountryCode(
-                countryCode,
+                validCountryCode,
                 height: 12.h,
                 width: 16.w,
               ),
