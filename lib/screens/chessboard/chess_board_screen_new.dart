@@ -448,11 +448,46 @@ class _GameSelectionDropdown extends StatelessWidget {
     this.isLoading = false,
   });
 
+  String _formatName(String fullName, {double? maxWidth}) {
+    List<String> nameParts = fullName.trim().split(' ').where((part) => part.isNotEmpty).toList();
+    if (nameParts.length <= 1) return fullName;
+    
+    String familyName = nameParts.last;
+    List<String> otherNames = nameParts.sublist(0, nameParts.length - 1);
+    
+    // Try full names first
+    String fullVersion = '${otherNames.join(' ')} $familyName';
+    
+    // If no width constraint or it fits, return full version
+    if (maxWidth == null) return fullVersion;
+    
+    // Estimate text width (rough approximation)
+    double estimatedWidth = fullVersion.length * 6.0; // Approximate character width
+    if (estimatedWidth <= maxWidth) return fullVersion;
+    
+    // If too long, progressively abbreviate from left to right
+    List<String> displayNames = List.from(otherNames);
+    
+    for (int i = 0; i < displayNames.length; i++) {
+      if (displayNames[i].length > 1) {
+        displayNames[i] = '${displayNames[i][0]}.';
+        String newVersion = '${displayNames.join(' ')} $familyName';
+        double newEstimatedWidth = newVersion.length * 6.0;
+        if (newEstimatedWidth <= maxWidth) {
+          return newVersion;
+        }
+      }
+    }
+    
+    // Fallback: all abbreviated
+    return '${displayNames.join(' ')} $familyName';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
       height: 32.h,
-      constraints: BoxConstraints(maxWidth: 200.w),
+      constraints: BoxConstraints(maxWidth: 300.w),
       child: DropdownButton<int>(
         value: currentGameIndex,
         underline: Container(),
@@ -481,7 +516,7 @@ class _GameSelectionDropdown extends StatelessWidget {
               padding: EdgeInsets.symmetric(horizontal: 12.sp),
               alignment: Alignment.center,
               child: Text(
-                '${game.blackPlayer.displayName} vs ${game.whitePlayer.displayName}',
+                '${_formatName(game.blackPlayer.displayName, maxWidth: 120)} vs ${_formatName(game.whitePlayer.displayName, maxWidth: 120)}',
                 style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
                 overflow: TextOverflow.ellipsis,
               ),
@@ -534,6 +569,41 @@ class _GameDropdownItem extends StatelessWidget {
     required this.isLoading,
   });
 
+  String _formatName(String fullName, {double? maxWidth}) {
+    List<String> nameParts = fullName.trim().split(' ').where((part) => part.isNotEmpty).toList();
+    if (nameParts.length <= 1) return fullName;
+    
+    String familyName = nameParts.last;
+    List<String> otherNames = nameParts.sublist(0, nameParts.length - 1);
+    
+    // Try full names first
+    String fullVersion = '${otherNames.join(' ')} $familyName';
+    
+    // If no width constraint or it fits, return full version
+    if (maxWidth == null) return fullVersion;
+    
+    // Estimate text width (rough approximation)
+    double estimatedWidth = fullVersion.length * 5.0; // Approximate character width
+    if (estimatedWidth <= maxWidth) return fullVersion;
+    
+    // If too long, progressively abbreviate from left to right
+    List<String> displayNames = List.from(otherNames);
+    
+    for (int i = 0; i < displayNames.length; i++) {
+      if (displayNames[i].length > 1) {
+        displayNames[i] = '${displayNames[i][0]}.';
+        String newVersion = '${displayNames.join(' ')} $familyName';
+        double newEstimatedWidth = newVersion.length * 5.0;
+        if (newEstimatedWidth <= maxWidth) {
+          return newVersion;
+        }
+      }
+    }
+    
+    // Fallback: all abbreviated
+    return '${displayNames.join(' ')} $familyName';
+  }
+
   Widget _buildStatusIcon() {
     if (isLoading) {
       return SizedBox(
@@ -548,9 +618,44 @@ class _GameDropdownItem extends StatelessWidget {
 
     switch (game.gameStatus) {
       case GameStatus.whiteWins:
+        return Container(
+          width: 16.w,
+          height: 16.h,
+          alignment: Alignment.center,
+          child: Text(
+            '1',
+            style: AppTypography.textXsBold.copyWith(
+              color: kWhiteColor,
+              fontSize: 12.sp,
+            ),
+          ),
+        );
       case GameStatus.blackWins:
+        return Container(
+          width: 16.w,
+          height: 16.h,
+          alignment: Alignment.center,
+          child: Text(
+            '0',
+            style: AppTypography.textXsBold.copyWith(
+              color: kWhiteColor,
+              fontSize: 12.sp,
+            ),
+          ),
+        );
       case GameStatus.draw:
-        return SvgPicture.asset(SvgAsset.check, width: 16.w, height: 16.h);
+        return Container(
+          width: 16.w,
+          height: 16.h,
+          alignment: Alignment.center,
+          child: Text(
+            '½',
+            style: AppTypography.textXsBold.copyWith(
+              color: kWhiteColor,
+              fontSize: 12.sp,
+            ),
+          ),
+        );
       case GameStatus.ongoing:
         return SvgPicture.asset(
           SvgAsset.selectedSvg,
@@ -573,7 +678,7 @@ class _GameDropdownItem extends StatelessWidget {
       children: [
         Flexible(
           child: Text(
-            '${game.whitePlayer.name} vs ${game.blackPlayer.name}',
+            '${_formatName(game.whitePlayer.name, maxWidth: 80)} vs ${_formatName(game.blackPlayer.name, maxWidth: 80)}',
             style: AppTypography.textXsRegular.copyWith(color: kWhiteColor70),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
