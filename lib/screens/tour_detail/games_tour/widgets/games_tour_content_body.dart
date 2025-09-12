@@ -25,12 +25,14 @@ class GamesTourContentBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tourId = ref.watch(tourDetailScreenProvider).value?.aboutTourModel.id;
     final tourDetails = ref.watch(tourDetailScreenProvider);
+    final gamesAppBar = ref.watch(gamesAppBarProvider);
 
-    if (tourId == null ||
-        tourDetails.isLoading ||
+    // Show shimmer if any critical data is still loading
+    if (tourDetails.isLoading ||
+        gamesAppBar.isLoading ||
         !tourDetails.hasValue ||
+        !gamesAppBar.hasValue ||
         tourDetails.valueOrNull?.aboutTourModel == null) {
       return const TourLoadingWidget();
     }
@@ -69,16 +71,17 @@ class GamesTourMainContent extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final rounds = ref.watch(gamesAppBarProvider).value?.gamesAppBarModels ?? [];
-    
+    final rounds =
+        ref.watch(gamesAppBarProvider).value?.gamesAppBarModels ?? [];
+
     // Group games by round while preserving the original sorting within each round
     final gamesByRound = <String, List<GamesTourModel>>{};
-    
+
     // Initialize empty lists for each round first
     for (final round in rounds) {
       gamesByRound[round.id] = [];
     }
-    
+
     // Add games to their respective rounds in the order they appear in the sorted list
     for (final game in gamesData.gamesTourModels) {
       if (gamesByRound.containsKey(game.roundId)) {
@@ -86,13 +89,14 @@ class GamesTourMainContent extends ConsumerWidget {
       }
     }
 
-    final visibleRounds = rounds
-        .where((round) => (gamesByRound[round.id]?.isNotEmpty ?? false))
-        .toList();
+    final visibleRounds =
+        rounds
+            .where((round) => (gamesByRound[round.id]?.isNotEmpty ?? false))
+            .toList();
 
     // Create a properly ordered flat list that matches the ListView display order
     final orderedGamesForChessBoard = <GamesTourModel>[];
-    
+
     // Add games in the same order as they will appear in the ListView
     // (reversed rounds, with games in each round in the sorted order)
     for (final round in visibleRounds.reversed) {

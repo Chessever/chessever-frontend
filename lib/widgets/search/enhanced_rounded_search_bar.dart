@@ -153,6 +153,17 @@ class _EnhancedRoundedSearchBarState
     _searchBarController.reverse();
   }
 
+  // FIXED: Clear search state when tapping outside
+  void _clearSearchAndHide() {
+    widget.controller.clear(); // Clear the search text
+    ref.read(isSearchingProvider.notifier).state = false; // Clear search state
+    ref.read(searchQueryProvider.notifier).state = ''; // Clear query state
+    _hideOverlay();
+
+    // Trigger onChanged to notify parent components
+    widget.onChanged?.call('');
+  }
+
   void _onTournamentSelected(GroupEventCardModel tournament) {
     _hideOverlay();
     widget.onTournamentSelected?.call(tournament);
@@ -171,12 +182,7 @@ class _EnhancedRoundedSearchBarState
         if (_showOverlay)
           Positioned.fill(
             child: GestureDetector(
-              onTap: () {
-                if (_effectiveNode.hasFocus) {
-                  _effectiveNode.unfocus();
-                }
-                _hideOverlay();
-              },
+              onTap: _clearSearchAndHide, // FIXED: Use the new method
               behavior: HitTestBehavior.opaque,
               child: Container(color: Colors.transparent),
             ),
@@ -347,10 +353,8 @@ class _EnhancedRoundedSearchBarState
           // Show clear icon only when search bar has focus
           if (_effectiveNode.hasFocus) ...[
             GestureDetector(
-              onTap: () {
-                widget.controller.clear();
-                _hideOverlay();
-              },
+              onTap:
+                  _clearSearchAndHide, // FIXED: Use the same method for consistency
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 300),
                 padding: EdgeInsets.all(4.sp),
