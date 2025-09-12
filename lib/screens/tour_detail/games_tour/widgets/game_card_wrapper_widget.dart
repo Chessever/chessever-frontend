@@ -46,18 +46,30 @@ class GameCardWrapperWidget extends ConsumerWidget {
     ref.read(chessboardViewFromProviderNew.notifier).state =
         ChessboardView.tour;
 
+    // The gamesData.gamesTourModels now contains games in ListView display order
+    final orderedGames = gamesData.gamesTourModels;
+
+    // The gameIndex should now be correct since it's based on the ListView order
+    final indexToUse = gameIndex;
+
+    debugPrint(
+      '🎯 Navigating to chess board - Game: ${game.gameId}, Index: $indexToUse',
+    );
+
     final lastViewedIndex = await Navigator.push<int>(
       context,
       MaterialPageRoute(
         builder:
             (_) => ChessBoardScreenNew(
-              games: gamesData.gamesTourModels,
-              currentIndex: gameIndex,
+              games: orderedGames, // Pass the games in ListView display order
+              currentIndex: indexToUse, // Use the ListView index directly
             ),
       ),
     );
 
     if (lastViewedIndex != null && context.mounted) {
+      debugPrint('🎯 Returned from chess board - Index: $lastViewedIndex');
+
       ref
           .read(gamesTourScreenProvider.notifier)
           .setLastViewedGameIndex(lastViewedIndex);
