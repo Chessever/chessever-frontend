@@ -4,7 +4,9 @@ import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provid
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
+import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -52,24 +54,31 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
     _pageController = PageController(initialPage: widget.currentIndex);
     _prefetchAround(_currentPageIndex);
     _listenForSfx();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref
-          .read(chessBoardScreenProviderNew(_currentPageIndex).notifier)
-          .parseMoves();
-    });
   }
 
   void _onPageChanged(int newIndex) {
     if (_currentPageIndex == newIndex) return;
     _lastViewedIndex = newIndex;
-    ref
-        .read(chessBoardScreenProviderNew(_currentPageIndex).notifier)
-        .pauseGame();
+
+    // Check if provider is available before trying to access it
+    final view = ref.read(chessboardViewFromProviderNew);
+    final gamesAsync =
+        view == ChessboardView.tour
+            ? ref.read(gamesTourScreenProvider)
+            : ref.read(countrymanGamesTourScreenProvider);
+
+    if (gamesAsync.hasValue && gamesAsync.value?.gamesTourModels != null) {
+      ref
+          .read(chessBoardScreenProviderNew(_currentPageIndex).notifier)
+          .pauseGame();
+    }
+
     setState(() => _currentPageIndex = newIndex);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(chessBoardScreenProviderNew(newIndex).notifier).parseMoves();
+      if (gamesAsync.hasValue && gamesAsync.value?.gamesTourModels != null) {
+        ref.read(chessBoardScreenProviderNew(newIndex).notifier).parseMoves();
+      }
     });
 
     _prefetchAround(newIndex);
@@ -88,9 +97,18 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   void _navigateToGame(int gameIndex) {
     if (gameIndex == _currentPageIndex) return;
 
-    ref
-        .read(chessBoardScreenProviderNew(_currentPageIndex).notifier)
-        .pauseGame();
+    // Check if provider is available before trying to access it
+    final view = ref.read(chessboardViewFromProviderNew);
+    final gamesAsync =
+        view == ChessboardView.tour
+            ? ref.read(gamesTourScreenProvider)
+            : ref.read(countrymanGamesTourScreenProvider);
+
+    if (gamesAsync.hasValue && gamesAsync.value?.gamesTourModels != null) {
+      ref
+          .read(chessBoardScreenProviderNew(_currentPageIndex).notifier)
+          .pauseGame();
+    }
 
     _pageController.animateToPage(
       gameIndex,
@@ -101,19 +119,35 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
 
   /// Preload providers for [index-2 .. index+2] and keep them alive
   void _prefetchAround(int center) {
+    // Check if the required data is available before prefetching
+    final view = ref.read(chessboardViewFromProviderNew);
+    final gamesAsync =
+        view == ChessboardView.tour
+            ? ref.read(gamesTourScreenProvider)
+            : ref.read(countrymanGamesTourScreenProvider);
+
+    if (!gamesAsync.hasValue || gamesAsync.value?.gamesTourModels == null) {
+      return; // Don't prefetch if data isn't ready
+    }
+
     final start = (center - _prefetchRadius).clamp(0, widget.games.length - 1);
     final end = (center + _prefetchRadius).clamp(0, widget.games.length - 1);
 
     // Start/keep subscriptions for the target window
     for (int i = start; i <= end; i++) {
       if (_prefetchSubs.containsKey(i)) continue;
-      // Start listening manually; this keeps the AutoDispose provider alive
-      final sub = ref.listenManual<AsyncValue<ChessBoardStateNew>>(
-        chessBoardScreenProviderNew(i),
-        (_, __) {},
-        fireImmediately: false,
-      );
-      _prefetchSubs[i] = sub;
+      try {
+        // Start listening manually; this keeps the AutoDispose provider alive
+        final sub = ref.listenManual<AsyncValue<ChessBoardStateNew>>(
+          chessBoardScreenProviderNew(i),
+          (_, __) {},
+          fireImmediately: false,
+        );
+        _prefetchSubs[i] = sub;
+      } catch (e) {
+        // Handle case where provider might not be ready
+        print('Failed to prefetch provider for index $i: $e');
+      }
     }
 
     // Cancel subscriptions that are now out of window
@@ -145,6 +179,26 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
 
   @override
   Widget build(BuildContext context) {
+    // Check if the required data is available before building the main content
+    final view = ref.watch(chessboardViewFromProviderNew);
+    final gamesAsync =
+        view == ChessboardView.tour
+            ? ref.watch(gamesTourScreenProvider)
+            : ref.watch(countrymanGamesTourScreenProvider);
+
+    // Show loading screen if data isn't ready
+    if (!gamesAsync.hasValue || gamesAsync.value?.gamesTourModels == null) {
+      return _LoadingScreen(
+        games:
+            widget.games.isNotEmpty
+                ? widget.games
+                : [widget.games.first], // Fallback for empty games
+        currentGameIndex: _currentPageIndex.clamp(0, widget.games.length - 1),
+        onGameChanged: (index) {}, // Disabled during loading
+        lastViewedIndex: _lastViewedIndex,
+      );
+    }
+
     return WillPopScope(
       onWillPop: () async {
         Navigator.of(context).pop(_lastViewedIndex);
@@ -180,37 +234,47 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
               if (index == _currentPageIndex - 1 ||
                   index == _currentPageIndex + 1 ||
                   index == _currentPageIndex) {
-                return ref
-                    .watch(chessBoardScreenProviderNew(index))
-                    .when(
-                      data: (chessBoardState) {
-                        if (chessBoardState.isAnalysisMode != analysisMode) {
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (mounted) {
-                              setState(() {
-                                analysisMode = chessBoardState.isAnalysisMode;
-                              });
-                            }
-                          });
-                        }
-                        return _GamePage(
-                          game: widget.games[index],
-                          state: chessBoardState,
-                          games: widget.games,
-                          currentGameIndex: index,
-                          onGameChanged: _navigateToGame,
-                          lastViewedIndex: _lastViewedIndex,
-                        );
-                      },
-                      error: (e, _) => ErrorWidget(e),
-                      loading:
-                          () => _LoadingScreen(
+                try {
+                  return ref
+                      .watch(chessBoardScreenProviderNew(index))
+                      .when(
+                        data: (chessBoardState) {
+                          if (chessBoardState.isAnalysisMode != analysisMode) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (mounted) {
+                                setState(() {
+                                  analysisMode = chessBoardState.isAnalysisMode;
+                                });
+                              }
+                            });
+                          }
+                          return _GamePage(
+                            game: widget.games[index],
+                            state: chessBoardState,
                             games: widget.games,
                             currentGameIndex: index,
                             onGameChanged: _navigateToGame,
                             lastViewedIndex: _lastViewedIndex,
-                          ),
-                    );
+                          );
+                        },
+                        error: (e, _) => ErrorWidget(e),
+                        loading:
+                            () => _LoadingScreen(
+                              games: widget.games,
+                              currentGameIndex: index,
+                              onGameChanged: _navigateToGame,
+                              lastViewedIndex: _lastViewedIndex,
+                            ),
+                      );
+                } catch (e) {
+                  // Fallback for when provider isn't ready
+                  return _LoadingScreen(
+                    games: widget.games,
+                    currentGameIndex: index,
+                    onGameChanged: _navigateToGame,
+                    lastViewedIndex: _lastViewedIndex,
+                  );
+                }
               } else {
                 return SizedBox.shrink();
               }

@@ -202,15 +202,11 @@ class GroupBroadcastRepository extends BaseRepository {
   ) async {
     if (query.trim().isEmpty) return [];
 
-    final q = query.trim().toLowerCase();
-
     return handleApiCall(() async {
-      final res = await supabase
-          .from('group_broadcasts')
-          .select()
-          .or('name.ilike.%$q%,search.cs.{$q}')
-          .order('max_avg_elo', ascending: false)
-          .limit(10);
+      final res = await supabase.rpc(
+        'search_group_broadcasts',
+        params: {'search_query': query.trim()},
+      );
 
       return (res as List).map((e) => GroupBroadcast.fromJson(e)).toList();
     });

@@ -63,30 +63,55 @@ class GamesTourMainContent extends ConsumerWidget {
     required this.gamesData,
     required this.isChessBoardVisible,
     required this.scrollController,
-
     required this.getHeaderKey,
     required this.getGameKey,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final rounds =
-        ref.watch(gamesAppBarProvider).value?.gamesAppBarModels ?? [];
+    final rounds = ref.watch(gamesAppBarProvider).value?.gamesAppBarModels ?? [];
+    
+    // Group games by round while preserving the original sorting within each round
     final gamesByRound = <String, List<GamesTourModel>>{};
+    
+    // Initialize empty lists for each round first
+    for (final round in rounds) {
+      gamesByRound[round.id] = [];
+    }
+    
+    // Add games to their respective rounds in the order they appear in the sorted list
     for (final game in gamesData.gamesTourModels) {
-      gamesByRound.putIfAbsent(game.roundId, () => []).add(game);
+      if (gamesByRound.containsKey(game.roundId)) {
+        gamesByRound[game.roundId]!.add(game);
+      }
     }
 
-    final visibleRounds =
-        rounds
-            .where((round) => (gamesByRound[round.id]?.isNotEmpty ?? false))
-            .toList();
+    final visibleRounds = rounds
+        .where((round) => (gamesByRound[round.id]?.isNotEmpty ?? false))
+        .toList();
+
+    // Create a properly ordered flat list that matches the ListView display order
+    final orderedGamesForChessBoard = <GamesTourModel>[];
+    
+    // Add games in the same order as they will appear in the ListView
+    // (reversed rounds, with games in each round in the sorted order)
+    for (final round in visibleRounds.reversed) {
+      final roundGames = gamesByRound[round.id] ?? [];
+      orderedGamesForChessBoard.addAll(roundGames);
+    }
+
+    // Create a new GamesScreenModel with the ListView-ordered games for ChessBoard navigation
+    final orderedGamesData = GamesScreenModel(
+      gamesTourModels: orderedGamesForChessBoard,
+      pinnedGamedIs: gamesData.pinnedGamedIs,
+      scrollToIndex: gamesData.scrollToIndex,
+    );
 
     return GamesListView(
       key: ValueKey('games_list_${isChessBoardVisible ? 'chess' : 'card'}'),
       rounds: visibleRounds,
       gamesByRound: gamesByRound,
-      gamesData: gamesData,
+      gamesData: orderedGamesData, // Pass the properly ordered data
       isChessBoardVisible: isChessBoardVisible,
       scrollController: scrollController,
       getHeaderKey: getHeaderKey,
