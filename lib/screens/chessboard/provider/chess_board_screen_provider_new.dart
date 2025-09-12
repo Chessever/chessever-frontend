@@ -10,6 +10,7 @@ import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart'
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:dartchess/dartchess.dart';
@@ -84,16 +85,11 @@ class ChessBoardScreenNotifierNew
     if (currentState == null) return;
 
     try {
-      // Use the current game's PGN if available, otherwise fetch from repository
-      String pgn = game.pgn ?? '';
-
       // If no PGN in the current game object, fetch from repository
-      if (pgn.isEmpty) {
-        final gameWithPgn = await ref
-            .read(gameRepositoryProvider)
-            .getGameById(game.gameId);
-        pgn = gameWithPgn.pgn ?? _getSamplePgnData();
-      }
+      final gameWithPgn = await ref
+          .read(gameRepositoryProvider)
+          .getGameById(game.gameId);
+      String pgn = gameWithPgn.pgn ?? _getSamplePgnData();
 
       final gameData = PgnGame.parsePgn(pgn);
       final startingPos = PgnGame.startingPosition(gameData.headers);
@@ -170,9 +166,7 @@ class ChessBoardScreenNotifierNew
         if (timeString != null) {
           times.add(_formatDisplayTime(timeString));
         } else {
-          times.add(
-            '-:--:--',
-          ); // Default for moves without time
+          times.add('-:--:--'); // Default for moves without time
         }
       }
     } catch (e) {
@@ -764,5 +758,21 @@ final chessBoardScreenProviderNew = AutoDisposeStateNotifierProvider.family<
           ? ref.watch(gamesTourScreenProvider).value!.gamesTourModels
           : ref.watch(countrymanGamesTourScreenProvider).value!.gamesTourModels;
 
-  return ChessBoardScreenNotifierNew(ref, game: games[index], index: index);
+  final rounds = ref.read(gamesAppBarProvider).value!.gamesAppBarModels;
+  final reversedRounds = rounds.reversed.toList();
+
+  var arrangedGames = <GamesTourModel>[];
+  for (var a = 0; a < reversedRounds.length; a++) {
+    for (var b = 0; b < games.length; b++) {
+      if (games[b].roundId == reversedRounds[a].id) {
+        arrangedGames.add(games[b]);
+      }
+    }
+  }
+
+  return ChessBoardScreenNotifierNew(
+    ref,
+    game: arrangedGames[index],
+    index: index,
+  );
 });

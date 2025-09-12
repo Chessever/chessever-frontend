@@ -2,7 +2,9 @@ import 'dart:async';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/chess_board_visibility_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/round_drop_down.dart';
@@ -94,7 +96,20 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
 
       final gamesData = gamesTourAsync.value!;
       final allGames = gamesData.gamesTourModels;
-      final gameIndex = allGames.indexWhere(
+
+      final rounds = ref.read(gamesAppBarProvider).value!.gamesAppBarModels;
+      final reversedRounds = rounds.reversed.toList();
+
+      var arrangedGames = <GamesTourModel>[];
+      for (var a = 0; a < reversedRounds.length; a++) {
+        for (var b = 0; b < allGames.length; b++) {
+          if (allGames[b].roundId == reversedRounds[a].id) {
+            arrangedGames.add(allGames[b]);
+          }
+        }
+      }
+
+      final gameIndex = arrangedGames.indexWhere(
         (tourGame) => tourGame.gameId == game.id,
       );
       if (gameIndex == -1) return;
@@ -104,7 +119,7 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
         MaterialPageRoute(
           builder:
               (_) => ChessBoardScreenNew(
-                games: allGames,
+                games: arrangedGames,
                 currentIndex: gameIndex,
               ),
         ),

@@ -38,9 +38,6 @@ class GamesListView extends ConsumerWidget {
     int itemCount = reversedRounds.length;
     for (final round in reversedRounds) {
       itemCount += gamesByRound[round.id]?.length ?? 0;
-      final games = gamesByRound[round.id];
-      if (games != null && games.isNotEmpty) {
-      }
     }
 
     return ListView.builder(
@@ -110,7 +107,13 @@ class _GameListItemBuilder extends ConsumerWidget {
       if (index < currentIndex + gamesToShow.length) {
         final gameIndexInRound = index - currentIndex;
         final game = gamesToShow[gameIndexInRound];
-        final globalGameIndex = gamesData.gamesTourModels.indexOf(game);
+        var globalGameIndex = 0;
+        for (var b = 0; b < gamesData.gamesTourModels.length; b++) {
+          if (gamesData.gamesTourModels[b].gameId == game.gameId) {
+            globalGameIndex = b;
+            break;
+          }
+        }
 
         return Container(
           key: getGameKey(round.id, gameIndexInRound),
