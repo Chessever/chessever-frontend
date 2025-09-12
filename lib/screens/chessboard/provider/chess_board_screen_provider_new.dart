@@ -758,7 +758,7 @@ final chessBoardScreenProviderNew = AutoDisposeStateNotifierProvider.family<
           ? ref.watch(gamesTourScreenProvider).value!.gamesTourModels
           : ref.watch(countrymanGamesTourScreenProvider).value!.gamesTourModels;
 
-  final rounds = ref.watch(gamesAppBarProvider).value!.gamesAppBarModels;
+  final rounds = ref.read(gamesAppBarProvider).value!.gamesAppBarModels;
   final reversedRounds = rounds.reversed.toList();
 
   var arrangedGames = <GamesTourModel>[];
