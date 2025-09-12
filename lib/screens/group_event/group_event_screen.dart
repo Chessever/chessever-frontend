@@ -105,151 +105,150 @@ class GroupEventScreen extends HookConsumerWidget {
       return () => pastScrollController.removeListener(onScroll);
     }, [pastScrollController, selectedTourEvent]);
 
-    return RefreshIndicator(
-      onRefresh: ref.read(homeScreenProvider).onPullRefresh,
-      color: kWhiteColor70,
-      backgroundColor: kDarkGreyColor,
-      displacement: 60.h,
-      strokeWidth: 3.w,
-      child: Material(
-        color: kBackgroundColor,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(height: 16.h + MediaQuery.of(context).viewPadding.top),
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20.sp),
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                switchInCurve: Curves.easeOut,
-                switchOutCurve: Curves.easeIn,
-                transitionBuilder:
-                    (Widget child, Animation<double> animation) =>
-                        FadeTransition(
-                          opacity: animation,
-                          child: SizeTransition(
-                            sizeFactor: animation,
-                            axis: Axis.horizontal,
-                            child: child,
-                          ),
-                        ),
-                child: SizedBox(
-                  width: double.infinity,
-                  key: const ValueKey('search_bar'),
-                  child: EnhancedRoundedSearchBar(
-                    focusNode: focusNode,
-                    controller: searchController,
-                    hintText: 'Search Events or Players',
-                    showProfile: !isSearching.value,
-                    onChanged:
-                        (value) => ref
-                            .read(groupEventScreenProvider.notifier)
-                            .searchForTournament(value, selectedTourEvent),
-                    onTournamentSelected:
-                        (t) => ref
-                            .read(groupEventScreenProvider.notifier)
-                            .onSelectTournament(context: context, id: t.id),
-                    onPlayerSelected:
-                        (player) => ref
-                            .read(groupEventScreenProvider.notifier)
-                            .onSelectPlayer(context: context, player: player),
-                    onFilterTap: () => _showFilterPopup(context),
-                    onProfileTap:
-                        () => HomeScreen.scaffoldKey.currentState?.openDrawer(),
+    return Material(
+      color: kBackgroundColor,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(height: 16.h + MediaQuery.of(context).viewPadding.top),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20.sp),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              switchInCurve: Curves.easeOut,
+              switchOutCurve: Curves.easeIn,
+              transitionBuilder:
+                  (Widget child, Animation<double> animation) => FadeTransition(
+                    opacity: animation,
+                    child: SizeTransition(
+                      sizeFactor: animation,
+                      axis: Axis.horizontal,
+                      child: child,
+                    ),
                   ),
+              child: SizedBox(
+                width: double.infinity,
+                key: const ValueKey('search_bar'),
+                child: EnhancedRoundedSearchBar(
+                  focusNode: focusNode,
+                  controller: searchController,
+                  hintText: 'Search Events or Players',
+                  showProfile: !isSearching.value,
+                  onChanged:
+                      (value) => ref
+                          .read(groupEventScreenProvider.notifier)
+                          .searchForTournament(value, selectedTourEvent),
+                  onTournamentSelected:
+                      (t) => ref
+                          .read(groupEventScreenProvider.notifier)
+                          .onSelectTournament(context: context, id: t.id),
+                  onPlayerSelected:
+                      (player) => ref
+                          .read(groupEventScreenProvider.notifier)
+                          .onSelectPlayer(context: context, player: player),
+                  onFilterTap: () => _showFilterPopup(context),
+                  onProfileTap:
+                      () => HomeScreen.scaffoldKey.currentState?.openDrawer(),
                 ),
               ),
             ),
+          ),
 
-            SizedBox(height: 16.h),
+          SizedBox(height: 16.h),
 
-            Consumer(
-              builder: (context, ref, child) {
-                final query = ref.watch(searchQueryProvider);
-                final selectedTab = ref.watch(selectedGroupCategoryProvider);
+          Consumer(
+            builder: (context, ref, child) {
+              final query = ref.watch(searchQueryProvider);
+              final selectedTab = ref.watch(selectedGroupCategoryProvider);
 
-                final options =
-                    GroupEventCategory.values.map((category) {
-                      if (query.isNotEmpty && category == selectedTab) {
-                        return query;
-                      } else {
-                        return _mappedName[category]!;
-                      }
-                    }).toList();
+              final options =
+                  GroupEventCategory.values.map((category) {
+                    if (query.isNotEmpty && category == selectedTab) {
+                      return query;
+                    } else {
+                      return _mappedName[category]!;
+                    }
+                  }).toList();
 
-                return Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20.sp),
-                  child: SegmentedSwitcher(
-                    backgroundColor: kBlackColor,
-                    selectedBackgroundColor: kBlackColor,
-                    options: options,
-                    initialSelection: GroupEventCategory.values.indexOf(
-                      selectedTourEvent,
-                    ),
-                    currentSelection: GroupEventCategory.values.indexOf(
-                      selectedTourEvent,
-                    ),
-                    onSelectionChanged: (index) {
-                      final newCategory = GroupEventCategory.values[index];
-                      ref.read(selectedGroupCategoryProvider.notifier).state =
-                          newCategory;
-
-                      pageController.animateToPage(
-                        index,
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeInOut,
-                      );
-                    },
+              return Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20.sp),
+                child: SegmentedSwitcher(
+                  backgroundColor: kBlackColor,
+                  selectedBackgroundColor: kBlackColor,
+                  options: options,
+                  initialSelection: GroupEventCategory.values.indexOf(
+                    selectedTourEvent,
                   ),
-                );
+                  currentSelection: GroupEventCategory.values.indexOf(
+                    selectedTourEvent,
+                  ),
+                  onSelectionChanged: (index) {
+                    final newCategory = GroupEventCategory.values[index];
+                    ref.read(selectedGroupCategoryProvider.notifier).state =
+                        newCategory;
+
+                    pageController.animateToPage(
+                      index,
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                    );
+                  },
+                ),
+              );
+            },
+          ),
+
+          SizedBox(height: 12.h),
+
+          Expanded(
+            child: PageView.builder(
+              controller: pageController,
+              itemCount: GroupEventCategory.values.length,
+              onPageChanged: (index) {
+                final newCategory = GroupEventCategory.values[index];
+                ref.read(selectedGroupCategoryProvider.notifier).state =
+                    newCategory;
               },
-            ),
+              itemBuilder: (context, index) {
+                final isPast =
+                    GroupEventCategory.values[index] == GroupEventCategory.past;
+                final scrollController = isPast ? pastScrollController : null;
 
-            SizedBox(height: 12.h),
+                return Consumer(
+                  builder: (context, ref, child) {
+                    final controller = ref.watch(
+                      groupEventScreenProvider.notifier,
+                    );
+                    final isLoadingMore = isPast && controller.isFetchingMore;
 
-            Expanded(
-              child: PageView.builder(
-                controller: pageController,
-                itemCount: GroupEventCategory.values.length,
-                onPageChanged: (index) {
-                  final newCategory = GroupEventCategory.values[index];
-                  ref.read(selectedGroupCategoryProvider.notifier).state =
-                      newCategory;
-                },
-                itemBuilder: (context, index) {
-                  final isPast =
-                      GroupEventCategory.values[index] ==
-                      GroupEventCategory.past;
-                  final scrollController = isPast ? pastScrollController : null;
+                    return ref
+                        .watch(groupEventScreenProvider)
+                        .when(
+                          data: (filteredEvents) {
+                            final favorites = ref.watch(starredProvider);
+                            final isSearching =
+                                searchController.text.trim().isNotEmpty;
+                            List<GroupEventCardModel> finalEvents;
 
-                  return Consumer(
-                    builder: (context, ref, child) {
-                      final controller = ref.watch(
-                        groupEventScreenProvider.notifier,
-                      );
-                      final isLoadingMore = isPast && controller.isFetchingMore;
-
-                      return ref
-                          .watch(groupEventScreenProvider)
-                          .when(
-                            data: (filteredEvents) {
-                              final favorites = ref.watch(starredProvider);
-                              final isSearching =
-                                  searchController.text.trim().isNotEmpty;
-                              List<GroupEventCardModel> finalEvents;
-
-                              if (isSearching) {
-                                finalEvents = filteredEvents;
-                              } else {
-                                finalEvents = ref
-                                    .read(tournamentSortingServiceProvider)
-                                    .sortBasedOnFavorite(
-                                      tours: filteredEvents,
-                                      favorites: favorites,
-                                    );
-                              }
-                              return AllEventsTabWidget(
+                            if (isSearching) {
+                              finalEvents = filteredEvents;
+                            } else {
+                              finalEvents = ref
+                                  .read(tournamentSortingServiceProvider)
+                                  .sortBasedOnFavorite(
+                                    tours: filteredEvents,
+                                    favorites: favorites,
+                                  );
+                            }
+                            return RefreshIndicator(
+                              onRefresh:
+                                  ref.read(homeScreenProvider).onPullRefresh,
+                              color: kWhiteColor70,
+                              backgroundColor: kDarkGreyColor,
+                              displacement: 60.h,
+                              strokeWidth: 3.w,
+                              child: AllEventsTabWidget(
                                 filteredEvents: finalEvents,
                                 onSelect:
                                     (tourEventCardModel) => ref
@@ -260,40 +259,40 @@ class GroupEventScreen extends HookConsumerWidget {
                                         ),
                                 isLoadingMore: isLoadingMore,
                                 scrollController: scrollController,
-                              );
-                            },
-                            loading: () {
-                              return SkeletonWidget(
-                                child: AllEventsTabWidget(
-                                  onSelect: (_) {},
-                                  filteredEvents: List.generate(
-                                    10,
-                                    (index) => GroupEventCardModel(
-                                      id: 'tour_001',
-                                      title: 'World Chess Championship 2025',
-                                      dates: 'Mar 15 - 25,2025',
-                                      timeUntilStart: 'Starts in 8 months',
-                                      tourEventCategory:
-                                          TourEventCategory.values[Random()
-                                              .nextInt(
-                                                TourEventCategory.values.length,
-                                              )],
-                                      maxAvgElo: 0,
-                                      timeControl: 'Standard',
-                                    ),
+                              ),
+                            );
+                          },
+                          loading: () {
+                            return SkeletonWidget(
+                              child: AllEventsTabWidget(
+                                onSelect: (_) {},
+                                filteredEvents: List.generate(
+                                  10,
+                                  (index) => GroupEventCardModel(
+                                    id: 'tour_001',
+                                    title: 'World Chess Championship 2025',
+                                    dates: 'Mar 15 - 25,2025',
+                                    timeUntilStart: 'Starts in 8 months',
+                                    tourEventCategory:
+                                        TourEventCategory.values[Random()
+                                            .nextInt(
+                                              TourEventCategory.values.length,
+                                            )],
+                                    maxAvgElo: 0,
+                                    timeControl: 'Standard',
                                   ),
                                 ),
-                              );
-                            },
-                            error: (error, stackTrace) => GenericErrorWidget(),
-                          );
-                    },
-                  );
-                },
-              ),
+                              ),
+                            );
+                          },
+                          error: (error, stackTrace) => GenericErrorWidget(),
+                        );
+                  },
+                );
+              },
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
