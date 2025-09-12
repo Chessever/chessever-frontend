@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/chess_board_visibility_provider.dart';
@@ -82,39 +83,33 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
     });
   }
 
-  void _handleGameSelection(game) {
+  void _handleGameSelection(Games game) {
     try {
-      final provider = ref.read(gamesTourScreenProvider.notifier);
-      provider.clearSearch();
+      ref.read(chessboardViewFromProviderNew.notifier).state =
+          ChessboardView.tour;
+      ref.read(gamesTourScreenProvider.notifier).clearSearch();
 
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        Future.delayed(const Duration(milliseconds: 150), () {
-          final gamesTourAsync = ref.read(gamesTourScreenProvider);
-          if (!gamesTourAsync.hasValue) return;
+      final gamesTourAsync = ref.read(gamesTourScreenProvider);
+      if (!gamesTourAsync.hasValue) return;
 
-          final gamesData = gamesTourAsync.value!;
-          final allGames = gamesData.gamesTourModels;
-          final gameIndex = allGames.indexWhere(
-            (tourGame) => tourGame.gameId == game.id,
-          );
-          if (gameIndex == -1) return;
+      final gamesData = gamesTourAsync.value!;
+      final allGames = gamesData.gamesTourModels;
+      final gameIndex = allGames.indexWhere(
+        (tourGame) => tourGame.gameId == game.id,
+      );
+      if (gameIndex == -1) return;
 
-          ref.read(chessboardViewFromProviderNew.notifier).state =
-              ChessboardView.tour;
-
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder:
-                  (_) => ChessBoardScreenNew(
-                    games: allGames,
-                    currentIndex: gameIndex,
-                  ),
-            ),
-          );
-          _closeSearch();
-        });
-      });
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder:
+              (_) => ChessBoardScreenNew(
+                games: allGames,
+                currentIndex: gameIndex,
+              ),
+        ),
+      );
+      _closeSearch();
     } catch (e) {}
   }
 

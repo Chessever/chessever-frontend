@@ -59,13 +59,16 @@ class GroupEventScreen extends HookConsumerWidget {
 
     useEffect(() {
       final newIndex = GroupEventCategory.values.indexOf(selectedTourEvent);
-      if (pageController.hasClients) {
+
+      if (pageController.hasClients &&
+          pageController.page?.round() != newIndex) {
         pageController.animateToPage(
           newIndex,
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeInOut,
         );
       }
+
       return null;
     }, [selectedTourEvent]);
 
@@ -130,35 +133,43 @@ class GroupEventScreen extends HookConsumerWidget {
 
             Consumer(
               builder: (context, ref, child) {
-                final isSearching = ref.watch(isSearchingProvider);
-                return isSearching
-                    ? SizedBox.shrink()
-                    : Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 20.sp),
-                      child: SegmentedSwitcher(
-                        backgroundColor: kBlackColor,
-                        selectedBackgroundColor: kBlackColor,
-                        options: _mappedName.values.toList(),
-                        initialSelection: _mappedName.values.toList().indexOf(
-                          _mappedName[selectedTourEvent]!,
-                        ),
-                        currentSelection: _mappedName.values.toList().indexOf(
-                          _mappedName[selectedTourEvent]!,
-                        ),
-                        onSelectionChanged: (index) {
-                          final newCategory = GroupEventCategory.values[index];
-                          ref
-                              .read(selectedGroupCategoryProvider.notifier)
-                              .state = newCategory;
+                final query = ref.watch(searchQueryProvider);
+                final selectedTab = ref.watch(selectedGroupCategoryProvider);
 
-                          pageController.animateToPage(
-                            index,
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeInOut,
-                          );
-                        },
-                      ),
-                    );
+                final options =
+                    GroupEventCategory.values.map((category) {
+                      if (query.isNotEmpty && category == selectedTab) {
+                        return query;
+                      } else {
+                        return _mappedName[category]!;
+                      }
+                    }).toList();
+
+                return Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20.sp),
+                  child: SegmentedSwitcher(
+                    backgroundColor: kBlackColor,
+                    selectedBackgroundColor: kBlackColor,
+                    options: options,
+                    initialSelection: GroupEventCategory.values.indexOf(
+                      selectedTourEvent,
+                    ),
+                    currentSelection: GroupEventCategory.values.indexOf(
+                      selectedTourEvent,
+                    ),
+                    onSelectionChanged: (index) {
+                      final newCategory = GroupEventCategory.values[index];
+                      ref.read(selectedGroupCategoryProvider.notifier).state =
+                          newCategory;
+
+                      pageController.animateToPage(
+                        index,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                      );
+                    },
+                  ),
+                );
               },
             ),
 

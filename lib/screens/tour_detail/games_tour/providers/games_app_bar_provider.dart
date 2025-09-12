@@ -17,7 +17,13 @@ final gamesAppBarProvider = StateNotifierProvider<
   _GamesAppBarNotifier,
   AsyncValue<GamesAppBarViewModel>
 >((ref) {
-  final tourId = ref.watch(tourDetailScreenProvider).value!.aboutTourModel.id;
+  final tourAsync = ref.watch(tourDetailScreenProvider);
+  final tourId = tourAsync.value?.aboutTourModel.id;
+
+  if (tourId == null) {
+    throw Exception('tourId is null in gamesAppBarProvider');
+  }
+
   return _GamesAppBarNotifier(
     ref: ref,
     tourId: tourId,
