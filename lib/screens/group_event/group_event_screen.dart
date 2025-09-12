@@ -13,6 +13,7 @@ import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../widgets/segmented_switcher.dart';
@@ -47,6 +48,8 @@ class GroupEventScreen extends HookConsumerWidget {
     final pageController = usePageController(
       initialPage: GroupEventCategory.values.indexOf(selectedTourEvent),
     );
+    final isMounted = useIsMounted();
+    final pastScrollController = useScrollController();
 
     final isSearching = useState(false);
     final focusNode = useFocusNode();
@@ -71,6 +74,36 @@ class GroupEventScreen extends HookConsumerWidget {
 
       return null;
     }, [selectedTourEvent]);
+
+    ref.listen<GroupEventCategory>(selectedGroupCategoryProvider, (
+      previous,
+      next,
+    ) {
+      if (previous == next) return;
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) {
+          ref.read(searchQueryProvider.notifier).state = '';
+          searchController.clear();
+          FocusScope.of(context).unfocus();
+          ref.read(groupEventScreenProvider.notifier).loadTours();
+        }
+      });
+    });
+    useEffect(() {
+      void onScroll() {
+        if (!isMounted()) return;
+        if (selectedTourEvent != GroupEventCategory.past) return;
+
+        final max = pastScrollController.position.maxScrollExtent;
+        final current = pastScrollController.position.pixels;
+        if (max - current <= 200) {
+          ref.read(groupEventScreenProvider.notifier).loadMorePast();
+        }
+      }
+
+      pastScrollController.addListener(onScroll);
+      return () => pastScrollController.removeListener(onScroll);
+    }, [pastScrollController, selectedTourEvent]);
 
     return RefreshIndicator(
       onRefresh: ref.read(homeScreenProvider).onPullRefresh,
@@ -185,8 +218,18 @@ class GroupEventScreen extends HookConsumerWidget {
                       newCategory;
                 },
                 itemBuilder: (context, index) {
+                  final isPast =
+                      GroupEventCategory.values[index] ==
+                      GroupEventCategory.past;
+                  final scrollController = isPast ? pastScrollController : null;
+
                   return Consumer(
                     builder: (context, ref, child) {
+                      final controller = ref.watch(
+                        groupEventScreenProvider.notifier,
+                      );
+                      final isLoadingMore = isPast && controller.isFetchingMore;
+
                       return ref
                           .watch(groupEventScreenProvider)
                           .when(
@@ -206,7 +249,6 @@ class GroupEventScreen extends HookConsumerWidget {
                                       favorites: favorites,
                                     );
                               }
-
                               return AllEventsTabWidget(
                                 filteredEvents: finalEvents,
                                 onSelect:
@@ -216,6 +258,8 @@ class GroupEventScreen extends HookConsumerWidget {
                                           context: context,
                                           id: tourEventCardModel.id,
                                         ),
+                                isLoadingMore: isLoadingMore,
+                                scrollController: scrollController,
                               );
                             },
                             loading: () {

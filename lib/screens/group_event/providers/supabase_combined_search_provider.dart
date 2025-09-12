@@ -82,7 +82,7 @@ bool _isPlayerName(String searchTerm, String tournamentName) {
   final t = searchTerm.trim().toLowerCase();
   final tn = tournamentName.trim().toLowerCase();
 
-  // drop exact or pipe-prefixed event-title clones
+  // Drop exact or pipe-prefixed event-title clones
   if (t == tn || t.startsWith('$tn |')) return false;
 
   if ([
@@ -96,9 +96,10 @@ bool _isPlayerName(String searchTerm, String tournamentName) {
     return false;
 
   final words = searchTerm.trim().split(' ');
-  if (words.length < 2 || words.length > 4) return false;
-
-  return words.every(
-    (w) => w.isNotEmpty && w[0] == w[0].toUpperCase() && w.length > 1,
-  );
+  if (words.length == 1 || (words.length >= 2 && words.length <= 4)) {
+    return words.every(
+      (w) => w.isNotEmpty && w[0] == w[0].toUpperCase() && w.length >= 1,
+    );
+  }
+  return false;
 }

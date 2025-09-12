@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:chessever2/repository/supabase/base_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -64,9 +66,10 @@ class GroupBroadcastRepository extends BaseRepository {
     });
   }
 
+  // group_broadcast_repository.dart
   Future<List<GroupBroadcast>> getPastGroupBroadcasts({
-    int? limit,
-    int? offset,
+    int? limit, // NEW
+    int? offset, // NEW
     String orderBy = 'max_avg_elo',
     bool ascending = false,
   }) async {
@@ -76,15 +79,11 @@ class GroupBroadcastRepository extends BaseRepository {
 
       query = query.order(orderBy, ascending: ascending);
 
-      if (limit != null) {
-        query = query.limit(limit);
-      }
-
-      if (offset != null) {
-        query = query.range(offset, offset + (limit ?? 100) - 1);
-      }
+      if (limit != null) query = query.limit(limit);
+      if (offset != null) query = query.range(offset, offset + limit! - 1);
 
       final response = await query;
+
       return (response as List)
           .map((json) => GroupBroadcast.fromJson(json))
           .toList();

@@ -47,10 +47,9 @@ class GroupBroadcastLocalStorage {
                   .getCurrentGroupBroadcasts();
           break;
         case GroupEventCategory.past:
-          broadcasts =
-              await ref
-                  .read(groupBroadcastRepositoryProvider)
-                  .getPastGroupBroadcasts();
+          broadcasts = await ref
+              .read(groupBroadcastRepositoryProvider)
+              .getPastGroupBroadcasts(limit: 50);
           break;
       }
 
@@ -151,6 +150,35 @@ class GroupBroadcastLocalStorage {
       }).toList();
     } catch (e) {
       return <GroupBroadcast>[];
+    }
+  }
+
+  /// Paginated loader for PAST tab (25 at a time)
+  Future<List<GroupBroadcast>> fetchPastGroupBroadcastsPaginated({
+    required int limit,
+    required int offset,
+  }) async {
+    try {
+      final broadcasts = await ref
+          .read(groupBroadcastRepositoryProvider)
+          .getPastGroupBroadcasts(limit: limit, offset: offset);
+
+      // keep the same maxAvgElo sort & cache overwrite as the full fetch
+      broadcasts.sort((a, b) {
+        if (a.maxAvgElo == null && b.maxAvgElo == null) return 0;
+        if (a.maxAvgElo == null) return 1;
+        if (b.maxAvgElo == null) return -1;
+        return b.maxAvgElo!.compareTo(a.maxAvgElo!);
+      });
+
+      final encoded = _encodeGroupBroadcastsList(broadcasts);
+      await ref
+          .read(sharedPreferencesRepository)
+          .setStringList(localStorageName, encoded);
+
+      return broadcasts;
+    } catch (_) {
+      rethrow;
     }
   }
 }

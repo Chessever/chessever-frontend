@@ -65,9 +65,7 @@ final gamesTourScreenProvider = StateNotifierProvider<
   if (gamesAsync.hasError) {
     return GamesTourScreenProvider.withError(
       ref: ref,
-      error:
-          gamesAsync
-              .error!, // Fixed: use gamesAsync.error instead of tourDetailAsync.error
+      error: gamesAsync.error!,
       allGames: [],
       pinndedIds: [],
     );
@@ -178,9 +176,34 @@ class GamesTourScreenProvider
         }
       },
     );
+
+    // FIXED: Listen to pin changes and refresh state immediately
+    ref.listen<AsyncValue<List<String>>>(
+      gamesPinprovider,
+      (previous, next) {
+        final previousPinned = previous?.valueOrNull ?? [];
+        final currentPinned = next.valueOrNull ?? [];
+
+        // Only update if pinned games actually changed
+        if (!_listEquals(previousPinned, currentPinned)) {
+          debugPrint('📌 Pinned games changed: ${currentPinned.length} pinned');
+          pinndedIds = currentPinned;
+          // Immediately refresh the state with updated pins
+          _updateState(allGames);
+        }
+      },
+    );
   }
 
-  // Rest of the methods remain the same...
+  // Helper method to compare lists
+  bool _listEquals<T>(List<T> a, List<T> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
   void _updateScrollPositionForRound() {
     if (_selectedRoundId == null || _isSearchMode) return;
 
@@ -217,15 +240,28 @@ class GamesTourScreenProvider
 
     try {
       final pinnedStorage = ref.read(pinGameLocalStorage);
-      final currentPinnedIds = await pinnedStorage.getPinnedGameIds();
+      final currentPinnedIds = List<String>.from(pinndedIds);
 
       if (currentPinnedIds.contains(gameId)) {
         await pinnedStorage.removePinnedGameId(gameId);
+        currentPinnedIds.remove(gameId);
+        debugPrint('📌 Unpinned game: $gameId');
       } else {
         await pinnedStorage.addPinnedGameId(gameId);
+        currentPinnedIds.add(gameId);
+        debugPrint('📌 Pinned game: $gameId');
       }
-      await _init();
+
+      // FIXED: Update local state immediately and refresh provider
+      pinndedIds = currentPinnedIds;
+
+      // Force refresh the pin provider to sync with storage
+      ref.invalidate(gamesPinprovider);
+
+      // Immediately update the display state
+      await _updateState(allGames);
     } catch (e, st) {
+      debugPrint('Error toggling pin for game $gameId: $e');
       if (mounted) {
         state = AsyncValue.error(e, st);
       }
@@ -250,7 +286,9 @@ class GamesTourScreenProvider
   Future<void> unpinAllGames() async {
     try {
       await ref.read(pinGameLocalStorage).clearAllPinnedGames();
-      await _init();
+      pinndedIds = [];
+      ref.invalidate(gamesPinprovider);
+      await _updateState(allGames);
     } catch (e, st) {
       if (mounted) {
         state = AsyncValue.error(e, st);
@@ -330,7 +368,7 @@ class GamesTourScreenProvider
         );
 
         debugPrint(
-          '🔍 State updated with ${gamesTourModels.length} games (search mode: $_isSearchMode)',
+          '🔍 State updated with ${gamesTourModels.length} games (search mode: $_isSearchMode, pinned: ${pinndedIds.length})',
         );
       }
     } catch (e, st) {
