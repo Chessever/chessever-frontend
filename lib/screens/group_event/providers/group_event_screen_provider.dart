@@ -75,6 +75,12 @@ class _GroupEventScreenController
   final Ref ref;
   @override
   final GroupEventCategory tourEventCategory;
+  bool get isFetchingMore => _pastIsFetching;
+
+  int _pastOffset = 0;
+  final int _pastLimit = 50;
+  bool _pastIsFetching = false;
+  bool pastHasMore = true;
 
   var _groupBroadcastList = <GroupBroadcast>[];
 
@@ -125,6 +131,36 @@ class _GroupEventScreenController
       }
     } catch (error, _) {
       print(error);
+    }
+  }
+
+  Future<void> loadMorePast() async {
+    if (_pastIsFetching || !pastHasMore) return;
+    _pastIsFetching = true;
+    state = AsyncValue.data(state.valueOrNull ?? []);
+    try {
+      final repo = ref.read(groupBroadcastRepositoryProvider);
+      final broadcasts = await repo.getPastGroupBroadcasts(
+        limit: _pastLimit,
+        offset: _pastOffset,
+      );
+
+      final newModels =
+          broadcasts
+              .map(
+                (b) =>
+                    GroupEventCardModel.fromGroupBroadcast(b, liveBroadcastId),
+              )
+              .toList();
+
+      final current = state.valueOrNull ?? [];
+      state = AsyncValue.data([...current, ...newModels]);
+
+      _pastOffset += newModels.length;
+      pastHasMore = newModels.length == _pastLimit;
+    } catch (_) {
+    } finally {
+      _pastIsFetching = false;
     }
   }
 
@@ -375,12 +411,9 @@ class _GroupEventScreenController
       return false;
     }
     final words = searchTerm.trim().split(' ');
-    if (words.length >= 2 && words.length <= 4) {
+    if (words.length == 1 || (words.length >= 2 && words.length <= 4)) {
       return words.every(
-        (word) =>
-            word.isNotEmpty &&
-            word[0] == word[0].toUpperCase() &&
-            word.length > 1,
+        (w) => w.isNotEmpty && w[0] == w[0].toUpperCase() && w.length >= 1,
       );
     }
     return false;

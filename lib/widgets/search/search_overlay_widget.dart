@@ -39,13 +39,6 @@ class SearchOverlay extends ConsumerWidget {
               loading: () => _buildLoadingState(),
               error: (e, _) => _buildErrorState(e.toString()),
               data: (searchResult) {
-                if (kDebugMode) {
-                  print(
-                    'Tournament results: ${searchResult.tournamentResults.length}',
-                  );
-                  print('Player results: ${searchResult.playerResults.length}');
-                }
-
                 if (searchResult.isEmpty) return _buildEmptyState();
 
                 return _buildSearchResults(searchResult);

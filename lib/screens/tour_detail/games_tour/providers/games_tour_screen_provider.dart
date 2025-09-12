@@ -154,42 +154,45 @@ class GamesTourScreenProvider
     // Only setup listeners if we have aboutTourModel (not in loading/error states)
     if (aboutTourModel == null) return;
 
-    ref.listen<AsyncValue<GamesAppBarViewModel>>(gamesAppBarProvider, (
-      previous,
-      next,
-    ) {
-      final previousSelected = previous?.valueOrNull?.selectedId;
-      final newSelectedRound = next.valueOrNull?.selectedId;
-      final isUserSelected = next.valueOrNull?.userSelectedId ?? false;
+    ref.listen<AsyncValue<GamesAppBarViewModel>>(
+      gamesAppBarProvider,
+      (previous, next) {
+        final previousSelected = previous?.valueOrNull?.selectedId;
+        final newSelectedRound = next.valueOrNull?.selectedId;
+        final isUserSelected = next.valueOrNull?.userSelectedId ?? false;
 
-      if (newSelectedRound != null &&
-          newSelectedRound != previousSelected &&
-          newSelectedRound != _selectedRoundId) {
-        debugPrint(
-          '🔄 Round changed from $_selectedRoundId to $newSelectedRound (user: $isUserSelected)',
-        );
-        _selectedRoundId = newSelectedRound;
+        if (newSelectedRound != null &&
+            newSelectedRound != previousSelected &&
+            newSelectedRound != _selectedRoundId) {
+          debugPrint(
+            '🔄 Round changed from $_selectedRoundId to $newSelectedRound (user: $isUserSelected)',
+          );
+          _selectedRoundId = newSelectedRound;
 
-        // Only update scroll position if this was a user selection or we need to sync
-        if (isUserSelected || previousSelected == null) {
-          _updateScrollPositionForRound();
+          // Only update scroll position if this was a user selection or we need to sync
+          if (isUserSelected || previousSelected == null) {
+            _updateScrollPositionForRound();
+          }
         }
-      }
-    });
+      },
+    );
 
     // FIXED: Listen to pin changes and refresh state immediately
-    ref.listen<AsyncValue<List<String>>>(gamesPinprovider, (previous, next) {
-      final previousPinned = previous?.valueOrNull ?? [];
-      final currentPinned = next.valueOrNull ?? [];
+    ref.listen<AsyncValue<List<String>>>(
+      gamesPinprovider,
+      (previous, next) {
+        final previousPinned = previous?.valueOrNull ?? [];
+        final currentPinned = next.valueOrNull ?? [];
 
-      // Only update if pinned games actually changed
-      if (!_listEquals(previousPinned, currentPinned)) {
-        debugPrint('📌 Pinned games changed: ${currentPinned.length} pinned');
-        pinndedIds = currentPinned;
-        // Immediately refresh the state with updated pins
-        _updateState(allGames);
-      }
-    });
+        // Only update if pinned games actually changed
+        if (!_listEquals(previousPinned, currentPinned)) {
+          debugPrint('📌 Pinned games changed: ${currentPinned.length} pinned');
+          pinndedIds = currentPinned;
+          // Immediately refresh the state with updated pins
+          _updateState(allGames);
+        }
+      },
+    );
   }
 
   // Helper method to compare lists

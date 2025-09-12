@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:flutter/material.dart';
@@ -10,10 +11,13 @@ class AllEventsTabWidget extends ConsumerStatefulWidget {
     required this.filteredEvents,
     required this.onSelect,
     super.key,
+    this.isLoadingMore = false,
+    this.scrollController,
   });
-
   final List<GroupEventCardModel> filteredEvents;
   final ValueChanged<GroupEventCardModel> onSelect;
+  final bool isLoadingMore;
+  final ScrollController? scrollController;
 
   @override
   ConsumerState<AllEventsTabWidget> createState() => _AllEventsTabWidgetState();
@@ -33,7 +37,9 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget>
 
     // Start animation when widget is built
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _animationController.forward();
+      if (mounted) {
+        _animationController.forward();
+      }
     });
   }
 
@@ -55,13 +61,24 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget>
     }
 
     return ListView.builder(
+      controller: widget.scrollController,
       padding: EdgeInsets.only(
         left: 20.sp,
         right: 20.sp,
         bottom: MediaQuery.of(context).viewPadding.bottom + 12.sp,
       ),
-      itemCount: widget.filteredEvents.length,
+      itemCount: widget.filteredEvents.length + (widget.isLoadingMore ? 1 : 0),
       itemBuilder: (context, index) {
+        if (index == widget.filteredEvents.length) {
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewPadding.bottom + 20,
+            ),
+            child: const Center(
+              child: CircularProgressIndicator(color: kBoardLightDefault),
+            ),
+          );
+        }
         final tourEventCardModel = widget.filteredEvents[index];
 
         // Create staggered animation for each item
