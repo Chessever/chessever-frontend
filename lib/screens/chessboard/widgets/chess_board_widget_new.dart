@@ -110,11 +110,8 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFENNew> {
         child: Column(
           children: [
             PlayerFirstRowDetailWidget(
-              name: widget.gamesTourModel.blackPlayer.displayName,
-              firstGmRank: widget.gamesTourModel.blackPlayer.title,
-              countryCode: widget.gamesTourModel.blackPlayer.countryCode,
-              rating: widget.gamesTourModel.blackPlayer.rating,
-              moveTime: widget.gamesTourModel.blackTimeDisplay,
+              isWhitePlayer: false,
+              gamesTourModel: widget.gamesTourModel,
               isCurrentPlayer: widget.gamesTourModel.activePlayer == Side.black,
               playerView: PlayerView.listView,
             ),
@@ -185,11 +182,8 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFENNew> {
             ),
             SizedBox(height: 4.h),
             PlayerFirstRowDetailWidget(
-              name: widget.gamesTourModel.whitePlayer.displayName,
-              firstGmRank: widget.gamesTourModel.whitePlayer.title,
-              countryCode: widget.gamesTourModel.whitePlayer.countryCode,
-              rating: widget.gamesTourModel.whitePlayer.rating,
-                   moveTime: widget.gamesTourModel.whiteTimeDisplay,
+              gamesTourModel: widget.gamesTourModel,
+              isWhitePlayer: true,
               isCurrentPlayer: widget.gamesTourModel.activePlayer == Side.white,
               playerView: PlayerView.listView,
             ),
