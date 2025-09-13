@@ -750,9 +750,7 @@ class _PlayerWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    debugPrint(
-      "BERKAY-From chess_board_screen_new: ${game.gameStatus} ${game.gameStatus.displayText}",
-    );
+   
 
     // Determine if this is the white player
     final isWhitePlayer =
@@ -810,6 +808,8 @@ class _BoardWithSidebar extends StatelessWidget {
                     size: boardSize,
                     chessBoardState: state,
                     isFlipped: state.isBoardFlipped,
+                    index: index,
+
                   ),
             ],
           ),
@@ -823,11 +823,12 @@ class _ChessBoardNew extends ConsumerWidget {
   final double size;
   final ChessBoardStateNew chessBoardState;
   final bool isFlipped;
-
+  final int index;
   const _ChessBoardNew({
     required this.size,
     required this.chessBoardState,
     this.isFlipped = false,
+    required this.index,
   });
 
   @override
@@ -836,8 +837,12 @@ class _ChessBoardNew extends ConsumerWidget {
     final boardTheme = ref
         .read(boardSettingsRepository)
         .getBoardTheme(boardSettingsValue.boardColor);
+    final notifier = ref.read(chessBoardScreenProviderNew(index).notifier);
 
     return Chessboard.fixed(
+      onTouchedSquare: (Square square) {
+        notifier.onTouchedSquare(square);
+      },
       size: size,
       settings: ChessboardSettings(
         colorScheme: ChessboardColorScheme(
@@ -935,8 +940,10 @@ class _AnalysisBoard extends ConsumerWidget {
       ),
       orientation: isFlipped ? Side.black : Side.white,
       fen: chessBoardState.analysisState.position.fen,
+      
       lastMove: chessBoardState.analysisState.lastMove,
       game: GameData(
+        
         playerSide:
             chessBoardState.analysisState.position.turn == Side.white
                 ? PlayerSide.white
