@@ -352,15 +352,47 @@ class ChessBoardScreenNotifierNew
     );
   }
 
-  void initializeAnalysisBoard() {
+  void onTouchedSquare(Square square) {
     final currentState = state.value;
     if (currentState == null || currentState.position == null) return;
 
+    final fen =
+        currentState.isLoadingMoves
+            ? (currentState.fenData ?? "")
+            : currentState.position!.fen;
+    final setup = Setup.parseFen(fen);
+    final position = Chess.fromSetup(setup);
+    final legalMoves = makeLegalMoves(position);
+    if (legalMoves.containsKey(square)) {
+      print("Switching to analysis mode for legal move on $square");
+      state = AsyncValue.data(
+        currentState.copyWith(isAnalysisMode: !currentState.isAnalysisMode),
+      );
+      initializeAnalysisBoard(position);
+
+      // It is a legal move for the current player. We can start the analysis mode.
+    } 
+    else{
+      print("Not switching to analysis mode.");
+    }
+  }
+
+  void initializeAnalysisBoard([Position? pos]) {
+    final currentState = state.value;
+    if (currentState == null || currentState.position == null) return;
+    final posForLegalMoves = pos ?? currentState.position!;
+    print("======================================");
+    print("pos params: ${pos?.fen}");
+    print("pos state: ${currentState.position?.fen}");
+    print("pos picked: ${posForLegalMoves.fen}");
+    print("valid moves for pos params: length ${makeLegalMoves(pos!).length}:");
+    print("valid moves for pos state: length ${makeLegalMoves(currentState.position!).length}");
+    print("======================================");
     state = AsyncValue.data(
       currentState.copyWith(
         analysisState: AnalysisBoardState(
           position: currentState.position!,
-          validMoves: makeLegalMoves(currentState.position!),
+          validMoves: makeLegalMoves(posForLegalMoves),
           promotionMove: null,
           lastMove: currentState.lastMove,
           currentMoveIndex: currentState.currentMoveIndex,
@@ -375,6 +407,7 @@ class ChessBoardScreenNotifierNew
         ),
       ),
     );
+  
   }
 
   bool isPromotionPawnMove(NormalMove move) {
