@@ -115,7 +115,7 @@ class StockfishSingleton {
         }
 
         // Parse score and moves for the principal variation
-        final pvMatch = RegExp(r'pv (.+)').firstMatch(line);
+        final pvMatch = RegExp(r'\bpv (.+)').firstMatch(line);
         if (pvMatch != null) {
           final moves = pvMatch.group(1)!.trim();
 
