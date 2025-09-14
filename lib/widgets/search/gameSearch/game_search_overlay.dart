@@ -2,6 +2,8 @@
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
+import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -160,10 +162,7 @@ class _GameSearchResultTile extends StatefulWidget {
   final GameSearchResult result;
   final VoidCallback onTap;
 
-  const _GameSearchResultTile({
-    required this.result,
-    required this.onTap,
-  });
+  const _GameSearchResultTile({required this.result, required this.onTap});
 
   @override
   State<_GameSearchResultTile> createState() => _GameSearchResultTileState();
@@ -221,6 +220,8 @@ class _GameSearchResultTileState extends State<_GameSearchResultTile>
             child: GestureDetector(
               onTap: widget.onTap,
               child: AnimatedContainer(
+                alignment: Alignment.center,
+                height: 48.h,
                 duration: const Duration(milliseconds: 200),
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,
@@ -229,31 +230,34 @@ class _GameSearchResultTileState extends State<_GameSearchResultTile>
                 decoration: BoxDecoration(
                   color:
                       _isHovered
-                          ? Colors.white.withOpacity(0.05)
+                          ? kWhiteColor.withOpacity(0.05)
                           : Colors.transparent,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color:
-                        _isHovered
-                            ? Colors.blue.withOpacity(0.3)
-                            : Colors.transparent,
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(12),
+                    topRight: Radius.circular(12),
+                  ),
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Colors.grey, // or your desired color
+                      width: 1.0, // or your desired width
+                    ),
                   ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     // Player names
                     Text(
                       playerNames,
                       style: const TextStyle(
-                        color: Colors.white,
+                        color: kWhiteColor,
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    Divider(),
                   ],
                 ),
               ),
