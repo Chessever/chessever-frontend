@@ -866,6 +866,7 @@ class _ChessBoardNew extends ConsumerWidget {
         ),
       ),
       orientation: isFlipped ? Side.black : Side.white,
+      shapes: chessBoardState.shapes,
       fen:
           chessBoardState.isLoadingMoves
               ? (chessBoardState.fenData ?? "")
@@ -936,6 +937,7 @@ class _AnalysisBoard extends ConsumerWidget {
       orientation: isFlipped ? Side.black : Side.white,
       fen: chessBoardState.analysisState.position.fen,
       lastMove: chessBoardState.analysisState.lastMove,
+      shapes: chessBoardState.shapes,
       game: GameData(
         playerSide:
             chessBoardState.analysisState.position.turn == Side.white
