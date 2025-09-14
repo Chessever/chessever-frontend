@@ -13,8 +13,10 @@ import 'package:chessever2/screens/group_event/providers/countryman_games_tour_s
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:easy_debounce/easy_debounce.dart';
+import 'package:fast_immutable_collections/fast_immutable_collections.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -604,6 +606,7 @@ class ChessBoardScreenNotifierNew
       CloudEval? cloudEval;
       double evaluation = 0.0;
       print("Evaluating started for position: $fen");
+      state= AsyncValue.data(currentState.copyWith(shapes: const ISet.empty()));
       try {
         ref.invalidate(cascadeEvalProviderForBoard(fen));
         cloudEval = await ref.read(cascadeEvalProviderForBoard(fen).future);
@@ -660,16 +663,78 @@ class ChessBoardScreenNotifierNew
       if (_cancelEvaluation || state.value == null || !mounted) return;
       var currState = state.value;
       if (currState == null) return;
+      Position pos =
+          currState.isAnalysisMode
+              ? currState.analysisState.position
+              : currState.position!;
+      var shapes = getBestMoveShape(pos, cloudEval);
       if ((currState.isAnalysisMode &&
               currState.analysisState.position.fen == fen) ||
           (!currState.isAnalysisMode && currentState.position?.fen == fen)) {
-        state = AsyncValue.data(currState.copyWith(evaluation: evaluation));
+        state = AsyncValue.data(
+          currState.copyWith(evaluation: evaluation, shapes: shapes),
+        );
       }
     } catch (e) {
       if (!_cancelEvaluation) {
         print('Evaluation error: $e');
       }
     }
+  }
+
+  ISet<Shape> getBestMoveShape(Position pos, CloudEval? cloudEval) {
+    ISet<Shape> shapes = const ISet.empty();
+
+    if (cloudEval?.pvs.isNotEmpty ?? false) {
+      String bestMove =
+          cloudEval!.pvs[0].moves
+              .split(" ")[0]
+              .toLowerCase(); // Normalize to lowercase
+
+      if (bestMove.length < 4 || bestMove.length > 5) {
+        print('Invalid best move UCI: $bestMove');
+        return shapes; // Invalid UCI
+      }
+
+      try {
+        if (bestMove.contains('@')) {
+          // Drop move (e.g., "p@e4")
+          if (bestMove.length != 4 || bestMove[1] != '@') return shapes;
+          String toStr = bestMove.substring(2, 4);
+          Square to = Square.fromName(toStr);
+          shapes =
+              {
+                Arrow(
+                  color: const Color.fromARGB(255, 152, 179, 154),
+                  orig: to, // Same square as destination
+                  dest: to,
+                ),
+              }.toISet();
+        } else {
+          // Normal move or promotion (e.g., "e2e4" or "e7e8q")
+          String fromStr = bestMove.substring(0, 2);
+          String toStr = bestMove.substring(2, 4);
+          Square from = Square.fromName(fromStr);
+          Square to = Square.fromName(toStr);
+          shapes =
+              {
+                Arrow(
+                  color: const Color.fromARGB(255, 152, 179, 154),
+                  orig: from,
+                  dest: to,
+                ),
+              }.toISet();
+        }
+      } catch (e) {
+        // Parsing failed, return empty
+        print('Error parsing best move UCI: $e');
+        return const ISet.empty();
+      }
+    }
+    else{
+      print('No evaluation data available.');
+    }
+    return shapes;
   }
 
   void _updateEvaluation() {

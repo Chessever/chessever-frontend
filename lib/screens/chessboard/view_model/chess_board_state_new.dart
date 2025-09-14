@@ -77,7 +77,7 @@ class ChessBoardStateNew {
   final GamesTourModel game;
   final String? pgnData;
   final String? fenData;
-
+  final ISet<Shape>? shapes;
   // New field to track if in analysis mode
   final bool isAnalysisMode;
   final AnalysisBoardState analysisState;
@@ -110,6 +110,7 @@ class ChessBoardStateNew {
     this.fenData,
     this.isAnalysisMode = false,
     this.analysisState = const AnalysisBoardState(),
+    this.shapes = const ISet.empty(),
   });
 
   ChessBoardStateNew copyWith({
@@ -129,6 +130,7 @@ class ChessBoardStateNew {
     String? fenData,
     bool? isAnalysisMode,
     AnalysisBoardState? analysisState,
+    ISet<Shape>? shapes,
   }) {
     return ChessBoardStateNew(
       position: position ?? this.position,
@@ -146,6 +148,7 @@ class ChessBoardStateNew {
       pgnData: pgnData ?? this.pgnData,
       fenData: fenData ?? this.fenData,
       isAnalysisMode: isAnalysisMode ?? this.isAnalysisMode,
+      shapes: shapes ?? this.shapes,
       analysisState:
           analysisState != null
               ? analysisState.copyWith(
