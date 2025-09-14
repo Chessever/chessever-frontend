@@ -20,23 +20,14 @@ final gamesAppBarProvider = StateNotifierProvider<
   final tourAsync = ref.watch(tourDetailScreenProvider);
   final tourId = tourAsync.value?.aboutTourModel.id;
 
-  if (tourId == null) {
-    throw Exception('tourId is null in gamesAppBarProvider');
-  }
-
-  return _GamesAppBarNotifier(
-    ref: ref,
-    tourId: tourId,
-  );
+  return _GamesAppBarNotifier(ref: ref, tourId: tourId);
 });
 
 class _GamesAppBarNotifier
     extends StateNotifier<AsyncValue<GamesAppBarViewModel>> {
-  _GamesAppBarNotifier({
-    required this.ref,
-    required this.tourId,
-  }) : _liveRounds = [],
-       super(const AsyncValue.loading()) {
+  _GamesAppBarNotifier({required this.ref, required this.tourId})
+    : _liveRounds = [],
+      super(const AsyncValue.loading()) {
     _liveRoundsSub = ref.listen<List<String>?>(
       liveRoundsIdProvider.select((a) => a.valueOrNull),
       (_, next) {
@@ -49,7 +40,7 @@ class _GamesAppBarNotifier
 
   final Ref ref;
 
-  final String tourId;
+  final String? tourId;
   List<String> _liveRounds;
 
   String? _cachedForTour;
@@ -113,16 +104,21 @@ class _GamesAppBarNotifier
   }
 
   Future<void> _load() async {
+    if (tourId == null) {
+      state = const AsyncValue.loading();
+      return;
+    }
+
     // Serve from cache if valid
     if (_cachedModels != null && _cachedForTour == tourId) {
-      await _applySelectionFrom(_cachedModels!, tourId);
+      await _applySelectionFrom(_cachedModels!, tourId!);
       return;
     }
 
     state = const AsyncValue.loading();
     try {
       final repo = ref.read(roundRepositoryProvider);
-      final rounds = await repo.getRoundsByTourId(tourId);
+      final rounds = await repo.getRoundsByTourId(tourId!);
 
       if (rounds.isEmpty) {
         state = const AsyncValue.data(
@@ -143,7 +139,7 @@ class _GamesAppBarNotifier
       _cachedModels = models;
       _cachedForTour = tourId;
 
-      await _applySelectionFrom(models, tourId);
+      await _applySelectionFrom(models, tourId!);
     } catch (e, st) {
       state = AsyncValue.error(e, st);
     }
