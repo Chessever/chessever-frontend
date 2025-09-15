@@ -14,19 +14,13 @@ import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-
-import '../../../repository/supabase/group_broadcast/group_tour_repository.dart';
-import '../../tour_detail/player_tour/player_tour_screen_provider.dart';
-
-final _currentLiveIdsProvider = StateProvider<List<String>>((_) => const []);
-
-final liveIdsProvider = Provider<List<String>>(
-  (ref) => ref.watch(_currentLiveIdsProvider),
-);
+import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
+import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 
 final selectedPlayerNameProvider = StateProvider<String?>((ref) => null);
 final isSearchingProvider = StateProvider<bool>((ref) => false);
 final searchQueryProvider = StateProvider<String>((ref) => '');
+final liveBroadcastIdsProvider = StateProvider<List<String>>((ref) => []);
 
 final supabaseSearchProvider =
     FutureProvider.family<List<GroupBroadcast>, String>(
@@ -43,16 +37,6 @@ final groupEventScreenProvider = AutoDisposeStateNotifierProvider<
 >((ref) {
   final tourEventCategory = ref.watch(selectedGroupCategoryProvider);
 
-  //  silent listener instead of watch
-  ref.listen<AsyncValue<List<String>>>(
-    liveGroupBroadcastIdsProvider,
-    (previous, next) {
-      next.whenData((liveIds) {
-        ref.read(_currentLiveIdsProvider.notifier).state = liveIds;
-      });
-    },
-  );
-
   return _GroupEventScreenController(
     ref: ref,
     tourEventCategory: tourEventCategory,
@@ -67,10 +51,9 @@ class _GroupEventScreenController
     required this.tourEventCategory,
   }) : super(const AsyncValue.loading()) {
     loadTours();
+    _listenToLiveIds();
   }
 
-  @override
-  List<String> get liveBroadcastId => _liveBroadcastId;
   @override
   final Ref ref;
   @override
@@ -84,11 +67,61 @@ class _GroupEventScreenController
 
   var _groupBroadcastList = <GroupBroadcast>[];
 
-  // getter – no rebuilds
-  List<String> get _liveBroadcastId => ref.read(_currentLiveIdsProvider);
+  void _listenToLiveIds() {
+    ref.listen<AsyncValue<List<String>>>(
+      liveGroupBroadcastIdsProvider,
+      (previous, next) {
+        next.whenData((liveIds) {
+          // Only update if live IDs actually changed
+          if (ref.read(liveBroadcastIdsProvider).length != liveIds.length ||
+              !ref
+                  .read(liveBroadcastIdsProvider)
+                  .every((id) => liveIds.contains(id))) {
+            ref.read(liveBroadcastIdsProvider.notifier).state = liveIds;
+            _updateLiveStatusInExistingModels();
+          }
+        });
+      },
+    );
+  }
+
+  // Update live status without rebuilding the entire state
+  void _updateLiveStatusInExistingModels() {
+    final currentModels = state.valueOrNull;
+    if (currentModels == null || currentModels.isEmpty) return;
+
+    // Create updated models with new live status
+    final updatedModels =
+        currentModels.map((model) {
+          return GroupEventCardModel.fromGroupBroadcast(
+            _groupBroadcastList.firstWhere(
+              (broadcast) => broadcast.id == model.id,
+              orElse: () => _groupBroadcastList.first,
+            ),
+            ref.read(liveBroadcastIdsProvider),
+          );
+        }).toList();
+
+    // Only update state if there are actual changes in live status
+    bool hasChanges = false;
+    for (int i = 0; i < currentModels.length; i++) {
+      if (currentModels[i].tourEventCategory !=
+          updatedModels[i].tourEventCategory) {
+        hasChanges = true;
+        break;
+      }
+    }
+
+    if (hasChanges) {
+      state = AsyncValue.data(updatedModels);
+    }
+  }
 
   @override
-  Future<void> loadTours({List<GroupBroadcast>? inputBroadcast}) async {
+  Future<void> loadTours({
+    List<GroupBroadcast>? inputBroadcast,
+    List<String>? liveIds,
+  }) async {
     try {
       final tour =
           inputBroadcast ??
@@ -97,6 +130,7 @@ class _GroupEventScreenController
               .fetchGroupBroadcasts();
       if (tour.isEmpty) {
         state = AsyncValue.data(<GroupEventCardModel>[]);
+        return;
       }
 
       _groupBroadcastList = tour;
@@ -111,7 +145,7 @@ class _GroupEventScreenController
                 .map(
                   (t) => GroupEventCardModel.fromGroupBroadcast(
                     t,
-                    _liveBroadcastId,
+                    liveIds ?? ref.read(liveBroadcastIdsProvider),
                   ),
                 )
                 .toList();
@@ -148,8 +182,10 @@ class _GroupEventScreenController
       final newModels =
           broadcasts
               .map(
-                (b) =>
-                    GroupEventCardModel.fromGroupBroadcast(b, liveBroadcastId),
+                (b) => GroupEventCardModel.fromGroupBroadcast(
+                  b,
+                  ref.read(liveBroadcastIdsProvider),
+                ),
               )
               .toList();
 
@@ -196,7 +232,7 @@ class _GroupEventScreenController
               .map(
                 (t) => GroupEventCardModel.fromGroupBroadcast(
                   t,
-                  _liveBroadcastId, //uses getter
+                  ref.read(liveBroadcastIdsProvider),
                 ),
               )
               .toList();
@@ -288,8 +324,10 @@ class _GroupEventScreenController
       final tourEventCardModel =
           broadcasts
               .map(
-                (b) =>
-                    GroupEventCardModel.fromGroupBroadcast(b, liveBroadcastId),
+                (b) => GroupEventCardModel.fromGroupBroadcast(
+                  b,
+                  ref.read(liveBroadcastIdsProvider),
+                ),
               )
               .toList();
 
@@ -314,7 +352,7 @@ class _GroupEventScreenController
               .map(
                 (e) => GroupEventCardModel.fromGroupBroadcast(
                   e,
-                  _liveBroadcastId,
+                  ref.read(liveBroadcastIdsProvider),
                 ),
               )
               .where((tour) {

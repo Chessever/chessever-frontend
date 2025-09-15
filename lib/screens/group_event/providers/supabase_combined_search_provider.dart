@@ -1,10 +1,11 @@
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../../../repository/supabase/game/games.dart';
-import '../../../repository/supabase/group_broadcast/group_tour_repository.dart';
-import '../../../widgets/search/enhanced_group_broadcast_local_storage.dart';
-import '../../../widgets/search/search_result_model.dart';
-import '../model/tour_event_card_model.dart';
+import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
+import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
+import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
+import 'package:chessever2/widgets/search/search_result_model.dart';
+import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 
 final supabaseCombinedSearchProvider =
     AutoDisposeFutureProvider.family<EnhancedSearchResult, String>(
@@ -14,11 +15,46 @@ final supabaseCombinedSearchProvider =
         final broadcasts = await ref
             .read(groupBroadcastRepositoryProvider)
             .searchGroupBroadcastsFromSupabase(query);
+        final now = DateTime.now();
+
+        int delta(GroupBroadcast b) =>
+            (b.dateStart?.difference(now).abs().inSeconds ?? 999999).toInt();
+
+        String _key(String s) => s.toLowerCase().trim();
+
+        broadcasts.sort((a, b) {
+          final keyA = _key(a.name);
+          final keyB = _key(b.name);
+          final qLower = query.trim().toLowerCase();
+
+          /* 1. exact */
+          final aExact = keyA == qLower;
+          final bExact = keyB == qLower;
+          if (aExact && !bExact) return -1;
+          if (!aExact && bExact) return 1;
+
+          /* 2. starts-with */
+          final aStart = keyA.startsWith(qLower);
+          final bStart = keyB.startsWith(qLower);
+          if (aStart && !bStart) return -1;
+          if (!aStart && bStart) return 1;
+          if (aStart && bStart) return keyA.compareTo(keyB);
+
+          /* 3. contains */
+          final aContain = keyA.contains(qLower);
+          final bContain = keyB.contains(qLower);
+          if (aContain && !bContain) return -1;
+          if (!aContain && bContain) return 1;
+          if (aContain && bContain) return keyA.compareTo(keyB);
+          final d = delta(a).compareTo(delta(b));
+          if (d != 0) return d;
+          return (b.maxAvgElo ?? 0).compareTo(a.maxAvgElo ?? 0);
+        });
 
         final tournamentResults = <SearchResult>[];
         final playerResults = <SearchResult>[];
         final allPlayers = <SearchPlayer>[];
-        final liveIds = ref.read(liveIdsProvider);
+        final liveIds = ref.read(liveBroadcastIdsProvider);
 
         for (final gb in broadcasts) {
           final tourEventModel = GroupEventCardModel.fromGroupBroadcast(
@@ -56,17 +92,35 @@ final supabaseCombinedSearchProvider =
             }
           }
         }
-        final q = query.trim().toLowerCase();
+        final broadcastById = <String, GroupBroadcast>{
+          for (final b in broadcasts) b.id: b,
+        };
+
+        int deltaPlayer(SearchResult r) {
+          final b = broadcastById[r.tournament.id]!; // original broadcast
+          return (b.dateStart?.difference(now).abs().inSeconds ?? 999999);
+        }
+
         playerResults.sort((a, b) {
-          final aExact = a.matchedText.toLowerCase() == q;
-          final bExact = b.matchedText.toLowerCase() == q;
+          final qLower = query.trim().toLowerCase();
+
+          // 1. exact match
+          final aExact = a.matchedText.toLowerCase() == qLower;
+          final bExact = b.matchedText.toLowerCase() == qLower;
           if (aExact && !bExact) return -1;
           if (!aExact && bExact) return 1;
 
-          final aStart = a.matchedText.toLowerCase().startsWith(q);
-          final bStart = b.matchedText.toLowerCase().startsWith(q);
+          // 2. starts-with
+          final aStart = a.matchedText.toLowerCase().startsWith(qLower);
+          final bStart = b.matchedText.toLowerCase().startsWith(qLower);
           if (aStart && !bStart) return -1;
           if (!aStart && bStart) return 1;
+
+          // 3. nearest tournament date
+          final d = deltaPlayer(a).compareTo(deltaPlayer(b));
+          if (d != 0) return d;
+
+          // 4. alphabetical
           return a.matchedText.compareTo(b.matchedText);
         });
 
@@ -82,7 +136,6 @@ bool _isPlayerName(String searchTerm, String tournamentName) {
   final t = searchTerm.trim().toLowerCase();
   final tn = tournamentName.trim().toLowerCase();
 
-  // Drop exact or pipe-prefixed event-title clones
   if (t == tn || t.startsWith('$tn |')) return false;
 
   if ([

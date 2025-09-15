@@ -1,5 +1,3 @@
-import 'dart:developer';
-
 import 'package:chessever2/repository/supabase/base_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
