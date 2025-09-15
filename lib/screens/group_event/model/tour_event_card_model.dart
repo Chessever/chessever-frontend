@@ -1,6 +1,6 @@
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
+import 'package:chessever2/utils/time_utils.dart';
 import 'package:equatable/equatable.dart';
-import 'package:intl/intl.dart';
 
 enum TourEventCategory { live, ongoing, upcoming, completed }
 
@@ -27,78 +27,23 @@ class GroupEventCardModel extends Equatable {
     GroupBroadcast groupBroadcast,
     List<String> liveGroupIds,
   ) {
+    final utcStart = groupBroadcast.dateStart;
+    final utcEnd = groupBroadcast.dateEnd;
+
     return GroupEventCardModel(
       id: groupBroadcast.id,
       title: groupBroadcast.name,
-      dates: convertDates(groupBroadcast.dateStart, groupBroadcast.dateEnd),
+      dates: TimeUtils.formatDateRange(utcStart, utcEnd),
       maxAvgElo: groupBroadcast.maxAvgElo ?? 0,
-      timeUntilStart: getTimeUntilStart(groupBroadcast.dateStart),
+      timeUntilStart: TimeUtils.timeUntilStart(utcStart),
       tourEventCategory: getCategory(
         groupId: groupBroadcast.id,
-        startDate: groupBroadcast.dateStart,
-        endDate: groupBroadcast.dateEnd,
+        startDate: utcStart,
+        endDate: utcEnd,
         liveGroupIds: liveGroupIds,
       ),
       timeControl: groupBroadcast.timeControl ?? '',
     );
-  }
-
-  static String convertDates(DateTime? startDateTime, DateTime? endDateTime) {
-    if (startDateTime != null && endDateTime != null) {
-      if (startDateTime.month == endDateTime.month) {
-        return "${DateFormat('MMM d').format(startDateTime)} - ${DateFormat('d, yyyy').format(endDateTime)}";
-      } else if (startDateTime.year == endDateTime.year) {
-        return "${DateFormat('MMM d').format(startDateTime)} - ${DateFormat('d MMM, yyyy').format(endDateTime)}";
-      } else {
-        return "${DateFormat('MMM d, yyyy').format(startDateTime)} - ${DateFormat('MMM d, yyyy').format(endDateTime)}";
-      }
-    } else if (startDateTime != null) {
-      return DateFormat('MMM d, yyyy').format(startDateTime);
-    } else if (endDateTime != null) {
-      return DateFormat('MMM d, yyyy').format(endDateTime);
-    } else {
-      return "";
-    }
-  }
-
-  static String getTimeUntilStart(DateTime? startDateTime) {
-    if (startDateTime == null) {
-      return "";
-    }
-
-    final now = DateTime.now();
-
-    // If the start time has already passed
-    if (startDateTime.isBefore(now)) {
-      return "Started";
-    }
-
-    final difference = startDateTime.difference(now);
-    final days = difference.inDays;
-
-    if (days < 30) {
-      // Less than 30 days - show in days
-      if (days == 0) {
-        final hours = difference.inHours;
-        if (hours == 0) {
-          final minutes = difference.inMinutes;
-          return "In $minutes minute${minutes == 1 ? '' : 's'}";
-        }
-        return "In $hours hour${hours == 1 ? '' : 's'}";
-      } else if (days == 1) {
-        return "In 1 day";
-      } else {
-        return "In $days days";
-      }
-    } else if (days < 365) {
-      // Between 30 days and 365 days - show in months
-      final months = (days / 30).round();
-      return "In $months month${months == 1 ? '' : 's'}";
-    } else {
-      // More than 365 days - show in years
-      final years = (days / 365).round();
-      return "In $years year${years == 1 ? '' : 's'}";
-    }
   }
 
   static TourEventCategory getCategory({
