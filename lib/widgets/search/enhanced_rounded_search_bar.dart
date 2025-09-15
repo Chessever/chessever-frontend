@@ -10,7 +10,6 @@ import 'package:chessever2/widgets/search/search_overlay_widget.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:easy_debounce/easy_debounce.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../screens/group_event/providers/group_event_screen_provider.dart';
@@ -159,9 +158,6 @@ class _EnhancedRoundedSearchBarState
     ref.read(isSearchingProvider.notifier).state = false; // Clear search state
     ref.read(searchQueryProvider.notifier).state = ''; // Clear query state
     _hideOverlay();
-
-    // Trigger onChanged to notify parent components
-    widget.onChanged?.call('');
   }
 
   void _onTournamentSelected(GroupEventCardModel tournament) {
