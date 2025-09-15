@@ -47,7 +47,7 @@ class _GamesAppBarNotifier
   List<GamesAppBarModel>? _cachedModels;
 
   late final ProviderSubscription<List<String>?> _liveRoundsSub;
-  late final ProviderSubscription<String?> _tourSub;
+  ProviderSubscription<String?>? _tourSub;
 
   Future<void> refresh() async {
     _invalidateCache();
@@ -93,7 +93,7 @@ class _GamesAppBarNotifier
   void dispose() {
     _invalidateCache();
     _liveRoundsSub.close();
-    _tourSub.close();
+    _tourSub?.close();
     super.dispose();
   }
 

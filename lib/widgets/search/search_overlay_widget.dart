@@ -133,7 +133,17 @@ class SearchOverlay extends ConsumerWidget {
   }) {
     final filteredResults =
         isPlayerSection
-            ? results.where((result) => result.player != null).toList()
+            ? results
+                .where((result) => result.player != null)
+                .fold<Map<String, SearchResult>>({}, (map, result) {
+                  final name = result.player!.name.toLowerCase();
+                  if (!map.containsKey(name)) {
+                    map[name] = result;
+                  }
+                  return map;
+                })
+                .values
+                .toList()
             : results;
 
     if (filteredResults.isEmpty) {
