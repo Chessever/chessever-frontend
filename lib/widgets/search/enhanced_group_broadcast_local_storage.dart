@@ -16,11 +16,11 @@ class EnhancedSearchResult {
     required this.playerResults,
     this.allPlayers = const [],
   });
-    factory EnhancedSearchResult.empty() => const EnhancedSearchResult(
-        tournamentResults: [],
-        playerResults: [],
-        allPlayers: [],
-      );
+  factory EnhancedSearchResult.empty() => const EnhancedSearchResult(
+    tournamentResults: [],
+    playerResults: [],
+    allPlayers: [],
+  );
 
   int get totalResults => tournamentResults.length + playerResults.length;
 
@@ -253,9 +253,6 @@ extension GroupBroadcastLocalStorageSearch on GroupBroadcastLocalStorage {
           }
         }
       }
-
-      tournamentResults.sort((a, b) => b.score.compareTo(a.score));
-      playerResults.sort((a, b) => b.score.compareTo(a.score));
 
       return EnhancedSearchResult(
         tournamentResults: tournamentResults,

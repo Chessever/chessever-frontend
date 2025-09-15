@@ -20,7 +20,7 @@ class SegmentedSwitcher extends StatefulWidget {
     super.key,
     required this.options,
     this.initialSelection = 0,
-    this.currentSelection, // Add this parameter
+    this.currentSelection,
     required this.onSelectionChanged,
     this.backgroundColor,
     this.selectedBackgroundColor,
@@ -38,97 +38,31 @@ class SegmentedSwitcher extends StatefulWidget {
   State<SegmentedSwitcher> createState() => _SegmentedSwitcherState();
 }
 
-class _SegmentedSwitcherState extends State<SegmentedSwitcher>
-    with TickerProviderStateMixin {
+class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
   late int _selectedIndex;
-  late AnimationController _animationController;
-  late AnimationController _textAnimationController;
-  late Animation<double> _slideAnimation;
-  late Animation<double> _textFadeAnimation;
-
-  // Track previous index for text animation direction
-  int _previousIndex = 0;
 
   @override
   void initState() {
     super.initState();
     _selectedIndex = widget.currentSelection ?? widget.initialSelection;
-    _previousIndex = widget.currentSelection ?? widget.initialSelection;
-
-    // Main slide animation controller
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 250),
-      vsync: this,
-    );
-
-    // Text fade animation controller for smoother text transitions
-    _textAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 200),
-      vsync: this,
-    );
-
-    // Smooth slide animation with custom curve
-    _slideAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: Curves.easeInOutCubic,
-      ),
-    );
-
-    // Text fade animation
-    _textFadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(
-      CurvedAnimation(
-        parent: _textAnimationController,
-        curve: Curves.easeInOut,
-      ),
-    );
-
-    _animationController.value = 1.0;
-    _textAnimationController.value = 1.0;
   }
 
   @override
   void didUpdateWidget(SegmentedSwitcher oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.currentSelection != null &&
-        widget.currentSelection != _selectedIndex) {
-      if (mounted) {
-        _onSelectionChanged(widget.currentSelection!, fromExternal: true);
-      }
+        widget.currentSelection != _selectedIndex &&
+        mounted) {
+      _onSelectionChanged(widget.currentSelection!, fromExternal: true);
     }
-  }
-
-  @override
-  void dispose() {
-    _animationController.stop();
-    _textAnimationController.stop();
-    _animationController.dispose();
-    _textAnimationController.dispose();
-    super.dispose();
   }
 
   void _onSelectionChanged(int index, {bool fromExternal = false}) {
-    if (index == _selectedIndex) return;
+    if (index == _selectedIndex || !mounted) return;
 
     setState(() {
-      _previousIndex = _selectedIndex;
       _selectedIndex = index;
     });
-    if (!mounted) return;
-    // Start animations
-    _animationController.reset();
-    _textAnimationController.reset();
-
-    if (mounted) {
-      _animationController.forward();
-      _textAnimationController.forward();
-    }
 
     if (!fromExternal) {
       widget.onSelectionChanged(index);
@@ -157,100 +91,66 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher>
         color: backgroundColor,
         borderRadius: BorderRadius.circular(borderRadius),
       ),
-      child: TickerMode(
-        enabled: mounted,
-        child: AnimatedBuilder(
-          animation: Listenable.merge([_slideAnimation, _textFadeAnimation]),
-          builder: (context, child) {
-            return Stack(
-              children: [
-                // Animated selection indicator
-                Positioned.fill(
-                  child: Row(
-                    children: List.generate(widget.options.length, (index) {
-                      final isSelected = index == _selectedIndex;
-                      final isFirst = index == 0;
-                      final isLast = widget.options.length - 1 == index;
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Row(
+              children: List.generate(widget.options.length, (index) {
+                final isSelected = index == _selectedIndex;
+                final isFirst = index == 0;
+                final isLast = index == widget.options.length - 1;
 
-                      final leftSize = isFirst ? 12.0.br : 0.0;
-                      final rightSize = isLast ? 12.0.br : 0.0;
+                return Expanded(
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeInOutCubic,
+                    decoration: BoxDecoration(
+                      color:
+                          isSelected
+                              ? selectedBackgroundColor
+                              : Colors.transparent,
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(isFirst ? 12.0.br : 0.0),
+                        bottomLeft: Radius.circular(isFirst ? 12.0.br : 0.0),
+                        bottomRight: Radius.circular(isLast ? 12.0.br : 0.0),
+                        topRight: Radius.circular(isLast ? 12.0.br : 0.0),
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ),
+          Row(
+            children: List.generate(widget.options.length, (index) {
+              final isSelected = index == _selectedIndex;
+              final textOpacity = isSelected ? 1.0 : 0.7;
 
-                      return Expanded(
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 250),
-                          curve: Curves.easeInOutCubic,
-                          decoration: BoxDecoration(
-                            color:
-                                isSelected
-                                    ? selectedBackgroundColor.withOpacity(
-                                      0.3 + (0.7 * _slideAnimation.value),
-                                    )
-                                    : Colors.transparent,
-                            borderRadius: BorderRadius.only(
-                              topLeft: Radius.circular(leftSize),
-                              bottomLeft: Radius.circular(leftSize),
-                              bottomRight: Radius.circular(rightSize),
-                              topRight: Radius.circular(rightSize),
-                            ),
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () => _onSelectionChanged(index),
+                  behavior: HitTestBehavior.opaque,
+                  child: Container(
+                    alignment: Alignment.center,
+                    padding: EdgeInsets.symmetric(vertical: 8.h),
+                    child: Text(
+                      widget.options[index],
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: (isSelected
+                              ? defaultSelectedTextStyle
+                              : defaultTextStyle)
+                          .copyWith(
+                            color: (isSelected ? selectedTextColor : textColor)
+                                .withOpacity(textOpacity),
                           ),
-                        ),
-                      );
-                    }),
+                    ),
                   ),
                 ),
-                // Text and touch targets
-                Row(
-                  children: List.generate(widget.options.length, (index) {
-                    final isSelected = index == _selectedIndex;
-                    final wasPreviouslySelected = index == _previousIndex;
-
-                    // Calculate text opacity based on selection state and animation
-                    double textOpacity = 1.0;
-                    if (isSelected) {
-                      // Currently selected item fades in
-                      textOpacity = 0.4 + (0.6 * _textFadeAnimation.value);
-                    } else if (wasPreviouslySelected) {
-                      // Previously selected item fades out
-                      textOpacity = 1.0 - (0.6 * _textFadeAnimation.value);
-                    } else {
-                      // Other items remain at default opacity
-                      textOpacity = 0.7;
-                    }
-
-                    return Expanded(
-                      child: GestureDetector(
-                        onTap: () => _onSelectionChanged(index),
-                        behavior: HitTestBehavior.opaque,
-                        child: Container(
-                          alignment: Alignment.center,
-                          padding: EdgeInsets.symmetric(vertical: 8.h),
-                          child: AnimatedDefaultTextStyle(
-                            duration: const Duration(milliseconds: 200),
-                            curve: Curves.easeInOut,
-                            style: (isSelected
-                                    ? defaultSelectedTextStyle
-                                    : defaultTextStyle)
-                                .copyWith(
-                                  color: (isSelected
-                                          ? selectedTextColor
-                                          : textColor)
-                                      .withOpacity(textOpacity),
-                                ),
-                            child: Text(
-                              widget.options[index],
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  }),
-                ),
-              ],
-            );
-          },
-        ),
+              );
+            }),
+          ),
+        ],
       ),
     );
   }
