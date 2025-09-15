@@ -53,6 +53,7 @@ flutter pub run build_runner build --delete-conflicting-outputs
 This command will generate assets using `build_runner`
 
 
+IOS Bundle Identifier updated to : com.chessever.app
 
 #### Project Knowledge
 ///pvs -> moves from the current position []
