@@ -1,7 +1,9 @@
 import 'package:equatable/equatable.dart';
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../repository/supabase/round/round.dart';
+import '../../../../utils/time_utils.dart';
 
 enum RoundStatus { completed, ongoing, live, upcoming }
 
@@ -31,13 +33,16 @@ class GamesAppBarModel extends Equatable {
   final RoundStatus roundStatus;
 
   factory GamesAppBarModel.fromRound(Round round, List<String> liveRound) {
+    final utcStart = round.startsAt;
+    final startsAt = TimeUtils.toLocal(utcStart);
+
     return GamesAppBarModel(
       id: round.id,
       name: round.name,
-      startsAt: round.startsAt,
+      startsAt: startsAt,
       roundStatus: status(
         currentId: round.id,
-        startsAt: round.startsAt,
+        startsAt: startsAt,
         liveRound: liveRound,
       ),
     );
@@ -74,14 +79,7 @@ class GamesAppBarModel extends Equatable {
     }
   }
 
-  // Helper method to get formatted date string
-  String get formattedStartDate {
-    if (startsAt == null) return 'TBD';
-
-    // final formatter = DateFormat('d MMMM y');
-    final formatter = DateFormat('d MMMM, h:mm a');
-    return formatter.format(startsAt!);
-  }
+  String get formattedStartDate => TimeUtils.formatSingleDate(startsAt);
 
   @override
   List<Object?> get props => [id, name, startsAt];
