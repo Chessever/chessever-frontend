@@ -5,6 +5,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/chess_progress
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
+import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/back_drop_filter_widget.dart';
@@ -474,7 +475,7 @@ class _GamesRound extends ConsumerWidget {
           children: [
             if (countryCode.toUpperCase() == 'FID') ...<Widget>[
               Image.asset(
-                'assets/pngs/fide_logo.png',
+                PngAsset.fideLogo,
                 height: 12.h,
                 width: 16.w,
                 fit: BoxFit.cover,
