@@ -136,11 +136,20 @@ class _PlayerCardState extends State<PlayerCard>
             // Country flag
             Container(
               margin: EdgeInsets.only(right: 8.sp),
-              child: CountryFlag.fromCountryCode(
-                widget.countryCode,
-                height: 14.h,
-                width: 20.w,
-              ),
+              child: widget.countryCode.toUpperCase() == 'FID'
+                ? Image.asset(
+                    'assets/pngs/fide_logo.png',
+                    height: 14.h,
+                    width: 20.w,
+                    fit: BoxFit.cover,
+                    cacheWidth: 48,
+                    cacheHeight: 36,
+                  )
+                : CountryFlag.fromCountryCode(
+                    widget.countryCode,
+                    height: 14.h,
+                    width: 20.w,
+                  ),
             ),
 
             // GM prefix and player name

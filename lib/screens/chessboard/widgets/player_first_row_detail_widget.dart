@@ -167,7 +167,18 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
         mainAxisAlignment: MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          if (validCountryCode.isNotEmpty) ...[
+          if (playerCard.countryCode.toUpperCase() == 'FID') ...[
+            SizedBox(width: 16.w),
+            Image.asset(
+              'assets/pngs/fide_logo.png',
+              height: flagHeight,
+              width: flagWidth,
+              fit: BoxFit.cover,
+              cacheWidth: 48,
+              cacheHeight: 36,
+            ),
+            SizedBox(width: 8.w),
+          ] else if (validCountryCode.isNotEmpty) ...[
             SizedBox(width: 16.w),
             CountryFlag.fromCountryCode(
               validCountryCode,
