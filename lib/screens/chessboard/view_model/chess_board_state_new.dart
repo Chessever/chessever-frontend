@@ -81,7 +81,7 @@ class ChessBoardStateNew {
   // New field to track if in analysis mode
   final bool isAnalysisMode;
   final AnalysisBoardState analysisState;
-
+  final int? mate;
   // Computed properties
   bool get canMoveForward => currentMoveIndex < allMoves.length - 1;
 
@@ -111,6 +111,7 @@ class ChessBoardStateNew {
     this.isAnalysisMode = false,
     this.analysisState = const AnalysisBoardState(),
     this.shapes = const ISet.empty(),
+    this.mate,
   });
 
   ChessBoardStateNew copyWith({
@@ -125,6 +126,7 @@ class ChessBoardStateNew {
     bool? isBoardFlipped,
     bool? isLoadingMoves,
     double? evaluation,
+    int? mate,
     GamesTourModel? game,
     String? pgnData,
     String? fenData,
@@ -147,6 +149,7 @@ class ChessBoardStateNew {
       game: game ?? this.game,
       pgnData: pgnData ?? this.pgnData,
       fenData: fenData ?? this.fenData,
+      mate: mate ?? this.mate,
       isAnalysisMode: isAnalysisMode ?? this.isAnalysisMode,
       shapes: shapes ?? this.shapes,
       analysisState:

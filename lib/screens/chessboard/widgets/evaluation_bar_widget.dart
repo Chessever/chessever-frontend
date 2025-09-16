@@ -13,13 +13,14 @@ class EvaluationBarWidget extends ConsumerWidget {
   final double evaluation;
   final bool isFlipped;
   final int index;
-
+  final int mate;
   const EvaluationBarWidget({
     required this.width,
     required this.height,
     required this.evaluation,
     required this.isFlipped,
     required this.index,
+    required this.mate,
     super.key,
   });
 
@@ -86,7 +87,7 @@ class EvaluationBarWidget extends ConsumerWidget {
               ),
               child: Text(
                 evaluation.abs() >= 10.0
-                    ? (evaluation > 0 ? "M" : "-M")
+                    ? '#$mate'
                     : evaluation.toStringAsFixed(1),
                 maxLines: 1,
                 textAlign: TextAlign.center,
