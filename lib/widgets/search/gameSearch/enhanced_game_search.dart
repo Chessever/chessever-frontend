@@ -1,13 +1,13 @@
 import 'dart:math' as math;
-import 'package:intl/intl.dart' show NumberFormat;
 
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 
 class EnhancedGameSearchResult {
   final List<GameSearchResult> results;
+  final DateTime timestamp;
 
-  const EnhancedGameSearchResult({required this.results});
+  EnhancedGameSearchResult({required this.results, required this.timestamp});
 }
 
 class GameSearchResult {
@@ -36,7 +36,7 @@ extension GamesLocalStorageEnhancedSearch on GamesLocalStorage {
       final games = await getGames(tourId);
 
       if (query.isEmpty) {
-        return const EnhancedGameSearchResult(results: []);
+        return EnhancedGameSearchResult(results: [], timestamp: DateTime.now());
       }
 
       final normalizedQuery = _normalizeSearchTerm(query);
@@ -86,9 +86,12 @@ extension GamesLocalStorageEnhancedSearch on GamesLocalStorage {
         ).compareTo(_getMatchTypePriority(b.matchType));
       });
 
-      return EnhancedGameSearchResult(results: results);
+      return EnhancedGameSearchResult(
+        results: results,
+        timestamp: DateTime.now(),
+      );
     } catch (e) {
-      return const EnhancedGameSearchResult(results: []);
+      return EnhancedGameSearchResult(results: [], timestamp: DateTime.now());
     }
   }
 
