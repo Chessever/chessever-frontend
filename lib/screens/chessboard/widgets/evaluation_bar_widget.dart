@@ -1,4 +1,3 @@
-import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -67,20 +66,11 @@ class EvaluationBarWidget extends ConsumerWidget {
             ),
           ),
 
-          Center(
-            child: Container(
-              width: width,
-              height: 2,
-              color: kRedColor,
-            ),
-          ),
+          Center(child: Container(width: width, height: 2, color: kRedColor)),
 
           Center(
             child: Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: 1.w,
-                vertical: 0.5.h,
-              ),
+              padding: EdgeInsets.symmetric(horizontal: 1.w, vertical: 0.5.h),
               decoration: BoxDecoration(
                 color: kPrimaryColor,
                 borderRadius: BorderRadius.circular(2.br),
@@ -88,7 +78,7 @@ class EvaluationBarWidget extends ConsumerWidget {
               child: Text(
                 evaluation.abs() >= 10.0
                     ? '#$mate'
-                    : evaluation.toStringAsFixed(1),
+                    : evaluation.abs().toStringAsFixed(1),
                 maxLines: 1,
                 textAlign: TextAlign.center,
                 style: AppTypography.textSmRegular.copyWith(
@@ -230,7 +220,7 @@ class _Bars extends StatelessWidget {
               color: kWhiteColor,
             ),
           ),
-          Container(width: width, height: 2, color: kRedColor),
+          Container(width: width, height: 2.h, color: kRedColor),
           // Add evaluation number display
           Align(
             alignment: Alignment.center,
@@ -242,16 +232,12 @@ class _Bars extends StatelessWidget {
               ),
               child: Text(
                 evaluation.abs() >= 10.0
-                    ? (evaluation > 0 ? "M" : "-M") // Show "M" or "-M" for mate
-                    : evaluation
-                        .toString()
-                        .characters
-                        .take(4)
-                        .string, // Show negative values directly
+                    ? "M"
+                    : evaluation.abs().toStringAsFixed(1),
                 textAlign: TextAlign.center,
                 maxLines: 1,
                 style: AppTypography.textSmRegular.copyWith(
-                  color: Colors.white,
+                  color: kWhiteColor,
                   fontSize: 1.5.f,
                   fontWeight: FontWeight.w600,
                 ),
