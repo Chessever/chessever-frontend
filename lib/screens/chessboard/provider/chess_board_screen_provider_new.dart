@@ -592,7 +592,7 @@ class ChessBoardScreenNotifierNew
 ''';
   }
 
-  Future<void> _evaluatePosition(int targetMoveIndex) async {
+  Future<void> _evaluatePosition() async {
     try {
       final currentState = state.value;
       if (currentState == null || currentState.isLoadingMoves) return;
@@ -660,7 +660,6 @@ class ChessBoardScreenNotifierNew
           print('Cache error: $cacheError');
         }
       }
-
       // Only update state if the evaluation corresponds to the current move index
       if (_cancelEvaluation || state.value == null || !mounted) return;
       var currState = state.value;
@@ -674,7 +673,7 @@ class ChessBoardScreenNotifierNew
               currState.analysisState.position.fen == fen) ||
           (!currState.isAnalysisMode && currentState.position?.fen == fen)) {
         state = AsyncValue.data(
-          currState.copyWith(evaluation: evaluation, shapes: shapes),
+          currState.copyWith(evaluation: evaluation, shapes: shapes,mate: cloudEval?.pvs.first.mate),
         );
       }
     } catch (e) {
@@ -686,7 +685,6 @@ class ChessBoardScreenNotifierNew
 
   ISet<Shape> getBestMoveShape(Position pos, CloudEval? cloudEval) {
     ISet<Shape> shapes = const ISet.empty();
-
     if (cloudEval?.pvs.isNotEmpty ?? false) {
       String bestMove =
           cloudEval!.pvs[0].moves
@@ -749,7 +747,7 @@ class ChessBoardScreenNotifierNew
       () {
         if (_cancelEvaluation || state.value == null || !mounted) return;
         _evalOperation = CancelableOperation.fromFuture(
-          _evaluatePosition(state.value!.currentMoveIndex),
+          _evaluatePosition()
         );
       },
     );
