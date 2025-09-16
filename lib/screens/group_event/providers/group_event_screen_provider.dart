@@ -264,21 +264,36 @@ class _GroupEventScreenController
   }
 
   @override
-  void onSelectTournament({required BuildContext context, required String id}) {
-    final selectedBroadcast = _groupBroadcastList.firstWhere(
-      (broadcast) => broadcast.id == id,
-      orElse: () => _groupBroadcastList.first,
-    );
+  void onSelectTournament({required BuildContext context, required String id}) async {
+    try {
+      // First try to find in current list
+      GroupBroadcast? selectedBroadcast;
+      for (final broadcast in _groupBroadcastList) {
+        if (broadcast.id == id) {
+          selectedBroadcast = broadcast;
+          break;
+        }
+      }
 
-    ref.read(selectedBroadcastModelProvider.notifier).state = selectedBroadcast;
+      // If not found in current list, fetch directly from repository
+      if (selectedBroadcast == null) {
+        selectedBroadcast = await ref
+            .read(groupBroadcastRepositoryProvider)
+            .getGroupBroadcastById(id);
+      }
 
-    ref.invalidate(gamesAppBarProvider);
-    ref.invalidate(gamesTourScreenProvider);
-    ref.invalidate(playerTourScreenProvider);
-    ref.invalidate(tourDetailScreenProvider);
+      ref.read(selectedBroadcastModelProvider.notifier).state = selectedBroadcast;
 
-    if (ref.read(selectedBroadcastModelProvider) != null) {
-      Navigator.pushNamed(context, '/tournament_detail_screen');
+      ref.invalidate(gamesAppBarProvider);
+      ref.invalidate(gamesTourScreenProvider);
+      ref.invalidate(playerTourScreenProvider);
+      ref.invalidate(tourDetailScreenProvider);
+
+      if (context.mounted && ref.read(selectedBroadcastModelProvider) != null) {
+        Navigator.pushNamed(context, '/tournament_detail_screen');
+      }
+    } catch (e, st) {
+      state = AsyncValue.error('Tournament not found: $id', st);
     }
   }
 
