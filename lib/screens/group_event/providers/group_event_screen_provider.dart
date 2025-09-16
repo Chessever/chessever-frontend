@@ -16,6 +16,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
+import 'dart:developer';
 
 final selectedPlayerNameProvider = StateProvider<String?>((ref) => null);
 final isSearchingProvider = StateProvider<bool>((ref) => false);
@@ -123,6 +124,7 @@ class _GroupEventScreenController
     List<String>? liveIds,
   }) async {
     try {
+      state = const AsyncValue.loading();
       final tour =
           inputBroadcast ??
           await ref
@@ -154,6 +156,12 @@ class _GroupEventScreenController
             tourEventCategory == GroupEventCategory.upcoming
                 ? sortingService.sortUpcomingTours(
                   tours: tourEventCardModel,
+                  dropDownSelectedCountry: selectedCountry,
+                )
+                : tourEventCategory == GroupEventCategory.past
+                ? sortingService.sortPastTours(
+                  tours: tourEventCardModel,
+                  groupBroadcasts: tour,
                   dropDownSelectedCountry: selectedCountry,
                 )
                 : sortingService.sortAllTours(
@@ -247,6 +255,12 @@ class _GroupEventScreenController
             tourEventCategory == GroupEventCategory.upcoming
                 ? sortingService.sortUpcomingTours(
                   tours: tourEventCardModel,
+                  dropDownSelectedCountry: selectedCountry,
+                )
+                : tourEventCategory == GroupEventCategory.past
+                ? sortingService.sortPastTours(
+                  tours: tourEventCardModel,
+                  groupBroadcasts: tour,
                   dropDownSelectedCountry: selectedCountry,
                 )
                 : sortingService.sortAllTours(
