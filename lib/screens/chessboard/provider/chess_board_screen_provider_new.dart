@@ -606,7 +606,9 @@ class ChessBoardScreenNotifierNew
       CloudEval? cloudEval;
       double evaluation = 0.0;
       print("Evaluating started for position: $fen");
-      state= AsyncValue.data(currentState.copyWith(shapes: const ISet.empty()));
+      state = AsyncValue.data(
+        currentState.copyWith(shapes: const ISet.empty()),
+      );
       try {
         ref.invalidate(cascadeEvalProviderForBoard(fen));
         cloudEval = await ref.read(cascadeEvalProviderForBoard(fen).future);
@@ -728,8 +730,7 @@ class ChessBoardScreenNotifierNew
         print('Error parsing best move UCI: $e');
         return const ISet.empty();
       }
-    }
-    else{
+    } else {
       print('No evaluation data available.');
     }
     return shapes;
