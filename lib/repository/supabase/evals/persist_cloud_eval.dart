@@ -37,7 +37,7 @@ class PersistCloudEval {
           positionId: positionId,
           knodes: cloud.knodes,
           depth: cloud.depth,
-          pvs: cloud.pvs.map((pv) => {'moves': pv.moves, 'cp': pv.cp}).toList(),
+          pvs: cloud.pvs.map((pv) => {'moves': pv.moves, 'cp': pv.cp, 'mate':pv.mate}).toList(),
         ),
       );
 
