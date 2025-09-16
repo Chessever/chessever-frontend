@@ -1,3 +1,4 @@
+import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
@@ -138,7 +139,7 @@ class _PlayerCardState extends State<PlayerCard>
               margin: EdgeInsets.only(right: 8.sp),
               child: widget.countryCode.toUpperCase() == 'FID'
                 ? Image.asset(
-                    'assets/pngs/fide_logo.png',
+                    PngAsset.fideLogo,
                     height: 14.h,
                     width: 20.w,
                     fit: BoxFit.cover,

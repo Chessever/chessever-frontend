@@ -6,6 +6,7 @@ import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_pr
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
+import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
@@ -170,7 +171,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
           if (playerCard.countryCode.toUpperCase() == 'FID') ...[
             SizedBox(width: 16.w),
             Image.asset(
-              'assets/pngs/fide_logo.png',
+              PngAsset.fideLogo,
               height: flagHeight,
               width: flagWidth,
               fit: BoxFit.cover,
