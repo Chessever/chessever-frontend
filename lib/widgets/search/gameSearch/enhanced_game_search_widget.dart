@@ -1,5 +1,4 @@
 import 'package:chessever2/repository/supabase/game/games.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/widgets/search/gameSearch/game_search_overlay.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -64,14 +63,8 @@ class _EnhancedGamesSearchBarState extends ConsumerState<EnhancedGamesSearchBar>
       curve: Curves.easeInOut,
     );
 
-    _searchBarScaleAnimation = Tween<double>(
-      begin: 1.0,
-      end: 1.02,
-    ).animate(
-      CurvedAnimation(
-        parent: _searchBarController,
-        curve: Curves.easeInOut,
-      ),
+    _searchBarScaleAnimation = Tween<double>(begin: 1.0, end: 1.02).animate(
+      CurvedAnimation(parent: _searchBarController, curve: Curves.easeInOut),
     );
   }
 
@@ -244,10 +237,7 @@ class _EnhancedGamesSearchBarState extends ConsumerState<EnhancedGamesSearchBar>
               controller: widget.controller,
               focusNode: _focusNode,
               autofocus: widget.autofocus,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 16,
-              ),
+              style: const TextStyle(color: Colors.white70, fontSize: 16),
               onChanged: _handleTextChange, // Single handler
               decoration: InputDecoration(
                 hintText: widget.hintText,
@@ -267,11 +257,7 @@ class _EnhancedGamesSearchBarState extends ConsumerState<EnhancedGamesSearchBar>
                 color: Colors.white.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
-                Icons.close,
-                color: Colors.white70,
-                size: 16,
-              ),
+              child: const Icon(Icons.close, color: Colors.white70, size: 16),
             ),
           ),
         ],
