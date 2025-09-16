@@ -54,7 +54,7 @@ class StockfishSingleton {
           fen: _currentJob!.fen,
           knodes: 0,
           depth: 0,
-          pvs: [Pv(moves: '', cp: 0)],
+          pvs: [Pv(moves: '', cp: 0,mate: 0)],
           isCancelled: true,
         );
         _currentJob!.completer.complete(cancelledResult);
@@ -68,6 +68,7 @@ class StockfishSingleton {
           await Future.delayed(const Duration(milliseconds: 50));
         } catch (e) {
           // Ignore errors when stopping
+          print('Error sending stop command to Stockfish: $e');
         }
       }
 
@@ -98,10 +99,11 @@ class StockfishSingleton {
     int finalDepth = 0;
     bool evaluationComplete = false;
 
+      print('stock fish ouptput for fen $fen');
     _currentSubscription = _engine!.stdout.listen((line) {
-      // Check if this is still the current job
+      // Check if this is still the current job  8/5ppk/2p4p/2p5/8/P1BQ2P1/qP2r2P/2KR4 b - - 4 34
       if (_currentJob != job || completer.isCompleted) return;
-
+      line = line.trim();
       // Parse info lines for analysis data
       if (line.startsWith('info depth')) {
         final depthMatch = RegExp(r'depth (\d+)').firstMatch(line);
@@ -135,7 +137,7 @@ class StockfishSingleton {
           } else if (mateMatch != null) {
             final mate = int.parse(mateMatch.group(1)!);
             final cp = mate.sign * 100000; // Convert mate to large cp value
-            final pv = Pv(moves: moves, cp: cp, isMate: true);
+            final pv = Pv(moves: moves, cp: cp, isMate: true,mate: mate);
             if (pvs.isEmpty) {
               pvs.add(pv);
             } else {
@@ -167,6 +169,7 @@ class StockfishSingleton {
       _engine!.stdin = 'position fen $fen';
       _engine!.stdin = 'go depth $depth';
     } catch (e) {
+      print('Error sending commands to Stockfish: $e');
       if (!completer.isCompleted) {
         final errorResult = EnhancedCloudEval(
           fen: fen,

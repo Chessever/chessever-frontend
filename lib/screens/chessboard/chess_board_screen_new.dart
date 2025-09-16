@@ -750,10 +750,6 @@ class _PlayerWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    debugPrint(
-      "BERKAY-From chess_board_screen_new: ${game.gameStatus} ${game.gameStatus.displayText}",
-    );
-
     // Determine if this is the white player
     final isWhitePlayer =
         (blackPlayer && !isFlipped) || (!blackPlayer && isFlipped);
@@ -798,6 +794,7 @@ class _BoardWithSidebar extends StatelessWidget {
                 index: index,
                 isFlipped: state.isBoardFlipped,
                 evaluation: state.evaluation,
+                mate: state.mate ?? 0,
               ),
               state.isAnalysisMode
                   ? _AnalysisBoard(
