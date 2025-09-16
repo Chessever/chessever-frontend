@@ -98,7 +98,7 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFENNew> {
         .read(boardSettingsRepository)
         .getBoardTheme(boardSettingsValue.boardColor);
 
-    final sideBarWidth = 24.sp;
+    final sideBarWidth = 20.w;
     final horizontalPadding = 48.sp * 2;
     final screenWidth = MediaQuery.of(context).size.width;
     final boardSize = screenWidth - sideBarWidth - horizontalPadding;
