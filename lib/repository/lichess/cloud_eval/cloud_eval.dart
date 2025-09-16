@@ -35,31 +35,35 @@ class Pv {
   final String moves;
   final int cp; // centipawns (positive = white advantage)
   final bool isMate;
+  final int? mate;
 
-  Pv({required this.moves, required this.cp, this.isMate = false});
+  Pv({required this.moves, required this.cp, this.isMate = false, this.mate});
 
   factory Pv.fromJson(Map<String, dynamic> json) {
     final moves = json['moves'] as String;
 
     int cp;
     bool isMate;
+    int mate=0;
     if (json.containsKey('mate')) {
       // convert “mate in X” to a big centipawn score
-      final mate = int.parse(json['mate'].toString());
-      cp = mate.sign * 100_000;
+      final mateInt = int.parse(json['mate'].toString());
+      cp = mateInt.sign * 100_000;
       isMate = true;
+      mate = mateInt;
     } else {
       // normal centipawn score
       cp = int.parse(json['cp'].toString());
       isMate = false;
     }
 
-    return Pv(moves: moves, cp: cp, isMate: isMate);
+    return Pv(moves: moves, cp: cp, isMate: isMate, mate: mate );
   }
 
   Map<String, dynamic> toJson() => {
     'moves': moves,
     if (cp.abs() != 100_000) 'cp': cp,
     'isMate': isMate,
+    'mate': mate,
   };
 }
