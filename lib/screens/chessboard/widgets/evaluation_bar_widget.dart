@@ -12,13 +12,14 @@ class EvaluationBarWidget extends ConsumerWidget {
   final double evaluation;
   final bool isFlipped;
   final int index;
-
+  final int mate;
   const EvaluationBarWidget({
     required this.width,
     required this.height,
     required this.evaluation,
     required this.isFlipped,
     required this.index,
+    required this.mate,
     super.key,
   });
 
@@ -65,27 +66,18 @@ class EvaluationBarWidget extends ConsumerWidget {
             ),
           ),
 
-          Center(
-            child: Container(
-              width: width,
-              height: 2,
-              color: kRedColor,
-            ),
-          ),
+          Center(child: Container(width: width, height: 2, color: kRedColor)),
 
           Center(
             child: Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: 1.w,
-                vertical: 0.5.h,
-              ),
+              padding: EdgeInsets.symmetric(horizontal: 1.w, vertical: 0.5.h),
               decoration: BoxDecoration(
                 color: kPrimaryColor,
                 borderRadius: BorderRadius.circular(2.br),
               ),
               child: Text(
                 evaluation.abs() >= 10.0
-                    ? "M"
+                    ? '#$mate'
                     : evaluation.abs().toStringAsFixed(1),
                 maxLines: 1,
                 textAlign: TextAlign.center,
