@@ -1,4 +1,5 @@
 import 'package:chessever2/utils/location_service_provider.dart';
+import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:country_flags/country_flags.dart';
@@ -75,7 +76,7 @@ class StandingScoreCard extends ConsumerWidget {
                       width: 16.w,
                       height: 12.h,
                       child: Image.asset(
-                        'assets/pngs/fide_logo.png',
+                        PngAsset.fideLogo,
                         height: 12.h,
                         width: 16.w,
                         fit: BoxFit.cover,
