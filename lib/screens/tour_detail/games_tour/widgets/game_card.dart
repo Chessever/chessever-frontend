@@ -472,7 +472,17 @@ class _GamesRound extends ConsumerWidget {
         ),
         Row(
           children: [
-            if (validCountryCode.isNotEmpty) ...<Widget>[
+            if (countryCode.toUpperCase() == 'FID') ...<Widget>[
+              Image.asset(
+                'assets/pngs/fide_logo.png',
+                height: 12.h,
+                width: 16.w,
+                fit: BoxFit.cover,
+                cacheWidth: 48,
+                cacheHeight: 36,
+              ),
+              SizedBox(width: 4.w),
+            ] else if (validCountryCode.isNotEmpty) ...<Widget>[
               CountryFlag.fromCountryCode(
                 validCountryCode,
                 height: 12.h,

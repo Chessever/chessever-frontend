@@ -70,7 +70,21 @@ class ScoreboardCardWidget extends ConsumerWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  if (validCountryCode.isNotEmpty) ...[
+                  if (countryCode.toUpperCase() == 'FID') ...[
+                    SizedBox(
+                      width: 16.w,
+                      height: 12.h,
+                      child: Image.asset(
+                        'assets/pngs/fide_logo.png',
+                        height: 12.h,
+                        width: 16.w,
+                        fit: BoxFit.cover,
+                        cacheWidth: 48,
+                        cacheHeight: 36,
+                      ),
+                    ),
+                    SizedBox(width: 4.w),
+                  ] else if (validCountryCode.isNotEmpty) ...[
                     SizedBox(
                       width: 16.w,
                       height: 12.h,

@@ -153,7 +153,6 @@ class LocationService {
     'HKG': 'HK',
     'MAC': 'MO',
     'TPE': 'TW',
-    'FID': 'FJ',
     'PNG': 'PG',
     'SOL': 'SB',
     'VAN': 'VU',
