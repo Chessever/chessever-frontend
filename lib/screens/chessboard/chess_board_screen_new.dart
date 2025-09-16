@@ -37,20 +37,22 @@ class ChessBoardScreenNew extends ConsumerStatefulWidget {
 
 class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   late PageController _pageController;
-  int _currentPageIndex = 0;
   bool analysisMode = false;
   int? _lastViewedIndex;
 
   @override
   void initState() {
     super.initState();
-    _currentPageIndex = widget.currentIndex;
     _pageController = PageController(initialPage: widget.currentIndex);
-    _listenForSfx();
+  }
+
+  @override
+  void didUpdateWidget(covariant ChessBoardScreenNew oldWidget) {
+    super.didUpdateWidget(oldWidget);
   }
 
   void _onPageChanged(int newIndex) {
-    if (_currentPageIndex == newIndex) return;
+    if (_pageController.hasClients ? _pageController.page?.toInt() == newIndex : widget.currentIndex == newIndex) return;
     _lastViewedIndex = newIndex;
     // Check if provider is available before trying to access it
     final view = ref.read(chessboardViewFromProviderNew);
@@ -61,11 +63,11 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
 
     if (gamesAsync.hasValue && gamesAsync.value?.gamesTourModels != null) {
       ref
-          .read(chessBoardScreenProviderNew(_currentPageIndex).notifier)
+          .read(chessBoardScreenProviderNew(_pageController.hasClients ? _pageController.page?.toInt() ?? widget.currentIndex : widget.currentIndex).notifier)
           .pauseGame();
     }
 
-    setState(() => _currentPageIndex = newIndex);
+    
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (gamesAsync.hasValue && gamesAsync.value?.gamesTourModels != null) {
@@ -81,7 +83,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   }
 
   void _navigateToGame(int gameIndex) {
-    if (gameIndex == _currentPageIndex) return;
+    if (gameIndex == _pageController.page!.toInt()) return;
 
     // Check if provider is available before trying to access it
     final view = ref.read(chessboardViewFromProviderNew);
@@ -92,7 +94,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
 
     if (gamesAsync.hasValue && gamesAsync.value?.gamesTourModels != null) {
       ref
-          .read(chessBoardScreenProviderNew(_currentPageIndex).notifier)
+          .read(chessBoardScreenProviderNew(_pageController.hasClients ? _pageController.page?.toInt() ?? widget.currentIndex : widget.currentIndex).notifier)
           .pauseGame();
     }
 
@@ -103,22 +105,78 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
     );
   }
 
-  Future<void> _listenForSfx() async {
-    ref.listenManual(chessBoardScreenProviderNew(widget.currentIndex), (
+  @override
+  Widget build(BuildContext context) {
+    ref.listen(chessBoardScreenProviderNew(_pageController.hasClients ? _pageController.page?.toInt() ?? widget.currentIndex : widget.currentIndex), (
       prev,
       next,
     ) {
       if (prev?.valueOrNull?.currentMoveIndex !=
-          next.valueOrNull?.currentMoveIndex) {
-        AudioPlayerService.instance.player.play(
-          AudioPlayerService.instance.pieceMoveSfx,
-        );
-      }
-    });
-  }
+          next.valueOrNull?.currentMoveIndex && next.valueOrNull != null) {
+        final state = next.valueOrNull!;
+        final prevIndex = prev?.valueOrNull?.currentMoveIndex ?? -1;
+        final currentIndex = state.currentMoveIndex;
+        final audioService = AudioPlayerService.instance;
 
-  @override
-  Widget build(BuildContext context) {
+        // Determine if we're going forward or backward
+        final isMovingForward = currentIndex > prevIndex;
+
+        // For backward navigation, we want to play the sound of the move we just "undid"
+        // For forward navigation, we want to play the sound of the move we just made
+        final moveIndexForSound = isMovingForward ? currentIndex : prevIndex;
+
+        // Check if we have a valid move to play sound for
+        if (moveIndexForSound >= 0 && moveIndexForSound < state.moveSans.length) {
+          // Get the move notation for the appropriate move
+          final moveSan = state.moveSans[moveIndexForSound];
+
+          // Determine which sound to play based on PGN notation
+          // Priority order matters: checkmate > check > special moves > capture > regular
+          if (moveSan.contains('#')) {
+            // Checkmate notation
+            audioService.player.play(audioService.pieceCheckmateSfx);
+          } else if (moveSan.contains('+')) {
+            // Check notation (but not checkmate)
+            audioService.player.play(audioService.pieceCheckSfx);
+          } else if (moveSan == 'O-O' || moveSan == 'O-O-O') {
+            // Castling (kingside or queenside) - exact match
+            audioService.player.play(audioService.pieceCastlingSfx);
+          } else if (moveSan.contains('=')) {
+            // Pawn promotion (e.g., e8=Q)
+            audioService.player.play(audioService.piecePromotionSfx);
+          } else if (moveSan.contains('x')) {
+            // Capture notation
+            audioService.player.play(audioService.pieceTakeoverSfx);
+          } else {
+            // Regular move (no special notation)
+            audioService.player.play(audioService.pieceMoveSfx);
+          }
+        } else if (currentIndex == -1 && prevIndex >= 0) {
+          // Moving back to the starting position (before first move)
+          // Play a regular move sound for the "undo" action
+          audioService.player.play(audioService.pieceMoveSfx);
+        } else if (currentIndex == state.moveSans.length && state.moveSans.isNotEmpty) {
+          // We're at the end of the game, check for game-ending conditions
+          final lastMoveSan = state.moveSans.last;
+
+          if (lastMoveSan.contains('#')) {
+            // Game ended with checkmate
+            audioService.player.play(audioService.pieceCheckmateSfx);
+          } else if (state.game.gameStatus == GameStatus.draw) {
+            // Game ended in a draw
+            audioService.player.play(audioService.pieceDrawSfx);
+          } else {
+            // Other game endings (resignation, time out, etc.)
+            audioService.player.play(audioService.pieceMoveSfx);
+          }
+        } else {
+          // Fallback for edge cases (shouldn't normally happen)
+          audioService.player.play(audioService.pieceMoveSfx);
+        }
+      }
+    },onError: (e,st) {
+      debugPrint("Error in chessBoardScreenProviderNew listener: $e");
+    });
     // Check if the required data is available before building the main content
     final view = ref.watch(chessboardViewFromProviderNew);
     final gamesAsync =
@@ -133,7 +191,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
             widget.games.isNotEmpty
                 ? widget.games
                 : [widget.games.first], // Fallback for empty games
-        currentGameIndex: _currentPageIndex.clamp(0, widget.games.length - 1),
+        currentGameIndex: (_pageController.hasClients ? _pageController.page?.toInt() ?? widget.currentIndex : widget.currentIndex).clamp(0, widget.games.length - 1),
         onGameChanged: (index) {}, // Disabled during loading
         lastViewedIndex: _lastViewedIndex,
       );
@@ -171,9 +229,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
             onPageChanged: _onPageChanged,
             itemCount: widget.games.length,
             itemBuilder: (context, index) {
-              if (index == _currentPageIndex - 1 ||
-                  index == _currentPageIndex + 1 ||
-                  index == _currentPageIndex) {
+              if (index == (_pageController.hasClients ? _pageController.page?.toInt() ?? widget.currentIndex : widget.currentIndex) - 1 ||
+                  index == (_pageController.hasClients ? _pageController.page?.toInt() ?? widget.currentIndex : widget.currentIndex) + 1 ||
+                  index == (_pageController.hasClients ? _pageController.page?.toInt() ?? widget.currentIndex : widget.currentIndex)) {
                 try {
                   return ref
                       .watch(chessBoardScreenProviderNew(index))
@@ -181,7 +239,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
                         data: (chessBoardState) {
                           if (chessBoardState.isAnalysisMode != analysisMode) {
                             WidgetsBinding.instance.addPostFrameCallback((_) {
-                              if (mounted) {
+                              if (_pageController.hasClients) {
                                 setState(() {
                                   analysisMode = chessBoardState.isAnalysisMode;
                                 });
@@ -389,25 +447,27 @@ class _GameSelectionDropdown extends StatelessWidget {
   });
 
   String _formatName(String fullName, {double? maxWidth}) {
-    List<String> nameParts = fullName.trim().split(' ').where((part) => part.isNotEmpty).toList();
+    List<String> nameParts =
+        fullName.trim().split(' ').where((part) => part.isNotEmpty).toList();
     if (nameParts.length <= 1) return fullName;
-    
+
     String familyName = nameParts.last;
     List<String> otherNames = nameParts.sublist(0, nameParts.length - 1);
-    
+
     // Try full names first
     String fullVersion = '${otherNames.join(' ')} $familyName';
-    
+
     // If no width constraint or it fits, return full version
     if (maxWidth == null) return fullVersion;
-    
+
     // Estimate text width (rough approximation)
-    double estimatedWidth = fullVersion.length * 6.0; // Approximate character width
+    double estimatedWidth =
+        fullVersion.length * 6.0; // Approximate character width
     if (estimatedWidth <= maxWidth) return fullVersion;
-    
+
     // If too long, progressively abbreviate from left to right
     List<String> displayNames = List.from(otherNames);
-    
+
     for (int i = 0; i < displayNames.length; i++) {
       if (displayNames[i].length > 1) {
         displayNames[i] = '${displayNames[i][0]}.';
@@ -418,7 +478,7 @@ class _GameSelectionDropdown extends StatelessWidget {
         }
       }
     }
-    
+
     // Fallback: all abbreviated
     return '${displayNames.join(' ')} $familyName';
   }
@@ -510,25 +570,27 @@ class _GameDropdownItem extends StatelessWidget {
   });
 
   String _formatName(String fullName, {double? maxWidth}) {
-    List<String> nameParts = fullName.trim().split(' ').where((part) => part.isNotEmpty).toList();
+    List<String> nameParts =
+        fullName.trim().split(' ').where((part) => part.isNotEmpty).toList();
     if (nameParts.length <= 1) return fullName;
-    
+
     String familyName = nameParts.last;
     List<String> otherNames = nameParts.sublist(0, nameParts.length - 1);
-    
+
     // Try full names first
     String fullVersion = '${otherNames.join(' ')} $familyName';
-    
+
     // If no width constraint or it fits, return full version
     if (maxWidth == null) return fullVersion;
-    
+
     // Estimate text width (rough approximation)
-    double estimatedWidth = fullVersion.length * 5.0; // Approximate character width
+    double estimatedWidth =
+        fullVersion.length * 5.0; // Approximate character width
     if (estimatedWidth <= maxWidth) return fullVersion;
-    
+
     // If too long, progressively abbreviate from left to right
     List<String> displayNames = List.from(otherNames);
-    
+
     for (int i = 0; i < displayNames.length; i++) {
       if (displayNames[i].length > 1) {
         displayNames[i] = '${displayNames[i][0]}.';
@@ -539,7 +601,7 @@ class _GameDropdownItem extends StatelessWidget {
         }
       }
     }
-    
+
     // Fallback: all abbreviated
     return '${displayNames.join(' ')} $familyName';
   }
@@ -639,17 +701,16 @@ class _BottomNavBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final notifier = ref.read(chessBoardScreenProviderNew(index).notifier);
 
     return ChessBoardBottomNavBar(
       gameIndex: index,
-      onFlip: () => notifier.flipBoard(),
-      onRightMove: state.canMoveForward ? () => notifier.moveForward() : null,
-      onLeftMove: state.canMoveBackward ? () => notifier.moveBackward() : null,
+      onFlip: () => ref.read(chessBoardScreenProviderNew(index).notifier).flipBoard(),
+      onRightMove: state.canMoveForward ? () => ref.read(chessBoardScreenProviderNew(index).notifier).moveForward() : null,
+      onLeftMove: state.canMoveBackward ? () => ref.read(chessBoardScreenProviderNew(index).notifier).moveBackward() : null,
       canMoveForward: state.canMoveForward,
       canMoveBackward: state.canMoveBackward,
       isAnalysisMode: state.isAnalysisMode,
-      toggleAnalysisMode: () => notifier.toggleAnalysisMode(),
+      toggleAnalysisMode: () => ref.read(chessBoardScreenProviderNew(index).notifier).toggleAnalysisMode(),
     );
   }
 }
