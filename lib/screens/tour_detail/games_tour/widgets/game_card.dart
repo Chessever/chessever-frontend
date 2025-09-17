@@ -4,17 +4,19 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/chess_progress_bar.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/date_time_provider.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/back_drop_filter_widget.dart';
 import 'package:country_flags/country_flags.dart';
+import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-class GameCard extends StatelessWidget {
+class GameCard extends ConsumerWidget {
   const GameCard({
     required this.gamesTourModel,
     required this.onPinToggle,
@@ -31,7 +33,7 @@ class GameCard extends StatelessWidget {
   bool get isPinned => pinnedIds.contains(gamesTourModel.gameId);
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return InkWell(
       onTap: onTap,
       child: Column(
@@ -120,11 +122,15 @@ class GameCard extends StatelessWidget {
                 _TimerWidget(
                   turn: false,
                   time: gamesTourModel.whiteTimeDisplay,
+                  gamesTourModel: gamesTourModel,
+                  isWhitePlayer: true,
                 ),
                 Spacer(),
                 _TimerWidget(
                   turn: false,
                   time: gamesTourModel.blackTimeDisplay,
+                  gamesTourModel: gamesTourModel,
+                  isWhitePlayer: false,
                 ),
               ],
             ),
@@ -268,11 +274,15 @@ class GameCard extends StatelessWidget {
                                 _TimerWidget(
                                   turn: false,
                                   time: gamesTourModel.whiteTimeDisplay,
+                                  gamesTourModel: gamesTourModel,
+                                  isWhitePlayer: true,
                                 ),
                                 Spacer(),
                                 _TimerWidget(
                                   turn: false,
                                   time: gamesTourModel.blackTimeDisplay,
+                                  gamesTourModel: gamesTourModel,
+                                  isWhitePlayer: false,
                                 ),
                               ],
                             ),
@@ -379,6 +389,7 @@ class GameCard extends StatelessWidget {
       transitionDuration: const Duration(milliseconds: 300),
     );
   }
+
 }
 
 class _SelectiveBlurBackground extends StatelessWidget {
@@ -552,18 +563,80 @@ class _StatusText extends StatelessWidget {
 }
 
 class _TimerWidget extends StatelessWidget {
-  const _TimerWidget({required this.turn, required this.time, super.key});
+  const _TimerWidget({
+    required this.turn,
+    required this.time,
+    required this.gamesTourModel,
+    required this.isWhitePlayer,
+    super.key,
+  });
 
   final bool turn;
   final String time;
+  final GamesTourModel gamesTourModel;
+  final bool isWhitePlayer;
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      time,
-      style: AppTypography.textXsMedium.copyWith(
-        color: turn ? kPrimaryColor : kWhiteColor,
-      ),
-    );
+    // Determine if this player's clock should be counting down
+    final isClockRunning = gamesTourModel.gameStatus.isOngoing &&
+        gamesTourModel.lastMoveTime != null &&
+        gamesTourModel.activePlayer != null &&
+        ((isWhitePlayer && gamesTourModel.activePlayer == Side.white) ||
+         (!isWhitePlayer && gamesTourModel.activePlayer == Side.black));
+
+    // Only wrap the Text widget with HookConsumer for atomic rebuilds
+    return isClockRunning
+        ? HookConsumer(builder: (context, ref, child) {
+            final displayTime = ref.watch(dateTimeProvider.select((timeAsync) {
+              final currentTime = timeAsync.valueOrNull;
+              if (currentTime == null || gamesTourModel.lastMoveTime == null) {
+                return time;
+              }
+
+              // Parse static time to get total milliseconds
+              final timeParts = time.split(':');
+              if (timeParts.length != 2) {
+                return time;
+              }
+
+              try {
+                final minutes = int.parse(timeParts[0]);
+                final seconds = int.parse(timeParts[1]);
+                final totalMs = (minutes * 60 + seconds) * 1000;
+
+                // Calculate remaining time
+                final elapsedMs = currentTime.difference(gamesTourModel.lastMoveTime!).inMilliseconds;
+                final remainingMs = totalMs - elapsedMs;
+
+                // Ensure time doesn't go below 0
+                if (remainingMs <= 0) {
+                  return '00:00';
+                }
+
+                // Format the remaining time
+                final remainingSeconds = (remainingMs / 1000).floor();
+                final displayMinutes = remainingSeconds ~/ 60;
+                final displaySecondsRem = remainingSeconds % 60;
+
+                return '${displayMinutes.toString().padLeft(2, '0')}:${displaySecondsRem.toString().padLeft(2, '0')}';
+              } catch (e) {
+                return time;
+              }
+            }));
+
+            return Text(
+              displayTime,
+              style: AppTypography.textXsMedium.copyWith(
+                color: turn ? kPrimaryColor : kWhiteColor,
+              ),
+            );
+          })
+        : Text(
+            time,
+            style: AppTypography.textXsMedium.copyWith(
+              color: turn ? kPrimaryColor : kWhiteColor,
+            ),
+          );
   }
 }

@@ -5,10 +5,12 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/date_time_provider.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:country_flags/country_flags.dart';
+import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -211,29 +213,116 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
           ),
 
           // Show score for finished games at latest move, or time otherwise
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 4.sp),
-            decoration: BoxDecoration(
-              // Remove background only when showing scores, keep it when browsing history
-              color:
-                  isShowingScore
-                      ? Colors.transparent
-                      : (isCurrentPlayer ? kDarkBlue : Colors.transparent),
-            ),
-            child: Text(
-              isShowingScore
-                  ? (gamesTourModel.gameStatus == GameStatus.whiteWins
-                      ? (isWhitePlayer ? '1' : '0')
-                      : gamesTourModel.gameStatus == GameStatus.blackWins
-                      ? (isWhitePlayer ? '0' : '1')
-                      : '½')
-                  : (moveTime ?? '--:--'),
-              style: timeStyle,
-            ),
-          ),
+          isShowingScore
+              ? Container(
+                  padding: EdgeInsets.symmetric(horizontal: 4.sp),
+                  decoration: BoxDecoration(
+                    color: Colors.transparent,
+                  ),
+                  child: Text(
+                    gamesTourModel.gameStatus == GameStatus.whiteWins
+                        ? (isWhitePlayer ? '1' : '0')
+                        : gamesTourModel.gameStatus == GameStatus.blackWins
+                        ? (isWhitePlayer ? '0' : '1')
+                        : '½',
+                    style: timeStyle,
+                  ),
+                )
+              : _PlayerClock(
+                  isWhitePlayer: isWhitePlayer,
+                  gamesTourModel: gamesTourModel,
+                  chessBoardState: chessBoardState,
+                  isCurrentPlayer: isCurrentPlayer,
+                  timeStyle: timeStyle,
+                  moveTime: moveTime,
+                ),
           SizedBox(width: 8.w),
         ],
       ),
+    );
+  }
+}
+
+class _PlayerClock extends StatelessWidget {
+  const _PlayerClock({
+    required this.isWhitePlayer,
+    required this.gamesTourModel,
+    required this.chessBoardState,
+    required this.isCurrentPlayer,
+    required this.timeStyle,
+    required this.moveTime,
+  });
+
+  final bool isWhitePlayer;
+  final GamesTourModel gamesTourModel;
+  final ChessBoardStateNew? chessBoardState;
+  final bool isCurrentPlayer;
+  final TextStyle timeStyle;
+  final String? moveTime;
+
+  @override
+  Widget build(BuildContext context) {
+    // Determine if this player's clock should be counting down
+    final isClockRunning = gamesTourModel.gameStatus.isOngoing &&
+        gamesTourModel.lastMoveTime != null &&
+        gamesTourModel.activePlayer != null &&
+        ((isWhitePlayer && gamesTourModel.activePlayer == Side.white) ||
+         (!isWhitePlayer && gamesTourModel.activePlayer == Side.black));
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 4.sp),
+      decoration: BoxDecoration(
+        color: isCurrentPlayer ? kDarkBlue : Colors.transparent,
+      ),
+      child: isClockRunning
+          ? HookConsumer(builder: (context, ref, child) {
+              final displayTime = ref.watch(dateTimeProvider.select((timeAsync) {
+                final currentTime = timeAsync.valueOrNull;
+                if (currentTime == null || gamesTourModel.lastMoveTime == null) {
+                  return moveTime ?? '--:--';
+                }
+
+                // Parse static time to get total milliseconds
+                final staticTime = moveTime ?? '--:--';
+                final timeParts = staticTime.split(':');
+                if (timeParts.length != 2) {
+                  return staticTime;
+                }
+
+                try {
+                  final minutes = int.parse(timeParts[0]);
+                  final seconds = int.parse(timeParts[1]);
+                  final totalMs = (minutes * 60 + seconds) * 1000;
+
+                  // Calculate remaining time
+                  final elapsedMs = currentTime.difference(gamesTourModel.lastMoveTime!).inMilliseconds;
+                  final remainingMs = totalMs - elapsedMs;
+
+                  // Ensure time doesn't go below 0
+                  if (remainingMs <= 0) {
+                    return '00:00';
+                  }
+
+                  // Format the remaining time
+                  final remainingSeconds = (remainingMs / 1000).floor();
+                  final displayMinutes = remainingSeconds ~/ 60;
+                  final displaySecondsRem = remainingSeconds % 60;
+
+                  return '${displayMinutes.toString().padLeft(2, '0')}:${displaySecondsRem.toString().padLeft(2, '0')}';
+                } catch (e) {
+                  return staticTime;
+                }
+              }));
+
+              return Text(
+                displayTime,
+                style: timeStyle,
+              );
+            })
+          : Text(
+              moveTime ?? '--:--',
+              style: timeStyle,
+            ),
     );
   }
 }
