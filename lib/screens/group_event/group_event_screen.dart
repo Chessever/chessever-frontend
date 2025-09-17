@@ -36,7 +36,7 @@ class GroupEventScreen extends HookConsumerWidget {
   void _showFilterPopup(BuildContext context) {
     showDialog(
       context: context,
-      barrierColor: Colors.black.withOpacity(0.5),
+      barrierColor: kBlackColor.withOpacity(0.5),
       builder: (context) => const FilterPopup(),
     );
   }
@@ -204,6 +204,9 @@ class GroupEventScreen extends HookConsumerWidget {
 
                             final finalEvents =
                                 isSearching
+                                    ? filteredEvents
+                                    : selectedTourEvent ==
+                                        GroupEventCategory.past
                                     ? filteredEvents
                                     : ref
                                         .read(tournamentSortingServiceProvider)
