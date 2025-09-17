@@ -60,7 +60,6 @@ class GamesTourContentBody extends ConsumerWidget {
     final orderedGamesData = GamesScreenModel(
       gamesTourModels: orderedGamesForChessBoard,
       pinnedGamedIs: gamesScreenModel.pinnedGamedIs,
-      scrollToIndex: gamesScreenModel.scrollToIndex,
     );
 
     final itemScrollController = ref.watch(gamesTourScrollProvider);
