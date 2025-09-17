@@ -14,7 +14,7 @@ final tourDetailScreenProvider = StateNotifierProvider<
   _TourDetailScreenNotifier,
   AsyncValue<TourDetailViewModel>
 >((ref) {
-  final groupBroadcast = ref.read(selectedBroadcastModelProvider)!;
+  final groupBroadcast = ref.watch(selectedBroadcastModelProvider)!;
   final liveTourIdAsync = ref.watch(liveTourIdProvider);
   final liveTourId = liveTourIdAsync.valueOrNull ?? <String>[];
 
