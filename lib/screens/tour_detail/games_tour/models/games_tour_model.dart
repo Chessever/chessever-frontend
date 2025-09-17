@@ -53,6 +53,7 @@ class GamesTourModel {
   final String? lastMove;
   final int? boardNr;
   final String roundId;
+  final DateTime? lastMoveTime;
 
   GamesTourModel({
     required this.gameId,
@@ -66,6 +67,7 @@ class GamesTourModel {
     this.fen,
     this.pgn,
     this.boardNr,
+    this.lastMoveTime,
   });
 
   GamesTourModel copyWith({
@@ -80,6 +82,7 @@ class GamesTourModel {
     String? pgn,
     int? boardNr,
     String? roundId,
+    DateTime? lastMoveTime,
   }) {
     return GamesTourModel(
       gameId: gameId ?? this.gameId,
@@ -93,6 +96,7 @@ class GamesTourModel {
       pgn: pgn ?? this.pgn,
       boardNr: boardNr ?? this.boardNr,
       roundId: roundId ?? this.roundId,
+      lastMoveTime: lastMoveTime ?? this.lastMoveTime,
     );
   }
 
@@ -128,6 +132,7 @@ class GamesTourModel {
         pgn: game.pgn?.isNotEmpty == true ? game.pgn : null,
         lastMove: game.lastMove?.isNotEmpty == true ? game.lastMove : null,
         boardNr: game.boardNr,
+        lastMoveTime: game.lastMoveTime,
       );
     } catch (e) {
       throw ArgumentError(
