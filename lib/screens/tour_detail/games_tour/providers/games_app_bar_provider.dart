@@ -43,11 +43,7 @@ class _GamesAppBarNotifier
   final String? tourId;
   List<String> _liveRounds;
 
-  String? _cachedForTour;
-  List<GamesAppBarModel>? _cachedModels;
-
   Future<void> refresh() async {
-    _invalidateCache();
     await _load();
   }
 
@@ -113,26 +109,9 @@ class _GamesAppBarNotifier
     return -1; // Invalid index
   }
 
-  @override
-  void dispose() {
-    _invalidateCache();
-    super.dispose();
-  }
-
-  void _invalidateCache() {
-    _cachedForTour = null;
-    _cachedModels = null;
-  }
-
   Future<void> _load() async {
     if (tourId == null) {
       state = const AsyncValue.loading();
-      return;
-    }
-
-    // Serve from cache if valid
-    if (_cachedModels != null && _cachedForTour == tourId) {
-      await _applySelectionFrom(_cachedModels!, tourId!);
       return;
     }
 
@@ -156,9 +135,6 @@ class _GamesAppBarNotifier
           rounds
               .map((r) => GamesAppBarModel.fromRound(r, _liveRounds))
               .toList();
-
-      _cachedModels = models;
-      _cachedForTour = tourId;
 
       await _applySelectionFrom(models, tourId!);
     } catch (e, st) {
