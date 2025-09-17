@@ -17,12 +17,15 @@ class RoundDropDown extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return SizedBox(
-      height: 32.h,
+      height: 38.h,
       width: 120.w,
       child: ref
           .watch(gamesAppBarProvider)
           .when(
             data: (data) {
+              print(
+                'Selected Round ${data.gamesAppBarModels.firstWhere((a) => a.id == data.selectedId, orElse: () => data.gamesAppBarModels.first).name}',
+              );
               return _RoundDropdown(
                 rounds: data.gamesAppBarModels,
                 selectedRoundId: data.selectedId,

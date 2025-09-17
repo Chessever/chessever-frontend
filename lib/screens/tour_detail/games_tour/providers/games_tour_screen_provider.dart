@@ -283,21 +283,11 @@ class GamesTourScreenProvider
         }
       }
 
-      // Calculate scroll position for selected round (only if not in search mode)
-      int? scrollToIndex;
-      if (_selectedRoundId != null && !_isSearchMode) {
-        scrollToIndex = _findFirstGameIndexForRound(
-          gamesTourModels,
-          _selectedRoundId!,
-        );
-      }
-
       if (mounted) {
         state = AsyncValue.data(
           GamesScreenModel(
             gamesTourModels: gamesTourModels,
             pinnedGamedIs: _isSearchMode ? [] : pinndedIds,
-            scrollToIndex: scrollToIndex,
           ),
         );
 
@@ -333,20 +323,6 @@ class GamesTourScreenProvider
       return int.tryParse(numberMatch.group(1) ?? '0') ?? 0;
     }
     return 0;
-  }
-
-  // Find the first game index for a specific round
-  int? _findFirstGameIndexForRound(List<GamesTourModel> games, String roundId) {
-    for (int i = 0; i < games.length; i++) {
-      final originalGame = allGames.firstWhere(
-        (game) => game.id == games[i].gameId,
-        orElse: () => throw StateError('Game not found'),
-      );
-      if (originalGame.roundId == roundId) {
-        return i;
-      }
-    }
-    return null;
   }
 
   Future<void> searchGamesEnhanced(String query) async {
@@ -392,11 +368,7 @@ class GamesTourScreenProvider
 
       if (mounted) {
         state = AsyncValue.data(
-          GamesScreenModel(
-            gamesTourModels: gamesTourModels,
-            pinnedGamedIs: [],
-            scrollToIndex: null,
-          ),
+          GamesScreenModel(gamesTourModels: gamesTourModels, pinnedGamedIs: []),
         );
       }
     } catch (e, st) {
