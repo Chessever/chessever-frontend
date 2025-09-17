@@ -108,6 +108,8 @@ dependencies:
   fast_immutable_collections: ^11.0.4
   flutter_soloud: ^3.3.6
 
+  scrollable_positioned_list: ^0.3.8
+
   
 dev_dependencies:
   flutter_test:

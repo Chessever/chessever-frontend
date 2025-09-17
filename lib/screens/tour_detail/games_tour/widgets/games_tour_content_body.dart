@@ -1,8 +1,7 @@
-import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_error_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_list_view.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
-import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -10,37 +9,20 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 class GamesTourContentBody extends ConsumerWidget {
   final GamesScreenModel gamesScreenModel;
   final bool isChessBoardVisible;
-  final ScrollController scrollController;
-  final GlobalKey Function(String) getHeaderKey;
-  final GlobalKey Function(String, int) getGameKey;
 
   const GamesTourContentBody({
     super.key,
     required this.gamesScreenModel,
     required this.isChessBoardVisible,
-    required this.scrollController,
-    required this.getHeaderKey,
-    required this.getGameKey,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tourDetails = ref.watch(tourDetailScreenProvider);
     final gamesAppBar = ref.watch(gamesAppBarProvider);
 
     // Show shimmer if any critical data is still loading
-    if (tourDetails.isLoading ||
-        gamesAppBar.isLoading ||
-        !tourDetails.hasValue ||
-        !gamesAppBar.hasValue ||
-        tourDetails.valueOrNull?.aboutTourModel == null) {
+    if (gamesAppBar.isLoading || !gamesAppBar.hasValue) {
       return const TourLoadingWidget();
-    }
-
-    if (tourDetails.hasError) {
-      return GamesErrorWidget(
-        errorMessage: 'Error loading tournament: ${tourDetails.error}',
-      );
     }
 
     final rounds =
@@ -81,15 +63,18 @@ class GamesTourContentBody extends ConsumerWidget {
       scrollToIndex: gamesScreenModel.scrollToIndex,
     );
 
+    final itemScrollController = ref.watch(gamesTourScrollProvider);
+    final itemPositionsListener =
+        ref.read(gamesTourScrollProvider.notifier).itemPositionsListener;
+
     return GamesListView(
       key: ValueKey('games_list_${isChessBoardVisible ? 'chess' : 'card'}'),
       rounds: visibleRounds,
       gamesByRound: gamesByRound,
       gamesData: orderedGamesData,
       isChessBoardVisible: isChessBoardVisible,
-      scrollController: scrollController,
-      getHeaderKey: getHeaderKey,
-      getGameKey: getGameKey,
+      itemScrollController: itemScrollController,
+      itemPositionsListener: itemPositionsListener,
     );
   }
 }
