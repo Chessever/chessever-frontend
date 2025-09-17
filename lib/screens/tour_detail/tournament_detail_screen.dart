@@ -2,10 +2,13 @@ import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen.dart';
 import 'package:chessever2/screens/tour_detail/about_tour_screen.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/views/games_tour_screen.dart';
 import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart';
+import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_app_bar_widget.dart';
@@ -19,8 +22,6 @@ import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-import 'games_tour/providers/games_tour_scroll_state_provider.dart';
-
 class TournamentDetailScreen extends ConsumerStatefulWidget {
   const TournamentDetailScreen({super.key});
 
@@ -31,7 +32,6 @@ class TournamentDetailScreen extends ConsumerStatefulWidget {
 
 class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen> {
   late PageController pageController;
-  final scrollController = ScrollController();
 
   @override
   void initState() {
@@ -53,8 +53,10 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen> {
       ref.invalidate(userSelectedRoundProvider);
       ref.invalidate(tourDetailScreenProvider);
       ref.invalidate(gamesAppBarProvider);
-      ref.invalidate(scrollStateProvider);
+      ref.invalidate(gamesTourScreenProvider);
+      ref.invalidate(playerTourScreenProvider);
       ref.invalidate(searchQueryProvider);
+      ref.invalidate(gamesTourScrollProvider);
     } catch (e) {
       // Ignore errors during cleanup
       print('Error during provider cleanup: $e');
@@ -64,7 +66,6 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen> {
   @override
   void dispose() {
     pageController.dispose();
-    scrollController.dispose();
     super.dispose();
   }
 
@@ -92,7 +93,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen> {
                   if (index == 0) {
                     return AboutTourScreen();
                   } else if (index == 1) {
-                    return GamesTourScreen(scrollController: scrollController);
+                    return GamesTourScreen();
                   } else if (index == 2) {
                     return PlayerTourScreen();
                   } else {
