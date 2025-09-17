@@ -7,14 +7,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 class RoundHeader extends ConsumerWidget {
   final dynamic round;
   final List<GamesTourModel> roundGames;
-  final GlobalKey headerKey;
 
-  const RoundHeader({
-    super.key,
-    required this.round,
-    required this.roundGames,
-    required this.headerKey,
-  });
+  const RoundHeader({super.key, required this.round, required this.roundGames});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -22,7 +16,6 @@ class RoundHeader extends ConsumerWidget {
     // Now handled centrally in GamesTourScreen for better performance
 
     return Container(
-      key: headerKey,
       margin: EdgeInsets.only(top: 16.h, bottom: 8.h),
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
       decoration: BoxDecoration(
