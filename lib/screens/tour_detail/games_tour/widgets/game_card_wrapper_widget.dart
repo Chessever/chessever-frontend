@@ -23,8 +23,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final keyValue =
-        'game_${game.gameId}_${gameIndex}_${isChessBoardVisible ? 'chess' : 'card'}';
+    final keyValue = 'game_${game.gameId}';
 
     return isChessBoardVisible
         ? ChessBoardFromFENNew(
