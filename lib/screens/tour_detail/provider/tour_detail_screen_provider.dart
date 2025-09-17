@@ -7,13 +7,14 @@ import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_tour_id_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/interface/itour_detail_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
+import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final tourDetailScreenProvider = StateNotifierProvider<
   _TourDetailScreenNotifier,
   AsyncValue<TourDetailViewModel>
 >((ref) {
-  final groupBroadcast = ref.read(selectedBroadcastModelProvider)!;
+  final groupBroadcast = ref.watch(selectedBroadcastModelProvider)!;
   final liveTourIdAsync = ref.watch(liveTourIdProvider);
   final liveTourId = liveTourIdAsync.valueOrNull ?? <String>[];
 
@@ -42,8 +43,6 @@ class _TourDetailScreenNotifier
 
   @override
   Future<void> loadTourDetails() async {
-    if (!mounted) return;
-
     try {
       final tours = await ref
           .read(tourLocalStorageProvider)
@@ -161,10 +160,12 @@ class _TourDetailScreenNotifier
   }
 
   Tour _determineSelectedTour(List<TourModel> tourModels) {
-
     // Check if current selection is still valid
     if (state.value?.aboutTourModel != null) {
-      final validSelectedTour = _findTourModel(tourModels, state.value!.aboutTourModel.id);
+      final validSelectedTour = _findTourModel(
+        tourModels,
+        state.value!.aboutTourModel.id,
+      );
       if (validSelectedTour != null) {
         return validSelectedTour.tour;
       }
@@ -235,6 +236,6 @@ class _TourDetailScreenNotifier
   }
 
   void _logWarning(String message) {
-    print('TourDetailScreenNotifier: $message');
+    debugPrint('TourDetailScreenNotifier: $message');
   }
 }

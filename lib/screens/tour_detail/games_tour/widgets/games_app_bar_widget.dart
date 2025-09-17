@@ -14,10 +14,13 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search_widget.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 
-import '../../provider/tour_detail_screen_provider.dart';
+// Enum for menu items to improve maintainability
+enum MenuAction { unpinAll, activeGamesOnTop }
 
 class GamesAppBarWidget extends ConsumerStatefulWidget {
   const GamesAppBarWidget({super.key});
@@ -26,18 +29,24 @@ class GamesAppBarWidget extends ConsumerStatefulWidget {
   ConsumerState<GamesAppBarWidget> createState() => _GamesAppBarWidgetState();
 }
 
-class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
+class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
+    with TickerProviderStateMixin {
   bool isSearching = false;
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   late final GlobalKey _menuKey;
   Timer? _debounceTimer;
   String _currentSearchQuery = '';
+  late AnimationController _animationController;
 
   @override
   void initState() {
-    _menuKey = GlobalKey();
     super.initState();
+    _menuKey = GlobalKey();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -46,7 +55,17 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
     });
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _focusNode.dispose();
+    _debounceTimer?.cancel();
+    _animationController.dispose();
+    super.dispose();
+  }
+
   void _startSearch() {
+    HapticFeedback.lightImpact();
     setState(() {
       isSearching = true;
     });
@@ -56,17 +75,25 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNode.requestFocus();
     });
+    _animationController.forward();
   }
 
   Future<void> _closeSearch() async {
+    HapticFeedback.lightImpact();
     setState(() {
       isSearching = false;
     });
     _searchController.clear();
     _currentSearchQuery = '';
     _debounceTimer?.cancel();
-    await ref.read(gamesTourScreenProvider.notifier).refreshGames();
+    try {
+      await ref.read(gamesTourScreenProvider.notifier).refreshGames();
+    } catch (e) {
+      // Log error or show snackbar if needed
+      debugPrint('Error refreshing games: $e');
+    }
     _focusNode.unfocus();
+    _animationController.reverse();
   }
 
   void _handleSearchInput(String query) {
@@ -125,15 +152,20 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
         ),
       );
       _closeSearch();
-    } catch (e) {}
+    } catch (e) {
+      debugPrint('Error handling game selection: $e');
+    }
   }
 
-  @override
-  void dispose() {
-    _searchController.dispose();
-    _focusNode.dispose();
-    _debounceTimer?.cancel();
-    super.dispose();
+  void _handleMenuAction(MenuAction action) {
+    switch (action) {
+      case MenuAction.unpinAll:
+        ref.read(gamesTourScreenProvider.notifier).unpinAllGames();
+        break;
+      case MenuAction.activeGamesOnTop:
+        // Implement logic for active games on top if needed
+        break;
+    }
   }
 
   @override
@@ -182,131 +214,141 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
                       key: const ValueKey('app_bar_mode'),
                       children: [
                         SizedBox(width: 16.w),
-                        IconButton(
-                          iconSize: 24.ic,
-                          padding: EdgeInsets.zero,
-                          onPressed: () => Navigator.of(context).pop(),
-                          icon: Icon(
-                            Icons.arrow_back_ios_new_outlined,
-                            size: 24.ic,
+                        Semantics(
+                          label: 'Back button',
+                          child: IconButton(
+                            iconSize: 24.ic,
+                            padding: EdgeInsets.zero,
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: Icon(
+                              Icons.arrow_back_ios_new_outlined,
+                              size: 24.ic,
+                            ),
                           ),
                         ),
-
                         if (hasTours) ...[
                           const Spacer(),
-                          RoundDropDown(),
+                          const RoundDropDown(),
                           const Spacer(),
-                          AppBarIcons(
-                            image: SvgAsset.searchIcon,
-                            onTap: _startSearch,
-                          ),
-                          SizedBox(width: 18.w),
-                          AppBarIcons(
-                            image: SvgAsset.chase_grid,
-                            onTap: () {
-                              final current = ref.read(
-                                chessBoardVisibilityProvider,
-                              );
-                              ref
-                                  .read(chessBoardVisibilityProvider.notifier)
-                                  .state = !current;
-                            },
-                          ),
-                          SizedBox(width: 18.w),
-                          AppBarIcons(
-                            key: _menuKey,
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 2.sp,
-                              vertical: 1.sp,
+                          Semantics(
+                            label: 'Search games',
+                            child: AppBarIcons(
+                              image: SvgAsset.searchIcon,
+                              onTap: _startSearch,
                             ),
-                            image: SvgAsset.threeDots,
-                            onTap: () {
-                              final RenderBox? renderBox =
-                                  _menuKey.currentContext?.findRenderObject()
-                                      as RenderBox?;
-
-                              if (renderBox != null) {
-                                final Offset offset = renderBox.localToGlobal(
-                                  Offset.zero,
+                          ),
+                          SizedBox(width: 18.w),
+                          Semantics(
+                            label: 'Toggle chessboard view',
+                            child: AppBarIcons(
+                              image: SvgAsset.chase_grid,
+                              onTap: () {
+                                HapticFeedback.lightImpact();
+                                final current = ref.read(
+                                  chessBoardVisibilityProvider,
                                 );
-
-                                showMenu(
-                                  context: context,
-                                  position: RelativeRect.fromLTRB(
-                                    offset.dx,
-                                    offset.dy + renderBox.size.height,
-                                    offset.dx + renderBox.size.width,
-                                    offset.dy,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12.br),
-                                  ),
-                                  color: kBlack2Color,
-                                  items: <PopupMenuEntry<String>>[
-                                    PopupMenuItem<String>(
-                                      value: 'Unpin all',
-                                      child: InkWell(
-                                        onTap: () {
-                                          Navigator.pop(context);
-                                          ref
-                                              .read(
-                                                gamesTourScreenProvider
-                                                    .notifier,
-                                              )
-                                              .unpinAllGames();
-                                        },
-                                        child: SizedBox(
-                                          width: 200,
-                                          child: Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Text(
-                                                "Unpin all",
-                                                style: AppTypography
-                                                    .textXsMedium
-                                                    .copyWith(
-                                                      color: kWhiteColor,
-                                                    ),
-                                              ),
-                                              SvgPicture.asset(
-                                                SvgAsset.unpine,
-                                                height: 13.h,
-                                                width: 13.w,
-                                              ),
-                                            ],
+                                ref
+                                    .read(chessBoardVisibilityProvider.notifier)
+                                    .state = !current;
+                              },
+                            ),
+                          ),
+                          SizedBox(width: 18.w),
+                          Semantics(
+                            label: 'More options',
+                            child: AppBarIcons(
+                              key: _menuKey,
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 2.sp,
+                                vertical: 1.sp,
+                              ),
+                              image: SvgAsset.threeDots,
+                              onTap: () {
+                                final RenderBox? renderBox =
+                                    _menuKey.currentContext?.findRenderObject()
+                                        as RenderBox?;
+                                if (renderBox != null) {
+                                  final Offset offset = renderBox.localToGlobal(
+                                    Offset.zero,
+                                  );
+                                  showMenu(
+                                    context: context,
+                                    position: RelativeRect.fromLTRB(
+                                      offset.dx,
+                                      offset.dy + renderBox.size.height,
+                                      offset.dx + renderBox.size.width,
+                                      offset.dy,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(
+                                        12.br,
+                                      ),
+                                    ),
+                                    color: kBlack2Color,
+                                    items: <PopupMenuEntry<MenuAction>>[
+                                      PopupMenuItem<MenuAction>(
+                                        value: MenuAction.unpinAll,
+                                        child: InkWell(
+                                          onTap: () {
+                                            Navigator.pop(context);
+                                            _handleMenuAction(
+                                              MenuAction.unpinAll,
+                                            );
+                                          },
+                                          child: SizedBox(
+                                            width: 200,
+                                            child: Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment
+                                                      .spaceBetween,
+                                              children: [
+                                                Text(
+                                                  "Unpin all",
+                                                  style: AppTypography
+                                                      .textXsMedium
+                                                      .copyWith(
+                                                        color: kWhiteColor,
+                                                      ),
+                                                ),
+                                                SvgPicture.asset(
+                                                  SvgAsset.unpine,
+                                                  height: 13.h,
+                                                  width: 13.w,
+                                                ),
+                                              ],
+                                            ),
                                           ),
                                         ),
                                       ),
-                                    ),
-                                    PopupMenuDivider(
-                                      height: 1.h,
-                                      thickness: 0.5.w,
-                                      color: kDividerColor,
-                                    ),
-                                    PopupMenuItem<String>(
-                                      value: 'share',
-                                      child: Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Text(
-                                            "Active games on top",
-                                            style: AppTypography.textXsMedium
-                                                .copyWith(color: kWhiteColor),
-                                          ),
-                                          SvgPicture.asset(
-                                            SvgAsset.active,
-                                            height: 13.h,
-                                            width: 13.w,
-                                          ),
-                                        ],
+                                      PopupMenuDivider(
+                                        height: 1.h,
+                                        thickness: 0.5.w,
+                                        color: kDividerColor,
                                       ),
-                                    ),
-                                  ],
-                                );
-                              }
-                            },
+                                      PopupMenuItem<MenuAction>(
+                                        value: MenuAction.activeGamesOnTop,
+                                        child: Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(
+                                              "Active games on top",
+                                              style: AppTypography.textXsMedium
+                                                  .copyWith(color: kWhiteColor),
+                                            ),
+                                            SvgPicture.asset(
+                                              SvgAsset.active,
+                                              height: 13.h,
+                                              width: 13.w,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                }
+                              },
+                            ),
                           ),
                           SizedBox(width: 20.w),
                         ],
@@ -315,7 +357,7 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget> {
           ),
         );
       },
-      loading: () => SizedBox.shrink(),
+      loading: () => const SizedBox.shrink(),
       error:
           (e, _) => Center(
             child: Text(

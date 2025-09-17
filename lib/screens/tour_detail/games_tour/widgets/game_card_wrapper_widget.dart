@@ -23,8 +23,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final keyValue =
-        'game_${game.gameId}_${gameIndex}_${isChessBoardVisible ? 'chess' : 'card'}';
+    final keyValue = 'game_${game.gameId}';
 
     return isChessBoardVisible
         ? ChessBoardFromFENNew(
@@ -48,26 +47,16 @@ class GameCardWrapperWidget extends ConsumerWidget {
     // The gamesData.gamesTourModels now contains games in ListView display order
     final orderedGames = gamesData.gamesTourModels;
 
-    final lastViewedIndex = await Navigator.push<int>(
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder:
             (_) => ChessBoardScreenNew(
-              games: orderedGames, // Pass the games in ListView display order
-              currentIndex: gameIndex, // Use the ListView index directly
+              games: orderedGames,
+              currentIndex: gameIndex,
             ),
       ),
     );
-
-    if (lastViewedIndex != null && context.mounted) {
-      debugPrint('🎯 Returned from chess board - Index: $lastViewedIndex');
-
-      ref
-          .read(gamesTourScreenProvider.notifier)
-          .setLastViewedGameIndex(lastViewedIndex);
-    } else {
-      ref.read(scrollToGameIndexProvider.notifier).state = null;
-    }
   }
 
   Future<void> _handlePinToggle(WidgetRef ref) async {

@@ -1,12 +1,12 @@
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_rounds_id_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_state_provider.dart';
-
-import '../models/games_app_bar_view_model.dart'; // adjust import path if needed
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart'; // adjust import path if needed
 
 /// Sticky user selection
 final userSelectedRoundProvider =
@@ -28,7 +28,7 @@ class _GamesAppBarNotifier
   _GamesAppBarNotifier({required this.ref, required this.tourId})
     : _liveRounds = [],
       super(const AsyncValue.loading()) {
-    _liveRoundsSub = ref.listen<List<String>?>(
+    ref.listen<List<String>?>(
       liveRoundsIdProvider.select((a) => a.valueOrNull),
       (_, next) {
         if (next != null) _onLiveRoundsChanged(next);
@@ -36,6 +36,7 @@ class _GamesAppBarNotifier
     );
 
     _load();
+    print('Rebuild GamesAppBarNotifier for tour');
   }
 
   final Ref ref;
@@ -43,14 +44,7 @@ class _GamesAppBarNotifier
   final String? tourId;
   List<String> _liveRounds;
 
-  String? _cachedForTour;
-  List<GamesAppBarModel>? _cachedModels;
-
-  late final ProviderSubscription<List<String>?> _liveRoundsSub;
-  ProviderSubscription<String?>? _tourSub;
-
   Future<void> refresh() async {
-    _invalidateCache();
     await _load();
   }
 
@@ -63,6 +57,8 @@ class _GamesAppBarNotifier
     final current = state.valueOrNull;
     if (current == null) return;
 
+    _scrollToRound(model.id);
+
     state = AsyncValue.data(
       GamesAppBarViewModel(
         gamesAppBarModels: current.gamesAppBarModels,
@@ -70,9 +66,6 @@ class _GamesAppBarNotifier
         userSelectedId: true,
       ),
     );
-
-    ref.read(scrollStateProvider.notifier).setUserScrolling(false);
-    ref.read(scrollStateProvider.notifier).setScrolling(false);
   }
 
   void selectSilently(GamesAppBarModel model) {
@@ -88,30 +81,51 @@ class _GamesAppBarNotifier
     );
   }
 
-  // ---------- Lifecycle ----------
-  @override
-  void dispose() {
-    _invalidateCache();
-    _liveRoundsSub.close();
-    _tourSub?.close();
-    super.dispose();
+  Future<void> _scrollToRound(String roundId) async {
+    final controller = ref.read(gamesTourScrollProvider);
+    final itemIndex = _calculateRoundHeaderIndex(roundId);
+    if (itemIndex >= 0) {
+      controller.jumpTo(index: itemIndex, alignment: 0.0);
+    }
   }
 
-  // ---------- Internals ----------
-  void _invalidateCache() {
-    _cachedForTour = null;
-    _cachedModels = null;
+  int _calculateRoundHeaderIndex(String roundId) {
+    final allRounds = state.valueOrNull?.gamesAppBarModels ?? [];
+    // Filter to only include rounds with at least one game
+    final rounds =
+        allRounds.where((round) {
+          final gamesInRound =
+              ref
+                  .read(gamesTourScreenProvider)
+                  .valueOrNull
+                  ?.gamesTourModels
+                  .where((g) => g.roundId == round.id)
+                  .length ??
+              0;
+          return gamesInRound > 0;
+        }).toList();
+    final reversedRounds = rounds.reversed.toList();
+    int index = 0;
+    for (final round in reversedRounds) {
+      if (round.id == roundId) {
+        return index;
+      }
+      final gamesInRound =
+          ref
+              .read(gamesTourScreenProvider)
+              .valueOrNull
+              ?.gamesTourModels
+              .where((g) => g.roundId == round.id)
+              .length ??
+          0;
+      index += 1 + gamesInRound; // 1 for header + games
+    }
+    return -1; // Invalid index
   }
 
   Future<void> _load() async {
     if (tourId == null) {
       state = const AsyncValue.loading();
-      return;
-    }
-
-    // Serve from cache if valid
-    if (_cachedModels != null && _cachedForTour == tourId) {
-      await _applySelectionFrom(_cachedModels!, tourId!);
       return;
     }
 
@@ -136,9 +150,6 @@ class _GamesAppBarNotifier
               .map((r) => GamesAppBarModel.fromRound(r, _liveRounds))
               .toList();
 
-      _cachedModels = models;
-      _cachedForTour = tourId;
-
       await _applySelectionFrom(models, tourId!);
     } catch (e, st) {
       state = AsyncValue.error(e, st);
@@ -148,6 +159,7 @@ class _GamesAppBarNotifier
   /// Recompute statuses on live-rounds change, update selection only if the user
   /// hasn’t made a sticky pick.
   void _onLiveRoundsChanged(List<String> newLive) {
+    print('Live Changed Rebuild GamesAppBarNotifier for tour');
     _liveRounds = List.unmodifiable(newLive);
 
     final current = state.valueOrNull;
@@ -181,6 +193,7 @@ class _GamesAppBarNotifier
           userSelectedId: true,
         ),
       );
+      _scrollToRound(sticky.id);
       return;
     }
 
@@ -188,15 +201,12 @@ class _GamesAppBarNotifier
     final live = updated.firstWhere(
       (m) => m.roundStatus == RoundStatus.live,
       orElse:
-          () =>
-              updated.isNotEmpty
-                  ? updated.last
-                  : const GamesAppBarModel(
-                    id: '',
-                    name: '',
-                    startsAt: null,
-                    roundStatus: RoundStatus.upcoming,
-                  ),
+          () => GamesAppBarModel(
+            id: '',
+            name: '',
+            startsAt: null,
+            roundStatus: RoundStatus.completed,
+          ),
     );
 
     final nextSelected = (live.id.isNotEmpty ? live.id : current.selectedId);
@@ -208,6 +218,7 @@ class _GamesAppBarNotifier
         userSelectedId: false,
       ),
     );
+    _scrollToRound(nextSelected);
   }
 
   Future<void> _applySelectionFrom(
@@ -224,6 +235,7 @@ class _GamesAppBarNotifier
           userSelectedId: true,
         ),
       );
+      _scrollToRound(sticky.id);
       return;
     }
 
@@ -249,6 +261,7 @@ class _GamesAppBarNotifier
           userSelectedId: false,
         ),
       );
+      _scrollToRound(live.id);
       return;
     }
 
@@ -264,20 +277,50 @@ class _GamesAppBarNotifier
             userSelectedId: false,
           ),
         );
+        _scrollToRound(latest.id);
         return;
       }
     } catch (e) {
       if (kDebugMode) debugPrint('getLatestRoundByLastMove failed: $e');
     }
 
-    // 4) Fallback to newest (last item)
-    final fallback = models.isNotEmpty ? models.last.id : '';
+    // Highest priority: live
+    GamesAppBarModel? selectedModel;
+    for (var a = 0; a < models.length; a++) {
+      if (models[a].roundStatus == RoundStatus.live) {
+        selectedModel = models[a];
+        break;
+      }
+    }
+
+    for (var b = 0; b < models.length; b++) {
+      if (models[b].roundStatus == RoundStatus.ongoing) {
+        selectedModel = models[b];
+        break;
+      }
+    }
+
+    // Third priority: completed (if no live or ongoing)
+
+    for (var c = 0; c < models.length; c++) {
+      if (models[c].roundStatus == RoundStatus.completed) {
+        selectedModel ??= models[c];
+        break;
+      }
+    }
+
+    // Final fallback: last item
+    final fallbackId =
+        selectedModel?.id ?? (models.isNotEmpty ? models.last.id : '');
     state = AsyncValue.data(
       GamesAppBarViewModel(
         gamesAppBarModels: models,
-        selectedId: fallback,
+        selectedId: fallbackId,
         userSelectedId: false,
       ),
     );
+    if (fallbackId.isNotEmpty) {
+      _scrollToRound(fallbackId);
+    }
   }
 }
