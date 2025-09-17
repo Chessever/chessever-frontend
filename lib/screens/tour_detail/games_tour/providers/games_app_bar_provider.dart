@@ -4,9 +4,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_rounds_id_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_state_provider.dart';
-
-import '../models/games_app_bar_view_model.dart'; // adjust import path if needed
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart'; // adjust import path if needed
 
 /// Sticky user selection
 final userSelectedRoundProvider =
@@ -70,9 +68,6 @@ class _GamesAppBarNotifier
         userSelectedId: true,
       ),
     );
-
-    ref.read(scrollStateProvider.notifier).setUserScrolling(false);
-    ref.read(scrollStateProvider.notifier).setScrolling(false);
   }
 
   void selectSilently(GamesAppBarModel model) {
@@ -88,7 +83,6 @@ class _GamesAppBarNotifier
     );
   }
 
-  // ---------- Lifecycle ----------
   @override
   void dispose() {
     _invalidateCache();
@@ -97,7 +91,6 @@ class _GamesAppBarNotifier
     super.dispose();
   }
 
-  // ---------- Internals ----------
   void _invalidateCache() {
     _cachedForTour = null;
     _cachedModels = null;
