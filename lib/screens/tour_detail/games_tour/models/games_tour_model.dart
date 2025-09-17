@@ -6,12 +6,10 @@ class GamesScreenModel {
   GamesScreenModel({
     required this.gamesTourModels,
     required this.pinnedGamedIs,
-    this.scrollToIndex, // New field for scroll position
   });
 
   final List<GamesTourModel> gamesTourModels;
   final List<String> pinnedGamedIs;
-  final int? scrollToIndex; // Index to scroll to when round changes
 
   GamesScreenModel copyWith({
     List<GamesTourModel>? gamesTourModels,
@@ -21,7 +19,6 @@ class GamesScreenModel {
     return GamesScreenModel(
       gamesTourModels: gamesTourModels ?? this.gamesTourModels,
       pinnedGamedIs: pinnedGamedIs ?? this.pinnedGamedIs,
-      scrollToIndex: scrollToIndex ?? this.scrollToIndex,
     );
   }
 
@@ -30,15 +27,11 @@ class GamesScreenModel {
     if (identical(this, other)) return true;
     return other is GamesScreenModel &&
         other.gamesTourModels == gamesTourModels &&
-        other.pinnedGamedIs == pinnedGamedIs &&
-        other.scrollToIndex == scrollToIndex;
+        other.pinnedGamedIs == pinnedGamedIs;
   }
 
   @override
-  int get hashCode =>
-      gamesTourModels.hashCode ^
-      pinnedGamedIs.hashCode ^
-      (scrollToIndex?.hashCode ?? 0);
+  int get hashCode => gamesTourModels.hashCode ^ pinnedGamedIs.hashCode;
 }
 
 class GamesTourModel {
