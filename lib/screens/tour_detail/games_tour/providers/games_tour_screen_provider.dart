@@ -1,9 +1,7 @@
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/repository/local_storage/tournament/games/pin_games_local_storage.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
@@ -11,10 +9,6 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provi
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-
-// Provider to track scroll position for round changes
-final roundScrollPositionProvider = StateProvider<int?>((ref) => null);
-final scrollToGameIndexProvider = StateProvider<int?>((ref) => null);
 
 // Updated provider with better null safety
 final gamesTourScreenProvider = StateNotifierProvider<
@@ -72,7 +66,7 @@ final gamesTourScreenProvider = StateNotifierProvider<
   }
 
   final games = gamesAsync.valueOrNull ?? [];
-  final pinnedIds = ref.watch(gamesPinprovider(aboutTourModel!.id)).value ?? [];
+  final pinnedIds = ref.watch(gamesPinprovider(aboutTourModel.id)).value ?? [];
 
   return GamesTourScreenProvider(
     ref: ref,
@@ -126,56 +120,10 @@ class GamesTourScreenProvider
   // Search mode tracking
   bool _isSearchMode = false;
   List<Games>? _originalGamesBeforeSearch;
-  int? _lastViewedGameIndex;
-
-  void setLastViewedGameIndex(int? index) {
-    if (index == null) return;
-    _lastViewedGameIndex = index;
-    _scrollToLastViewedGame();
-  }
-
-  Future<void> _scrollToLastViewedGame() async {
-    if (_lastViewedGameIndex == null) return;
-
-    final games = state.valueOrNull?.gamesTourModels;
-    if (games == null || _lastViewedGameIndex! >= games.length) return;
-
-    final game = games[_lastViewedGameIndex!];
-    final roundId = game.roundId;
-
-    final roundGames = games.where((g) => g.roundId == roundId).toList();
-    final localIndex = roundGames.indexWhere((g) => g.gameId == game.gameId);
-    if (localIndex == -1) return;
-
-    ref.read(scrollToGameIndexProvider.notifier).state = _lastViewedGameIndex;
-  }
 
   void _setupListeners() {
     // Only setup listeners if we have aboutTourModel (not in loading/error states)
     if (aboutTourModel == null) return;
-
-    ref.listen<AsyncValue<GamesAppBarViewModel>>(gamesAppBarProvider, (
-      previous,
-      next,
-    ) {
-      final previousSelected = previous?.valueOrNull?.selectedId;
-      final newSelectedRound = next.valueOrNull?.selectedId;
-      final isUserSelected = next.valueOrNull?.userSelectedId ?? false;
-
-      if (newSelectedRound != null &&
-          newSelectedRound != previousSelected &&
-          newSelectedRound != _selectedRoundId) {
-        debugPrint(
-          '🔄 Round changed from $_selectedRoundId to $newSelectedRound (user: $isUserSelected)',
-        );
-        _selectedRoundId = newSelectedRound;
-
-        // Only update scroll position if this was a user selection or we need to sync
-        if (isUserSelected || previousSelected == null) {
-          _updateScrollPositionForRound();
-        }
-      }
-    });
 
     // FIXED: Listen to pin changes and refresh state immediately
     ref.listen<AsyncValue<List<String>>>(gamesPinprovider(aboutTourModel!.id), (
@@ -202,45 +150,6 @@ class GamesTourScreenProvider
       if (a[i] != b[i]) return false;
     }
     return true;
-  }
-
-  void _updateScrollPositionForRound() {
-    if (_selectedRoundId == null || _isSearchMode) return;
-
-    final currentState = state.valueOrNull;
-    if (currentState != null && allGames.isNotEmpty) {
-      // FIXED: Find the first NON-PINNED game for the selected round
-      // to avoid scrolling to pinned games that are at the top
-      int? scrollToIndex;
-
-      for (int i = 0; i < currentState.gamesTourModels.length; i++) {
-        final game = currentState.gamesTourModels[i];
-
-        // Check if this game belongs to the selected round
-        if (game.roundId == _selectedRoundId) {
-          // Check if this game is pinned
-          final isPinned = pinndedIds.contains(game.gameId);
-
-          // If we haven't found a scroll target yet, or if this is not pinned
-          // (prefer non-pinned games for round headers)
-          if (scrollToIndex == null || !isPinned) {
-            scrollToIndex = i;
-
-            // If we found a non-pinned game, use it and break
-            if (!isPinned) {
-              break;
-            }
-          }
-        }
-      }
-
-      if (scrollToIndex != null) {
-        ref.read(roundScrollPositionProvider.notifier).state = scrollToIndex;
-        debugPrint(
-          '🔄 Updated scroll position to index: $scrollToIndex for round: $_selectedRoundId',
-        );
-      }
-    }
   }
 
   Future<void> _init() async {
@@ -384,11 +293,6 @@ class GamesTourScreenProvider
       }
 
       if (mounted) {
-        // Update scroll position if needed
-        if (scrollToIndex != null) {
-          ref.read(roundScrollPositionProvider.notifier).state = scrollToIndex;
-        }
-
         state = AsyncValue.data(
           GamesScreenModel(
             gamesTourModels: gamesTourModels,
@@ -516,12 +420,6 @@ class GamesTourScreenProvider
         state = AsyncValue.error(e, st);
       }
     }
-  }
-
-  // Method to scroll to a specific round
-  void scrollToRound(String roundId) {
-    _selectedRoundId = roundId;
-    _updateScrollPositionForRound();
   }
 
   @override

@@ -1,12 +1,12 @@
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_rounds_id_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_state_provider.dart';
-
-import '../models/games_app_bar_view_model.dart'; // adjust import path if needed
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart'; // adjust import path if needed
 
 /// Sticky user selection
 final userSelectedRoundProvider =
@@ -28,7 +28,7 @@ class _GamesAppBarNotifier
   _GamesAppBarNotifier({required this.ref, required this.tourId})
     : _liveRounds = [],
       super(const AsyncValue.loading()) {
-    _liveRoundsSub = ref.listen<List<String>?>(
+    ref.listen<List<String>?>(
       liveRoundsIdProvider.select((a) => a.valueOrNull),
       (_, next) {
         if (next != null) _onLiveRoundsChanged(next);
@@ -46,9 +46,6 @@ class _GamesAppBarNotifier
   String? _cachedForTour;
   List<GamesAppBarModel>? _cachedModels;
 
-  late final ProviderSubscription<List<String>?> _liveRoundsSub;
-  ProviderSubscription<String?>? _tourSub;
-
   Future<void> refresh() async {
     _invalidateCache();
     await _load();
@@ -63,6 +60,8 @@ class _GamesAppBarNotifier
     final current = state.valueOrNull;
     if (current == null) return;
 
+    _scrollToRound(model.id);
+
     state = AsyncValue.data(
       GamesAppBarViewModel(
         gamesAppBarModels: current.gamesAppBarModels,
@@ -70,9 +69,6 @@ class _GamesAppBarNotifier
         userSelectedId: true,
       ),
     );
-
-    ref.read(scrollStateProvider.notifier).setUserScrolling(false);
-    ref.read(scrollStateProvider.notifier).setScrolling(false);
   }
 
   void selectSilently(GamesAppBarModel model) {
@@ -88,16 +84,41 @@ class _GamesAppBarNotifier
     );
   }
 
-  // ---------- Lifecycle ----------
+  Future<void> _scrollToRound(String roundId) async {
+    final controller = ref.read(gamesTourScrollProvider);
+    final itemIndex = _calculateRoundHeaderIndex(roundId);
+    if (itemIndex >= 0) {
+      controller.jumpTo(index: itemIndex, alignment: 0.0);
+    }
+  }
+
+  int _calculateRoundHeaderIndex(String roundId) {
+    final rounds = state.valueOrNull?.gamesAppBarModels ?? [];
+    final reversedRounds = rounds.reversed.toList();
+    int index = 0;
+    for (final round in reversedRounds) {
+      if (round.id == roundId) {
+        return index;
+      }
+      final gamesInRound =
+          ref
+              .read(gamesTourScreenProvider)
+              .valueOrNull
+              ?.gamesTourModels
+              .where((g) => g.roundId == round.id)
+              .length ??
+          0;
+      index += 1 + gamesInRound; // 1 for header + games
+    }
+    return -1; // Invalid index
+  }
+
   @override
   void dispose() {
     _invalidateCache();
-    _liveRoundsSub.close();
-    _tourSub?.close();
     super.dispose();
   }
 
-  // ---------- Internals ----------
   void _invalidateCache() {
     _cachedForTour = null;
     _cachedModels = null;

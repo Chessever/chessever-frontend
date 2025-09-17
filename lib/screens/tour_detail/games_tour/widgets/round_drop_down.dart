@@ -243,11 +243,11 @@ class _RoundDropdown extends HookConsumerWidget {
 
       overlay.insert(entry);
 
-      final removeListener = () {
+      void removeListener() {
         if (entry.mounted) {
           entry.remove();
         }
-      };
+      }
 
       isOpen.addListener(removeListener);
 
