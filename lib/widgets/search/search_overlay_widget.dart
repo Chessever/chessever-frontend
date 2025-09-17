@@ -1,10 +1,10 @@
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
 import 'package:chessever2/widgets/search/search_result_model.dart';
 import 'package:chessever2/widgets/search/widgets/search_result_title.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../screens/group_event/providers/group_event_screen_provider.dart';
@@ -29,7 +29,7 @@ class SearchOverlay extends ConsumerWidget {
       decoration: BoxDecoration(
         color: Colors.grey[900],
         borderRadius: BorderRadius.circular(16.br),
-        border: Border.all(color: Colors.white.withOpacity(0.1)),
+        border: Border.all(color: kWhiteColor.withOpacity(0.1)),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),

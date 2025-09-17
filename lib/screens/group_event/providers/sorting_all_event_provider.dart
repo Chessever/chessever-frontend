@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 
 final tournamentSortingServiceProvider = Provider<TournamentSortingService>((
   ref,
@@ -71,6 +72,43 @@ class TournamentSortingService {
       final daysComparison = daysA.compareTo(daysB);
       if (daysComparison != 0) return daysComparison;
       // Finally sort by title
+      return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+    });
+
+    return filteredList;
+  }
+
+  List<GroupEventCardModel> sortPastTours({
+    required List<GroupEventCardModel> tours,
+    required List<GroupBroadcast> groupBroadcasts,
+    required String dropDownSelectedCountry,
+  }) {
+    final filteredList =
+        tours
+            .where((t) => t.tourEventCategory == TourEventCategory.completed)
+            .toList();
+
+    filteredList.sort((a, b) {
+      final broadcastA = groupBroadcasts.firstWhere(
+        (broadcast) => broadcast.id == a.id,
+        orElse: () => groupBroadcasts.first,
+      );
+      final broadcastB = groupBroadcasts.firstWhere(
+        (broadcast) => broadcast.id == b.id,
+        orElse: () => groupBroadcasts.first,
+      );
+
+      final endDateA = broadcastA.dateEnd;
+      final endDateB = broadcastB.dateEnd;
+
+      if (endDateA != null && endDateB != null) {
+        final dateComparison = endDateB.compareTo(endDateA);
+        if (dateComparison != 0) return dateComparison;
+      }
+
+      if (endDateA != null && endDateB == null) return -1;
+      if (endDateA == null && endDateB != null) return 1;
+
       return a.title.toLowerCase().compareTo(b.title.toLowerCase());
     });
 
