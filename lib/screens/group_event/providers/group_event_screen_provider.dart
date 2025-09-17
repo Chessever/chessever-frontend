@@ -24,13 +24,11 @@ final searchQueryProvider = StateProvider<String>((ref) => '');
 final liveBroadcastIdsProvider = StateProvider<List<String>>((ref) => []);
 
 final supabaseSearchProvider =
-    FutureProvider.family<List<GroupBroadcast>, String>(
-      (ref, query) async {
-        return ref
-            .read(groupBroadcastRepositoryProvider)
-            .searchGroupBroadcastsFromSupabase(query);
-      },
-    );
+    FutureProvider.family<List<GroupBroadcast>, String>((ref, query) async {
+      return ref
+          .read(groupBroadcastRepositoryProvider)
+          .searchGroupBroadcastsFromSupabase(query);
+    });
 
 final groupEventScreenProvider = AutoDisposeStateNotifierProvider<
   _GroupEventScreenController,
@@ -69,21 +67,21 @@ class _GroupEventScreenController
   var _groupBroadcastList = <GroupBroadcast>[];
 
   void _listenToLiveIds() {
-    ref.listen<AsyncValue<List<String>>>(
-      liveGroupBroadcastIdsProvider,
-      (previous, next) {
-        next.whenData((liveIds) {
-          // Only update if live IDs actually changed
-          if (ref.read(liveBroadcastIdsProvider).length != liveIds.length ||
-              !ref
-                  .read(liveBroadcastIdsProvider)
-                  .every((id) => liveIds.contains(id))) {
-            ref.read(liveBroadcastIdsProvider.notifier).state = liveIds;
-            _updateLiveStatusInExistingModels();
-          }
-        });
-      },
-    );
+    ref.listen<AsyncValue<List<String>>>(liveGroupBroadcastIdsProvider, (
+      previous,
+      next,
+    ) {
+      next.whenData((liveIds) {
+        // Only update if live IDs actually changed
+        if (ref.read(liveBroadcastIdsProvider).length != liveIds.length ||
+            !ref
+                .read(liveBroadcastIdsProvider)
+                .every((id) => liveIds.contains(id))) {
+          ref.read(liveBroadcastIdsProvider.notifier).state = liveIds;
+          _updateLiveStatusInExistingModels();
+        }
+      });
+    });
   }
 
   // Update live status without rebuilding the entire state
@@ -278,7 +276,10 @@ class _GroupEventScreenController
   }
 
   @override
-  void onSelectTournament({required BuildContext context, required String id}) async {
+  void onSelectTournament({
+    required BuildContext context,
+    required String id,
+  }) async {
     try {
       // First try to find in current list
       GroupBroadcast? selectedBroadcast;
@@ -290,18 +291,12 @@ class _GroupEventScreenController
       }
 
       // If not found in current list, fetch directly from repository
-      if (selectedBroadcast == null) {
-        selectedBroadcast = await ref
-            .read(groupBroadcastRepositoryProvider)
-            .getGroupBroadcastById(id);
-      }
+      selectedBroadcast ??= await ref
+          .read(groupBroadcastRepositoryProvider)
+          .getGroupBroadcastById(id);
 
-      ref.read(selectedBroadcastModelProvider.notifier).state = selectedBroadcast;
-
-      ref.invalidate(gamesAppBarProvider);
-      ref.invalidate(gamesTourScreenProvider);
-      ref.invalidate(playerTourScreenProvider);
-      ref.invalidate(tourDetailScreenProvider);
+      ref.read(selectedBroadcastModelProvider.notifier).state =
+          selectedBroadcast;
 
       if (context.mounted && ref.read(selectedBroadcastModelProvider) != null) {
         Navigator.pushNamed(context, '/tournament_detail_screen');

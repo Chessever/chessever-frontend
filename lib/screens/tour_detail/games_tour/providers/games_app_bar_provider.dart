@@ -36,6 +36,7 @@ class _GamesAppBarNotifier
     );
 
     _load();
+    print('Rebuild GamesAppBarNotifier for tour');
   }
 
   final Ref ref;
@@ -145,6 +146,7 @@ class _GamesAppBarNotifier
   /// Recompute statuses on live-rounds change, update selection only if the user
   /// hasn’t made a sticky pick.
   void _onLiveRoundsChanged(List<String> newLive) {
+    print('Live Changed Rebuild GamesAppBarNotifier for tour');
     _liveRounds = List.unmodifiable(newLive);
 
     final current = state.valueOrNull;
@@ -178,6 +180,7 @@ class _GamesAppBarNotifier
           userSelectedId: true,
         ),
       );
+      _scrollToRound(sticky.id);
       return;
     }
 
@@ -185,15 +188,12 @@ class _GamesAppBarNotifier
     final live = updated.firstWhere(
       (m) => m.roundStatus == RoundStatus.live,
       orElse:
-          () =>
-              updated.isNotEmpty
-                  ? updated.last
-                  : const GamesAppBarModel(
-                    id: '',
-                    name: '',
-                    startsAt: null,
-                    roundStatus: RoundStatus.upcoming,
-                  ),
+          () => GamesAppBarModel(
+            id: '',
+            name: '',
+            startsAt: null,
+            roundStatus: RoundStatus.completed,
+          ),
     );
 
     final nextSelected = (live.id.isNotEmpty ? live.id : current.selectedId);
@@ -205,6 +205,7 @@ class _GamesAppBarNotifier
         userSelectedId: false,
       ),
     );
+    _scrollToRound(nextSelected);
   }
 
   Future<void> _applySelectionFrom(
@@ -221,6 +222,7 @@ class _GamesAppBarNotifier
           userSelectedId: true,
         ),
       );
+      _scrollToRound(sticky.id);
       return;
     }
 
@@ -246,6 +248,7 @@ class _GamesAppBarNotifier
           userSelectedId: false,
         ),
       );
+      _scrollToRound(live.id);
       return;
     }
 
@@ -261,20 +264,50 @@ class _GamesAppBarNotifier
             userSelectedId: false,
           ),
         );
+        _scrollToRound(latest.id);
         return;
       }
     } catch (e) {
       if (kDebugMode) debugPrint('getLatestRoundByLastMove failed: $e');
     }
 
-    // 4) Fallback to newest (last item)
-    final fallback = models.isNotEmpty ? models.last.id : '';
+    // Highest priority: live
+    GamesAppBarModel? selectedModel;
+    for (var a = 0; a < models.length; a++) {
+      if (models[a].roundStatus == RoundStatus.live) {
+        selectedModel = models[a];
+        break;
+      }
+    }
+
+    for (var b = 0; b < models.length; b++) {
+      if (models[b].roundStatus == RoundStatus.ongoing) {
+        selectedModel = models[b];
+        break;
+      }
+    }
+
+    // Third priority: completed (if no live or ongoing)
+
+    for (var c = 0; c < models.length; c++) {
+      if (models[c].roundStatus == RoundStatus.completed) {
+        selectedModel ??= models[c];
+        break;
+      }
+    }
+
+    // Final fallback: last item
+    final fallbackId =
+        selectedModel?.id ?? (models.isNotEmpty ? models.last.id : '');
     state = AsyncValue.data(
       GamesAppBarViewModel(
         gamesAppBarModels: models,
-        selectedId: fallback,
+        selectedId: fallbackId,
         userSelectedId: false,
       ),
     );
+    if (fallbackId.isNotEmpty) {
+      _scrollToRound(fallbackId);
+    }
   }
 }
