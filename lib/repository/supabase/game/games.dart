@@ -15,6 +15,7 @@ class Games {
   final String? pgn;
   final List<String>? search;
   final int? boardNr;
+  final DateTime? lastMoveTime;
 
   Games({
     required this.id,
@@ -31,6 +32,7 @@ class Games {
     this.pgn,
     this.search,
     this.boardNr,
+    this.lastMoveTime,
   });
 
   factory Games.fromJson(Map<String, dynamic> json) {
@@ -63,6 +65,9 @@ class Games {
         boardNr: json['board_nr'] != null
             ? (json['board_nr'] as num).toInt()
             : null,
+        lastMoveTime: json['last_move_time'] != null
+            ? DateTime.parse(json['last_move_time'] as String)
+            : null,
       );
     } catch (e, _) {
       rethrow;
@@ -85,6 +90,7 @@ class Games {
       if (pgn != null) 'pgn': pgn,
       if (search != null) 'search': search!.map((s) => s).toList(),
       if (boardNr != null) 'board_nr': boardNr,
+      if (lastMoveTime != null) 'last_move_time': lastMoveTime!.toIso8601String(),
     };
   }
 }

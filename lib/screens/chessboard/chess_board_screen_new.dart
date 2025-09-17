@@ -39,11 +39,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   late PageController _pageController;
   bool analysisMode = false;
   int? _lastViewedIndex;
+  int _currentPageIndex = 0;
 
   @override
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: widget.currentIndex);
+    _currentPageIndex = widget.currentIndex;
   }
 
   @override
@@ -52,8 +54,16 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   }
 
   void _onPageChanged(int newIndex) {
-    if (_pageController.hasClients ? _pageController.page?.toInt() == newIndex : widget.currentIndex == newIndex) return;
+    if (_currentPageIndex == newIndex) return;
+
     _lastViewedIndex = newIndex;
+    final previousIndex = _currentPageIndex;
+
+    // Update current page index immediately
+    setState(() {
+      _currentPageIndex = newIndex;
+    });
+
     // Check if provider is available before trying to access it
     final view = ref.read(chessboardViewFromProviderNew);
     final gamesAsync =
@@ -62,16 +72,25 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
             : ref.read(countrymanGamesTourScreenProvider);
 
     if (gamesAsync.hasValue && gamesAsync.value?.gamesTourModels != null) {
-      ref
-          .read(chessBoardScreenProviderNew(_pageController.hasClients ? _pageController.page?.toInt() ?? widget.currentIndex : widget.currentIndex).notifier)
-          .pauseGame();
+      // Only pause if the previous provider should still be alive (within ±1 range)
+      if ((newIndex - previousIndex).abs() <= 1) {
+        try {
+          ref
+              .read(chessBoardScreenProviderNew(previousIndex).notifier)
+              .pauseGame();
+        } catch (e) {
+          // Provider was disposed, which is fine
+        }
+      }
     }
 
-    
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (gamesAsync.hasValue && gamesAsync.value?.gamesTourModels != null) {
-        ref.read(chessBoardScreenProviderNew(newIndex).notifier).parseMoves();
+      if (mounted && gamesAsync.hasValue && gamesAsync.value?.gamesTourModels != null) {
+        try {
+          ref.read(chessBoardScreenProviderNew(newIndex).notifier).parseMoves();
+        } catch (e) {
+          debugPrint('Error parsing moves for new index: $e');
+        }
       }
     });
   }
@@ -83,7 +102,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   }
 
   void _navigateToGame(int gameIndex) {
-    if (gameIndex == _pageController.page!.toInt()) return;
+    if (gameIndex == _currentPageIndex) return;
 
     // Check if provider is available before trying to access it
     final view = ref.read(chessboardViewFromProviderNew);
@@ -93,9 +112,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
             : ref.read(countrymanGamesTourScreenProvider);
 
     if (gamesAsync.hasValue && gamesAsync.value?.gamesTourModels != null) {
-      ref
-          .read(chessBoardScreenProviderNew(_pageController.hasClients ? _pageController.page?.toInt() ?? widget.currentIndex : widget.currentIndex).notifier)
-          .pauseGame();
+      try {
+        ref
+            .read(chessBoardScreenProviderNew(_currentPageIndex).notifier)
+            .pauseGame();
+      } catch (e) {
+        debugPrint('Error pausing game during navigation: $e');
+      }
     }
 
     _pageController.animateToPage(
@@ -107,7 +130,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
 
   @override
   Widget build(BuildContext context) {
-    ref.listen(chessBoardScreenProviderNew(_pageController.hasClients ? _pageController.page?.toInt() ?? widget.currentIndex : widget.currentIndex), (
+    ref.listen(chessBoardScreenProviderNew(_currentPageIndex), (
       prev,
       next,
     ) {
@@ -191,7 +214,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
             widget.games.isNotEmpty
                 ? widget.games
                 : [widget.games.first], // Fallback for empty games
-        currentGameIndex: (_pageController.hasClients ? _pageController.page?.toInt() ?? widget.currentIndex : widget.currentIndex).clamp(0, widget.games.length - 1),
+        currentGameIndex: _currentPageIndex.clamp(0, widget.games.length - 1),
         onGameChanged: (index) {}, // Disabled during loading
         lastViewedIndex: _lastViewedIndex,
       );
@@ -229,9 +252,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
             onPageChanged: _onPageChanged,
             itemCount: widget.games.length,
             itemBuilder: (context, index) {
-              if (index == (_pageController.hasClients ? _pageController.page?.toInt() ?? widget.currentIndex : widget.currentIndex) - 1 ||
-                  index == (_pageController.hasClients ? _pageController.page?.toInt() ?? widget.currentIndex : widget.currentIndex) + 1 ||
-                  index == (_pageController.hasClients ? _pageController.page?.toInt() ?? widget.currentIndex : widget.currentIndex)) {
+              // Build current page and adjacent pages
+              if (index == _currentPageIndex - 1 ||
+                  index == _currentPageIndex ||
+                  index == _currentPageIndex + 1) {
                 try {
                   return ref
                       .watch(chessBoardScreenProviderNew(index))
@@ -1027,7 +1051,7 @@ class _MovesDisplay extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final notifier = ref.read(chessBoardScreenProviderNew(index).notifier);
+
 
     if (state.isLoadingMoves) {
       return _buildMovesLoadingSkeleton();
@@ -1063,7 +1087,7 @@ class _MovesDisplay extends ConsumerWidget {
               final isWhiteMove = moveIndex % 2 == 0;
 
               return GestureDetector(
-                onTap: () => notifier.goToMove(moveIndex),
+                onTap: () => ref.read(chessBoardScreenProviderNew(index).notifier).goToMove(moveIndex),
                 child: Container(
                   padding: EdgeInsets.symmetric(
                     horizontal: 6.sp,
@@ -1083,7 +1107,7 @@ class _MovesDisplay extends ConsumerWidget {
                   child: Text(
                     isWhiteMove ? '$fullMoveNumber. $move' : move,
                     style: AppTypography.textXsMedium.copyWith(
-                      color: notifier.getMoveColor(move, moveIndex),
+                      color: ref.read(chessBoardScreenProviderNew(index).notifier).getMoveColor(move, moveIndex),
                       fontWeight:
                           isCurrentMove ? FontWeight.bold : FontWeight.normal,
                     ),
