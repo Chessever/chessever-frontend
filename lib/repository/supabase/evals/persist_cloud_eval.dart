@@ -32,7 +32,7 @@ class PersistCloudEval {
       final positionId = position.id;
 
       // 2️⃣ evals row
-      final eval = await _evalRepo.create(
+      final eval = await _evalRepo.upsert(
         Evals(
           positionId: positionId,
           knodes: cloud.knodes,

@@ -13,10 +13,24 @@ class EvalRepository extends BaseRepository {
 
   final ref;
 
-  Future<Evals> create(Evals eval) => handleApiCall(() async {
-    final data =
+  Future<Evals> upsert(Evals eval) => handleApiCall(() async {
+    final pvsCount = eval.pvs.length;
+    final existingRecord =
+        await supabase
+            .from('evals')
+            .select()
+            .eq('position_id', eval.positionId)
+            .eq('knodes', eval.knodes)
+            .eq('depth', eval.depth)
+            .eq('pvs_count', pvsCount)
+            .maybeSingle();
+    if (existingRecord != null) {
+      print('Eval record already exists, returning existing record');
+      return eval;
+    }
+    final newData =
         await supabase.from('evals').insert(eval.toJson()).select().single();
-    return Evals.fromJson(data);
+    return Evals.fromJson(newData);
   });
 
   Future<Evals?> getById(int id) => handleApiCall(() async {
