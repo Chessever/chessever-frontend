@@ -90,7 +90,20 @@ class _GamesAppBarNotifier
   }
 
   int _calculateRoundHeaderIndex(String roundId) {
-    final rounds = state.valueOrNull?.gamesAppBarModels ?? [];
+    final allRounds = state.valueOrNull?.gamesAppBarModels ?? [];
+    // Filter to only include rounds with at least one game
+    final rounds =
+        allRounds.where((round) {
+          final gamesInRound =
+              ref
+                  .read(gamesTourScreenProvider)
+                  .valueOrNull
+                  ?.gamesTourModels
+                  .where((g) => g.roundId == round.id)
+                  .length ??
+              0;
+          return gamesInRound > 0;
+        }).toList();
     final reversedRounds = rounds.reversed.toList();
     int index = 0;
     for (final round in reversedRounds) {
