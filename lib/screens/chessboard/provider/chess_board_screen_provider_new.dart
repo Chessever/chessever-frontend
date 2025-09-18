@@ -91,6 +91,10 @@ class ChessBoardScreenNotifierNew
       final gameWithPgn = await ref
           .read(gameRepositoryProvider)
           .getGameById(game.gameId);
+
+      // Check if still mounted after async operation
+      if (!mounted) return;
+
       String pgn = gameWithPgn.pgn ?? _getSamplePgnData();
 
       final gameData = PgnGame.parsePgn(pgn);
@@ -118,6 +122,9 @@ class ChessBoardScreenNotifierNew
 
       final moveTimes = _parseMoveTimesFromPgn(pgn);
 
+      // Only update state if still mounted
+      if (!mounted) return;
+
       state = AsyncValue.data(
         currentState.copyWith(
           position: finalPos,
@@ -136,7 +143,9 @@ class ChessBoardScreenNotifierNew
 
       _updateEvaluation();
     } catch (e, st) {
-      state = AsyncValue.error(e, st);
+      if (mounted) {
+        state = AsyncValue.error(e, st);
+      }
     }
   }
 
@@ -822,16 +831,37 @@ final chessBoardScreenProviderNew = AutoDisposeStateNotifierProvider.family<
           ? ref.watch(gamesTourScreenProvider).value!.gamesTourModels
           : ref.watch(countrymanGamesTourScreenProvider).value!.gamesTourModels;
 
-  final rounds = ref.read(gamesAppBarProvider).value!.gamesAppBarModels;
-  final reversedRounds = rounds.reversed.toList();
+  // Try to get the rounds, but if the provider is disposed, use games directly
+  List<GamesTourModel> arrangedGames;
+  try {
+    final roundsAsync = ref.read(gamesAppBarProvider);
+    if (roundsAsync.hasValue && roundsAsync.value != null) {
+      final rounds = roundsAsync.value!.gamesAppBarModels;
+      final reversedRounds = rounds.reversed.toList();
 
-  var arrangedGames = <GamesTourModel>[];
-  for (var a = 0; a < reversedRounds.length; a++) {
-    for (var b = 0; b < games.length; b++) {
-      if (games[b].roundId == reversedRounds[a].id) {
-        arrangedGames.add(games[b]);
+      arrangedGames = <GamesTourModel>[];
+      for (var a = 0; a < reversedRounds.length; a++) {
+        for (var b = 0; b < games.length; b++) {
+          if (games[b].roundId == reversedRounds[a].id) {
+            arrangedGames.add(games[b]);
+          }
+        }
       }
+    } else {
+      // Fallback: use games in their original order
+      arrangedGames = games;
     }
+  } catch (e) {
+    // If gamesAppBarProvider is disposed or fails, use games as is
+    arrangedGames = games;
+  }
+
+  // Ensure index is valid
+  if (index >= arrangedGames.length) {
+    index = arrangedGames.length - 1;
+  }
+  if (index < 0) {
+    index = 0;
   }
 
   return ChessBoardScreenNotifierNew(
