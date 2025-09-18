@@ -150,7 +150,7 @@ class AuthRepository {
         await _googleSignIn.signOut();
       }
 
-      await _supabase.auth.signOut(); 
+      await _supabase.auth.signOut();
     } catch (e) {
       debugPrint('Sign out error: $e');
       rethrow;
