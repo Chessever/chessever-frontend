@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math';
+import 'dart:io' show Platform;
 import 'package:chessever2/repository/authentication/model/app_user.dart';
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
 import 'package:crypto/crypto.dart';
@@ -9,30 +10,34 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:riverpod_annotation/riverpod_annotation.dart';
 
-part 'auth_repository.g.dart';
-
-@riverpod
-AuthRepository authRepository(AuthRepositoryRef ref) {
+final authRepositoryProvider = Provider<AuthRepository>((ref) {
   return AuthRepository(ref);
-}
+});
 
 class AuthRepository {
   late final SupabaseClient _supabase;
   late final GoogleSignIn _googleSignIn;
   final Ref ref;
 
+  // Read and trim env safely to avoid trailing spaces causing Apple failures.
+  String _env(String key) {
+    final v = dotenv.env[key]?.trim();
+    if (v == null || v.isEmpty) {
+      throw Exception('Missing env: $key');
+    }
+    return v;
+  }
+
   AuthRepository(this.ref) {
-    // Initialize Supabase client directly
     _supabase = SupabaseClient(
-      dotenv.env['SUPABASE_URL']!,
-      dotenv.env['SUPABASE_ANON_KEY']!,
+      _env('SUPABASE_URL'),
+      _env('SUPABASE_ANON_KEY'),
     );
 
     _googleSignIn = GoogleSignIn(
       scopes: ['email', 'profile'],
-      clientId: dotenv.env['GOOGLE_WEB_CLIENT_ID'],
+      clientId: dotenv.env['GOOGLE_WEB_CLIENT_ID']?.trim(),
     );
   }
 
@@ -74,8 +79,6 @@ class AuthRepository {
         accessToken: accessToken,
       );
 
-      print('asim $response');
-
       final user = response.user;
       final session = response.session;
 
@@ -94,17 +97,35 @@ class AuthRepository {
 
   // Apple Sign In
   Future<AppUser> signInWithApple() async {
+    final sessionManager = ref.read(sessionManagerProvider);
+
     try {
+      // Ensure Apple Sign In is actually available (e.g., user signed into iCloud).
+      if (Platform.isIOS) {
+        final available = await SignInWithApple.isAvailable();
+        if (!available) {
+          throw Exception('Apple Sign In not available on this device. Sign into iCloud and try again.');
+        }
+      }
+
       // Generate nonce for security
       final rawNonce = _generateNonce();
-      final nonce = _sha256ofString(rawNonce);
+      final hashedNonce = _sha256ofString(rawNonce);
 
       final credential = await SignInWithApple.getAppleIDCredential(
         scopes: [
           AppleIDAuthorizationScopes.email,
           AppleIDAuthorizationScopes.fullName,
         ],
-        nonce: nonce,
+        // Apple expects the SHA256(nonce)
+        nonce: hashedNonce,
+        // On Android the plugin uses the web flow; you must provide Service ID + Redirect URI
+        webAuthenticationOptions: Platform.isAndroid
+            ? WebAuthenticationOptions(
+                clientId: _env('APPLE_SERVICE_ID'), // Service ID from Apple Developer
+                redirectUri: Uri.parse(_env('APPLE_REDIRECT_URI')),
+              )
+            : null,
       );
 
       final idToken = credential.identityToken;
@@ -115,27 +136,44 @@ class AuthRepository {
       final response = await _supabase.auth.signInWithIdToken(
         provider: OAuthProvider.apple,
         idToken: idToken,
+        // Supabase expects the original raw nonce
         nonce: rawNonce,
       );
 
       final user = response.user;
-      if (user == null) {
+      final session = response.session;
+      if (user == null || session == null) {
         throw Exception('Failed to authenticate with Supabase');
       }
 
-      // Update user metadata with Apple info if available
-      if (credential.givenName != null || credential.familyName != null) {
-        final fullName =
-            '${credential.givenName ?? ''} ${credential.familyName ?? ''}'
-                .trim();
-        if (fullName.isNotEmpty) {
-          await _supabase.auth.updateUser(
-            UserAttributes(data: {'full_name': fullName}),
-          );
-        }
+      // Persist session the same way as Google
+      await sessionManager.saveSession(session, user);
+
+      // Update optional metadata if Apple returned name/email (only on first consent)
+      final fullName =
+          '${credential.givenName ?? ''} ${credential.familyName ?? ''}'.trim();
+      final data = <String, dynamic>{};
+      if (fullName.isNotEmpty) data['full_name'] = fullName;
+      if (credential.email != null) data['email'] = credential.email;
+      if (data.isNotEmpty) {
+        await _supabase.auth.updateUser(UserAttributes(data: data));
       }
 
       return AppUser.fromSupabaseUser(user);
+    } on SignInWithAppleAuthorizationException catch (e) {
+      // Map common Apple errors to actionable messages
+      debugPrint('Apple auth exception: code=${e.code}, message=${e.message}');
+      switch (e.code) {
+        case AuthorizationErrorCode.canceled:
+          throw Exception('Apple sign in was cancelled');
+        case AuthorizationErrorCode.notHandled:
+          throw Exception('Apple sign in not handled');
+        case AuthorizationErrorCode.failed:
+        case AuthorizationErrorCode.invalidResponse:
+        case AuthorizationErrorCode.unknown:
+        default:
+          throw Exception('Apple sign in failed. Check capability, iCloud login, and time settings.');
+      }
     } catch (e) {
       debugPrint('Apple sign in error: $e');
       rethrow;

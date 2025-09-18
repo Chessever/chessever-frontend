@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:ui';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/screens/authentication/auth_screen_state.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -273,7 +272,9 @@ class _AuthCountryDropdownWidgetState
                                     ),
                                 error:
                                     (err, _) => AppButton(
-                                      padding: EdgeInsets.symmetric(horizontal: 16.sp),
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: 16.sp,
+                                      ),
                                       text: 'Retry Getting Countries',
                                       onPressed: () {
                                         ref.invalidate(countryDropdownProvider);
