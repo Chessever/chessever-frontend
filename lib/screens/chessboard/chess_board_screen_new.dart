@@ -39,10 +39,12 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   late PageController _pageController;
   bool analysisMode = false;
   int? _lastViewedIndex;
+  int _currentPageIndex = 0;
 
   @override
   void initState() {
     super.initState();
+    _currentPageIndex = widget.currentIndex;
     _pageController = PageController(initialPage: widget.currentIndex);
   }
 
@@ -52,9 +54,11 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   }
 
   void _onPageChanged(int newIndex) {
-    if (_pageController.hasClients ? _pageController.page?.toInt() == newIndex : widget.currentIndex == newIndex) return;
+    if (_currentPageIndex == newIndex) return;
+
     _lastViewedIndex = newIndex;
-    // Check if provider is available before trying to access it
+
+    // Pause the current game before switching
     final view = ref.read(chessboardViewFromProviderNew);
     final gamesAsync =
         view == ChessboardView.tour
@@ -62,17 +66,18 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
             : ref.read(countrymanGamesTourScreenProvider);
 
     if (gamesAsync.hasValue && gamesAsync.value?.gamesTourModels != null) {
-      ref
-          .read(chessBoardScreenProviderNew(_pageController.hasClients ? _pageController.page?.toInt() ?? widget.currentIndex : widget.currentIndex).notifier)
-          .pauseGame();
+      try {
+        ref
+            .read(chessBoardScreenProviderNew(_currentPageIndex).notifier)
+            .pauseGame();
+      } catch (e) {
+        // Provider might already be disposed, ignore
+      }
     }
 
-    
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (gamesAsync.hasValue && gamesAsync.value?.gamesTourModels != null) {
-        ref.read(chessBoardScreenProviderNew(newIndex).notifier).parseMoves();
-      }
+    // Update the current page index AFTER pausing the old game
+    setState(() {
+      _currentPageIndex = newIndex;
     });
   }
 
@@ -83,7 +88,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   }
 
   void _navigateToGame(int gameIndex) {
-    if (gameIndex == _pageController.page!.toInt()) return;
+    if (gameIndex == _currentPageIndex) return;
 
     // Check if provider is available before trying to access it
     final view = ref.read(chessboardViewFromProviderNew);
@@ -93,9 +98,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
             : ref.read(countrymanGamesTourScreenProvider);
 
     if (gamesAsync.hasValue && gamesAsync.value?.gamesTourModels != null) {
-      ref
-          .read(chessBoardScreenProviderNew(_pageController.hasClients ? _pageController.page?.toInt() ?? widget.currentIndex : widget.currentIndex).notifier)
-          .pauseGame();
+      try {
+        ref
+            .read(chessBoardScreenProviderNew(_currentPageIndex).notifier)
+            .pauseGame();
+      } catch (e) {
+        // Provider might already be disposed, ignore
+      }
     }
 
     _pageController.animateToPage(
@@ -107,7 +116,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
 
   @override
   Widget build(BuildContext context) {
-    ref.listen(chessBoardScreenProviderNew(_pageController.hasClients ? _pageController.page?.toInt() ?? widget.currentIndex : widget.currentIndex), (
+    ref.listen(chessBoardScreenProviderNew(_currentPageIndex), (
       prev,
       next,
     ) {
@@ -191,7 +200,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
             widget.games.isNotEmpty
                 ? widget.games
                 : [widget.games.first], // Fallback for empty games
-        currentGameIndex: (_pageController.hasClients ? _pageController.page?.toInt() ?? widget.currentIndex : widget.currentIndex).clamp(0, widget.games.length - 1),
+        currentGameIndex: _currentPageIndex.clamp(0, widget.games.length - 1),
         onGameChanged: (index) {}, // Disabled during loading
         lastViewedIndex: _lastViewedIndex,
       );
@@ -229,9 +238,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
             onPageChanged: _onPageChanged,
             itemCount: widget.games.length,
             itemBuilder: (context, index) {
-              if (index == (_pageController.hasClients ? _pageController.page?.toInt() ?? widget.currentIndex : widget.currentIndex) - 1 ||
-                  index == (_pageController.hasClients ? _pageController.page?.toInt() ?? widget.currentIndex : widget.currentIndex) + 1 ||
-                  index == (_pageController.hasClients ? _pageController.page?.toInt() ?? widget.currentIndex : widget.currentIndex)) {
+              // Build current page and adjacent pages
+              if (index == _currentPageIndex - 1 ||
+                  index == _currentPageIndex ||
+                  index == _currentPageIndex + 1) {
                 try {
                   return ref
                       .watch(chessBoardScreenProviderNew(index))
