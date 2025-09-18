@@ -70,6 +70,7 @@ class ChessBoardScreenNotifierNew
             // Re-parse moves with new PGN data
             _hasParsedMoves = false;
             parseMoves();
+            print("-----PGN updated for game ${game.pgn}");
           }
         });
       });
@@ -610,6 +611,7 @@ class ChessBoardScreenNotifierNew
           currentState.isAnalysisMode
               ? currentState.analysisState.position.fen
               : currentState.position?.fen;
+      print("----------- _evaluatePosition for fen: $fen");
       if (fen == null) return;
 
       CloudEval? cloudEval;
@@ -681,9 +683,13 @@ class ChessBoardScreenNotifierNew
       if ((currState.isAnalysisMode &&
               currState.analysisState.position.fen == fen) ||
           (!currState.isAnalysisMode && currentState.position?.fen == fen)) {
+            print("------- Setting evaluation: $evaluation for fen: $fen, shapes: ${shapes.length}");
         state = AsyncValue.data(
           currState.copyWith(evaluation: evaluation, shapes: shapes,mate: cloudEval?.pvs.first.mate),
         );
+      }
+      else{
+        print("------- Skipping setting evaluation for outdated fen: $fen");
       }
     } catch (e) {
       if (!_cancelEvaluation) {

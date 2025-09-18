@@ -5,8 +5,6 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_ba
 import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:scrollable_positioned_list/scrollable_positioned_list.dart'
-    show ItemPositionsListener;
 
 class GamesTourContentBody extends ConsumerWidget {
   final GamesScreenModel gamesScreenModel;
@@ -62,11 +60,11 @@ class GamesTourContentBody extends ConsumerWidget {
     final orderedGamesData = GamesScreenModel(
       gamesTourModels: orderedGamesForChessBoard,
       pinnedGamedIs: gamesScreenModel.pinnedGamedIs,
-      scrollToIndex: gamesScreenModel.scrollToIndex,
     );
 
     final itemScrollController = ref.watch(gamesTourScrollProvider);
-    final itemPositionsListener = ItemPositionsListener.create();
+    final itemPositionsListener =
+        ref.read(gamesTourScrollProvider.notifier).itemPositionsListener;
 
     return GamesListView(
       key: ValueKey('games_list_${isChessBoardVisible ? 'chess' : 'card'}'),
