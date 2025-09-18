@@ -44,8 +44,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   @override
   void initState() {
     super.initState();
-    _currentPageIndex = widget.currentIndex;
     _pageController = PageController(initialPage: widget.currentIndex);
+    _currentPageIndex = widget.currentIndex;
   }
 
   @override
@@ -57,8 +57,14 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
     if (_currentPageIndex == newIndex) return;
 
     _lastViewedIndex = newIndex;
+    final previousIndex = _currentPageIndex;
 
-    // Pause the current game before switching
+    // Update current page index immediately
+    setState(() {
+      _currentPageIndex = newIndex;
+    });
+
+    // Check if provider is available before trying to access it
     final view = ref.read(chessboardViewFromProviderNew);
     final gamesAsync =
         view == ChessboardView.tour
@@ -66,18 +72,26 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
             : ref.read(countrymanGamesTourScreenProvider);
 
     if (gamesAsync.hasValue && gamesAsync.value?.gamesTourModels != null) {
-      try {
-        ref
-            .read(chessBoardScreenProviderNew(_currentPageIndex).notifier)
-            .pauseGame();
-      } catch (e) {
-        // Provider might already be disposed, ignore
+      // Only pause if the previous provider should still be alive (within ±1 range)
+      if ((newIndex - previousIndex).abs() <= 1) {
+        try {
+          ref
+              .read(chessBoardScreenProviderNew(previousIndex).notifier)
+              .pauseGame();
+        } catch (e) {
+          // Provider was disposed, which is fine
+        }
       }
     }
 
-    // Update the current page index AFTER pausing the old game
-    setState(() {
-      _currentPageIndex = newIndex;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && gamesAsync.hasValue && gamesAsync.value?.gamesTourModels != null) {
+        try {
+          ref.read(chessBoardScreenProviderNew(newIndex).notifier).parseMoves();
+        } catch (e) {
+          debugPrint('Error parsing moves for new index: $e');
+        }
+      }
     });
   }
 
@@ -103,7 +117,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
             .read(chessBoardScreenProviderNew(_currentPageIndex).notifier)
             .pauseGame();
       } catch (e) {
-        // Provider might already be disposed, ignore
+        debugPrint('Error pausing game during navigation: $e');
       }
     }
 
@@ -1037,7 +1051,7 @@ class _MovesDisplay extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final notifier = ref.read(chessBoardScreenProviderNew(index).notifier);
+
 
     if (state.isLoadingMoves) {
       return _buildMovesLoadingSkeleton();
@@ -1073,7 +1087,7 @@ class _MovesDisplay extends ConsumerWidget {
               final isWhiteMove = moveIndex % 2 == 0;
 
               return GestureDetector(
-                onTap: () => notifier.goToMove(moveIndex),
+                onTap: () => ref.read(chessBoardScreenProviderNew(index).notifier).goToMove(moveIndex),
                 child: Container(
                   padding: EdgeInsets.symmetric(
                     horizontal: 6.sp,
@@ -1093,7 +1107,7 @@ class _MovesDisplay extends ConsumerWidget {
                   child: Text(
                     isWhiteMove ? '$fullMoveNumber. $move' : move,
                     style: AppTypography.textXsMedium.copyWith(
-                      color: notifier.getMoveColor(move, moveIndex),
+                      color: ref.read(chessBoardScreenProviderNew(index).notifier).getMoveColor(move, moveIndex),
                       fontWeight:
                           isCurrentMove ? FontWeight.bold : FontWeight.normal,
                     ),

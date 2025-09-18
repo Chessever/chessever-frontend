@@ -17,12 +17,15 @@ class RoundDropDown extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return SizedBox(
-      height: 32.h,
+      height: 38.h,
       width: 120.w,
       child: ref
           .watch(gamesAppBarProvider)
           .when(
             data: (data) {
+              print(
+                'Selected Round ${data.gamesAppBarModels.firstWhere((a) => a.id == data.selectedId, orElse: () => data.gamesAppBarModels.first).name}',
+              );
               return _RoundDropdown(
                 rounds: data.gamesAppBarModels,
                 selectedRoundId: data.selectedId,
@@ -155,7 +158,6 @@ class _RoundDropdown extends HookConsumerWidget {
       if (!context.mounted) return;
 
       final overlay = Overlay.of(context);
-      if (overlay == null) return;
 
       final renderBox = context.findRenderObject() as RenderBox?;
       if (renderBox == null) return;
@@ -243,11 +245,11 @@ class _RoundDropdown extends HookConsumerWidget {
 
       overlay.insert(entry);
 
-      final removeListener = () {
+      void removeListener() {
         if (entry.mounted) {
           entry.remove();
         }
-      };
+      }
 
       isOpen.addListener(removeListener);
 
@@ -280,8 +282,8 @@ class _RoundDropdown extends HookConsumerWidget {
 
     return CompositedTransformTarget(
       link: layerLink,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
+      child: InkWell(
+        splashColor: Colors.transparent,
         onTap: () {
           if (rounds.length <= 1) return;
           if (isOpen.value) {
@@ -295,10 +297,6 @@ class _RoundDropdown extends HookConsumerWidget {
           height: 32.h,
           width: 250.w,
           alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: kBlack2Color,
-            borderRadius: BorderRadius.circular(10.br),
-          ),
           padding: EdgeInsets.symmetric(horizontal: 12.w),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -313,10 +311,18 @@ class _RoundDropdown extends HookConsumerWidget {
                 ),
               ),
               if (rounds.length > 1)
-                Icon(
-                  Icons.keyboard_arrow_down_outlined,
-                  color: kWhiteColor,
-                  size: 20.ic,
+                Container(
+                  padding: EdgeInsets.all(2.sp),
+                  decoration: BoxDecoration(
+                    boxShadow: kElevationToShadow[9],
+                    color: kWhiteColor.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.keyboard_arrow_down_outlined,
+                    color: kWhiteColor70,
+                    size: 20.ic,
+                  ),
                 ),
             ],
           ),

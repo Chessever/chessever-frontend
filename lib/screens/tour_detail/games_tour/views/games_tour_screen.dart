@@ -1,10 +1,9 @@
 import 'dart:async';
 import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_body.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/chess_board_visibility_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -12,10 +11,8 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/svg_asset.dart';
-import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 class GamesTourScreen extends ConsumerStatefulWidget {
   const GamesTourScreen({super.key});
@@ -26,64 +23,6 @@ class GamesTourScreen extends ConsumerStatefulWidget {
 }
 
 class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
-  late ItemPositionsListener _itemPositionsListener;
-
-  @override
-  void initState() {
-    super.initState();
-    _itemPositionsListener = ItemPositionsListener.create();
-    _itemPositionsListener.itemPositions.addListener(_onItemPositionsChanged);
-  }
-
-  void _onItemPositionsChanged() {
-    final positions = _itemPositionsListener.itemPositions.value;
-    if (positions.isNotEmpty) {
-      // Find the top-visible item (round header or game)
-      final topItem =
-          positions.where((pos) => pos.itemLeadingEdge < 0.5).firstOrNull;
-      if (topItem != null) {
-        final visibleRoundId = _getRoundIdFromItemIndex(topItem.index);
-        if (visibleRoundId != null) {
-          _updateDropdownToVisibleRound(visibleRoundId);
-        }
-      }
-    }
-  }
-
-  void setupScrollToGameListener() {
-    ref.listenManual<int?>(scrollToGameIndexProvider, (_, next) {
-      if (next == null) return;
-
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-
-        final games =
-            ref.read(gamesTourScreenProvider).valueOrNull?.gamesTourModels;
-        if (games == null || next >= games.length) return;
-
-        final game = games[next];
-        final roundId = game.roundId;
-        final roundGames = games.where((g) => g.roundId == roundId).toList();
-        final localIndex = roundGames.indexWhere(
-          (g) => g.gameId == game.gameId,
-        );
-        if (localIndex == -1) return;
-
-        scrollToGame(roundId, localIndex);
-      });
-
-      ref.read(scrollToGameIndexProvider.notifier).state = null;
-    });
-  }
-
-  @override
-  void dispose() {
-    _itemPositionsListener.itemPositions.removeListener(
-      _onItemPositionsChanged,
-    );
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     final isChessBoardVisible = ref.watch(chessBoardVisibilityProvider);
@@ -130,32 +69,8 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
           );
         }
 
-        // Listener for dropdown selection -> scroll
-        ref.listen<AsyncValue<GamesAppBarViewModel>>(gamesAppBarProvider, (
-          previous,
-          next,
-        ) {
-          final previousSelected = previous?.valueOrNull?.selectedId;
-          final currentSelected = next.valueOrNull?.selectedId;
-          final isUserSelected = next.valueOrNull?.userSelectedId ?? false;
-
-          if (currentSelected != null &&
-              currentSelected != previousSelected &&
-              isUserSelected) {
-            debugPrint(
-              '🎯 User selected round from dropdown: $currentSelected',
-            );
-            // Scroll to the selected round
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) {
-                scrollToRound(currentSelected);
-              }
-            });
-          }
-        });
-
         return RefreshIndicator(
-          onRefresh: () async {},
+          onRefresh: _handleRefresh,
           color: kWhiteColor70,
           backgroundColor: kDarkGreyColor,
           displacement: 60.h,
@@ -178,113 +93,17 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
       loading: () => const TourLoadingWidget(),
     );
   }
-}
 
-extension GamesTourScreenLogic on _GamesTourScreenState {
-  Future<void> scrollToGame(String roundId, int gameIndex) async {
-    final controller = ref.read(gamesTourScrollProvider);
-    final itemIndex = _calculateItemIndex(roundId, gameIndex);
-    await controller.scrollTo(
-      index: itemIndex,
-      duration: const Duration(milliseconds: 300),
-    );
-  }
-
-  Future<void> scrollToRound(String roundId) async {
-    final controller = ref.read(gamesTourScrollProvider);
-    final itemIndex = _calculateRoundHeaderIndex(roundId);
-    await controller.scrollTo(
-      index: itemIndex,
-      duration: const Duration(milliseconds: 300),
-    );
-  }
-
-  int _calculateItemIndex(String roundId, int gameIndex) {
-    // Based on reversed rounds: Each round has 1 header + N games
-    final rounds =
-        ref.read(gamesAppBarProvider).valueOrNull?.gamesAppBarModels ?? [];
-    final reversedRounds = rounds.reversed.toList();
-    int index = 0;
-    for (final round in reversedRounds) {
-      if (round.id == roundId) {
-        return index + 1 + gameIndex; // Header + games before this one
-      }
-      final gamesInRound =
-          ref
-              .read(gamesTourScreenProvider)
-              .valueOrNull
-              ?.gamesTourModels
-              .where((g) => g.roundId == round.id)
-              .length ??
-          0;
-      index += 1 + gamesInRound; // Header + games
-    }
-    return 0;
-  }
-
-  int _calculateRoundHeaderIndex(String roundId) {
-    // Based on reversed rounds: Find the header index for the round
-    final rounds =
-        ref.read(gamesAppBarProvider).valueOrNull?.gamesAppBarModels ?? [];
-    final reversedRounds = rounds.reversed.toList();
-    int index = 0;
-    for (final round in reversedRounds) {
-      if (round.id == roundId) {
-        return index;
-      }
-      final gamesInRound =
-          ref
-              .read(gamesTourScreenProvider)
-              .valueOrNull
-              ?.gamesTourModels
-              .where((g) => g.roundId == round.id)
-              .length ??
-          0;
-      index += 1 + gamesInRound; // Header + games
-    }
-    return 0;
-  }
-
-  String? _getRoundIdFromItemIndex(int itemIndex) {
-    // Reverse-engineer the round from item index
-    final rounds =
-        ref.read(gamesAppBarProvider).valueOrNull?.gamesAppBarModels ?? [];
-    final reversedRounds = rounds.reversed.toList();
-    int currentIndex = 0;
-    for (final round in reversedRounds) {
-      if (itemIndex == currentIndex) {
-        return round.id; // It's a header
-      }
-      final gamesInRound =
-          ref
-              .read(gamesTourScreenProvider)
-              .valueOrNull
-              ?.gamesTourModels
-              .where((g) => g.roundId == round.id)
-              .length ??
-          0;
-      currentIndex += 1 + gamesInRound;
-      if (itemIndex < currentIndex) {
-        return round.id; // It's a game in this round
-      }
-    }
-    return null;
-  }
-
-  void _updateDropdownToVisibleRound(String roundId) {
-    final gamesAppBarAsync = ref.read(gamesAppBarProvider);
-    final currentSelected = gamesAppBarAsync.valueOrNull?.selectedId;
-    if (currentSelected != roundId) {
-      final gamesAppBarData = gamesAppBarAsync.valueOrNull;
-      if (gamesAppBarData != null) {
-        final targetRound =
-            gamesAppBarData.gamesAppBarModels
-                .where((round) => round.id == roundId)
-                .firstOrNull;
-        if (targetRound != null) {
-          ref.read(gamesAppBarProvider.notifier).selectSilently(targetRound);
-        }
-      }
-    }
+  Future<void> _handleRefresh() async {
+    try {
+      FocusScope.of(context).unfocus();
+      final futures = <Future>[];
+      futures.add(
+        ref.read(tourDetailScreenProvider.notifier).refreshTourDetails(),
+      );
+      futures.add(ref.read(gamesAppBarProvider.notifier).refresh());
+      futures.add(ref.read(gamesTourScreenProvider.notifier).refreshGames());
+      await Future.wait(futures);
+    } catch (_) {}
   }
 }
