@@ -12,7 +12,7 @@ class ScoreboardCardWidget extends ConsumerWidget {
   final String? title; // Player title (e.g., "GM") - made nullable
   final String name; // Player name
   final int score; // Current score/rating
-  final int? scoreChange; // Score change (can be positive or negative)
+  final double? scoreChange; // Score change (can be positive or negative)
   final String? matchScore; // Match score (e.g., "2.5/3")
   final int index;
   final bool isFirst;
@@ -139,10 +139,12 @@ class ScoreboardCardWidget extends ConsumerWidget {
                       color: kWhiteColor,
                     ),
                   ),
-                  if (scoreChange != null && scoreChange != 0) ...[
+                  if (scoreChange != null && scoreChange != 0.0) ...[
                     SizedBox(width: 4.w),
                     Text(
-                      scoreChange! > 0 ? '+$scoreChange' : '$scoreChange',
+                      scoreChange! > 0
+                          ? '+${scoreChange!.toStringAsFixed(2)}'
+                          : scoreChange!.toStringAsFixed(2),
                       style: AppTypography.textXsMedium.copyWith(
                         color: scoreChange! > 0 ? kGreenColor : kRedColor,
                       ),
