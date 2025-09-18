@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:chessever2/screens/standings/player_standing_model.dart';
+import 'package:chessever2/screens/standings/providers/player_ratings_provider.dart';
 import 'package:chessever2/screens/standings/widget/scoreboard_appbar.dart';
 import 'package:chessever2/screens/standings/widget/scoreboard_card_widget.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -207,80 +208,125 @@ class ScoreCardScreen extends ConsumerWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  height: 65.h,
-                  width: 64.w,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(4),
-                    color: kPrimaryColor,
-                  ),
-                  child: Center(
-                    child: Text(
-                      initials.toUpperCase(),
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w500,
+                Column(
+                  children: [
+                    // Title badge/chip
+                    if (player.title != null && player.title!.isNotEmpty)
+                      Container(
+                        padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
+                        margin: EdgeInsets.only(bottom: 4.h),
+                        decoration: BoxDecoration(
+                          color: kGreenColor,
+                          borderRadius: BorderRadius.circular(12.sp),
+                        ),
+                        child: Text(
+                          player.title!,
+                          style: AppTypography.textXsMedium.copyWith(
+                            color: Colors.white,
+                            fontSize: 10.sp,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    // Player initials container
+                    Container(
+                      height: 65.h,
+                      width: 64.w,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(4),
+                        color: kPrimaryColor,
+                      ),
+                      child: Center(
+                        child: Text(
+                          initials.toUpperCase(),
+                          style: AppTypography.textSmMedium.copyWith(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
                 SizedBox(width: 16.w),
                 Expanded(
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      // First row: Performance and Score
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          Text(
-                            "RATING",
-                            style: AppTypography.textSmMedium.copyWith(
-                              color: kWhiteColor,
-                            ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "PERFORMANCE",
+                                style: AppTypography.textSmMedium.copyWith(
+                                  color: kWhiteColor,
+                                ),
+                              ),
+                              SizedBox(height: 5),
+                              Text(
+                                totalPerformance >= 0
+                                    ? '+${totalPerformance.toStringAsFixed(2)}'
+                                    : totalPerformance.toStringAsFixed(2),
+                                style: AppTypography.textSmMedium.copyWith(
+                                  color: totalPerformance > 0
+                                      ? kGreenColor
+                                      : totalPerformance < 0
+                                          ? kRedColor
+                                          : kWhiteColor,
+                                ),
+                              ),
+                            ],
                           ),
-                          SizedBox(height: 5),
-                          Text(
-                            totalPerformance.toStringAsFixed(2),
-                            style: AppTypography.textSmMedium.copyWith(
-                              color: kWhiteColor,
-                            ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "SCORE",
+                                style: AppTypography.textSmMedium.copyWith(
+                                  color: kWhiteColor,
+                                ),
+                              ),
+                              SizedBox(height: 5),
+                              Text(
+                                player.matchScore ?? "",
+                                style: AppTypography.textSmMedium.copyWith(
+                                  color: kWhiteColor,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      SizedBox(height: 12.h),
+                      // Second row: Ratings displayed horizontally
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          Text(
-                            "SCORE",
-                            style: AppTypography.textSmMedium.copyWith(
-                              color: kWhiteColor,
-                            ),
+                          // Classical Rating
+                          _RatingDisplay(
+                            playerName: player.name,
+                            timeControlType: "standard",
+                            icon: Icons.access_time,
+                            iconColor: kWhiteColor,
                           ),
-                          SizedBox(height: 5),
-                          Text(
-                            player.matchScore ?? "",
-                            style: AppTypography.textSmMedium.copyWith(
-                              color: kWhiteColor,
-                            ),
+                          // Rapid Rating
+                          _RatingDisplay(
+                            playerName: player.name,
+                            timeControlType: "rapid",
+                            icon: Icons.flash_on,
+                            iconColor: Colors.orange,
                           ),
-                        ],
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            "PERFORMANCE",
-                            style: AppTypography.textSmMedium.copyWith(
-                              color: kWhiteColor,
-                            ),
-                          ),
-                          SizedBox(height: 5),
-                          Text(
-                            "${player.scoreChange >= 0 ? '+' : ''}${player.scoreChange}",
-                            style: AppTypography.textSmMedium.copyWith(
-                              color: kGreenColor,
-                            ),
+                          // Blitz Rating
+                          _RatingDisplay(
+                            playerName: player.name,
+                            timeControlType: "blitz",
+                            icon: Icons.bolt,
+                            iconColor: kRedColor,
                           ),
                         ],
                       ),
@@ -375,5 +421,64 @@ class ScoreCardScreen extends ConsumerWidget {
       case GameStatus.unknown:
         return '-';
     }
+  }
+}
+
+class _RatingDisplay extends ConsumerWidget {
+  final String playerName;
+  final String timeControlType;
+  final IconData icon;
+  final Color iconColor;
+
+  const _RatingDisplay({
+    required this.playerName,
+    required this.timeControlType,
+    required this.icon,
+    required this.iconColor,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ratingRequest = PlayerRatingRequest(
+      playerName: playerName,
+      timeControlType: timeControlType,
+    );
+
+    final ratingAsync = ref.watch(playerLatestRatingProvider(ratingRequest));
+
+    return Row(
+      children: [
+        Icon(
+          icon,
+          size: 12.sp,
+          color: iconColor,
+        ),
+        SizedBox(width: 2.w),
+        ratingAsync.when(
+          data: (rating) => Text(
+            rating?.toString() ?? '-',
+            style: AppTypography.textXsMedium.copyWith(
+              color: kWhiteColor,
+              fontSize: 10.sp,
+            ),
+          ),
+          loading: () => SizedBox(
+            width: 20.w,
+            height: 10.h,
+            child: CircularProgressIndicator(
+              strokeWidth: 1,
+              color: kWhiteColor,
+            ),
+          ),
+          error: (_, __) => Text(
+            '-',
+            style: AppTypography.textXsMedium.copyWith(
+              color: kWhiteColor,
+              fontSize: 10.sp,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }

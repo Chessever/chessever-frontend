@@ -76,24 +76,28 @@ class EventCard extends ConsumerWidget {
                   SizedBox(height: 2.h),
 
                   // Second row with details
-                  RichText(
-                    maxLines: 1,
-                    text: TextSpan(
-                      style: AppTypography.textXsMedium.copyWith(
-                        color: kWhiteColor70,
-                      ),
-                      children: [
-                        if (tourEventCardModel.dates.trim().isNotEmpty) ...[
-                          TextSpan(text: tourEventCardModel.dates),
-                          _buildDot(),
-                        ],
-                        TextSpan(text: tourEventCardModel.timeControl),
-                        if (tourEventCardModel.maxAvgElo > 0) ...[
-                          _buildDot(),
-                          TextSpan(text: "Ø ${tourEventCardModel.maxAvgElo}"),
-                        ],
+                  Row(
+                    children: [
+                      if (tourEventCardModel.dates.trim().isNotEmpty) ...[
+                        Text(
+                          tourEventCardModel.dates,
+                          style: AppTypography.textXsMedium.copyWith(
+                            color: kWhiteColor70,
+                          ),
+                        ),
+                        _buildDotWidget(),
                       ],
-                    ),
+                      _buildTimeControlIcon(),
+                      if (tourEventCardModel.maxAvgElo > 0) ...[
+                        _buildDotWidget(),
+                        Text(
+                          "Ø ${tourEventCardModel.maxAvgElo}",
+                          style: AppTypography.textXsMedium.copyWith(
+                            color: kWhiteColor70,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ),
@@ -111,17 +115,46 @@ class EventCard extends ConsumerWidget {
     );
   }
 
-  WidgetSpan _buildDot() {
-    return WidgetSpan(
-      alignment: PlaceholderAlignment.middle,
-      child: Container(
-        margin: EdgeInsets.symmetric(horizontal: 4),
-        height: 6.h,
-        width: 6.w,
-        decoration: BoxDecoration(shape: BoxShape.circle, color: kWhiteColor70),
-      ),
+  Widget _buildDotWidget() {
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 4.w),
+      height: 6.h,
+      width: 6.w,
+      decoration: BoxDecoration(shape: BoxShape.circle, color: kWhiteColor70),
     );
   }
+
+  Widget _buildTimeControlIcon() {
+    final timeControl = tourEventCardModel.timeControl.toLowerCase();
+    IconData icon;
+    Color iconColor;
+
+    if (timeControl.contains('blitz')) {
+      icon = Icons.bolt;
+      iconColor = kRedColor;
+    } else if (timeControl.contains('rapid')) {
+      icon = Icons.flash_on;
+      iconColor = Colors.orange;
+    } else if (timeControl.contains('classic') || timeControl.contains('standard')) {
+      icon = Icons.access_time;
+      iconColor = kWhiteColor;
+    } else {
+      // Default fallback - show text if unknown format
+      return Text(
+        tourEventCardModel.timeControl,
+        style: AppTypography.textXsMedium.copyWith(
+          color: kWhiteColor70,
+        ),
+      );
+    }
+
+    return Icon(
+      icon,
+      size: 14.sp,
+      color: iconColor,
+    );
+  }
+
 }
 
 class _ShowStatus extends ConsumerWidget {
