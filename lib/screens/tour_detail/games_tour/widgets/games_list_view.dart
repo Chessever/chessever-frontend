@@ -14,6 +14,7 @@ class GamesListView extends ConsumerWidget {
   final bool isChessBoardVisible;
   final ItemScrollController itemScrollController;
   final ItemPositionsListener itemPositionsListener;
+  final void Function(int)? onReturnFromChessboard;
 
   const GamesListView({
     super.key,
@@ -23,6 +24,7 @@ class GamesListView extends ConsumerWidget {
     required this.isChessBoardVisible,
     required this.itemScrollController,
     required this.itemPositionsListener,
+    this.onReturnFromChessboard,
   });
 
   @override
@@ -47,6 +49,35 @@ class GamesListView extends ConsumerWidget {
         bottom: MediaQuery.of(context).viewPadding.bottom,
       ),
     );
+  }
+
+  void _scrollToGameIndex(int gameIndex) {
+    // Calculate the position in the list for the given game index
+    // We need to account for round headers and games before this index
+    int listIndex = 0;
+    int currentGameIndex = 0;
+
+    final reversedRounds = rounds.reversed.toList();
+
+    for (final round in reversedRounds) {
+      // Add 1 for the round header
+      listIndex++;
+
+      final roundGames = gamesByRound[round.id] ?? [];
+      for (int i = 0; i < roundGames.length; i++) {
+        if (currentGameIndex == gameIndex) {
+          // Found the target game, scroll to this position
+          itemScrollController.scrollTo(
+            index: listIndex,
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.easeInOut,
+          );
+          return;
+        }
+        listIndex++;
+        currentGameIndex++;
+      }
+    }
   }
 
   List<Widget> _buildItems(
@@ -74,6 +105,10 @@ class GamesListView extends ConsumerWidget {
               gamesData: gamesData,
               gameIndex: globalGameIndex,
               isChessBoardVisible: isChessBoardVisible,
+              onReturnFromChessboard: (returnedIndex) {
+                _scrollToGameIndex(returnedIndex);
+                onReturnFromChessboard?.call(returnedIndex);
+              },
             ),
           ),
         );
