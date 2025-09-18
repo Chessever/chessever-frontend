@@ -5,6 +5,7 @@ import 'package:chessever2/screens/standings/widget/scoreboard_appbar.dart';
 import 'package:chessever2/screens/standings/widget/scoreboard_card_widget.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../theme/app_theme.dart';
@@ -450,31 +451,38 @@ class _RatingDisplay extends ConsumerWidget {
       children: [
         Icon(
           icon,
-          size: 12.sp,
+          size: 16.sp,
           color: iconColor,
         ),
-        SizedBox(width: 2.w),
+        SizedBox(width: 4.w),
         ratingAsync.when(
           data: (rating) => Text(
             rating?.toString() ?? '-',
-            style: AppTypography.textXsMedium.copyWith(
+            style: AppTypography.textSmMedium.copyWith(
               color: kWhiteColor,
-              fontSize: 10.sp,
+              fontSize: 14.sp,
             ),
           ),
-          loading: () => SizedBox(
-            width: 20.w,
-            height: 10.h,
-            child: CircularProgressIndicator(
-              strokeWidth: 1,
-              color: kWhiteColor,
+          loading: () => Skeletonizer(
+            enabled: true,
+            ignoreContainers: true,
+            effect: ShimmerEffect(
+              baseColor: Color(0xFF2A2A2A),
+              highlightColor: Color(0xFF3A3A3A),
+            ),
+            child: Text(
+              '2400', // 4-digit placeholder
+              style: AppTypography.textSmMedium.copyWith(
+                color: kWhiteColor,
+                fontSize: 14.sp,
+              ),
             ),
           ),
           error: (_, __) => Text(
             '-',
-            style: AppTypography.textXsMedium.copyWith(
+            style: AppTypography.textSmMedium.copyWith(
               color: kWhiteColor,
-              fontSize: 10.sp,
+              fontSize: 14.sp,
             ),
           ),
         ),
