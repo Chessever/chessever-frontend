@@ -1,9 +1,6 @@
 import 'package:equatable/equatable.dart';
-import 'package:flutter/foundation.dart';
-import 'package:intl/intl.dart';
-
-import '../../../../repository/supabase/round/round.dart';
-import '../../../../utils/time_utils.dart';
+import 'package:chessever2/repository/supabase/round/round.dart';
+import 'package:chessever2/utils/time_utils.dart';
 
 enum RoundStatus { completed, ongoing, live, upcoming }
 
