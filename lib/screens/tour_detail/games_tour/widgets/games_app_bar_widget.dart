@@ -36,7 +36,6 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
   final FocusNode _focusNode = FocusNode();
   late final GlobalKey _menuKey;
   Timer? _debounceTimer;
-  String _currentSearchQuery = '';
   late AnimationController _animationController;
 
   @override
@@ -69,7 +68,6 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
     setState(() {
       isSearching = true;
     });
-    _currentSearchQuery = '';
     _searchController.clear();
     ref.read(gamesTourScreenProvider.notifier).clearSearch();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -83,22 +81,21 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
     setState(() {
       isSearching = false;
     });
-    _searchController.clear();
-    _currentSearchQuery = '';
-    _debounceTimer?.cancel();
+
     try {
       await ref.read(gamesTourScreenProvider.notifier).refreshGames();
     } catch (e) {
-      // Log error or show snackbar if needed
-      debugPrint('Error refreshing games: $e');
+      debugPrint('Error refreshing games on search close: $e');
     }
+
+    _searchController.clear();
+    _debounceTimer?.cancel();
     _focusNode.unfocus();
     _animationController.reverse();
   }
 
   void _handleSearchInput(String query) {
     _debounceTimer?.cancel();
-    _currentSearchQuery = query;
 
     if (query.trim().isEmpty) {
       ref.read(gamesTourScreenProvider.notifier).clearSearch();
@@ -106,9 +103,7 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
     }
 
     _debounceTimer = Timer(const Duration(milliseconds: 300), () {
-      if (mounted && _currentSearchQuery == query) {
-        ref.read(gamesTourScreenProvider.notifier).searchGamesEnhanced(query);
-      }
+      ref.read(gamesTourScreenProvider.notifier).searchGamesEnhanced(query);
     });
   }
 
