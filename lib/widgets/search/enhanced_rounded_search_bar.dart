@@ -11,8 +11,7 @@ import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:easy_debounce/easy_debounce.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-
-import '../../screens/group_event/providers/group_event_screen_provider.dart';
+import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 
 class EnhancedRoundedSearchBar extends ConsumerStatefulWidget {
   final TextEditingController controller;
@@ -81,14 +80,8 @@ class _EnhancedRoundedSearchBarState
       curve: Curves.easeInOut,
     );
 
-    _searchBarScaleAnimation = Tween<double>(
-      begin: 1.0,
-      end: 1.02,
-    ).animate(
-      CurvedAnimation(
-        parent: _searchBarController,
-        curve: Curves.easeInOut,
-      ),
+    _searchBarScaleAnimation = Tween<double>(begin: 1.0, end: 1.02).animate(
+      CurvedAnimation(parent: _searchBarController, curve: Curves.easeInOut),
     );
   }
 
@@ -358,11 +351,7 @@ class _EnhancedRoundedSearchBarState
                   color: Colors.grey[700],
                   shape: BoxShape.circle,
                 ),
-                child: Icon(
-                  Icons.close,
-                  size: 16.ic,
-                  color: kWhiteColor,
-                ),
+                child: Icon(Icons.close, size: 16.ic, color: kWhiteColor),
               ),
             ),
           ],
