@@ -154,110 +154,127 @@ class _RoundDropdown extends HookConsumerWidget {
     LayerLink layerLink,
     ValueNotifier<bool> isOpen,
   ) {
+    OverlayEntry? overlayEntry;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!context.mounted) return;
+      try {
+        if (!context.mounted) {
+          isOpen.value = false;
+          return;
+        }
+        final overlay = Overlay.of(context);
+        final renderBox = context.findRenderObject() as RenderBox?;
 
-      final overlay = Overlay.of(context);
-
-      final renderBox = context.findRenderObject() as RenderBox?;
-      if (renderBox == null) return;
-
-      final size = renderBox.size;
-      final offset = renderBox.localToGlobal(Offset.zero);
-
-      final availableHeight =
-          MediaQuery.of(context).size.height - offset.dy - size.height - 20;
-
-      final reversedRounds = rounds.reversed.toList();
-
-      final entry = OverlayEntry(
-        builder:
-            (context) => GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onTap: () => isOpen.value = false,
-              child: Stack(
-                children: [
-                  Positioned(
-                    left: offset.dx,
-                    top: offset.dy + size.height,
-                    width: 225.w,
-                    child: CompositedTransformFollower(
-                      link: layerLink,
-                      showWhenUnlinked: false,
-                      offset: Offset(-28.w, size.height),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxHeight: availableHeight,
-                            minWidth: size.width,
-                          ),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: kBlack2Color,
-                              borderRadius: BorderRadius.circular(20.br),
+        if (renderBox == null) {
+          isOpen.value = false;
+          return;
+        }
+        final size = renderBox.size;
+        final offset = renderBox.localToGlobal(Offset.zero);
+        final availableHeight =
+            MediaQuery.of(context).size.height - offset.dy - size.height - 20;
+        final reversedRounds = rounds.reversed.toList();
+        overlayEntry = OverlayEntry(
+          builder:
+              (context) => GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: () => isOpen.value = false,
+                child: Stack(
+                  children: [
+                    Positioned(
+                      left: offset.dx,
+                      top: offset.dy + size.height,
+                      width: 225.w,
+                      child: CompositedTransformFollower(
+                        link: layerLink,
+                        showWhenUnlinked: false,
+                        offset: Offset(-28.w, size.height),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxHeight: availableHeight,
+                              minWidth: size.width,
                             ),
-                            padding: EdgeInsets.symmetric(vertical: 8.h),
-                            child: ListView.separated(
-                              padding: EdgeInsets.zero,
-                              shrinkWrap: true,
-                              itemCount: reversedRounds.length,
-                              separatorBuilder: (context, index) {
-                                return Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 5.h),
-                                  child: DividerWidget(),
-                                );
-                              },
-                              itemBuilder: (context, index) {
-                                final round = reversedRounds[index];
-                                final isSelected = round.id == selectedRoundId;
-
-                                return InkWell(
-                                  onTap: () {
-                                    if (!isSelected) {
-                                      onChanged(round);
-                                    }
-                                    isOpen.value = false;
-                                  },
-                                  child: Container(
-                                    color:
-                                        isSelected
-                                            ? kBlack2Color.withOpacity(0.5)
-                                            : Colors.transparent,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: kBlack2Color,
+                                borderRadius: BorderRadius.circular(20.br),
+                              ),
+                              padding: EdgeInsets.symmetric(vertical: 8.h),
+                              child: ListView.separated(
+                                padding: EdgeInsets.zero,
+                                shrinkWrap: true,
+                                itemCount: reversedRounds.length,
+                                separatorBuilder: (context, index) {
+                                  return Padding(
                                     padding: EdgeInsets.symmetric(
-                                      horizontal: 12.w,
-                                      vertical: 4.h,
+                                      vertical: 5.h,
                                     ),
-                                    child: _buildRow(round, false),
-                                  ),
-                                );
-                              },
+                                    child: DividerWidget(),
+                                  );
+                                },
+                                itemBuilder: (context, index) {
+                                  final round = reversedRounds[index];
+                                  final isSelected =
+                                      round.id == selectedRoundId;
+
+                                  return InkWell(
+                                    onTap: () {
+                                      if (!isSelected) {
+                                        onChanged(round);
+                                      }
+                                      isOpen.value = false;
+                                    },
+                                    child: Container(
+                                      color:
+                                          isSelected
+                                              ? kBlack2Color.withOpacity(0.5)
+                                              : Colors.transparent,
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: 12.w,
+                                        vertical: 4.h,
+                                      ),
+                                      child: _buildRow(round, false),
+                                    ),
+                                  );
+                                },
+                              ),
                             ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-      );
+        );
+        overlay.insert(overlayEntry!);
+        void removeOverlay() {
+          try {
+            if (overlayEntry?.mounted == true) {
+              overlayEntry?.remove();
+            }
+          } catch (e) {
+            overlayEntry?.dispose();
+          }
+        }
 
-      overlay.insert(entry);
-
-      void removeListener() {
-        if (entry.mounted) {
-          entry.remove();
+        isOpen.addListener(removeOverlay);
+        overlayEntry!.addListener(() {
+          if (!overlayEntry!.mounted) {
+            isOpen.removeListener(removeOverlay);
+          }
+        });
+      } catch (e) {
+        isOpen.value = false;
+        if (overlayEntry?.mounted == true) {
+          try {
+            overlayEntry?.remove();
+          } catch (_) {
+            overlayEntry?.dispose();
+          }
         }
       }
-
-      isOpen.addListener(removeListener);
-
-      entry.addListener(() {
-        if (!entry.mounted) {
-          isOpen.removeListener(removeListener);
-        }
-      });
     });
   }
 
@@ -280,17 +297,32 @@ class _RoundDropdown extends HookConsumerWidget {
                   ),
     );
 
+    useEffect(() {
+      return () {
+        try {
+          if (isOpen.value) {
+            isOpen.value = false;
+          }
+        } catch (e) {}
+      };
+    }, []);
+
     return CompositedTransformTarget(
       link: layerLink,
       child: InkWell(
         splashColor: Colors.transparent,
         onTap: () {
-          if (rounds.length <= 1) return;
-          if (isOpen.value) {
+          try {
+            if (rounds.length <= 1) return;
+
+            if (isOpen.value) {
+              isOpen.value = false;
+            } else {
+              isOpen.value = true;
+              _showOverlay(context, layerLink, isOpen);
+            }
+          } catch (e) {
             isOpen.value = false;
-          } else {
-            isOpen.value = true;
-            _showOverlay(context, layerLink, isOpen);
           }
         },
         child: Container(
