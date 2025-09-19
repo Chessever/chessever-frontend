@@ -540,7 +540,7 @@ class _GameSelectionDropdown extends StatelessWidget {
               padding: EdgeInsets.symmetric(horizontal: 12.sp),
               alignment: Alignment.center,
               child: Text(
-                '${_formatName(game.blackPlayer.displayName, maxWidth: 120)} vs ${_formatName(game.whitePlayer.displayName, maxWidth: 120)}',
+                '${_formatName(game.whitePlayer.displayName, maxWidth: 120)} vs ${_formatName(game.blackPlayer.displayName, maxWidth: 120)}',
                 style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
                 overflow: TextOverflow.ellipsis,
               ),
@@ -630,6 +630,35 @@ class _GameDropdownItem extends StatelessWidget {
     return '${displayNames.join(' ')} $familyName';
   }
 
+  String _getRoundLabel(GamesTourModel game) {
+    final slug = game.roundSlug;
+    if (slug == null || slug.isEmpty) {
+      return 'R:';
+    }
+
+    // Try to extract number from various patterns
+    // Examples: "round-12", "rapid-8", "blitz-8", "13", "game-4", "losers-r3--armageddon"
+    final patterns = [
+      RegExp(r'round[-\s]?(\d+)', caseSensitive: false),  // round-12, round 12
+      RegExp(r'rapid[-\s]?(\d+)', caseSensitive: false),  // rapid-8
+      RegExp(r'blitz[-\s]?(\d+)', caseSensitive: false),  // blitz-8
+      RegExp(r'^(\d+)$'),  // just a number like "13"
+      RegExp(r'r(\d+)', caseSensitive: false),  // r3 in losers-r3
+      RegExp(r'game[-\s]?(\d+)', caseSensitive: false),  // game-4
+    ];
+
+    for (final pattern in patterns) {
+      final match = pattern.firstMatch(slug);
+      if (match != null) {
+        final roundNumber = match.group(1);
+        return 'R$roundNumber:';
+      }
+    }
+
+    // If no pattern matches, return a simplified version
+    return 'R:';
+  }
+
   Widget _buildStatusIcon() {
     if (isLoading) {
       return SizedBox(
@@ -704,7 +733,7 @@ class _GameDropdownItem extends StatelessWidget {
       children: [
         Flexible(
           child: Text(
-            '${_formatName(game.whitePlayer.name, maxWidth: 80)} vs ${_formatName(game.blackPlayer.name, maxWidth: 80)}',
+            '${_getRoundLabel(game)} ${_formatName(game.whitePlayer.name, maxWidth: 65)} vs ${_formatName(game.blackPlayer.name, maxWidth: 65)}',
             style: AppTypography.textXsRegular.copyWith(color: kWhiteColor70),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,

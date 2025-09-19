@@ -196,16 +196,19 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               mainAxisAlignment: MainAxisAlignment.start,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                RichText(
-                  text: TextSpan(
-                    children: [
-                      TextSpan(text: '${playerCard.title} ', style: rankStyle),
-                      TextSpan(text: '${playerCard.name} ', style: nameStyle),
-                      TextSpan(
-                        text: '${playerCard.rating}',
-                        style: ratingStyle,
-                      ),
-                    ],
+                Flexible(
+                  child: RichText(
+                    overflow: TextOverflow.ellipsis,
+                    text: TextSpan(
+                      children: [
+                        TextSpan(text: '${playerCard.title} ', style: rankStyle),
+                        TextSpan(text: '${playerCard.name} ', style: nameStyle),
+                        TextSpan(
+                          text: '${playerCard.rating}',
+                          style: ratingStyle,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
