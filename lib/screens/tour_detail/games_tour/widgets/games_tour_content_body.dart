@@ -74,6 +74,10 @@ class GamesTourContentBody extends ConsumerWidget {
       isChessBoardVisible: isChessBoardVisible,
       itemScrollController: itemScrollController,
       itemPositionsListener: itemPositionsListener,
+      onReturnFromChessboard: (returnedIndex) {
+        // The scrolling is already handled in GamesListView
+        // This callback can be used for additional logic if needed
+      },
     );
   }
 }
