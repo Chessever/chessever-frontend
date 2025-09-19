@@ -8,6 +8,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/search/gameSearch/game_search_overlay.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -46,27 +47,31 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
         }
 
         if (data.gamesTourModels.isEmpty) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                SvgPicture.asset(
-                  SvgAsset.tournamentIcon,
-                  height: 35,
-                  width: 35,
-                ),
-                SizedBox(height: 10),
-                Text(
-                  'Currently there are no tournaments going!\nCome back later!',
-                  style: AppTypography.textMdRegular.copyWith(
-                    color: kWhiteColor,
+          if (data.isSearchMode && data.searchQuery != null) {
+            return EmptySearchWidget(query: data.searchQuery!);
+          } else {
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SvgPicture.asset(
+                    SvgAsset.tournamentIcon,
+                    height: 35,
+                    width: 35,
                   ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          );
+                  SizedBox(height: 10),
+                  Text(
+                    'Currently there are no tournaments going!\nCome back later!',
+                    style: AppTypography.textMdRegular.copyWith(
+                      color: kWhiteColor,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            );
+          }
         }
 
         return RefreshIndicator(

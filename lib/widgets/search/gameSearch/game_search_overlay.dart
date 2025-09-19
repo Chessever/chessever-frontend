@@ -131,7 +131,7 @@ class _GamesSearchOverlayState extends ConsumerState<GamesSearchOverlay>
     }
 
     if (state.isEmpty) {
-      return _EmptyState(query: state.currentQuery);
+      return EmptySearchWidget(query: state.currentQuery);
     }
 
     if (state.isIdle) {
@@ -457,10 +457,10 @@ class _ErrorState extends StatelessWidget {
   }
 }
 
-class _EmptyState extends StatelessWidget {
+class EmptySearchWidget extends StatelessWidget {
   final String query;
 
-  const _EmptyState({required this.query});
+  const EmptySearchWidget({super.key, required this.query});
 
   @override
   Widget build(BuildContext context) {
