@@ -12,6 +12,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
   final GamesScreenModel gamesData;
   final int gameIndex;
   final bool isChessBoardVisible;
+  final void Function(int)? onReturnFromChessboard;
 
   const GameCardWrapperWidget({
     super.key,
@@ -19,6 +20,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
     required this.gamesData,
     required this.gameIndex,
     required this.isChessBoardVisible,
+    this.onReturnFromChessboard,
   });
 
   @override
@@ -47,7 +49,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
     // The gamesData.gamesTourModels now contains games in ListView display order
     final orderedGames = gamesData.gamesTourModels;
 
-    await Navigator.push(
+    final returnedIndex = await Navigator.push<int>(
       context,
       MaterialPageRoute(
         builder:
@@ -57,6 +59,11 @@ class GameCardWrapperWidget extends ConsumerWidget {
             ),
       ),
     );
+
+    // If a different index was returned from the chessboard, notify the parent
+    if (returnedIndex != null && returnedIndex != gameIndex && onReturnFromChessboard != null) {
+      onReturnFromChessboard!(returnedIndex);
+    }
   }
 
   Future<void> _handlePinToggle(WidgetRef ref) async {
