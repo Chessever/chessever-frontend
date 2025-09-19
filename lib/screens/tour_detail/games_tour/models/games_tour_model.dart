@@ -46,6 +46,7 @@ class GamesTourModel {
   final String? lastMove;
   final int? boardNr;
   final String roundId;
+  final String? roundSlug;
   final DateTime? lastMoveTime;
 
   GamesTourModel({
@@ -56,6 +57,7 @@ class GamesTourModel {
     required this.blackTimeDisplay,
     required this.gameStatus,
     required this.roundId, // Make required
+    this.roundSlug,
     this.lastMove,
     this.fen,
     this.pgn,
@@ -75,6 +77,7 @@ class GamesTourModel {
     String? pgn,
     int? boardNr,
     String? roundId,
+    String? roundSlug,
     DateTime? lastMoveTime,
   }) {
     return GamesTourModel(
@@ -89,6 +92,7 @@ class GamesTourModel {
       pgn: pgn ?? this.pgn,
       boardNr: boardNr ?? this.boardNr,
       roundId: roundId ?? this.roundId,
+      roundSlug: roundSlug ?? this.roundSlug,
       lastMoveTime: lastMoveTime ?? this.lastMoveTime,
     );
   }
@@ -121,6 +125,7 @@ class GamesTourModel {
         blackTimeDisplay: _formatTime(black.clock),
         gameStatus: GameStatus.fromString(game.status),
         roundId: game.roundId, // Include roundId in model
+        roundSlug: game.roundSlug, // Include roundSlug for display
         fen: game.fen?.isNotEmpty == true ? game.fen : null,
         pgn: game.pgn?.isNotEmpty == true ? game.pgn : null,
         lastMove: game.lastMove?.isNotEmpty == true ? game.lastMove : null,
