@@ -300,9 +300,9 @@ class _GameSearchResultTileState extends State<_GameSearchResultTile>
                       color: _colorAnimation.value,
                       borderRadius:
                           widget.index == 0
-                              ? const BorderRadius.only(
-                                topLeft: Radius.circular(12),
-                                topRight: Radius.circular(12),
+                              ? BorderRadius.only(
+                                topLeft: Radius.circular(12.br),
+                                topRight: Radius.circular(12.br),
                               )
                               : BorderRadius.zero,
                       border:
@@ -310,7 +310,7 @@ class _GameSearchResultTileState extends State<_GameSearchResultTile>
                               ? Border(
                                 bottom: BorderSide(
                                   color: kWhiteColor.withOpacity(0.1),
-                                  width: 1.0,
+                                  width: 1.w,
                                 ),
                               )
                               : null,
@@ -329,7 +329,7 @@ class _GameSearchResultTileState extends State<_GameSearchResultTile>
                                       _isHovered
                                           ? kWhiteColor
                                           : kWhiteColor.withOpacity(0.9),
-                                  fontSize: 14,
+                                  fontSize: 14.f,
                                   fontWeight: FontWeight.w500,
                                   letterSpacing: 0.2,
                                 ),
@@ -359,7 +359,7 @@ class _IdleState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 120,
+      height: 120.h,
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -369,7 +369,7 @@ class _IdleState extends StatelessWidget {
               size: 32.ic,
               color: kBoardLightGrey.withOpacity(0.5),
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: 12.h),
             Text(
               'Start typing to search games',
               style: TextStyle(
@@ -428,11 +428,11 @@ class _ErrorState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.all(16),
-      height: 100,
+      margin: EdgeInsets.all(16.br),
+      height: 100.h,
       decoration: BoxDecoration(
         color: kRedColor.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(12.br),
         border: Border.all(color: kRedColor.withOpacity(0.3)),
       ),
       child: Center(
