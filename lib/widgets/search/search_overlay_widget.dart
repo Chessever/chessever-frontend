@@ -1,3 +1,4 @@
+import 'dart:math' as math; // ADD
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -7,8 +8,8 @@ import 'package:chessever2/widgets/search/search_result_model.dart';
 import 'package:chessever2/widgets/search/widgets/search_result_title.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../../screens/group_event/providers/group_event_screen_provider.dart';
-import '../../screens/group_event/providers/supabase_combined_search_provider.dart';
+import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
+import 'package:chessever2/screens/group_event/providers/supabase_combined_search_provider.dart';
 
 class SearchOverlay extends ConsumerWidget {
   final String query;
@@ -22,28 +23,48 @@ class SearchOverlay extends ConsumerWidget {
     this.onPlayerTap,
   });
 
+  // Compute a responsive max height that avoids the keyboard
+  double _computeMaxHeight(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    final screenH = mq.size.height;
+    final keyboard = mq.viewInsets.bottom;
+    final topSafe = mq.padding.top;
+
+    // Reserve some space for UI above overlay (search bar, margins)
+    final reservedAbove = 120.h;
+
+    final available = screenH - topSafe - keyboard - reservedAbove;
+    final cap = screenH * 0.39; // don’t let overlay exceed 40% of screen
+    // Ensure reasonable lower bound to avoid collapsing too small
+    return available.clamp(120.h, cap);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final queries = ref.watch(searchQueryProvider);
+    final maxH = _computeMaxHeight(context);
+
     return Container(
       decoration: BoxDecoration(
-        color: Colors.grey[900],
+        color: kDarkGreyColor,
         borderRadius: BorderRadius.circular(16.br),
         border: Border.all(color: kWhiteColor.withOpacity(0.1)),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
-        child: ref
-            .watch(supabaseCombinedSearchProvider(queries))
-            .when(
-              loading: () => _buildLoadingState(),
-              error: (e, _) => _buildErrorState(e.toString()),
-              data: (searchResult) {
-                if (searchResult.isEmpty) return _buildEmptyState();
-
-                return _buildSearchResults(searchResult);
-              },
-            ),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxH),
+          child: ref
+              .watch(supabaseCombinedSearchProvider(queries))
+              .when(
+                loading: () => _buildLoadingState(maxH),
+                error: (e, _) => _buildErrorState(e.toString(), maxH),
+                data: (searchResult) {
+                  if (searchResult.isEmpty) return _buildEmptyState(maxH);
+                  return _buildSearchResults(searchResult);
+                },
+              ),
+        ),
       ),
     );
   }
@@ -52,20 +73,18 @@ class SearchOverlay extends ConsumerWidget {
     final hasTournaments = searchResult.tournamentResults.isNotEmpty;
     final hasPlayers = searchResult.playerResults.isNotEmpty;
 
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: 400.h),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _buildHeader(searchResult, hasTournaments, hasPlayers),
-          Flexible(
-            child:
-                hasTournaments && hasPlayers
-                    ? _buildTwoColumnLayout(searchResult)
-                    : _buildSingleColumnLayout(searchResult, hasTournaments),
-          ),
-        ],
-      ),
+    // Parent already constrains maxHeight; this column will flex inside it.
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildHeader(searchResult, hasTournaments, hasPlayers),
+        Flexible(
+          child:
+              hasTournaments && hasPlayers
+                  ? _buildTwoColumnLayout(searchResult)
+                  : _buildSingleColumnLayout(searchResult, hasTournaments),
+        ),
+      ],
     );
   }
 
@@ -73,7 +92,7 @@ class SearchOverlay extends ConsumerWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
+        Flexible(
           child: _buildResultColumn(
             title: 'Events',
             count: searchResult.tournamentResults.length,
@@ -82,14 +101,12 @@ class SearchOverlay extends ConsumerWidget {
             isPlayerSection: false,
           ),
         ),
-
         Container(
           width: 1,
-          color: Colors.white.withOpacity(0.1),
+          color: kWhiteColor.withOpacity(0.1),
           margin: EdgeInsets.symmetric(vertical: 8.h),
         ),
-
-        Expanded(
+        Flexible(
           child: _buildResultColumn(
             title: 'Players',
             count: searchResult.playerResults.length,
@@ -163,12 +180,12 @@ class SearchOverlay extends ConsumerWidget {
           padding: EdgeInsets.all(12.sp),
           child: Row(
             children: [
-              Icon(icon, size: 16.ic, color: Colors.blue),
+              Icon(icon, size: 16.ic, color: kDarkBlue),
               SizedBox(width: 8.w),
               Text(
                 '$title (${filteredResults.length})',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: kWhiteColor,
                   fontSize: 14.sp,
                   fontWeight: FontWeight.w600,
                 ),
@@ -176,7 +193,6 @@ class SearchOverlay extends ConsumerWidget {
             ],
           ),
         ),
-
         Flexible(
           child: ListView.builder(
             shrinkWrap: true,
@@ -210,21 +226,19 @@ class SearchOverlay extends ConsumerWidget {
         searchResult.playerResults.length;
 
     return Container(
-      padding: EdgeInsets.all(16.sp),
+      padding: EdgeInsets.all(8.sp),
       decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: Colors.white.withOpacity(0.1)),
-        ),
+        border: Border(bottom: BorderSide(color: kWhiteColor.withOpacity(0.1))),
       ),
       child: Row(
         children: [
-          Icon(Icons.search, size: 16.ic, color: Colors.blue),
+          Icon(Icons.search, size: 16.ic, color: kDarkBlue),
           SizedBox(width: 8.w),
           Expanded(
             child: Text(
               '$totalResults result${totalResults != 1 ? 's' : ''} for "$query"',
               style: TextStyle(
-                color: Colors.white,
+                color: kWhiteColor,
                 fontSize: 14.sp,
                 fontWeight: FontWeight.w500,
               ),
@@ -235,9 +249,10 @@ class SearchOverlay extends ConsumerWidget {
     );
   }
 
-  Widget _buildLoadingState() {
+  Widget _buildLoadingState(double maxHeight) {
+    final h = math.min(maxHeight, 200.h);
     return SizedBox(
-      height: 200.h,
+      height: h,
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -257,19 +272,20 @@ class SearchOverlay extends ConsumerWidget {
     );
   }
 
-  Widget _buildErrorState(String error) {
+  Widget _buildErrorState(String error, double maxHeight) {
+    final h = math.min(maxHeight, 200.h);
     return SizedBox(
-      height: 200.h,
+      height: h,
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline, size: 48.ic, color: Colors.red),
+            Icon(Icons.error_outline, size: 48.ic, color: kRedColor),
             SizedBox(height: 16.h),
             Text(
               'Search failed',
               style: TextStyle(
-                color: Colors.white,
+                color: kWhiteColor,
                 fontSize: 16.sp,
                 fontWeight: FontWeight.w500,
               ),
@@ -277,7 +293,7 @@ class SearchOverlay extends ConsumerWidget {
             SizedBox(height: 8.h),
             Text(
               error,
-              style: TextStyle(color: Colors.grey[400], fontSize: 12.sp),
+              style: TextStyle(color: kBoardLightGrey, fontSize: 12.sp),
               textAlign: TextAlign.center,
               maxLines: 2,
             ),
@@ -287,9 +303,10 @@ class SearchOverlay extends ConsumerWidget {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(double maxHeight) {
+    final h = math.min(maxHeight, 200.h);
     return SizedBox(
-      height: 200.h,
+      height: h,
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -299,7 +316,7 @@ class SearchOverlay extends ConsumerWidget {
             Text(
               'No results found',
               style: TextStyle(
-                color: Colors.white,
+                color: kWhiteColor,
                 fontSize: 16.sp,
                 fontWeight: FontWeight.w500,
               ),
@@ -307,7 +324,7 @@ class SearchOverlay extends ConsumerWidget {
             SizedBox(height: 8.h),
             Text(
               'Try different keywords for "$query"',
-              style: TextStyle(color: Colors.grey[400], fontSize: 14.sp),
+              style: TextStyle(color: kBoardLightGrey, fontSize: 14.sp),
               textAlign: TextAlign.center,
             ),
           ],
