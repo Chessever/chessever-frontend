@@ -1,4 +1,6 @@
 import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/search/gameSearch/game_search_overlay.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -169,7 +171,7 @@ class _EnhancedGamesSearchBarState extends ConsumerState<EnhancedGamesSearchBar>
                     alignment: Alignment.topCenter,
                     heightFactor: _overlayAnimation.value,
                     child: Container(
-                      margin: const EdgeInsets.only(top: 8),
+                      margin: EdgeInsets.only(top: 8.sp),
                       child: Transform.translate(
                         offset: Offset(0, (1 - _overlayAnimation.value) * -20),
                         child: Opacity(
@@ -196,24 +198,24 @@ class _EnhancedGamesSearchBarState extends ConsumerState<EnhancedGamesSearchBar>
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
-      margin: const EdgeInsets.symmetric(horizontal: 20),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      margin: EdgeInsets.symmetric(horizontal: 20.sp),
+      padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
       decoration: BoxDecoration(
         color: Colors.grey[900],
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(8.br),
         border: Border.all(
           color:
               _focusNode.hasFocus
-                  ? Colors.blue.withOpacity(0.5)
+                  ? kDarkBlue.withOpacity(0.5)
                   : Colors.transparent,
-          width: 2,
+          width: 2.w,
         ),
         boxShadow:
             _focusNode.hasFocus
                 ? [
                   BoxShadow(
-                    color: Colors.blue.withOpacity(0.15),
-                    blurRadius: 12,
+                    color: kDarkBlue.withOpacity(0.15),
+                    blurRadius: 12.br,
                     offset: const Offset(0, 4),
                   ),
                 ]
@@ -227,21 +229,21 @@ class _EnhancedGamesSearchBarState extends ConsumerState<EnhancedGamesSearchBar>
             child: Icon(
               Icons.search,
               color: _focusNode.hasFocus ? Colors.blue : Colors.white70,
-              size: 20,
+              size: 20.ic,
             ),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: 12.w),
 
           Expanded(
             child: TextField(
               controller: widget.controller,
               focusNode: _focusNode,
               autofocus: widget.autofocus,
-              style: const TextStyle(color: Colors.white70, fontSize: 16),
+              style: TextStyle(color: kWhiteColor70, fontSize: 16.f),
               onChanged: _handleTextChange, // Single handler
               decoration: InputDecoration(
                 hintText: widget.hintText,
-                hintStyle: const TextStyle(color: Colors.white70),
+                hintStyle: const TextStyle(color: kWhiteColor70),
                 border: InputBorder.none,
                 isDense: true,
                 contentPadding: EdgeInsets.zero,
@@ -252,12 +254,12 @@ class _EnhancedGamesSearchBarState extends ConsumerState<EnhancedGamesSearchBar>
           GestureDetector(
             onTap: widget.onClose ?? _hideOverlay,
             child: Container(
-              padding: const EdgeInsets.all(4),
+              padding: EdgeInsets.all(4.sp),
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.close, color: Colors.white70, size: 16),
+              child: Icon(Icons.close, color: kWhiteColor70, size: 16.ic),
             ),
           ),
         ],
