@@ -1,4 +1,3 @@
-// models/game_card.dart
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:dartchess/dartchess.dart';
 
@@ -6,19 +5,27 @@ class GamesScreenModel {
   GamesScreenModel({
     required this.gamesTourModels,
     required this.pinnedGamedIs,
+    this.isSearchMode = false,
+    this.searchQuery,
   });
 
   final List<GamesTourModel> gamesTourModels;
   final List<String> pinnedGamedIs;
+  final bool isSearchMode;
+  final String? searchQuery;
 
   GamesScreenModel copyWith({
     List<GamesTourModel>? gamesTourModels,
     List<String>? pinnedGamedIs,
     int? scrollToIndex,
+    bool? isSearchMode,
+    String? searchQuery,
   }) {
     return GamesScreenModel(
       gamesTourModels: gamesTourModels ?? this.gamesTourModels,
       pinnedGamedIs: pinnedGamedIs ?? this.pinnedGamedIs,
+      isSearchMode: isSearchMode ?? this.isSearchMode,
+      searchQuery: searchQuery ?? this.searchQuery,
     );
   }
 
