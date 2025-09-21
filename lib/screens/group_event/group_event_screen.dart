@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:chessever2/screens/group_event/widget/all_events_tab_widget.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/home/home_screen.dart';
 import 'package:chessever2/screens/home/home_screen_provider.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
@@ -8,7 +9,7 @@ import 'package:chessever2/screens/group_event/providers/sorting_all_event_provi
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/event_card/starred_provider.dart';
-import 'package:chessever2/widgets/filter_popup.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
@@ -165,6 +166,7 @@ class GroupEventScreen extends HookConsumerWidget {
             selectedTourEvent: selectedTourEvent,
             onSelectedChanged: (index) {
               final newCategory = GroupEventCategory.values[index];
+              ref.invalidate(filterPopupProvider);
               ref.read(selectedGroupCategoryProvider.notifier).state =
                   newCategory;
             },
