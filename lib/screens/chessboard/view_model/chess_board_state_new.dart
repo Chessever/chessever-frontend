@@ -145,7 +145,7 @@ class ChessBoardStateNew {
       isPlaying: isPlaying ?? this.isPlaying,
       isBoardFlipped: isBoardFlipped ?? this.isBoardFlipped,
       isLoadingMoves: isLoadingMoves ?? this.isLoadingMoves,
-      evaluation: evaluation ?? 0,
+      evaluation: evaluation ?? this.evaluation,
       game: game ?? this.game,
       pgnData: pgnData ?? this.pgnData,
       fenData: fenData ?? this.fenData,
