@@ -2,7 +2,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
-import 'package:chessever2/widgets/filter_popup.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup.dart';
 import 'package:chessever2/widgets/icons/analysis_board_icon.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart';
