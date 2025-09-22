@@ -52,6 +52,7 @@ class GameCard extends ConsumerWidget {
                 );
               },
             ),
+            if (isPinned) PinIconOverlay(right: 8.sp, top: 4.sp),
           ],
         ),
       ),
@@ -111,7 +112,7 @@ class GameCard extends ConsumerWidget {
                             gamesTourModel: gamesTourModel,
                             onTapDown: (_) {},
                           ),
-                          if (isPinned) PinIconOverlay(right: 8.sp, top: 8.sp),
+                          if (isPinned) PinIconOverlay(right: 8.sp, top: 4.sp),
                         ],
                       ),
                     ),
