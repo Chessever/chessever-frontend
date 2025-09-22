@@ -47,6 +47,8 @@ class GamesTourModel {
   final PlayerCard blackPlayer;
   final String whiteTimeDisplay;
   final String blackTimeDisplay;
+  final int whiteClockCentiseconds;
+  final int blackClockCentiseconds;
   final GameStatus gameStatus;
   final String? fen;
   final String? pgn;
@@ -62,6 +64,8 @@ class GamesTourModel {
     required this.blackPlayer,
     required this.whiteTimeDisplay,
     required this.blackTimeDisplay,
+    required this.whiteClockCentiseconds,
+    required this.blackClockCentiseconds,
     required this.gameStatus,
     required this.roundId, // Make required
     this.roundSlug,
@@ -78,6 +82,8 @@ class GamesTourModel {
     PlayerCard? blackPlayer,
     String? whiteTimeDisplay,
     String? blackTimeDisplay,
+    int? whiteClockCentiseconds,
+    int? blackClockCentiseconds,
     GameStatus? gameStatus,
     String? lastMove,
     String? fen,
@@ -93,6 +99,8 @@ class GamesTourModel {
       blackPlayer: blackPlayer ?? this.blackPlayer,
       whiteTimeDisplay: whiteTimeDisplay ?? this.whiteTimeDisplay,
       blackTimeDisplay: blackTimeDisplay ?? this.blackTimeDisplay,
+      whiteClockCentiseconds: whiteClockCentiseconds ?? this.whiteClockCentiseconds,
+      blackClockCentiseconds: blackClockCentiseconds ?? this.blackClockCentiseconds,
       gameStatus: gameStatus ?? this.gameStatus,
       lastMove: lastMove ?? this.lastMove,
       fen: fen ?? this.fen,
@@ -130,6 +138,8 @@ class GamesTourModel {
         blackPlayer: PlayerCard.fromPlayer(black),
         whiteTimeDisplay: _formatTime(white.clock),
         blackTimeDisplay: _formatTime(black.clock),
+        whiteClockCentiseconds: white.clock,
+        blackClockCentiseconds: black.clock,
         gameStatus: GameStatus.fromString(game.status),
         roundId: game.roundId, // Include roundId in model
         roundSlug: game.roundSlug, // Include roundSlug for display
@@ -146,14 +156,14 @@ class GamesTourModel {
     }
   }
 
-  static String _formatTime(int? clockTimeMs) {
+  static String _formatTime(int? clockTimeCentiseconds) {
     // Enhanced null safety for clock time
-    if (clockTimeMs == null || clockTimeMs < 0) {
+    if (clockTimeCentiseconds == null || clockTimeCentiseconds < 0) {
       return '--:--';
     }
 
-    // Convert milliseconds to minutes and seconds
-    final totalSeconds = (clockTimeMs / 1000).floor();
+    // Convert centiseconds (1/100 second) to seconds
+    final totalSeconds = (clockTimeCentiseconds / 100).floor();
     final minutes = totalSeconds ~/ 60;
     final seconds = totalSeconds % 60;
 
@@ -206,6 +216,8 @@ class GamesTourModel {
         other.blackPlayer == blackPlayer &&
         other.whiteTimeDisplay == whiteTimeDisplay &&
         other.blackTimeDisplay == blackTimeDisplay &&
+        other.whiteClockCentiseconds == whiteClockCentiseconds &&
+        other.blackClockCentiseconds == blackClockCentiseconds &&
         other.gameStatus == gameStatus &&
         other.lastMove == lastMove &&
         other.fen == fen &&
@@ -221,6 +233,8 @@ class GamesTourModel {
         blackPlayer.hashCode ^
         whiteTimeDisplay.hashCode ^
         blackTimeDisplay.hashCode ^
+        whiteClockCentiseconds.hashCode ^
+        blackClockCentiseconds.hashCode ^
         gameStatus.hashCode ^
         (lastMove?.hashCode ?? 0) ^
         (fen?.hashCode ?? 0) ^
