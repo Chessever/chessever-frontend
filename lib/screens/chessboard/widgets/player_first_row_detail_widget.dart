@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
+import 'package:chessever2/screens/chessboard/widgets/context_pop_up_menu.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -22,8 +23,8 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
   final PlayerView playerView;
   final GamesTourModel gamesTourModel;
   final bool isWhitePlayer;
-  final ChessBoardStateNew?
-  chessBoardState; // Optional state for move time calculation
+  final ChessBoardStateNew? chessBoardState;
+  final bool isPinned;
 
   const PlayerFirstRowDetailWidget({
     super.key,
@@ -32,6 +33,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     required this.gamesTourModel,
     this.isCurrentPlayer = false,
     this.chessBoardState,
+    this.isPinned = false,
   });
 
   @override
@@ -201,7 +203,10 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                     overflow: TextOverflow.ellipsis,
                     text: TextSpan(
                       children: [
-                        TextSpan(text: '${playerCard.title} ', style: rankStyle),
+                        TextSpan(
+                          text: '${playerCard.title} ',
+                          style: rankStyle,
+                        ),
                         TextSpan(text: '${playerCard.name} ', style: nameStyle),
                         TextSpan(
                           text: '${playerCard.rating}',
@@ -214,31 +219,30 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               ],
             ),
           ),
+          if (isPinned) ...[PinIconOverlay(), SizedBox(width: 4.w)],
 
           // Show score for finished games at latest move, or time otherwise
           isShowingScore
               ? Container(
-                  padding: EdgeInsets.symmetric(horizontal: 4.sp),
-                  decoration: BoxDecoration(
-                    color: Colors.transparent,
-                  ),
-                  child: Text(
-                    gamesTourModel.gameStatus == GameStatus.whiteWins
-                        ? (isWhitePlayer ? '1' : '0')
-                        : gamesTourModel.gameStatus == GameStatus.blackWins
-                        ? (isWhitePlayer ? '0' : '1')
-                        : '½',
-                    style: timeStyle,
-                  ),
-                )
-              : _PlayerClock(
-                  isWhitePlayer: isWhitePlayer,
-                  gamesTourModel: gamesTourModel,
-                  chessBoardState: chessBoardState,
-                  isCurrentPlayer: isCurrentPlayer,
-                  timeStyle: timeStyle,
-                  moveTime: moveTime,
+                padding: EdgeInsets.symmetric(horizontal: 4.sp),
+                decoration: BoxDecoration(color: Colors.transparent),
+                child: Text(
+                  gamesTourModel.gameStatus == GameStatus.whiteWins
+                      ? (isWhitePlayer ? '1' : '0')
+                      : gamesTourModel.gameStatus == GameStatus.blackWins
+                      ? (isWhitePlayer ? '0' : '1')
+                      : '½',
+                  style: timeStyle,
                 ),
+              )
+              : _PlayerClock(
+                isWhitePlayer: isWhitePlayer,
+                gamesTourModel: gamesTourModel,
+                chessBoardState: chessBoardState,
+                isCurrentPlayer: isCurrentPlayer,
+                timeStyle: timeStyle,
+                moveTime: moveTime,
+              ),
           SizedBox(width: 8.w),
         ],
       ),
@@ -266,66 +270,70 @@ class _PlayerClock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Determine if this player's clock should be counting down
-    final isClockRunning = gamesTourModel.gameStatus.isOngoing &&
+    final isClockRunning =
+        gamesTourModel.gameStatus.isOngoing &&
         gamesTourModel.lastMoveTime != null &&
         gamesTourModel.activePlayer != null &&
         ((isWhitePlayer && gamesTourModel.activePlayer == Side.white) ||
-         (!isWhitePlayer && gamesTourModel.activePlayer == Side.black));
+            (!isWhitePlayer && gamesTourModel.activePlayer == Side.black));
 
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 4.sp),
       decoration: BoxDecoration(
         color: isCurrentPlayer ? kDarkBlue : Colors.transparent,
       ),
-      child: isClockRunning
-          ? HookConsumer(builder: (context, ref, child) {
-              final displayTime = ref.watch(dateTimeProvider.select((timeAsync) {
-                final currentTime = timeAsync.valueOrNull;
-                if (currentTime == null || gamesTourModel.lastMoveTime == null) {
-                  return moveTime ?? '--:--';
-                }
+      child:
+          isClockRunning
+              ? HookConsumer(
+                builder: (context, ref, child) {
+                  final displayTime = ref.watch(
+                    dateTimeProvider.select((timeAsync) {
+                      final currentTime = timeAsync.valueOrNull;
+                      if (currentTime == null ||
+                          gamesTourModel.lastMoveTime == null) {
+                        return moveTime ?? '--:--';
+                      }
 
-                // Parse static time to get total milliseconds
-                final staticTime = moveTime ?? '--:--';
-                final timeParts = staticTime.split(':');
-                if (timeParts.length != 2) {
-                  return staticTime;
-                }
+                      // Parse static time to get total milliseconds
+                      final staticTime = moveTime ?? '--:--';
+                      final timeParts = staticTime.split(':');
+                      if (timeParts.length != 2) {
+                        return staticTime;
+                      }
 
-                try {
-                  final minutes = int.parse(timeParts[0]);
-                  final seconds = int.parse(timeParts[1]);
-                  final totalMs = (minutes * 60 + seconds) * 1000;
+                      try {
+                        final minutes = int.parse(timeParts[0]);
+                        final seconds = int.parse(timeParts[1]);
+                        final totalMs = (minutes * 60 + seconds) * 1000;
 
-                  // Calculate remaining time
-                  final elapsedMs = currentTime.difference(gamesTourModel.lastMoveTime!).inMilliseconds;
-                  final remainingMs = totalMs - elapsedMs;
+                        // Calculate remaining time
+                        final elapsedMs =
+                            currentTime
+                                .difference(gamesTourModel.lastMoveTime!)
+                                .inMilliseconds;
+                        final remainingMs = totalMs - elapsedMs;
 
-                  // Ensure time doesn't go below 0
-                  if (remainingMs <= 0) {
-                    return '00:00';
-                  }
+                        // Ensure time doesn't go below 0
+                        if (remainingMs <= 0) {
+                          return '00:00';
+                        }
 
-                  // Format the remaining time
-                  final remainingSeconds = (remainingMs / 1000).floor();
-                  final displayMinutes = remainingSeconds ~/ 60;
-                  final displaySecondsRem = remainingSeconds % 60;
+                        // Format the remaining time
+                        final remainingSeconds = (remainingMs / 1000).floor();
+                        final displayMinutes = remainingSeconds ~/ 60;
+                        final displaySecondsRem = remainingSeconds % 60;
 
-                  return '${displayMinutes.toString().padLeft(2, '0')}:${displaySecondsRem.toString().padLeft(2, '0')}';
-                } catch (e) {
-                  return staticTime;
-                }
-              }));
+                        return '${displayMinutes.toString().padLeft(2, '0')}:${displaySecondsRem.toString().padLeft(2, '0')}';
+                      } catch (e) {
+                        return staticTime;
+                      }
+                    }),
+                  );
 
-              return Text(
-                displayTime,
-                style: timeStyle,
-              );
-            })
-          : Text(
-              moveTime ?? '--:--',
-              style: timeStyle,
-            ),
+                  return Text(displayTime, style: timeStyle);
+                },
+              )
+              : Text(moveTime ?? '--:--', style: timeStyle),
     );
   }
 }
