@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
@@ -97,9 +99,37 @@ final supabaseCombinedSearchProvider =
         };
 
         int deltaPlayer(SearchResult r) {
-          final b = broadcastById[r.tournament.id]!; // original broadcast
+          final b = broadcastById[r.tournament.id]!;
           return (b.dateStart?.difference(now).abs().inSeconds ?? 999999);
         }
+
+        final qLower = query.trim().toLowerCase();
+        final int minMatchLen = (qLower.length * 0.7).ceil();
+
+        playerResults.retainWhere((r) {
+          final mLower = r.matchedText.toLowerCase();
+          int lcs(String a, String b) {
+            if (a.isEmpty || b.isEmpty) return 0;
+            final List<int> prev = List.filled(b.length + 1, 0),
+                curr = List.filled(b.length + 1, 0);
+            int best = 0;
+            for (int i = 1; i <= a.length; i++) {
+              for (int j = 1; j <= b.length; j++) {
+                if (a[i - 1] == b[j - 1]) {
+                  curr[j] = prev[j - 1] + 1;
+                  best = math.max(best, curr[j]);
+                } else {
+                  curr[j] = 0;
+                }
+              }
+              prev.setAll(0, curr);
+            }
+            return best;
+          }
+
+          final common = lcs(qLower, mLower);
+          return common >= minMatchLen;
+        });
 
         playerResults.sort((a, b) {
           final qLower = query.trim().toLowerCase();
@@ -123,7 +153,9 @@ final supabaseCombinedSearchProvider =
           // 4. alphabetical
           return a.matchedText.compareTo(b.matchedText);
         });
-
+        if (playerResults.length > 20) {
+          playerResults.removeRange(20, playerResults.length);
+        }
         return EnhancedSearchResult(
           tournamentResults: tournamentResults,
           playerResults: playerResults,
