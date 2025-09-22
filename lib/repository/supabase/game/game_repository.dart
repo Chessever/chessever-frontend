@@ -40,13 +40,15 @@ class GameRepository extends BaseRepository {
           last_move,
           think_time,
           status,
+          pgn,
           search,
           lichess_id,
           player_white,
           player_black,
           date_start,
           time_start,
-          board_nr
+          board_nr,
+          last_move_time
         ''')
           .eq('tour_id', tourId)
           .order('id', ascending: true);
