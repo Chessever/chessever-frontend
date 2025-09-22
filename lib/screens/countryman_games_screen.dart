@@ -85,6 +85,15 @@ class CountrymanGamesList extends ConsumerWidget {
                   child:
                       isChessBoardVisible
                           ? ChessBoardFromFENNew(
+                            pinnedIds: data.pinnedGamedIs,
+
+                            onPinToggle: (gamesTourModel) async {
+                              await ref
+                                  .read(
+                                    countrymanGamesTourScreenProvider.notifier,
+                                  )
+                                  .togglePinGame(gamesTourModel.gameId);
+                            },
                             onChanged: () {
                               ref
                                   .read(chessboardViewFromProviderNew.notifier)
