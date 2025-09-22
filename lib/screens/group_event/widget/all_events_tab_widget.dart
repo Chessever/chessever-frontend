@@ -139,7 +139,7 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget>
               },
             );
             break;
-        }
+        } 
 
         return AnimatedBuilder(
           animation: _animationController,
