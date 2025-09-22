@@ -32,6 +32,8 @@ class GameCardWrapperWidget extends ConsumerWidget {
           key: ValueKey(keyValue),
           gamesTourModel: game,
           onChanged: () => _navigateToChessBoard(context, ref),
+          pinnedIds: gamesData.pinnedGamedIs,
+          onPinToggle: (_) => _handlePinToggle(ref),
         )
         : GameCard(
           key: ValueKey(keyValue),
@@ -59,9 +61,11 @@ class GameCardWrapperWidget extends ConsumerWidget {
             ),
       ),
     );
-
+ 
     // If a different index was returned from the chessboard, notify the parent
-    if (returnedIndex != null && returnedIndex != gameIndex && onReturnFromChessboard != null) {
+    if (returnedIndex != null &&
+        returnedIndex != gameIndex &&
+        onReturnFromChessboard != null) {
       onReturnFromChessboard!(returnedIndex);
     }
   }

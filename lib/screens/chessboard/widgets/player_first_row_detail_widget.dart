@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
+import 'package:chessever2/screens/chessboard/widgets/context_pop_up_menu.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -22,8 +23,8 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
   final PlayerView playerView;
   final GamesTourModel gamesTourModel;
   final bool isWhitePlayer;
-  final ChessBoardStateNew?
-  chessBoardState; // Optional state for move time calculation
+  final ChessBoardStateNew? chessBoardState;
+  final bool isPinned;
 
   const PlayerFirstRowDetailWidget({
     super.key,
@@ -32,6 +33,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     required this.gamesTourModel,
     this.isCurrentPlayer = false,
     this.chessBoardState,
+    this.isPinned = false,
   });
 
   @override
@@ -66,9 +68,10 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
       }
 
       // Fallback to game model's time display (which comes from database or PGN)
-      calculatedMoveTime ??= isWhitePlayer
-          ? gamesTourModel.whiteTimeDisplay
-          : gamesTourModel.blackTimeDisplay;
+      calculatedMoveTime ??=
+          isWhitePlayer
+              ? gamesTourModel.whiteTimeDisplay
+              : gamesTourModel.blackTimeDisplay;
 
       return calculatedMoveTime;
     }, [chessBoardState, isWhitePlayer, gamesTourModel]);
@@ -208,7 +211,10 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                     overflow: TextOverflow.ellipsis,
                     text: TextSpan(
                       children: [
-                        TextSpan(text: '${playerCard.title} ', style: rankStyle),
+                        TextSpan(
+                          text: '${playerCard.title} ',
+                          style: rankStyle,
+                        ),
                         TextSpan(text: '${playerCard.name} ', style: nameStyle),
                         TextSpan(
                           text: '${playerCard.rating}',
@@ -221,37 +227,36 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               ],
             ),
           ),
+          if (isPinned) ...[PinIconOverlay(), SizedBox(width: 4.w)],
 
           // Show score for finished games at latest move, or time otherwise
           isShowingScore
               ? Container(
-                  padding: EdgeInsets.symmetric(horizontal: 4.sp),
-                  decoration: BoxDecoration(
-                    color: Colors.transparent,
-                  ),
-                  child: Text(
-                    gamesTourModel.gameStatus == GameStatus.whiteWins
-                        ? (isWhitePlayer ? '1' : '0')
-                        : gamesTourModel.gameStatus == GameStatus.blackWins
-                        ? (isWhitePlayer ? '0' : '1')
-                        : '½',
-                    style: timeStyle,
-                  ),
-                )
-              : Container(
-                  padding: EdgeInsets.symmetric(horizontal: 4.sp),
-                  decoration: BoxDecoration(
-                    color: isCurrentPlayer ? kDarkBlue : Colors.transparent,
-                  ),
-                  child: _PlayerClock(
-                    isWhitePlayer: isWhitePlayer,
-                    gamesTourModel: gamesTourModel,
-                    chessBoardState: chessBoardState,
-                    isCurrentPlayer: isCurrentPlayer,
-                    timeStyle: timeStyle,
-                    moveTime: moveTime,
-                  ),
+                padding: EdgeInsets.symmetric(horizontal: 4.sp),
+                decoration: BoxDecoration(color: Colors.transparent),
+                child: Text(
+                  gamesTourModel.gameStatus == GameStatus.whiteWins
+                      ? (isWhitePlayer ? '1' : '0')
+                      : gamesTourModel.gameStatus == GameStatus.blackWins
+                      ? (isWhitePlayer ? '0' : '1')
+                      : '½',
+                  style: timeStyle,
                 ),
+              )
+              : Container(
+                padding: EdgeInsets.symmetric(horizontal: 4.sp),
+                decoration: BoxDecoration(
+                  color: isCurrentPlayer ? kDarkBlue : Colors.transparent,
+                ),
+                child: _PlayerClock(
+                  isWhitePlayer: isWhitePlayer,
+                  gamesTourModel: gamesTourModel,
+                  chessBoardState: chessBoardState,
+                  isCurrentPlayer: isCurrentPlayer,
+                  timeStyle: timeStyle,
+                  moveTime: moveTime,
+                ),
+              ),
           SizedBox(width: 8.w),
         ],
       ),
@@ -279,21 +284,24 @@ class _PlayerClock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Determine if this player's clock should be counting down
-    final isClockRunning = gamesTourModel.gameStatus.isOngoing &&
+    final isClockRunning =
+        gamesTourModel.gameStatus.isOngoing &&
         gamesTourModel.lastMoveTime != null &&
         gamesTourModel.activePlayer != null &&
         ((isWhitePlayer && gamesTourModel.activePlayer == Side.white) ||
-         (!isWhitePlayer && gamesTourModel.activePlayer == Side.black));
+            (!isWhitePlayer && gamesTourModel.activePlayer == Side.black));
 
     // Use atomic countdown text widget for optimized rebuilds
     // Get the raw clock centiseconds for this player as fallback
-    final clockCentiseconds = isWhitePlayer
-        ? gamesTourModel.whiteClockCentiseconds
-        : gamesTourModel.blackClockCentiseconds;
+    final clockCentiseconds =
+        isWhitePlayer
+            ? gamesTourModel.whiteClockCentiseconds
+            : gamesTourModel.blackClockCentiseconds;
 
     return AtomicCountdownText(
       moveTime: moveTime, // Primary source: calculated from chessBoardState
-      clockCentiseconds: clockCentiseconds, // Fallback source: raw database clock
+      clockCentiseconds:
+          clockCentiseconds, // Fallback source: raw database clock
       lastMoveTime: gamesTourModel.lastMoveTime,
       isActive: isClockRunning,
       style: timeStyle,
