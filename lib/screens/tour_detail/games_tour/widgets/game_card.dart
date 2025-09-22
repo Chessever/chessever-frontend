@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/chess_progress_bar.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -7,14 +5,13 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/atomic_countdown_text.dart';
-import 'package:chessever2/widgets/back_drop_filter_widget.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
+import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:chessever2/screens/chessboard/widgets/context_pop_up_menu.dart';
 
 class GameCard extends ConsumerWidget {
   const GameCard({
@@ -34,113 +31,38 @@ class GameCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return InkWell(
+    return GestureDetector(
       onTap: onTap,
-      child: Column(
-        children: [
-          Container(
-            height: 60.h,
-            padding: EdgeInsets.only(left: 12.sp),
-            decoration: BoxDecoration(
-              color: kWhiteColor70,
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(12.br),
-                topRight: Radius.circular(12.br),
-              ),
+      onLongPressStart: (details) {
+        HapticFeedback.lightImpact();
+        _showBlurredPopup(context, details: details, tapDownDetails: null);
+      },
+      child: SizedBox(
+        width: double.infinity,
+        child: Stack(
+          children: [
+            _GameCardContent(
+              gamesTourModel: gamesTourModel,
+              onTapDown: (tapDownDetails) {
+                HapticFeedback.lightImpact();
+                _showBlurredPopup(
+                  context,
+                  details: null,
+                  tapDownDetails: tapDownDetails,
+                );
+              },
             ),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: MediaQuery.of(context).size.width * (30 / 100),
-                  child: _GamesRound(
-                    playerName: gamesTourModel.whitePlayer.name,
-                    playerRank:
-                        '${gamesTourModel.whitePlayer.title} ${gamesTourModel.whitePlayer.rating}',
-                    countryCode: gamesTourModel.whitePlayer.countryCode,
-                  ),
-                ),
-                Spacer(),
-                (gamesTourModel.gameStatus == GameStatus.ongoing)
-                    ? ChessProgressBar(fen: gamesTourModel.fen ?? '')
-                    : _StatusText(
-                      status: gamesTourModel.gameStatus.displayText,
-                    ),
-                Spacer(),
-                SizedBox(
-                  width: MediaQuery.of(context).size.width * (30 / 100),
-                  child: _GamesRound(
-                    playerName: gamesTourModel.blackPlayer.name,
-                    playerRank:
-                        '${gamesTourModel.blackPlayer.title} ${gamesTourModel.blackPlayer.rating}',
-                    countryCode: gamesTourModel.blackPlayer.countryCode,
-                  ),
-                ),
-                Spacer(),
-                Stack(
-                  alignment: Alignment.topRight,
-                  children: [
-                    if (isPinned) ...[
-                      Positioned(
-                        left: 4.sp,
-                        child: SvgPicture.asset(
-                          SvgAsset.pin,
-                          color: kpinColor,
-                          height: 14.h,
-                          width: 14.w,
-                        ),
-                      ),
-                    ],
-                    Align(
-                      alignment: Alignment.center,
-                      child: GestureDetector(
-                        onTapDown: (TapDownDetails details) {
-                          _showBlurredPopup(context, details);
-                        },
-                        child: Icon(
-                          Icons.more_vert_rounded,
-                          color: kBlackColor,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          Container(
-            height: 24.h,
-            padding: EdgeInsets.symmetric(horizontal: 10.sp),
-            decoration: BoxDecoration(
-              color: kBlack2Color,
-              borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(12.br),
-                bottomRight: Radius.circular(12.br),
-              ),
-            ),
-            child: Row(
-              children: [
-                _TimerWidget(
-                  turn: gamesTourModel.activePlayer == Side.white,
-                  time: gamesTourModel.whiteTimeDisplay,
-                  gamesTourModel: gamesTourModel,
-                  isWhitePlayer: true,
-                ),
-                Spacer(),
-                _TimerWidget(
-                  turn: gamesTourModel.activePlayer == Side.black,
-                  time: gamesTourModel.blackTimeDisplay,
-                  gamesTourModel: gamesTourModel,
-                  isWhitePlayer: false,
-                ),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  void _showBlurredPopup(BuildContext context, TapDownDetails details) {
+  void _showBlurredPopup(
+    BuildContext context, {
+    required LongPressStartDetails? details,
+    required TapDownDetails? tapDownDetails,
+  }) {
     final RenderBox cardRenderBox = context.findRenderObject() as RenderBox;
     final Offset cardPosition = cardRenderBox.localToGlobal(Offset.zero);
     final Size cardSize = cardRenderBox.size;
@@ -171,9 +93,9 @@ class GameCard extends ConsumerWidget {
             onTap: () => Navigator.of(context).pop(),
             child: Stack(
               children: [
-                _SelectiveBlurBackground(
-                  cardPosition: cardPosition,
-                  cardSize: cardSize,
+                SelectiveBlurBackground(
+                  clearPosition: cardPosition,
+                  clearSize: cardSize,
                 ),
                 Positioned(
                   left: cardPosition.dx,
@@ -183,199 +105,33 @@ class GameCard extends ConsumerWidget {
                     child: SizedBox(
                       width: cardSize.width,
                       height: cardSize.height,
-                      child: Column(
+                      child: Stack(
                         children: [
-                          Container(
-                            height: 60.h,
-                            padding: EdgeInsets.only(left: 12.sp),
-                            decoration: BoxDecoration(
-                              color: kWhiteColor70,
-                              borderRadius: BorderRadius.only(
-                                topLeft: Radius.circular(12.br),
-                                topRight: Radius.circular(12.br),
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                SizedBox(
-                                  width:
-                                      MediaQuery.of(context).size.width *
-                                      (30 / 100),
-                                  child: _GamesRound(
-                                    playerName: gamesTourModel.whitePlayer.name,
-                                    playerRank:
-                                        '${gamesTourModel.whitePlayer.title} ${gamesTourModel.whitePlayer.rating}',
-                                    countryCode:
-                                        gamesTourModel.whitePlayer.countryCode,
-                                  ),
-                                ),
-                                Spacer(),
-                                (gamesTourModel.gameStatus ==
-                                        GameStatus.ongoing)
-                                    ? ChessProgressBar(
-                                      fen: gamesTourModel.fen ?? "",
-                                    )
-                                    : _StatusText(
-                                      status:
-                                          gamesTourModel.gameStatus.displayText,
-                                    ),
-                                Spacer(),
-                                SizedBox(
-                                  width:
-                                      MediaQuery.of(context).size.width *
-                                      (30 / 100),
-                                  child: _GamesRound(
-                                    playerName: gamesTourModel.blackPlayer.name,
-                                    playerRank:
-                                        '${gamesTourModel.blackPlayer.title} ${gamesTourModel.blackPlayer.rating}',
-                                    countryCode:
-                                        gamesTourModel.blackPlayer.countryCode,
-                                  ),
-                                ),
-                                Spacer(),
-                                Stack(
-                                  alignment: Alignment.topRight,
-                                  children: [
-                                    if (isPinned) ...[
-                                      Positioned(
-                                        left: 4.sp,
-                                        child: SvgPicture.asset(
-                                          SvgAsset.pin,
-                                          color: kpinColor,
-                                          height: 14.h,
-                                          width: 14.w,
-                                        ),
-                                      ),
-                                    ],
-                                    Align(
-                                      alignment: Alignment.center,
-                                      child: Icon(
-                                        Icons.more_vert_rounded,
-                                        color: kBlackColor,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
+                          _GameCardContent(
+                            gamesTourModel: gamesTourModel,
+                            onTapDown: (_) {},
                           ),
-                          Container(
-                            height: 24.h,
-                            padding: EdgeInsets.symmetric(horizontal: 10.sp),
-                            decoration: BoxDecoration(
-                              color: kBlack2Color,
-                              borderRadius: BorderRadius.only(
-                                bottomLeft: Radius.circular(12.br),
-                                bottomRight: Radius.circular(12.br),
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                _TimerWidget(
-                                  turn: gamesTourModel.activePlayer == Side.white,
-                                  time: gamesTourModel.whiteTimeDisplay,
-                                  gamesTourModel: gamesTourModel,
-                                  isWhitePlayer: true,
-                                ),
-                                Spacer(),
-                                _TimerWidget(
-                                  turn: gamesTourModel.activePlayer == Side.black,
-                                  time: gamesTourModel.blackTimeDisplay,
-                                  gamesTourModel: gamesTourModel,
-                                  isWhitePlayer: false,
-                                ),
-                              ],
-                            ),
-                          ),
+                          if (isPinned) PinIconOverlay(right: 8.sp, top: 8.sp),
                         ],
                       ),
                     ),
                   ),
                 ),
-                // Popup menu
                 Positioned(
-                  left: details.globalPosition.dx - 120.w,
+                  left:
+                      (details?.globalPosition.dx ??
+                          tapDownDetails!.globalPosition.dx) -
+                      60.w,
                   top: menuTop,
-                  child: GestureDetector(
-                    onTap: () {},
-                    child: Material(
-                      color: Colors.transparent,
-                      child: Container(
-                        width: 120.w,
-                        decoration: BoxDecoration(
-                          color: kDarkGreyColor,
-                          borderRadius: BorderRadius.circular(12.br),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.3),
-                              blurRadius: 10,
-                              offset: Offset(0, 5),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _PopupMenuItem(
-                              onTap: () {
-                                Navigator.pop(context);
-                                onPinToggle(gamesTourModel);
-                              },
-                              child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      isPinned ? "Unpin" : "Pin to Top",
-                                      style: AppTypography.textXsMedium
-                                          .copyWith(color: kWhiteColor),
-                                    ),
-                                  ),
-                                  SizedBox(width: 8.w),
-                                  SvgPicture.asset(
-                                    SvgAsset.pin,
-                                    height: 13.h,
-                                    width: 13.w,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Container(
-                              height: 1.h,
-                              width: double.infinity,
-                              margin: EdgeInsets.symmetric(horizontal: 12.sp),
-                              color: kDividerColor,
-                            ),
-                            _PopupMenuItem(
-                              onTap: () {
-                                Navigator.pop(context);
-                                // Handle share
-                              },
-                              child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      "Share",
-                                      style: AppTypography.textXsMedium
-                                          .copyWith(color: kWhiteColor),
-                                    ),
-                                  ),
-                                  SizedBox(width: 8.w),
-                                  SvgPicture.asset(
-                                    SvgAsset.share,
-                                    height: 13.h,
-                                    width: 13.w,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+                  child: ContextPopupMenu(
+                    isPinned: isPinned,
+                    onPinToggle: () {
+                      Navigator.pop(context);
+                      onPinToggle(gamesTourModel);
+                    },
+                    onShare: () {
+                      Navigator.pop(context);
+                    },
                   ),
                 ),
               ],
@@ -391,63 +147,141 @@ class GameCard extends ConsumerWidget {
   }
 }
 
-class _SelectiveBlurBackground extends StatelessWidget {
-  const _SelectiveBlurBackground({
-    required this.cardPosition,
-    required this.cardSize,
-    super.key,
+class _GameCardContent extends ConsumerWidget {
+  const _GameCardContent({
+    required this.gamesTourModel,
+    required this.onTapDown,
   });
 
-  final Offset cardPosition;
-  final Size cardSize;
+  final GamesTourModel gamesTourModel;
+  final ValueChanged<TapDownDetails> onTapDown;
 
   @override
-  Widget build(BuildContext context) {
-    return Stack(
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Column(
       children: [
-        // Full screen blur
-        BackDropFilterWidget(),
-        // Cutout for the selected card (clear area)
-        Positioned(
-          left: cardPosition.dx,
-          top: cardPosition.dy,
-          child: Container(
-            width: cardSize.width,
-            height: cardSize.height,
-            decoration: BoxDecoration(
-              color: Colors.transparent,
-              borderRadius: BorderRadius.circular(12.br),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12.br),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 0, sigmaY: 0),
-                child: Container(color: Colors.transparent),
-              ),
-            ),
-          ),
-        ),
+        _TopSection(gamesTourModel: gamesTourModel, onTapDown: onTapDown),
+        _BottomSection(gamesTourModel: gamesTourModel),
       ],
     );
   }
 }
 
-class _PopupMenuItem extends StatelessWidget {
-  const _PopupMenuItem({required this.onTap, required this.child, super.key});
+class _TopSection extends ConsumerWidget {
+  const _TopSection({required this.gamesTourModel, required this.onTapDown});
 
-  final VoidCallback onTap;
-  final Widget child;
+  final GamesTourModel gamesTourModel;
+  final ValueChanged<TapDownDetails> onTapDown;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Container(
+      height: 60.h,
+      padding: EdgeInsets.only(left: 12.sp),
+      decoration: BoxDecoration(
+        color: kWhiteColor70,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(12.br),
+          topRight: Radius.circular(12.br),
+        ),
+      ),
+      child: Stack(
+        children: [
+          Row(
+            children: [
+              Container(
+                alignment: Alignment.center,
+                width: MediaQuery.of(context).size.width * (35 / 100),
+                child: _GamesRound(
+                  playerName: gamesTourModel.whitePlayer.name,
+                  playerRank:
+                      '${gamesTourModel.whitePlayer.title} ${gamesTourModel.whitePlayer.rating}',
+                  countryCode: gamesTourModel.whitePlayer.countryCode,
+                ),
+              ),
+              Spacer(),
+              _CenterContent(gamesTourModel: gamesTourModel),
+              Spacer(),
+              Container(
+                alignment: Alignment.center,
+                width: MediaQuery.of(context).size.width * (35 / 100),
+                child: _GamesRound(
+                  playerName: gamesTourModel.blackPlayer.name,
+                  playerRank:
+                      '${gamesTourModel.blackPlayer.title} ${gamesTourModel.blackPlayer.rating}',
+                  countryCode: gamesTourModel.blackPlayer.countryCode,
+                ),
+              ),
+              Spacer(),
+            ],
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: GestureDetector(
+              onTapDown: onTapDown,
+              child: SizedBox(
+                width: 24.w,
+                height: 60.h,
+                child: Icon(
+                  Icons.more_vert_rounded,
+                  color: kBlackColor,
+                  size: 24.sp,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CenterContent extends StatelessWidget {
+  const _CenterContent({required this.gamesTourModel});
+
+  final GamesTourModel gamesTourModel;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12.br),
-      child: Container(
-        width: 120.w,
-        height: 40.h,
-        padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
-        child: child,
+    return gamesTourModel.gameStatus == GameStatus.ongoing
+        ? ChessProgressBar(fen: gamesTourModel.fen ?? '')
+        : _StatusText(status: gamesTourModel.gameStatus.displayText);
+  }
+}
+
+class _BottomSection extends ConsumerWidget {
+  const _BottomSection({required this.gamesTourModel});
+
+  final GamesTourModel gamesTourModel;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Container(
+      height: 24.h,
+      padding: EdgeInsets.symmetric(horizontal: 10.sp),
+      decoration: BoxDecoration(
+        color: kBlack2Color,
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(12.br),
+          bottomRight: Radius.circular(12.br),
+        ),
+      ),
+      child: Row(
+        children: [
+          _TimerWidget(
+            turn: gamesTourModel.activePlayer == Side.white,
+            time: gamesTourModel.whiteTimeDisplay,
+            gamesTourModel: gamesTourModel,
+            isWhitePlayer: true,
+          ),
+          Spacer(),
+          _TimerWidget(
+            turn: gamesTourModel.activePlayer == Side.black,
+            time: gamesTourModel.blackTimeDisplay,
+            gamesTourModel: gamesTourModel,
+            isWhitePlayer: false,
+          ),
+        ],
       ),
     );
   }
@@ -577,7 +411,6 @@ class _TimerWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Determine if this player's clock should be counting down
     final isClockRunning =
         gamesTourModel.gameStatus.isOngoing &&
         gamesTourModel.lastMoveTime != null &&
@@ -592,10 +425,10 @@ class _TimerWidget extends StatelessWidget {
     // Extract move times from PGN and calculate current move index like ChessBoardProvider
     if (gamesTourModel.pgn != null && gamesTourModel.pgn!.isNotEmpty) {
       try {
-
         final moveTimes = _parseMoveTimesFromPgn(gamesTourModel.pgn!);
-        final currentMoveIndex = _calculateCurrentMoveIndex(gamesTourModel.pgn!);
-
+        final currentMoveIndex = _calculateCurrentMoveIndex(
+          gamesTourModel.pgn!,
+        );
 
         if (moveTimes.isNotEmpty && currentMoveIndex >= 0) {
           // Find the most recent move for this player using currentMoveIndex (same logic as PlayerFirstRowDetailWidget)
@@ -609,34 +442,36 @@ class _TimerWidget extends StatelessWidget {
             }
           }
         }
-
       } catch (e) {
         // If PGN parsing fails, will use fallback below
       }
-    } else {
-    }
+    } else {}
 
     // Fallback to game model's time (same as PlayerFirstRowDetailWidget)
-    final fallbackTime = isWhitePlayer
-        ? gamesTourModel.whiteTimeDisplay
-        : gamesTourModel.blackTimeDisplay;
+    final fallbackTime =
+        isWhitePlayer
+            ? gamesTourModel.whiteTimeDisplay
+            : gamesTourModel.blackTimeDisplay;
 
     calculatedMoveTime ??= fallbackTime;
 
-    final clockCentiseconds = isWhitePlayer
-        ? gamesTourModel.whiteClockCentiseconds
-        : gamesTourModel.blackClockCentiseconds;
-
+    final clockCentiseconds =
+        isWhitePlayer
+            ? gamesTourModel.whiteClockCentiseconds
+            : gamesTourModel.blackClockCentiseconds;
 
     return AtomicCountdownText(
-      moveTime: calculatedMoveTime, // Same calculation as PlayerFirstRowDetailWidget
-      clockCentiseconds: clockCentiseconds, // Fallback source: raw database clock
+      moveTime:
+          calculatedMoveTime, // Same calculation as PlayerFirstRowDetailWidget
+      clockCentiseconds:
+          clockCentiseconds, // Fallback source: raw database clock
       lastMoveTime: gamesTourModel.lastMoveTime,
       isActive: isClockRunning,
       style: AppTypography.textXsMedium.copyWith(
-        color: gamesTourModel.gameStatus.isFinished
-            ? kWhiteColor
-            : (turn ? kPrimaryColor : kWhiteColor),
+        color:
+            gamesTourModel.gameStatus.isFinished
+                ? kWhiteColor
+                : (turn ? kPrimaryColor : kWhiteColor),
       ),
     );
   }

@@ -92,8 +92,9 @@ class GroupEventScreen extends HookConsumerWidget {
     });
     useEffect(() {
       void onScroll() {
-        if (!isMounted() || selectedTourEvent != GroupEventCategory.past)
+        if (!isMounted() || selectedTourEvent != GroupEventCategory.past) {
           return;
+        }
 
         final max = pastScrollController.position.maxScrollExtent;
         final current = pastScrollController.position.pixels;
