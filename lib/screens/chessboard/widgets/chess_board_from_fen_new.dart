@@ -1,5 +1,4 @@
 import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
-import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/chessboard/widgets/context_pop_up_menu.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
@@ -13,7 +12,7 @@ import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/providers/board_settings_provider.dart';
 
-class ChessBoardFromFENNew extends ConsumerStatefulWidget {
+class ChessBoardFromFENNew extends StatelessWidget {
   const ChessBoardFromFENNew({
     super.key,
     required this.gamesTourModel,
@@ -27,77 +26,19 @@ class ChessBoardFromFENNew extends ConsumerStatefulWidget {
   final List<String> pinnedIds;
   final void Function(GamesTourModel game) onPinToggle;
 
-  @override
-  ConsumerState<ChessBoardFromFENNew> createState() =>
-      _ChessBoardFromFENState();
-}
+  bool get isPinned => pinnedIds.contains(gamesTourModel.gameId);
 
-class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFENNew> {
-  Move? lastMove;
-  Position? finalPosition;
-
-  bool get isPinned => widget.pinnedIds.contains(widget.gamesTourModel.gameId);
-
-  @override
-  void initState() {
-    super.initState();
-    Future.microtask(() async {
-      await _initializeGame();
-    });
-  }
-
-  Future<void> _initializeGame() async {
-    try {
-      if (!mounted) return;
-      final gameWithPGn = await ref
-          .read(gameRepositoryProvider)
-          .getGameById(widget.gamesTourModel.gameId);
-      var game = GamesTourModel.fromGame(gameWithPGn);
-      if (!mounted) return;
-      final pgnData = game.pgn ?? "";
-      final gameData = PgnGame.parsePgn(pgnData);
-      final startingPos = PgnGame.startingPosition(gameData.headers);
-
-      // Parse all moves and store them
-      Position tempPosition = startingPos;
-      List<Move> allMoves = [];
-      List<String> moveSans = [];
-
-      for (final node in gameData.moves.mainline()) {
-        final move = tempPosition.parseSan(node.san);
-        if (move == null) break; // Illegal move
-        allMoves.add(move);
-        moveSans.add(node.san);
-        tempPosition = tempPosition.play(move);
-      }
-
-      // Set to the last position initially
-      final lastMoveIndex = allMoves.length - 1;
-      finalPosition = startingPos;
-
-      // Replay to final position
-      for (int i = 0; i <= lastMoveIndex; i++) {
-        lastMove = allMoves[i];
-        finalPosition = finalPosition!.play(allMoves[i]);
-      }
-      setState(() {});
-    } catch (error) {
-      debugPrint('Error initializing game: $error');
+  Move? _uciToMove(String uci) {
+    if (uci.length != 4 && uci.length != 5) {
+      return null;
     }
+    final from = _square(uci.substring(0, 2));
+    final to = _square(uci.substring(2, 4));
+    final promo = uci.length == 5 ? Role.fromChar(uci[4]) : null;
+    return NormalMove(from: from, to: to, promotion: promo);
   }
 
-  @override
-  void didUpdateWidget(ChessBoardFromFENNew oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.gamesTourModel.lastMove != widget.gamesTourModel.lastMove) {
-      _initializeGame();
-    }
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
-  }
+  Square _square(String name) => Square.fromName(name);
 
   void _showBlurredPopup(BuildContext context, LongPressStartDetails details) {
     final RenderBox boardRenderBox = context.findRenderObject() as RenderBox;
@@ -138,9 +79,8 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFENNew> {
                   left: boardPosition.dx,
                   top: boardPosition.dy,
                   child: _ChessBoardContent(
-                    gamesTourModel: widget.gamesTourModel,
-                    finalPosition: finalPosition,
-                    lastMove: lastMove,
+                    gamesTourModel: gamesTourModel,
+                    lastMove: _uciToMove(gamesTourModel.lastMove ?? ''),
                     boardSize: boardSize,
                     isPinned: isPinned,
                   ),
@@ -153,7 +93,7 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFENNew> {
                     isPinned: isPinned,
                     onPinToggle: () {
                       Navigator.pop(context);
-                      widget.onPinToggle(widget.gamesTourModel);
+                      onPinToggle(gamesTourModel);
                     },
                     onShare: () {},
                   ),
@@ -180,15 +120,14 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFENNew> {
     return Padding(
       padding: EdgeInsets.only(left: 24.sp, right: 24.sp, bottom: 8.sp),
       child: GestureDetector(
-        onTap: widget.onChanged,
+        onTap: onChanged,
         onLongPressStart: (details) {
           HapticFeedback.lightImpact();
           _showBlurredPopup(context, details);
         },
         child: _ChessBoardLayout(
-          gamesTourModel: widget.gamesTourModel,
-          finalPosition: finalPosition,
-          lastMove: lastMove,
+          gamesTourModel: gamesTourModel,
+          lastMove: _uciToMove(gamesTourModel.lastMove ?? ''),
           sideBarWidth: sideBarWidth,
           boardSize: boardSize,
           isPinned: isPinned,
@@ -201,7 +140,6 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFENNew> {
 class _ChessBoardLayout extends ConsumerWidget {
   const _ChessBoardLayout({
     required this.gamesTourModel,
-    required this.finalPosition,
     required this.lastMove,
     required this.sideBarWidth,
     required this.boardSize,
@@ -209,7 +147,6 @@ class _ChessBoardLayout extends ConsumerWidget {
   });
 
   final GamesTourModel gamesTourModel;
-  final Position? finalPosition;
   final Move? lastMove;
   final double sideBarWidth;
   final double boardSize;
@@ -228,7 +165,6 @@ class _ChessBoardLayout extends ConsumerWidget {
         SizedBox(height: 4.h),
         _ChessBoardWithEvaluation(
           gamesTourModel: gamesTourModel,
-          finalPosition: finalPosition,
           lastMove: lastMove,
           sideBarWidth: sideBarWidth,
           boardSize: boardSize,
@@ -248,14 +184,12 @@ class _ChessBoardLayout extends ConsumerWidget {
 class _ChessBoardContent extends ConsumerWidget {
   const _ChessBoardContent({
     required this.gamesTourModel,
-    required this.finalPosition,
     required this.lastMove,
     required this.boardSize,
     required this.isPinned,
   });
 
   final GamesTourModel gamesTourModel;
-  final Position? finalPosition;
   final Move? lastMove;
   final Size boardSize;
   final bool isPinned;
@@ -283,7 +217,6 @@ class _ChessBoardContent extends ConsumerWidget {
             SizedBox(height: 4.h),
             _ChessBoardWithEvaluation(
               gamesTourModel: gamesTourModel,
-              finalPosition: finalPosition,
               lastMove: lastMove,
               sideBarWidth: sideBarWidth,
               boardSize: chessBoardSize,
@@ -330,14 +263,12 @@ class _PlayerRow extends StatelessWidget {
 class _ChessBoardWithEvaluation extends ConsumerWidget {
   const _ChessBoardWithEvaluation({
     required this.gamesTourModel,
-    required this.finalPosition,
     required this.lastMove,
     required this.sideBarWidth,
     required this.boardSize,
   });
 
   final GamesTourModel gamesTourModel;
-  final Position? finalPosition;
   final Move? lastMove;
   final double sideBarWidth;
   final double boardSize;
@@ -354,7 +285,7 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
             fen: gamesTourModel.fen ?? '',
           ),
           _ChessBoardWidget(
-            finalPosition: finalPosition,
+            fen: gamesTourModel.fen ?? '',
             lastMove: lastMove,
             boardSize: boardSize,
           ),
@@ -378,12 +309,12 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
 
 class _ChessBoardWidget extends ConsumerWidget {
   const _ChessBoardWidget({
-    required this.finalPosition,
+    required this.fen,
     required this.lastMove,
     required this.boardSize,
   });
 
-  final Position? finalPosition;
+  final String? fen;
   final Move? lastMove;
   final double boardSize;
 
@@ -404,7 +335,7 @@ class _ChessBoardWidget extends ConsumerWidget {
             colorScheme: _buildColorScheme(boardTheme),
           ),
           orientation: Side.white,
-          fen: finalPosition?.fen ?? "",
+          fen: fen ?? '',
           lastMove: lastMove,
         ),
       ),
