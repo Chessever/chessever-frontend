@@ -1,5 +1,5 @@
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
-import 'package:chessever2/screens/chessboard/widgets/chess_board_widget_new.dart';
+import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart';
@@ -61,7 +61,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
             ),
       ),
     );
- 
+
     // If a different index was returned from the chessboard, notify the parent
     if (returnedIndex != null &&
         returnedIndex != gameIndex &&
