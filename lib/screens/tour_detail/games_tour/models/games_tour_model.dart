@@ -49,6 +49,8 @@ class GamesTourModel {
   final String blackTimeDisplay;
   final int whiteClockCentiseconds;
   final int blackClockCentiseconds;
+  final int? whiteClockSeconds; // New: time in seconds from last_clock_white
+  final int? blackClockSeconds; // New: time in seconds from last_clock_black
   final GameStatus gameStatus;
   final String? fen;
   final String? pgn;
@@ -66,6 +68,8 @@ class GamesTourModel {
     required this.blackTimeDisplay,
     required this.whiteClockCentiseconds,
     required this.blackClockCentiseconds,
+    this.whiteClockSeconds,
+    this.blackClockSeconds,
     required this.gameStatus,
     required this.roundId, // Make required
     this.roundSlug,
@@ -84,6 +88,8 @@ class GamesTourModel {
     String? blackTimeDisplay,
     int? whiteClockCentiseconds,
     int? blackClockCentiseconds,
+    int? whiteClockSeconds,
+    int? blackClockSeconds,
     GameStatus? gameStatus,
     String? lastMove,
     String? fen,
@@ -101,6 +107,8 @@ class GamesTourModel {
       blackTimeDisplay: blackTimeDisplay ?? this.blackTimeDisplay,
       whiteClockCentiseconds: whiteClockCentiseconds ?? this.whiteClockCentiseconds,
       blackClockCentiseconds: blackClockCentiseconds ?? this.blackClockCentiseconds,
+      whiteClockSeconds: whiteClockSeconds ?? this.whiteClockSeconds,
+      blackClockSeconds: blackClockSeconds ?? this.blackClockSeconds,
       gameStatus: gameStatus ?? this.gameStatus,
       lastMove: lastMove ?? this.lastMove,
       fen: fen ?? this.fen,
@@ -136,10 +144,17 @@ class GamesTourModel {
         gameId: game.id,
         whitePlayer: PlayerCard.fromPlayer(white),
         blackPlayer: PlayerCard.fromPlayer(black),
-        whiteTimeDisplay: _formatTime(white.clock),
-        blackTimeDisplay: _formatTime(black.clock),
+        // Use new last_clock fields (in seconds) if available, fallback to player clock (in centiseconds)
+        whiteTimeDisplay: game.lastClockWhite != null
+            ? _formatTimeFromSeconds(game.lastClockWhite!)
+            : _formatTime(white.clock),
+        blackTimeDisplay: game.lastClockBlack != null
+            ? _formatTimeFromSeconds(game.lastClockBlack!)
+            : _formatTime(black.clock),
         whiteClockCentiseconds: white.clock,
         blackClockCentiseconds: black.clock,
+        whiteClockSeconds: game.lastClockWhite,
+        blackClockSeconds: game.lastClockBlack,
         gameStatus: GameStatus.fromString(game.status),
         roundId: game.roundId, // Include roundId in model
         roundSlug: game.roundSlug, // Include roundSlug for display
@@ -164,6 +179,25 @@ class GamesTourModel {
 
     // Convert centiseconds (1/100 second) to seconds
     final totalSeconds = (clockTimeCentiseconds / 100).floor();
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+
+    // Handle display for very long games (over 99 minutes)
+    if (minutes > 99) {
+      final hours = minutes ~/ 60;
+      final remainingMinutes = minutes % 60;
+      return '${hours}h${remainingMinutes.toString().padLeft(2, '0')}m';
+    }
+
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  static String _formatTimeFromSeconds(int totalSeconds) {
+    // Enhanced null safety for time in seconds
+    if (totalSeconds < 0) {
+      return '--:--';
+    }
+
     final minutes = totalSeconds ~/ 60;
     final seconds = totalSeconds % 60;
 
