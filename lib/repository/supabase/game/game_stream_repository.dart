@@ -18,6 +18,15 @@ class _GameStreamRepository {
         .map((data) => data.isEmpty ? null : data.first['pgn'] as String?);
   }
 
+  Stream<String?> subscribeToLastMove(String gameId) {
+    return Supabase.instance.client
+        .from('games')
+        .stream(primaryKey: ['id'])
+        .eq('id', gameId)
+        .map(
+          (data) => data.isEmpty ? null : data.first['last_move'] as String?,
+        );
+  }
 
   Stream<String?> subscribeToFen(String gameId) {
     return Supabase.instance.client
