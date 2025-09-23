@@ -1,26 +1,71 @@
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/game_fen_stream_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/game_last_move_stream_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-class ChessProgressBar extends ConsumerStatefulWidget {
-  const ChessProgressBar({required this.fen, super.key});
+class ChessProgressBar extends ConsumerWidget {
+  const ChessProgressBar({required this.gamesTourModel, super.key});
 
-  final String fen;
+  final GamesTourModel gamesTourModel;
 
   @override
-  ConsumerState<ChessProgressBar> createState() => _ChessProgressBarState();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final fenAsync = ref.watch(gameFenStreamProvider(gamesTourModel.gameId));
+    final lastMoveAsync = ref.watch(
+      gameLastMoveStreamProvider(gamesTourModel.gameId),
+    );
+    return fenAsync.when(
+      data: (fenData) {
+        return lastMoveAsync.when(
+          data: (lastMoveData) {
+            final newGamesTourModel = gamesTourModel.copyWith(
+              fen: fenData,
+              lastMove: lastMoveData,
+            );
+            return _ChessProgressBar(gamesTourModel: newGamesTourModel);
+          },
+          error: (e, _) {
+            return _ChessProgressBar(gamesTourModel: gamesTourModel);
+          },
+          loading: () {
+            return _ChessProgressBar(gamesTourModel: gamesTourModel);
+          },
+        );
+      },
+      error: (e, _) {
+        return _ChessProgressBar(gamesTourModel: gamesTourModel);
+      },
+      loading: () {
+        return _ChessProgressBar(gamesTourModel: gamesTourModel);
+      },
+    );
+  }
 }
 
-class _ChessProgressBarState extends ConsumerState<ChessProgressBar> {
+class _ChessProgressBar extends ConsumerStatefulWidget {
+  const _ChessProgressBar({required this.gamesTourModel, super.key});
+
+  final GamesTourModel gamesTourModel;
+
+  @override
+  ConsumerState<_ChessProgressBar> createState() => _ChessProgressBarState();
+}
+
+class _ChessProgressBarState extends ConsumerState<_ChessProgressBar> {
+  var oldEvail = 0.0;
   @override
   Widget build(BuildContext context) {
-    final evalAsync = ref.watch(cascadeEvalProvider(widget.fen ?? ''));
+    final evalAsync = ref.watch(
+      cascadeEvalProvider(widget.gamesTourModel.fen ?? ''),
+    );
 
     final evaluation = evalAsync.when(
-      loading: () => 0.0,
-      error: (_, __) => 0.0,
+      loading: () => oldEvail,
+      error: (_, __) => oldEvail,
       data: (cloud) {
         final pv = cloud.pvs.firstOrNull;
 
