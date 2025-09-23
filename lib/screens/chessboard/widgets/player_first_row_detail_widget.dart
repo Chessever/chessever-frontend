@@ -292,16 +292,19 @@ class _PlayerClock extends StatelessWidget {
             (!isWhitePlayer && gamesTourModel.activePlayer == Side.black));
 
     // Use atomic countdown text widget for optimized rebuilds
-    // Get the raw clock centiseconds for this player as fallback
-    final clockCentiseconds =
-        isWhitePlayer
-            ? gamesTourModel.whiteClockCentiseconds
-            : gamesTourModel.blackClockCentiseconds;
+    // Get the clock values for this player
+    final clockCentiseconds = isWhitePlayer
+        ? gamesTourModel.whiteClockCentiseconds
+        : gamesTourModel.blackClockCentiseconds;
+
+    final clockSeconds = isWhitePlayer
+        ? gamesTourModel.whiteClockSeconds
+        : gamesTourModel.blackClockSeconds;
 
     return AtomicCountdownText(
-      moveTime: moveTime, // Primary source: calculated from chessBoardState
-      clockCentiseconds:
-          clockCentiseconds, // Fallback source: raw database clock
+      moveTime: moveTime, // For chessboard screen with PGN parsing
+      clockSeconds: clockSeconds, // Primary source: time in seconds from last_clock fields
+      clockCentiseconds: clockCentiseconds, // Fallback source: raw database clock
       lastMoveTime: gamesTourModel.lastMoveTime,
       isActive: isClockRunning,
       style: timeStyle,

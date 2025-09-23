@@ -40,7 +40,6 @@ class GameRepository extends BaseRepository {
           last_move,
           think_time,
           status,
-          pgn,
           search,
           lichess_id,
           player_white,
@@ -48,7 +47,9 @@ class GameRepository extends BaseRepository {
           date_start,
           time_start,
           board_nr,
-          last_move_time
+          last_move_time,
+          last_clock_white,
+          last_clock_black
         ''')
           .eq('tour_id', tourId)
           .order('id', ascending: true);

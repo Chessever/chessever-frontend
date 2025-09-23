@@ -419,145 +419,25 @@ class _TimerWidget extends StatelessWidget {
         ((isWhitePlayer && gamesTourModel.activePlayer == Side.white) ||
             (!isWhitePlayer && gamesTourModel.activePlayer == Side.black));
 
-    // Use atomic countdown text widget for optimized rebuilds
-    // Calculate moveTime using SAME logic as PlayerFirstRowDetailWidget
-    String? calculatedMoveTime;
+    final clockCentiseconds = isWhitePlayer
+        ? gamesTourModel.whiteClockCentiseconds
+        : gamesTourModel.blackClockCentiseconds;
 
-    // Extract move times from PGN and calculate current move index like ChessBoardProvider
-    if (gamesTourModel.pgn != null && gamesTourModel.pgn!.isNotEmpty) {
-      try {
-        final moveTimes = _parseMoveTimesFromPgn(gamesTourModel.pgn!);
-        final currentMoveIndex = _calculateCurrentMoveIndex(
-          gamesTourModel.pgn!,
-        );
-
-        if (moveTimes.isNotEmpty && currentMoveIndex >= 0) {
-          // Find the most recent move for this player using currentMoveIndex (same logic as PlayerFirstRowDetailWidget)
-          for (int i = currentMoveIndex; i >= 0; i--) {
-            final wasMoveByThisPlayer =
-                (i % 2 == 0 && isWhitePlayer) || (i % 2 == 1 && !isWhitePlayer);
-
-            if (wasMoveByThisPlayer && i < moveTimes.length) {
-              calculatedMoveTime = moveTimes[i];
-              break;
-            }
-          }
-        }
-      } catch (e) {
-        // If PGN parsing fails, will use fallback below
-      }
-    } else {}
-
-    // Fallback to game model's time (same as PlayerFirstRowDetailWidget)
-    final fallbackTime =
-        isWhitePlayer
-            ? gamesTourModel.whiteTimeDisplay
-            : gamesTourModel.blackTimeDisplay;
-
-    calculatedMoveTime ??= fallbackTime;
-
-    final clockCentiseconds =
-        isWhitePlayer
-            ? gamesTourModel.whiteClockCentiseconds
-            : gamesTourModel.blackClockCentiseconds;
+    final clockSeconds = isWhitePlayer
+        ? gamesTourModel.whiteClockSeconds
+        : gamesTourModel.blackClockSeconds;
 
     return AtomicCountdownText(
-      moveTime:
-          calculatedMoveTime, // Same calculation as PlayerFirstRowDetailWidget
-      clockCentiseconds:
-          clockCentiseconds, // Fallback source: raw database clock
+      clockSeconds: clockSeconds, // Primary source: time in seconds from last_clock fields
+      clockCentiseconds: clockCentiseconds, // Fallback source: raw database clock
       lastMoveTime: gamesTourModel.lastMoveTime,
       isActive: isClockRunning,
       style: AppTypography.textXsMedium.copyWith(
-        color:
-            gamesTourModel.gameStatus.isFinished
-                ? kWhiteColor
-                : (turn ? kPrimaryColor : kWhiteColor),
+        color: gamesTourModel.gameStatus.isFinished
+            ? kWhiteColor
+            : (turn ? kPrimaryColor : kWhiteColor),
       ),
     );
   }
 
-  // PGN parsing methods copied from ChessBoardProvider to match PlayerFirstRowDetailWidget logic
-  static List<String> _parseMoveTimesFromPgn(String pgn) {
-    final List<String> times = [];
-
-    try {
-      final game = PgnGame.parsePgn(pgn);
-
-      // Iterate through the mainline moves
-      for (final nodeData in game.moves.mainline()) {
-        String? timeString;
-
-        // Check if this move has comments
-        if (nodeData.comments != null) {
-          // Extract time if it exists in any comment
-          for (String comment in nodeData.comments!) {
-            final timeMatch = RegExp(
-              r'\[%clk (\d+:\d+:\d+)\]',
-            ).firstMatch(comment);
-            if (timeMatch != null) {
-              timeString = timeMatch.group(1);
-              break; // Found time, no need to check other comments for this move
-            }
-          }
-        }
-
-        // Add formatted time or default if no time found
-        if (timeString != null) {
-          times.add(_formatDisplayTime(timeString));
-        } else {
-          times.add('-:--:--'); // Default for moves without time
-        }
-      }
-    } catch (e) {
-      // Fallback to regex method if dartchess parsing fails
-      return _parseMoveTimesFromPgnFallback(pgn);
-    }
-
-    return times;
-  }
-
-  // Fallback method using the original regex approach
-  static List<String> _parseMoveTimesFromPgnFallback(String pgn) {
-    final List<String> times = [];
-    final regex = RegExp(r'\{ \[%clk (\d+:\d+:\d+)\] \}');
-    final matches = regex.allMatches(pgn);
-
-    for (final match in matches) {
-      final timeString = match.group(1) ?? '0:00:00';
-      times.add(_formatDisplayTime(timeString));
-    }
-
-    return times;
-  }
-
-  static String _formatDisplayTime(String timeString) {
-    // Convert "1:40:57" to display format
-    final parts = timeString.split(':');
-    if (parts.length == 3) {
-      final hours = int.parse(parts[0]);
-      final minutes = parts[1];
-      final seconds = parts[2];
-
-      // If less than an hour, show MM:SS format
-      if (hours == 0) {
-        return '$minutes:$seconds';
-      }
-      // Otherwise show H:MM:SS format
-      return '$hours:$minutes:$seconds';
-    }
-    return timeString;
-  }
-
-  // Calculate current move index from PGN (same logic as ChessBoardProvider)
-  static int _calculateCurrentMoveIndex(String pgn) {
-    try {
-      final gameData = PgnGame.parsePgn(pgn);
-      final moves = gameData.moves.mainline().toList();
-      // Return index of last move (0-based, so length - 1)
-      return moves.length - 1;
-    } catch (e) {
-      return -1; // Return -1 if parsing fails
-    }
-  }
 }

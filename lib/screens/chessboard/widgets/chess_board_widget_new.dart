@@ -1,5 +1,4 @@
 import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
-import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/chessboard/widgets/context_pop_up_menu.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
@@ -35,8 +34,6 @@ class ChessBoardFromFENNew extends ConsumerStatefulWidget {
 class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFENNew> {
   Move? lastMove;
   Position? finalPosition;
-  List<String> moveTimes = [];
-  int currentMoveIndex = -1;
 
   bool get isPinned => widget.pinnedIds.contains(widget.gamesTourModel.gameId);
 
@@ -51,40 +48,14 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFENNew> {
   Future<void> _initializeGame() async {
     try {
       if (!mounted) return;
-      final gameWithPGn = await ref
-          .read(gameRepositoryProvider)
-          .getGameById(widget.gamesTourModel.gameId);
-      var game = GamesTourModel.fromGame(gameWithPGn);
-      if (!mounted) return;
-      final pgnData = game.pgn ?? "";
-      final gameData = PgnGame.parsePgn(pgnData);
-      final startingPos = PgnGame.startingPosition(gameData.headers);
-
-      // Parse all moves and store them
-      Position tempPosition = startingPos;
-      List<Move> allMoves = [];
-      List<String> moveSans = [];
-
-      // Parse move times from PGN (same logic as GameCard)
-      moveTimes = _parseMoveTimesFromPgn(pgnData);
-
-      for (final node in gameData.moves.mainline()) {
-        final move = tempPosition.parseSan(node.san);
-        if (move == null) break; // Illegal move
-        allMoves.add(move);
-        moveSans.add(node.san);
-        tempPosition = tempPosition.play(move);
-      }
-
-      // Set to the last position initially
-      final lastMoveIndex = allMoves.length - 1;
-      currentMoveIndex = lastMoveIndex;
-      finalPosition = startingPos;
-
-      // Replay to final position
-      for (int i = 0; i <= lastMoveIndex; i++) {
-        lastMove = allMoves[i];
-        finalPosition = finalPosition!.play(allMoves[i]);
+      // For board view, we only need FEN to display the board position
+      // Time display comes from the new last_clock fields via GamesTourModel
+      final fen = widget.gamesTourModel.fen;
+      if (fen != null && fen.isNotEmpty) {
+        final setup = Setup.parseFen(fen);
+        finalPosition = Chess.fromSetup(setup);
+        // For last move, we can use the lastMove from the model if available
+        // Note: We don't need PGN parsing for board view cards
       }
       setState(() {});
     } catch (error) {
@@ -92,77 +63,6 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFENNew> {
     }
   }
 
-  // PGN parsing methods copied from GameCard to ensure consistency
-  static List<String> _parseMoveTimesFromPgn(String pgn) {
-    final List<String> times = [];
-
-    try {
-      final game = PgnGame.parsePgn(pgn);
-
-      // Iterate through the mainline moves
-      for (final nodeData in game.moves.mainline()) {
-        String? timeString;
-
-        // Check if this move has comments
-        if (nodeData.comments != null) {
-          // Extract time if it exists in any comment
-          for (String comment in nodeData.comments!) {
-            final timeMatch = RegExp(
-              r'\[%clk (\d+:\d+:\d+)\]',
-            ).firstMatch(comment);
-            if (timeMatch != null) {
-              timeString = timeMatch.group(1);
-              break; // Found time, no need to check other comments for this move
-            }
-          }
-        }
-
-        // Add formatted time or default if no time found
-        if (timeString != null) {
-          times.add(_formatDisplayTime(timeString));
-        } else {
-          times.add('-:--:--'); // Default for moves without time
-        }
-      }
-    } catch (e) {
-      // Fallback to regex method if dartchess parsing fails
-      return _parseMoveTimesFromPgnFallback(pgn);
-    }
-
-    return times;
-  }
-
-  // Fallback method using the original regex approach
-  static List<String> _parseMoveTimesFromPgnFallback(String pgn) {
-    final List<String> times = [];
-    final regex = RegExp(r'\{ \[%clk (\d+:\d+:\d+)\] \}');
-    final matches = regex.allMatches(pgn);
-
-    for (final match in matches) {
-      final timeString = match.group(1) ?? '0:00:00';
-      times.add(_formatDisplayTime(timeString));
-    }
-
-    return times;
-  }
-
-  static String _formatDisplayTime(String timeString) {
-    // Convert "1:40:57" to display format
-    final parts = timeString.split(':');
-    if (parts.length == 3) {
-      final hours = int.parse(parts[0]);
-      final minutes = parts[1];
-      final seconds = parts[2];
-
-      // If less than an hour, show MM:SS format
-      if (hours == 0) {
-        return '$minutes:$seconds';
-      }
-      // Otherwise show H:MM:SS format
-      return '$hours:$minutes:$seconds';
-    }
-    return timeString;
-  }
 
   @override
   void didUpdateWidget(ChessBoardFromFENNew oldWidget) {
@@ -445,7 +345,7 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
     return BoxDecoration(
       boxShadow: [
         BoxShadow(
-          color: kBoardLightGrey.withOpacity(0.5),
+          color: kBoardLightGrey.withValues(alpha: 0.5),
           blurRadius: 8,
           offset: const Offset(0, 4),
         ),
