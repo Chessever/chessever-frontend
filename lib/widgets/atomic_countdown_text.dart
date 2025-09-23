@@ -4,34 +4,37 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Atomic countdown text widget that only rebuilds the text itself every second
 /// This prevents parent widgets from rebuilding unnecessarily
-/// Uses calculated moveTime as primary source, clock centiseconds as fallback
+/// Uses clock seconds as primary source, moveTime/centiseconds as fallback
 class AtomicCountdownText extends ConsumerWidget {
   const AtomicCountdownText({
     super.key,
-    required this.moveTime,
+    this.moveTime,
+    this.clockSeconds,
     required this.clockCentiseconds,
     required this.lastMoveTime,
     required this.isActive,
     required this.style,
   });
 
-  final String? moveTime; // Primary source: calculated from chessBoardState.moveTimes
-  final int clockCentiseconds; // Fallback source: raw database clock
+  final String? moveTime; // Legacy: for chessboard screen with PGN parsing
+  final int? clockSeconds; // Primary source: time in seconds from last_clock fields
+  final int clockCentiseconds; // Fallback source: raw database clock in centiseconds
   final DateTime? lastMoveTime;
   final bool isActive;
   final TextStyle style;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Determine which time source to use: moveTime (primary) or clockCentiseconds (fallback)
-    final useCalculatedTime = moveTime != null && moveTime!.isNotEmpty;
-
-    // Debug logging for time source selection
-    // print('⏰ AtomicCountdownText DEBUG: useCalculatedTime=$useCalculatedTime, moveTime=$moveTime, clockCentiseconds=$clockCentiseconds, isActive=$isActive, lastMoveTime=$lastMoveTime');
+    // Determine which time source to use: clockSeconds (primary), moveTime (secondary), clockCentiseconds (fallback)
+    final useClockSeconds = clockSeconds != null;
+    final useCalculatedTime = !useClockSeconds && moveTime != null && moveTime!.isNotEmpty;
 
     // Only watch dateTimeProvider if clock is actively counting down
     if (!isActive || lastMoveTime == null) {
-      if (useCalculatedTime) {
+      if (useClockSeconds) {
+        final staticTime = _formatTimeFromSeconds(clockSeconds!);
+        return Text(_formatTimeWithHours(staticTime), style: style);
+      } else if (useCalculatedTime) {
         return Text(_formatTimeWithHours(moveTime!), style: style);
       } else {
         final staticTime = _formatTimeFromMs(clockCentiseconds * 10);
@@ -43,7 +46,10 @@ class AtomicCountdownText extends ConsumerWidget {
     final displayTime = ref.watch(dateTimeProvider.select((timeAsync) {
       final currentTime = timeAsync.valueOrNull;
       if (currentTime == null) {
-        if (useCalculatedTime) {
+        if (useClockSeconds) {
+          final staticTime = _formatTimeFromSeconds(clockSeconds!);
+          return _formatTimeWithHours(staticTime);
+        } else if (useCalculatedTime) {
           return _formatTimeWithHours(moveTime!);
         } else {
           final staticTime = _formatTimeFromMs(clockCentiseconds * 10);
@@ -52,31 +58,32 @@ class AtomicCountdownText extends ConsumerWidget {
       }
 
       // Calculate elapsed time since lastMoveTime (when current player's turn started)
-      final elapsedMs = currentTime.difference(lastMoveTime!).inMilliseconds.abs();
+      final elapsedSeconds = currentTime.difference(lastMoveTime!).inSeconds.abs();
 
-      int totalMs;
-      if (useCalculatedTime) {
-        // Primary source: Parse calculated moveTime and apply real-time deduction
-        totalMs = _parseTimeToMs(moveTime!);
-        if (totalMs == 0) {
+      int totalSeconds;
+      if (useClockSeconds) {
+        // Primary source: Use clock seconds directly
+        totalSeconds = clockSeconds!;
+      } else if (useCalculatedTime) {
+        // Secondary source: Parse calculated moveTime
+        totalSeconds = _parseTimeToSeconds(moveTime!);
+        if (totalSeconds == 0) {
           // If parsing fails, fallback to clock centiseconds
-          totalMs = clockCentiseconds * 10;
+          totalSeconds = (clockCentiseconds / 100).floor();
         }
       } else {
-        // Fallback source: Use raw clock centiseconds (convert to milliseconds)
-        totalMs = clockCentiseconds * 10;
+        // Fallback source: Use raw clock centiseconds (convert to seconds)
+        totalSeconds = (clockCentiseconds / 100).floor();
       }
 
-      // print('⏰ REAL-TIME CALC: elapsedMs=${elapsedMs}ms (${(elapsedMs/1000).toStringAsFixed(1)}s), totalMs=${totalMs}ms, source=${useCalculatedTime ? "PGN" : "DB"}');
-
       // Calculate remaining time: total time minus elapsed time since last move
-      final remainingMs = totalMs - elapsedMs;
+      final remainingSeconds = totalSeconds - elapsedSeconds;
 
       // Ensure time doesn't go below 0
-      final clampedMs = remainingMs < 0 ? 0 : remainingMs;
+      final clampedSeconds = remainingSeconds < 0 ? 0 : remainingSeconds;
 
       // Format the remaining time
-      final remainingTime = _formatTimeFromMs(clampedMs);
+      final remainingTime = _formatTimeFromSeconds(clampedSeconds);
 
       // Convert to hh:mm:ss format if over 1 hour
       return _formatTimeWithHours(remainingTime);
@@ -98,9 +105,21 @@ class AtomicCountdownText extends ConsumerWidget {
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 
-  /// Parses various time formats to milliseconds
+  /// Formats seconds to MM:SS format
+  static String _formatTimeFromSeconds(int totalSeconds) {
+    if (totalSeconds <= 0) {
+      return '00:00';
+    }
+
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  /// Parses various time formats to seconds
   /// Supports: MM:SS, HH:MM:SS, H:MM:SS, 1h23m formats
-  static int _parseTimeToMs(String timeString) {
+  static int _parseTimeToSeconds(String timeString) {
     try {
       // Handle 1h23m format
       if (timeString.contains('h') && timeString.contains('m')) {
@@ -110,7 +129,7 @@ class AtomicCountdownText extends ConsumerWidget {
         final hours = hourMatch != null ? int.parse(hourMatch.group(1)!) : 0;
         final minutes = minuteMatch != null ? int.parse(minuteMatch.group(1)!) : 0;
 
-        return (hours * 3600 + minutes * 60) * 1000;
+        return hours * 3600 + minutes * 60;
       }
 
       // Handle HH:MM:SS or MM:SS format
@@ -119,13 +138,13 @@ class AtomicCountdownText extends ConsumerWidget {
         // MM:SS format
         final minutes = int.parse(timeParts[0]);
         final seconds = int.parse(timeParts[1]);
-        return (minutes * 60 + seconds) * 1000;
+        return minutes * 60 + seconds;
       } else if (timeParts.length == 3) {
         // HH:MM:SS format
         final hours = int.parse(timeParts[0]);
         final minutes = int.parse(timeParts[1]);
         final seconds = int.parse(timeParts[2]);
-        return (hours * 3600 + minutes * 60 + seconds) * 1000;
+        return hours * 3600 + minutes * 60 + seconds;
       }
     } catch (e) {
       // Return 0 if parsing fails
