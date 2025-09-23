@@ -245,7 +245,7 @@ class _CenterContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return gamesTourModel.gameStatus == GameStatus.ongoing
-        ? ChessProgressBar(fen: gamesTourModel.fen ?? '')
+        ? ChessProgressBar(gamesTourModel: gamesTourModel)
         : _StatusText(status: gamesTourModel.gameStatus.displayText);
   }
 }
