@@ -1,5 +1,4 @@
 import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
-import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/chessboard/widgets/context_pop_up_menu.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
@@ -49,42 +48,21 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFENNew> {
   Future<void> _initializeGame() async {
     try {
       if (!mounted) return;
-      final gameWithPGn = await ref
-          .read(gameRepositoryProvider)
-          .getGameById(widget.gamesTourModel.gameId);
-      var game = GamesTourModel.fromGame(gameWithPGn);
-      if (!mounted) return;
-      final pgnData = game.pgn ?? "";
-      final gameData = PgnGame.parsePgn(pgnData);
-      final startingPos = PgnGame.startingPosition(gameData.headers);
-
-      // Parse all moves and store them
-      Position tempPosition = startingPos;
-      List<Move> allMoves = [];
-      List<String> moveSans = [];
-
-      for (final node in gameData.moves.mainline()) {
-        final move = tempPosition.parseSan(node.san);
-        if (move == null) break; // Illegal move
-        allMoves.add(move);
-        moveSans.add(node.san);
-        tempPosition = tempPosition.play(move);
-      }
-
-      // Set to the last position initially
-      final lastMoveIndex = allMoves.length - 1;
-      finalPosition = startingPos;
-
-      // Replay to final position
-      for (int i = 0; i <= lastMoveIndex; i++) {
-        lastMove = allMoves[i];
-        finalPosition = finalPosition!.play(allMoves[i]);
+      // For board view, we only need FEN to display the board position
+      // Time display comes from the new last_clock fields via GamesTourModel
+      final fen = widget.gamesTourModel.fen;
+      if (fen != null && fen.isNotEmpty) {
+        final setup = Setup.parseFen(fen);
+        finalPosition = Chess.fromSetup(setup);
+        // For last move, we can use the lastMove from the model if available
+        // Note: We don't need PGN parsing for board view cards
       }
       setState(() {});
     } catch (error) {
       debugPrint('Error initializing game: $error');
     }
   }
+
 
   @override
   void didUpdateWidget(ChessBoardFromFENNew oldWidget) {
@@ -367,7 +345,7 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
     return BoxDecoration(
       boxShadow: [
         BoxShadow(
-          color: Colors.grey.withOpacity(0.5),
+          color: kBoardLightGrey.withValues(alpha: 0.5),
           blurRadius: 8,
           offset: const Offset(0, 4),
         ),
