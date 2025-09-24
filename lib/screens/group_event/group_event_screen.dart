@@ -6,6 +6,7 @@ import 'package:chessever2/screens/home/home_screen_provider.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
+import 'package:chessever2/repository/local_storage/unified_favorites/unified_favorites_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/event_card/starred_provider.dart';
@@ -201,7 +202,17 @@ class GroupEventScreen extends HookConsumerWidget {
                         .watch(groupEventScreenProvider)
                         .when(
                           data: (filteredEvents) {
-                            final favorites = ref.watch(starredProvider);
+                            // Combine old starred favorites with new unified favorites
+                            final starredFavorites = ref.watch(starredProvider);
+                            final unifiedFavoritesAsync = ref.watch(favoriteEventsProvider);
+                            final unifiedFavorites = unifiedFavoritesAsync.maybeWhen(
+                              data: (events) => events.map((e) => e['id'] as String).toList(),
+                              orElse: () => <String>[],
+                            );
+
+                            // Combine both lists
+                            final allFavorites = <String>{...starredFavorites, ...unifiedFavorites}.toList();
+
                             final isSearching =
                                 searchController.text.trim().isNotEmpty;
 
@@ -215,7 +226,7 @@ class GroupEventScreen extends HookConsumerWidget {
                                         .read(tournamentSortingServiceProvider)
                                         .sortBasedOnFavorite(
                                           tours: filteredEvents,
-                                          favorites: favorites,
+                                          favorites: allFavorites,
                                         );
 
                             return RefreshIndicator(

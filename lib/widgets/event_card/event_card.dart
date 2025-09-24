@@ -4,6 +4,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/event_card/starred_provider.dart';
+import 'package:chessever2/repository/local_storage/unified_favorites/unified_favorites_provider.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
@@ -296,20 +297,28 @@ class _StarWidgetState extends ConsumerState<_StarWidget> {
 
   @override
   Widget build(BuildContext context) {
+    // Check both old system (for backward compatibility) and new system
     final starredList = ref.watch(starredProvider);
+    final isEventFavoriteAsync = ref.watch(isEventFavoriteProvider(widget.tourEventCardModel.id));
 
-    final isStarred = starredList.contains(widget.tourEventCardModel.id);
+    final isStarredOld = starredList.contains(widget.tourEventCardModel.id);
+    final isStarredNew = isEventFavoriteAsync.maybeWhen(
+      data: (isFavorite) => isFavorite,
+      orElse: () => false,
+    );
 
+    final isStarred = isStarredOld || isStarredNew;
     isFav = isStarred;
 
     return InkWell(
-      onTap: () {
+      onTap: () async {
         setState(() {
           isFav = !isFav;
         });
-        ref
-            .read(starredProvider.notifier)
-            .toggleStarred(widget.tourEventCardModel.id);
+
+        // Toggle in both old and new systems for compatibility
+        ref.read(starredProvider.notifier).toggleStarred(widget.tourEventCardModel.id);
+        await ref.toggleEventFavorite(widget.tourEventCardModel);
       },
       child: Container(
         alignment: Alignment.centerRight,
@@ -327,7 +336,7 @@ class _StarWidgetState extends ConsumerState<_StarWidget> {
 }
 
 class _CountrymenStarWidget extends ConsumerStatefulWidget {
-  _CountrymenStarWidget();
+  const _CountrymenStarWidget();
 
   @override
   ConsumerState<_CountrymenStarWidget> createState() =>
