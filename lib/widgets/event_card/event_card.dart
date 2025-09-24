@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -7,6 +9,7 @@ import 'package:chessever2/widgets/event_card/starred_provider.dart';
 import 'package:chessever2/repository/local_storage/unified_favorites/unified_favorites_provider.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -30,6 +33,9 @@ class EventCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return GestureDetector(
       onTap: onTap,
+      onLongPressStart: (detail) {
+        HapticFeedback.lightImpact();
+      },
       child: Container(
         decoration: BoxDecoration(
           color: kBlack2Color,
@@ -136,7 +142,8 @@ class EventCard extends ConsumerWidget {
     } else if (timeControl.contains('rapid')) {
       icon = Icons.flash_on;
       iconColor = Colors.orange;
-    } else if (timeControl.contains('classic') || timeControl.contains('standard')) {
+    } else if (timeControl.contains('classic') ||
+        timeControl.contains('standard')) {
       icon = Icons.access_time;
       iconColor = kWhiteColor;
     } else {
@@ -155,7 +162,6 @@ class EventCard extends ConsumerWidget {
       color: iconColor,
     );
   }
-
 }
 
 class _ShowStatus extends ConsumerWidget {
@@ -263,20 +269,8 @@ class _BuildTrailingButton extends ConsumerWidget {
         return _StarWidget(tourEventCardModel: tourEventCardModel);
 
       case TourEventCategory.completed:
-        return InkWell(
-          onTap: onMorePressed,
-          child: Container(
-            alignment: Alignment.centerRight,
-            width: 30.w,
-            height: 40.h,
-            child: SvgWidget(
-              SvgAsset.threeDots,
-              semanticsLabel: 'More Options',
-              height: 24.h,
-              width: 24.w,
-            ),
-          ),
-        );
+        return _StarWidget(tourEventCardModel: tourEventCardModel);
+
       case TourEventCategory.ongoing:
         return _StarWidget(tourEventCardModel: tourEventCardModel);
     }
@@ -299,7 +293,9 @@ class _StarWidgetState extends ConsumerState<_StarWidget> {
   Widget build(BuildContext context) {
     // Check both old system (for backward compatibility) and new system
     final starredList = ref.watch(starredProvider);
-    final isEventFavoriteAsync = ref.watch(isEventFavoriteProvider(widget.tourEventCardModel.id));
+    final isEventFavoriteAsync = ref.watch(
+      isEventFavoriteProvider(widget.tourEventCardModel.id),
+    );
 
     final isStarredOld = starredList.contains(widget.tourEventCardModel.id);
     final isStarredNew = isEventFavoriteAsync.maybeWhen(
@@ -317,7 +313,9 @@ class _StarWidgetState extends ConsumerState<_StarWidget> {
         });
 
         // Toggle in both old and new systems for compatibility
-        ref.read(starredProvider.notifier).toggleStarred(widget.tourEventCardModel.id);
+        ref
+            .read(starredProvider.notifier)
+            .toggleStarred(widget.tourEventCardModel.id);
         await ref.toggleEventFavorite(widget.tourEventCardModel);
       },
       child: Container(
