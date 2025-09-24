@@ -204,23 +204,31 @@ class GroupEventScreen extends HookConsumerWidget {
                           data: (filteredEvents) {
                             // Combine old starred favorites with new unified favorites
                             final starredFavorites = ref.watch(starredProvider);
-                            final unifiedFavoritesAsync = ref.watch(favoriteEventsProvider);
-                            final unifiedFavorites = unifiedFavoritesAsync.maybeWhen(
-                              data: (events) => events.map((e) => e['id'] as String).toList(),
-                              orElse: () => <String>[],
+                            final unifiedFavoritesAsync = ref.watch(
+                              favoriteEventsProvider,
                             );
+                            final unifiedFavorites = unifiedFavoritesAsync
+                                .maybeWhen(
+                                  data:
+                                      (events) =>
+                                          events
+                                              .map((e) => e['id'] as String)
+                                              .toList(),
+                                  orElse: () => <String>[],
+                                );
 
                             // Combine both lists
-                            final allFavorites = <String>{...starredFavorites, ...unifiedFavorites}.toList();
+                            final allFavorites =
+                                <String>{
+                                  ...starredFavorites,
+                                  ...unifiedFavorites,
+                                }.toList();
 
                             final isSearching =
                                 searchController.text.trim().isNotEmpty;
 
                             final finalEvents =
                                 isSearching
-                                    ? filteredEvents
-                                    : selectedTourEvent ==
-                                        GroupEventCategory.past
                                     ? filteredEvents
                                     : ref
                                         .read(tournamentSortingServiceProvider)
