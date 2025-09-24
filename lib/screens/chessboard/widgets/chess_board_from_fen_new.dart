@@ -343,7 +343,15 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Container(
-      decoration: _buildShadowDecoration(),
+      decoration: BoxDecoration(
+        boxShadow: [
+          BoxShadow(
+            color: kBoardLightGrey.withValues(alpha: 0.5),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Row(
         children: [
           EvaluationBarWidgetForGames(
@@ -358,18 +366,6 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
           ),
         ],
       ),
-    );
-  }
-
-  BoxDecoration _buildShadowDecoration() {
-    return BoxDecoration(
-      boxShadow: [
-        BoxShadow(
-          color: Colors.grey.withOpacity(0.5),
-          blurRadius: 8,
-          offset: const Offset(0, 4),
-        ),
-      ],
     );
   }
 }
