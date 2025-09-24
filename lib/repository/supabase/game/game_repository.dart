@@ -153,6 +153,49 @@ class GameRepository extends BaseRepository {
     });
   }
 
+  // Get all games for a specific player by name (more comprehensive search)
+  Future<List<Games>> getGamesByPlayerName(String playerName, {int? limit}) async {
+    return handleApiCall(() async {
+      var query = supabase
+          .from('games')
+          .select('''
+          id,
+          round_id,
+          round_slug,
+          tour_id,
+          tour_slug,
+          name,
+          fen,
+          players,
+          last_move,
+          think_time,
+          status,
+          pgn,
+          search,
+          lichess_id,
+          player_white,
+          player_black,
+          date_start,
+          time_start,
+          board_nr,
+          last_move_time,
+          last_clock_white,
+          last_clock_black
+        ''')
+          .or('player_white.eq.$playerName,player_black.eq.$playerName')
+          .order('date_start', ascending: false)
+          .order('time_start', ascending: false);
+
+      if (limit != null) {
+        query = query.limit(limit);
+      }
+
+      final response = await query;
+
+      return (response as List).map((json) => Games.fromJson(json)).toList();
+    });
+  }
+
   // Get recent games across all tournaments
   Future<List<Games>> getRecentGames({int limit = 20}) async {
     return handleApiCall(() async {
