@@ -2,7 +2,6 @@ import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/screens/group_event/widget/empty_widget.dart';
-import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
@@ -89,16 +88,13 @@ class PlayerTourScreen extends ConsumerWidget {
                       itemCount: data.length,
                       itemBuilder: (context, index) {
                         final player = data[index];
-                        final validCountryCode = ref
-                            .read(locationServiceProvider)
-                            .getValidCountryCode(player.countryCode);
                         return Padding(
                           padding: EdgeInsets.only(
                             // bottom: 16.sp,
                             // top: index == 0 ? 16.sp : 0,
                           ),
                           child: StandingScoreCard(
-                            countryCode: validCountryCode,
+                            countryCode: player.countryCode,
                             title: player.title,
                             name: player.name,
                             score: player.score,
@@ -140,7 +136,7 @@ class PlayerTourScreen extends ConsumerWidget {
 }
 
 class _StandingScreenLoading extends StatelessWidget {
-  const _StandingScreenLoading({super.key});
+  const _StandingScreenLoading();
 
   @override
   Widget build(BuildContext context) {
