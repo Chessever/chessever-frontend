@@ -3,6 +3,8 @@ import 'package:chessever2/screens/chessboard/widgets/context_pop_up_menu.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/game_fen_stream_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/game_last_move_stream_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessground/chessground.dart';
@@ -12,7 +14,7 @@ import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/providers/board_settings_provider.dart';
 
-class ChessBoardFromFENNew extends ConsumerStatefulWidget {
+class ChessBoardFromFENNew extends ConsumerWidget {
   const ChessBoardFromFENNew({
     super.key,
     required this.gamesTourModel,
@@ -26,56 +28,19 @@ class ChessBoardFromFENNew extends ConsumerStatefulWidget {
   final List<String> pinnedIds;
   final void Function(GamesTourModel game) onPinToggle;
 
-  @override
-  ConsumerState<ChessBoardFromFENNew> createState() =>
-      _ChessBoardFromFENState();
-}
+  bool get isPinned => pinnedIds.contains(gamesTourModel.gameId);
 
-class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFENNew> {
-  Move? lastMove;
-  Position? finalPosition;
-
-  bool get isPinned => widget.pinnedIds.contains(widget.gamesTourModel.gameId);
-
-  @override
-  void initState() {
-    super.initState();
-    Future.microtask(() async {
-      await _initializeGame();
-    });
-  }
-
-  Future<void> _initializeGame() async {
-    try {
-      if (!mounted) return;
-      // For board view, we only need FEN to display the board position
-      // Time display comes from the new last_clock fields via GamesTourModel
-      final fen = widget.gamesTourModel.fen;
-      if (fen != null && fen.isNotEmpty) {
-        final setup = Setup.parseFen(fen);
-        finalPosition = Chess.fromSetup(setup);
-        // For last move, we can use the lastMove from the model if available
-        // Note: We don't need PGN parsing for board view cards
-      }
-      setState(() {});
-    } catch (error) {
-      debugPrint('Error initializing game: $error');
+  Move? _uciToMove(String uci) {
+    if (uci.length != 4 && uci.length != 5) {
+      return null;
     }
+    final from = _square(uci.substring(0, 2));
+    final to = _square(uci.substring(2, 4));
+    final promo = uci.length == 5 ? Role.fromChar(uci[4]) : null;
+    return NormalMove(from: from, to: to, promotion: promo);
   }
 
-
-  @override
-  void didUpdateWidget(ChessBoardFromFENNew oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.gamesTourModel.lastMove != widget.gamesTourModel.lastMove) {
-      _initializeGame();
-    }
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
-  }
+  Square _square(String name) => Square.fromName(name);
 
   void _showBlurredPopup(BuildContext context, LongPressStartDetails details) {
     final RenderBox boardRenderBox = context.findRenderObject() as RenderBox;
@@ -116,9 +81,8 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFENNew> {
                   left: boardPosition.dx,
                   top: boardPosition.dy,
                   child: _ChessBoardContent(
-                    gamesTourModel: widget.gamesTourModel,
-                    finalPosition: finalPosition,
-                    lastMove: lastMove,
+                    gamesTourModel: gamesTourModel,
+                    lastMove: _uciToMove(gamesTourModel.lastMove ?? ''),
                     boardSize: boardSize,
                     isPinned: isPinned,
                   ),
@@ -131,7 +95,7 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFENNew> {
                     isPinned: isPinned,
                     onPinToggle: () {
                       Navigator.pop(context);
-                      widget.onPinToggle(widget.gamesTourModel);
+                      onPinToggle(gamesTourModel);
                     },
                     onShare: () {},
                   ),
@@ -149,24 +113,88 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFENNew> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final sideBarWidth = 20.w;
     final horizontalPadding = 48.sp * 2;
     final screenWidth = MediaQuery.of(context).size.width;
     final boardSize = screenWidth - sideBarWidth - horizontalPadding;
 
+    final fenAsync = ref.watch(gameFenStreamProvider(gamesTourModel.gameId));
+    final lastMoveAsync = ref.watch(
+      gameLastMoveStreamProvider(gamesTourModel.gameId),
+    );
+
+    return fenAsync.when(
+      data: (newFen) {
+        return lastMoveAsync.when(
+          data: (newLastMove) {
+            final updatedGame = gamesTourModel.copyWith(
+              fen: newFen ?? gamesTourModel.fen,
+              lastMove: newLastMove ?? gamesTourModel.lastMove,
+            );
+            return Padding(
+              padding: EdgeInsets.only(left: 24.sp, right: 24.sp, bottom: 8.sp),
+              child: GestureDetector(
+                onTap: onChanged,
+                onLongPressStart: (details) {
+                  HapticFeedback.lightImpact();
+                  _showBlurredPopup(context, details);
+                },
+                child: _ChessBoardLayout(
+                  gamesTourModel: updatedGame,
+                  lastMove: _uciToMove(updatedGame.lastMove ?? ''),
+                  sideBarWidth: sideBarWidth,
+                  boardSize: boardSize,
+                  isPinned: isPinned,
+                ),
+              ),
+            );
+          },
+          loading:
+              () => _buildPlaceholder(
+                context: context,
+                boardSize: boardSize,
+                sideBarWidth: sideBarWidth,
+              ),
+          error:
+              (error, stack) => _buildPlaceholder(
+                context: context,
+                boardSize: boardSize,
+                sideBarWidth: sideBarWidth,
+              ),
+        );
+      },
+      loading:
+          () => _buildPlaceholder(
+            context: context,
+            boardSize: boardSize,
+            sideBarWidth: sideBarWidth,
+          ),
+      error:
+          (error, stack) => _buildPlaceholder(
+            context: context,
+            boardSize: boardSize,
+            sideBarWidth: sideBarWidth,
+          ),
+    );
+  }
+
+  Widget _buildPlaceholder({
+    required BuildContext context,
+    required double boardSize,
+    required double sideBarWidth,
+  }) {
     return Padding(
       padding: EdgeInsets.only(left: 24.sp, right: 24.sp, bottom: 8.sp),
       child: GestureDetector(
-        onTap: widget.onChanged,
+        onTap: onChanged,
         onLongPressStart: (details) {
           HapticFeedback.lightImpact();
           _showBlurredPopup(context, details);
         },
         child: _ChessBoardLayout(
-          gamesTourModel: widget.gamesTourModel,
-          finalPosition: finalPosition,
-          lastMove: lastMove,
+          gamesTourModel: gamesTourModel,
+          lastMove: _uciToMove(gamesTourModel.lastMove ?? ''),
           sideBarWidth: sideBarWidth,
           boardSize: boardSize,
           isPinned: isPinned,
@@ -179,7 +207,6 @@ class _ChessBoardFromFENState extends ConsumerState<ChessBoardFromFENNew> {
 class _ChessBoardLayout extends ConsumerWidget {
   const _ChessBoardLayout({
     required this.gamesTourModel,
-    required this.finalPosition,
     required this.lastMove,
     required this.sideBarWidth,
     required this.boardSize,
@@ -187,7 +214,6 @@ class _ChessBoardLayout extends ConsumerWidget {
   });
 
   final GamesTourModel gamesTourModel;
-  final Position? finalPosition;
   final Move? lastMove;
   final double sideBarWidth;
   final double boardSize;
@@ -206,7 +232,6 @@ class _ChessBoardLayout extends ConsumerWidget {
         SizedBox(height: 4.h),
         _ChessBoardWithEvaluation(
           gamesTourModel: gamesTourModel,
-          finalPosition: finalPosition,
           lastMove: lastMove,
           sideBarWidth: sideBarWidth,
           boardSize: boardSize,
@@ -226,14 +251,12 @@ class _ChessBoardLayout extends ConsumerWidget {
 class _ChessBoardContent extends ConsumerWidget {
   const _ChessBoardContent({
     required this.gamesTourModel,
-    required this.finalPosition,
     required this.lastMove,
     required this.boardSize,
     required this.isPinned,
   });
 
   final GamesTourModel gamesTourModel;
-  final Position? finalPosition;
   final Move? lastMove;
   final Size boardSize;
   final bool isPinned;
@@ -261,7 +284,6 @@ class _ChessBoardContent extends ConsumerWidget {
             SizedBox(height: 4.h),
             _ChessBoardWithEvaluation(
               gamesTourModel: gamesTourModel,
-              finalPosition: finalPosition,
               lastMove: lastMove,
               sideBarWidth: sideBarWidth,
               boardSize: chessBoardSize,
@@ -308,14 +330,12 @@ class _PlayerRow extends StatelessWidget {
 class _ChessBoardWithEvaluation extends ConsumerWidget {
   const _ChessBoardWithEvaluation({
     required this.gamesTourModel,
-    required this.finalPosition,
     required this.lastMove,
     required this.sideBarWidth,
     required this.boardSize,
   });
 
   final GamesTourModel gamesTourModel;
-  final Position? finalPosition;
   final Move? lastMove;
   final double sideBarWidth;
   final double boardSize;
@@ -323,7 +343,15 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Container(
-      decoration: _buildShadowDecoration(),
+      decoration: BoxDecoration(
+        boxShadow: [
+          BoxShadow(
+            color: kBoardLightGrey.withValues(alpha: 0.5),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Row(
         children: [
           EvaluationBarWidgetForGames(
@@ -332,7 +360,7 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
             fen: gamesTourModel.fen ?? '',
           ),
           _ChessBoardWidget(
-            finalPosition: finalPosition,
+            fen: gamesTourModel.fen ?? '',
             lastMove: lastMove,
             boardSize: boardSize,
           ),
@@ -340,28 +368,16 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
       ),
     );
   }
-
-  BoxDecoration _buildShadowDecoration() {
-    return BoxDecoration(
-      boxShadow: [
-        BoxShadow(
-          color: kBoardLightGrey.withValues(alpha: 0.5),
-          blurRadius: 8,
-          offset: const Offset(0, 4),
-        ),
-      ],
-    );
-  }
 }
 
 class _ChessBoardWidget extends ConsumerWidget {
   const _ChessBoardWidget({
-    required this.finalPosition,
+    required this.fen,
     required this.lastMove,
     required this.boardSize,
   });
 
-  final Position? finalPosition;
+  final String? fen;
   final Move? lastMove;
   final double boardSize;
 
@@ -382,7 +398,7 @@ class _ChessBoardWidget extends ConsumerWidget {
             colorScheme: _buildColorScheme(boardTheme),
           ),
           orientation: Side.white,
-          fen: finalPosition?.fen ?? "",
+          fen: fen ?? '',
           lastMove: lastMove,
         ),
       ),
