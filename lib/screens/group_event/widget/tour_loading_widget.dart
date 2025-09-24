@@ -23,6 +23,8 @@ class TourLoadingWidget extends StatelessWidget {
       blackPlayer: mockPlayer,
       whiteTimeDisplay: 'whiteTimeDisplay',
       blackTimeDisplay: 'blackTimeDisplay',
+      whiteClockCentiseconds: 180000, // 30 minutes in centiseconds
+      blackClockCentiseconds: 180000, // 30 minutes in centiseconds
       gameStatus: GameStatus.whiteWins,
     );
 

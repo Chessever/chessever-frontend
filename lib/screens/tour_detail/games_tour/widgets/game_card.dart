@@ -2,10 +2,10 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/chess_progress_bar.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
-import 'package:chessever2/utils/date_time_provider.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/atomic_countdown_text.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
@@ -52,7 +52,7 @@ class GameCard extends ConsumerWidget {
                 );
               },
             ),
-            if (isPinned) PinIconOverlay(right: 4.sp, top: 4.sp),
+            if (isPinned) PinIconOverlay(right: 8.sp, top: 4.sp),
           ],
         ),
       ),
@@ -112,7 +112,7 @@ class GameCard extends ConsumerWidget {
                             gamesTourModel: gamesTourModel,
                             onTapDown: (_) {},
                           ),
-                          if (isPinned) PinIconOverlay(right: 8.sp, top: 8.sp),
+                          if (isPinned) PinIconOverlay(right: 8.sp, top: 4.sp),
                         ],
                       ),
                     ),
@@ -270,14 +270,14 @@ class _BottomSection extends ConsumerWidget {
       child: Row(
         children: [
           _TimerWidget(
-            turn: false,
+            turn: gamesTourModel.activePlayer == Side.white,
             time: gamesTourModel.whiteTimeDisplay,
             gamesTourModel: gamesTourModel,
             isWhitePlayer: true,
           ),
           Spacer(),
           _TimerWidget(
-            turn: false,
+            turn: gamesTourModel.activePlayer == Side.black,
             time: gamesTourModel.blackTimeDisplay,
             gamesTourModel: gamesTourModel,
             isWhitePlayer: false,
@@ -418,57 +418,26 @@ class _TimerWidget extends StatelessWidget {
         gamesTourModel.activePlayer != null &&
         ((isWhitePlayer && gamesTourModel.activePlayer == Side.white) ||
             (!isWhitePlayer && gamesTourModel.activePlayer == Side.black));
-    return isClockRunning
-        ? HookConsumer(
-          builder: (context, ref, child) {
-            final displayTime = ref.watch(
-              dateTimeProvider.select((timeAsync) {
-                final currentTime = timeAsync.valueOrNull;
-                if (currentTime == null ||
-                    gamesTourModel.lastMoveTime == null) {
-                  return time;
-                }
-                final timeParts = time.split(':');
-                if (timeParts.length != 2) {
-                  return time;
-                }
 
-                try {
-                  final minutes = int.parse(timeParts[0]);
-                  final seconds = int.parse(timeParts[1]);
-                  final totalMs = (minutes * 60 + seconds) * 1000;
-                  final elapsedMs =
-                      currentTime
-                          .difference(gamesTourModel.lastMoveTime!)
-                          .inMilliseconds;
-                  final remainingMs = totalMs - elapsedMs;
-                  if (remainingMs <= 0) {
-                    return '00:00';
-                  }
-                  final remainingSeconds = (remainingMs / 1000).floor();
-                  final displayMinutes = remainingSeconds ~/ 60;
-                  final displaySecondsRem = remainingSeconds % 60;
+    final clockCentiseconds = isWhitePlayer
+        ? gamesTourModel.whiteClockCentiseconds
+        : gamesTourModel.blackClockCentiseconds;
 
-                  return '${displayMinutes.toString().padLeft(2, '0')}:${displaySecondsRem.toString().padLeft(2, '0')}';
-                } catch (e) {
-                  return time;
-                }
-              }),
-            );
+    final clockSeconds = isWhitePlayer
+        ? gamesTourModel.whiteClockSeconds
+        : gamesTourModel.blackClockSeconds;
 
-            return Text(
-              displayTime,
-              style: AppTypography.textXsMedium.copyWith(
-                color: turn ? kPrimaryColor : kWhiteColor,
-              ),
-            );
-          },
-        )
-        : Text(
-          time,
-          style: AppTypography.textXsMedium.copyWith(
-            color: turn ? kPrimaryColor : kWhiteColor,
-          ),
-        );
+    return AtomicCountdownText(
+      clockSeconds: clockSeconds, // Primary source: time in seconds from last_clock fields
+      clockCentiseconds: clockCentiseconds, // Fallback source: raw database clock
+      lastMoveTime: gamesTourModel.lastMoveTime,
+      isActive: isClockRunning,
+      style: AppTypography.textXsMedium.copyWith(
+        color: gamesTourModel.gameStatus.isFinished
+            ? kWhiteColor
+            : (turn ? kPrimaryColor : kWhiteColor),
+      ),
+    );
   }
+
 }
