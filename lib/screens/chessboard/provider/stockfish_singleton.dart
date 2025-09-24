@@ -10,13 +10,15 @@ class EnhancedCloudEval {
   final int depth;
   final List<Pv> pvs;
   final bool isCancelled;
-  
+  final bool fromWhitePerspective; // Track perspective for correct evaluation
+
   const EnhancedCloudEval({
     required this.fen,
     required this.knodes,
     required this.depth,
     required this.pvs,
     this.isCancelled = false,
+    this.fromWhitePerspective = true,
   });
 }
 
@@ -28,8 +30,28 @@ class StockfishSingleton {
   Stockfish? _engine;
   _EvalJob? _currentJob;
   StreamSubscription? _currentSubscription;
+  final Map<String, EnhancedCloudEval> _evaluationCache = {};
 
   Future<EnhancedCloudEval> evaluatePosition(String fen, {int depth = 15}) async {
+    // Validate depth range
+    if (depth < 1 || depth > 25) {
+      throw ArgumentError('Depth must be between 1 and 25, got: $depth');
+    }
+
+    // Validate FEN string
+    if (fen.isEmpty || fen.split(' ').length < 4) {
+      throw ArgumentError('Invalid FEN string: $fen');
+    }
+
+    // Create cache key including side to move for perspective-aware caching
+    final fenParts = fen.split(' ');
+    final sideToMove = fenParts.length > 1 ? fenParts[1] : 'w';
+    final cacheKey = '${fen}_${depth}_$sideToMove';
+
+    if (_evaluationCache.containsKey(cacheKey)) {
+      print('Returning cached evaluation for $fen');
+      return _evaluationCache[cacheKey]!;
+    }
     // Cancel any ongoing evaluation
     await _cancelCurrentEvaluation();
 
@@ -38,8 +60,15 @@ class StockfishSingleton {
 
     // Start the new evaluation
     _processCurrentJob();
-    
-    return completer.future;
+
+    final result = await completer.future;
+
+    // Cache the result if it's valid
+    if (!result.isCancelled && result.pvs.isNotEmpty) {
+      _evaluationCache[cacheKey] = result;
+    }
+
+    return result;
   }
 
   Future<void> _cancelCurrentEvaluation() async {
@@ -221,6 +250,11 @@ class StockfishSingleton {
     _cancelCurrentEvaluation();
     _engine?.dispose();
     _engine = null;
+    _evaluationCache.clear();
+  }
+
+  void clearCache() {
+    _evaluationCache.clear();
   }
 }
 
