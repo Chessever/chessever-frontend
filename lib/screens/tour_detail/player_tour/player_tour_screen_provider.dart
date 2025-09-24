@@ -3,6 +3,8 @@ import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../repository/local_storage/favorite/favourate_standings_player_services.dart';
 
@@ -38,6 +40,7 @@ class _PlayerTourScreenController
 
   Future<void> loadPlayers() async {
     try {
+      // Get tournament players from local storage
       final allTours = await ref
           .read(tourLocalStorageProvider)
           .getTours(groupBroadcastId);
@@ -53,15 +56,64 @@ class _PlayerTourScreenController
 
       tournamentPlayer = tournamentPlayer.toSet().toList();
 
-      tournamentPlayer.sort((a, b) {
-        final aRating = a.score == null ? 0 : (a.score! / a.played);
-        final bRating = b.score == null ? 0 : (b.score! / b.played);
+      // Get all games for this tournament from Supabase (same as score card screen)
+      final gamesScreenData = ref.read(gamesTourScreenProvider);
+      final allGames = gamesScreenData.value?.gamesTourModels ?? [];
 
-        if (bRating == aRating) {
-          return b.played.compareTo(a.played);
+      // Calculate scores from actual games for each player
+      for (int i = 0; i < tournamentPlayer.length; i++) {
+        final player = tournamentPlayer[i];
+        final playerGames = allGames.where((game) =>
+            game.whitePlayer.name == player.name ||
+            game.blackPlayer.name == player.name).toList();
+
+        double calculatedScore = 0.0;
+        int gamesPlayed = 0;
+
+        for (final game in playerGames) {
+          // Skip ongoing games
+          if (game.gameStatus == GameStatus.ongoing || game.gameStatus == GameStatus.unknown) {
+            continue;
+          }
+
+          gamesPlayed++;
+          final isWhite = game.whitePlayer.name == player.name;
+
+          // Calculate score using w:1, d:0.5, l:0 system
+          switch (game.gameStatus) {
+            case GameStatus.whiteWins:
+              if (isWhite) calculatedScore += 1.0;
+              break;
+            case GameStatus.blackWins:
+              if (!isWhite) calculatedScore += 1.0;
+              break;
+            case GameStatus.draw:
+              calculatedScore += 0.5;
+              break;
+            default:
+              break;
+          }
         }
 
-        return bRating.compareTo(aRating); // Descending order (highest first)
+        // Update player with calculated score
+        tournamentPlayer[i] = player.copyWith(
+          score: calculatedScore,
+          played: gamesPlayed,
+        );
+      }
+
+      // Sort by total score (highest first), then by number of games played
+      tournamentPlayer.sort((a, b) {
+        final aScore = a.score ?? 0.0;
+        final bScore = b.score ?? 0.0;
+
+        // Primary sort: total score (highest first)
+        if (bScore != aScore) {
+          return bScore.compareTo(aScore);
+        }
+
+        // Secondary sort: number of games played if scores are equal
+        return b.played.compareTo(a.played);
       });
 
       state = AsyncValue.data(
@@ -73,14 +125,14 @@ class _PlayerTourScreenController
   }
 }
 
-final favoritePlayersProvider = FutureProvider<List<PlayerStandingModel>>((
+final tournamentFavoritePlayersProvider = FutureProvider<List<PlayerStandingModel>>((
   ref,
 ) async {
   final favoritesService = ref.read(favoriteStandingsPlayerService);
   return await favoritesService.getFavoritePlayers();
 });
 
-final isPlayerFavoriteProvider = FutureProvider.family<bool, String>((
+final isTournamentPlayerFavoriteProvider = FutureProvider.family<bool, String>((
   ref,
   playerName,
 ) async {
