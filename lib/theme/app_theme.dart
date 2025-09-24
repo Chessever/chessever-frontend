@@ -18,6 +18,7 @@ const Color kLightBlack = Color(0xFF222222);
 const Color kGreenColor = Color(0xFF009C42); // GREEN
 const Color kGreenColor2 = Color(0xFF45C86E); // GREEN
 const Color kRedColor = Color(0xFFF5453A); // RED
+const Color kChessBlackMoveColor = Color(0xFFFF8A65); // Warm coral-orange for black moves
 const Color kActiveCalendarColor = Color(0xff68D3FF);
 const Color kpinColor = Color(0xFFBD3D44);
 const Color kBoardColorDefault = Color(0xFF6B939F); // Default
