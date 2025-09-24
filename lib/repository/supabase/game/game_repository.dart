@@ -46,7 +46,10 @@ class GameRepository extends BaseRepository {
           player_black,
           date_start,
           time_start,
-          board_nr
+          board_nr,
+          last_move_time,
+          last_clock_white,
+          last_clock_black
         ''')
           .eq('tour_id', tourId)
           .order('id', ascending: true);
