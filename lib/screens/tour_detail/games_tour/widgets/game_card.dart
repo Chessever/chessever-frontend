@@ -35,7 +35,7 @@ class GameCard extends ConsumerWidget {
       onTap: onTap,
       onLongPressStart: (details) {
         HapticFeedback.lightImpact();
-        _showBlurredPopup(context, details: details, tapDownDetails: null);
+        _showBlurredPopup(context, details: details);
       },
       child: SizedBox(
         width: double.infinity,
@@ -43,16 +43,8 @@ class GameCard extends ConsumerWidget {
           children: [
             _GameCardContent(
               gamesTourModel: gamesTourModel,
-              onTapDown: (tapDownDetails) {
-                HapticFeedback.lightImpact();
-                _showBlurredPopup(
-                  context,
-                  details: null,
-                  tapDownDetails: tapDownDetails,
-                );
-              },
             ),
-            if (isPinned) PinIconOverlay(right: 8.sp, top: 4.sp),
+            if (isPinned) PinIconOverlay(right: 8.sp, top: 2.sp),
           ],
         ),
       ),
@@ -61,8 +53,7 @@ class GameCard extends ConsumerWidget {
 
   void _showBlurredPopup(
     BuildContext context, {
-    required LongPressStartDetails? details,
-    required TapDownDetails? tapDownDetails,
+    required LongPressStartDetails details,
   }) {
     final RenderBox cardRenderBox = context.findRenderObject() as RenderBox;
     final Offset cardPosition = cardRenderBox.localToGlobal(Offset.zero);
@@ -110,7 +101,6 @@ class GameCard extends ConsumerWidget {
                         children: [
                           _GameCardContent(
                             gamesTourModel: gamesTourModel,
-                            onTapDown: (_) {},
                           ),
                           if (isPinned) PinIconOverlay(right: 8.sp, top: 4.sp),
                         ],
@@ -119,10 +109,7 @@ class GameCard extends ConsumerWidget {
                   ),
                 ),
                 Positioned(
-                  left:
-                      (details?.globalPosition.dx ??
-                          tapDownDetails!.globalPosition.dx) -
-                      60.w,
+                  left: details.globalPosition.dx - 60.w,
                   top: menuTop,
                   child: ContextPopupMenu(
                     isPinned: isPinned,
@@ -151,17 +138,15 @@ class GameCard extends ConsumerWidget {
 class _GameCardContent extends ConsumerWidget {
   const _GameCardContent({
     required this.gamesTourModel,
-    required this.onTapDown,
   });
 
   final GamesTourModel gamesTourModel;
-  final ValueChanged<TapDownDetails> onTapDown;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Column(
       children: [
-        _TopSection(gamesTourModel: gamesTourModel, onTapDown: onTapDown),
+        _TopSection(gamesTourModel: gamesTourModel),
         _BottomSection(gamesTourModel: gamesTourModel),
       ],
     );
@@ -169,16 +154,15 @@ class _GameCardContent extends ConsumerWidget {
 }
 
 class _TopSection extends ConsumerWidget {
-  const _TopSection({required this.gamesTourModel, required this.onTapDown});
+  const _TopSection({required this.gamesTourModel});
 
   final GamesTourModel gamesTourModel;
-  final ValueChanged<TapDownDetails> onTapDown;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Container(
       height: 60.h,
-      padding: EdgeInsets.only(left: 12.sp),
+      padding: EdgeInsets.only(left: 12.sp, right: 12.sp),
       decoration: BoxDecoration(
         color: kWhiteColor70,
         borderRadius: BorderRadius.only(
@@ -186,49 +170,23 @@ class _TopSection extends ConsumerWidget {
           topRight: Radius.circular(12.br),
         ),
       ),
-      child: Stack(
+      child: Row(
         children: [
-          Row(
-            children: [
-              Container(
-                alignment: Alignment.center,
-                width: MediaQuery.of(context).size.width * (35 / 100),
-                child: _GamesRound(
-                  playerName: gamesTourModel.whitePlayer.name,
-                  playerRank:
-                      '${gamesTourModel.whitePlayer.title} ${gamesTourModel.whitePlayer.rating}',
-                  countryCode: gamesTourModel.whitePlayer.countryCode,
-                ),
-              ),
-              Spacer(),
-              _CenterContent(gamesTourModel: gamesTourModel),
-              Spacer(),
-              Container(
-                alignment: Alignment.center,
-                width: MediaQuery.of(context).size.width * (35 / 100),
-                child: _GamesRound(
-                  playerName: gamesTourModel.blackPlayer.name,
-                  playerRank:
-                      '${gamesTourModel.blackPlayer.title} ${gamesTourModel.blackPlayer.rating}',
-                  countryCode: gamesTourModel.blackPlayer.countryCode,
-                ),
-              ),
-              Spacer(),
-            ],
+          Expanded(
+            child: _GamesRound(
+              playerName: gamesTourModel.whitePlayer.name,
+              playerRank:
+                  '${gamesTourModel.whitePlayer.title} ${gamesTourModel.whitePlayer.rating}',
+              countryCode: gamesTourModel.whitePlayer.countryCode,
+            ),
           ),
-          Align(
-            alignment: Alignment.centerRight,
-            child: GestureDetector(
-              onTapDown: onTapDown,
-              child: SizedBox(
-                width: 24.w,
-                height: 60.h,
-                child: Icon(
-                  Icons.more_vert_rounded,
-                  color: kBlackColor,
-                  size: 24.sp,
-                ),
-              ),
+          Expanded(child: _CenterContent(gamesTourModel: gamesTourModel)),
+          Expanded(
+            child: _GamesRound(
+              playerName: gamesTourModel.blackPlayer.name,
+              playerRank:
+                  '${gamesTourModel.blackPlayer.title} ${gamesTourModel.blackPlayer.rating}',
+              countryCode: gamesTourModel.blackPlayer.countryCode,
             ),
           ),
         ],
@@ -244,9 +202,12 @@ class _CenterContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return gamesTourModel.gameStatus == GameStatus.ongoing
-        ? ChessProgressBar(gamesTourModel: gamesTourModel)
-        : _StatusText(status: gamesTourModel.gameStatus.displayText);
+    return Center(
+      child:
+          gamesTourModel.gameStatus == GameStatus.ongoing
+              ? ChessProgressBar(gamesTourModel: gamesTourModel)
+              : _StatusText(status: gamesTourModel.gameStatus.displayText),
+    );
   }
 }
 
@@ -336,9 +297,12 @@ class _GamesRound extends ConsumerWidget {
               ),
               SizedBox(width: 4.w),
             ],
-            Text(
-              playerRank,
-              style: AppTypography.textXsMedium.copyWith(color: kBlack2Color),
+            Flexible(
+              child: Text(
+                playerRank,
+                style: AppTypography.textXsMedium.copyWith(color: kBlack2Color),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
         ),
@@ -419,25 +383,29 @@ class _TimerWidget extends StatelessWidget {
         ((isWhitePlayer && gamesTourModel.activePlayer == Side.white) ||
             (!isWhitePlayer && gamesTourModel.activePlayer == Side.black));
 
-    final clockCentiseconds = isWhitePlayer
-        ? gamesTourModel.whiteClockCentiseconds
-        : gamesTourModel.blackClockCentiseconds;
+    final clockCentiseconds =
+        isWhitePlayer
+            ? gamesTourModel.whiteClockCentiseconds
+            : gamesTourModel.blackClockCentiseconds;
 
-    final clockSeconds = isWhitePlayer
-        ? gamesTourModel.whiteClockSeconds
-        : gamesTourModel.blackClockSeconds;
+    final clockSeconds =
+        isWhitePlayer
+            ? gamesTourModel.whiteClockSeconds
+            : gamesTourModel.blackClockSeconds;
 
     return AtomicCountdownText(
-      clockSeconds: clockSeconds, // Primary source: time in seconds from last_clock fields
-      clockCentiseconds: clockCentiseconds, // Fallback source: raw database clock
+      clockSeconds:
+          clockSeconds, // Primary source: time in seconds from last_clock fields
+      clockCentiseconds:
+          clockCentiseconds, // Fallback source: raw database clock
       lastMoveTime: gamesTourModel.lastMoveTime,
       isActive: isClockRunning,
       style: AppTypography.textXsMedium.copyWith(
-        color: gamesTourModel.gameStatus.isFinished
-            ? kWhiteColor
-            : (turn ? kPrimaryColor : kWhiteColor),
+        color:
+            gamesTourModel.gameStatus.isFinished
+                ? kWhiteColor
+                : (turn ? kPrimaryColor : kWhiteColor),
       ),
     );
   }
-
 }
