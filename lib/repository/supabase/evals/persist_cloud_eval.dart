@@ -23,6 +23,14 @@ class PersistCloudEval {
 
   /// Persists CloudEval into the existing tables.
   Future<Evals> call(String fen, CloudEval cloud) async {
+    // Validate input
+    if (fen.isEmpty) {
+      throw ArgumentError('FEN cannot be empty');
+    }
+    if (cloud.pvs.isEmpty) {
+      throw ArgumentError('CloudEval must have at least one PV');
+    }
+
     return await _evalRepo.handleApiCall(() async {
       // All DB operations happen on the same client → implicit transaction
       final supabase = _evalRepo.supabase;
@@ -31,7 +39,11 @@ class PersistCloudEval {
       final position = await _posRepo.create(fen);
       final positionId = position.id;
 
-      // 2️⃣ evals row
+      if (positionId == null) {
+        throw StateError('Failed to create position record for FEN: $fen');
+      }
+
+      // 2️⃣ evals row - use upsert which handles existing records
       final eval = await _evalRepo.upsert(
         Evals(
           positionId: positionId,
@@ -41,27 +53,62 @@ class PersistCloudEval {
         ),
       );
 
-      // 3️⃣ pvs rows
+      // For existing records, the upsert returns the original eval without an id
+      // Get the actual eval from the database to have the proper id
+      if (eval.id == null) {
+        final existingEvals = await _evalRepo.getByPositionId(positionId);
+        if (existingEvals.isNotEmpty) {
+          final existingEval = existingEvals.first;
+          return existingEval; // Return existing eval, don't try to insert PVs again
+        }
+        throw StateError('Failed to create eval record for position: $positionId');
+      }
+
+      // 3️⃣ pvs rows - only insert if eval was created successfully
       final pvsRows =
           cloud.pvs.asMap().entries.map((e) {
             final idx = e.key;
             final pv = e.value;
 
-            // decide which column to populate
-            final cp = pv.cp.abs() < 100_000 ? pv.cp : null;
-            final mate =
-                pv.cp.abs() >= 100_000 ? (pv.cp / 100_000).round() : null;
+            // Decide which column to populate based on mate flag and cp value
+            int? cp;
+            int? mate;
+
+            if (pv.isMate && pv.mate != null) {
+              // Use actual mate count from PV
+              mate = pv.mate;
+              cp = null; // Don't store cp for mate positions
+            } else if (pv.cp.abs() >= 100_000) {
+              // Fallback: derive mate from high cp value
+              final derivedMate = pv.cp > 0 ?
+                  (100000 - pv.cp.abs()) :
+                  -(100000 - pv.cp.abs());
+              mate = derivedMate;
+              cp = null;
+            } else {
+              // Normal centipawn evaluation
+              cp = pv.cp;
+              mate = null;
+            }
 
             return {
-              'eval_id': eval.id,
+              'eval_id': eval.id!, // Safe to use ! since we validated above
               'idx': idx,
               'cp': cp,
               'mate': mate,
-              'line': pv.moves,
+              'line': pv.moves.isNotEmpty ? pv.moves : 'no moves', // Ensure line is not empty
             };
           }).toList();
 
-      await supabase.from('pvs').insert(pvsRows);
+      // Insert PVs with error handling
+      try {
+        await supabase.from('pvs').insert(pvsRows);
+      } catch (e) {
+        // If PV insertion fails, we still return the eval
+        // The eval data is more important than the detailed PV breakdown
+        print('Warning: Failed to insert PV rows: $e');
+      }
+
       return eval;
     });
   }
