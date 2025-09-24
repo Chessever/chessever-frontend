@@ -7,3 +7,11 @@ final gamePgnStreamProvider = AutoDisposeStreamProvider.family<String?, String>(
 ) {
   return ref.read(gameStreamRepositoryProvider).subscribeToPgn(gameId);
 });
+
+// Comprehensive game updates stream for clock times and other live data
+final gameUpdatesStreamProvider = AutoDisposeStreamProvider.family<Map<String, dynamic>?, String>((
+  ref,
+  gameId,
+) {
+  return ref.read(gameStreamRepositoryProvider).subscribeToGameUpdates(gameId);
+});
