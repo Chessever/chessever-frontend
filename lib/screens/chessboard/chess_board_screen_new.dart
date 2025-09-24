@@ -21,6 +21,28 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:flutter_svg/svg.dart';
 
+// Helper function to get move highlight color
+Color getLastMoveHighlightColor(ChessBoardStateNew state) {
+  if (state.currentMoveIndex < 0) return kPrimaryColor;
+
+  // Determine if the current move (last move played) was by white or black
+  // Move index 0 = white's first move, 1 = black's first move, etc.
+  final isWhiteMove = state.currentMoveIndex % 2 == 0;
+
+  return isWhiteMove ? kPrimaryColor : kChessBlackMoveColor;
+}
+
+// Helper function to get move highlight color for analysis mode
+Color getAnalysisLastMoveHighlightColor(ChessBoardStateNew state) {
+  if (state.analysisState.currentMoveIndex < 0) return kPrimaryColor;
+
+  // Determine if the current move (last move played) was by white or black
+  // Move index 0 = white's first move, 1 = black's first move, etc.
+  final isWhiteMove = state.analysisState.currentMoveIndex % 2 == 0;
+
+  return isWhiteMove ? kPrimaryColor : kChessBlackMoveColor;
+}
+
 class ChessBoardScreenNew extends ConsumerStatefulWidget {
   final int currentIndex;
   final List<GamesTourModel> games;
@@ -970,7 +992,7 @@ class _ChessBoardNew extends ConsumerWidget {
             coordinates: true,
             orientation: Side.black,
           ),
-          lastMove: HighlightDetails(solidColor: kPrimaryColor),
+          lastMove: HighlightDetails(solidColor: getLastMoveHighlightColor(chessBoardState)),
           selected: const HighlightDetails(solidColor: kPrimaryColor),
           validMoves: kPrimaryColor,
           validPremoves: kPrimaryColor,
@@ -1039,7 +1061,7 @@ class _AnalysisBoard extends ConsumerWidget {
             coordinates: true,
             orientation: Side.black,
           ),
-          lastMove: HighlightDetails(solidColor: kPrimaryColor),
+          lastMove: HighlightDetails(solidColor: getAnalysisLastMoveHighlightColor(chessBoardState)),
           selected: const HighlightDetails(solidColor: kPrimaryColor),
           validMoves: kPrimaryColor,
           validPremoves: kPrimaryColor,
