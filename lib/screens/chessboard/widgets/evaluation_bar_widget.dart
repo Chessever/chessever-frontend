@@ -47,8 +47,8 @@ class EvaluationBarWidget extends ConsumerWidget {
           Align(
             alignment: Alignment.topCenter,
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.linear,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
               width: width,
               height: topHeight,
               color: topColor,
@@ -58,8 +58,8 @@ class EvaluationBarWidget extends ConsumerWidget {
           Align(
             alignment: Alignment.bottomCenter,
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.linear,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
               width: width,
               height: bottomHeight,
               color: bottomColor,

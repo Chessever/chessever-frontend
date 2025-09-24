@@ -42,6 +42,26 @@ final cascadeEvalProvider = FutureProvider.family<CloudEval, String>((
   return cloud;
 });
 
+/// Helper function to validate if an evaluation makes sense
+bool _isValidEvaluation(CloudEval cloud) {
+  if (cloud.pvs.isEmpty) return false;
+
+  final firstPv = cloud.pvs.first;
+
+  // If it's exactly 0 cp with no moves, it's likely invalid
+  if (firstPv.cp == 0 && firstPv.moves.isEmpty) return false;
+
+  // Accept mate scores (high cp values >= 100000 are mate scores)
+  if (firstPv.cp.abs() >= 100000) {
+    return true;
+  }
+
+  // Accept any evaluation with moves (including 0.0 - balanced positions are valid)
+  if (firstPv.moves.isNotEmpty) return true;
+
+  return false;
+}
+
 /// local → 2. Supabase → 3. lichess -> 4. Fallback -> Local Stockfish
 final cascadeEvalProviderForBoard = FutureProvider.family<CloudEval, String>((
   ref,
@@ -55,8 +75,9 @@ final cascadeEvalProviderForBoard = FutureProvider.family<CloudEval, String>((
 
     // 1️⃣  Local cache
     final cached = await local.fetch(fen);
-    if (cached != null) return cached;
-
+    if (cached != null && _isValidEvaluation(cached)) {
+      return cached;
+    }
 
     // 2️⃣  Supabase
     final supabaseEval = await ref
@@ -66,18 +87,39 @@ final cascadeEvalProviderForBoard = FutureProvider.family<CloudEval, String>((
       final cloud = await ref
           .read(evalsRepositoryProvider)
           .evalsToCloudEval(fen, supabaseEval);
-      await local.save(fen, cloud); // keep local in sync
-      return cloud;
+
+      // Validate the evaluation - if it's suspicious, skip and try next source
+      if (_isValidEvaluation(cloud)) {
+        await local.save(fen, cloud); // keep local in sync
+        return cloud;
+      } else {
+        print('Supabase eval invalid for $fen: cp=${cloud.pvs.first.cp}, moves=${cloud.pvs.first.moves}');
+      }
     }
 
     // 3️⃣  Lichess → Supabase → local
-    final cloud = await lichess.getEval(fen);
-    Future.wait<void>([
-      persist.call(fen, cloud), // writes positions, evals, pvs
-      local.save(fen, cloud), // local cache
-    ]);
+    try {
+      final cloud = await lichess.getEval(fen);
+      if (_isValidEvaluation(cloud)) {
+        // Don't await this - let it run in background
+        Future.wait<void>([
+          persist.call(fen, cloud), // writes positions, evals, pvs
+          local.save(fen, cloud), // local cache
+        ]).catchError((e) {
+          print('Background save failed for $fen: $e');
+          return <void>[];
+        });
+        return cloud;
+      } else {
+        print('Lichess eval invalid for $fen: cp=${cloud.pvs.first.cp}');
+      }
+    } catch (lichessError) {
+      print('Lichess eval failed for $fen: $lichessError');
+      // Continue to fallback - don't return here
+    }
 
-    return cloud;
+    // 4️⃣  If all else fails, throw to trigger local Stockfish fallback
+    throw Exception('All cloud evaluation sources failed or returned invalid data for $fen');
   } catch (error, _) {
     rethrow ;
   }
