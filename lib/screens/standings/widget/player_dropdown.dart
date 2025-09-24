@@ -5,6 +5,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:dropdown_button2/dropdown_button2.dart';
 
 import '../../../widgets/skeleton_widget.dart';
 import '../score_card_screen.dart';
@@ -14,20 +15,28 @@ class PlayerDropDown extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return SizedBox(
-      height: 32.h,
-      width: 200.w,
+    return Container(
+      constraints: BoxConstraints(minWidth: 200.w, maxWidth: double.infinity),
       child: ref
           .watch(playerTourScreenProvider)
           .when(
             data: (players) => _PlayerDropdown(players: players),
             error:
-                (e, _) => Center(
+                (e, _) => Container(
+                  height: 40.h,
+                  padding: EdgeInsets.symmetric(horizontal: 12.sp),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: kBackgroundColor,
+                    borderRadius: BorderRadius.circular(8.br),
+                    border: Border.all(color: kDarkGreyColor, width: 1.w),
+                  ),
                   child: Text(
                     'Error loading players',
                     style: AppTypography.textXsRegular.copyWith(
                       color: kWhiteColor70,
                     ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
             loading:
@@ -43,6 +52,7 @@ class PlayerDropDown extends ConsumerWidget {
                         matchScore: '0.0 / 0',
                       ),
                     ],
+                    isLoading: true,
                   ),
                 ),
           ),
@@ -50,76 +60,175 @@ class PlayerDropDown extends ConsumerWidget {
   }
 }
 
-class _PlayerDropdown extends ConsumerWidget {
+class _PlayerDropdown extends ConsumerStatefulWidget {
   final List<PlayerStandingModel> players;
+  final bool isLoading;
 
-  const _PlayerDropdown({required this.players});
+  const _PlayerDropdown({required this.players, this.isLoading = false});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_PlayerDropdown> createState() => _PlayerDropdownState();
+}
+
+class _PlayerDropdownState extends ConsumerState<_PlayerDropdown> {
+  var isDropDownOpen = false;
+
+  @override
+  Widget build(BuildContext context) {
     final selectedPlayer = ref.watch(selectedPlayerProvider);
 
-    if (players.isEmpty) {
+    if (widget.players.isEmpty) {
       return Container(
+        height: 40.h,
         padding: EdgeInsets.symmetric(horizontal: 12.sp),
         alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: kBackgroundColor,
+          borderRadius: BorderRadius.circular(8.br),
+          border: Border.all(color: kDarkGreyColor, width: 1.w),
+        ),
         child: Text(
           'No players',
-          style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+          style: AppTypography.textXsMedium.copyWith(color: kWhiteColor70),
           overflow: TextOverflow.ellipsis,
         ),
       );
     }
 
-    return DropdownButton<PlayerStandingModel>(
-      value: selectedPlayer ?? players.first,
-      onChanged: (player) {
-        if (player != null) {
-          ref.read(selectedPlayerProvider.notifier).state = player;
-        }
-      },
-      items:
-          players.map(
-            (player) {
-              final isLast = player == players.last;
-              return DropdownMenuItem<PlayerStandingModel>(
-                value: player,
-                child: Container(
-                  padding: EdgeInsets.symmetric(vertical: 8.h),
-                  decoration: BoxDecoration(
-                    border:
-                        isLast
-                            ? null
-                            : Border(
-                              bottom: BorderSide(
-                                color: kWhiteColor.withOpacity(0.05),
-                                width: 1,
+    final borderRadius =
+        isDropDownOpen
+            ? BorderRadius.circular(10.br)
+            : BorderRadius.circular(8.br);
+
+    final dropDownBorderRadius = BorderRadius.circular(10.br);
+    final currentPlayer = selectedPlayer ?? widget.players.first;
+
+    return ClipRRect(
+      borderRadius: borderRadius,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        decoration: BoxDecoration(
+          color: kBackgroundColor,
+          borderRadius: borderRadius,
+          border:
+              isDropDownOpen
+                  ? null
+                  : Border.all(color: kDarkGreyColor, width: 1.w),
+        ),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton2<PlayerStandingModel>(
+            isExpanded: true,
+            customButton: Container(
+              height: 40.h,
+              padding: EdgeInsets.symmetric(horizontal: 12.sp),
+              child: Row(
+                children: [
+                  Expanded(
+                    child:
+                        widget.isLoading
+                            ? Text(
+                              'Loading players...',
+                              style: AppTypography.textSmMedium.copyWith(
+                                color: kWhiteColor70,
                               ),
+                              overflow: TextOverflow.ellipsis,
+                            )
+                            : Text(
+                              currentPlayer.name,
+                              style: AppTypography.textSmMedium.copyWith(
+                                color: kWhiteColor70,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                   ),
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    player.name,
-                    style: AppTypography.textXsRegular.copyWith(
-                      color: kWhiteColor,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  SizedBox(width: 8.w),
+                  Icon(
+                    isDropDownOpen
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                    color: kWhiteColor,
+                    size: 20.ic,
                   ),
-                ),
-              );
+                ],
+              ),
+            ),
+            dropdownStyleData: DropdownStyleData(
+              padding: EdgeInsets.zero,
+              offset: const Offset(0, -4),
+              decoration: BoxDecoration(
+                color: kBlack2Color,
+                borderRadius: dropDownBorderRadius,
+                border: Border.all(color: kDarkGreyColor),
+              ),
+              maxHeight: 240.h,
+            ),
+            buttonStyleData: ButtonStyleData(
+              height: 40.h,
+              padding: EdgeInsets.zero,
+            ),
+            menuItemStyleData: MenuItemStyleData(
+              height: 44.h,
+              padding: EdgeInsets.zero,
+            ),
+            value: widget.isLoading ? null : currentPlayer,
+            onChanged:
+                widget.isLoading
+                    ? null
+                    : (player) {
+                      if (player != null) {
+                        ref.read(selectedPlayerProvider.notifier).state =
+                            player;
+                      }
+                    },
+            onMenuStateChange: (isOpen) {
+              setState(() {
+                isDropDownOpen = isOpen;
+              });
             },
-          ).toList(),
+            items:
+                widget.isLoading
+                    ? []
+                    : widget.players.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final player = entry.value;
+                      final isLast = index == widget.players.length - 1;
 
-      underline: Container(),
-      icon: Icon(
-        Icons.keyboard_arrow_down_outlined,
-        color: kWhiteColor,
-        size: 20.ic,
+                      return DropdownMenuItem<PlayerStandingModel>(
+                        value: player,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            border:
+                                isLast
+                                    ? null
+                                    : Border(
+                                      bottom: BorderSide(
+                                        color: kDarkGreyColor,
+                                        width: 1.w,
+                                      ),
+                                    ),
+                          ),
+                          height: 44.h,
+                          child: Row(
+                            children: [
+                              SizedBox(width: 12.w),
+                              Expanded(
+                                child: Text(
+                                  player.name,
+                                  style: AppTypography.textMdMedium.copyWith(
+                                    color: kWhiteColor,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              SizedBox(width: 12.w),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+          ),
+        ),
       ),
-      dropdownColor: kBlack2Color,
-      borderRadius: BorderRadius.circular(20.br),
-      isExpanded: true,
     );
   }
 }
