@@ -46,6 +46,8 @@ class ChessBoardScreenNotifierNew
   bool _isLongPressing = false;
   CancelableOperation<void>? _evalOperation;
   bool _cancelEvaluation = false;
+  final Map<String, double> _evaluationCache = {};
+  final Map<String, int?> _mateCache = {};
 
   void _initializeState() {
     state = AsyncValue.data(
@@ -54,26 +56,74 @@ class ChessBoardScreenNotifierNew
         pgnData: null,
         isLoadingMoves: true,
         fenData: game.fen,
+        evaluation: 0.0, // Initialize with neutral evaluation
       ),
     );
     parseMoves();
   }
 
   void _setupPgnStreamListener() {
-    // Only listen to PGN stream if the game is ongoing
+    // Only listen to game updates stream if the game is ongoing
     if (game.gameStatus == GameStatus.ongoing) {
-      ref.listen(gamePgnStreamProvider(game.gameId), (previous, next) {
-        next.whenData((pgnData) {
-          if (pgnData != null && pgnData != game.pgn) {
-            // Update the game with new PGN data
-            game = game.copyWith(pgn: pgnData);
-            // Re-parse moves with new PGN data
-            _hasParsedMoves = false;
-            parseMoves();
-            print("-----PGN updated for game ${game.pgn}");
+      ref.listen(gameUpdatesStreamProvider(game.gameId), (previous, next) {
+        next.whenData((gameData) {
+          if (gameData != null) {
+            bool needsReparse = false;
+
+            // Check if PGN changed
+            final newPgn = gameData['pgn'] as String?;
+            if (newPgn != null && newPgn != game.pgn) {
+              needsReparse = true;
+            }
+
+            // Create updated game model with all live data
+            game = game.copyWith(
+              pgn: newPgn ?? game.pgn,
+              fen: gameData['fen'] as String? ?? game.fen,
+              lastMove: gameData['last_move'] as String? ?? game.lastMove,
+              lastMoveTime: gameData['last_move_time'] != null
+                  ? DateTime.tryParse(gameData['last_move_time'] as String)
+                  : game.lastMoveTime,
+              whiteClockSeconds: (gameData['last_clock_white'] as num?)?.round(),
+              blackClockSeconds: (gameData['last_clock_black'] as num?)?.round(),
+              gameStatus: _parseGameStatus(gameData['status'] as String? ?? '*'),
+            );
+
+            // Re-parse moves if PGN changed
+            if (needsReparse) {
+              _hasParsedMoves = false;
+              parseMoves();
+              print("-----Game updated with new PGN and clock data");
+            } else {
+              // Just update the current state with new clock times without reparsing
+              final currentState = state.value;
+              if (currentState != null) {
+                state = AsyncValue.data(
+                  currentState.copyWith(
+                    game: game, // Updated game with new clock data
+                  ),
+                );
+              }
+            }
           }
         });
       });
+    }
+  }
+
+  GameStatus _parseGameStatus(String status) {
+    switch (status) {
+      case '1-0':
+        return GameStatus.whiteWins;
+      case '0-1':
+        return GameStatus.blackWins;
+      case '1/2-1/2':
+      case '½-½':
+        return GameStatus.draw;
+      case '*':
+        return GameStatus.ongoing;
+      default:
+        return GameStatus.unknown;
     }
   }
 
@@ -822,6 +872,8 @@ class ChessBoardScreenNotifierNew
   @override
   void dispose() {
     stopLongPress();
+    _evaluationCache.clear();
+    _mateCache.clear();
     super.dispose();
   }
 }
