@@ -1,3 +1,4 @@
+import 'package:chessever2/main.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
@@ -30,8 +31,47 @@ class TournamentDetailScreen extends ConsumerStatefulWidget {
       _TournamentDetailViewState();
 }
 
-class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen> {
+class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
+    with RouteAware {
   late PageController pageController;
+
+  @override
+  void didPush() {
+    Future.microtask(() {
+      ref.read(shouldStreamProvider.notifier).state = true;
+    });
+    super.didPush();
+  }
+
+  @override
+  void didPop() {
+    Future.microtask(() {
+      ref.read(shouldStreamProvider.notifier).state = false;
+    });
+    super.didPop();
+  }
+
+  @override
+  void didPopNext() {
+    Future.microtask(() {
+      ref.read(shouldStreamProvider.notifier).state = true;
+    });
+    super.didPopNext();
+  }
+
+  @override
+  void didPushNext() {
+    Future.microtask(() {
+      ref.read(shouldStreamProvider.notifier).state = false;
+    });
+    super.didPushNext();
+  }
+
+  @override
+  void didChangeDependencies() {
+    routeObserver.subscribe(this, ModalRoute.of(context)!);
+    super.didChangeDependencies();
+  }
 
   @override
   void initState() {

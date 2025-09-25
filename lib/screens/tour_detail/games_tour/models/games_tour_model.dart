@@ -17,7 +17,6 @@ class GamesScreenModel {
   GamesScreenModel copyWith({
     List<GamesTourModel>? gamesTourModels,
     List<String>? pinnedGamedIs,
-    int? scrollToIndex,
     bool? isSearchMode,
     String? searchQuery,
   }) {
@@ -105,8 +104,10 @@ class GamesTourModel {
       blackPlayer: blackPlayer ?? this.blackPlayer,
       whiteTimeDisplay: whiteTimeDisplay ?? this.whiteTimeDisplay,
       blackTimeDisplay: blackTimeDisplay ?? this.blackTimeDisplay,
-      whiteClockCentiseconds: whiteClockCentiseconds ?? this.whiteClockCentiseconds,
-      blackClockCentiseconds: blackClockCentiseconds ?? this.blackClockCentiseconds,
+      whiteClockCentiseconds:
+          whiteClockCentiseconds ?? this.whiteClockCentiseconds,
+      blackClockCentiseconds:
+          blackClockCentiseconds ?? this.blackClockCentiseconds,
       whiteClockSeconds: whiteClockSeconds ?? this.whiteClockSeconds,
       blackClockSeconds: blackClockSeconds ?? this.blackClockSeconds,
       gameStatus: gameStatus ?? this.gameStatus,
@@ -145,12 +146,14 @@ class GamesTourModel {
         whitePlayer: PlayerCard.fromPlayer(white),
         blackPlayer: PlayerCard.fromPlayer(black),
         // Use new last_clock fields (in seconds) if available, fallback to player clock (in centiseconds)
-        whiteTimeDisplay: game.lastClockWhite != null
-            ? _formatTimeFromSeconds(game.lastClockWhite!)
-            : _formatTime(white.clock),
-        blackTimeDisplay: game.lastClockBlack != null
-            ? _formatTimeFromSeconds(game.lastClockBlack!)
-            : _formatTime(black.clock),
+        whiteTimeDisplay:
+            game.lastClockWhite != null
+                ? _formatTimeFromSeconds(game.lastClockWhite!)
+                : _formatTime(white.clock),
+        blackTimeDisplay:
+            game.lastClockBlack != null
+                ? _formatTimeFromSeconds(game.lastClockBlack!)
+                : _formatTime(black.clock),
         whiteClockCentiseconds: white.clock,
         blackClockCentiseconds: black.clock,
         whiteClockSeconds: game.lastClockWhite,
