@@ -23,33 +23,47 @@ class ContextPopupMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {},
-      child: Material(
-        color: Colors.transparent,
-        child: Container(
-          width: width.w,
-          decoration: _buildMenuDecoration(),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              PopupMenuItem(
-                onTap: onPinToggle,
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        width: width.w,
+        decoration: _buildMenuDecoration(),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            InkWell(
+              onTap: onPinToggle,
+              child: Container(
+                width: 120.w,
+                height: 40.h,
+                padding: EdgeInsets.symmetric(
+                  horizontal: 12.sp,
+                  vertical: 8.sp,
+                ),
                 child: MenuItemContent(
                   text: isPinned ? "Unpin" : "Pin to Top",
                   iconAsset: SvgAsset.pin,
                 ),
               ),
-              const MenuDivider(),
-              PopupMenuItem(
-                onTap: onShare,
+            ),
+
+            const MenuDivider(),
+            InkWell(
+              onTap: onShare,
+              child: Container(
+                width: 120.w,
+                height: 40.h,
+                padding: EdgeInsets.symmetric(
+                  horizontal: 12.sp,
+                  vertical: 8.sp,
+                ),
                 child: const MenuItemContent(
                   text: "Share",
                   iconAsset: SvgAsset.share,
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

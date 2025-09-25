@@ -14,7 +14,9 @@ import 'package:country_flags/country_flags.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import '../../../utils/svg_asset.dart';
 
 enum PlayerView { listView, boardView }
 
@@ -227,8 +229,15 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               ],
             ),
           ),
-          if (isPinned) ...[PinIconOverlay(), SizedBox(width: 4.w)],
-
+          if (isPinned) ...[
+            SvgPicture.asset(
+              SvgAsset.pin,
+              color: kpinColor,
+              height: 12.h,
+              width: 12.w,
+            ),
+            SizedBox(width: 4.w),
+          ],
           // Show score for finished games at latest move, or time otherwise
           isShowingScore
               ? Container(
@@ -293,18 +302,22 @@ class _PlayerClock extends StatelessWidget {
 
     // Use atomic countdown text widget for optimized rebuilds
     // Get the clock values for this player
-    final clockCentiseconds = isWhitePlayer
-        ? gamesTourModel.whiteClockCentiseconds
-        : gamesTourModel.blackClockCentiseconds;
+    final clockCentiseconds =
+        isWhitePlayer
+            ? gamesTourModel.whiteClockCentiseconds
+            : gamesTourModel.blackClockCentiseconds;
 
-    final clockSeconds = isWhitePlayer
-        ? gamesTourModel.whiteClockSeconds
-        : gamesTourModel.blackClockSeconds;
+    final clockSeconds =
+        isWhitePlayer
+            ? gamesTourModel.whiteClockSeconds
+            : gamesTourModel.blackClockSeconds;
 
     return AtomicCountdownText(
       moveTime: moveTime, // For chessboard screen with PGN parsing
-      clockSeconds: clockSeconds, // Primary source: time in seconds from last_clock fields
-      clockCentiseconds: clockCentiseconds, // Fallback source: raw database clock
+      clockSeconds:
+          clockSeconds, // Primary source: time in seconds from last_clock fields
+      clockCentiseconds:
+          clockCentiseconds, // Fallback source: raw database clock
       lastMoveTime: gamesTourModel.lastMoveTime,
       isActive: isClockRunning,
       style: timeStyle,
