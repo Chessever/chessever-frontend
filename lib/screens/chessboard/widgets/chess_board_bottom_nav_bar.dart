@@ -35,71 +35,74 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
       width: MediaQuery.of(context).size.width,
       decoration: const BoxDecoration(color: kBlackColor),
       child: SafeArea(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            // Reset Game Button
-            ChessSvgBottomNavbar(
-              width: width,
-              svgPath: isAnalysisMode ? SvgAsset.bookIcon : SvgAsset.laptop,
-              onPressed: () {
-                toggleAnalysisMode?.call();
-              },
-            ),
-
-            // Flip Board Button
-            ChessSvgBottomNavbar(
-              width: width,
-              svgPath: SvgAsset.refresh,
-              onPressed: onFlip,
-            ),
-            ChessSvgBottomNavbarWithLongPress(
-              svgPath: SvgAsset.left_arrow,
-              width: width,
-              onPressed: canMoveBackward ? onLeftMove : null,
-              onLongPressStart:
-                  canMoveBackward
-                      ? () =>
-                          ref
-                              .read(
-                                chessBoardScreenProviderNew(gameIndex).notifier,
-                              )
-                              .startLongPressBackward()
-                      : null,
-              onLongPressEnd:
-                  () =>
-                      ref
-                          .read(chessBoardScreenProviderNew(gameIndex).notifier)
-                          .stopLongPress(),
-            ),
-
-            ChessSvgBottomNavbarWithLongPress(
-              svgPath: SvgAsset.right_arrow,
-              width: width,
-              onPressed: canMoveForward ? onRightMove : null,
-              onLongPressStart:
-                  canMoveForward
-                      ? () =>
-                          ref
-                              .read(
-                                chessBoardScreenProviderNew(gameIndex).notifier,
-                              )
-                              .startLongPressForward()
-                      : null,
-              onLongPressEnd:
-                  () =>
-                      ref
-                          .read(chessBoardScreenProviderNew(gameIndex).notifier)
-                          .stopLongPress(),
-            ),
-
-            // Chat Button
-            ChessSvgBottomNavbar(
-              width: width,
-              svgPath: SvgAsset.chat,
-              onPressed: () {},
-            ),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              // Reset Game Button
+              ChessSvgBottomNavbar(
+                width: width,
+                svgPath: isAnalysisMode ? SvgAsset.bookIcon : SvgAsset.laptop,
+                onPressed: () {
+                  toggleAnalysisMode?.call();
+                },
+              ),
+          
+              // Flip Board Button
+              ChessSvgBottomNavbar(
+                width: width,
+                svgPath: SvgAsset.refresh,
+                onPressed: onFlip,
+              ),
+              ChessSvgBottomNavbarWithLongPress(
+                svgPath: SvgAsset.left_arrow,
+                width: width,
+                onPressed: canMoveBackward ? onLeftMove : null,
+                onLongPressStart:
+                    canMoveBackward
+                        ? () =>
+                            ref
+                                .read(
+                                  chessBoardScreenProviderNew(gameIndex).notifier,
+                                )
+                                .startLongPressBackward()
+                        : null,
+                onLongPressEnd:
+                    () =>
+                        ref
+                            .read(chessBoardScreenProviderNew(gameIndex).notifier)
+                            .stopLongPress(),
+              ),
+          
+              ChessSvgBottomNavbarWithLongPress(
+                svgPath: SvgAsset.right_arrow,
+                width: width,
+                onPressed: canMoveForward ? onRightMove : null,
+                onLongPressStart:
+                    canMoveForward
+                        ? () =>
+                            ref
+                                .read(
+                                  chessBoardScreenProviderNew(gameIndex).notifier,
+                                )
+                                .startLongPressForward()
+                        : null,
+                onLongPressEnd:
+                    () =>
+                        ref
+                            .read(chessBoardScreenProviderNew(gameIndex).notifier)
+                            .stopLongPress(),
+              ),
+          
+              // Chat Button
+              ChessSvgBottomNavbar(
+                width: width,
+                svgPath: SvgAsset.chat,
+                onPressed: () {},
+              ),
+            ],
+          ),
         ),
       ),
     );
