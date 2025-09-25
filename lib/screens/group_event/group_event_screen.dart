@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'package:chessever2/screens/group_event/providers/past_recorder_provider.dart';
 import 'package:chessever2/screens/group_event/widget/all_events_tab_widget.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/home/home_screen.dart';
@@ -227,9 +228,18 @@ class GroupEventScreen extends HookConsumerWidget {
                             final isSearching =
                                 searchController.text.trim().isNotEmpty;
 
+                            final isPast =
+                                selectedTourEvent == GroupEventCategory.past;
+
                             final finalEvents =
                                 isSearching
                                     ? filteredEvents
+                                    : isPast
+                                    ? ref.watch(
+                                      pastEventsUiReorderProvider(
+                                        filteredEvents,
+                                      ),
+                                    )
                                     : ref
                                         .read(tournamentSortingServiceProvider)
                                         .sortBasedOnFavorite(
