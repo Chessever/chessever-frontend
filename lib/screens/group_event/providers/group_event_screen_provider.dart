@@ -16,7 +16,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
-import 'dart:developer';
+import '../../../repository/local_storage/unified_favorites/unified_favorites_provider.dart';
+import '../../../widgets/event_card/starred_provider.dart';
 
 final selectedPlayerNameProvider = StateProvider<String?>((ref) => null);
 final isSearchingProvider = StateProvider<bool>((ref) => false);
@@ -59,7 +60,7 @@ class _GroupEventScreenController
   final GroupEventCategory tourEventCategory;
   bool get isFetchingMore => _pastIsFetching;
 
-  int _pastOffset = 0;
+  int _pastOffset = 50;
   final int _pastLimit = 50;
   bool _pastIsFetching = false;
   bool pastHasMore = true;
@@ -123,11 +124,21 @@ class _GroupEventScreenController
   }) async {
     try {
       state = const AsyncValue.loading();
-      final tour =
-          inputBroadcast ??
-          await ref
-              .read(groupBroadcastLocalStorage(tourEventCategory))
-              .fetchGroupBroadcasts();
+
+      List<GroupBroadcast> tour;
+
+      if (inputBroadcast != null) {
+        tour = inputBroadcast;
+      } else {
+        tour =
+            await ref
+                .read(groupBroadcastLocalStorage(tourEventCategory))
+                .fetchGroupBroadcasts();
+
+        if (tourEventCategory == GroupEventCategory.past) {
+          tour = await _ensureStarredEventsIncluded(tour);
+        }
+      }
       if (tour.isEmpty) {
         state = AsyncValue.data(<GroupEventCardModel>[]);
         return;
@@ -174,6 +185,51 @@ class _GroupEventScreenController
     }
   }
 
+  Future<List<GroupBroadcast>> _ensureStarredEventsIncluded(
+    List<GroupBroadcast> tours,
+  ) async {
+    // Get starred event IDs
+    final starredIds = ref.read(starredProvider);
+    final unifiedFavoritesAsync = ref.read(favoriteEventsProvider);
+    final unifiedFavorites = await unifiedFavoritesAsync.when(
+      data: (events) => events.map((e) => e['id'] as String).toList(),
+      loading: () => <String>[],
+      error: (_, __) => <String>[],
+    );
+
+    final allStarredIds = <String>{...starredIds, ...unifiedFavorites};
+
+    if (allStarredIds.isEmpty) return tours;
+
+    // Find starred events that might not be in current tour list
+    final currentIds = tours.map((t) => t.id).toSet();
+    final missingStarredIds = allStarredIds.where(
+      (id) => !currentIds.contains(id),
+    );
+
+    if (missingStarredIds.isEmpty) return tours;
+
+    // Fetch missing starred events
+    final missingStarredEvents = <GroupBroadcast>[];
+    for (final id in missingStarredIds) {
+      try {
+        final event = await ref
+            .read(groupBroadcastRepositoryProvider)
+            .getGroupBroadcastById(id);
+        if (event != null) {
+          missingStarredEvents.add(event);
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+
+    return [
+      ...missingStarredEvents.where((e) => !currentIds.contains(e.id)),
+      ...tours,
+    ];
+  }
+
   Future<void> loadMorePast() async {
     if (_pastIsFetching || !pastHasMore) return;
     _pastIsFetching = true;
@@ -185,8 +241,10 @@ class _GroupEventScreenController
         offset: _pastOffset,
       );
 
+      final existingIds = state.valueOrNull?.map((e) => e.id).toSet() ?? {};
       final newModels =
           broadcasts
+              .where((b) => !existingIds.contains(b.id))
               .map(
                 (b) => GroupEventCardModel.fromGroupBroadcast(
                   b,
@@ -199,7 +257,7 @@ class _GroupEventScreenController
       state = AsyncValue.data([...current, ...newModels]);
 
       _pastOffset += newModels.length;
-      pastHasMore = newModels.length == _pastLimit;
+      pastHasMore = broadcasts.length == _pastLimit;
     } catch (_) {
     } finally {
       _pastIsFetching = false;
@@ -221,20 +279,18 @@ class _GroupEventScreenController
     try {
       state = const AsyncValue.loading();
 
-      final tour =
+      final refreshed =
           await ref
               .read(groupBroadcastLocalStorage(tourEventCategory))
               .refresh();
+      final withStarred =
+          tourEventCategory == GroupEventCategory.past
+              ? await _ensureStarredEventsIncluded(refreshed)
+              : refreshed;
 
-      if (tour.isEmpty) {
-        state = AsyncValue.data(<GroupEventCardModel>[]);
-        return;
-      }
-
-      _groupBroadcastList = tour;
-
+      _groupBroadcastList = withStarred;
       final tourEventCardModel =
-          tour
+          withStarred
               .map(
                 (t) => GroupEventCardModel.fromGroupBroadcast(
                   t,
@@ -242,36 +298,34 @@ class _GroupEventScreenController
                 ),
               )
               .toList();
-
       final countryAsync = ref.watch(countryDropdownProvider);
-
-      if (countryAsync is AsyncData<Country>) {
-        final selectedCountry = countryAsync.value.name.toLowerCase();
-        final sortingService = ref.read(tournamentSortingServiceProvider);
-
-        final sortedTours =
-            tourEventCategory == GroupEventCategory.upcoming
-                ? sortingService.sortUpcomingTours(
-                  tours: tourEventCardModel,
-                  dropDownSelectedCountry: selectedCountry,
-                )
-                : tourEventCategory == GroupEventCategory.past
-                ? sortingService.sortPastTours(
-                  tours: tourEventCardModel,
-                  groupBroadcasts: tour,
-                  dropDownSelectedCountry: selectedCountry,
-                )
-                : sortingService.sortAllTours(
-                  tours: tourEventCardModel,
-                  dropDownSelectedCountry: selectedCountry,
-                );
-
-        state = AsyncValue.data(sortedTours);
-      } else {
+      if (countryAsync is! AsyncData<Country>) {
         state = const AsyncValue.loading();
+        return;
       }
-    } catch (error, _) {
-      print(error);
+      final country = countryAsync.value.name.toLowerCase();
+      final sortingService = ref.read(tournamentSortingServiceProvider);
+
+      final sortedTours =
+          tourEventCategory == GroupEventCategory.upcoming
+              ? sortingService.sortUpcomingTours(
+                tours: tourEventCardModel,
+                dropDownSelectedCountry: country,
+              )
+              : tourEventCategory == GroupEventCategory.past
+              ? sortingService.sortPastTours(
+                tours: tourEventCardModel,
+                groupBroadcasts: withStarred,
+                dropDownSelectedCountry: country,
+              )
+              : sortingService.sortAllTours(
+                tours: tourEventCardModel,
+                dropDownSelectedCountry: country,
+              );
+
+      state = AsyncValue.data(sortedTours);
+    } catch (err, stk) {
+      state = AsyncValue.error(err, stk);
     }
   }
 

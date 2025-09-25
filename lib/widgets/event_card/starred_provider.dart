@@ -54,7 +54,7 @@ class _StarredRepository extends StateNotifier<List<String>> {
       rethrow;
     }
   }
-
+  
   Future<List<String>> getStarred(String key) async {
     try {
       return state;
