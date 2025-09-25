@@ -41,9 +41,7 @@ class GameCard extends ConsumerWidget {
         width: double.infinity,
         child: Stack(
           children: [
-            _GameCardContent(
-              gamesTourModel: gamesTourModel,
-            ),
+            _GameCardContent(gamesTourModel: gamesTourModel),
             if (isPinned) PinIconOverlay(right: 8.sp, top: 2.sp),
           ],
         ),
@@ -99,9 +97,7 @@ class GameCard extends ConsumerWidget {
                       height: cardSize.height,
                       child: Stack(
                         children: [
-                          _GameCardContent(
-                            gamesTourModel: gamesTourModel,
-                          ),
+                          _GameCardContent(gamesTourModel: gamesTourModel),
                           if (isPinned) PinIconOverlay(right: 8.sp, top: 4.sp),
                         ],
                       ),
@@ -136,9 +132,7 @@ class GameCard extends ConsumerWidget {
 }
 
 class _GameCardContent extends ConsumerWidget {
-  const _GameCardContent({
-    required this.gamesTourModel,
-  });
+  const _GameCardContent({required this.gamesTourModel});
 
   final GamesTourModel gamesTourModel;
 
