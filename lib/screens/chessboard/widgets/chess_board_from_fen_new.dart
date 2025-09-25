@@ -3,8 +3,6 @@ import 'package:chessever2/screens/chessboard/widgets/context_pop_up_menu.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/game_fen_stream_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/game_last_move_stream_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessground/chessground.dart';
@@ -122,71 +120,6 @@ class ChessBoardFromFENNew extends ConsumerWidget {
     final screenWidth = MediaQuery.of(context).size.width;
     final boardSize = screenWidth - sideBarWidth - horizontalPadding;
 
-    final fenAsync = ref.watch(gameFenStreamProvider(gamesTourModel.gameId));
-    final lastMoveAsync = ref.watch(
-      gameLastMoveStreamProvider(gamesTourModel.gameId),
-    );
-
-    return fenAsync.when(
-      data: (newFen) {
-        return lastMoveAsync.when(
-          data: (newLastMove) {
-            final updatedGame = gamesTourModel.copyWith(
-              fen: newFen ?? gamesTourModel.fen,
-              lastMove: newLastMove ?? gamesTourModel.lastMove,
-            );
-            return Padding(
-              padding: EdgeInsets.only(left: 24.sp, right: 24.sp, bottom: 8.sp),
-              child: GestureDetector(
-                onTap: onChanged,
-                onLongPressStart: (details) {
-                  HapticFeedback.lightImpact();
-                  _showBlurredPopup(context, details);
-                },
-                child: _ChessBoardLayout(
-                  gamesTourModel: updatedGame,
-                  lastMove: _uciToMove(updatedGame.lastMove ?? ''),
-                  sideBarWidth: sideBarWidth,
-                  boardSize: boardSize,
-                  isPinned: isPinned,
-                ),
-              ),
-            );
-          },
-          loading:
-              () => _buildPlaceholder(
-                context: context,
-                boardSize: boardSize,
-                sideBarWidth: sideBarWidth,
-              ),
-          error:
-              (error, stack) => _buildPlaceholder(
-                context: context,
-                boardSize: boardSize,
-                sideBarWidth: sideBarWidth,
-              ),
-        );
-      },
-      loading:
-          () => _buildPlaceholder(
-            context: context,
-            boardSize: boardSize,
-            sideBarWidth: sideBarWidth,
-          ),
-      error:
-          (error, stack) => _buildPlaceholder(
-            context: context,
-            boardSize: boardSize,
-            sideBarWidth: sideBarWidth,
-          ),
-    );
-  }
-
-  Widget _buildPlaceholder({
-    required BuildContext context,
-    required double boardSize,
-    required double sideBarWidth,
-  }) {
     return Padding(
       padding: EdgeInsets.only(left: 24.sp, right: 24.sp, bottom: 8.sp),
       child: GestureDetector(
