@@ -92,8 +92,11 @@ class ChessBoardFromFENNew extends ConsumerWidget {
                   child: ContextPopupMenu(
                     isPinned: isPinned,
                     onPinToggle: () {
-                      Navigator.pop(context);
                       onPinToggle(gamesTourModel);
+
+                      Future.microtask(() {
+                        Navigator.pop(context);
+                      });
                     },
                     onShare: () {},
                   ),
