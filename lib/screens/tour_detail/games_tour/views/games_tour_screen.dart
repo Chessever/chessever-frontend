@@ -62,7 +62,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
                   ),
                   SizedBox(height: 10),
                   Text(
-                    'Currently there are no tournaments going!\nCome back later!',
+                    'No games going on',
                     style: AppTypography.textMdRegular.copyWith(
                       color: kWhiteColor,
                     ),
