@@ -23,9 +23,6 @@ class RoundDropDown extends ConsumerWidget {
           .watch(gamesAppBarProvider)
           .when(
             data: (data) {
-              print(
-                'Selected Round ${data.gamesAppBarModels.firstWhere((a) => a.id == data.selectedId, orElse: () => data.gamesAppBarModels.first).name}',
-              );
               return _RoundDropdown(
                 rounds: data.gamesAppBarModels,
                 selectedRoundId: data.selectedId,

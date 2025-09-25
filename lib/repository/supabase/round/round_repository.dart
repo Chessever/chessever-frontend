@@ -156,9 +156,6 @@ class RoundRepository extends BaseRepository {
       if (rounds.isEmpty) {
         return null;
       }
-      print(
-        "🔹 Total rounds for tour $tourId: ${rounds.map((r) => r.id).toList()}",
-      );
 
       Round? latestRoundWithMove;
 
@@ -171,26 +168,15 @@ class RoundRepository extends BaseRepository {
             .limit(1);
 
         final nonNullMoveCount = (gamesResponse as List).length;
-        print(
-          "Checking round ${round.id} → games with non-null last_move: $nonNullMoveCount",
-        );
 
         if (nonNullMoveCount > 0) {
           latestRoundWithMove = round;
-          print("Found round with non-null last_move: ${round.id}");
         }
       }
 
       if (latestRoundWithMove == null) {
         latestRoundWithMove = rounds.last;
-        print(
-          " No round with last_move (non-null) found, fallback to newest: ${rounds.last.id}",
-        );
-      } else {
-        print(
-          " Final selected round : ${latestRoundWithMove.id}",
-        );
-      }
+      } else {}
 
       return latestRoundWithMove;
     });

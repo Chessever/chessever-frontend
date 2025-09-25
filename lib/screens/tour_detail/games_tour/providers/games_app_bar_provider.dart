@@ -36,7 +36,6 @@ class _GamesAppBarNotifier
     );
 
     _load();
-    print('Rebuild GamesAppBarNotifier for tour');
   }
 
   final Ref ref;
@@ -85,7 +84,9 @@ class _GamesAppBarNotifier
     final controller = ref.read(gamesTourScrollProvider);
     final itemIndex = _calculateRoundHeaderIndex(roundId);
     if (itemIndex >= 0) {
-      controller.jumpTo(index: itemIndex, alignment: 0.0);
+      if (controller.isAttached) {
+        controller.jumpTo(index: itemIndex, alignment: 0.0);
+      }
     }
   }
 
@@ -159,7 +160,6 @@ class _GamesAppBarNotifier
   /// Recompute statuses on live-rounds change, update selection only if the user
   /// hasn’t made a sticky pick.
   void _onLiveRoundsChanged(List<String> newLive) {
-    print('Live Changed Rebuild GamesAppBarNotifier for tour');
     _liveRounds = List.unmodifiable(newLive);
 
     final current = state.valueOrNull;
@@ -280,9 +280,7 @@ class _GamesAppBarNotifier
         _scrollToRound(latest.id);
         return;
       }
-    } catch (e) {
-      if (kDebugMode) debugPrint('getLatestRoundByLastMove failed: $e');
-    }
+    } catch (e) {}
 
     // Highest priority: live
     GamesAppBarModel? selectedModel;
