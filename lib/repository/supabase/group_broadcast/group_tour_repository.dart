@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:chessever2/repository/supabase/base_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -81,6 +83,7 @@ class GroupBroadcastRepository extends BaseRepository {
       if (offset != null) query = query.range(offset, offset + limit! - 1);
 
       final response = await query;
+      log("DEBUG: Received ${response.length} rows from group_broadcasts_past");
 
       return (response as List)
           .map((json) => GroupBroadcast.fromJson(json))
