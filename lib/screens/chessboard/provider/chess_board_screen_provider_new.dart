@@ -56,10 +56,32 @@ class ChessBoardScreenNotifierNew
         pgnData: null,
         isLoadingMoves: true,
         fenData: game.fen,
-        evaluation: 0.0, // Initialize with neutral evaluation
+        evaluation: null, // Start with null to indicate no evaluation yet
+        isEvaluating: false,
       ),
     );
     parseMoves();
+  }
+
+  /// Get evaluation with consistent perspective for evaluation bar display
+  /// Option 1: Always from white's perspective (consistent colors)
+  /// Option 2: From current player's perspective (intuitive for current player)
+  double _getConsistentEvaluation(double evaluation, String fen) {
+    // Convert all evaluations to white's perspective for consistent bar colors
+    // Stockfish returns evaluations from current player's perspective, so we need to flip
+    // when it's black's turn to maintain consistency with Lichess (which we already converted)
+
+    try {
+      final fenParts = fen.split(' ');
+      if (fenParts.length >= 2 && fenParts[1] == 'b') {
+        // Black to move: flip the evaluation to white's perspective
+        return -evaluation;
+      }
+    } catch (e) {
+      print('Error parsing FEN for perspective: $e');
+    }
+
+    return evaluation; // White to move: already in white's perspective
   }
 
   void _setupPgnStreamListener() {
@@ -69,6 +91,7 @@ class ChessBoardScreenNotifierNew
         next.whenData((gameData) {
           if (gameData != null) {
             bool needsReparse = false;
+            bool needsEvaluation = false;
 
             // Check if PGN changed
             final newPgn = gameData['pgn'] as String?;
@@ -76,11 +99,18 @@ class ChessBoardScreenNotifierNew
               needsReparse = true;
             }
 
+            // Check if position changed (FEN or last_move) for evaluation updates
+            final newFen = gameData['fen'] as String? ?? game.fen;
+            final newLastMove = gameData['last_move'] as String? ?? game.lastMove;
+            if (newFen != game.fen || newLastMove != game.lastMove) {
+              needsEvaluation = true;
+            }
+
             // Create updated game model with all live data
             game = game.copyWith(
               pgn: newPgn ?? game.pgn,
-              fen: gameData['fen'] as String? ?? game.fen,
-              lastMove: gameData['last_move'] as String? ?? game.lastMove,
+              fen: newFen,
+              lastMove: newLastMove,
               lastMoveTime: gameData['last_move_time'] != null
                   ? DateTime.tryParse(gameData['last_move_time'] as String)
                   : game.lastMoveTime,
@@ -95,14 +125,35 @@ class ChessBoardScreenNotifierNew
               parseMoves();
               print("-----Game updated with new PGN and clock data");
             } else {
-              // Just update the current state with new clock times without reparsing
+              // Update the current state with new clock/position data
               final currentState = state.value;
               if (currentState != null) {
+                // Parse the last move for proper board highlighting
+                Move? parsedLastMove;
+                if (newLastMove != null && newLastMove.isNotEmpty && newLastMove.length >= 4) {
+                  try {
+                    // Convert UCI move to Move object
+                    final from = Square.fromName(newLastMove.substring(0, 2));
+                    final to = Square.fromName(newLastMove.substring(2, 4));
+                    parsedLastMove = NormalMove(from: from, to: to);
+                  } catch (e) {
+                    print('Failed to parse last move: $newLastMove, error: $e');
+                  }
+                }
+
                 state = AsyncValue.data(
                   currentState.copyWith(
-                    game: game, // Updated game with new clock data
+                    game: game, // Updated game with new clock/position data
+                    fenData: newFen, // Update FEN data for board display
+                    lastMove: parsedLastMove, // Update last move for highlighting
                   ),
                 );
+
+                // Trigger evaluation update if position changed
+                if (needsEvaluation) {
+                  print("-----Position changed, triggering evaluation update for FEN: $newFen");
+                  _updateEvaluation();
+                }
               }
             }
           }
@@ -186,7 +237,8 @@ class ChessBoardScreenNotifierNew
           currentMoveIndex: lastMoveIndex,
           pgnData: pgn,
           isLoadingMoves: false,
-          evaluation: currentState.evaluation,
+          evaluation: null, // Reset evaluation to trigger new calculation
+          isEvaluating: true, // Show loading indicator while evaluating
           analysisState: AnalysisBoardState(startingPosition: startingPos),
           moveTimes: moveTimes,
         ),
@@ -312,6 +364,8 @@ class ChessBoardScreenNotifierNew
           lastMove: newLastMove,
           currentMoveIndex: moveIndex,
         ),
+        evaluation: null, // Reset evaluation for new position
+        isEvaluating: true, // Show loading indicator while evaluating
       ),
     );
     _cancelEvaluation = false;
@@ -349,7 +403,8 @@ class ChessBoardScreenNotifierNew
         position: newPosition,
         lastMove: newLastMove,
         currentMoveIndex: moveIndex,
-        evaluation: currentState.evaluation,
+        evaluation: null, // Reset evaluation for new position
+        isEvaluating: true, // Show loading indicator while evaluating
       ),
     );
 
@@ -667,16 +722,23 @@ class ChessBoardScreenNotifierNew
       CloudEval? cloudEval;
       double evaluation = 0.0;
       print("Evaluating started for position: $fen");
+      // Set evaluating state to show loading
       state = AsyncValue.data(
-        currentState.copyWith(shapes: const ISet.empty()),
+        currentState.copyWith(
+          shapes: const ISet.empty(),
+          isEvaluating: true,
+        ),
       );
       try {
         ref.invalidate(cascadeEvalProviderForBoard(fen));
         cloudEval = await ref.read(cascadeEvalProviderForBoard(fen).future);
         if (cloudEval?.pvs.isNotEmpty ?? false) {
-          evaluation = cloudEval!.pvs.first.cp / 100.0;
+          evaluation = _getConsistentEvaluation(
+            cloudEval!.pvs.first.cp / 100.0,
+            fen,
+          );
         }
-        print("Getting evel from cascadeEval: $fen");
+        print("Getting eval from cascadeEval: $fen");
       } catch (e) {
         print('Cascade eval failed, using local stockfish: $e');
         CloudEval result;
@@ -687,6 +749,13 @@ class ChessBoardScreenNotifierNew
           );
           if (evaluatePosRes.isCancelled) {
             print('Evaluation was cancelled for ${fen}');
+            // Reset isEvaluating flag on cancellation
+            final currState = state.value;
+            if (currState != null) {
+              state = AsyncValue.data(
+                currState.copyWith(isEvaluating: false),
+              );
+            }
             return;
           } else {
             print('Evaluation was successful for ${fen}');
@@ -699,15 +768,20 @@ class ChessBoardScreenNotifierNew
           );
         } catch (ex) {
           print('Stockfish evaluation failed for ${fen} with error: $ex');
+          // Reset isEvaluating flag on error
+          final currState = state.value;
+          if (currState != null) {
+            state = AsyncValue.data(
+              currState.copyWith(isEvaluating: false),
+            );
+          }
           return;
         }
         if (result.pvs.isNotEmpty) {
-          evaluation = result.pvs.first.cp / 100.0;
-          List<String> fenParts = fen.split(' ');
-          final isBlackTurn = fenParts[1] == 'b';
-          if (isBlackTurn) {
-            evaluation = -evaluation;
-          }
+          evaluation = _getConsistentEvaluation(
+            result.pvs.first.cp / 100.0,
+            fen,
+          );
         }
         cloudEval = result;
         try {
@@ -735,7 +809,12 @@ class ChessBoardScreenNotifierNew
           (!currState.isAnalysisMode && currentState.position?.fen == fen)) {
             print("------- Setting evaluation: $evaluation for fen: $fen, shapes: ${shapes.length}");
         state = AsyncValue.data(
-          currState.copyWith(evaluation: evaluation, shapes: shapes,mate: cloudEval?.pvs.first.mate),
+          currState.copyWith(
+            evaluation: evaluation,
+            isEvaluating: false,
+            shapes: shapes,
+            mate: cloudEval?.pvs.first.mate ?? 0, // Default to 0 if no mate value
+          ),
         );
       }
       else{
