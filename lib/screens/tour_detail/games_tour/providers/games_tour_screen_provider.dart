@@ -1,3 +1,5 @@
+import 'dart:collection';
+
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
@@ -15,7 +17,7 @@ final gamesTourScreenProvider = StateNotifierProvider<
 >((ref) {
   // Watch tour details first - this is the primary dependency
   final tourDetailAsync = ref.watch(tourDetailScreenProvider);
-
+  final showFinishedGames = ref.watch(showFinishedGamesProvider);
   if (tourDetailAsync.isLoading) {
     return GamesTourScreenProvider.loading(ref: ref);
   }
@@ -37,6 +39,8 @@ final gamesTourScreenProvider = StateNotifierProvider<
   return GamesTourScreenProvider(ref: ref, aboutTourModel: aboutTourModel);
 });
 
+// Can use this in future to maintain the state across the app
+final showFinishedGamesProvider = StateProvider<bool>((ref) => true);
 class GamesTourScreenProvider
     extends StateNotifier<AsyncValue<GamesScreenModel>> {
   GamesTourScreenProvider({
@@ -226,6 +230,48 @@ class GamesTourScreenProvider
     } catch (e, st) {
       if (mounted) state = AsyncValue.error(e, st);
     }
+  }
+  
+  Future<void> toggleFinishedGames( bool showFinishedGame) async{
+    //  final currentValue = ref.read(showFinishedGamesProvider);
+    // ref.read(showFinishedGamesProvider.notifier).state = !currentValue;
+  
+  if (showFinishedGame) { // Will be true after toggle
+    print("Showing finished games");
+    await showFinishedGames();
+  } else { // Will be false after toggle
+    print("Hiding finished games");
+    await hideFinishedGames();
+  }
+  }
+
+  Future<void> showFinishedGames() async{
+    var games = ref.read(gamesTourProvider(aboutTourModel!.id)).value ?? [];
+    var pinnedIds =
+          ref.read(gamesPinprovider(aboutTourModel!.id)).value ??
+          const <String>[];
+           state = AsyncValue.data(
+          GamesScreenModel(
+            gamesTourModels: games.map((g) => GamesTourModel.fromGame(g)).toList(),
+            pinnedGamedIs: pinnedIds, 
+            isSearchMode: true,
+          ),
+        );
+  }
+
+  Future<void> hideFinishedGames() async{
+    var games = ref.read(gamesTourProvider(aboutTourModel!.id)).value ?? [];
+    var unfinishedGames = games.where((g) => g.status == '*').toList();
+    final pinnedIds =
+          ref.read(gamesPinprovider(aboutTourModel!.id)).value ??
+          const <String>[];
+    state = AsyncValue.data(
+          GamesScreenModel(
+            gamesTourModels: unfinishedGames.map((g) => GamesTourModel.fromGame(g)).toList(),
+            pinnedGamedIs: pinnedIds, 
+            isSearchMode: true,
+          ),
+        );
   }
 
   Future<void> searchGamesEnhanced(String query) async {
