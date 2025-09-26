@@ -9,7 +9,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 class EvaluationBarWidget extends ConsumerWidget {
   final double width;
   final double height;
-  final double evaluation;
+  final double? evaluation; // Made nullable to handle loading state
   final bool isFlipped;
   final int index;
   final int mate;
@@ -23,16 +23,24 @@ class EvaluationBarWidget extends ConsumerWidget {
     super.key,
   });
 
+  /// Converts evaluation to white advantage ratio
+  /// eval: -5 to +5 (negative = black advantage, positive = white advantage)
+  /// returns: 0.0 to 1.0 (0.0 = 100% black advantage, 1.0 = 100% white advantage)
   double getWhiteRatio(double eval) => (eval.clamp(-5.0, 5.0) + 5.0) / 10.0;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final whiteRatio = getWhiteRatio(evaluation);
+    // Handle null evaluation (loading state)
+    final evalValue = evaluation ?? 0.0;
+    final whiteRatio = getWhiteRatio(evalValue);
     final blackRatio = 1.0 - whiteRatio;
 
     final whiteHeight = whiteRatio * height;
     final blackHeight = blackRatio * height;
 
+    // Color scheme (consistent regardless of move traversal):
+    // - White color (bottom when not flipped) = White advantage
+    // - Dark color (top when not flipped) = Black advantage
     final topHeight = isFlipped ? whiteHeight : blackHeight;
     final bottomHeight = isFlipped ? blackHeight : whiteHeight;
 
@@ -76,9 +84,11 @@ class EvaluationBarWidget extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(2.br),
               ),
               child: Text(
-                evaluation.abs() >= 10.0
-                    ? '#$mate'
-                    : evaluation.abs().toStringAsFixed(1),
+                evaluation == null
+                    ? '...' // Show loading indicator
+                    : evaluation!.abs() >= 10.0
+                        ? '#$mate'
+                        : evaluation!.abs().toStringAsFixed(1),
                 maxLines: 1,
                 textAlign: TextAlign.center,
                 style: AppTypography.textSmRegular.copyWith(
