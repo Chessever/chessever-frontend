@@ -238,7 +238,7 @@ class ChessBoardScreenNotifierNew
           pgnData: pgn,
           isLoadingMoves: false,
           evaluation: null, // Reset evaluation to trigger new calculation
-          isEvaluating: false,
+          isEvaluating: true, // Show loading indicator while evaluating
           analysisState: AnalysisBoardState(startingPosition: startingPos),
           moveTimes: moveTimes,
         ),
@@ -365,7 +365,7 @@ class ChessBoardScreenNotifierNew
           currentMoveIndex: moveIndex,
         ),
         evaluation: null, // Reset evaluation for new position
-        isEvaluating: false,
+        isEvaluating: true, // Show loading indicator while evaluating
       ),
     );
     _cancelEvaluation = false;
@@ -404,7 +404,7 @@ class ChessBoardScreenNotifierNew
         lastMove: newLastMove,
         currentMoveIndex: moveIndex,
         evaluation: null, // Reset evaluation for new position
-        isEvaluating: false,
+        isEvaluating: true, // Show loading indicator while evaluating
       ),
     );
 
