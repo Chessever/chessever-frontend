@@ -20,7 +20,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 
 // Enum for menu items to improve maintainability
-enum MenuAction { unpinAll, activeGamesOnTop }
+enum MenuAction { unpinAll, showHideFinishedGames }
 
 class GamesAppBarWidget extends ConsumerStatefulWidget {
   const GamesAppBarWidget({super.key});
@@ -157,16 +157,19 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
       case MenuAction.unpinAll:
         ref.read(gamesTourScreenProvider.notifier).unpinAllGames();
         break;
-      case MenuAction.activeGamesOnTop:
-        // Implement logic for active games on top if needed
+      case MenuAction.showHideFinishedGames:
+        ref.read(gamesTourScreenProvider.notifier).toggleFinishedGames(!showFinishedGames);
+        setState(() {
+          showFinishedGames = !showFinishedGames;
+        });
         break;
     }
   }
-
+  bool showFinishedGames=true;
   @override
   Widget build(BuildContext context) {
     final tourDetailAsync = ref.watch(tourDetailScreenProvider);
-
+    //final showFinishedGames = ref.watch(showFinishedGamesProvider);
     return tourDetailAsync.when(
       data: (tourData) {
         final hasTours = tourData.tours.isNotEmpty;
@@ -321,22 +324,33 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
                                         color: kDividerColor,
                                       ),
                                       PopupMenuItem<MenuAction>(
-                                        value: MenuAction.activeGamesOnTop,
-                                        child: Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Text(
-                                              "Active games on top",
-                                              style: AppTypography.textXsMedium
-                                                  .copyWith(color: kWhiteColor),
+                                        value: MenuAction.showHideFinishedGames,
+                                        child: InkWell(
+                                          onTap: () {
+                                            Navigator.pop(context);
+                                            _handleMenuAction(
+                                              MenuAction.showHideFinishedGames,
+                                            );
+                                          },
+                                          child: SizedBox(
+                                            width: 200,
+                                            child: Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.spaceBetween,
+                                              children: [
+                                                Text(
+                                                  showFinishedGames ? "Hide finished games" : "Show finished games",
+                                                  style: AppTypography.textXsMedium
+                                                      .copyWith(color: kWhiteColor),
+                                                ),
+                                                SvgPicture.asset(
+                                                  SvgAsset.active,
+                                                  height: 13.h,
+                                                  width: 13.w,
+                                                ),
+                                              ],
                                             ),
-                                            SvgPicture.asset(
-                                              SvgAsset.active,
-                                              height: 13.h,
-                                              width: 13.w,
-                                            ),
-                                          ],
+                                          ),
                                         ),
                                       ),
                                     ],
