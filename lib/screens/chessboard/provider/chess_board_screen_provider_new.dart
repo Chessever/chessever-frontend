@@ -67,20 +67,21 @@ class ChessBoardScreenNotifierNew
   /// Option 1: Always from white's perspective (consistent colors)
   /// Option 2: From current player's perspective (intuitive for current player)
   double _getConsistentEvaluation(double evaluation, String fen) {
-    // For move traversal, keep evaluation from white's perspective for consistent bar colors
-    // This prevents the evaluation bar from flipping colors when stepping through moves
+    // Convert all evaluations to white's perspective for consistent bar colors
+    // Stockfish returns evaluations from current player's perspective, so we need to flip
+    // when it's black's turn to maintain consistency with Lichess (which we already converted)
 
-    // If you want evaluations from current player's perspective instead, uncomment:
-    // try {
-    //   final fenParts = fen.split(' ');
-    //   if (fenParts.length >= 2 && fenParts[1] == 'b') {
-    //     return -evaluation; // Negate for black's perspective
-    //   }
-    // } catch (e) {
-    //   print('Error parsing FEN for perspective: $e');
-    // }
+    try {
+      final fenParts = fen.split(' ');
+      if (fenParts.length >= 2 && fenParts[1] == 'b') {
+        // Black to move: flip the evaluation to white's perspective
+        return -evaluation;
+      }
+    } catch (e) {
+      print('Error parsing FEN for perspective: $e');
+    }
 
-    return evaluation; // Always white's perspective
+    return evaluation; // White to move: already in white's perspective
   }
 
   void _setupPgnStreamListener() {
@@ -812,7 +813,7 @@ class ChessBoardScreenNotifierNew
             evaluation: evaluation,
             isEvaluating: false,
             shapes: shapes,
-            mate: cloudEval?.pvs.first.mate,
+            mate: cloudEval?.pvs.first.mate ?? 0, // Default to 0 if no mate value
           ),
         );
       }

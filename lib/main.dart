@@ -41,7 +41,7 @@ Future<void> main() async {
   ]);
 
   // Load environment variables
-  await dotenv.load(fileName: ".env.dev");
+  await dotenv.load(fileName: ".env");
   WidgetsFlutterBinding.ensureInitialized();
 
   await NotificationService.initialize();
