@@ -56,10 +56,31 @@ class ChessBoardScreenNotifierNew
         pgnData: null,
         isLoadingMoves: true,
         fenData: game.fen,
-        evaluation: 0.0, // Initialize with neutral evaluation
+        evaluation: null, // Start with null to indicate no evaluation yet
+        isEvaluating: false,
       ),
     );
     parseMoves();
+  }
+
+  /// Get evaluation with consistent perspective for evaluation bar display
+  /// Option 1: Always from white's perspective (consistent colors)
+  /// Option 2: From current player's perspective (intuitive for current player)
+  double _getConsistentEvaluation(double evaluation, String fen) {
+    // For move traversal, keep evaluation from white's perspective for consistent bar colors
+    // This prevents the evaluation bar from flipping colors when stepping through moves
+
+    // If you want evaluations from current player's perspective instead, uncomment:
+    // try {
+    //   final fenParts = fen.split(' ');
+    //   if (fenParts.length >= 2 && fenParts[1] == 'b') {
+    //     return -evaluation; // Negate for black's perspective
+    //   }
+    // } catch (e) {
+    //   print('Error parsing FEN for perspective: $e');
+    // }
+
+    return evaluation; // Always white's perspective
   }
 
   void _setupPgnStreamListener() {
@@ -186,7 +207,8 @@ class ChessBoardScreenNotifierNew
           currentMoveIndex: lastMoveIndex,
           pgnData: pgn,
           isLoadingMoves: false,
-          evaluation: currentState.evaluation,
+          evaluation: null, // Reset evaluation to trigger new calculation
+          isEvaluating: false,
           analysisState: AnalysisBoardState(startingPosition: startingPos),
           moveTimes: moveTimes,
         ),
@@ -312,6 +334,8 @@ class ChessBoardScreenNotifierNew
           lastMove: newLastMove,
           currentMoveIndex: moveIndex,
         ),
+        evaluation: null, // Reset evaluation for new position
+        isEvaluating: false,
       ),
     );
     _cancelEvaluation = false;
@@ -349,7 +373,8 @@ class ChessBoardScreenNotifierNew
         position: newPosition,
         lastMove: newLastMove,
         currentMoveIndex: moveIndex,
-        evaluation: currentState.evaluation,
+        evaluation: null, // Reset evaluation for new position
+        isEvaluating: false,
       ),
     );
 
@@ -667,16 +692,23 @@ class ChessBoardScreenNotifierNew
       CloudEval? cloudEval;
       double evaluation = 0.0;
       print("Evaluating started for position: $fen");
+      // Set evaluating state to show loading
       state = AsyncValue.data(
-        currentState.copyWith(shapes: const ISet.empty()),
+        currentState.copyWith(
+          shapes: const ISet.empty(),
+          isEvaluating: true,
+        ),
       );
       try {
         ref.invalidate(cascadeEvalProviderForBoard(fen));
         cloudEval = await ref.read(cascadeEvalProviderForBoard(fen).future);
         if (cloudEval?.pvs.isNotEmpty ?? false) {
-          evaluation = cloudEval!.pvs.first.cp / 100.0;
+          evaluation = _getConsistentEvaluation(
+            cloudEval!.pvs.first.cp / 100.0,
+            fen,
+          );
         }
-        print("Getting evel from cascadeEval: $fen");
+        print("Getting eval from cascadeEval: $fen");
       } catch (e) {
         print('Cascade eval failed, using local stockfish: $e');
         CloudEval result;
@@ -687,6 +719,13 @@ class ChessBoardScreenNotifierNew
           );
           if (evaluatePosRes.isCancelled) {
             print('Evaluation was cancelled for ${fen}');
+            // Reset isEvaluating flag on cancellation
+            final currState = state.value;
+            if (currState != null) {
+              state = AsyncValue.data(
+                currState.copyWith(isEvaluating: false),
+              );
+            }
             return;
           } else {
             print('Evaluation was successful for ${fen}');
@@ -699,15 +738,20 @@ class ChessBoardScreenNotifierNew
           );
         } catch (ex) {
           print('Stockfish evaluation failed for ${fen} with error: $ex');
+          // Reset isEvaluating flag on error
+          final currState = state.value;
+          if (currState != null) {
+            state = AsyncValue.data(
+              currState.copyWith(isEvaluating: false),
+            );
+          }
           return;
         }
         if (result.pvs.isNotEmpty) {
-          evaluation = result.pvs.first.cp / 100.0;
-          List<String> fenParts = fen.split(' ');
-          final isBlackTurn = fenParts[1] == 'b';
-          if (isBlackTurn) {
-            evaluation = -evaluation;
-          }
+          evaluation = _getConsistentEvaluation(
+            result.pvs.first.cp / 100.0,
+            fen,
+          );
         }
         cloudEval = result;
         try {
@@ -735,7 +779,12 @@ class ChessBoardScreenNotifierNew
           (!currState.isAnalysisMode && currentState.position?.fen == fen)) {
             print("------- Setting evaluation: $evaluation for fen: $fen, shapes: ${shapes.length}");
         state = AsyncValue.data(
-          currState.copyWith(evaluation: evaluation, shapes: shapes,mate: cloudEval?.pvs.first.mate),
+          currState.copyWith(
+            evaluation: evaluation,
+            isEvaluating: false,
+            shapes: shapes,
+            mate: cloudEval?.pvs.first.mate,
+          ),
         );
       }
       else{
