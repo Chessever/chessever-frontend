@@ -13,6 +13,7 @@ class EvaluationBarWidget extends ConsumerWidget {
   final bool isFlipped;
   final int index;
   final int mate;
+  final bool isEvaluating; // Add flag to show loading during evaluation
   const EvaluationBarWidget({
     required this.width,
     required this.height,
@@ -20,6 +21,7 @@ class EvaluationBarWidget extends ConsumerWidget {
     required this.isFlipped,
     required this.index,
     required this.mate,
+    this.isEvaluating = false, // Default to false for backward compatibility
     super.key,
   });
 
@@ -84,8 +86,8 @@ class EvaluationBarWidget extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(2.br),
               ),
               child: Text(
-                evaluation == null
-                    ? '...' // Show loading indicator
+                evaluation == null || isEvaluating
+                    ? '...' // Show loading indicator when null or evaluating
                     : evaluation!.abs() >= 10.0
                         ? '#${mate.abs()}' // Show absolute mate value
                         : evaluation!.abs().toStringAsFixed(1),
@@ -130,6 +132,7 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
                 whiteHeight: height * 0.5,
                 blackHeight: height * 0.5,
                 evaluation: 0.0,
+                isEvaluating: true,
               ),
             );
           },
@@ -193,6 +196,7 @@ class _Bars extends StatelessWidget {
     required this.whiteHeight,
     required this.blackHeight,
     required this.evaluation,
+    this.isEvaluating = false,
     super.key,
   });
 
@@ -201,6 +205,7 @@ class _Bars extends StatelessWidget {
   final double whiteHeight;
   final double blackHeight;
   final double evaluation;
+  final bool isEvaluating;
 
   @override
   Widget build(BuildContext context) {
@@ -241,9 +246,11 @@ class _Bars extends StatelessWidget {
                 borderRadius: BorderRadius.circular(2.br),
               ),
               child: Text(
-                evaluation.abs() >= 10.0
-                    ? "M" // Just show "M" for mate since we don't have the mate count here
-                    : evaluation.abs().toStringAsFixed(1),
+                isEvaluating
+                    ? '...' // Show loading indicator when evaluating
+                    : evaluation.abs() >= 10.0
+                        ? "M" // Just show "M" for mate since we don't have the mate count here
+                        : evaluation.abs().toStringAsFixed(1),
                 textAlign: TextAlign.center,
                 maxLines: 1,
                 style: AppTypography.textSmRegular.copyWith(
