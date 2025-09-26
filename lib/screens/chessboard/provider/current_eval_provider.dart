@@ -4,6 +4,7 @@ import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.
 import 'package:chessever2/repository/supabase/evals/evals_repository.dart';
 import 'package:chessever2/repository/supabase/evals/persist_cloud_eval.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart' show FutureProvider;
+import 'stockfish_singleton.dart';
 
 /// 1. local → 2. Supabase → 3. lichess
 final cascadeEvalProvider = FutureProvider.family<CloudEval, String>((
@@ -33,13 +34,25 @@ final cascadeEvalProvider = FutureProvider.family<CloudEval, String>((
   }
 
   // 3️⃣  Lichess → Supabase → local
-  final cloud = await lichess.getEval(fen);
-  Future.wait<void>([
-    persist.call(fen, cloud), // writes positions, evals, pvs
-    local.save(fen, cloud), // local cache
-  ]);
 
-  return cloud;
+  try {
+    final cloud = await lichess.getEval(fen);
+    Future.wait<void>([persist.call(fen, cloud), local.save(fen, cloud)]);
+    return cloud;
+  } on NoEvalException catch (_) {
+    final sfEval = await StockfishSingleton().evaluatePosition(fen, depth: 15);
+    final cloudFromSF = CloudEval(
+      fen: fen,
+      knodes: sfEval.knodes,
+      depth: sfEval.depth,
+      pvs: sfEval.pvs,
+    );
+    Future.wait<void>([
+      persist.call(fen, cloudFromSF),
+      local.save(fen, cloudFromSF),
+    ]);
+    return cloudFromSF;
+  }
 });
 
 /// Helper function to validate if an evaluation makes sense
@@ -93,7 +106,9 @@ final cascadeEvalProviderForBoard = FutureProvider.family<CloudEval, String>((
         await local.save(fen, cloud); // keep local in sync
         return cloud;
       } else {
-        print('Supabase eval invalid for $fen: cp=${cloud.pvs.first.cp}, moves=${cloud.pvs.first.moves}');
+        print(
+          'Supabase eval invalid for $fen: cp=${cloud.pvs.first.cp}, moves=${cloud.pvs.first.moves}',
+        );
       }
     }
 
@@ -122,8 +137,10 @@ final cascadeEvalProviderForBoard = FutureProvider.family<CloudEval, String>((
     }
 
     // 4️⃣  If all else fails, throw to trigger local Stockfish fallback
-    throw Exception('All cloud evaluation sources failed or returned invalid data for $fen');
+    throw Exception(
+      'All cloud evaluation sources failed or returned invalid data for $fen',
+    );
   } catch (error, _) {
-    rethrow ;
+    rethrow;
   }
 });
