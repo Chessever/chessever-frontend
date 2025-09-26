@@ -44,9 +44,9 @@ class Pv {
 
     int cp;
     bool isMate;
-    int mate=0;
+    int? mate;
     if (json.containsKey('mate')) {
-      // convert “mate in X” to a big centipawn score
+      // convert "mate in X" to a big centipawn score
       final mateInt = int.parse(json['mate'].toString());
       cp = mateInt.sign * 100_000;
       isMate = true;
@@ -55,6 +55,7 @@ class Pv {
       // normal centipawn score
       cp = int.parse(json['cp'].toString());
       isMate = false;
+      mate = null; // No mate score available
     }
 
     return Pv(moves: moves, cp: cp, isMate: isMate, mate: mate );

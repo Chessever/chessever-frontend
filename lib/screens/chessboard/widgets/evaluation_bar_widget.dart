@@ -87,7 +87,7 @@ class EvaluationBarWidget extends ConsumerWidget {
                 evaluation == null
                     ? '...' // Show loading indicator
                     : evaluation!.abs() >= 10.0
-                        ? '#$mate'
+                        ? '#${mate.abs()}' // Show absolute mate value
                         : evaluation!.abs().toStringAsFixed(1),
                 maxLines: 1,
                 textAlign: TextAlign.center,
@@ -242,7 +242,7 @@ class _Bars extends StatelessWidget {
               ),
               child: Text(
                 evaluation.abs() >= 10.0
-                    ? "M"
+                    ? "M" // Just show "M" for mate since we don't have the mate count here
                     : evaluation.abs().toStringAsFixed(1),
                 textAlign: TextAlign.center,
                 maxLines: 1,
