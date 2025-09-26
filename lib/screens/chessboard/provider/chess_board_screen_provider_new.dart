@@ -90,6 +90,7 @@ class ChessBoardScreenNotifierNew
         next.whenData((gameData) {
           if (gameData != null) {
             bool needsReparse = false;
+            bool needsEvaluation = false;
 
             // Check if PGN changed
             final newPgn = gameData['pgn'] as String?;
@@ -97,11 +98,18 @@ class ChessBoardScreenNotifierNew
               needsReparse = true;
             }
 
+            // Check if position changed (FEN or last_move) for evaluation updates
+            final newFen = gameData['fen'] as String? ?? game.fen;
+            final newLastMove = gameData['last_move'] as String? ?? game.lastMove;
+            if (newFen != game.fen || newLastMove != game.lastMove) {
+              needsEvaluation = true;
+            }
+
             // Create updated game model with all live data
             game = game.copyWith(
               pgn: newPgn ?? game.pgn,
-              fen: gameData['fen'] as String? ?? game.fen,
-              lastMove: gameData['last_move'] as String? ?? game.lastMove,
+              fen: newFen,
+              lastMove: newLastMove,
               lastMoveTime: gameData['last_move_time'] != null
                   ? DateTime.tryParse(gameData['last_move_time'] as String)
                   : game.lastMoveTime,
@@ -116,14 +124,35 @@ class ChessBoardScreenNotifierNew
               parseMoves();
               print("-----Game updated with new PGN and clock data");
             } else {
-              // Just update the current state with new clock times without reparsing
+              // Update the current state with new clock/position data
               final currentState = state.value;
               if (currentState != null) {
+                // Parse the last move for proper board highlighting
+                Move? parsedLastMove;
+                if (newLastMove != null && newLastMove.isNotEmpty && newLastMove.length >= 4) {
+                  try {
+                    // Convert UCI move to Move object
+                    final from = Square.fromName(newLastMove.substring(0, 2));
+                    final to = Square.fromName(newLastMove.substring(2, 4));
+                    parsedLastMove = NormalMove(from: from, to: to);
+                  } catch (e) {
+                    print('Failed to parse last move: $newLastMove, error: $e');
+                  }
+                }
+
                 state = AsyncValue.data(
                   currentState.copyWith(
-                    game: game, // Updated game with new clock data
+                    game: game, // Updated game with new clock/position data
+                    fenData: newFen, // Update FEN data for board display
+                    lastMove: parsedLastMove, // Update last move for highlighting
                   ),
                 );
+
+                // Trigger evaluation update if position changed
+                if (needsEvaluation) {
+                  print("-----Position changed, triggering evaluation update for FEN: $newFen");
+                  _updateEvaluation();
+                }
               }
             }
           }
