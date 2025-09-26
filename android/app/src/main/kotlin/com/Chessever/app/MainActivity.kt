@@ -1,4 +1,4 @@
-package com.chessever.app
+package com.Chessever.app
 
 import io.flutter.embedding.android.FlutterActivity
 
