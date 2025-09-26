@@ -377,10 +377,9 @@ class ScoreCardScreen extends ConsumerWidget {
                       ref.read(chessboardViewFromProviderNew.notifier).state =
                           ChessboardView.tour;
 
-                      // Get the original ordered games list (same as working navigation)
-                      final fullGames = ref.read(gamesTourScreenProvider).value?.gamesTourModels ?? [];
-                      // Find the index by gameId to ensure we get the correct game
-                      final gameIndex = fullGames.indexWhere((g) => g.gameId == game.gameId);
+                      // Use the same games list that was used to filter playerGames
+                      // to ensure consistency in gameId matching
+                      final gameIndex = allGames.indexWhere((g) => g.gameId == game.gameId);
 
                       if (gameIndex != -1) {
                         Navigator.push(
@@ -388,7 +387,7 @@ class ScoreCardScreen extends ConsumerWidget {
                           MaterialPageRoute(
                             builder:
                                 (_) => ChessBoardScreenNew(
-                                  games: fullGames,
+                                  games: allGames,
                                   currentIndex: gameIndex,
                                 ),
                           ),

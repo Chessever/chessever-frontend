@@ -113,6 +113,9 @@ final cascadeEvalProviderForBoard = FutureProvider.family<CloudEval, String>((
       } else {
         print('Lichess eval invalid for $fen: cp=${cloud.pvs.first.cp}');
       }
+    } on NoEvalException catch (_) {
+      print('No evaluation available on Lichess for $fen, will try Stockfish fallback');
+      // Continue to Stockfish fallback - don't return here
     } catch (lichessError) {
       print('Lichess eval failed for $fen: $lichessError');
       // Continue to fallback - don't return here

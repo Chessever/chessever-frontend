@@ -73,7 +73,8 @@ class ChessBoardStateNew {
   final bool isPlaying;
   final bool isBoardFlipped;
   final bool isLoadingMoves;
-  final double evaluation;
+  final double? evaluation; // Made nullable to indicate loading state
+  final bool isEvaluating; // Flag to show evaluation is in progress
   final GamesTourModel game;
   final String? pgnData;
   final String? fenData;
@@ -105,6 +106,7 @@ class ChessBoardStateNew {
     this.isBoardFlipped = false,
     this.isLoadingMoves = false,
     this.evaluation = 0,
+    this.isEvaluating = false,
     required this.game,
     this.pgnData,
     this.fenData,
@@ -126,6 +128,7 @@ class ChessBoardStateNew {
     bool? isBoardFlipped,
     bool? isLoadingMoves,
     double? evaluation,
+    bool? isEvaluating,
     int? mate,
     GamesTourModel? game,
     String? pgnData,
@@ -146,6 +149,7 @@ class ChessBoardStateNew {
       isBoardFlipped: isBoardFlipped ?? this.isBoardFlipped,
       isLoadingMoves: isLoadingMoves ?? this.isLoadingMoves,
       evaluation: evaluation ?? this.evaluation,
+      isEvaluating: isEvaluating ?? this.isEvaluating,
       game: game ?? this.game,
       pgnData: pgnData ?? this.pgnData,
       fenData: fenData ?? this.fenData,
