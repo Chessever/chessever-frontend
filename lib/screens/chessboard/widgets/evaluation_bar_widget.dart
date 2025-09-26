@@ -124,7 +124,6 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
             );
           },
           error: (_, _) {
-            //No Evaluation
             return SkeletonWidget(
               child: _Bars(
                 width: width,
