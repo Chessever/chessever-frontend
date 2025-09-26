@@ -931,6 +931,7 @@ class _BoardWithSidebar extends StatelessWidget {
                 isFlipped: state.isBoardFlipped,
                 evaluation: state.evaluation,
                 mate: state.mate ?? 0,
+                isEvaluating: state.isEvaluating,
               ),
               state.isAnalysisMode
                   ? _AnalysisBoard(
