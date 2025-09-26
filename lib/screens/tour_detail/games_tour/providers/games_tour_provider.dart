@@ -4,6 +4,7 @@ import 'package:chessever2/repository/local_storage/tournament/games/games_local
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/game_fen_stream_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/game_last_move_stream_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/game_clock_stream_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final shouldStreamProvider = StateProvider((ref) => true);
@@ -100,11 +101,50 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     );
     subscriptions.add(lastMoveSubscription);
 
+    // Listen to white clock stream
+    final whiteClockSubscription = ref.listen<AsyncValue<int?>>(
+      gameWhiteClockStreamProvider(gameId),
+      (previous, next) {
+        next.whenData((whiteClockData) {
+          _updateGameData(gameId, whiteClockSeconds: whiteClockData);
+        });
+      },
+    );
+    subscriptions.add(whiteClockSubscription);
+
+    // Listen to black clock stream
+    final blackClockSubscription = ref.listen<AsyncValue<int?>>(
+      gameBlackClockStreamProvider(gameId),
+      (previous, next) {
+        next.whenData((blackClockData) {
+          _updateGameData(gameId, blackClockSeconds: blackClockData);
+        });
+      },
+    );
+    subscriptions.add(blackClockSubscription);
+
+    // Listen to last move time stream
+    final lastMoveTimeSubscription = ref.listen<AsyncValue<DateTime?>>(
+      gameLastMoveTimeStreamProvider(gameId),
+      (previous, next) {
+        next.whenData((lastMoveTimeData) {
+          _updateGameData(gameId, lastMoveTime: lastMoveTimeData);
+        });
+      },
+    );
+    subscriptions.add(lastMoveTimeSubscription);
+
     // Store subscriptions for cleanup
     _streamSubscriptions[gameId] = subscriptions;
   }
 
-  void _updateGameData(String gameId, {String? fen, String? lastMove}) {
+  void _updateGameData(String gameId, {
+    String? fen,
+    String? lastMove,
+    int? whiteClockSeconds,
+    int? blackClockSeconds,
+    DateTime? lastMoveTime,
+  }) {
     final currentGames = state.valueOrNull;
     if (currentGames == null) return;
 
@@ -114,6 +154,9 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
             return game.copyWith(
               fen: fen ?? game.fen,
               lastMove: lastMove ?? game.lastMove,
+              lastClockWhite: whiteClockSeconds ?? game.lastClockWhite,
+              lastClockBlack: blackClockSeconds ?? game.lastClockBlack,
+              lastMoveTime: lastMoveTime ?? game.lastMoveTime,
             );
           }
           return game;

@@ -19,7 +19,10 @@ class _LichessEvalRepository {
 
     if (resp.statusCode == 200) {
       final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
-      return CloudEval.fromJson(decoded);
+      final cloudEval = CloudEval.fromJson(decoded);
+
+      // Convert Lichess evaluations to white's perspective for consistency
+      return _convertToWhitePerspective(cloudEval, fen);
     }
 
     if (resp.statusCode == 404) {
@@ -27,6 +30,35 @@ class _LichessEvalRepository {
     }
 
     throw HttpException('Unexpected status ${resp.statusCode}');
+  }
+
+  /// Converts Lichess evaluation from current player's perspective to white's perspective
+  CloudEval _convertToWhitePerspective(CloudEval cloudEval, String fen) {
+    // Parse FEN to determine whose turn it is
+    final fenParts = fen.split(' ');
+    final isBlackToMove = fenParts.length >= 2 && fenParts[1] == 'b';
+
+    if (!isBlackToMove) {
+      // White to move - Lichess already returns from white's perspective
+      return cloudEval;
+    }
+
+    // Black to move - Lichess returns from black's perspective, need to flip
+    final adjustedPvs = cloudEval.pvs.map((pv) {
+      return Pv(
+        moves: pv.moves,
+        cp: -pv.cp, // Flip the evaluation sign
+        isMate: pv.isMate,
+        mate: pv.mate != null ? -pv.mate! : null, // Flip mate sign too
+      );
+    }).toList();
+
+    return CloudEval(
+      fen: cloudEval.fen,
+      knodes: cloudEval.knodes,
+      depth: cloudEval.depth,
+      pvs: adjustedPvs,
+    );
   }
 }
 
