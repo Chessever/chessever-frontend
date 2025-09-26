@@ -9,10 +9,11 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 class EvaluationBarWidget extends ConsumerWidget {
   final double width;
   final double height;
-  final double evaluation;
+  final double? evaluation; // Made nullable to handle loading state
   final bool isFlipped;
   final int index;
   final int mate;
+  final bool isEvaluating; // Add flag to show loading during evaluation
   const EvaluationBarWidget({
     required this.width,
     required this.height,
@@ -20,19 +21,28 @@ class EvaluationBarWidget extends ConsumerWidget {
     required this.isFlipped,
     required this.index,
     required this.mate,
+    this.isEvaluating = false, // Default to false for backward compatibility
     super.key,
   });
 
+  /// Converts evaluation to white advantage ratio
+  /// eval: -5 to +5 (negative = black advantage, positive = white advantage)
+  /// returns: 0.0 to 1.0 (0.0 = 100% black advantage, 1.0 = 100% white advantage)
   double getWhiteRatio(double eval) => (eval.clamp(-5.0, 5.0) + 5.0) / 10.0;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final whiteRatio = getWhiteRatio(evaluation);
+    // Handle null evaluation (loading state)
+    final evalValue = evaluation ?? 0.0;
+    final whiteRatio = getWhiteRatio(evalValue);
     final blackRatio = 1.0 - whiteRatio;
 
     final whiteHeight = whiteRatio * height;
     final blackHeight = blackRatio * height;
 
+    // Color scheme (consistent regardless of move traversal):
+    // - White color (bottom when not flipped) = White advantage
+    // - Dark color (top when not flipped) = Black advantage
     final topHeight = isFlipped ? whiteHeight : blackHeight;
     final bottomHeight = isFlipped ? blackHeight : whiteHeight;
 
@@ -76,9 +86,11 @@ class EvaluationBarWidget extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(2.br),
               ),
               child: Text(
-                evaluation.abs() >= 10.0
-                    ? '#$mate'
-                    : evaluation.abs().toStringAsFixed(1),
+                evaluation == null || isEvaluating
+                    ? '...' // Show loading indicator when null or evaluating
+                    : evaluation!.abs() >= 10.0
+                        ? '#${mate.abs()}' // Show absolute mate value
+                        : evaluation!.abs().toStringAsFixed(1),
                 maxLines: 1,
                 textAlign: TextAlign.center,
                 style: AppTypography.textSmRegular.copyWith(
@@ -120,6 +132,7 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
                 whiteHeight: height * 0.5,
                 blackHeight: height * 0.5,
                 evaluation: 0.0,
+                isEvaluating: true,
               ),
             );
           },
@@ -182,6 +195,7 @@ class _Bars extends StatelessWidget {
     required this.whiteHeight,
     required this.blackHeight,
     required this.evaluation,
+    this.isEvaluating = false,
     super.key,
   });
 
@@ -190,6 +204,7 @@ class _Bars extends StatelessWidget {
   final double whiteHeight;
   final double blackHeight;
   final double evaluation;
+  final bool isEvaluating;
 
   @override
   Widget build(BuildContext context) {
@@ -230,9 +245,11 @@ class _Bars extends StatelessWidget {
                 borderRadius: BorderRadius.circular(2.br),
               ),
               child: Text(
-                evaluation.abs() >= 10.0
-                    ? "M"
-                    : evaluation.abs().toStringAsFixed(1),
+                isEvaluating
+                    ? '...' // Show loading indicator when evaluating
+                    : evaluation.abs() >= 10.0
+                        ? "M" // Just show "M" for mate since we don't have the mate count here
+                        : evaluation.abs().toStringAsFixed(1),
                 textAlign: TextAlign.center,
                 maxLines: 1,
                 style: AppTypography.textSmRegular.copyWith(
