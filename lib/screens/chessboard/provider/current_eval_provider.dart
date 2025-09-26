@@ -47,7 +47,10 @@ final cascadeEvalProvider = FutureProvider.family<CloudEval, String>((
       depth: sfEval.depth,
       pvs: sfEval.pvs,
     );
-    await local.save(fen, cloudFromSF);
+    Future.wait<void>([
+      persist.call(fen, cloudFromSF),
+      local.save(fen, cloudFromSF),
+    ]);
     return cloudFromSF;
   }
 });
