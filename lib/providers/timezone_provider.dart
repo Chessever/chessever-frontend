@@ -1,6 +1,5 @@
-import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../repository/local_storage/timezone_repository/timezone_repository.dart';
+import 'package:chessever2/repository/local_storage/timezone_repository/timezone_repository.dart';
 
 enum TimeZone {
   utcMinus12('UTC-12:00', Duration(hours: -12)),
