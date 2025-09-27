@@ -19,7 +19,6 @@ class SelectedCountryNotifier extends StateNotifier<AsyncValue<Country>> {
     try {
       final savedName =
           await ref.read(countryManRepository).getSavedCountryMan();
-      print('Loaded saved country name: $savedName');
       if (savedName != null && savedName.isNotEmpty) {
         final matchedCountry = CountryService().getAll().firstWhere(
           (c) => c.name.toLowerCase() == savedName.toLowerCase(),
