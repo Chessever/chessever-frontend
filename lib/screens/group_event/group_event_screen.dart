@@ -177,128 +177,114 @@ class GroupEventScreen extends HookConsumerWidget {
 
           SizedBox(height: 12.h),
           Expanded(
-            child: PageView.builder(
-              controller: pageController,
-              itemCount: GroupEventCategory.values.length,
-              onPageChanged: (index) {
-                if (!isAnimating.value) {
-                  final newCategory = GroupEventCategory.values[index];
-                  ref.read(selectedGroupCategoryProvider.notifier).state =
-                      newCategory;
-                }
-              },
-              itemBuilder: (context, index) {
-                final isPast =
-                    GroupEventCategory.values[index] == GroupEventCategory.past;
-                final scrollController = isPast ? pastScrollController : null;
+  child: PageView.builder(
+    controller: pageController,
+    itemCount: GroupEventCategory.values.length,
+    onPageChanged: (index) {
+      if (!isAnimating.value) {
+        final newCategory = GroupEventCategory.values[index];
+        ref.read(selectedGroupCategoryProvider.notifier).state = newCategory;
+      }
+    },
+    itemBuilder: (context, index) {
+      final currentCategory = GroupEventCategory.values[index];
+      final isPast = currentCategory == GroupEventCategory.past;
+      final scrollController = isPast ? pastScrollController : null;
+      print('Building page for $currentCategory');
+      return Consumer(
+        builder: (context, ref, child) {
+          final selectedCategory = ref.watch(selectedGroupCategoryProvider);
+          
+          // Only load data for the currently selected tab
+          if (currentCategory != selectedCategory) {
+            print(" Not the active tab, returning empty widget.");
+            return const Center(
+              child: SizedBox.shrink(), // Return empty widget for non-active tabs
+            );
+          }
 
-                return Consumer(
-                  builder: (context, ref, child) {
-                    final controller = ref.watch(
-                      groupEventScreenProvider.notifier,
-                    );
-                    final isLoadingMore = isPast && controller.isFetchingMore;
+          final controller = ref.watch(groupEventScreenProvider.notifier);
+          final isLoadingMore = isPast && controller.isFetchingMore;
 
-                    return ref
-                        .watch(groupEventScreenProvider)
-                        .when(
-                          data: (filteredEvents) {
-                            // Combine old starred favorites with new unified favorites
-                            final starredFavorites = ref.watch(starredProvider);
-                            final unifiedFavoritesAsync = ref.watch(
-                              favoriteEventsProvider,
-                            );
-                            final unifiedFavorites = unifiedFavoritesAsync
-                                .maybeWhen(
-                                  data:
-                                      (events) =>
-                                          events
-                                              .map((e) => e['id'] as String)
-                                              .toList(),
-                                  orElse: () => <String>[],
-                                );
+          return ref.watch(groupEventScreenProvider).when(
+            data: (filteredEvents) {
+              // Combine old starred favorites with new unified favorites
+              final starredFavorites = ref.watch(starredProvider);
+              final unifiedFavoritesAsync = ref.watch(favoriteEventsProvider);
+              final unifiedFavorites = unifiedFavoritesAsync.maybeWhen(
+                data: (events) => events
+                    .map((e) => e['id'] as String)
+                    .toList(),
+                orElse: () => <String>[],
+              );
 
-                            // Combine both lists
-                            final allFavorites =
-                                <String>{
-                                  ...starredFavorites,
-                                  ...unifiedFavorites,
-                                }.toList();
+              // Combine both lists
+              final allFavorites = <String>{
+                ...starredFavorites,
+                ...unifiedFavorites,
+              }.toList();
 
-                            final isSearching =
-                                searchController.text.trim().isNotEmpty;
+              final isSearching = searchController.text.trim().isNotEmpty;
+              final isPast = selectedTourEvent == GroupEventCategory.past;
 
-                            final isPast =
-                                selectedTourEvent == GroupEventCategory.past;
+              final finalEvents = isSearching
+                  ? filteredEvents
+                  : isPast
+                      ? ref.watch(
+                          pastEventsUiReorderProvider(filteredEvents),
+                        )
+                      : ref
+                          .read(tournamentSortingServiceProvider)
+                          .sortBasedOnFavorite(
+                            tours: filteredEvents,
+                            favorites: allFavorites,
+                          );
 
-                            final finalEvents =
-                                isSearching
-                                    ? filteredEvents
-                                    : isPast
-                                    ? ref.watch(
-                                      pastEventsUiReorderProvider(
-                                        filteredEvents,
-                                      ),
-                                    )
-                                    : ref
-                                        .read(tournamentSortingServiceProvider)
-                                        .sortBasedOnFavorite(
-                                          tours: filteredEvents,
-                                          favorites: allFavorites,
-                                        );
-
-                            return RefreshIndicator(
-                              onRefresh:
-                                  ref.read(homeScreenProvider).onPullRefresh,
-                              color: kWhiteColor70,
-                              backgroundColor: kDarkGreyColor,
-                              displacement: 60.h,
-                              strokeWidth: 3.w,
-                              child: AllEventsTabWidget(
-                                filteredEvents: finalEvents,
-                                onSelect:
-                                    (tourEventCardModel) => ref
-                                        .read(groupEventScreenProvider.notifier)
-                                        .onSelectTournament(
-                                          context: context,
-                                          id: tourEventCardModel.id,
-                                        ),
-                                isLoadingMore: isLoadingMore,
-                                scrollController: scrollController,
-                              ),
-                            );
-                          },
-                          loading:
-                              () => SkeletonWidget(
-                                child: AllEventsTabWidget(
-                                  onSelect: (_) {},
-                                  filteredEvents: List.generate(
-                                    10,
-                                    (index) => GroupEventCardModel(
-                                      id: 'tour_001',
-                                      title: 'World Chess Championship 2025',
-                                      dates: 'Mar 15 - 25,2025',
-                                      timeUntilStart: 'Starts in 8 months',
-                                      tourEventCategory:
-                                          TourEventCategory.values[Random()
-                                              .nextInt(
-                                                TourEventCategory.values.length,
-                                              )],
-                                      maxAvgElo: 0,
-                                      timeControl: 'Standard',
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          error:
-                              (error, stackTrace) => const GenericErrorWidget(),
-                        );
-                  },
-                );
-              },
+              return RefreshIndicator(
+                onRefresh: ref.read(homeScreenProvider).onPullRefresh,
+                color: kWhiteColor70,
+                backgroundColor: kDarkGreyColor,
+                displacement: 60.h,
+                strokeWidth: 3.w,
+                child: AllEventsTabWidget(
+                  filteredEvents: finalEvents,
+                  onSelect: (tourEventCardModel) => ref
+                      .read(groupEventScreenProvider.notifier)
+                      .onSelectTournament(
+                        context: context,
+                        id: tourEventCardModel.id,
+                      ),
+                  isLoadingMore: isLoadingMore,
+                  scrollController: scrollController,
+                ),
+              );
+            },
+            loading: () => SkeletonWidget(
+              child: AllEventsTabWidget(
+                onSelect: (_) {},
+                filteredEvents: List.generate(
+                  10,
+                  (index) => GroupEventCardModel(
+                    id: 'tour_001',
+                    title: 'World Chess Championship 2025',
+                    dates: 'Mar 15 - 25,2025',
+                    timeUntilStart: 'Starts in 8 months',
+                    tourEventCategory: TourEventCategory.values[
+                        Random().nextInt(TourEventCategory.values.length)],
+                    maxAvgElo: 0,
+                    timeControl: 'Standard',
+                  ),
+                ),
+              ),
             ),
-          ),
-        ],
+            error: (error, stackTrace) => const GenericErrorWidget(),
+          );
+        },
+      );
+    },
+  ),
+)
+         ],
       ),
     );
   }
