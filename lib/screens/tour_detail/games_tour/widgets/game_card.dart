@@ -63,8 +63,8 @@ class GameCard extends ConsumerWidget {
                 (gamesTourModel.gameStatus == GameStatus.ongoing)
                     ? ChessProgressBar(fen: gamesTourModel.fen ?? '')
                     : _StatusText(
-                      status: gamesTourModel.gameStatus.displayText,
-                    ),
+                        status: gamesTourModel.gameStatus.displayText,
+                      ),
                 Spacer(),
                 SizedBox(
                   width: MediaQuery.of(context).size.width * (30 / 100),
@@ -161,10 +161,9 @@ class GameCard extends ConsumerWidget {
         Animation<double> animation,
         Animation<double> secondaryAnimation,
       ) {
-        final double menuTop =
-            showAbove
-                ? cardPosition.dy - popupHeight - 8.sp
-                : cardPosition.dy + cardSize.height + 8.sp;
+        final double menuTop = showAbove
+            ? cardPosition.dy - popupHeight - 8.sp
+            : cardPosition.dy + cardSize.height + 8.sp;
         return Material(
           color: Colors.transparent,
           child: GestureDetector(
@@ -198,8 +197,7 @@ class GameCard extends ConsumerWidget {
                             child: Row(
                               children: [
                                 SizedBox(
-                                  width:
-                                      MediaQuery.of(context).size.width *
+                                  width: MediaQuery.of(context).size.width *
                                       (30 / 100),
                                   child: _GamesRound(
                                     playerName: gamesTourModel.whitePlayer.name,
@@ -213,16 +211,15 @@ class GameCard extends ConsumerWidget {
                                 (gamesTourModel.gameStatus ==
                                         GameStatus.ongoing)
                                     ? ChessProgressBar(
-                                      fen: gamesTourModel.fen ?? "",
-                                    )
+                                        fen: gamesTourModel.fen ?? "",
+                                      )
                                     : _StatusText(
-                                      status:
-                                          gamesTourModel.gameStatus.displayText,
-                                    ),
+                                        status: gamesTourModel
+                                            .gameStatus.displayText,
+                                      ),
                                 Spacer(),
                                 SizedBox(
-                                  width:
-                                      MediaQuery.of(context).size.width *
+                                  width: MediaQuery.of(context).size.width *
                                       (30 / 100),
                                   child: _GamesRound(
                                     playerName: gamesTourModel.blackPlayer.name,
@@ -389,7 +386,6 @@ class GameCard extends ConsumerWidget {
       transitionDuration: const Duration(milliseconds: 300),
     );
   }
-
 }
 
 class _SelectiveBlurBackground extends StatelessWidget {
@@ -468,9 +464,8 @@ class _GamesRound extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final validCountryCode = ref
-        .read(locationServiceProvider)
-        .getValidCountryCode(countryCode);
+    final validCountryCode =
+        ref.read(locationServiceProvider).getValidCountryCode(countryCode);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -583,7 +578,7 @@ class _TimerWidget extends StatelessWidget {
         gamesTourModel.lastMoveTime != null &&
         gamesTourModel.activePlayer != null &&
         ((isWhitePlayer && gamesTourModel.activePlayer == Side.white) ||
-         (!isWhitePlayer && gamesTourModel.activePlayer == Side.black));
+            (!isWhitePlayer && gamesTourModel.activePlayer == Side.black));
 
     // Only wrap the Text widget with HookConsumer for atomic rebuilds
     return isClockRunning
@@ -606,7 +601,9 @@ class _TimerWidget extends StatelessWidget {
                 final totalMs = (minutes * 60 + seconds) * 1000;
 
                 // Calculate remaining time
-                final elapsedMs = currentTime.difference(gamesTourModel.lastMoveTime!).inMilliseconds;
+                final elapsedMs = currentTime
+                    .difference(gamesTourModel.lastMoveTime!)
+                    .inMilliseconds;
                 final remainingMs = totalMs - elapsedMs;
 
                 // Ensure time doesn't go below 0

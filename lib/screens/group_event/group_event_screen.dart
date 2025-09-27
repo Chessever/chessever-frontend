@@ -59,6 +59,7 @@ class GroupEventScreen extends HookConsumerWidget {
       focusNode.addListener(onFocus);
       return () => focusNode.removeListener(onFocus);
     }, [focusNode]);
+
     useEffect(() {
       final newIndex = GroupEventCategory.values.indexOf(selectedTourEvent);
 
@@ -75,6 +76,7 @@ class GroupEventScreen extends HookConsumerWidget {
       }
       return null;
     }, [selectedTourEvent]);
+
     ref.listen<GroupEventCategory>(selectedGroupCategoryProvider, (
       previous,
       next,
@@ -89,6 +91,7 @@ class GroupEventScreen extends HookConsumerWidget {
         }
       });
     });
+
     useEffect(() {
       void onScroll() {
         if (!isMounted() || selectedTourEvent != GroupEventCategory.past)
@@ -118,15 +121,15 @@ class GroupEventScreen extends HookConsumerWidget {
               duration: const Duration(milliseconds: 300),
               switchInCurve: Curves.easeOut,
               switchOutCurve: Curves.easeIn,
-              transitionBuilder:
-                  (Widget child, Animation<double> animation) => FadeTransition(
-                    opacity: animation,
-                    child: SizeTransition(
-                      sizeFactor: animation,
-                      axis: Axis.horizontal,
-                      child: child,
-                    ),
-                  ),
+              transitionBuilder: (Widget child, Animation<double> animation) =>
+                  FadeTransition(
+                opacity: animation,
+                child: SizeTransition(
+                  sizeFactor: animation,
+                  axis: Axis.horizontal,
+                  child: child,
+                ),
+              ),
               child: SizedBox(
                 width: double.infinity,
                 key: const ValueKey('search_bar'),
@@ -135,14 +138,12 @@ class GroupEventScreen extends HookConsumerWidget {
                   controller: searchController,
                   hintText: 'Search Events or Players',
                   showProfile: !isSearching.value,
-                  onChanged:
-                      (value) => ref
-                          .read(groupEventScreenProvider.notifier)
-                          .searchForTournament(value, selectedTourEvent),
-                  onTournamentSelected:
-                      (t) => ref
-                          .read(groupEventScreenProvider.notifier)
-                          .onSelectTournament(context: context, id: t.id),
+                  onChanged: (value) => ref
+                      .read(groupEventScreenProvider.notifier)
+                      .searchForTournament(value, selectedTourEvent),
+                  onTournamentSelected: (t) => ref
+                      .read(groupEventScreenProvider.notifier)
+                      .onSelectTournament(context: context, id: t.id),
                   onPlayerSelected: (player) {
                     FocusScope.of(context).unfocus();
                     searchController.text = player.name;
@@ -152,13 +153,12 @@ class GroupEventScreen extends HookConsumerWidget {
                     }
                   },
                   onFilterTap: () => _showFilterPopup(context),
-                  onProfileTap:
-                      () => HomeScreen.scaffoldKey.currentState?.openDrawer(),
+                  onProfileTap: () =>
+                      HomeScreen.scaffoldKey.currentState?.openDrawer(),
                 ),
               ),
             ),
           ),
-
           SizedBox(height: 16.h),
           _SegmentedSwitcher(
             searchController: searchController,
@@ -169,7 +169,6 @@ class GroupEventScreen extends HookConsumerWidget {
                   newCategory;
             },
           ),
-
           SizedBox(height: 12.h),
           Expanded(
             child: PageView.builder(
@@ -194,19 +193,15 @@ class GroupEventScreen extends HookConsumerWidget {
                     );
                     final isLoadingMore = isPast && controller.isFetchingMore;
 
-                    return ref
-                        .watch(groupEventScreenProvider)
-                        .when(
+                    return ref.watch(groupEventScreenProvider).when(
                           data: (filteredEvents) {
                             final favorites = ref.watch(starredProvider);
                             final isSearching =
                                 searchController.text.trim().isNotEmpty;
 
-                            final finalEvents =
-                                isSearching
-                                    ? filteredEvents
-                                    : selectedTourEvent ==
-                                        GroupEventCategory.past
+                            final finalEvents = isSearching
+                                ? filteredEvents
+                                : selectedTourEvent == GroupEventCategory.past
                                     ? filteredEvents
                                     : ref
                                         .read(tournamentSortingServiceProvider)
@@ -224,42 +219,39 @@ class GroupEventScreen extends HookConsumerWidget {
                               strokeWidth: 3.w,
                               child: AllEventsTabWidget(
                                 filteredEvents: finalEvents,
-                                onSelect:
-                                    (tourEventCardModel) => ref
-                                        .read(groupEventScreenProvider.notifier)
-                                        .onSelectTournament(
-                                          context: context,
-                                          id: tourEventCardModel.id,
-                                        ),
+                                onSelect: (tourEventCardModel) => ref
+                                    .read(groupEventScreenProvider.notifier)
+                                    .onSelectTournament(
+                                      context: context,
+                                      id: tourEventCardModel.id,
+                                    ),
                                 isLoadingMore: isLoadingMore,
                                 scrollController: scrollController,
                               ),
                             );
                           },
-                          loading:
-                              () => SkeletonWidget(
-                                child: AllEventsTabWidget(
-                                  onSelect: (_) {},
-                                  filteredEvents: List.generate(
-                                    10,
-                                    (index) => GroupEventCardModel(
-                                      id: 'tour_001',
-                                      title: 'World Chess Championship 2025',
-                                      dates: 'Mar 15 - 25,2025',
-                                      timeUntilStart: 'Starts in 8 months',
-                                      tourEventCategory:
-                                          TourEventCategory.values[Random()
-                                              .nextInt(
-                                                TourEventCategory.values.length,
-                                              )],
-                                      maxAvgElo: 0,
-                                      timeControl: 'Standard',
-                                    ),
-                                  ),
+                          loading: () => SkeletonWidget(
+                            child: AllEventsTabWidget(
+                              onSelect: (_) {},
+                              filteredEvents: List.generate(
+                                10,
+                                (index) => GroupEventCardModel(
+                                  id: 'tour_001',
+                                  title: 'World Chess Championship 2025',
+                                  dates: 'Mar 15 - 25,2025',
+                                  timeUntilStart: 'Starts in 8 months',
+                                  tourEventCategory:
+                                      TourEventCategory.values[Random().nextInt(
+                                    TourEventCategory.values.length,
+                                  )],
+                                  maxAvgElo: 0,
+                                  timeControl: 'Standard',
                                 ),
                               ),
-                          error:
-                              (error, stackTrace) => const GenericErrorWidget(),
+                            ),
+                          ),
+                          error: (error, stackTrace) =>
+                              const GenericErrorWidget(),
                         );
                   },
                 );
@@ -288,14 +280,13 @@ class _SegmentedSwitcher extends ConsumerWidget {
     final nameUpdate = ref.watch(searchQueryProvider);
     final realQuery = searchController.text.trim();
 
-    final options =
-        GroupEventCategory.values.map((category) {
-          if (realQuery.isNotEmpty && category == selectedTourEvent) {
-            return realQuery;
-          } else {
-            return _mappedName[category]!;
-          }
-        }).toList();
+    final options = GroupEventCategory.values.map((category) {
+      if (realQuery.isNotEmpty && category == selectedTourEvent) {
+        return realQuery;
+      } else {
+        return _mappedName[category]!;
+      }
+    }).toList();
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 20.sp),

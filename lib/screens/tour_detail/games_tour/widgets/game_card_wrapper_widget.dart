@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/chessboard/chessboard_with_analysis_screen/chess_board_with_analysis_screen.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_widget_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -29,17 +30,17 @@ class GameCardWrapperWidget extends ConsumerWidget {
 
     return isChessBoardVisible
         ? ChessBoardFromFENNew(
-          key: ValueKey(keyValue),
-          gamesTourModel: game,
-          onChanged: () => _navigateToChessBoard(context, ref),
-        )
+            key: ValueKey(keyValue),
+            gamesTourModel: game,
+            onChanged: () => _navigateToChessBoard(context, ref),
+          )
         : GameCard(
-          key: ValueKey(keyValue),
-          gamesTourModel: game,
-          pinnedIds: gamesData.pinnedGamedIs,
-          onPinToggle: (_) => _handlePinToggle(ref),
-          onTap: () => _navigateToChessBoard(context, ref),
-        );
+            key: ValueKey(keyValue),
+            gamesTourModel: game,
+            pinnedIds: gamesData.pinnedGamedIs,
+            onPinToggle: (_) => _handlePinToggle(ref),
+            onTap: () => _navigateToChessBoard(context, ref),
+          );
   }
 
   void _navigateToChessBoard(BuildContext context, WidgetRef ref) async {
@@ -52,16 +53,16 @@ class GameCardWrapperWidget extends ConsumerWidget {
     final returnedIndex = await Navigator.push<int>(
       context,
       MaterialPageRoute(
-        builder:
-            (_) => ChessBoardScreenNew(
-              games: orderedGames,
-              currentIndex: gameIndex,
-            ),
+        builder: (_) => ChessBoardWithAnalysisScreen(
+          gameModel: orderedGames[gameIndex],
+        ),
       ),
     );
 
     // If a different index was returned from the chessboard, notify the parent
-    if (returnedIndex != null && returnedIndex != gameIndex && onReturnFromChessboard != null) {
+    if (returnedIndex != null &&
+        returnedIndex != gameIndex &&
+        onReturnFromChessboard != null) {
       onReturnFromChessboard!(returnedIndex);
     }
   }
