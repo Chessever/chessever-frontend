@@ -7,11 +7,7 @@ final pvRepositoryProvider = AutoDisposeProvider<PvRepository>(
 );
 
 class PvRepository extends BaseRepository {
-  Future<List<SupabasePv>> getAll() => handleApiCall(() async {
-    final response = await supabase.from('pvs').select();
-    return (response as List).map((json) => SupabasePv.fromJson(json)).toList();
-  });
-
+ 
   Future<List<SupabasePv>> getByEvalId(int evalId) => handleApiCall(() async {
     final response = await supabase.from('pvs').select().eq('eval_id', evalId);
     return (response as List).map((json) => SupabasePv.fromJson(json)).toList();
