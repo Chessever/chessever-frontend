@@ -35,27 +35,15 @@ class AuthScreenNotifier extends StateNotifier<AuthScreenState> {
         showCountrySelection: true,
       );
     } catch (e) {
-      //todo: Send the Actual case after integration, For testing Purpose
-      final appUser = AppUser(
-        id: 'AGBDLCID',
-        email: 'chessPlayerPro@gmail,com',
-        createdAt: DateTime.now(),
-      );
       state = state.copyWith(
         isLoading: false,
-        user: appUser,
-        showCountrySelection: true,
+        errorMessage: _getErrorMessage(e.toString()),
       );
-
-      // state = state.copyWith(
-      //   isLoading: false,
-      //   errorMessage: _getErrorMessage(e.toString()),
-      // );
     }
   }
 
   void clearError() {
-    state = state.copyWith(errorMessage: null);
+    state = AuthScreenState();
   }
 
   void hideCountrySelection() {

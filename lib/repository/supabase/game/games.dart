@@ -16,6 +16,8 @@ class Games {
   final List<String>? search;
   final int? boardNr;
   final DateTime? lastMoveTime;
+  final int? lastClockWhite;
+  final int? lastClockBlack;
 
   Games({
     required this.id,
@@ -33,7 +35,49 @@ class Games {
     this.search,
     this.boardNr,
     this.lastMoveTime,
+    this.lastClockWhite,
+    this.lastClockBlack,
   });
+
+  Games copyWith({
+    String? id,
+    String? roundId,
+    String? roundSlug,
+    String? tourId,
+    String? tourSlug,
+    String? name,
+    String? fen,
+    List<Player>? players,
+    String? lastMove,
+    int? thinkTime,
+    String? status,
+    String? pgn,
+    List<String>? search,
+    int? boardNr,
+    DateTime? lastMoveTime,
+    int? lastClockWhite,
+    int? lastClockBlack,
+  }) {
+    return Games(
+      id: id ?? this.id,
+      roundId: roundId ?? this.roundId,
+      roundSlug: roundSlug ?? this.roundSlug,
+      tourId: tourId ?? this.tourId,
+      tourSlug: tourSlug ?? this.tourSlug,
+      name: name ?? this.name,
+      fen: fen ?? this.fen,
+      players: players ?? this.players,
+      lastMove: lastMove ?? this.lastMove,
+      thinkTime: thinkTime ?? this.thinkTime,
+      status: status ?? this.status,
+      pgn: pgn ?? this.pgn,
+      search: search ?? this.search,
+      boardNr: boardNr ?? this.boardNr,
+      lastMoveTime: lastMoveTime ?? this.lastMoveTime,
+      lastClockWhite: lastClockWhite ?? this.lastClockWhite,
+      lastClockBlack: lastClockBlack ?? this.lastClockBlack,
+    );
+  }
 
   factory Games.fromJson(Map<String, dynamic> json) {
     try {
@@ -62,12 +106,20 @@ class Games {
         status: json['status'] as String?,
         pgn: json['pgn'] as String?,
         search: (json['search'] as List).map((e) => e as String).toList(),
-        boardNr: json['board_nr'] != null
-            ? (json['board_nr'] as num).toInt()
-            : null,
-        lastMoveTime: json['last_move_time'] != null
-            ? DateTime.parse(json['last_move_time'] as String)
-            : null,
+        boardNr:
+            json['board_nr'] != null ? (json['board_nr'] as num).toInt() : null,
+        lastMoveTime:
+            json['last_move_time'] != null
+                ? DateTime.parse(json['last_move_time'] as String)
+                : null,
+        lastClockWhite:
+            json['last_clock_white'] != null
+                ? (json['last_clock_white'] as num).toInt()
+                : null,
+        lastClockBlack:
+            json['last_clock_black'] != null
+                ? (json['last_clock_black'] as num).toInt()
+                : null,
       );
     } catch (e, _) {
       rethrow;
@@ -90,7 +142,10 @@ class Games {
       if (pgn != null) 'pgn': pgn,
       if (search != null) 'search': search!.map((s) => s).toList(),
       if (boardNr != null) 'board_nr': boardNr,
-      if (lastMoveTime != null) 'last_move_time': lastMoveTime!.toIso8601String(),
+      if (lastMoveTime != null)
+        'last_move_time': lastMoveTime!.toIso8601String(),
+      if (lastClockWhite != null) 'last_clock_white': lastClockWhite,
+      if (lastClockBlack != null) 'last_clock_black': lastClockBlack,
     };
   }
 }
@@ -189,6 +244,7 @@ class Player {
     };
   }
 }
+
 class SearchPlayer {
   final String id;
   final String name;
@@ -218,13 +274,13 @@ class SearchPlayer {
 
   // Create from your existing Player model
   factory SearchPlayer.fromPlayer(
-      Player player,
-      String tournamentId,
-      String tournamentName, {
-        String? gameId,
-        String? roundId,
-        bool isWhitePlayer = true,
-      }) {
+    Player player,
+    String tournamentId,
+    String tournamentName, {
+    String? gameId,
+    String? roundId,
+    bool isWhitePlayer = true,
+  }) {
     return SearchPlayer(
       id: '${tournamentId}_${player.fideId}_${gameId ?? ''}',
       name: player.name,
@@ -241,10 +297,10 @@ class SearchPlayer {
   }
 
   factory SearchPlayer.fromSearchTerm(
-      String searchTerm,
-      String tournamentId,
-      String tournamentName,
-      ) {
+    String searchTerm,
+    String tournamentId,
+    String tournamentName,
+  ) {
     return SearchPlayer(
       id: '${tournamentId}_${searchTerm.hashCode}',
       name: searchTerm,
@@ -254,16 +310,22 @@ class SearchPlayer {
   }
 
   factory SearchPlayer.fromJson(
-      Map<String, dynamic> json,
-      String tournamentId,
-      String tournamentName,
-      ) {
+    Map<String, dynamic> json,
+    String tournamentId,
+    String tournamentName,
+  ) {
     return SearchPlayer(
       id: json['id']?.toString() ?? '',
       name: json['name']?.toString() ?? '',
       title: json['title']?.toString(),
-      rating: json['rating'] != null ? int.tryParse(json['rating'].toString()) : null,
-      fideId: json['fideId'] != null ? int.tryParse(json['fideId'].toString()) : null,
+      rating:
+          json['rating'] != null
+              ? int.tryParse(json['rating'].toString())
+              : null,
+      fideId:
+          json['fideId'] != null
+              ? int.tryParse(json['fideId'].toString())
+              : null,
       fed: json['fed']?.toString(),
       tournamentId: tournamentId,
       tournamentName: tournamentName,

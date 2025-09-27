@@ -1,14 +1,17 @@
 import 'dart:math';
+import 'package:chessever2/screens/group_event/providers/past_recorder_provider.dart';
 import 'package:chessever2/screens/group_event/widget/all_events_tab_widget.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/home/home_screen.dart';
 import 'package:chessever2/screens/home/home_screen_provider.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
+import 'package:chessever2/repository/local_storage/unified_favorites/unified_favorites_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/event_card/starred_provider.dart';
-import 'package:chessever2/widgets/filter_popup.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
@@ -59,7 +62,6 @@ class GroupEventScreen extends HookConsumerWidget {
       focusNode.addListener(onFocus);
       return () => focusNode.removeListener(onFocus);
     }, [focusNode]);
-
     useEffect(() {
       final newIndex = GroupEventCategory.values.indexOf(selectedTourEvent);
 
@@ -76,7 +78,6 @@ class GroupEventScreen extends HookConsumerWidget {
       }
       return null;
     }, [selectedTourEvent]);
-
     ref.listen<GroupEventCategory>(selectedGroupCategoryProvider, (
       previous,
       next,
@@ -91,11 +92,11 @@ class GroupEventScreen extends HookConsumerWidget {
         }
       });
     });
-
     useEffect(() {
       void onScroll() {
-        if (!isMounted() || selectedTourEvent != GroupEventCategory.past)
+        if (!isMounted() || selectedTourEvent != GroupEventCategory.past) {
           return;
+        }
 
         final max = pastScrollController.position.maxScrollExtent;
         final current = pastScrollController.position.pixels;
@@ -165,6 +166,7 @@ class GroupEventScreen extends HookConsumerWidget {
             selectedTourEvent: selectedTourEvent,
             onSelectedChanged: (index) {
               final newCategory = GroupEventCategory.values[index];
+              ref.invalidate(filterPopupProvider);
               ref.read(selectedGroupCategoryProvider.notifier).state =
                   newCategory;
             },
@@ -182,32 +184,64 @@ class GroupEventScreen extends HookConsumerWidget {
                 }
               },
               itemBuilder: (context, index) {
-                final isPast =
-                    GroupEventCategory.values[index] == GroupEventCategory.past;
+                final currentCategory = GroupEventCategory.values[index];
+                final isPast = currentCategory == GroupEventCategory.past;
                 final scrollController = isPast ? pastScrollController : null;
-
+                print('Building page for $currentCategory');
                 return Consumer(
                   builder: (context, ref, child) {
-                    final controller = ref.watch(
-                      groupEventScreenProvider.notifier,
-                    );
+                    final selectedCategory =
+                        ref.watch(selectedGroupCategoryProvider);
+
+                    // Only load data for the currently selected tab
+                    if (currentCategory != selectedCategory) {
+                      print(" Not the active tab, returning empty widget.");
+                      return const Center(
+                        child: SizedBox
+                            .shrink(), // Return empty widget for non-active tabs
+                      );
+                    }
+
+                    final controller =
+                        ref.watch(groupEventScreenProvider.notifier);
                     final isLoadingMore = isPast && controller.isFetchingMore;
 
                     return ref.watch(groupEventScreenProvider).when(
                           data: (filteredEvents) {
-                            final favorites = ref.watch(starredProvider);
+                            // Combine old starred favorites with new unified favorites
+                            final starredFavorites = ref.watch(starredProvider);
+                            final unifiedFavoritesAsync =
+                                ref.watch(favoriteEventsProvider);
+                            final unifiedFavorites =
+                                unifiedFavoritesAsync.maybeWhen(
+                              data: (events) =>
+                                  events.map((e) => e['id'] as String).toList(),
+                              orElse: () => <String>[],
+                            );
+
+                            // Combine both lists
+                            final allFavorites = <String>{
+                              ...starredFavorites,
+                              ...unifiedFavorites,
+                            }.toList();
+
                             final isSearching =
                                 searchController.text.trim().isNotEmpty;
+                            final isPast =
+                                selectedTourEvent == GroupEventCategory.past;
 
                             final finalEvents = isSearching
                                 ? filteredEvents
-                                : selectedTourEvent == GroupEventCategory.past
-                                    ? filteredEvents
+                                : isPast
+                                    ? ref.watch(
+                                        pastEventsUiReorderProvider(
+                                            filteredEvents),
+                                      )
                                     : ref
                                         .read(tournamentSortingServiceProvider)
                                         .sortBasedOnFavorite(
                                           tours: filteredEvents,
-                                          favorites: favorites,
+                                          favorites: allFavorites,
                                         );
 
                             return RefreshIndicator(
@@ -240,10 +274,9 @@ class GroupEventScreen extends HookConsumerWidget {
                                   title: 'World Chess Championship 2025',
                                   dates: 'Mar 15 - 25,2025',
                                   timeUntilStart: 'Starts in 8 months',
-                                  tourEventCategory:
-                                      TourEventCategory.values[Random().nextInt(
-                                    TourEventCategory.values.length,
-                                  )],
+                                  tourEventCategory: TourEventCategory.values[
+                                      Random().nextInt(
+                                          TourEventCategory.values.length)],
                                   maxAvgElo: 0,
                                   timeControl: 'Standard',
                                 ),
@@ -257,7 +290,7 @@ class GroupEventScreen extends HookConsumerWidget {
                 );
               },
             ),
-          ),
+          )
         ],
       ),
     );

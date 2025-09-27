@@ -30,14 +30,11 @@ class AuthRepository {
   }
 
   AuthRepository(this.ref) {
-    _supabase = SupabaseClient(
-      _env('SUPABASE_URL'),
-      _env('SUPABASE_ANON_KEY'),
-    );
+    _supabase = SupabaseClient(_env('SUPABASE_URL'), _env('SUPABASE_ANON_KEY'));
 
     _googleSignIn = GoogleSignIn(
+      clientId: _env('GOOGLE_WEB_CLIENT_ID'),
       scopes: ['email', 'profile'],
-      clientId: dotenv.env['GOOGLE_WEB_CLIENT_ID']?.trim(),
     );
   }
 
@@ -104,7 +101,9 @@ class AuthRepository {
       if (Platform.isIOS) {
         final available = await SignInWithApple.isAvailable();
         if (!available) {
-          throw Exception('Apple Sign In not available on this device. Sign into iCloud and try again.');
+          throw Exception(
+            'Apple Sign In not available on this device. Sign into iCloud and try again.',
+          );
         }
       }
 
@@ -120,12 +119,15 @@ class AuthRepository {
         // Apple expects the SHA256(nonce)
         nonce: hashedNonce,
         // On Android the plugin uses the web flow; you must provide Service ID + Redirect URI
-        webAuthenticationOptions: Platform.isAndroid
-            ? WebAuthenticationOptions(
-                clientId: _env('APPLE_SERVICE_ID'), // Service ID from Apple Developer
-                redirectUri: Uri.parse(_env('APPLE_REDIRECT_URI')),
-              )
-            : null,
+        webAuthenticationOptions:
+            Platform.isAndroid
+                ? WebAuthenticationOptions(
+                  clientId: _env(
+                    'APPLE_SERVICE_ID',
+                  ), // Service ID from Apple Developer
+                  redirectUri: Uri.parse(_env('APPLE_REDIRECT_URI')),
+                )
+                : null,
       );
 
       final idToken = credential.identityToken;
@@ -172,7 +174,9 @@ class AuthRepository {
         case AuthorizationErrorCode.invalidResponse:
         case AuthorizationErrorCode.unknown:
         default:
-          throw Exception('Apple sign in failed. Check capability, iCloud login, and time settings.');
+          throw Exception(
+            'Apple sign in failed. Check capability, iCloud login, and time settings.',
+          );
       }
     } catch (e) {
       debugPrint('Apple sign in error: $e');

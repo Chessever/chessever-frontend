@@ -1,26 +1,30 @@
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class ChessProgressBar extends ConsumerStatefulWidget {
-  const ChessProgressBar({required this.fen, super.key});
+  const ChessProgressBar({required this.gamesTourModel, super.key});
 
-  final String fen;
+  final GamesTourModel gamesTourModel;
 
   @override
   ConsumerState<ChessProgressBar> createState() => _ChessProgressBarState();
 }
 
 class _ChessProgressBarState extends ConsumerState<ChessProgressBar> {
+  var oldEvail = 0.0;
   @override
   Widget build(BuildContext context) {
-    final evalAsync = ref.watch(cascadeEvalProvider(widget.fen ?? ''));
+    final evalAsync = ref.watch(
+      cascadeEvalProvider(widget.gamesTourModel.fen ?? ''),
+    );
 
     final evaluation = evalAsync.when(
-      loading: () => 0.0,
-      error: (_, __) => 0.0,
+      loading: () => oldEvail,
+      error: (_, __) => oldEvail,
       data: (cloud) {
         final pv = cloud.pvs.firstOrNull;
 

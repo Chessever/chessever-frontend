@@ -84,16 +84,12 @@ class ScoreCardScreen extends ConsumerWidget {
     // K = 10: Once published rating reached 2400 (stays 10 even if drops below)
 
     // Simplified implementation based on current rating only:
+    // Since we don't have player age or games played data, we use conservative values
     if (rating >= 2400) {
-      return 10; // Assume anyone at 2400+ has reached it before
-    } else if (rating >= 2300) {
-      return 20; // Standard K-factor for established players under 2400
+      return 10; // Once published rating reached 2400
     } else {
-      // For players under 2300, we can't distinguish between:
-      // - New players (should be K=40)
-      // - Under 18 players (should be K=40)
-      // - Established players who dropped below 2300 (should be K=20)
-      // Using K=20 as conservative estimate
+      // For all players under 2400 (most common case)
+      // We use K=20 as the standard value for established players
       return 20;
     }
   }
@@ -271,8 +267,8 @@ class ScoreCardScreen extends ConsumerWidget {
                               SizedBox(height: 5),
                               Text(
                                 totalPerformance >= 0
-                                    ? '+${totalPerformance.toStringAsFixed(2)}'
-                                    : totalPerformance.toStringAsFixed(2),
+                                    ? '+${totalPerformance.toStringAsFixed(1)}'
+                                    : totalPerformance.toStringAsFixed(1),
                                 style: AppTypography.textSmMedium.copyWith(
                                   color: totalPerformance > 0
                                       ? kGreenColor
@@ -381,9 +377,9 @@ class ScoreCardScreen extends ConsumerWidget {
                       ref.read(chessboardViewFromProviderNew.notifier).state =
                           ChessboardView.tour;
 
-                      // Find the index of this game in the full games list
-                      final fullGames = allGames;
-                      final gameIndex = fullGames.indexOf(game);
+                      // Use the same games list that was used to filter playerGames
+                      // to ensure consistency in gameId matching
+                      final gameIndex = allGames.indexWhere((g) => g.gameId == game.gameId);
 
                       if (gameIndex != -1) {
                         Navigator.push(
@@ -391,7 +387,7 @@ class ScoreCardScreen extends ConsumerWidget {
                           MaterialPageRoute(
                             builder:
                                 (_) => ChessBoardScreenNew(
-                                  games: fullGames,
+                                  games: allGames,
                                   currentIndex: gameIndex,
                                 ),
                           ),
@@ -412,11 +408,11 @@ class ScoreCardScreen extends ConsumerWidget {
     final isWhite = game.whitePlayer.name == playerName;
     switch (game.gameStatus) {
       case GameStatus.whiteWins:
-        return isWhite ? '1-0 (W)' : '0-1 (L)';
+        return isWhite ? '1-0' : '0-1';
       case GameStatus.blackWins:
-        return isWhite ? '0-1 (L)' : '1-0 (W)';
+        return isWhite ? '0-1' : '1-0';
       case GameStatus.draw:
-        return '½-½ (D)';
+        return '½-½';
       case GameStatus.ongoing:
         return isWhite ? 'White to move' : 'Black to move';
       case GameStatus.unknown:

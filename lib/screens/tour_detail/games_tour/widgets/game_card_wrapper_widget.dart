@@ -1,6 +1,5 @@
-import 'package:chessever2/screens/chessboard/chessboard_with_analysis_screen/chess_board_with_analysis_screen.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
-import 'package:chessever2/screens/chessboard/widgets/chess_board_widget_new.dart';
+import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart';
@@ -33,6 +32,8 @@ class GameCardWrapperWidget extends ConsumerWidget {
             key: ValueKey(keyValue),
             gamesTourModel: game,
             onChanged: () => _navigateToChessBoard(context, ref),
+            pinnedIds: gamesData.pinnedGamedIs,
+            onPinToggle: (_) => _handlePinToggle(ref),
           )
         : GameCard(
             key: ValueKey(keyValue),
@@ -53,8 +54,9 @@ class GameCardWrapperWidget extends ConsumerWidget {
     final returnedIndex = await Navigator.push<int>(
       context,
       MaterialPageRoute(
-        builder: (_) => ChessBoardWithAnalysisScreen(
-          gameModel: orderedGames[gameIndex],
+        builder: (_) => ChessBoardScreenNew(
+          games: orderedGames,
+          currentIndex: gameIndex,
         ),
       ),
     );

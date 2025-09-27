@@ -1,6 +1,6 @@
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
-import 'package:chessever2/screens/chessboard/widgets/chess_board_widget_new.dart';
+import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/chess_board_visibility_provider.dart';
 import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
@@ -85,6 +85,15 @@ class CountrymanGamesList extends ConsumerWidget {
                   child:
                       isChessBoardVisible
                           ? ChessBoardFromFENNew(
+                            pinnedIds: data.pinnedGamedIs,
+
+                            onPinToggle: (gamesTourModel) async {
+                              await ref
+                                  .read(
+                                    countrymanGamesTourScreenProvider.notifier,
+                                  )
+                                  .togglePinGame(gamesTourModel.gameId);
+                            },
                             onChanged: () {
                               ref
                                   .read(chessboardViewFromProviderNew.notifier)

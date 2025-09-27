@@ -131,15 +131,9 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget>
             eventCard = CompletedEventCard(
               tourEventCardModel: tourEventCardModel,
               onTap: () => widget.onSelect(tourEventCardModel),
-              onDownloadTournament: () {
-                // Download tournament
-              },
-              onAddToLibrary: () {
-                // Add to library
-              },
             );
             break;
-        }
+        } 
 
         return AnimatedBuilder(
           animation: _animationController,

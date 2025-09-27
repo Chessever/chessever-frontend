@@ -145,17 +145,10 @@ class TournamentSortingService {
       final isFavoriteB = favorites.contains(b.id);
 
       // FIRST PRIORITY: Favorites (only for non-completed tournaments)
+
       if (hasFavorites) {
-        if (isFavoriteA &&
-            !isFavoriteB &&
-            a.tourEventCategory != TourEventCategory.completed) {
-          return -1;
-        }
-        if (!isFavoriteA &&
-            isFavoriteB &&
-            b.tourEventCategory != TourEventCategory.completed) {
-          return 1;
-        }
+        if (isFavoriteA && !isFavoriteB) return -1;
+        if (!isFavoriteA && isFavoriteB) return 1;
       }
 
       // SECOND PRIORITY: ELO sorting (same logic as your other methods)

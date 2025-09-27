@@ -6,15 +6,11 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/simple_search_bar.dart';
 import '../../utils/app_typography.dart';
-import '../../widgets/filter_popup.dart';
+import '../group_event/widget/filter_popup/filter_popup.dart';
 
 final availableYearsProvider = Provider<List<int>>((ref) {
   final currentYear = DateTime.now().year;
-  return [
-    currentYear - 1,
-    currentYear,
-    currentYear + 1,
-  ];
+  return [currentYear - 1, currentYear, currentYear + 1];
 });
 
 final selectedYearProvider = StateProvider<int>((ref) {
@@ -83,6 +79,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 ),
 
                 SizedBox(width: 8.w),
+
                 /// Year dropdown
                 Expanded(
                   flex: 3,

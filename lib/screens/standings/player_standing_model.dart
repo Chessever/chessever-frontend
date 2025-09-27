@@ -20,12 +20,23 @@ class PlayerStandingModel {
   factory PlayerStandingModel.fromPlayer(TournamentPlayer player) {
     return PlayerStandingModel(
       countryCode: player.federation ?? '',
+      title: player.title,
       name: player.name,
-      score: player.rating ?? 0,
+      score: player.rating ?? 0, // ELO rating for display
       scoreChange: player.ratingDiff ?? 0,
-      matchScore:
-          player.score == null ? null : '${player.score} / ${player.played}',
+      matchScore: _formatTournamentScore(player.score, player.played),
     );
+  }
+
+  /// Formats tournament score as "score / games_played" or null if no score
+  static String? _formatTournamentScore(double? score, int played) {
+    if (score == null) {
+      return played > 0 ? '0.0 / $played' : null;
+    }
+
+    // Format score with 1 decimal place if needed, otherwise as integer
+    final scoreStr = score % 1 == 0 ? score.toInt().toString() : score.toStringAsFixed(1);
+    return '$scoreStr / $played';
   }
 
   // Copy with method to create a new instance with some changes

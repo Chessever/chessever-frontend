@@ -1,16 +1,12 @@
-import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
-import 'package:chessever2/screens/standings/player_standing_model.dart';
-import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
+import 'package:chessever2/repository/local_storage/unified_favorites/unified_favorites_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/app_typography.dart';
-import '../../utils/location_service_provider.dart';
 import '../../widgets/rounded_search_bar.dart';
-import 'widgets/favorite_card.dart';
-
-final _favoriteSearchQueryProvider = StateProvider<String>((ref) => '');
+import 'widgets/event_favorite_card.dart';
+import 'widgets/player_favorite_card.dart';
 
 class FavoriteScreen extends ConsumerStatefulWidget {
   const FavoriteScreen({super.key});
@@ -19,41 +15,44 @@ class FavoriteScreen extends ConsumerStatefulWidget {
   ConsumerState<FavoriteScreen> createState() => _FavoriteScreenState();
 }
 
-class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
+class _FavoriteScreenState extends ConsumerState<FavoriteScreen>
+    with TickerProviderStateMixin {
   late final TextEditingController _searchController;
+  late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
     _searchController = TextEditingController();
     _searchController.addListener(_onSearchChanged);
+    _tabController = TabController(length: 2, vsync: this);
   }
 
   @override
   void dispose() {
     _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
+    _tabController.dispose();
     super.dispose();
   }
 
   void _onSearchChanged() {
-    ref.read(_favoriteSearchQueryProvider.notifier).state =
+    ref.read(favoritesSearchQueryProvider.notifier).state =
         _searchController.text;
   }
 
   @override
   Widget build(BuildContext context) {
-    final favoritePlayersAsync = ref.watch(favoritePlayersProvider);
-    final searchQuery = ref.watch(_favoriteSearchQueryProvider);
 
     return Scaffold(
       backgroundColor: kBackgroundColor,
       body: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16.sp),
-          child: Column(
-            children: [
-              Row(
+        child: Column(
+          children: [
+            // Header with back button and search
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16.sp),
+              child: Row(
                 children: [
                   IconButton(
                     iconSize: 24.ic,
@@ -61,7 +60,6 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
                     onPressed: () => _handleBackPress(context),
                     icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24.ic),
                   ),
-                  // Search bar
                   Expanded(
                     child: Padding(
                       padding: EdgeInsets.symmetric(vertical: 16.sp),
@@ -77,24 +75,154 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
                   ),
                 ],
               ),
-              favoritePlayersAsync.when(
-                data: (favoritePlayers) {
-                  return Expanded(
-                    child: _buildFavoritesList(favoritePlayers, searchQuery),
-                  );
-                },
-                loading:
-                    () => Expanded(
-                      child: Center(child: CircularProgressIndicator()),
-                    ),
-                error:
-                    (error, stack) => Expanded(
-                      child: Center(child: Text('Error loading favorites')),
-                    ),
+            ),
+
+            // Tab bar
+            Container(
+              margin: EdgeInsets.symmetric(horizontal: 16.sp),
+              decoration: BoxDecoration(
+                color: kBlack2Color,
+                borderRadius: BorderRadius.circular(8.br),
               ),
-            ],
-          ),
+              child: TabBar(
+                controller: _tabController,
+                onTap: (index) {
+                  ref.read(selectedFavoriteTabProvider.notifier).state =
+                      FavoriteTab.values[index];
+                },
+                indicator: BoxDecoration(
+                  color: kPrimaryColor,
+                  borderRadius: BorderRadius.circular(6.br),
+                ),
+                indicatorSize: TabBarIndicatorSize.tab,
+                labelColor: kWhiteColor,
+                unselectedLabelColor: kWhiteColor.withOpacity(0.6),
+                labelStyle: AppTypography.textSmMedium,
+                unselectedLabelStyle: AppTypography.textSmRegular,
+                tabs: [
+                  Tab(text: 'Events'),
+                  Tab(text: 'Players'),
+                ],
+              ),
+            ),
+
+            SizedBox(height: 16.h),
+
+            // Tab content
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildEventsTab(),
+                  _buildPlayersTab(),
+                ],
+              ),
+            ),
+          ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildEventsTab() {
+    final filteredEventsAsync = ref.watch(filteredFavoriteEventsProvider);
+
+    return filteredEventsAsync.when(
+      data: (events) => _buildEventsList(events),
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, stack) => const Center(child: Text('Error loading favorite events')),
+    );
+  }
+
+  Widget _buildPlayersTab() {
+    final filteredPlayersAsync = ref.watch(filteredFavoritePlayersProvider);
+
+    return filteredPlayersAsync.when(
+      data: (players) => _buildPlayersList(players),
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, stack) => const Center(child: Text('Error loading favorite players')),
+    );
+  }
+
+
+  Widget _buildEventsList(List<Map<String, dynamic>> events) {
+    if (events.isEmpty) {
+      return _buildEmptyState(
+        'No favorite events yet',
+        'Tap the star icon on events to add them to favorites',
+      );
+    }
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16.sp),
+      child: ListView.separated(
+        itemCount: events.length,
+        separatorBuilder: (context, index) => SizedBox(height: 12.h),
+        itemBuilder: (context, index) {
+          final event = events[index];
+          return EventFavoriteCard(
+            eventData: event,
+            onRemoveFavorite: () => _removeFavoriteEvent(event['id'] as String),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildPlayersList(List<Map<String, dynamic>> players) {
+    if (players.isEmpty) {
+      return _buildEmptyState(
+        'No favorite players yet',
+        'Tap the heart icon on players to add them to favorites',
+      );
+    }
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16.sp),
+      child: ListView.separated(
+        itemCount: players.length,
+        separatorBuilder: (context, index) => SizedBox(height: 12.h),
+        itemBuilder: (context, index) {
+          final player = players[index];
+          return PlayerFavoriteCard(
+            playerData: player,
+            rank: index + 1,
+            onRemoveFavorite: () => _removeFavoritePlayer(player['fideId'] as String),
+          );
+        },
+      ),
+    );
+  }
+
+
+  Widget _buildEmptyState(String title, String subtitle) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.favorite_outline,
+            size: 48.ic,
+            color: kWhiteColor.withOpacity(0.5),
+          ),
+          SizedBox(height: 16.h),
+          Text(
+            title,
+            style: AppTypography.textMdMedium.copyWith(
+              color: kWhiteColor.withOpacity(0.7),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.only(top: 8.h),
+            child: Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: AppTypography.textSmRegular.copyWith(
+                color: kWhiteColor.withOpacity(0.5),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -103,143 +231,16 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
     try {
       Navigator.of(context).pop();
     } catch (e) {
-      print('Error navigating back: $e');
+      // Error navigating back
     }
   }
 
-  Widget _buildFavoritesList(
-    List<PlayerStandingModel> favoritePlayers,
-    String searchQuery,
-  ) {
-    // Filter by search query
-    final filteredPlayers =
-        searchQuery.isEmpty
-            ? favoritePlayers
-            : favoritePlayers.where((player) {
-              return player.name.toLowerCase().contains(
-                searchQuery.toLowerCase(),
-              );
-            }).toList();
-
-    if (filteredPlayers.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.favorite_outline,
-              size: 48.ic,
-              color: kWhiteColor.withOpacity(0.5),
-            ),
-            SizedBox(height: 16.h),
-            Text(
-              searchQuery.isEmpty
-                  ? 'No favorite players yet'
-                  : 'No players found',
-              style: AppTypography.textMdMedium.copyWith(
-                color: kWhiteColor.withOpacity(0.7),
-              ),
-            ),
-            if (searchQuery.isEmpty)
-              Padding(
-                padding: EdgeInsets.only(top: 8.h),
-                child: Text(
-                  'Tap the favourate icon on player standings\nto add them to favorites',
-                  textAlign: TextAlign.center,
-                  style: AppTypography.textSmRegular.copyWith(
-                    color: kWhiteColor.withOpacity(0.5),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      );
-    }
-
-    return Column(
-      children: [
-        // Column headers
-        Padding(
-          padding: EdgeInsets.only(bottom: 16.sp, top: 8.sp),
-          child: DefaultTextStyle(
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
-            child: Row(
-              children: [
-                // Rank header
-                SizedBox(
-                  width: 40.w,
-                  child: Text(
-                    '#',
-                    style: AppTypography.textSmMedium,
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-                SizedBox(width: 12.w),
-
-                // Player header
-                Expanded(
-                  child: Text('Player', style: AppTypography.textSmMedium),
-                ),
-
-                // Elo header
-                SizedBox(
-                  width: 60.w,
-                  child: Text(
-                    'Elo',
-                    style: AppTypography.textSmMedium,
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-                SizedBox(width: 12.w),
-
-                // Score header
-                SizedBox(
-                  width: 60.w,
-                  child: Text(
-                    'Score',
-                    style: AppTypography.textSmMedium,
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-                SizedBox(width: 12.w),
-
-                // Favorite icon space
-                SizedBox(width: 30.w),
-              ],
-            ),
-          ),
-        ),
-
-        // Favorites list
-        Expanded(
-          child: ListView.separated(
-            itemCount: filteredPlayers.length,
-            separatorBuilder: (context, index) => SizedBox(height: 12.h),
-            itemBuilder: (context, index) {
-              final player = filteredPlayers[index];
-              final validCountryCode = ref
-                  .read(locationServiceProvider)
-                  .getValidCountryCode(player.countryCode);
-
-              return FavoriteCard(
-                playerName: player.name,
-                elo: player.score,
-                rank: index + 1,
-                countryCode: validCountryCode,
-                age: player.matchScore ?? "0",
-                onRemoveFavorite: () => _toggleFavorite(player),
-              );
-            },
-          ),
-        ),
-      ],
-    );
+  Future<void> _removeFavoriteEvent(String eventId) async {
+    await ref.removeFavoriteEvent(eventId);
   }
 
-  void _toggleFavorite(PlayerStandingModel player) async {
-    final favoritesService = ref.read(favoriteStandingsPlayerService);
-    await favoritesService.toggleFavorite(player);
-
-    ref.invalidate(favoritePlayersProvider);
+  Future<void> _removeFavoritePlayer(String fideId) async {
+    await ref.removeFavoritePlayer(fideId);
   }
+
 }
