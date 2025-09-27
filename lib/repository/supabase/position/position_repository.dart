@@ -7,10 +7,6 @@ final positionRepositoryProvider = AutoDisposeProvider<PositionRepository>(
 );
 
 class PositionRepository extends BaseRepository {
-  Future<List<Position>> getAll() => handleApiCall(() async {
-    final response = await supabase.from('positions').select();
-    return (response as List).map((json) => Position.fromJson(json)).toList();
-  });
 
   Future<Position?> getById(int id) => handleApiCall(() async {
     final response =
