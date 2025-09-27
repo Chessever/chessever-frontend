@@ -12,7 +12,7 @@ import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/providers/board_settings_provider.dart';
 
-class ChessBoardFromFENNew extends ConsumerWidget {
+class ChessBoardFromFENNew extends StatelessWidget {
   const ChessBoardFromFENNew({
     super.key,
     required this.gamesTourModel,
@@ -68,7 +68,7 @@ class ChessBoardFromFENNew extends ConsumerWidget {
         return Material(
           color: Colors.transparent,
           child: GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
+            onTap: () => Navigator.of(buildContext).pop(),
             child: Stack(
               children: [
                 SelectiveBlurBackground(
@@ -95,7 +95,7 @@ class ChessBoardFromFENNew extends ConsumerWidget {
                       onPinToggle(gamesTourModel);
 
                       Future.microtask(() {
-                        Navigator.pop(context);
+                        Navigator.pop(buildContext);
                       });
                     },
                     onShare: () {},
@@ -114,7 +114,7 @@ class ChessBoardFromFENNew extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final sideBarWidth = 20.w;
     final horizontalPadding = 48.sp * 2;
     final screenWidth = MediaQuery.of(context).size.width;
