@@ -80,7 +80,7 @@ class GameCard extends ConsumerWidget {
         return Material(
           color: Colors.transparent,
           child: GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
+            onTap: () => Navigator.of(buildContext).pop(),
             child: Stack(
               children: [
                 SelectiveBlurBackground(
@@ -91,7 +91,7 @@ class GameCard extends ConsumerWidget {
                   left: cardPosition.dx,
                   top: cardPosition.dy,
                   child: GestureDetector(
-                    onTap: () {},
+                    onTap: () => Navigator.pop(buildContext),
                     child: SizedBox(
                       width: cardSize.width,
                       height: cardSize.height,
@@ -110,11 +110,13 @@ class GameCard extends ConsumerWidget {
                   child: ContextPopupMenu(
                     isPinned: isPinned,
                     onPinToggle: () {
-                      Navigator.pop(context);
                       onPinToggle(gamesTourModel);
+                      Future.microtask(() {
+                        Navigator.pop(buildContext);
+                      });
                     },
                     onShare: () {
-                      Navigator.pop(context);
+                      Navigator.pop(buildContext);
                     },
                   ),
                 ),
