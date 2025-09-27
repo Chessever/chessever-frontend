@@ -27,28 +27,27 @@ class AuthScreen extends ConsumerStatefulWidget {
 
 class _AuthScreenState extends ConsumerState<AuthScreen> {
   @override
+  void initState() {
+    Future.microtask(() async {
+      await ref.read(countryDropdownProvider);
+    });
+    super.initState();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final state = ref.watch(authScreenProvider);
 
-    // Listen for state changes
-    ref.listen<AuthScreenState>(authScreenProvider, (previous, current) {
-      // Show country selection modal after successful sign in
-      if (current.showCountrySelection && current.user != null) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (state.showCountrySelection && state.user != null) {
         _showCountrySelectionModal();
-      }
-
-      // Show error message if there's an error
-      if (current.errorMessage != null) {
-        _showErrorDialog(current.errorMessage!);
-      }
-
-      //todo: setup country code Here
-      String? countryCode = null;
-      // Navigate to home if user has country selected
-      if (current.user != null &&
-          countryCode != null &&
-          countryCode.isNotEmpty) {
-        Navigator.pushReplacementNamed(context, '/home_screen');
+      } else if (state.errorMessage != null) {
+        _showErrorDialog(state.errorMessage!);
+      } else if (ref.read(countryDropdownProvider).value != null &&
+          state.user != null) {
+        if (ref.read(countryDropdownProvider).value?.countryCode != null) {
+          Navigator.pushReplacementNamed(context, '/home_screen');
+        }
       }
     });
 
@@ -104,14 +103,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   }
 
   void _showErrorDialog(String errorMessage) {
-    //todo: Error Dialod
     showDialog(
       context: context,
       builder:
           (cxt) => AlertDialog(
             backgroundColor: kBackgroundColor,
             title: Text(
-              'Sign In Error',
+              'Sign In Failed!',
               style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
             ),
             content: Text(
@@ -179,11 +177,6 @@ class _AuthCountryDropdownWidgetState
   @override
   void initState() {
     super.initState();
-
-    Future.microtask(() async {
-      await ref.read(countryDropdownProvider);
-    });
-
     // Single controller with shorter, professional duration
     _controller = AnimationController(
       duration: const Duration(milliseconds: 400),
