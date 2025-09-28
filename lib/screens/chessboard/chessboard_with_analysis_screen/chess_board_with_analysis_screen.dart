@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.dart';
@@ -8,6 +7,7 @@ import 'package:chessever2/repository/supabase/evals/persist_cloud_eval.dart';
 import 'package:chessever2/repository/supabase/game/game_stream_repository.dart';
 import 'package:chessever2/screens/chessboard/chessboard_with_analysis_screen/chess_game.dart';
 import 'package:chessever2/screens/chessboard/chessboard_with_analysis_screen/chess_game_navigator.dart';
+import 'package:chessever2/screens/chessboard/chessboard_with_analysis_screen/chess_game_navigator_state_manager.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
@@ -39,6 +39,7 @@ class ChessBoardWithAnalysisScreen extends ConsumerStatefulWidget {
 class _ChessBoardWithAnalysisScreenState
     extends ConsumerState<ChessBoardWithAnalysisScreen> {
   late final ChessGame game;
+  late final ChessGameNavigatorStateManager _stateManager;
   final StreamController<String?> gamePgnStreamController = StreamController();
 
   // state
@@ -53,6 +54,17 @@ class _ChessBoardWithAnalysisScreenState
       widget.gameModel.gameId,
       widget.gameModel.pgn ?? '',
     );
+
+    final localStorage = ref.read(sharedPreferencesRepository);
+    final gameNavigator = ref.read(chessGameNavigatorProvider(game).notifier);
+
+    _stateManager = ChessGameNavigatorStateManager(storage: localStorage);
+
+    _stateManager.loadState(widget.gameModel.gameId).then((state) {
+      if (state != null) {
+        gameNavigator.replaceState(state);
+      }
+    });
 
     final gameStreamRepo = ref.read(gameStreamRepositoryProvider);
 
@@ -95,7 +107,7 @@ class _ChessBoardWithAnalysisScreenState
     return PopScope(
       onPopInvokedWithResult: (willPop, _) async {
         if (willPop) {
-          await _saveState();
+          await _stateManager.saveState(gameNavigatorState);
         }
       },
       child: Scaffold(
@@ -347,6 +359,7 @@ class _ChessBoardWithAnalysisScreenState
     final latestGame = ChessGame.fromPgn(widget.gameModel.gameId, gamePgn);
 
     final ChessLine newMainline = [];
+    ChessMovePointer newMovePointer = [0];
 
     for (Number i = 0; i < latestGame.mainline.length; i++) {
       if (i < game.mainline.length) {
@@ -366,12 +379,16 @@ class _ChessBoardWithAnalysisScreenState
 
           newMainline.addAll(latestGame.mainline.slice(i + 1));
 
+          newMovePointer = [i, 0, game.mainline.length - i - 1];
+
           break;
-        } else {
-          newMainline.add(game.mainline[i]);
         }
+
+        newMainline.add(game.mainline[i]);
+        newMovePointer = [i];
       } else {
         newMainline.add(latestGame.mainline[i]);
+        newMovePointer = [i];
       }
     }
 
@@ -379,7 +396,7 @@ class _ChessBoardWithAnalysisScreenState
       game: latestGame.copyWith(
         mainline: newMainline,
       ),
-      movePointer: [newMainline.length - 1],
+      movePointer: newMovePointer,
     );
 
     gameNavigator.replaceState(newState);
@@ -423,52 +440,6 @@ class _ChessBoardWithAnalysisScreenState
         }).toList(),
       ),
     );
-  }
-
-  Future<void> _loadState() async {
-    final gameNavigator = ref.read(chessGameNavigatorProvider(game).notifier);
-    final storage = ref.read(sharedPreferencesRepository);
-    final key = "game:${widget.gameModel.gameId}";
-
-    try {
-      final stateJsonString = await storage.getString(key);
-
-      if (stateJsonString == null) {
-        return;
-      }
-
-      final stateJson = jsonDecode(stateJsonString);
-
-      if (stateJson == null) {
-        return;
-      }
-
-      final restoredGame = ChessGame.fromJson(stateJson['g']);
-      final restoredPointer = stateJson['p'];
-
-      await storage.delete(key);
-
-      gameNavigator.replaceState(ChessGameNavigatorState(
-        game: restoredGame,
-        movePointer: restoredPointer,
-      ));
-    } catch (e) {
-      print('Error loading stored game state: $e');
-    }
-  }
-
-  Future<void> _saveState() async {
-    final state = ref.read(chessGameNavigatorProvider(game));
-    final storage = ref.read(sharedPreferencesRepository);
-    final key = "game:${widget.gameModel.gameId}";
-
-    await storage.setString(
-        key,
-        jsonEncode({
-          "ts": DateTime.now().toIso8601String(),
-          "g": state.game.toJson(),
-          "p": state.movePointer,
-        }));
   }
 }
 
