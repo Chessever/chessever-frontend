@@ -229,10 +229,8 @@ class _ChessBoardWithAnalysisScreenState
 
     final ChessLine newMainline = [];
 
-    var currentMainlineLength = game.mainline.length;
-
     for (Number i = 0; i < latestGame.mainline.length; i++) {
-      if (i < currentMainlineLength) {
+      if (i < game.mainline.length) {
         if (game.mainline[i].uci != latestGame.mainline[i].uci) {
           final localMove = game.mainline[i];
 
@@ -240,15 +238,16 @@ class _ChessBoardWithAnalysisScreenState
 
           final updatedMove = liveMove.copyWith(
             variations: [
-              ...localMove.variations ?? [],
               game.mainline.slice(i),
+              ...localMove.variations ?? [],
             ],
           );
 
           newMainline.add(updatedMove);
 
-          // moved the rest of the locally played moves to variations
-          currentMainlineLength = i;
+          newMainline.addAll(latestGame.mainline.slice(i + 1));
+
+          break;
         } else {
           newMainline.add(game.mainline[i]);
         }
