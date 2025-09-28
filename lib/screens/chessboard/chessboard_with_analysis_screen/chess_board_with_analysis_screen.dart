@@ -302,6 +302,12 @@ class _ChessBoardWithAnalysisScreenState
         }
       } catch (ex) {
         print('Failed to evaluate with local engine');
+
+        setState(() {
+          _isEvaluating = false;
+        });
+
+        return;
       }
     }
 
