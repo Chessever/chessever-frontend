@@ -15,6 +15,24 @@ class ChessGame {
     required this.mainline,
   });
 
+  factory ChessGame.fromJson(Map<String, dynamic> json) {
+    return ChessGame(
+      gameId: json['id'] as String,
+      startingFen: json['sf'] as String,
+      metadata: json['md'] as Map<String, dynamic>,
+      mainline: (json['m'] as List)
+          .map((move) => ChessMove.fromJson(move as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': gameId,
+        'sf': startingFen,
+        'md': metadata,
+        'm': mainline.map((move) => move.toJson()).toList(),
+      };
+
   ChessGame copyWith({
     final String? gameId,
     final String? startingFen,
@@ -88,6 +106,40 @@ class ChessMove {
     this.variations,
   });
 
+  factory ChessMove.fromJson(Map<String, dynamic> json) {
+    return ChessMove(
+      num: json['n'] as Number,
+      fen: json['f'] as String,
+      san: json['s'] as String,
+      uci: json['u'] as String,
+      turn: ChessColor.fromJson(json['t'] as String),
+      variations: json['v'] == null
+          ? null
+          : (json['v'] as List)
+              .map((variation) => (variation as List)
+                  .map((move) =>
+                      ChessMove.fromJson(move as Map<String, dynamic>))
+                  .toList())
+              .toList(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'n': num,
+        'f': fen,
+        's': san,
+        'u': uci,
+        't': turn.toJson(),
+        if (variations != null)
+          'v': variations!
+              .map((variation) => variation
+                  .map(
+                    (move) => move.toJson(),
+                  )
+                  .toList())
+              .toList(),
+      };
+
   ChessMove copyWith({
     final Number? num,
     final String? fen,
@@ -114,6 +166,15 @@ enum ChessColor {
   final String value;
 
   const ChessColor(this.value);
+
+  factory ChessColor.fromJson(String json) {
+    return values.firstWhere(
+      (color) => color.value == json,
+      orElse: () => throw ArgumentError('Invalid ChessColor value: $json'),
+    );
+  }
+
+  String toJson() => value;
 
   @override
   String toString() {

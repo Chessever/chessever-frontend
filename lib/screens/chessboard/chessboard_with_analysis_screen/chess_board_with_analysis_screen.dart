@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.dart';
+import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/repository/supabase/evals/persist_cloud_eval.dart';
 import 'package:chessever2/repository/supabase/game/game_stream_repository.dart';
 import 'package:chessever2/screens/chessboard/chessboard_with_analysis_screen/chess_game.dart';
@@ -41,8 +43,7 @@ class _ChessBoardWithAnalysisScreenState
 
   // state
   bool _isEvaluating = false;
-  double? _evaluation;
-  List<String> _pvs = [];
+  CloudEval? _evaluation;
 
   @override
   void initState() {
@@ -66,6 +67,17 @@ class _ChessBoardWithAnalysisScreenState
 
       _handleGamePgnUpdate(gamePgn);
     });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.listen(
+        chessGameNavigatorProvider(game).select((state) => state.currentFen),
+        (previous, next) {
+          if (previous != next) {
+            _evaluateCurrentPosition();
+          }
+        },
+      );
+    });
   }
 
   @override
@@ -80,40 +92,48 @@ class _ChessBoardWithAnalysisScreenState
 
     final gameNavigator = ref.read(chessGameNavigatorProvider(game).notifier);
 
-    return Scaffold(
-      appBar: AppBar(
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: kWhiteColor),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Analysis Board',
-          style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
-        ),
-      ),
-      body: Column(
-        children: [
-          _buildPlayerInfo(isWhite: false),
-          SizedBox(height: 4.h),
-          _buildBoard(gameNavigatorState, gameNavigator),
-          SizedBox(height: 4.h),
-          _buildPlayerInfo(isWhite: true),
-          _buildControls(gameNavigator),
-          Expanded(
-            child: Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: kDarkGreyColor.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(12.sp),
-                  topRight: Radius.circular(12.sp),
-                ),
-              ),
-              child: _buildMoves(gameNavigatorState, gameNavigator),
-            ),
+    return PopScope(
+      onPopInvokedWithResult: (willPop, _) async {
+        if (willPop) {
+          await _saveState();
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new, color: kWhiteColor),
+            onPressed: () => Navigator.pop(context),
           ),
-        ],
+          title: Text(
+            'Analysis Board',
+            style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
+          ),
+        ),
+        body: Column(
+          children: [
+            _buildPlayerInfo(isWhite: false),
+            SizedBox(height: 4.h),
+            _buildBoard(gameNavigatorState, gameNavigator),
+            SizedBox(height: 4.h),
+            _buildPlayerInfo(isWhite: true),
+            _buildControls(gameNavigator),
+            _buildPvs(),
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: kDarkGreyColor.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(12.sp),
+                    topRight: Radius.circular(12.sp),
+                  ),
+                ),
+                child: _buildMoves(gameNavigatorState, gameNavigator),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -176,7 +196,7 @@ class _ChessBoardWithAnalysisScreenState
             height: boardSize,
             index: -1, // not used
             isFlipped: false,
-            evaluation: _evaluation,
+            evaluation: _currentEvalBarValue,
             mate: 0, // ???
             isEvaluating: _isEvaluating,
           ),
@@ -246,18 +266,31 @@ class _ChessBoardWithAnalysisScreenState
     );
   }
 
+  double? get _currentEvalBarValue {
+    if (_evaluation == null) {
+      return null;
+    }
+
+    final gameNavigator = ref.read(chessGameNavigatorProvider(game));
+
+    return getConsistentEvaluation(
+      _evaluation!.pvs.first.cp / 100.0,
+      gameNavigator.currentFen,
+    );
+  }
+
   _evaluateCurrentPosition() async {
     if (_isEvaluating) {
       return;
     }
 
-    final state = ref.read(chessGameNavigatorProvider(game));
-
-    final fen = state.currentFen;
-
     setState(() {
       _isEvaluating = true;
     });
+
+    final state = ref.read(chessGameNavigatorProvider(game));
+
+    final fen = state.currentFen;
 
     CloudEval? cloudEval;
 
@@ -273,13 +306,7 @@ class _ChessBoardWithAnalysisScreenState
         );
 
         if (localEngineEval.isCancelled) {
-          print('Evaluation was cancelled for $fen');
-
-          setState(() {
-            _isEvaluating = false;
-          });
-
-          return;
+          throw Exception('Evaluation was cancelled for $fen');
         }
 
         cloudEval = CloudEval(
@@ -298,39 +325,20 @@ class _ChessBoardWithAnalysisScreenState
             local.save(fen, cloudEval),
           ]);
         } catch (error) {
-          print('Failed to cache local engine eval error: $error');
+          print('Failed to cache local engine eval: $error');
         }
       } catch (ex) {
         print('Failed to evaluate with local engine');
-
-        setState(() {
-          _isEvaluating = false;
-        });
-
-        return;
       }
     }
 
-    if (cloudEval == null || cloudEval.pvs.isEmpty) {
-      return;
-    }
-
-    final evaluation = getConsistentEvaluation(
-      cloudEval.pvs.first.cp / 100.0,
-      fen,
-    );
-
     setState(() {
+      if (cloudEval != null) {
+        _evaluation = cloudEval;
+      }
+
       _isEvaluating = false;
-      _evaluation = evaluation;
-      _pvs = cloudEval?.pvs.map((e) => e.moves).toList() ?? [];
     });
-
-    print('evaluation');
-    print(evaluation);
-
-    print("pvs");
-    print(cloudEval.pvs.map((e) => e.moves).join(", "));
   }
 
   _handleGamePgnUpdate(final String gamePgn) {
@@ -375,6 +383,92 @@ class _ChessBoardWithAnalysisScreenState
     );
 
     gameNavigator.replaceState(newState);
+  }
+
+  Widget _buildPvs() {
+    if (_evaluation == null || _evaluation!.pvs.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 8.sp),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: _evaluation!.pvs.take(2).map((pv) {
+          final evalText =
+              pv.isMate ? '#${pv.mate}' : (pv.cp / 100.0).toStringAsFixed(1);
+
+          return Padding(
+            padding: EdgeInsets.only(bottom: 4.sp),
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: '$evalText ',
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: kWhiteColor,
+                    ),
+                  ),
+                  TextSpan(
+                    text: pv.moves,
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: kWhiteColor70,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Future<void> _loadState() async {
+    final gameNavigator = ref.read(chessGameNavigatorProvider(game).notifier);
+    final storage = ref.read(sharedPreferencesRepository);
+    final key = "game:${widget.gameModel.gameId}";
+
+    try {
+      final stateJsonString = await storage.getString(key);
+
+      if (stateJsonString == null) {
+        return;
+      }
+
+      final stateJson = jsonDecode(stateJsonString);
+
+      if (stateJson == null) {
+        return;
+      }
+
+      final restoredGame = ChessGame.fromJson(stateJson['g']);
+      final restoredPointer = stateJson['p'];
+
+      await storage.delete(key);
+
+      gameNavigator.replaceState(ChessGameNavigatorState(
+        game: restoredGame,
+        movePointer: restoredPointer,
+      ));
+    } catch (e) {
+      print('Error loading stored game state: $e');
+    }
+  }
+
+  Future<void> _saveState() async {
+    final state = ref.read(chessGameNavigatorProvider(game));
+    final storage = ref.read(sharedPreferencesRepository);
+    final key = "game:${widget.gameModel.gameId}";
+
+    await storage.setString(
+        key,
+        jsonEncode({
+          "ts": DateTime.now().toIso8601String(),
+          "g": state.game.toJson(),
+          "p": state.movePointer,
+        }));
   }
 }
 

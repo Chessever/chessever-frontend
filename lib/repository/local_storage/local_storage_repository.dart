@@ -1,3 +1,5 @@
+import 'dart:js_interop_unsafe';
+
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -36,7 +38,6 @@ class _SharedPreferences {
       rethrow;
     }
   }
-
 
   Future<bool?> getBool(String key) async {
     try {
@@ -78,6 +79,15 @@ class _SharedPreferences {
     try {
       final prefs = await SharedPreferences.getInstance();
       return prefs.getStringList(key) ?? [];
+    } catch (error, _) {
+      rethrow;
+    }
+  }
+
+  Future<void> delete(String key) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      prefs.delete(key);
     } catch (error, _) {
       rethrow;
     }
