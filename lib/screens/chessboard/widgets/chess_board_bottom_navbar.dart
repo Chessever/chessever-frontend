@@ -44,6 +44,7 @@ class ChessSvgBottomNavbarWithLongPress extends StatelessWidget {
   final VoidCallback? onPressed;
   final VoidCallback? onLongPressStart;
   final VoidCallback? onLongPressEnd;
+  final VoidCallback? onLongPress ;
 
   const ChessSvgBottomNavbarWithLongPress({
     super.key,
@@ -52,12 +53,14 @@ class ChessSvgBottomNavbarWithLongPress extends StatelessWidget {
     required this.onPressed,
     this.onLongPressStart,
     this.onLongPressEnd,
+    this.onLongPress,
   });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onPressed,
+      onLongPress: () => onLongPress != null ? onLongPress!() : null,
       onLongPressStart:
           onLongPressStart != null ? (_) => onLongPressStart!() : null,
       onLongPressEnd: onLongPressEnd != null ? (_) => onLongPressEnd!() : null,

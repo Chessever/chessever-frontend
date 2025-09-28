@@ -55,6 +55,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
       MaterialPageRoute(
         builder: (_) => ChessBoardWithAnalysisScreen(
           gameModel: orderedGames[gameIndex],
+          currentGameIndex: gameIndex,
         ),
       ),
     );

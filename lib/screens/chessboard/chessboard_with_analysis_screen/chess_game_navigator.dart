@@ -8,10 +8,11 @@ typedef ChessMovePointer = List<Number>;
 class ChessGameNavigatorState {
   final ChessGame game;
   final ChessMovePointer movePointer;
-
+  final bool isFlipped;
   ChessGameNavigatorState({
     required this.game,
     required this.movePointer,
+    this.isFlipped = false,
   });
 
   ChessMove? get currentMove {
@@ -77,6 +78,22 @@ class ChessGameNavigatorState {
     return currentLine;
   }
 
+  Side get currentSide {
+    if (movePointer.isEmpty) {
+      // At starting position, white moves first
+      return Side.white;
+    }
+
+    final move = currentMove;
+    if (move == null) {
+      return Side.white; // Default fallback
+    }
+
+    // The current turn from the move indicates who just played,
+    // so the next player to move is the opposite
+    return move.turn == ChessColor.white ? Side.black : Side.white;
+  }
+
   ChessColor? get currentTurn {
     if (movePointer.isEmpty) {
       return ChessColor.white;
@@ -94,7 +111,46 @@ class ChessGameNavigatorState {
 
 class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
   ChessGameNavigator(ChessGame game)
-      : super(ChessGameNavigatorState(game: game, movePointer: []));
+    : super(
+        ChessGameNavigatorState(game: game, movePointer: [], isFlipped: false),
+      );
+
+  bool canMoveForward() {
+    final currentLine = state.currentLine;
+    if (currentLine == null || currentLine.isEmpty) {
+      return false;
+    }
+    if (state.movePointer.isEmpty) {
+      return true;
+    }
+    return state.movePointer.last + 1 < currentLine.length;
+  }
+
+  void toggleBoardFlipped() {
+    state = ChessGameNavigatorState(
+      game: state.game,
+      movePointer: state.movePointer,
+      isFlipped: !state.isFlipped,
+    );
+  }
+
+  bool isFlipped() {
+    return state.isFlipped;
+  }
+
+  bool canMoveBackward() {
+    if (state.movePointer.isEmpty) {
+      return false;
+    }
+    return true;
+  }
+
+  int getCurrentMoveIndex() {
+    if (state.movePointer.isEmpty) {
+      return -1;
+    }
+    return state.movePointer.last;
+  }
 
   void goToNextMove() {
     final currentLine = state.currentLine;
@@ -104,10 +160,7 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
     }
 
     if (state.movePointer.isEmpty) {
-      state = ChessGameNavigatorState(
-        game: state.game,
-        movePointer: [0],
-      );
+      state = ChessGameNavigatorState(game: state.game, movePointer: [0]);
 
       return;
     }
@@ -172,26 +225,21 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
       newPointer.last = currentLine.length - 1;
     }
 
-    state = ChessGameNavigatorState(
-      game: state.game,
-      movePointer: newPointer,
-    );
+    state = ChessGameNavigatorState(game: state.game, movePointer: newPointer);
   }
 
   void goToMovePointerUnChecked(ChessMovePointer movePointer) {
-    state = ChessGameNavigatorState(
-      game: state.game,
-      movePointer: movePointer,
-    );
+    state = ChessGameNavigatorState(game: state.game, movePointer: movePointer);
   }
 
   void makeOrGoToMove(final String uci) {
     final playedNove = Move.parse(uci);
 
     final currentLine = state.currentLine;
-    final currentMove = state.movePointer.isEmpty
-        ? currentLine?.firstOrNull
-        : state.currentMove;
+    final currentMove =
+        state.movePointer.isEmpty
+            ? currentLine?.firstOrNull
+            : state.currentMove;
     final currentMoveVariations = currentMove?.variations;
     final currentMoveIndex =
         state.movePointer.isEmpty ? -1 : state.movePointer.last;
@@ -266,17 +314,13 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
         updateVariations.add([newMove]);
 
         state = ChessGameNavigatorState(
-          game: state.game.copyWith(mainline: [
-            firstMove.copyWith(
-              variations: updateVariations,
-            ),
-            ...state.game.mainline.slice(1),
-          ]),
-          movePointer: [
-            ...state.movePointer,
-            updateVariations.length - 1,
-            0,
-          ],
+          game: state.game.copyWith(
+            mainline: [
+              firstMove.copyWith(variations: updateVariations),
+              ...state.game.mainline.slice(1),
+            ],
+          ),
+          movePointer: [...state.movePointer, updateVariations.length - 1, 0],
         );
       }
 
@@ -317,9 +361,7 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
     }
 
     state = ChessGameNavigatorState(
-      game: state.game.copyWith(
-        mainline: newMainline,
-      ),
+      game: state.game.copyWith(mainline: newMainline),
       movePointer: tPointer,
     );
   }
@@ -327,9 +369,82 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
   void replaceState(final ChessGameNavigatorState newState) {
     state = newState;
   }
+
+  List<String> parseMoveTimesFromPgn(String pgn) {
+    final List<String> times = [];
+
+    try {
+      final game = PgnGame.parsePgn(pgn);
+
+      // Iterate through the mainline moves
+      for (final nodeData in game.moves.mainline()) {
+        String? timeString;
+
+        // Check if this move has comments
+        if (nodeData.comments != null) {
+          // Extract time if it exists in any comment
+          for (String comment in nodeData.comments!) {
+            final timeMatch = RegExp(
+              r'\[%clk (\d+:\d+:\d+)\]',
+            ).firstMatch(comment);
+            if (timeMatch != null) {
+              timeString = timeMatch.group(1);
+              break; // Found time, no need to check other comments for this move
+            }
+          }
+        }
+
+        // Add formatted time or default if no time found
+        if (timeString != null) {
+          times.add(_formatDisplayTime(timeString));
+        } else {
+          times.add('-:--:--'); // Default for moves without time
+        }
+      }
+    } catch (e) {
+      print('Error parsing PGN: $e');
+      // Fallback to regex method if dartchess parsing fails
+      return _parseMoveTimesFromPgnFallback(pgn);
+    }
+
+    return times;
+  }
+
+  // Fallback method using the original regex approach
+  List<String> _parseMoveTimesFromPgnFallback(String pgn) {
+    final List<String> times = [];
+    final regex = RegExp(r'\{ \[%clk (\d+:\d+:\d+)\] \}');
+    final matches = regex.allMatches(pgn);
+
+    for (final match in matches) {
+      final timeString = match.group(1) ?? '0:00:00';
+      times.add(_formatDisplayTime(timeString));
+    }
+
+    return times;
+  }
+
+  String _formatDisplayTime(String timeString) {
+    // Convert "1:40:57" to display format
+    final parts = timeString.split(':');
+    if (parts.length == 3) {
+      final hours = int.parse(parts[0]);
+      final minutes = parts[1];
+      final seconds = parts[2];
+
+      // If less than an hour, show MM:SS format
+      if (hours == 0) {
+        return '$minutes:$seconds';
+      }
+      // Otherwise show H:MM:SS format
+      return '$hours:$minutes:$seconds';
+    }
+    return timeString;
+  }
 }
 
 final chessGameNavigatorProvider = StateNotifierProvider.family<
-    ChessGameNavigator, ChessGameNavigatorState, ChessGame>(
-  (ref, game) => ChessGameNavigator(game),
-);
+  ChessGameNavigator,
+  ChessGameNavigatorState,
+  ChessGame
+>((ref, game) => ChessGameNavigator(game));

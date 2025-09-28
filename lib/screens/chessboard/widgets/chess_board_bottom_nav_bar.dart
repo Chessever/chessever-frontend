@@ -12,6 +12,8 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
   final VoidCallback? onRightMove;
   final VoidCallback onFlip;
   final VoidCallback? toggleAnalysisMode;
+  final VoidCallback? onLongPressForwardButton;
+  final VoidCallback? onLongPressBackwardButton;
   final bool canMoveForward;
   final bool canMoveBackward;
   final bool isAnalysisMode;
@@ -26,6 +28,8 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
     required this.canMoveBackward,
     required this.toggleAnalysisMode,
     required this.isAnalysisMode,
+    this.onLongPressForwardButton,
+    this.onLongPressBackwardButton
   });
 
   @override
@@ -57,6 +61,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
               svgPath: SvgAsset.left_arrow,
               width: width,
               onPressed: canMoveBackward ? onLeftMove : null,
+              onLongPress: onLongPressBackwardButton,
               onLongPressStart:
                   canMoveBackward
                       ? () =>
@@ -77,6 +82,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
               svgPath: SvgAsset.right_arrow,
               width: width,
               onPressed: canMoveForward ? onRightMove : null,
+              onLongPress: onLongPressForwardButton,
               onLongPressStart:
                   canMoveForward
                       ? () =>
