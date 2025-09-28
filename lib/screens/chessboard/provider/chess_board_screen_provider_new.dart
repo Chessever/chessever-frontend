@@ -13,6 +13,7 @@ import 'package:chessever2/screens/group_event/providers/countryman_games_tour_s
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/evals.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:easy_debounce/easy_debounce.dart';
@@ -63,27 +64,6 @@ class ChessBoardScreenNotifierNew
     parseMoves();
   }
 
-  /// Get evaluation with consistent perspective for evaluation bar display
-  /// Option 1: Always from white's perspective (consistent colors)
-  /// Option 2: From current player's perspective (intuitive for current player)
-  double _getConsistentEvaluation(double evaluation, String fen) {
-    // Convert all evaluations to white's perspective for consistent bar colors
-    // Stockfish returns evaluations from current player's perspective, so we need to flip
-    // when it's black's turn to maintain consistency with Lichess (which we already converted)
-
-    try {
-      final fenParts = fen.split(' ');
-      if (fenParts.length >= 2 && fenParts[1] == 'b') {
-        // Black to move: flip the evaluation to white's perspective
-        return -evaluation;
-      }
-    } catch (e) {
-      print('Error parsing FEN for perspective: $e');
-    }
-
-    return evaluation; // White to move: already in white's perspective
-  }
-
   void _setupPgnStreamListener() {
     // Only listen to game updates stream if the game is ongoing
     if (game.gameStatus == GameStatus.ongoing) {
@@ -101,7 +81,8 @@ class ChessBoardScreenNotifierNew
 
             // Check if position changed (FEN or last_move) for evaluation updates
             final newFen = gameData['fen'] as String? ?? game.fen;
-            final newLastMove = gameData['last_move'] as String? ?? game.lastMove;
+            final newLastMove =
+                gameData['last_move'] as String? ?? game.lastMove;
             if (newFen != game.fen || newLastMove != game.lastMove) {
               needsEvaluation = true;
             }
@@ -114,9 +95,12 @@ class ChessBoardScreenNotifierNew
               lastMoveTime: gameData['last_move_time'] != null
                   ? DateTime.tryParse(gameData['last_move_time'] as String)
                   : game.lastMoveTime,
-              whiteClockSeconds: (gameData['last_clock_white'] as num?)?.round(),
-              blackClockSeconds: (gameData['last_clock_black'] as num?)?.round(),
-              gameStatus: _parseGameStatus(gameData['status'] as String? ?? '*'),
+              whiteClockSeconds:
+                  (gameData['last_clock_white'] as num?)?.round(),
+              blackClockSeconds:
+                  (gameData['last_clock_black'] as num?)?.round(),
+              gameStatus:
+                  _parseGameStatus(gameData['status'] as String? ?? '*'),
             );
 
             // Re-parse moves if PGN changed
@@ -130,7 +114,9 @@ class ChessBoardScreenNotifierNew
               if (currentState != null) {
                 // Parse the last move for proper board highlighting
                 Move? parsedLastMove;
-                if (newLastMove != null && newLastMove.isNotEmpty && newLastMove.length >= 4) {
+                if (newLastMove != null &&
+                    newLastMove.isNotEmpty &&
+                    newLastMove.length >= 4) {
                   try {
                     // Convert UCI move to Move object
                     final from = Square.fromName(newLastMove.substring(0, 2));
@@ -145,13 +131,15 @@ class ChessBoardScreenNotifierNew
                   currentState.copyWith(
                     game: game, // Updated game with new clock/position data
                     fenData: newFen, // Update FEN data for board display
-                    lastMove: parsedLastMove, // Update last move for highlighting
+                    lastMove:
+                        parsedLastMove, // Update last move for highlighting
                   ),
                 );
 
                 // Trigger evaluation update if position changed
                 if (needsEvaluation) {
-                  print("-----Position changed, triggering evaluation update for FEN: $newFen");
+                  print(
+                      "-----Position changed, triggering evaluation update for FEN: $newFen");
                   _updateEvaluation();
                 }
               }
@@ -190,9 +178,8 @@ class ChessBoardScreenNotifierNew
 
     try {
       // If no PGN in the current game object, fetch from repository
-      final gameWithPgn = await ref
-          .read(gameRepositoryProvider)
-          .getGameById(game.gameId);
+      final gameWithPgn =
+          await ref.read(gameRepositoryProvider).getGameById(game.gameId);
 
       // Check if still mounted after async operation
       if (!mounted) return;
@@ -497,10 +484,9 @@ class ChessBoardScreenNotifierNew
   bool isPromotionPawnMove(NormalMove move) {
     var currentState = state.value;
     if (currentState == null) return false;
-    Position pos =
-        currentState.isAnalysisMode
-            ? currentState.analysisState.position
-            : currentState.position!;
+    Position pos = currentState.isAnalysisMode
+        ? currentState.analysisState.position
+        : currentState.position!;
     return move.promotion == null &&
         pos.board.roleAt(move.from) == Role.pawn &&
         ((move.to.rank == Rank.first && pos.turn == Side.black) ||
@@ -510,10 +496,9 @@ class ChessBoardScreenNotifierNew
   void onAnalysisMove(NormalMove move, {bool? isDrop, bool? isPremove}) {
     var currentState = state.value;
     if (currentState == null) return;
-    Position pos =
-        currentState.isAnalysisMode
-            ? currentState.analysisState.position
-            : currentState.position!;
+    Position pos = currentState.isAnalysisMode
+        ? currentState.analysisState.position
+        : currentState.position!;
     AnalysisBoardState analysisState = currentState.analysisState;
     if (isPromotionPawnMove(move)) {
       state = AsyncValue.data(
@@ -605,10 +590,9 @@ class ChessBoardScreenNotifierNew
           analysisState.currentMoveIndex + 1,
         );
       }
-      Position pos =
-          currentState.isAnalysisMode
-              ? currentState.analysisState.position
-              : currentState.position!;
+      Position pos = currentState.isAnalysisMode
+          ? currentState.analysisState.position
+          : currentState.position!;
       final newPosition = pos.playUnchecked(move);
       final sanMove = pos.makeSan(move);
       pos = newPosition;
@@ -712,10 +696,9 @@ class ChessBoardScreenNotifierNew
       final currentState = state.value;
       if (currentState == null || currentState.isLoadingMoves) return;
 
-      final fen =
-          currentState.isAnalysisMode
-              ? currentState.analysisState.position.fen
-              : currentState.position?.fen;
+      final fen = currentState.isAnalysisMode
+          ? currentState.analysisState.position.fen
+          : currentState.position?.fen;
       print("----------- _evaluatePosition for fen: $fen");
       if (fen == null) return;
 
@@ -733,7 +716,7 @@ class ChessBoardScreenNotifierNew
         ref.invalidate(cascadeEvalProviderForBoard(fen));
         cloudEval = await ref.read(cascadeEvalProviderForBoard(fen).future);
         if (cloudEval?.pvs.isNotEmpty ?? false) {
-          evaluation = _getConsistentEvaluation(
+          evaluation = getConsistentEvaluation(
             cloudEval!.pvs.first.cp / 100.0,
             fen,
           );
@@ -778,7 +761,7 @@ class ChessBoardScreenNotifierNew
           return;
         }
         if (result.pvs.isNotEmpty) {
-          evaluation = _getConsistentEvaluation(
+          evaluation = getConsistentEvaluation(
             result.pvs.first.cp / 100.0,
             fen,
           );
@@ -799,25 +782,25 @@ class ChessBoardScreenNotifierNew
       if (_cancelEvaluation || state.value == null || !mounted) return;
       var currState = state.value;
       if (currState == null) return;
-      Position pos =
-          currState.isAnalysisMode
-              ? currState.analysisState.position
-              : currState.position!;
+      Position pos = currState.isAnalysisMode
+          ? currState.analysisState.position
+          : currState.position!;
       var shapes = getBestMoveShape(pos, cloudEval);
       if ((currState.isAnalysisMode &&
               currState.analysisState.position.fen == fen) ||
           (!currState.isAnalysisMode && currentState.position?.fen == fen)) {
-            print("------- Setting evaluation: $evaluation for fen: $fen, shapes: ${shapes.length}");
+        print(
+            "------- Setting evaluation: $evaluation for fen: $fen, shapes: ${shapes.length}");
         state = AsyncValue.data(
           currState.copyWith(
             evaluation: evaluation,
             isEvaluating: false,
             shapes: shapes,
-            mate: cloudEval?.pvs.first.mate ?? 0, // Default to 0 if no mate value
+            mate:
+                cloudEval?.pvs.first.mate ?? 0, // Default to 0 if no mate value
           ),
         );
-      }
-      else{
+      } else {
         print("------- Skipping setting evaluation for outdated fen: $fen");
       }
     } catch (e) {
@@ -830,10 +813,9 @@ class ChessBoardScreenNotifierNew
   ISet<Shape> getBestMoveShape(Position pos, CloudEval? cloudEval) {
     ISet<Shape> shapes = const ISet.empty();
     if (cloudEval?.pvs.isNotEmpty ?? false) {
-      String bestMove =
-          cloudEval!.pvs[0].moves
-              .split(" ")[0]
-              .toLowerCase(); // Normalize to lowercase
+      String bestMove = cloudEval!.pvs[0].moves
+          .split(" ")[0]
+          .toLowerCase(); // Normalize to lowercase
 
       if (bestMove.length < 4 || bestMove.length > 5) {
         print('Invalid best move UCI: $bestMove');
@@ -846,28 +828,26 @@ class ChessBoardScreenNotifierNew
           if (bestMove.length != 4 || bestMove[1] != '@') return shapes;
           String toStr = bestMove.substring(2, 4);
           Square to = Square.fromName(toStr);
-          shapes =
-              {
-                Arrow(
-                  color: const Color.fromARGB(255, 152, 179, 154),
-                  orig: to, // Same square as destination
-                  dest: to,
-                ),
-              }.toISet();
+          shapes = {
+            Arrow(
+              color: const Color.fromARGB(255, 152, 179, 154),
+              orig: to, // Same square as destination
+              dest: to,
+            ),
+          }.toISet();
         } else {
           // Normal move or promotion (e.g., "e2e4" or "e7e8q")
           String fromStr = bestMove.substring(0, 2);
           String toStr = bestMove.substring(2, 4);
           Square from = Square.fromName(fromStr);
           Square to = Square.fromName(toStr);
-          shapes =
-              {
-                Arrow(
-                  color: const Color.fromARGB(255, 152, 179, 154),
-                  orig: from,
-                  dest: to,
-                ),
-              }.toISet();
+          shapes = {
+            Arrow(
+              color: const Color.fromARGB(255, 152, 179, 154),
+              orig: from,
+              dest: to,
+            ),
+          }.toISet();
         }
       } catch (e) {
         // Parsing failed, return empty
@@ -890,9 +870,7 @@ class ChessBoardScreenNotifierNew
       const Duration(milliseconds: 100),
       () {
         if (_cancelEvaluation || state.value == null || !mounted) return;
-        _evalOperation = CancelableOperation.fromFuture(
-          _evaluatePosition()
-        );
+        _evalOperation = CancelableOperation.fromFuture(_evaluatePosition());
       },
     );
   }
@@ -958,15 +936,13 @@ class ChessBoardScreenNotifierNew
 }
 
 final chessBoardScreenProviderNew = AutoDisposeStateNotifierProvider.family<
-  ChessBoardScreenNotifierNew,
-  AsyncValue<ChessBoardStateNew>,
-  int
->((ref, index) {
+    ChessBoardScreenNotifierNew,
+    AsyncValue<ChessBoardStateNew>,
+    int>((ref, index) {
   final view = ref.watch(chessboardViewFromProviderNew);
-  final games =
-      view == ChessboardView.tour
-          ? ref.watch(gamesTourScreenProvider).value!.gamesTourModels
-          : ref.watch(countrymanGamesTourScreenProvider).value!.gamesTourModels;
+  final games = view == ChessboardView.tour
+      ? ref.watch(gamesTourScreenProvider).value!.gamesTourModels
+      : ref.watch(countrymanGamesTourScreenProvider).value!.gamesTourModels;
 
   // Try to get the rounds, but if the provider is disposed, use games directly
   List<GamesTourModel> arrangedGames;

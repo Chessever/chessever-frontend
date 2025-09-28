@@ -1,12 +1,19 @@
 import 'dart:async';
 
+import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
+import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.dart';
+import 'package:chessever2/repository/supabase/evals/persist_cloud_eval.dart';
 import 'package:chessever2/repository/supabase/game/game_stream_repository.dart';
 import 'package:chessever2/screens/chessboard/chessboard_with_analysis_screen/chess_game.dart';
 import 'package:chessever2/screens/chessboard/chessboard_with_analysis_screen/chess_game_navigator.dart';
+import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
+import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
+import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/evals.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessground/chessground.dart';
 import 'package:collection/collection.dart';
@@ -32,6 +39,11 @@ class _ChessBoardWithAnalysisScreenState
   late final ChessGame game;
   final StreamController<String?> gamePgnStreamController = StreamController();
 
+  // state
+  bool _isEvaluating = false;
+  double? _evaluation;
+  List<String> _pvs = [];
+
   @override
   void initState() {
     super.initState();
@@ -48,9 +60,6 @@ class _ChessBoardWithAnalysisScreenState
     );
 
     gamePgnStreamController.stream.listen((gamePgn) {
-      print("Game pgn");
-      print(gamePgn);
-
       if (gamePgn == null) {
         return;
       }
@@ -155,35 +164,50 @@ class _ChessBoardWithAnalysisScreenState
     ChessGameNavigator navigator,
   ) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final boardSize = screenWidth - 32.w;
+    final evalBarWidth = 20.w;
+    final boardSize = screenWidth - evalBarWidth - 32.w;
 
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 16.sp),
-      child: Chessboard(
-        game: GameData(
-          playerSide: state.currentTurn == null
-              ? PlayerSide.none
-              : state.currentTurn == ChessColor.white
-                  ? PlayerSide.white
-                  : PlayerSide.black,
-          sideToMove:
-              state.currentTurn == ChessColor.white ? Side.white : Side.black,
-          validMoves: makeLegalMoves(Position.setupPosition(
-            Rule.chess,
-            Setup.parseFen(state.currentFen),
-          )),
-          promotionMove: null,
-          onMove: (move, {isDrop}) {
-            navigator.makeOrGoToMove(move.uci);
-          },
-          onPromotionSelection: (move) async {
-            // Handle promotion here
-          },
-        ),
-        size: boardSize,
-        orientation: Side.white,
-        fen: state.currentFen,
-        // lastMove: lastMove,
+      child: Row(
+        children: [
+          EvaluationBarWidget(
+            width: evalBarWidth,
+            height: boardSize,
+            index: -1, // not used
+            isFlipped: false,
+            evaluation: _evaluation,
+            mate: 0, // ???
+            isEvaluating: _isEvaluating,
+          ),
+          Chessboard(
+            game: GameData(
+              playerSide: state.currentTurn == null
+                  ? PlayerSide.none
+                  : state.currentTurn == ChessColor.white
+                      ? PlayerSide.white
+                      : PlayerSide.black,
+              sideToMove: state.currentTurn == ChessColor.white
+                  ? Side.white
+                  : Side.black,
+              validMoves: makeLegalMoves(Position.setupPosition(
+                Rule.chess,
+                Setup.parseFen(state.currentFen),
+              )),
+              promotionMove: null,
+              onMove: (move, {isDrop}) {
+                navigator.makeOrGoToMove(move.uci);
+              },
+              onPromotionSelection: (move) async {
+                // Handle promotion here
+              },
+            ),
+            size: boardSize,
+            orientation: Side.white,
+            fen: state.currentFen,
+            // lastMove: lastMove,
+          ),
+        ],
       ),
     );
   }
@@ -220,6 +244,87 @@ class _ChessBoardWithAnalysisScreenState
         ),
       ),
     );
+  }
+
+  _evaluateCurrentPosition() async {
+    if (_isEvaluating) {
+      return;
+    }
+
+    final state = ref.read(chessGameNavigatorProvider(game));
+
+    final fen = state.currentFen;
+
+    setState(() {
+      _isEvaluating = true;
+    });
+
+    CloudEval? cloudEval;
+
+    try {
+      ref.invalidate(cascadeEvalProviderForBoard(fen));
+
+      cloudEval = await ref.read(cascadeEvalProviderForBoard(fen).future);
+    } catch (e) {
+      try {
+        var localEngineEval = await StockfishSingleton().evaluatePosition(
+          fen,
+          depth: 15,
+        );
+
+        if (localEngineEval.isCancelled) {
+          print('Evaluation was cancelled for $fen');
+
+          setState(() {
+            _isEvaluating = false;
+          });
+
+          return;
+        }
+
+        cloudEval = CloudEval(
+          fen: fen,
+          knodes: localEngineEval.knodes,
+          depth: localEngineEval.depth,
+          pvs: localEngineEval.pvs,
+        );
+
+        try {
+          final local = ref.read(localEvalCacheProvider);
+          final persist = ref.read(persistCloudEvalProvider);
+
+          await Future.wait([
+            persist.call(fen, cloudEval),
+            local.save(fen, cloudEval),
+          ]);
+        } catch (error) {
+          print('Failed to cache local engine eval error: $error');
+        }
+      } catch (ex) {
+        print('Failed to evaluate with local engine');
+      }
+    }
+
+    if (cloudEval == null || cloudEval.pvs.isEmpty) {
+      return;
+    }
+
+    final evaluation = getConsistentEvaluation(
+      cloudEval.pvs.first.cp / 100.0,
+      fen,
+    );
+
+    setState(() {
+      _isEvaluating = false;
+      _evaluation = evaluation;
+      _pvs = cloudEval?.pvs.map((e) => e.moves).toList() ?? [];
+    });
+
+    print('evaluation');
+    print(evaluation);
+
+    print("pvs");
+    print(cloudEval.pvs.map((e) => e.moves).join(", "));
   }
 
   _handleGamePgnUpdate(final String gamePgn) {
