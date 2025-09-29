@@ -88,10 +88,6 @@ class _ChessBoardWithAnalysisScreenState
       gameNavigator.replaceState(loadedState);
     }
 
-    await _gamePgnStreamController.addStream(
-      gameStreamRepo.subscribeToPgn(widget.gameModel.gameId),
-    );
-
     _gamePgnStreamSub = _gamePgnStreamController.stream.listen((gamePgn) {
       if (gamePgn == null) {
         return;
@@ -101,6 +97,10 @@ class _ChessBoardWithAnalysisScreenState
 
       gameNavigator.updateWithLatestGame(latestGame);
     });
+
+    await _gamePgnStreamController.addStream(
+      gameStreamRepo.subscribeToPgn(widget.gameModel.gameId),
+    );
   }
 
   @override
