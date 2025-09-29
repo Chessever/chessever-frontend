@@ -11,7 +11,6 @@ import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/atomic_countdown_text.dart';
 import 'package:country_flags/country_flags.dart';
-import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_svg/svg.dart';
@@ -308,12 +307,12 @@ class _PlayerClock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Determine if this player's clock should be counting down
+    // Only countdown for live games when at the latest move and it's this player's turn
     final isClockRunning =
         gamesTourModel.gameStatus.isOngoing &&
         gamesTourModel.lastMoveTime != null &&
-        gamesTourModel.activePlayer != null &&
-        ((isWhitePlayer && gamesTourModel.activePlayer == Side.white) ||
-            (!isWhitePlayer && gamesTourModel.activePlayer == Side.black));
+        isCurrentPlayer &&  // Use the isCurrentPlayer prop from parent which uses state.position.turn
+        (chessBoardState?.isAtEnd ?? true); // Only countdown when at latest move
 
     // Use atomic countdown text widget for optimized rebuilds
     // Get the clock values for this player
