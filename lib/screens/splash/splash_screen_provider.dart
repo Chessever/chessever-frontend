@@ -2,6 +2,7 @@ import 'package:chessever2/repository/local_storage/group_broadcast/group_broadc
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/widgets/event_card/starred_provider.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -36,7 +37,7 @@ class _SplashScreenProvider {
     final isLoggedIn = await sessionManager.isLoggedIn();
     print('Is user logged in: $isLoggedIn');
 
-    if (isLoggedIn) {
+    if (isLoggedIn  || kDebugMode) {
       Navigator.pushReplacementNamed(context, '/home_screen');
     } else {
       Navigator.pushReplacementNamed(context, '/auth_screen');

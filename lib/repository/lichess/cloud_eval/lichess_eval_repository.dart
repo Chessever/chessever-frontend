@@ -33,23 +33,32 @@ class _LichessEvalRepository {
   }
 
   /// Converts Lichess evaluation from current player's perspective to white's perspective
+  /// CRITICAL: Based on testing, when evaluations are wrong, it means they're NOT being flipped
+  /// when they should be. This indicates evaluations ARE from current player's perspective.
   CloudEval _convertToWhitePerspective(CloudEval cloudEval, String fen) {
     // Parse FEN to determine whose turn it is
     final fenParts = fen.split(' ');
     final isBlackToMove = fenParts.length >= 2 && fenParts[1] == 'b';
+    final sideToMove = isBlackToMove ? 'b' : 'w';
+    final originalCp = cloudEval.pvs.isNotEmpty ? cloudEval.pvs.first.cp : 0;
 
     if (!isBlackToMove) {
-      // White to move - Lichess already returns from white's perspective
+      // White to move - evaluation is from white's perspective, no conversion needed
+      print("🔍 LICHESS CONVERSION: FEN=$fen, side=WHITE, originalCp=$originalCp, finalCp=$originalCp (no flip needed)");
       return cloudEval;
     }
 
-    // Black to move - Lichess returns from black's perspective, need to flip
+    // Black to move - evaluation is from BLACK's perspective, MUST flip to white's perspective
+    // Example: If black is winning, Lichess returns positive (good for black)
+    // We need to flip it to negative (bad for white)
     final adjustedPvs = cloudEval.pvs.map((pv) {
+      final flippedCp = -pv.cp;
+      print("🔍 LICHESS CONVERSION: FEN=$fen, side=BLACK, originalCp=${pv.cp}, finalCp=$flippedCp (FLIPPED to white perspective)");
       return Pv(
         moves: pv.moves,
-        cp: -pv.cp, // Flip the evaluation sign
+        cp: flippedCp, // Flip to white's perspective
         isMate: pv.isMate,
-        mate: pv.mate != null ? -pv.mate! : null, // Flip mate sign too
+        mate: pv.mate != null ? -pv.mate! : null,
       );
     }).toList();
 

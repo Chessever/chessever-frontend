@@ -6,7 +6,7 @@ import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-class EvaluationBarWidget extends ConsumerWidget {
+class EvaluationBarWidget extends ConsumerStatefulWidget {
   final double width;
   final double height;
   final double? evaluation; // Made nullable to handle loading state
@@ -14,6 +14,7 @@ class EvaluationBarWidget extends ConsumerWidget {
   final int index;
   final int mate;
   final bool isEvaluating; // Add flag to show loading during evaluation
+
   const EvaluationBarWidget({
     required this.width,
     required this.height,
@@ -25,41 +26,91 @@ class EvaluationBarWidget extends ConsumerWidget {
     super.key,
   });
 
+  @override
+  ConsumerState<EvaluationBarWidget> createState() => _EvaluationBarWidgetState();
+}
+
+class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
+  double? _lastValidEvaluation;
+  static final Map<String, double> _globalEvaluationCache = {};
+
   /// Converts evaluation to white advantage ratio
   /// eval: -5 to +5 (negative = black advantage, positive = white advantage)
   /// returns: 0.0 to 1.0 (0.0 = 100% black advantage, 1.0 = 100% white advantage)
   double getWhiteRatio(double eval) => (eval.clamp(-5.0, 5.0) + 5.0) / 10.0;
 
+  String get _cacheKey => 'eval_${widget.index}';
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // Handle null evaluation (loading state)
-    final evalValue = evaluation ?? 0.0;
-    final whiteRatio = getWhiteRatio(evalValue);
+  void initState() {
+    super.initState();
+    // Restore last valid evaluation from global cache if available
+    _lastValidEvaluation = _globalEvaluationCache[_cacheKey];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // SMART EVALUATION HANDLING:
+    // 1. If we have a valid evaluation and not evaluating -> update cache and use it
+    // 2. If we're evaluating -> FREEZE the bar at last valid position (no animation)
+    // 3. Only animate when evaluation is complete and different from cached value
+
+    double evalValueForDisplay;
+    bool shouldAnimate = true;
+
+    if (widget.evaluation != null && !widget.isEvaluating) {
+      // Calculation complete - check if we should animate to new position
+      final newEval = widget.evaluation!;
+      final oldEval = _lastValidEvaluation;
+
+      // Only animate if the evaluation actually changed significantly
+      if (oldEval != null && (newEval - oldEval).abs() < 0.1) {
+        // Evaluation barely changed, don't animate
+        evalValueForDisplay = oldEval;
+        shouldAnimate = false;
+      } else {
+        // Evaluation changed significantly, animate to new position
+        _lastValidEvaluation = newEval;
+        _globalEvaluationCache[_cacheKey] = newEval;
+        evalValueForDisplay = newEval;
+        shouldAnimate = true;
+      }
+    } else if (widget.isEvaluating && _lastValidEvaluation != null) {
+      // Currently calculating - FREEZE bar at last valid position
+      evalValueForDisplay = _lastValidEvaluation!;
+      shouldAnimate = false; // NO ANIMATION during calculation
+    } else {
+      // First time or no cached value - use what we have
+      evalValueForDisplay = widget.evaluation ?? _lastValidEvaluation ?? 0.0;
+      shouldAnimate = widget.evaluation != null;
+    }
+
+    final whiteRatio = getWhiteRatio(evalValueForDisplay);
     final blackRatio = 1.0 - whiteRatio;
 
-    final whiteHeight = whiteRatio * height;
-    final blackHeight = blackRatio * height;
+    final whiteHeight = whiteRatio * widget.height;
+    final blackHeight = blackRatio * widget.height;
 
     // Color scheme (consistent regardless of move traversal):
     // - White color (bottom when not flipped) = White advantage
     // - Dark color (top when not flipped) = Black advantage
-    final topHeight = isFlipped ? whiteHeight : blackHeight;
-    final bottomHeight = isFlipped ? blackHeight : whiteHeight;
+    final topHeight = widget.isFlipped ? whiteHeight : blackHeight;
+    final bottomHeight = widget.isFlipped ? blackHeight : whiteHeight;
 
-    final topColor = isFlipped ? kWhiteColor : kPopUpColor;
-    final bottomColor = isFlipped ? kPopUpColor : kWhiteColor;
+    final topColor = widget.isFlipped ? kWhiteColor : kPopUpColor;
+    final bottomColor = widget.isFlipped ? kPopUpColor : kWhiteColor;
 
     return SizedBox(
-      width: width,
-      height: height,
+      width: widget.width,
+      height: widget.height,
       child: Stack(
         children: [
           Align(
             alignment: Alignment.topCenter,
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
+              duration: shouldAnimate ? const Duration(milliseconds: 300) : Duration.zero,
               curve: Curves.easeInOut,
-              width: width,
+              width: widget.width,
               height: topHeight,
               color: topColor,
             ),
@@ -68,15 +119,15 @@ class EvaluationBarWidget extends ConsumerWidget {
           Align(
             alignment: Alignment.bottomCenter,
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
+              duration: shouldAnimate ? const Duration(milliseconds: 300) : Duration.zero,
               curve: Curves.easeInOut,
-              width: width,
+              width: widget.width,
               height: bottomHeight,
               color: bottomColor,
             ),
           ),
 
-          Center(child: Container(width: width, height: 2, color: kRedColor)),
+          Center(child: Container(width: widget.width, height: 2, color: kRedColor)),
 
           Center(
             child: Container(
@@ -86,11 +137,11 @@ class EvaluationBarWidget extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(2.br),
               ),
               child: Text(
-                evaluation == null || isEvaluating
+                widget.evaluation == null || widget.isEvaluating
                     ? '...' // Show loading indicator when null or evaluating
-                    : evaluation!.abs() >= 10.0
-                        ? '#${mate.abs()}' // Show absolute mate value
-                        : evaluation!.abs().toStringAsFixed(1),
+                    : widget.evaluation!.abs() >= 10.0
+                        ? '#${widget.mate.abs()}' // Show absolute mate value
+                        : widget.evaluation!.abs().toStringAsFixed(1),
                 maxLines: 1,
                 textAlign: TextAlign.center,
                 style: AppTypography.textSmRegular.copyWith(
@@ -133,6 +184,7 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
                 blackHeight: height * 0.5,
                 evaluation: 0.0,
                 isEvaluating: true,
+                isFlipped: false, // Game cards always show from white's perspective
               ),
             );
           },
@@ -144,6 +196,7 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
                 whiteHeight: height * 0.5,
                 blackHeight: height * 0.5,
                 evaluation: 0.0,
+                isFlipped: false, // Game cards always show from white's perspective
               ),
             );
           },
@@ -157,6 +210,7 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
                   whiteHeight: height * 0.5,
                   blackHeight: height * 0.5,
                   evaluation: 0.0,
+                  isFlipped: false, // Game cards always show from white's perspective
                 ),
               );
             }
@@ -171,10 +225,16 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
               evaluation = pv.cp / 100.0;
             }
 
-            // Calculate ratios (fixed to sum to 1.0)
+            // The cascadeEvalProvider already ensures evaluations are from white's perspective:
+            // - Positive evaluation = White advantage
+            // - Negative evaluation = Black advantage
+
+            // Calculate color ratios for the evaluation bar
+            // evaluation: positive = white advantage, negative = black advantage
+            // normalized: 0.0 = full black advantage, 1.0 = full white advantage
             final normalized = (evaluation.clamp(-5.0, 5.0) + 5.0) / 10.0;
-            final whiteRatio = normalized;
-            final blackRatio = 1.0 - whiteRatio;
+            final whiteRatio = normalized;      // How much white advantage (0.0 to 1.0)
+            final blackRatio = 1.0 - whiteRatio; // How much black advantage (0.0 to 1.0)
 
             return _Bars(
               width: width,
@@ -182,13 +242,14 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
               blackHeight: blackRatio * height,
               whiteHeight: whiteRatio * height,
               evaluation: evaluation,
+              isFlipped: false, // Game cards always show from white's perspective
             );
           },
         );
   }
 }
 
-class _Bars extends StatelessWidget {
+class _Bars extends StatefulWidget {
   const _Bars({
     required this.width,
     required this.height,
@@ -196,6 +257,7 @@ class _Bars extends StatelessWidget {
     required this.blackHeight,
     required this.evaluation,
     this.isEvaluating = false,
+    this.isFlipped = false,
     super.key,
   });
 
@@ -205,36 +267,84 @@ class _Bars extends StatelessWidget {
   final double blackHeight;
   final double evaluation;
   final bool isEvaluating;
+  final bool isFlipped;
+
+  @override
+  State<_Bars> createState() => _BarsState();
+}
+
+class _BarsState extends State<_Bars> {
+  double? _lastValidEvaluation;
 
   @override
   Widget build(BuildContext context) {
+    // SMART ANIMATION: Same logic as main evaluation bar
+    bool shouldAnimate = true;
+    double whiteHeightForDisplay = widget.whiteHeight;
+    double blackHeightForDisplay = widget.blackHeight;
+
+    if (!widget.isEvaluating && widget.evaluation != 0.0) {
+      // Calculation complete - check if evaluation changed significantly
+      final newEval = widget.evaluation;
+      final oldEval = _lastValidEvaluation;
+
+      if (oldEval != null && (newEval - oldEval).abs() < 0.1) {
+        // Evaluation barely changed, don't animate
+        shouldAnimate = false;
+      } else {
+        // Evaluation changed significantly, update cache and animate
+        _lastValidEvaluation = newEval;
+        shouldAnimate = true;
+      }
+    } else if (widget.isEvaluating && _lastValidEvaluation != null) {
+      // Currently calculating - FREEZE bar at last position, use cached heights
+      shouldAnimate = false;
+
+      // Calculate heights from cached evaluation to freeze the bar
+      final cachedNormalized = (_lastValidEvaluation!.clamp(-5.0, 5.0) + 5.0) / 10.0;
+      final cachedWhiteRatio = cachedNormalized;
+      final cachedBlackRatio = 1.0 - cachedWhiteRatio;
+
+      whiteHeightForDisplay = cachedWhiteRatio * widget.height;
+      blackHeightForDisplay = cachedBlackRatio * widget.height;
+    }
+
+    // Color scheme (consistent regardless of move traversal):
+    // - White color (bottom when not flipped) = White advantage
+    // - Dark color (top when not flipped) = Black advantage
+    final topHeight = widget.isFlipped ? whiteHeightForDisplay : blackHeightForDisplay;
+    final bottomHeight = widget.isFlipped ? blackHeightForDisplay : whiteHeightForDisplay;
+
+    final topColor = widget.isFlipped ? kWhiteColor : kPopUpColor;
+    final bottomColor = widget.isFlipped ? kPopUpColor : kWhiteColor;
+
     return SizedBox(
-      width: width,
-      height: height,
+      width: widget.width,
+      height: widget.height,
       child: Stack(
         alignment: Alignment.center,
         children: [
           Align(
             alignment: Alignment.topCenter,
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
+              duration: shouldAnimate ? const Duration(milliseconds: 200) : Duration.zero,
               curve: Curves.easeInOut,
-              width: width,
-              height: blackHeight,
-              color: kPopUpColor,
+              width: widget.width,
+              height: topHeight,
+              color: topColor,
             ),
           ),
           Align(
             alignment: Alignment.bottomCenter,
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
+              duration: shouldAnimate ? const Duration(milliseconds: 200) : Duration.zero,
               curve: Curves.easeInOut,
-              width: width,
-              height: whiteHeight,
-              color: kWhiteColor,
+              width: widget.width,
+              height: bottomHeight,
+              color: bottomColor,
             ),
           ),
-          Container(width: width, height: 2.h, color: kRedColor),
+          Container(width: widget.width, height: 2.h, color: kRedColor),
           // Add evaluation number display
           Align(
             alignment: Alignment.center,
@@ -245,11 +355,11 @@ class _Bars extends StatelessWidget {
                 borderRadius: BorderRadius.circular(2.br),
               ),
               child: Text(
-                isEvaluating
+                widget.isEvaluating
                     ? '...' // Show loading indicator when evaluating
-                    : evaluation.abs() >= 10.0
+                    : widget.evaluation.abs() >= 10.0
                         ? "M" // Just show "M" for mate since we don't have the mate count here
-                        : evaluation.abs().toStringAsFixed(1),
+                        : widget.evaluation.abs().toStringAsFixed(1),
                 textAlign: TextAlign.center,
                 maxLines: 1,
                 style: AppTypography.textSmRegular.copyWith(
