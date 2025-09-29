@@ -90,6 +90,32 @@ class ChessGameNavigatorState {
 
     return move.turn;
   }
+
+  String? get currentBlackTime {
+    if (movePointer.isEmpty || currentLine == null) {
+      return game.timeControl;
+    }
+
+    final moveIndex = movePointer.last;
+
+    final lastBlackMove = currentLine!.lastWhereIndexedOrNull(
+        (index, move) => index <= moveIndex && move.turn == ChessColor.white);
+
+    return lastBlackMove?.clockTime;
+  }
+
+  String? get currentWhiteTime {
+    if (movePointer.isEmpty) {
+      return game.timeControl;
+    }
+
+    final moveIndex = movePointer.last;
+
+    final lastWhiteMove = currentLine!.lastWhereIndexedOrNull(
+        (index, move) => index <= moveIndex && move.turn == ChessColor.black);
+
+    return lastWhiteMove?.clockTime;
+  }
 }
 
 class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {

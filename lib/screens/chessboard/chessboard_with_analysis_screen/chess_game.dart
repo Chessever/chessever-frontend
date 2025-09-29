@@ -2,6 +2,8 @@ import 'package:dartchess/dartchess.dart';
 
 typedef Number = int;
 
+final RegExp kTimeRegex = RegExp(r'\[%clk (\d+:\d+:\d+)\]');
+
 class ChessGame {
   final String gameId;
   final String startingFen;
@@ -24,6 +26,10 @@ class ChessGame {
           .map((move) => ChessMove.fromJson(move as Map<String, dynamic>))
           .toList(),
     );
+  }
+
+  String? get timeControl {
+    return metadata['TimeControl'];
   }
 
   Map<String, dynamic> toJson() => {
@@ -65,6 +71,19 @@ class ChessGame {
 
       currentPosition = currentPosition.play(currentMove);
 
+      String? clockTime;
+
+      if (mainlineNode.comments != null) {
+        for (String comment in mainlineNode.comments!) {
+          final timeMatch = kTimeRegex.firstMatch(comment);
+          if (timeMatch != null) {
+            // Found time, capture the HH:MM:SS group
+            clockTime = timeMatch.group(1);
+            break;
+          }
+        }
+      }
+
       parsedMainline.add(
         ChessMove(
           num: currentPosition.fullmoves,
@@ -74,6 +93,7 @@ class ChessGame {
           turn: currentPosition.turn == Side.black
               ? ChessColor.black
               : ChessColor.white,
+          clockTime: clockTime,
         ),
       );
     }
@@ -95,6 +115,7 @@ class ChessMove {
   final String san;
   final String uci;
   final ChessColor turn;
+  final String? clockTime;
   final List<ChessLine>? variations;
 
   ChessMove({
@@ -103,6 +124,7 @@ class ChessMove {
     required this.san,
     required this.uci,
     required this.turn,
+    this.clockTime,
     this.variations,
   });
 
@@ -113,6 +135,7 @@ class ChessMove {
       san: json['s'] as String,
       uci: json['u'] as String,
       turn: ChessColor.fromJson(json['t'] as String),
+      clockTime: json['ct'],
       variations: json['v'] == null
           ? null
           : (json['v'] as List)
@@ -130,6 +153,7 @@ class ChessMove {
         's': san,
         'u': uci,
         't': turn.toJson(),
+        'ct': clockTime,
         if (variations != null)
           'v': variations!
               .map((variation) => variation
@@ -146,6 +170,7 @@ class ChessMove {
     final String? san,
     final String? uci,
     final ChessColor? turn,
+    final String? clockTime,
     final List<ChessLine>? variations,
   }) {
     return ChessMove(
@@ -154,6 +179,7 @@ class ChessMove {
       san: san ?? this.san,
       uci: uci ?? this.uci,
       turn: turn ?? this.turn,
+      clockTime: clockTime ?? this.clockTime,
       variations: variations ?? this.variations,
     );
   }
