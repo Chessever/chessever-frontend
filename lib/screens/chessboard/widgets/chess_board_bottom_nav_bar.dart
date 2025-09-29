@@ -15,8 +15,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
   final bool canMoveForward;
   final bool canMoveBackward;
   final bool isAnalysisMode;
-  final VoidCallback? onLongPressForwardButton;
-  final VoidCallback? onLongPressBackwardButton;
+
   const ChessBoardBottomNavBar({
     super.key,
     required this.gameIndex,
@@ -27,8 +26,6 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
     required this.canMoveBackward,
     required this.toggleAnalysisMode,
     required this.isAnalysisMode,
-    this.onLongPressForwardButton,
-    this.onLongPressBackwardButton
   });
 
   @override
@@ -62,14 +59,40 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
                 svgPath: SvgAsset.left_arrow,
                 width: width,
                 onPressed: canMoveBackward ? onLeftMove : null,
-                onLongPress: onLongPressBackwardButton,
+                onLongPressStart:
+                    canMoveBackward
+                        ? () =>
+                            ref
+                                .read(
+                                  chessBoardScreenProviderNew(gameIndex).notifier,
+                                )
+                                .startLongPressBackward()
+                        : null,
+                onLongPressEnd:
+                    () =>
+                        ref
+                            .read(chessBoardScreenProviderNew(gameIndex).notifier)
+                            .stopLongPress(),
               ),
           
               ChessSvgBottomNavbarWithLongPress(
                 svgPath: SvgAsset.right_arrow,
                 width: width,
                 onPressed: canMoveForward ? onRightMove : null,
-                onLongPress: onLongPressForwardButton,
+                onLongPressStart:
+                    canMoveForward
+                        ? () =>
+                            ref
+                                .read(
+                                  chessBoardScreenProviderNew(gameIndex).notifier,
+                                )
+                                .startLongPressForward()
+                        : null,
+                onLongPressEnd:
+                    () =>
+                        ref
+                            .read(chessBoardScreenProviderNew(gameIndex).notifier)
+                            .stopLongPress(),
               ),
           
               // Chat Button
