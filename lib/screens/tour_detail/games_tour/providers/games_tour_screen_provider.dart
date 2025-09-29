@@ -96,7 +96,44 @@ class GamesTourScreenProvider
       next,
     ) {
       final current = state.valueOrNull;
-      if (current?.isSearchMode == true) return; // keep search results intact
+
+      // Only recompute if the games list actually changed
+      final previousGames = previous?.valueOrNull ?? [];
+      final nextGames = next.valueOrNull ?? [];
+
+      if (previousGames.length == nextGames.length) {
+        // Check if any game data actually changed (more than just clock updates)
+        bool significantChange = false;
+        for (int i = 0; i < nextGames.length; i++) {
+          final prev = i < previousGames.length ? previousGames[i] : null;
+          final next = nextGames[i];
+
+          if (prev == null ||
+              prev.id != next.id ||
+              prev.fen != next.fen ||
+              prev.lastMove != next.lastMove ||
+              prev.status != next.status) {
+            significantChange = true;
+            break;
+          }
+        }
+
+        if (!significantChange) {
+          // Only clock/time updates, no need to recompute the entire screen
+          print('🔥 GamesTourScreenProvider: Only clock updates, skipping recomputation');
+          return;
+        }
+      }
+
+      print('🔥 GamesTourScreenProvider: Received games update, isSearchMode: ${current?.isSearchMode}');
+
+      // Skip recomputation during search mode to maintain search results
+      if (current?.isSearchMode == true) {
+        print('🔥 GamesTourScreenProvider: In search mode - skipping recomputation');
+        return;
+      }
+
+      print('🔥 GamesTourScreenProvider: Full recomputation...');
       _recompute();
     });
   }

@@ -59,14 +59,25 @@ class EvalRepository extends BaseRepository {
   }
 
   CloudEval evalsToCloudEval(String fen, Evals eval) {
+    final fenParts = fen.split(' ');
+    final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
+
+    final pvsList = (eval.pvs as List).map((e) => Pv(
+      moves: e['moves'] ?? '',
+      cp: e['cp'] ?? 0,
+    )).toList();
+
+    final cp = pvsList.isNotEmpty ? pvsList.first.cp : 0;
+
+    // With the fixed saving logic, all new evaluations should be in white's perspective
+    // But old data might still be wrong, so this serves as a fallback
+    print("🔧 SUPABASE: fen=$fen, side=$sideToMove, cp=$cp (assuming white's perspective from fixed saving logic)");
+
     return CloudEval(
-      fen: fen, // we already know the fen
+      fen: fen,
       knodes: eval.knodes,
       depth: eval.depth,
-      pvs:
-          (eval.pvs as List)
-              .map((e) => Pv(moves: e['moves'], cp: e['cp']))
-              .toList(),
+      pvs: pvsList,
     );
   }
 
