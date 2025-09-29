@@ -59,33 +59,34 @@ class HomeScreen extends ConsumerWidget {
           },
 
           onLogoutPressed: () async {
-            final shouldLogout = await showDialog<bool>(
+            await showDialog<void>(
               context: context,
               builder:
-                  (context) => AlertDialog(
+                  (dialogContext) => AlertDialog(
                     title: const Text('Logout'),
                     content: const Text('Are you sure you want to log out?'),
                     actions: [
                       TextButton(
-                        onPressed: () => Navigator.of(context).pop(false),
+                        onPressed: () => Navigator.of(context).pop(),
                         child: const Text('Cancel'),
                       ),
                       TextButton(
-                        onPressed: () => Navigator.of(context).pop(true),
+                        onPressed: () async {
+                          Navigator.of(dialogContext).pop();
+                          final sessionManager = ref.read(
+                            sessionManagerProvider,
+                          );
+                          await sessionManager.clearSession();
+
+                          Navigator.of(
+                            context,
+                          ).pushNamedAndRemoveUntil('/', (route) => false);
+                        },
                         child: const Text('Logout'),
                       ),
                     ],
                   ),
             );
-
-            if (shouldLogout == true) {
-              final sessionManager = ref.read(sessionManagerProvider);
-              await sessionManager.clearSession();
-
-              Navigator.of(
-                context,
-              ).pushNamedAndRemoveUntil('/', (route) => false);
-            }
           },
         ),
       ),
