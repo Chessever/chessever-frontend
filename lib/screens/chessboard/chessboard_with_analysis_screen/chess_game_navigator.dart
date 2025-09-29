@@ -104,10 +104,10 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
     }
 
     if (state.movePointer.isEmpty) {
-      state = ChessGameNavigatorState(
+      replaceState(ChessGameNavigatorState(
         game: state.game,
         movePointer: [0],
-      );
+      ));
 
       return;
     }
@@ -117,10 +117,10 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
 
       nextMovePointer.last++;
 
-      state = ChessGameNavigatorState(
+      replaceState(ChessGameNavigatorState(
         game: state.game,
         movePointer: nextMovePointer,
-      );
+      ));
     }
   }
 
@@ -145,17 +145,17 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
       }
     }
 
-    state = ChessGameNavigatorState(
+    replaceState(ChessGameNavigatorState(
       game: state.game,
       movePointer: previousPointer,
-    );
+    ));
   }
 
   void goToHead() {
-    state = ChessGameNavigatorState(
+    replaceState(ChessGameNavigatorState(
       game: state.game,
       movePointer: state.game.mainline.isNotEmpty ? [0] : [],
-    );
+    ));
   }
 
   void goToTail() {
@@ -172,17 +172,17 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
       newPointer.last = currentLine.length - 1;
     }
 
-    state = ChessGameNavigatorState(
+    replaceState(ChessGameNavigatorState(
       game: state.game,
       movePointer: newPointer,
-    );
+    ));
   }
 
   void goToMovePointerUnChecked(ChessMovePointer movePointer) {
-    state = ChessGameNavigatorState(
+    replaceState(ChessGameNavigatorState(
       game: state.game,
       movePointer: movePointer,
-    );
+    ));
   }
 
   void makeOrGoToMove(final String uci) {
@@ -208,10 +208,10 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
 
         newMovePointer.last = currentMoveIndex + 1;
 
-        state = ChessGameNavigatorState(
+        replaceState(ChessGameNavigatorState(
           game: state.game,
           movePointer: newMovePointer,
-        );
+        ));
 
         return;
       }
@@ -222,11 +222,11 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
       for (Number i = 0; i < currentMoveVariations.length; i++) {
         final variation = currentMoveVariations[i];
         if (variation.isNotEmpty && variation[0].uci == uci) {
-          state = ChessGameNavigatorState(
+          replaceState(ChessGameNavigatorState(
             game: state.game,
             movePointer:
                 state.movePointer.isEmpty ? [0] : [...state.movePointer, i, 0],
-          );
+          ));
           return;
         }
       }
@@ -252,10 +252,10 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
     if (currentMoveIndex == -1) {
       // if the mainline is empty just add the move and return
       if (state.game.mainline.isEmpty) {
-        state = ChessGameNavigatorState(
+        replaceState(ChessGameNavigatorState(
           game: state.game.copyWith(mainline: [newMove]),
           movePointer: [0],
-        );
+        ));
 
         return;
       } else {
@@ -265,7 +265,7 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
 
         updateVariations.add([newMove]);
 
-        state = ChessGameNavigatorState(
+        replaceState(ChessGameNavigatorState(
           game: state.game.copyWith(mainline: [
             firstMove.copyWith(
               variations: updateVariations,
@@ -273,11 +273,11 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
             ...state.game.mainline.slice(1),
           ]),
           movePointer: [
-            ...state.movePointer,
+            0,
             updateVariations.length - 1,
             0,
           ],
-        );
+        ));
       }
 
       return;
@@ -316,12 +316,55 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
       tPointer.add(0);
     }
 
-    state = ChessGameNavigatorState(
+    replaceState(ChessGameNavigatorState(
       game: state.game.copyWith(
         mainline: newMainline,
       ),
       movePointer: tPointer,
-    );
+    ));
+  }
+
+  void updateWithLatestGame(final ChessGame latestGame) {
+    final ChessLine newMainline = [];
+    final ChessMovePointer newMovePointer = List.of(state.movePointer);
+
+    for (Number i = 0; i < latestGame.mainline.length; i++) {
+      if (i < state.game.mainline.length) {
+        if (state.game.mainline[i].uci != latestGame.mainline[i].uci) {
+          final localMove = state.game.mainline[i];
+
+          final liveMove = latestGame.mainline[i];
+
+          final updatedMove = liveMove.copyWith(
+            variations: [
+              state.game.mainline.slice(i),
+              ...localMove.variations ?? [],
+            ],
+          );
+
+          newMainline.add(updatedMove);
+
+          newMainline.addAll(latestGame.mainline.slice(i + 1));
+
+          if (newMovePointer.isNotEmpty && newMovePointer.first >= i) {
+            newMovePointer.addAll([0, state.game.mainline.length - i - 1]);
+          }
+
+          break;
+        }
+
+        newMainline.add(state.game.mainline[i]);
+      } else {
+        newMainline.add(latestGame.mainline[i]);
+      }
+    }
+
+    replaceState(ChessGameNavigatorState(
+      game: latestGame.copyWith(
+        mainline: newMainline,
+      ),
+      movePointer: newMovePointer,
+    ));
   }
 
   void replaceState(final ChessGameNavigatorState newState) {

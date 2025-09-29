@@ -38,9 +38,11 @@ class ChessBoardWithAnalysisScreen extends ConsumerStatefulWidget {
 
 class _ChessBoardWithAnalysisScreenState
     extends ConsumerState<ChessBoardWithAnalysisScreen> {
-  late final ChessGame game;
+  late final ChessGame _game;
   late final ChessGameNavigatorStateManager _stateManager;
-  final StreamController<String?> gamePgnStreamController = StreamController();
+  final StreamController<String?> _gamePgnStreamController = StreamController();
+
+  late final ProviderSubscription _fenProviderSub;
 
   // state
   bool _isEvaluating = false;
@@ -50,64 +52,68 @@ class _ChessBoardWithAnalysisScreenState
   void initState() {
     super.initState();
 
-    game = ChessGame.fromPgn(
+    _game = ChessGame.fromPgn(
       widget.gameModel.gameId,
       widget.gameModel.pgn ?? '',
     );
 
-    final localStorage = ref.read(sharedPreferencesRepository);
-    final gameNavigator = ref.read(chessGameNavigatorProvider(game).notifier);
+    // final localStorage = ref.read(sharedPreferencesRepository);
+    // final gameNavigator = ref.read(chessGameNavigatorProvider(game).notifier);
 
-    _stateManager = ChessGameNavigatorStateManager(storage: localStorage);
+    // _stateManager = ChessGameNavigatorStateManager(storage: localStorage);
 
-    _stateManager.loadState(widget.gameModel.gameId).then((state) {
-      if (state != null) {
-        gameNavigator.replaceState(state);
-      }
-    });
+    // _stateManager.loadState(widget.gameModel.gameId).then((state) {
+    //   if (state != null) {
+    //     gameNavigator.replaceState(state);
+    //   }
+    // });
 
     final gameStreamRepo = ref.read(gameStreamRepositoryProvider);
 
-    gamePgnStreamController.addStream(
+    _gamePgnStreamController.addStream(
       gameStreamRepo.subscribeToPgn(widget.gameModel.gameId),
     );
 
-    gamePgnStreamController.stream.listen((gamePgn) {
+    _gamePgnStreamController.stream.listen((gamePgn) {
       if (gamePgn == null) {
         return;
       }
 
-      _handleGamePgnUpdate(gamePgn);
+      final gameNavigator =
+          ref.read(chessGameNavigatorProvider(_game).notifier);
+
+      final latestGame = ChessGame.fromPgn(widget.gameModel.gameId, gamePgn);
+
+      gameNavigator.updateWithLatestGame(latestGame);
     });
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.listen(
-        chessGameNavigatorProvider(game).select((state) => state.currentFen),
-        (previous, next) {
-          if (previous != next) {
-            _evaluateCurrentPosition();
-          }
-        },
-      );
-    });
+    _fenProviderSub = ref.listenManual(
+      chessGameNavigatorProvider(_game).select((state) => state.currentFen),
+      (previous, next) {
+        if (previous != next) {
+          _evaluateCurrentPosition();
+        }
+      },
+    );
   }
 
   @override
   void dispose() {
     super.dispose();
-    gamePgnStreamController.close();
+    _gamePgnStreamController.close();
+    _fenProviderSub.close();
   }
 
   @override
   Widget build(BuildContext context) {
-    final gameNavigatorState = ref.watch(chessGameNavigatorProvider(game));
+    final gameNavigatorState = ref.watch(chessGameNavigatorProvider(_game));
 
-    final gameNavigator = ref.read(chessGameNavigatorProvider(game).notifier);
+    final gameNavigator = ref.read(chessGameNavigatorProvider(_game).notifier);
 
     return PopScope(
       onPopInvokedWithResult: (willPop, _) async {
         if (willPop) {
-          await _stateManager.saveState(gameNavigatorState);
+          // await _stateManager.saveState(gameNavigatorState);
         }
       },
       child: Scaffold(
@@ -283,7 +289,7 @@ class _ChessBoardWithAnalysisScreenState
       return null;
     }
 
-    final gameNavigator = ref.read(chessGameNavigatorProvider(game));
+    final gameNavigator = ref.read(chessGameNavigatorProvider(_game));
 
     return getConsistentEvaluation(
       _evaluation!.pvs.first.cp / 100.0,
@@ -300,7 +306,7 @@ class _ChessBoardWithAnalysisScreenState
       _isEvaluating = true;
     });
 
-    final state = ref.read(chessGameNavigatorProvider(game));
+    final state = ref.read(chessGameNavigatorProvider(_game));
 
     final fen = state.currentFen;
 
@@ -353,55 +359,6 @@ class _ChessBoardWithAnalysisScreenState
     });
   }
 
-  _handleGamePgnUpdate(final String gamePgn) {
-    final gameNavigator = ref.read(chessGameNavigatorProvider(game).notifier);
-
-    final latestGame = ChessGame.fromPgn(widget.gameModel.gameId, gamePgn);
-
-    final ChessLine newMainline = [];
-    ChessMovePointer newMovePointer = [0];
-
-    for (Number i = 0; i < latestGame.mainline.length; i++) {
-      if (i < game.mainline.length) {
-        if (game.mainline[i].uci != latestGame.mainline[i].uci) {
-          final localMove = game.mainline[i];
-
-          final liveMove = latestGame.mainline[i];
-
-          final updatedMove = liveMove.copyWith(
-            variations: [
-              game.mainline.slice(i),
-              ...localMove.variations ?? [],
-            ],
-          );
-
-          newMainline.add(updatedMove);
-
-          newMainline.addAll(latestGame.mainline.slice(i + 1));
-
-          newMovePointer = [i, 0, game.mainline.length - i - 1];
-
-          break;
-        }
-
-        newMainline.add(game.mainline[i]);
-        newMovePointer = [i];
-      } else {
-        newMainline.add(latestGame.mainline[i]);
-        newMovePointer = [i];
-      }
-    }
-
-    final newState = ChessGameNavigatorState(
-      game: latestGame.copyWith(
-        mainline: newMainline,
-      ),
-      movePointer: newMovePointer,
-    );
-
-    gameNavigator.replaceState(newState);
-  }
-
   Widget _buildPvs() {
     if (_evaluation == null || _evaluation!.pvs.isEmpty) {
       return const SizedBox.shrink();
@@ -418,23 +375,30 @@ class _ChessBoardWithAnalysisScreenState
 
           return Padding(
             padding: EdgeInsets.only(bottom: 4.sp),
-            child: Text.rich(
-              TextSpan(
-                children: [
-                  TextSpan(
-                    text: '$evalText ',
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: kWhiteColor,
-                    ),
+            child: Row(
+              children: [
+                Container(
+                  margin: EdgeInsets.only(right: 8.sp),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(4.sp),
                   ),
-                  TextSpan(
-                    text: pv.moves,
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: kWhiteColor70,
-                    ),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 4.sp,
+                    vertical: 2.sp,
                   ),
-                ],
-              ),
+                  child: Text(
+                    evalText,
+                    style: TextStyle(color: Colors.black),
+                  ),
+                ),
+                Flexible(
+                  child: Text(
+                    pv.moves,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
           );
         }).toList(),

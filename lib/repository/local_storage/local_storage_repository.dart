@@ -1,5 +1,3 @@
-import 'dart:js_interop_unsafe';
-
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -87,7 +85,7 @@ class AppSharedPreferences {
   Future<void> delete(String key) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.delete(key);
+      await prefs.remove(key);
     } catch (error, _) {
       rethrow;
     }

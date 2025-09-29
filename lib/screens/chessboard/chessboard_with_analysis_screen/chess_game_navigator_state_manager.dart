@@ -4,8 +4,8 @@ import 'package:chessever2/screens/chessboard/chessboard_with_analysis_screen/ch
 import 'package:chessever2/screens/chessboard/chessboard_with_analysis_screen/chess_game_navigator.dart';
 
 class ChessGameNavigatorStateManager {
-  static const String _recentGamesKey = 'recent_game_states';
-  static const int _maxGames = 100;
+  static const String kRecentGamesKey = 'recent_game_states';
+  static const int kMaxGames = 100;
 
   final AppSharedPreferences storage;
 
@@ -20,25 +20,25 @@ class ChessGameNavigatorStateManager {
 
     recentGames.add(state.game.gameId);
 
-    if (recentGames.length > _maxGames) {
+    if (recentGames.length > kMaxGames) {
       final oldestGameId = recentGames.removeAt(0);
-      await storage.delete('game:$oldestGameId'); // Clean up old game state
+      await storage.delete('gs:$oldestGameId'); // Clean up old game state
     }
 
     await Future.wait([
       storage.setString(
-          'game:${state.game.gameId}',
+          'gs:${state.game.gameId}',
           jsonEncode({
             "ts": DateTime.now().toIso8601String(),
             "g": state.game.toJson(),
             "p": state.movePointer
           })),
-      storage.setStringList(_recentGamesKey, recentGames),
+      storage.setStringList(kRecentGamesKey, recentGames),
     ]);
   }
 
   Future<ChessGameNavigatorState?> loadState(String gameId) async {
-    final stateStr = await storage.getString('game:$gameId');
+    final stateStr = await storage.getString('gs:$gameId');
 
     if (stateStr == null) {
       return null;
@@ -61,15 +61,15 @@ class ChessGameNavigatorStateManager {
   }
 
   Future<List<String>> _getRecentGames() async {
-    return await storage.getStringList(_recentGamesKey);
+    return await storage.getStringList(kRecentGamesKey);
   }
 
   Future<void> _cleanupInvalidState(String gameId) async {
     final recentGames = await _getRecentGames();
     recentGames.remove(gameId);
     await Future.wait([
-      storage.delete('game:$gameId'),
-      storage.setStringList(_recentGamesKey, recentGames),
+      storage.delete('gs:$gameId'),
+      storage.setStringList(kRecentGamesKey, recentGames),
     ]);
   }
 }

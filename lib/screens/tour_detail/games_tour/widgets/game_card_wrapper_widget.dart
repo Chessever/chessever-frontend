@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/chessboard/chessboard_with_analysis_screen/chess_board_with_analysis_screen.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -54,9 +55,8 @@ class GameCardWrapperWidget extends ConsumerWidget {
     final returnedIndex = await Navigator.push<int>(
       context,
       MaterialPageRoute(
-        builder: (_) => ChessBoardScreenNew(
-          games: orderedGames,
-          currentIndex: gameIndex,
+        builder: (_) => ChessBoardWithAnalysisScreen(
+          gameModel: orderedGames[gameIndex],
         ),
       ),
     );
