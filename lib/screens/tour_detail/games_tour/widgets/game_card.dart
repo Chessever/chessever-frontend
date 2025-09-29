@@ -389,6 +389,11 @@ class _TimerWidget extends StatelessWidget {
             ? gamesTourModel.whiteClockSeconds
             : gamesTourModel.blackClockSeconds;
 
+    // Debug: Log clock values to verify updates
+    print('🔥 GameCard Timer: Game ${gamesTourModel.gameId} ${isWhitePlayer ? 'White' : 'Black'} - '
+          'clockSeconds: $clockSeconds, lastMoveTime: ${gamesTourModel.lastMoveTime}, '
+          'isClockRunning: $isClockRunning');
+
     return AtomicCountdownText(
       clockSeconds:
           clockSeconds, // Primary source: time in seconds from last_clock fields

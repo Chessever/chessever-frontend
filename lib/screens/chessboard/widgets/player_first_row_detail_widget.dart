@@ -316,24 +316,28 @@ class _PlayerClock extends StatelessWidget {
 
     // Use atomic countdown text widget for optimized rebuilds
     // Get the clock values for this player
+    // BUSINESS LOGIC:
+    // - last_clock_white/black are snapshots when that player's clock STOPPED (when they made their move)
+    // - last_move_time is when the previous move was completed (previous player's clock stopped)
+    // - If it's this player's turn NOW, count down from their saved clock since last_move_time
+    // - If it's NOT this player's turn, show their static saved clock value
+
     final clockCentiseconds =
         isWhitePlayer
             ? gamesTourModel.whiteClockCentiseconds
             : gamesTourModel.blackClockCentiseconds;
 
-    final clockSeconds =
-        isWhitePlayer
-            ? gamesTourModel.whiteClockSeconds
-            : gamesTourModel.blackClockSeconds;
-
     return AtomicCountdownText(
-      moveTime: moveTime, // For chessboard screen with PGN parsing - this shows historical times for past moves
+      moveTime: moveTime, // Primary for past moves: PGN-parsed move times (more accurate for historical display)
       clockSeconds:
-          // Only use live clock data when at the latest move, otherwise rely on moveTime from PGN
-          (chessBoardState?.isAtEnd ?? true) ? clockSeconds : null,
+          // For live games at latest move: use database fields for accurate countdown math
+          // For past moves: null (rely on PGN moveTime)
+          (chessBoardState?.isAtEnd ?? true) && isClockRunning
+              ? (isWhitePlayer ? gamesTourModel.whiteClockSeconds : gamesTourModel.blackClockSeconds)
+              : null,
       clockCentiseconds:
           clockCentiseconds, // Fallback source: raw database clock
-      lastMoveTime: gamesTourModel.lastMoveTime,
+      lastMoveTime: gamesTourModel.lastMoveTime, // Critical for live countdown timing
       isActive: isClockRunning,
       style: timeStyle,
     );
