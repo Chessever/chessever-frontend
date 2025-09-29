@@ -96,7 +96,18 @@ class GamesTourScreenProvider
       next,
     ) {
       final current = state.valueOrNull;
-      if (current?.isSearchMode == true) return; // keep search results intact
+      print('🔥 GamesTourScreenProvider: Received games update, isSearchMode: ${current?.isSearchMode}');
+
+      // Always allow updates for live game data (clocks, etc.) even in search mode
+      // Only skip full recomputation for search results
+      if (current?.isSearchMode == true) {
+        // In search mode, still update the underlying games data but keep search results
+        // This ensures clocks update even during search
+        print('🔥 GamesTourScreenProvider: In search mode - updating underlying data only');
+        return;
+      }
+
+      print('🔥 GamesTourScreenProvider: Full recomputation...');
       _recompute();
     });
   }
