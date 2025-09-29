@@ -38,6 +38,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   @override
   void didPush() {
     Future.microtask(() {
+      print('🔥 TournamentDetail: didPush - enabling streaming');
       ref.read(shouldStreamProvider.notifier).state = true;
     });
     super.didPush();
@@ -46,6 +47,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   @override
   void didPop() {
     Future.microtask(() {
+      print('🔥 TournamentDetail: didPop - disabling streaming');
       ref.read(shouldStreamProvider.notifier).state = false;
     });
     super.didPop();
@@ -54,6 +56,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   @override
   void didPopNext() {
     Future.microtask(() {
+      print('🔥 TournamentDetail: didPopNext - enabling streaming');
       ref.read(shouldStreamProvider.notifier).state = true;
     });
     super.didPopNext();
@@ -62,7 +65,10 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   @override
   void didPushNext() {
     Future.microtask(() {
-      ref.read(shouldStreamProvider.notifier).state = false;
+      print('🔥 TournamentDetail: didPushNext - NOT disabling streaming (keeping it enabled)');
+      // Keep streaming enabled even when navigating to sub-screens
+      // This ensures clocks continue updating when viewing chessboard
+      // ref.read(shouldStreamProvider.notifier).state = false;
     });
     super.didPushNext();
   }
