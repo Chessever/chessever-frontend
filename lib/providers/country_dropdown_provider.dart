@@ -56,7 +56,8 @@ class SelectedCountryNotifier extends StateNotifier<AsyncValue<Country>> {
     }
   }
 
-  void clearSelection() {
+  Future<void> clearSelection() async {
+    await ref.read(countryManRepository).removeCountrySelection();
     state = AsyncValue.data(CountryService().getAll().first);
   }
 

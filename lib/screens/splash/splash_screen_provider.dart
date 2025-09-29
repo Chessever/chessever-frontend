@@ -37,10 +37,10 @@ class _SplashScreenProvider {
     final isLoggedIn = await sessionManager.isLoggedIn();
     print('Is user logged in: $isLoggedIn');
 
-    if (isLoggedIn  || kDebugMode) {
-      Navigator.pushReplacementNamed(context, '/home_screen');
+    if (isLoggedIn || kDebugMode) {
+      Navigator.pushNamedAndRemoveUntil(context, '/home_screen', (_) => false);
     } else {
-      Navigator.pushReplacementNamed(context, '/auth_screen');
+      Navigator.pushNamedAndRemoveUntil(context, '/auth_screen', (_) => false);
     }
   }
 }
