@@ -37,9 +37,9 @@ class _SplashScreenProvider {
     print('Is user logged in: $isLoggedIn');
 
     if (isLoggedIn) {
-      Navigator.pushReplacementNamed(context, '/home_screen');
+      Navigator.pushNamedAndRemoveUntil(context, '/home_screen', (_) => false);
     } else {
-      Navigator.pushReplacementNamed(context, '/auth_screen');
+      Navigator.pushNamedAndRemoveUntil(context, '/auth_screen', (_) => false);
     }
   }
 }

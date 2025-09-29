@@ -8,15 +8,19 @@ class _CountryManRepository {
 
   final Ref ref;
 
+  static String get countryName => 'selected_country_name';
+
   Future<void> saveCountryMan(String countryName) async {
     await ref
         .read(sharedPreferencesRepository)
-        .setString('selected_country_name', countryName);
+        .setString(countryName, countryName);
+  }
+
+  Future<void> removeCountrySelection() async {
+    await ref.read(sharedPreferencesRepository).removeData(countryName);
   }
 
   Future<String?> getSavedCountryMan() async {
-    return ref
-        .read(sharedPreferencesRepository)
-        .getString('selected_country_name');
+    return ref.read(sharedPreferencesRepository).getString(countryName);
   }
 }
