@@ -32,24 +32,60 @@ class EvaluationBarWidget extends ConsumerStatefulWidget {
 
 class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
   double? _lastValidEvaluation;
+  static final Map<String, double> _globalEvaluationCache = {};
 
   /// Converts evaluation to white advantage ratio
   /// eval: -5 to +5 (negative = black advantage, positive = white advantage)
   /// returns: 0.0 to 1.0 (0.0 = 100% black advantage, 1.0 = 100% white advantage)
   double getWhiteRatio(double eval) => (eval.clamp(-5.0, 5.0) + 5.0) / 10.0;
 
+  String get _cacheKey => 'eval_${widget.index}';
+
+  @override
+  void initState() {
+    super.initState();
+    // Restore last valid evaluation from global cache if available
+    _lastValidEvaluation = _globalEvaluationCache[_cacheKey];
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Preserve last valid evaluation during loading to prevent bar jumping to center
+    // SMART EVALUATION HANDLING:
+    // 1. If we have a valid evaluation and not evaluating -> update cache and use it
+    // 2. If we're evaluating -> FREEZE the bar at last valid position (no animation)
+    // 3. Only animate when evaluation is complete and different from cached value
+
+    double evalValueForDisplay;
+    bool shouldAnimate = true;
+
     if (widget.evaluation != null && !widget.isEvaluating) {
-      _lastValidEvaluation = widget.evaluation;
+      // Calculation complete - check if we should animate to new position
+      final newEval = widget.evaluation!;
+      final oldEval = _lastValidEvaluation;
+
+      // Only animate if the evaluation actually changed significantly
+      if (oldEval != null && (newEval - oldEval).abs() < 0.1) {
+        // Evaluation barely changed, don't animate
+        evalValueForDisplay = oldEval;
+        shouldAnimate = false;
+      } else {
+        // Evaluation changed significantly, animate to new position
+        _lastValidEvaluation = newEval;
+        _globalEvaluationCache[_cacheKey] = newEval;
+        evalValueForDisplay = newEval;
+        shouldAnimate = true;
+      }
+    } else if (widget.isEvaluating && _lastValidEvaluation != null) {
+      // Currently calculating - FREEZE bar at last valid position
+      evalValueForDisplay = _lastValidEvaluation!;
+      shouldAnimate = false; // NO ANIMATION during calculation
+    } else {
+      // First time or no cached value - use what we have
+      evalValueForDisplay = widget.evaluation ?? _lastValidEvaluation ?? 0.0;
+      shouldAnimate = widget.evaluation != null;
     }
 
-    // Use last valid evaluation during loading, or 0.0 if never had an evaluation
-    final evalValue = widget.isEvaluating && _lastValidEvaluation != null
-        ? _lastValidEvaluation!
-        : (widget.evaluation ?? 0.0);
-    final whiteRatio = getWhiteRatio(evalValue);
+    final whiteRatio = getWhiteRatio(evalValueForDisplay);
     final blackRatio = 1.0 - whiteRatio;
 
     final whiteHeight = whiteRatio * widget.height;
@@ -72,7 +108,7 @@ class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
           Align(
             alignment: Alignment.topCenter,
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
+              duration: shouldAnimate ? const Duration(milliseconds: 300) : Duration.zero,
               curve: Curves.easeInOut,
               width: widget.width,
               height: topHeight,
@@ -83,7 +119,7 @@ class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
           Align(
             alignment: Alignment.bottomCenter,
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
+              duration: shouldAnimate ? const Duration(milliseconds: 300) : Duration.zero,
               curve: Curves.easeInOut,
               width: widget.width,
               height: bottomHeight,
@@ -213,7 +249,7 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
   }
 }
 
-class _Bars extends StatelessWidget {
+class _Bars extends StatefulWidget {
   const _Bars({
     required this.width,
     required this.height,
@@ -234,28 +270,66 @@ class _Bars extends StatelessWidget {
   final bool isFlipped;
 
   @override
+  State<_Bars> createState() => _BarsState();
+}
+
+class _BarsState extends State<_Bars> {
+  double? _lastValidEvaluation;
+
+  @override
   Widget build(BuildContext context) {
+    // SMART ANIMATION: Same logic as main evaluation bar
+    bool shouldAnimate = true;
+    double whiteHeightForDisplay = widget.whiteHeight;
+    double blackHeightForDisplay = widget.blackHeight;
+
+    if (!widget.isEvaluating && widget.evaluation != 0.0) {
+      // Calculation complete - check if evaluation changed significantly
+      final newEval = widget.evaluation;
+      final oldEval = _lastValidEvaluation;
+
+      if (oldEval != null && (newEval - oldEval).abs() < 0.1) {
+        // Evaluation barely changed, don't animate
+        shouldAnimate = false;
+      } else {
+        // Evaluation changed significantly, update cache and animate
+        _lastValidEvaluation = newEval;
+        shouldAnimate = true;
+      }
+    } else if (widget.isEvaluating && _lastValidEvaluation != null) {
+      // Currently calculating - FREEZE bar at last position, use cached heights
+      shouldAnimate = false;
+
+      // Calculate heights from cached evaluation to freeze the bar
+      final cachedNormalized = (_lastValidEvaluation!.clamp(-5.0, 5.0) + 5.0) / 10.0;
+      final cachedWhiteRatio = cachedNormalized;
+      final cachedBlackRatio = 1.0 - cachedWhiteRatio;
+
+      whiteHeightForDisplay = cachedWhiteRatio * widget.height;
+      blackHeightForDisplay = cachedBlackRatio * widget.height;
+    }
+
     // Color scheme (consistent regardless of move traversal):
     // - White color (bottom when not flipped) = White advantage
     // - Dark color (top when not flipped) = Black advantage
-    final topHeight = isFlipped ? whiteHeight : blackHeight;
-    final bottomHeight = isFlipped ? blackHeight : whiteHeight;
+    final topHeight = widget.isFlipped ? whiteHeightForDisplay : blackHeightForDisplay;
+    final bottomHeight = widget.isFlipped ? blackHeightForDisplay : whiteHeightForDisplay;
 
-    final topColor = isFlipped ? kWhiteColor : kPopUpColor;
-    final bottomColor = isFlipped ? kPopUpColor : kWhiteColor;
+    final topColor = widget.isFlipped ? kWhiteColor : kPopUpColor;
+    final bottomColor = widget.isFlipped ? kPopUpColor : kWhiteColor;
 
     return SizedBox(
-      width: width,
-      height: height,
+      width: widget.width,
+      height: widget.height,
       child: Stack(
         alignment: Alignment.center,
         children: [
           Align(
             alignment: Alignment.topCenter,
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
+              duration: shouldAnimate ? const Duration(milliseconds: 200) : Duration.zero,
               curve: Curves.easeInOut,
-              width: width,
+              width: widget.width,
               height: topHeight,
               color: topColor,
             ),
@@ -263,14 +337,14 @@ class _Bars extends StatelessWidget {
           Align(
             alignment: Alignment.bottomCenter,
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
+              duration: shouldAnimate ? const Duration(milliseconds: 200) : Duration.zero,
               curve: Curves.easeInOut,
-              width: width,
+              width: widget.width,
               height: bottomHeight,
               color: bottomColor,
             ),
           ),
-          Container(width: width, height: 2.h, color: kRedColor),
+          Container(width: widget.width, height: 2.h, color: kRedColor),
           // Add evaluation number display
           Align(
             alignment: Alignment.center,
@@ -281,11 +355,11 @@ class _Bars extends StatelessWidget {
                 borderRadius: BorderRadius.circular(2.br),
               ),
               child: Text(
-                isEvaluating
+                widget.isEvaluating
                     ? '...' // Show loading indicator when evaluating
-                    : evaluation.abs() >= 10.0
+                    : widget.evaluation.abs() >= 10.0
                         ? "M" // Just show "M" for mate since we don't have the mate count here
-                        : evaluation.abs().toStringAsFixed(1),
+                        : widget.evaluation.abs().toStringAsFixed(1),
                 textAlign: TextAlign.center,
                 maxLines: 1,
                 style: AppTypography.textSmRegular.copyWith(
