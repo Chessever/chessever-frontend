@@ -22,7 +22,7 @@ class LocalEvalCache {
     try {
       return CloudEval.fromJson(jsonDecode(raw));
     } catch (_) {
-      return null; // corrupted entry → pretend we don’t have it
+      return null; // corrupted entry → pretend we don't have it
     }
   }
 

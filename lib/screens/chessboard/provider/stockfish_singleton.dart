@@ -254,6 +254,13 @@ class StockfishSingleton {
   }
 
   void clearCache() {
+    print("🧹 CLEARING STOCKFISH EVALUATION CACHE");
+    _evaluationCache.clear();
+  }
+
+  /// Force clear cache for debugging perspective issues
+  void clearCacheForDebugging() {
+    print("🧹 FORCE CLEARING ALL EVALUATION CACHES FOR DEBUGGING");
     _evaluationCache.clear();
   }
 }

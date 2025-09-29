@@ -31,6 +31,12 @@ class PersistCloudEval {
       throw ArgumentError('CloudEval must have at least one PV');
     }
 
+    // Log what we're saving (CloudEval should already be in white's perspective from Lichess repo)
+    final fenParts = fen.split(' ');
+    final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
+    final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
+    print("💾 SAVING TO SUPABASE: fen=$fen, side=$sideToMove, cp=$cp (should already be white's perspective)");
+
     return await _evalRepo.handleApiCall(() async {
       // All DB operations happen on the same client → implicit transaction
       final supabase = _evalRepo.supabase;
