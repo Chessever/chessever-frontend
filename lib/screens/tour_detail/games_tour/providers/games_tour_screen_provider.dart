@@ -96,14 +96,40 @@ class GamesTourScreenProvider
       next,
     ) {
       final current = state.valueOrNull;
+
+      // Only recompute if the games list actually changed
+      final previousGames = previous?.valueOrNull ?? [];
+      final nextGames = next.valueOrNull ?? [];
+
+      if (previousGames.length == nextGames.length) {
+        // Check if any game data actually changed (more than just clock updates)
+        bool significantChange = false;
+        for (int i = 0; i < nextGames.length; i++) {
+          final prev = i < previousGames.length ? previousGames[i] : null;
+          final next = nextGames[i];
+
+          if (prev == null ||
+              prev.id != next.id ||
+              prev.fen != next.fen ||
+              prev.lastMove != next.lastMove ||
+              prev.status != next.status) {
+            significantChange = true;
+            break;
+          }
+        }
+
+        if (!significantChange) {
+          // Only clock/time updates, no need to recompute the entire screen
+          print('🔥 GamesTourScreenProvider: Only clock updates, skipping recomputation');
+          return;
+        }
+      }
+
       print('🔥 GamesTourScreenProvider: Received games update, isSearchMode: ${current?.isSearchMode}');
 
-      // Always allow updates for live game data (clocks, etc.) even in search mode
-      // Only skip full recomputation for search results
+      // Skip recomputation during search mode to maintain search results
       if (current?.isSearchMode == true) {
-        // In search mode, still update the underlying games data but keep search results
-        // This ensures clocks update even during search
-        print('🔥 GamesTourScreenProvider: In search mode - updating underlying data only');
+        print('🔥 GamesTourScreenProvider: In search mode - skipping recomputation');
         return;
       }
 
