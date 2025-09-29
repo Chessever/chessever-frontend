@@ -347,7 +347,9 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
           newMainline.addAll(latestGame.mainline.slice(i + 1));
 
           if (newMovePointer.isNotEmpty && newMovePointer.first >= i) {
-            newMovePointer.addAll([0, state.game.mainline.length - i - 1]);
+            newMovePointer.clear();
+
+            newMovePointer.addAll([i, 0, state.movePointer.first - i]);
           }
 
           break;
