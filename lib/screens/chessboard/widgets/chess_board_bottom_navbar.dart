@@ -44,7 +44,7 @@ class ChessSvgBottomNavbarWithLongPress extends StatelessWidget {
   final VoidCallback? onPressed;
   final VoidCallback? onLongPressStart;
   final VoidCallback? onLongPressEnd;
-
+final VoidCallback? onLongPress ;
   const ChessSvgBottomNavbarWithLongPress({
     super.key,
     required this.svgPath,
@@ -52,6 +52,7 @@ class ChessSvgBottomNavbarWithLongPress extends StatelessWidget {
     required this.onPressed,
     this.onLongPressStart,
     this.onLongPressEnd,
+    this.onLongPress,
   });
 
   @override
@@ -62,6 +63,7 @@ class ChessSvgBottomNavbarWithLongPress extends StatelessWidget {
           onLongPressStart != null ? (_) => onLongPressStart!() : null,
       onLongPressEnd: onLongPressEnd != null ? (_) => onLongPressEnd!() : null,
       onLongPressCancel: onLongPressEnd,
+      onLongPress: () => onLongPress != null ? onLongPress!() : null,
       child: Container(
         color: Colors.transparent,
         alignment: Alignment.center,

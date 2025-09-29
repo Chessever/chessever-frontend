@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:chessever2/providers/board_settings_provider.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
+import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
 import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/repository/supabase/evals/persist_cloud_eval.dart';
@@ -11,6 +13,7 @@ import 'package:chessever2/screens/chessboard/chessboard_with_analysis_screen/ch
 import 'package:chessever2/screens/chessboard/chessboard_with_analysis_screen/chess_moves_display.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
+import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -26,10 +29,11 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class ChessBoardWithAnalysisScreen extends ConsumerStatefulWidget {
   final GamesTourModel gameModel;
-
+final int currentGameIndex;
   const ChessBoardWithAnalysisScreen({
     super.key,
     required this.gameModel,
+    required this.currentGameIndex,
   });
 
   @override
@@ -141,12 +145,11 @@ class _ChessBoardWithAnalysisScreenState
         ),
         body: Column(
           children: [
-            _buildPlayerInfo(isWhite: false),
+            _buildPlayerInfo(isWhite: false, state: gameNavigatorState),
             SizedBox(height: 4.h),
             _buildBoard(gameNavigatorState, gameNavigator),
             SizedBox(height: 4.h),
-            _buildPlayerInfo(isWhite: true),
-            _buildControls(gameNavigator),
+            _buildPlayerInfo(isWhite: true, state: gameNavigatorState),
             _buildPvs(),
             Expanded(
               child: Container(
@@ -163,51 +166,38 @@ class _ChessBoardWithAnalysisScreenState
             ),
           ],
         ),
+         bottomNavigationBar: _BottomNavBar(
+        index: widget.currentGameIndex,
+        game: _initialGame,
+      ),
       ),
     );
   }
 
-  Widget _buildPlayerInfo({required bool isWhite}) {
-    return PlayerFirstRowDetailWidget(
-      isCurrentPlayer: false,
-      isWhitePlayer: isWhite,
-      playerView: PlayerView.boardView,
-      gamesTourModel: widget.gameModel,
-      chessBoardState: null,
+  Widget _buildPlayerInfo({
+    required bool isWhite,
+    required ChessGameNavigatorState state,
+  }) {
+    bool isFlipped =
+        ref.read(chessGameNavigatorProvider(_initialGame).notifier).isFlipped();
+    int currentMoveIndex =
+        ref
+            .read(chessGameNavigatorProvider(_initialGame).notifier)
+            .getCurrentMoveIndex();
+            List<String> movesTimes = ref
+        .read(chessGameNavigatorProvider(_initialGame).notifier)
+        .parseMoveTimesFromPgn(widget.gameModel.pgn ?? '');
+    return _PlayerWidget(
+      blackPlayer: isWhite,
+      currentMoveIndex: currentMoveIndex,
+      game: widget.gameModel,
+      isFlipped: isFlipped,
+      moveTimes: movesTimes,
+      state: state,
     );
   }
 
-  Widget _buildControls(ChessGameNavigator navigator) {
-    return Row(
-      children: [
-        IconButton(
-          icon: const Icon(Icons.fast_rewind),
-          onPressed: () {
-            navigator.goToHead();
-          },
-        ),
-        IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            navigator.goToPreviousMove();
-          },
-        ),
-        IconButton(
-          icon: const Icon(Icons.arrow_forward),
-          onPressed: () {
-            navigator.goToNextMove();
-          },
-        ),
-        IconButton(
-          icon: const Icon(Icons.fast_forward),
-          onPressed: () {
-            navigator.goToTail();
-          },
-        ),
-      ],
-    );
-  }
-
+ 
   Widget _buildBoard(
     ChessGameNavigatorState state,
     ChessGameNavigator navigator,
@@ -215,7 +205,11 @@ class _ChessBoardWithAnalysisScreenState
     final screenWidth = MediaQuery.of(context).size.width;
     final evalBarWidth = 20.w;
     final boardSize = screenWidth - evalBarWidth - 32.w;
+    final boardSettingsValue = ref.watch(boardSettingsProvider);
 
+    final boardTheme = ref
+        .read(boardSettingsRepository)
+        .getBoardTheme(boardSettingsValue.boardColor);
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 16.sp),
       child: Row(
@@ -252,8 +246,41 @@ class _ChessBoardWithAnalysisScreenState
               },
             ),
             size: boardSize,
-            orientation: Side.white,
+            orientation: state.isFlipped ? Side.black : Side.white,
             fen: state.currentFen,
+            settings: ChessboardSettings(
+          enableCoordinates: true,
+          animationDuration: const Duration(milliseconds: 200),
+          dragFeedbackScale: 1,
+          dragTargetKind: DragTargetKind.none,
+          pieceShiftMethod: PieceShiftMethod.either,
+          autoQueenPromotionOnPremove: false,
+          pieceOrientationBehavior: PieceOrientationBehavior.facingUser,
+          colorScheme: ChessboardColorScheme(
+            lightSquare: boardTheme.lightSquareColor,
+            darkSquare: boardTheme.darkSquareColor,
+            background: SolidColorChessboardBackground(
+              lightSquare: boardTheme.lightSquareColor,
+              darkSquare: boardTheme.darkSquareColor,
+            ),
+            whiteCoordBackground: SolidColorChessboardBackground(
+              lightSquare: boardTheme.lightSquareColor,
+              darkSquare: boardTheme.darkSquareColor,
+              coordinates: true,
+              orientation: Side.white,
+            ),
+            blackCoordBackground: SolidColorChessboardBackground(
+              lightSquare: boardTheme.lightSquareColor,
+              darkSquare: boardTheme.darkSquareColor,
+              coordinates: true,
+              orientation: Side.black,
+            ),
+            lastMove: HighlightDetails(solidColor: kPrimaryColor),
+            selected: const HighlightDetails(solidColor: kPrimaryColor),
+            validMoves: kPrimaryColor,
+            validPremoves: kPrimaryColor,
+          ),
+        ),
             // lastMove: lastMove,
           ),
         ],
@@ -417,7 +444,84 @@ class _ChessBoardWithAnalysisScreenState
     );
   }
 }
+class _PlayerWidget extends StatelessWidget {
+  final GamesTourModel game;
+  final bool isFlipped;
+  final bool blackPlayer;
+  final ChessGameNavigatorState state;
+  final int currentMoveIndex;
+  final List<String> moveTimes;
 
+  const _PlayerWidget({
+    required this.game,
+    required this.isFlipped,
+    required this.blackPlayer,
+    required this.state,
+    required this.currentMoveIndex,
+    required this.moveTimes,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Determine if this is the white player
+    final isWhitePlayer =
+        (blackPlayer && !isFlipped) || (!blackPlayer && isFlipped);
+
+    // Check whose turn it is currently
+    final currentTurn = state.currentSide;
+    final isCurrentPlayer =
+        (isWhitePlayer && currentTurn == Side.white) ||
+        (!isWhitePlayer && currentTurn == Side.black);
+
+    return PlayerFirstRowDetailWidgetNew(
+      isCurrentPlayer: isCurrentPlayer,
+      isWhitePlayer: isWhitePlayer,
+      playerView: PlayerView.boardView,
+      gamesTourModel: game,
+      currentMoveIndex: currentMoveIndex,
+      moveTimes: moveTimes,
+    );
+  }
+}
+
+class _BottomNavBar extends ConsumerWidget {
+  final int index;
+  final ChessGame game;
+
+  const _BottomNavBar({required this.index, required this.game});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ChessBoardBottomNavBar(
+      gameIndex: index,
+      onLongPressForwardButton: () {
+        ref.read(chessGameNavigatorProvider(game).notifier).goToTail();
+      },
+      onLongPressBackwardButton:
+          () => {
+           // print('Long press back'),
+            //ref.read(chessGameNavigatorProvider(game).notifier).goToHead(),
+          },
+      onFlip: () {
+        ref
+            .read(chessGameNavigatorProvider(game).notifier)
+            .toggleBoardFlipped();
+      },
+      onRightMove: () {
+        ref.read(chessGameNavigatorProvider(game).notifier).goToNextMove();
+      },
+      onLeftMove: () {
+        ref.read(chessGameNavigatorProvider(game).notifier).goToPreviousMove();
+      },
+      canMoveForward:
+          ref.read(chessGameNavigatorProvider(game).notifier).canMoveForward(),
+      canMoveBackward:
+          ref.read(chessGameNavigatorProvider(game).notifier).canMoveBackward(),
+      isAnalysisMode: false,
+      toggleAnalysisMode: () {},
+    );
+  }
+}
 class ChessLineDisplay extends StatelessWidget {
   final String currentFen;
   final ChessLine line;
