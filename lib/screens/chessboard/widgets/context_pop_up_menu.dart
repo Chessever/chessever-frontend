@@ -41,7 +41,7 @@ class ContextPopupMenu extends StatelessWidget {
                   vertical: 8.sp,
                 ),
                 child: MenuItemContent(
-                  text: isPinned ? "Unpin" : "Pin to Top",
+                  text: isPinned ? "Unpin" : "Pin",
                   iconAsset: SvgAsset.pin,
                 ),
               ),
