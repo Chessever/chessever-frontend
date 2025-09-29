@@ -49,12 +49,12 @@ class ChessGameNavigatorStateManager {
 
       return ChessGameNavigatorState(
         game: ChessGame.fromJson(json['g']),
-        movePointer: json['p'],
+        movePointer: (json['p'] as List).cast<int>(),
       );
     } catch (e) {
       print('Error parsing game state: $e');
 
-      await _cleanupInvalidState(gameId);
+      await _cleanupState(gameId);
 
       return null;
     }
@@ -64,7 +64,7 @@ class ChessGameNavigatorStateManager {
     return await storage.getStringList(kRecentGamesKey);
   }
 
-  Future<void> _cleanupInvalidState(String gameId) async {
+  Future<void> _cleanupState(String gameId) async {
     final recentGames = await _getRecentGames();
     recentGames.remove(gameId);
     await Future.wait([

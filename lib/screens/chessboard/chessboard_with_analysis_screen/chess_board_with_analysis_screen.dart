@@ -8,6 +8,7 @@ import 'package:chessever2/repository/supabase/game/game_stream_repository.dart'
 import 'package:chessever2/screens/chessboard/chessboard_with_analysis_screen/chess_game.dart';
 import 'package:chessever2/screens/chessboard/chessboard_with_analysis_screen/chess_game_navigator.dart';
 import 'package:chessever2/screens/chessboard/chessboard_with_analysis_screen/chess_game_navigator_state_manager.dart';
+import 'package:chessever2/screens/chessboard/chessboard_with_analysis_screen/chess_moves_display.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
@@ -38,10 +39,10 @@ class ChessBoardWithAnalysisScreen extends ConsumerStatefulWidget {
 
 class _ChessBoardWithAnalysisScreenState
     extends ConsumerState<ChessBoardWithAnalysisScreen> {
-  late final ChessGame _game;
+  late final ChessGame _initialGame;
   late final ChessGameNavigatorStateManager _stateManager;
   final StreamController<String?> _gamePgnStreamController = StreamController();
-
+  late final StreamSubscription<String?> _gamePgnStreamSub;
   late final ProviderSubscription _fenProviderSub;
 
   // state
@@ -52,35 +53,33 @@ class _ChessBoardWithAnalysisScreenState
   void initState() {
     super.initState();
 
-    _game = ChessGame.fromPgn(
+    _initialGame = ChessGame.fromPgn(
       widget.gameModel.gameId,
       widget.gameModel.pgn ?? '',
     );
 
-    // final localStorage = ref.read(sharedPreferencesRepository);
-    // final gameNavigator = ref.read(chessGameNavigatorProvider(game).notifier);
+    final localStorage = ref.read(sharedPreferencesRepository);
+    final gameNavigator = ref.read(
+      chessGameNavigatorProvider(_initialGame).notifier,
+    );
 
-    // _stateManager = ChessGameNavigatorStateManager(storage: localStorage);
+    _stateManager = ChessGameNavigatorStateManager(storage: localStorage);
 
-    // _stateManager.loadState(widget.gameModel.gameId).then((state) {
-    //   if (state != null) {
-    //     gameNavigator.replaceState(state);
-    //   }
-    // });
+    _stateManager.loadState(widget.gameModel.gameId).then((state) {
+      if (state != null) {
+        gameNavigator.replaceState(state);
+      }
+    });
 
     final gameStreamRepo = ref.read(gameStreamRepositoryProvider);
 
-    _gamePgnStreamController.addStream(
-      gameStreamRepo.subscribeToPgn(widget.gameModel.gameId),
-    );
+    _gamePgnStreamController
+        .addStream(gameStreamRepo.subscribeToPgn(widget.gameModel.gameId));
 
-    _gamePgnStreamController.stream.listen((gamePgn) {
+    _gamePgnStreamSub = _gamePgnStreamController.stream.listen((gamePgn) {
       if (gamePgn == null) {
         return;
       }
-
-      final gameNavigator =
-          ref.read(chessGameNavigatorProvider(_game).notifier);
 
       final latestGame = ChessGame.fromPgn(widget.gameModel.gameId, gamePgn);
 
@@ -88,11 +87,14 @@ class _ChessBoardWithAnalysisScreenState
     });
 
     _fenProviderSub = ref.listenManual(
-      chessGameNavigatorProvider(_game).select((state) => state.currentFen),
+      chessGameNavigatorProvider(_initialGame)
+          .select((state) => state.currentFen),
       (previous, next) {
-        if (previous != next) {
-          _evaluateCurrentPosition();
+        if (previous == next) {
+          return;
         }
+
+        _evaluateCurrentPosition();
       },
     );
   }
@@ -100,20 +102,25 @@ class _ChessBoardWithAnalysisScreenState
   @override
   void dispose() {
     super.dispose();
-    _gamePgnStreamController.close();
     _fenProviderSub.close();
+    _gamePgnStreamSub.cancel();
+    _gamePgnStreamController.close();
   }
 
   @override
   Widget build(BuildContext context) {
-    final gameNavigatorState = ref.watch(chessGameNavigatorProvider(_game));
+    final gameNavigatorState = ref.watch(
+      chessGameNavigatorProvider(_initialGame),
+    );
 
-    final gameNavigator = ref.read(chessGameNavigatorProvider(_game).notifier);
+    final gameNavigator = ref.read(
+      chessGameNavigatorProvider(_initialGame).notifier,
+    );
 
     return PopScope(
       onPopInvokedWithResult: (willPop, _) async {
         if (willPop) {
-          // await _stateManager.saveState(gameNavigatorState);
+          await _stateManager.saveState(gameNavigatorState);
         }
       },
       child: Scaffold(
@@ -289,7 +296,7 @@ class _ChessBoardWithAnalysisScreenState
       return null;
     }
 
-    final gameNavigator = ref.read(chessGameNavigatorProvider(_game));
+    final gameNavigator = ref.read(chessGameNavigatorProvider(_initialGame));
 
     return getConsistentEvaluation(
       _evaluation!.pvs.first.cp / 100.0,
@@ -306,7 +313,7 @@ class _ChessBoardWithAnalysisScreenState
       _isEvaluating = true;
     });
 
-    final state = ref.read(chessGameNavigatorProvider(_game));
+    final state = ref.read(chessGameNavigatorProvider(_initialGame));
 
     final fen = state.currentFen;
 
@@ -438,81 +445,6 @@ class ChessLineDisplay extends StatelessWidget {
           },
         );
       }).toList(),
-    );
-  }
-}
-
-class ChessMoveDisplay extends StatelessWidget {
-  final String currentFen;
-  final ChessMove move;
-  final ChessMovePointer movePointer;
-  final void Function(ChessMovePointer)? onClick;
-
-  const ChessMoveDisplay({
-    super.key,
-    required this.move,
-    required this.currentFen,
-    this.onClick,
-    this.movePointer = const [],
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (move.variations != null && move.variations!.isNotEmpty) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildMove(),
-          ...move.variations!.mapIndexed(
-            (index, line) => Padding(
-              padding: EdgeInsets.symmetric(horizontal: 4.sp),
-              child: ChessLineDisplay(
-                line: line,
-                currentFen: currentFen,
-                movePointer: [...movePointer, index],
-                onClick: onClick,
-              ),
-            ),
-          )
-        ],
-      );
-    }
-
-    return _buildMove();
-  }
-
-  _buildMove() {
-    final isWhiteMove = move.turn == ChessColor.black;
-    final isSelected = currentFen == move.fen;
-
-    return InkWell(
-      onTap: () {
-        if (onClick != null) {
-          onClick!(movePointer);
-        }
-      },
-      child: Container(
-        padding: EdgeInsets.symmetric(
-          horizontal: 6.sp,
-          vertical: 2.sp,
-        ),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? kWhiteColor70.withValues(alpha: .4)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(4.sp),
-          border: Border.all(
-            color: isSelected ? kWhiteColor : Colors.transparent,
-            width: 0.5,
-          ),
-        ),
-        child: Text(
-          isWhiteMove ? '${move.num}. ${move.san}' : move.san,
-          style: AppTypography.textXsMedium.copyWith(
-            color: kWhiteColor70,
-          ),
-        ),
-      ),
     );
   }
 }
