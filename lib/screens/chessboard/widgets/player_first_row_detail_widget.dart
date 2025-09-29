@@ -53,10 +53,25 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     final moveTime = useMemoized(() {
       String? calculatedMoveTime;
 
-      // Primary source: ChessBoardState with PGN-parsed move times
-      if (chessBoardState != null &&
-          chessBoardState!.moveTimes.isNotEmpty &&
-          chessBoardState!.currentMoveIndex >= 0) {
+      // For past moves: Show the clock time at the current position
+      if (chessBoardState != null && !chessBoardState!.isAtEnd) {
+        if (chessBoardState!.moveTimes.isNotEmpty) {
+          // Find this player's most recent move up to current position
+          for (int i = chessBoardState!.currentMoveIndex; i >= 0; i--) {
+            final wasMoveByThisPlayer =
+                (i % 2 == 0 && isWhitePlayer) || (i % 2 == 1 && !isWhitePlayer);
+
+            if (wasMoveByThisPlayer && i < chessBoardState!.moveTimes.length) {
+              calculatedMoveTime = chessBoardState!.moveTimes[i];
+              break;
+            }
+          }
+        }
+      }
+      // For latest move: use live data (handled by clockSeconds)
+      else if (chessBoardState != null &&
+               chessBoardState!.moveTimes.isNotEmpty &&
+               chessBoardState!.currentMoveIndex >= 0) {
         // Look for this player's most recent move
         for (int i = chessBoardState!.currentMoveIndex; i >= 0; i--) {
           final wasMoveByThisPlayer =
@@ -313,9 +328,10 @@ class _PlayerClock extends StatelessWidget {
             : gamesTourModel.blackClockSeconds;
 
     return AtomicCountdownText(
-      moveTime: moveTime, // For chessboard screen with PGN parsing
+      moveTime: moveTime, // For chessboard screen with PGN parsing - this shows historical times for past moves
       clockSeconds:
-          clockSeconds, // Primary source: time in seconds from last_clock fields
+          // Only use live clock data when at the latest move, otherwise rely on moveTime from PGN
+          (chessBoardState?.isAtEnd ?? true) ? clockSeconds : null,
       clockCentiseconds:
           clockCentiseconds, // Fallback source: raw database clock
       lastMoveTime: gamesTourModel.lastMoveTime,
