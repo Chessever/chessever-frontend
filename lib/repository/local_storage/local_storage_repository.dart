@@ -37,7 +37,6 @@ class _SharedPreferences {
     }
   }
 
-
   Future<bool?> getBool(String key) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -78,6 +77,15 @@ class _SharedPreferences {
     try {
       final prefs = await SharedPreferences.getInstance();
       return prefs.getStringList(key) ?? [];
+    } catch (error, _) {
+      rethrow;
+    }
+  }
+
+  Future<void> removeData(String key) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(key);
     } catch (error, _) {
       rethrow;
     }

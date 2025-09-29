@@ -1,13 +1,20 @@
 import 'dart:convert';
+import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/repository/authentication/auth_repository.dart';
+import 'package:chessever2/screens/authentication/auth_screen_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-final sessionManagerProvider = Provider<SessionManager>((ref) {
-  return SessionManager();
+final sessionManagerProvider = Provider<_SessionManager>((ref) {
+  return _SessionManager(ref);
 });
 
-class SessionManager {
+class _SessionManager {
+  _SessionManager(this.ref);
+
+  final Ref ref;
+
   static const _keyPersistSession = 'supabase_session';
   static const _keyPersistUser = 'supabase_user';
 
@@ -27,8 +34,9 @@ class SessionManager {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_keyPersistSession);
     await prefs.remove(_keyPersistUser);
-
-    await Supabase.instance.client.auth.signOut();
+    ref.read(authRepositoryProvider).signOut();
+    ref.invalidate(authScreenProvider);
+    await ref.read(countryDropdownProvider.notifier).clearSelection();
   }
 
   /// Check current login state
@@ -41,7 +49,13 @@ class SessionManager {
       final response = await Supabase.instance.client.auth.recoverSession(
         sessionStr,
       );
-      return response.user != null;
+
+      final user = response.user;
+      if (user != null && response.session != null) {
+        await saveSession(response.session!, user);
+      }
+
+      return user != null && response.session != null;
     } catch (_) {
       return false;
     }
