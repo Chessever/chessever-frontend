@@ -242,6 +242,16 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
       );
     }
 
+    // Use live streaming games data but maintain the original ordering from widget.games
+    // Map the original game IDs to get updated live data while preserving order
+    final liveGamesMap = Map.fromEntries(
+      gamesAsync.value!.gamesTourModels.map((g) => MapEntry(g.gameId, g))
+    );
+    final liveGames = widget.games.map((originalGame) {
+      // Get the updated game data from the live stream, or fallback to original if not found
+      return liveGamesMap[originalGame.gameId] ?? originalGame;
+    }).toList();
+
     return WillPopScope(
       onWillPop: () async {
         Navigator.of(context).pop(_lastViewedIndex);
@@ -272,7 +282,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
                     : const PageScrollPhysics(),
             controller: _pageController,
             onPageChanged: _onPageChanged,
-            itemCount: widget.games.length,
+            itemCount: liveGames.length,
             itemBuilder: (context, index) {
               // Build current page and adjacent pages
               if (index == _currentPageIndex - 1 ||
@@ -293,9 +303,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
                             });
                           }
                           return _GamePage(
-                            game: widget.games[index],
+                            game: liveGames[index],
                             state: chessBoardState,
-                            games: widget.games,
+                            games: liveGames,
                             currentGameIndex: index,
                             onGameChanged: _navigateToGame,
                             lastViewedIndex: _lastViewedIndex,
@@ -304,7 +314,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
                         error: (e, _) => ErrorWidget(e),
                         loading:
                             () => _LoadingScreen(
-                              games: widget.games,
+                              games: liveGames,
                               currentGameIndex: index,
                               onGameChanged: _navigateToGame,
                               lastViewedIndex: _lastViewedIndex,
@@ -313,7 +323,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
                 } catch (e) {
                   // Fallback for when provider isn't ready
                   return _LoadingScreen(
-                    games: widget.games,
+                    games: liveGames,
                     currentGameIndex: index,
                     onGameChanged: _navigateToGame,
                     lastViewedIndex: _lastViewedIndex,
