@@ -17,7 +17,7 @@
     }
 
     android {
-        namespace = "com.Chessever.app"
+        namespace = "com.chessEver.app"
         compileSdk = 36
         ndkVersion = "27.0.12077973"
 
@@ -59,8 +59,8 @@
             // For more information, see: https://flutter.dev/to/review-gradle-config.
             minSdk = flutter.minSdkVersion
             targetSdk = 36
-            versionCode = 55
-            versionName = "2.0.55"
+            versionCode = 60
+            versionName = "2.0.60"
         }
 
         buildTypes {
