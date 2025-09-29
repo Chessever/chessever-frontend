@@ -29,6 +29,8 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     final isChessBoardVisible = ref.watch(chessBoardVisibilityProvider);
     final gamesTourAsync = ref.watch(gamesTourScreenProvider);
 
+    // Removed excessive debug logging to reduce console noise
+
     return gamesTourAsync.when(
       data: (data) {
         final aboutTourModel =

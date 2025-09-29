@@ -19,7 +19,13 @@ final cascadeEvalProvider = FutureProvider.family<CloudEval, String>((
 
   // 1️⃣  Local cache
   final cached = await local.fetch(fen);
-  if (cached != null) return cached;
+  if (cached != null) {
+    final fenParts = fen.split(' ');
+    final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
+    final cp = cached.pvs.isNotEmpty ? cached.pvs.first.cp : 0;
+    print("🔵 EVAL SOURCE (cascadeEval): LOCAL CACHE - fen=$fen, side=$sideToMove, cp=$cp");
+    return cached;
+  }
 
   // 2️⃣  Supabase
   final supabaseEval = await ref
@@ -29,6 +35,10 @@ final cascadeEvalProvider = FutureProvider.family<CloudEval, String>((
     final cloud = await ref
         .read(evalsRepositoryProvider)
         .evalsToCloudEval(fen, supabaseEval);
+    final fenParts = fen.split(' ');
+    final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
+    final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
+    print("🟡 EVAL SOURCE (cascadeEval): SUPABASE - fen=$fen, side=$sideToMove, cp=$cp");
     await local.save(fen, cloud); // keep local in sync
     return cloud;
   }
@@ -37,6 +47,10 @@ final cascadeEvalProvider = FutureProvider.family<CloudEval, String>((
 
   try {
     final cloud = await lichess.getEval(fen);
+    final fenParts = fen.split(' ');
+    final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
+    final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
+    print("🟢 EVAL SOURCE (cascadeEval): LICHESS - fen=$fen, side=$sideToMove, cp=$cp (after conversion)");
     Future.wait<void>([persist.call(fen, cloud), local.save(fen, cloud)]);
     return cloud;
   } on NoEvalException catch (_) {
@@ -89,6 +103,10 @@ final cascadeEvalProviderForBoard = FutureProvider.family<CloudEval, String>((
     // 1️⃣  Local cache
     final cached = await local.fetch(fen);
     if (cached != null && _isValidEvaluation(cached)) {
+      final fenParts = fen.split(' ');
+      final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
+      final cp = cached.pvs.isNotEmpty ? cached.pvs.first.cp : 0;
+      print("🔵 EVAL SOURCE: LOCAL CACHE - fen=$fen, side=$sideToMove, cp=$cp");
       return cached;
     }
 
@@ -103,6 +121,10 @@ final cascadeEvalProviderForBoard = FutureProvider.family<CloudEval, String>((
 
       // Validate the evaluation - if it's suspicious, skip and try next source
       if (_isValidEvaluation(cloud)) {
+        final fenParts = fen.split(' ');
+        final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
+        final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
+        print("🟡 EVAL SOURCE: SUPABASE - fen=$fen, side=$sideToMove, cp=$cp");
         await local.save(fen, cloud); // keep local in sync
         return cloud;
       } else {
@@ -116,6 +138,10 @@ final cascadeEvalProviderForBoard = FutureProvider.family<CloudEval, String>((
     try {
       final cloud = await lichess.getEval(fen);
       if (_isValidEvaluation(cloud)) {
+        final fenParts = fen.split(' ');
+        final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
+        final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
+        print("🟢 EVAL SOURCE: LICHESS (converted) - fen=$fen, side=$sideToMove, cp=$cp");
         // Don't await this - let it run in background
         Future.wait<void>([
           persist.call(fen, cloud), // writes positions, evals, pvs

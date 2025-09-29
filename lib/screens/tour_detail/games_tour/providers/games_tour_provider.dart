@@ -64,11 +64,18 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
 
     // Only proceed if streaming is enabled
     final shouldStream = ref.read(shouldStreamProvider);
-    if (!shouldStream) return;
+    if (!shouldStream) {
+      print('🔥 GamesTourNotifier: Streaming is disabled, skipping setup');
+      return;
+    }
+
+    print('🔥 GamesTourNotifier: Setting up stream listeners for ${games.length} games');
 
     // Set up listeners for each ongoing game
     for (final game in games) {
+      print('🔥 GamesTourNotifier: Game ${game.id} status: ${game.status}');
       if (game.status == "*") {
+        print('🔥 GamesTourNotifier: Setting up streams for ongoing game ${game.id}');
         _listenToGameStreams(game.id);
       }
     }
@@ -106,6 +113,7 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       gameWhiteClockStreamProvider(gameId),
       (previous, next) {
         next.whenData((whiteClockData) {
+          print('🔥 GamesTourNotifier: White clock update for $gameId: $whiteClockData');
           _updateGameData(gameId, whiteClockSeconds: whiteClockData);
         });
       },
@@ -148,6 +156,36 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     final currentGames = state.valueOrNull;
     if (currentGames == null) return;
 
+    // Check if any actual changes occurred
+    bool hasChanges = false;
+    Games? targetGame;
+
+    for (final game in currentGames) {
+      if (game.id == gameId) {
+        targetGame = game;
+        break;
+      }
+    }
+
+    if (targetGame != null) {
+      // Only update if values actually changed
+      hasChanges = (fen != null && fen != targetGame.fen) ||
+                  (lastMove != null && lastMove != targetGame.lastMove) ||
+                  (whiteClockSeconds != null && whiteClockSeconds != targetGame.lastClockWhite) ||
+                  (blackClockSeconds != null && blackClockSeconds != targetGame.lastClockBlack) ||
+                  (lastMoveTime != null && lastMoveTime != targetGame.lastMoveTime);
+    }
+
+    if (!hasChanges) {
+      // No actual changes, skip update to prevent unnecessary rebuilds
+      return;
+    }
+
+    // Debug logging only for actual updates
+    print('🔥 GamesTourNotifier: Updating game $gameId - '
+          'whiteClockSeconds: $whiteClockSeconds, blackClockSeconds: $blackClockSeconds, '
+          'lastMoveTime: $lastMoveTime');
+
     final updatedGames =
         currentGames.map((game) {
           if (game.id == gameId) {
@@ -164,10 +202,12 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
 
     if (mounted) {
       state = AsyncValue.data(updatedGames);
+      print('🔥 GamesTourNotifier: State updated for game $gameId');
     }
   }
 
   void _cleanupStreamSubscriptions() {
+    print('🔥 GamesTourNotifier: Cleaning up ${_streamSubscriptions.length} stream subscriptions');
     for (final subscriptions in _streamSubscriptions.values) {
       for (final subscription in subscriptions) {
         subscription.close();

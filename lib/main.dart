@@ -25,6 +25,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_provider.dart';
@@ -55,6 +56,10 @@ Future<void> main() async {
   );
   await AudioPlayerService.instance.initializeAndLoadAllAssets();
   await _initRevenueCat();
+
+  // Clear evaluation cache to start fresh (remove all wrong evaluations)
+  await _clearEvaluationCache();
+
   // Initialize Supabase
   await Supabase.initialize(
     url: dotenv.env['SUPABASE_URL']!,
@@ -80,6 +85,37 @@ Future<void> _initRevenueCat() async {
     // dotenv.env['RevenueCatAPIKey'] ?? '',
     // appUserId: '',
   );
+}
+
+/// Clears evaluation cache when cache version is updated
+/// Update CACHE_VERSION number to trigger cache clearing
+Future<void> _clearEvaluationCache() async {
+  const int CACHE_VERSION = 3; // Update this number to clear cache
+  const String versionKey = 'eval_cache_clear_version';
+  const String evalPrefix = 'cloud_eval_';
+
+  final prefs = await SharedPreferences.getInstance();
+  final currentVersion = prefs.getInt(versionKey) ?? 0;
+
+  if (currentVersion < CACHE_VERSION) {
+    print('🧹 CLEARING EVALUATION CACHE: version $currentVersion -> $CACHE_VERSION');
+
+    // Find and remove all evaluation cache entries
+    final keys = prefs.getKeys().where((k) => k.startsWith(evalPrefix));
+    int removedCount = 0;
+
+    for (final key in keys) {
+      await prefs.remove(key);
+      removedCount++;
+    }
+
+    // Update version
+    await prefs.setInt(versionKey, CACHE_VERSION);
+
+    print('✅ Evaluation cache cleared: $removedCount entries removed, version updated to $CACHE_VERSION');
+  } else {
+    print('📁 Evaluation cache version $CACHE_VERSION is up to date');
+  }
 }
 
 class MyApp extends ConsumerStatefulWidget {
