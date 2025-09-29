@@ -29,8 +29,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     final isChessBoardVisible = ref.watch(chessBoardVisibilityProvider);
     final gamesTourAsync = ref.watch(gamesTourScreenProvider);
 
-    // Debug: Log when screen rebuilds with new data
-    print('🔥 GamesTourScreen: Building with ${gamesTourAsync.valueOrNull?.gamesTourModels.length ?? 0} games');
+    // Removed excessive debug logging to reduce console noise
 
     return gamesTourAsync.when(
       data: (data) {

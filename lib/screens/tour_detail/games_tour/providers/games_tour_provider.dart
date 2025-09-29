@@ -156,7 +156,32 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     final currentGames = state.valueOrNull;
     if (currentGames == null) return;
 
-    // Debug logging to see if updates are coming through
+    // Check if any actual changes occurred
+    bool hasChanges = false;
+    Games? targetGame;
+
+    for (final game in currentGames) {
+      if (game.id == gameId) {
+        targetGame = game;
+        break;
+      }
+    }
+
+    if (targetGame != null) {
+      // Only update if values actually changed
+      hasChanges = (fen != null && fen != targetGame.fen) ||
+                  (lastMove != null && lastMove != targetGame.lastMove) ||
+                  (whiteClockSeconds != null && whiteClockSeconds != targetGame.lastClockWhite) ||
+                  (blackClockSeconds != null && blackClockSeconds != targetGame.lastClockBlack) ||
+                  (lastMoveTime != null && lastMoveTime != targetGame.lastMoveTime);
+    }
+
+    if (!hasChanges) {
+      // No actual changes, skip update to prevent unnecessary rebuilds
+      return;
+    }
+
+    // Debug logging only for actual updates
     print('🔥 GamesTourNotifier: Updating game $gameId - '
           'whiteClockSeconds: $whiteClockSeconds, blackClockSeconds: $blackClockSeconds, '
           'lastMoveTime: $lastMoveTime');

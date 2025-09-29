@@ -6,6 +6,7 @@ import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
@@ -68,11 +69,26 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
     super.initState();
     _pageController = PageController(initialPage: widget.currentIndex);
     _currentPageIndex = widget.currentIndex;
+
+    // Note: We'll enable streaming in didChangeDependencies when ref is available
   }
 
   @override
   void didUpdateWidget(covariant ChessBoardScreenNew oldWidget) {
     super.didUpdateWidget(oldWidget);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    // Enable streaming when chess board screen becomes active
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(shouldStreamProvider.notifier).state = true;
+        print('🔥 ChessBoard: Enabled streaming for chess board view');
+      }
+    });
   }
 
   void _onPageChanged(int newIndex) {
@@ -119,6 +135,14 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
 
   @override
   void dispose() {
+    // Disable streaming when leaving chess board screen to prevent unnecessary updates
+    try {
+      ref.read(shouldStreamProvider.notifier).state = false;
+      print('🔥 ChessBoard: Disabled streaming on dispose');
+    } catch (e) {
+      // Provider might already be disposed
+    }
+
     _pageController.dispose();
     super.dispose();
   }
