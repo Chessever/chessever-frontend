@@ -6,7 +6,6 @@ import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
@@ -81,14 +80,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-
-    // Enable streaming when chess board screen becomes active
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        ref.read(shouldStreamProvider.notifier).state = true;
-        print('🔥 ChessBoard: Enabled streaming for chess board view');
-      }
-    });
+    // Removed shouldStreamProvider manipulation - it's global and affects all screens
   }
 
   void _onPageChanged(int newIndex) {
@@ -102,28 +94,22 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
       _currentPageIndex = newIndex;
     });
 
-    // Check if provider is available before trying to access it
-    final view = ref.read(chessboardViewFromProviderNew);
-    final gamesAsync =
-        view == ChessboardView.tour
-            ? ref.read(gamesTourScreenProvider)
-            : ref.read(countrymanGamesTourScreenProvider);
+    // OPTIMIZED: Don't read provider state during page changes - just manage the chess board providers
+    // This prevents unnecessary provider lookups that could trigger rebuilds
 
-    if (gamesAsync.hasValue && gamesAsync.value?.gamesTourModels != null) {
-      // Only pause if the previous provider should still be alive (within ±1 range)
-      if ((newIndex - previousIndex).abs() <= 1) {
-        try {
-          ref
-              .read(chessBoardScreenProviderNew(previousIndex).notifier)
-              .pauseGame();
-        } catch (e) {
-          // Provider was disposed, which is fine
-        }
+    // Only pause if the previous provider should still be alive (within ±1 range)
+    if ((newIndex - previousIndex).abs() <= 1) {
+      try {
+        ref
+            .read(chessBoardScreenProviderNew(previousIndex).notifier)
+            .pauseGame();
+      } catch (e) {
+        // Provider was disposed, which is fine
       }
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && gamesAsync.hasValue && gamesAsync.value?.gamesTourModels != null) {
+      if (mounted) {
         try {
           ref.read(chessBoardScreenProviderNew(newIndex).notifier).parseMoves();
         } catch (e) {
@@ -135,14 +121,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
 
   @override
   void dispose() {
-    // Disable streaming when leaving chess board screen to prevent unnecessary updates
-    try {
-      ref.read(shouldStreamProvider.notifier).state = false;
-      print('🔥 ChessBoard: Disabled streaming on dispose');
-    } catch (e) {
-      // Provider might already be disposed
-    }
-
     _pageController.dispose();
     super.dispose();
   }
@@ -150,21 +128,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   void _navigateToGame(int gameIndex) {
     if (gameIndex == _currentPageIndex) return;
 
-    // Check if provider is available before trying to access it
-    final view = ref.read(chessboardViewFromProviderNew);
-    final gamesAsync =
-        view == ChessboardView.tour
-            ? ref.read(gamesTourScreenProvider)
-            : ref.read(countrymanGamesTourScreenProvider);
-
-    if (gamesAsync.hasValue && gamesAsync.value?.gamesTourModels != null) {
-      try {
-        ref
-            .read(chessBoardScreenProviderNew(_currentPageIndex).notifier)
-            .pauseGame();
-      } catch (e) {
-        debugPrint('Error pausing game during navigation: $e');
-      }
+    // OPTIMIZED: Don't read provider during navigation - just pause the current game
+    try {
+      ref
+          .read(chessBoardScreenProviderNew(_currentPageIndex).notifier)
+          .pauseGame();
+    } catch (e) {
+      debugPrint('Error pausing game during navigation: $e');
     }
 
     _pageController.animateToPage(
@@ -182,9 +152,43 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
     ) {
       if (prev?.valueOrNull?.currentMoveIndex !=
           next.valueOrNull?.currentMoveIndex && next.valueOrNull != null) {
+
+        // CRITICAL FIX: Only play audio if this chess board screen is currently active
+        // This prevents audio from playing when other games in the tournament get moves
+        final route = ModalRoute.of(context);
+        if (route == null || !route.isCurrent) {
+          // Screen is not visible, don't play audio
+          return;
+        }
+
         final state = next.valueOrNull!;
         final prevIndex = prev?.valueOrNull?.currentMoveIndex ?? -1;
         final currentIndex = state.currentMoveIndex;
+
+        // ENHANCED FIX: Verify this update is for the currently viewed game
+        // Only play audio if the provider index matches the current page
+        final providerGameIndex = _currentPageIndex;
+        final viewGameId = widget.games[providerGameIndex].gameId;
+        if (state.game.gameId != viewGameId) {
+          // This update is for a different game, don't play audio
+          return;
+        }
+
+        // Additional check: Only play audio for significant move index changes
+        // This prevents audio from playing due to minor state updates
+        if ((currentIndex - prevIndex).abs() != 1 && currentIndex != -1) {
+          // Not a sequential move change, likely a background update
+          return;
+        }
+
+        // Final check: Make sure we're viewing the correct page in PageView
+        // Use a small tolerance for floating-point comparison
+        final currentPage = _pageController.page ?? _currentPageIndex.toDouble();
+        if ((currentPage - _currentPageIndex).abs() > 0.1) {
+          // PageView is not on the current game, don't play audio
+          return;
+        }
+
         final audioService = AudioPlayerService.instance;
 
         // Determine if we're going forward or backward
@@ -246,28 +250,34 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
     },onError: (e,st) {
       debugPrint("Error in chessBoardScreenProviderNew listener: $e");
     });
-    // Check if the required data is available before building the main content
+    // OPTIMIZED: Only watch for updates to games that are currently visible in the PageView
+    // This prevents rebuilds when other games in the tournament get updated
     final view = ref.watch(chessboardViewFromProviderNew);
-    final gamesAsync =
-        view == ChessboardView.tour
-            ? ref.watch(gamesTourScreenProvider)
-            : ref.watch(countrymanGamesTourScreenProvider);
+    final gamesAsync = view == ChessboardView.tour
+        ? ref.watch(gamesTourScreenProvider.select((value) {
+            // Only trigger rebuild if the games we care about have changed
+            if (!value.hasValue) return value;
+
+            final allGames = value.value!.gamesTourModels;
+            final gameIds = widget.games.map((g) => g.gameId).toSet();
+
+            // Return only the games relevant to this chess board screen
+            final relevantGames = allGames.where((g) => gameIds.contains(g.gameId)).toList();
+            return AsyncValue.data(value.value!.copyWith(gamesTourModels: relevantGames));
+          }))
+        : ref.watch(countrymanGamesTourScreenProvider);
 
     // Show loading screen if data isn't ready
     if (!gamesAsync.hasValue || gamesAsync.value?.gamesTourModels == null) {
       return _LoadingScreen(
-        games:
-            widget.games.isNotEmpty
-                ? widget.games
-                : [widget.games.first], // Fallback for empty games
+        games: widget.games.isNotEmpty ? widget.games : [widget.games.first],
         currentGameIndex: _currentPageIndex.clamp(0, widget.games.length - 1),
         onGameChanged: (index) {}, // Disabled during loading
         lastViewedIndex: _lastViewedIndex,
       );
     }
 
-    // Use live streaming games data but maintain the original ordering from widget.games
-    // Map the original game IDs to get updated live data while preserving order
+    // Map only the games relevant to this chess board screen
     final liveGamesMap = Map.fromEntries(
       gamesAsync.value!.gamesTourModels.map((g) => MapEntry(g.gameId, g))
     );
