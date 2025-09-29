@@ -11,7 +11,6 @@ import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/atomic_countdown_text.dart';
 import 'package:country_flags/country_flags.dart';
-import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_svg/svg.dart';
@@ -53,10 +52,25 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     final moveTime = useMemoized(() {
       String? calculatedMoveTime;
 
-      // Primary source: ChessBoardState with PGN-parsed move times
-      if (chessBoardState != null &&
-          chessBoardState!.moveTimes.isNotEmpty &&
-          chessBoardState!.currentMoveIndex >= 0) {
+      // For past moves: Show the clock time at the current position
+      if (chessBoardState != null && !chessBoardState!.isAtEnd) {
+        if (chessBoardState!.moveTimes.isNotEmpty) {
+          // Find this player's most recent move up to current position
+          for (int i = chessBoardState!.currentMoveIndex; i >= 0; i--) {
+            final wasMoveByThisPlayer =
+                (i % 2 == 0 && isWhitePlayer) || (i % 2 == 1 && !isWhitePlayer);
+
+            if (wasMoveByThisPlayer && i < chessBoardState!.moveTimes.length) {
+              calculatedMoveTime = chessBoardState!.moveTimes[i];
+              break;
+            }
+          }
+        }
+      }
+      // For latest move: use live data (handled by clockSeconds)
+      else if (chessBoardState != null &&
+               chessBoardState!.moveTimes.isNotEmpty &&
+               chessBoardState!.currentMoveIndex >= 0) {
         // Look for this player's most recent move
         for (int i = chessBoardState!.currentMoveIndex; i >= 0; i--) {
           final wasMoveByThisPlayer =
@@ -293,32 +307,37 @@ class _PlayerClock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Determine if this player's clock should be counting down
+    // Only countdown for live games when at the latest move and it's this player's turn
     final isClockRunning =
         gamesTourModel.gameStatus.isOngoing &&
         gamesTourModel.lastMoveTime != null &&
-        gamesTourModel.activePlayer != null &&
-        ((isWhitePlayer && gamesTourModel.activePlayer == Side.white) ||
-            (!isWhitePlayer && gamesTourModel.activePlayer == Side.black));
+        isCurrentPlayer &&  // Use the isCurrentPlayer prop from parent which uses state.position.turn
+        (chessBoardState?.isAtEnd ?? true); // Only countdown when at latest move
 
     // Use atomic countdown text widget for optimized rebuilds
     // Get the clock values for this player
+    // BUSINESS LOGIC:
+    // - last_clock_white/black are snapshots when that player's clock STOPPED (when they made their move)
+    // - last_move_time is when the previous move was completed (previous player's clock stopped)
+    // - If it's this player's turn NOW, count down from their saved clock since last_move_time
+    // - If it's NOT this player's turn, show their static saved clock value
+
     final clockCentiseconds =
         isWhitePlayer
             ? gamesTourModel.whiteClockCentiseconds
             : gamesTourModel.blackClockCentiseconds;
 
-    final clockSeconds =
-        isWhitePlayer
-            ? gamesTourModel.whiteClockSeconds
-            : gamesTourModel.blackClockSeconds;
-
     return AtomicCountdownText(
-      moveTime: moveTime, // For chessboard screen with PGN parsing
+      moveTime: moveTime, // Primary for past moves: PGN-parsed move times (more accurate for historical display)
       clockSeconds:
-          clockSeconds, // Primary source: time in seconds from last_clock fields
+          // For live games at latest move: use database fields for accurate countdown math
+          // For past moves: null (rely on PGN moveTime)
+          (chessBoardState?.isAtEnd ?? true) && isClockRunning
+              ? (isWhitePlayer ? gamesTourModel.whiteClockSeconds : gamesTourModel.blackClockSeconds)
+              : null,
       clockCentiseconds:
           clockCentiseconds, // Fallback source: raw database clock
-      lastMoveTime: gamesTourModel.lastMoveTime,
+      lastMoveTime: gamesTourModel.lastMoveTime, // Critical for live countdown timing
       isActive: isClockRunning,
       style: timeStyle,
     );

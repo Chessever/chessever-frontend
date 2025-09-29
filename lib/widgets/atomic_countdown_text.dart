@@ -57,7 +57,8 @@ class AtomicCountdownText extends ConsumerWidget {
         }
       }
 
-      // Calculate elapsed time since lastMoveTime (when current player's turn started)
+      // Calculate elapsed time since lastMoveTime (when the previous player finished their move)
+      // This is how long the current player has been thinking on their turn
       final elapsedSeconds = currentTime.difference(lastMoveTime!).inSeconds.abs();
 
       int totalSeconds;
