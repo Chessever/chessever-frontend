@@ -58,33 +58,7 @@ class _ChessBoardWithAnalysisScreenState
       widget.gameModel.pgn ?? '',
     );
 
-    final localStorage = ref.read(sharedPreferencesRepository);
-    final gameNavigator = ref.read(
-      chessGameNavigatorProvider(_initialGame).notifier,
-    );
-
-    _stateManager = ChessGameNavigatorStateManager(storage: localStorage);
-
-    _stateManager.loadState(widget.gameModel.gameId).then((state) {
-      if (state != null) {
-        gameNavigator.replaceState(state);
-      }
-    });
-
-    final gameStreamRepo = ref.read(gameStreamRepositoryProvider);
-
-    _gamePgnStreamController
-        .addStream(gameStreamRepo.subscribeToPgn(widget.gameModel.gameId));
-
-    _gamePgnStreamSub = _gamePgnStreamController.stream.listen((gamePgn) {
-      if (gamePgn == null) {
-        return;
-      }
-
-      final latestGame = ChessGame.fromPgn(widget.gameModel.gameId, gamePgn);
-
-      gameNavigator.updateWithLatestGame(latestGame);
-    });
+    _loadStateAndSetupLivePreview();
 
     _fenProviderSub = ref.listenManual(
       chessGameNavigatorProvider(_initialGame)
@@ -97,6 +71,36 @@ class _ChessBoardWithAnalysisScreenState
         _evaluateCurrentPosition();
       },
     );
+  }
+
+  _loadStateAndSetupLivePreview() async {
+    final gameStreamRepo = ref.read(gameStreamRepositoryProvider);
+    final localStorage = ref.read(sharedPreferencesRepository);
+    final gameNavigator = ref.read(
+      chessGameNavigatorProvider(_initialGame).notifier,
+    );
+
+    _stateManager = ChessGameNavigatorStateManager(storage: localStorage);
+
+    final loadedState = await _stateManager.loadState(widget.gameModel.gameId);
+
+    if (loadedState != null) {
+      gameNavigator.replaceState(loadedState);
+    }
+
+    await _gamePgnStreamController.addStream(
+      gameStreamRepo.subscribeToPgn(widget.gameModel.gameId),
+    );
+
+    _gamePgnStreamSub = _gamePgnStreamController.stream.listen((gamePgn) {
+      if (gamePgn == null) {
+        return;
+      }
+
+      final latestGame = ChessGame.fromPgn(widget.gameModel.gameId, gamePgn);
+
+      gameNavigator.updateWithLatestGame(latestGame);
+    });
   }
 
   @override
