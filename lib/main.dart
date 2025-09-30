@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:chessever2/l10n/app_localizations.dart';
 import 'package:chessever2/localization/locale_provider.dart';
 import 'package:chessever2/screens/authentication/auth_screen.dart';
@@ -25,6 +27,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'theme/app_theme.dart';
@@ -34,44 +37,52 @@ final RouteObserver<ModalRoute<void>> routeObserver =
     RouteObserver<ModalRoute<void>>();
 
 Future<void> main() async {
-  WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
-  FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
-  SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
+  await runZonedGuarded(
+    () async {
+      WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+      FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
+      ]);
 
-  // Load environment variables
-  await dotenv.load(fileName: ".env");
-  WidgetsFlutterBinding.ensureInitialized();
+      // Load environment variables
+      await dotenv.load(fileName: ".env");
+      WidgetsFlutterBinding.ensureInitialized();
 
-  await NotificationService.initialize();
+      await NotificationService.initialize();
 
-  WidgetsBinding.instance.addObserver(
-    LifecycleEventHandler(
-      onAppExit: () async {
-        StockfishSingleton().dispose();
-      },
-    ),
-  );
-  await AudioPlayerService.instance.initializeAndLoadAllAssets();
-  await _initRevenueCat();
+      WidgetsBinding.instance.addObserver(
+        LifecycleEventHandler(
+          onAppExit: () async {
+            StockfishSingleton().dispose();
+          },
+        ),
+      );
+      await AudioPlayerService.instance.initializeAndLoadAllAssets();
+      await _initRevenueCat();
 
-  // Clear evaluation cache to start fresh (remove all wrong evaluations)
-  await _clearEvaluationCache();
+      // Clear evaluation cache to start fresh (remove all wrong evaluations)
+      await _clearEvaluationCache();
 
-  // Initialize Supabase
-  await Supabase.initialize(
-    url: dotenv.env['SUPABASE_URL']!,
-    anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
-  );
+      // Initialize Supabase
+      await Supabase.initialize(
+        url: dotenv.env['SUPABASE_URL']!,
+        anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
+      );
 
-  runApp(
-    ProviderScope(child: MyApp()),
-    // DevicePreview(
-    //   enabled: kDebugMode, // Changed to use kDebugMode
-    //   builder: (context) => const ProviderScope(child: MyApp()),
-    // ),
+      await SentryFlutter.init(
+        (options) {
+          options.dsn = dotenv.env['SENTRY_FLUTTER'];
+          options.sendDefaultPii = true;
+        },
+        appRunner:
+            () => runApp(SentryWidget(child: ProviderScope(child: MyApp()))),
+      );
+    },
+    (error, stackTrace) {
+      Sentry.captureException(error, stackTrace: stackTrace);
+    },
   );
 }
 
@@ -98,7 +109,9 @@ Future<void> _clearEvaluationCache() async {
   final currentVersion = prefs.getInt(versionKey) ?? 0;
 
   if (currentVersion < CACHE_VERSION) {
-    print('🧹 CLEARING EVALUATION CACHE: version $currentVersion -> $CACHE_VERSION');
+    print(
+      '🧹 CLEARING EVALUATION CACHE: version $currentVersion -> $CACHE_VERSION',
+    );
 
     // Find and remove all evaluation cache entries
     final keys = prefs.getKeys().where((k) => k.startsWith(evalPrefix));
@@ -112,7 +125,9 @@ Future<void> _clearEvaluationCache() async {
     // Update version
     await prefs.setInt(versionKey, CACHE_VERSION);
 
-    print('✅ Evaluation cache cleared: $removedCount entries removed, version updated to $CACHE_VERSION');
+    print(
+      '✅ Evaluation cache cleared: $removedCount entries removed, version updated to $CACHE_VERSION',
+    );
   } else {
     print('📁 Evaluation cache version $CACHE_VERSION is up to date');
   }

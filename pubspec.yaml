@@ -72,6 +72,7 @@ dependencies:
   #authentication
   google_sign_in: ^6.3.0
   sign_in_with_apple: ^7.0.1
+  sentry_flutter: ^9.4.0
 
   #for hashing
   crypto: ^3.0.6
