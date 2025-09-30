@@ -78,7 +78,7 @@
     }
     dependencies {
         // Latest stable Kotlin version compatible with Flutter 2025
-        implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.0.21")
+        implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.2.0")
 
         // Core library desugaring dependency
         coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
