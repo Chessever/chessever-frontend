@@ -82,7 +82,7 @@ class AppSharedPreferences {
     }
   }
 
-  Future<void> delete(String key) async {
+  Future<void> removeData(String key) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(key);

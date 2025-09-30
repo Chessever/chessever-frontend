@@ -64,6 +64,38 @@ class ChessBoardScreenNotifierNew
     parseMoves();
   }
 
+  /// Get evaluation with consistent perspective for evaluation bar display
+  /// Option 1: Always from white's perspective (consistent colors)
+  /// Option 2: From current player's perspective (intuitive for current player)
+  /// BULLETPROOF evaluation perspective handler
+  /// This method GUARANTEES that ALL evaluations are in WHITE'S PERSPECTIVE
+  double _getConsistentEvaluation(double evaluation, String fen) {
+    final fenParts = fen.split(' ');
+    final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
+    final isBlackToMove = sideToMove == 'b';
+
+    // CRITICAL FIX: Stockfish returns evaluations from CURRENT PLAYER'S perspective
+    // - When White to move: positive = good for White (already correct for eval bar)
+    // - When Black to move: positive = good for Black (must flip to White's perspective)
+
+    double whitesPerspectiveEval;
+    if (isBlackToMove) {
+      // Black to move: Stockfish evaluation is from Black's perspective, flip it
+      whitesPerspectiveEval = -evaluation;
+      print(
+          "🔍 EVAL CORRECTED: FEN=$fen, side=BLACK, inputEval=$evaluation, outputEval=$whitesPerspectiveEval (FLIPPED to white's perspective)");
+    } else {
+      // White to move: Stockfish evaluation is already from White's perspective
+      whitesPerspectiveEval = evaluation;
+      print(
+          "🔍 EVAL UNCHANGED: FEN=$fen, side=WHITE, eval=$whitesPerspectiveEval (already white's perspective)");
+    }
+
+    print(
+        "🔍   evalBar expects: positive=WHITE advantage, negative=BLACK advantage");
+    return whitesPerspectiveEval;
+  }
+
   void _setupPgnStreamListener() {
     // Only listen to game updates stream if the game is ongoing
     if (game.gameStatus == GameStatus.ongoing) {
@@ -700,6 +732,21 @@ class ChessBoardScreenNotifierNew
           ? currentState.analysisState.position.fen
           : currentState.position?.fen;
       print("----------- _evaluatePosition for fen: $fen");
+
+      // CRITICAL DEBUGGING: Log detailed state information
+      if (currentState.isAnalysisMode) {
+        final analysisState = currentState.analysisState;
+        print(
+            "🔍 ANALYSIS MODE: moveIndex=${analysisState.currentMoveIndex}, historyLen=${analysisState.positionHistory.length}");
+        print("🔍   lastMove=${analysisState.lastMove}, position.fen=$fen");
+        print(
+            "🔍   moveSans=${analysisState.moveSans.length > 0 ? analysisState.moveSans.last : 'none'}");
+      } else {
+        print("🔍 NORMAL MODE: position.fen=$fen");
+        print(
+            "🔍   lastMove=${currentState.position != null ? 'present' : 'null'}");
+      }
+
       if (fen == null) return;
 
       CloudEval? cloudEval;
@@ -713,7 +760,10 @@ class ChessBoardScreenNotifierNew
         ),
       );
       try {
+        // Force invalidate to bypass any cached wrong evaluations
         ref.invalidate(cascadeEvalProviderForBoard(fen));
+        // Also try to clear local cache for this specific FEN (if accessible)
+        print("🔄 FORCING FRESH EVALUATION for $fen (invalidating cache)");
         cloudEval = await ref.read(cascadeEvalProviderForBoard(fen).future);
         if (cloudEval?.pvs.isNotEmpty ?? false) {
           evaluation = getConsistentEvaluation(
@@ -761,10 +811,15 @@ class ChessBoardScreenNotifierNew
           return;
         }
         if (result.pvs.isNotEmpty) {
-          evaluation = getConsistentEvaluation(
-            result.pvs.first.cp / 100.0,
+          final rawCp = result.pvs.first.cp;
+          evaluation = _getConsistentEvaluation(
+            rawCp / 100.0,
             fen,
           );
+          final fenParts = fen.split(' ');
+          final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
+          print(
+              "🔴 EVAL SOURCE: STOCKFISH FALLBACK - fen=$fen, side=$sideToMove, rawCp=$rawCp, finalEval=$evaluation");
         }
         cloudEval = result;
         try {
@@ -789,8 +844,48 @@ class ChessBoardScreenNotifierNew
       if ((currState.isAnalysisMode &&
               currState.analysisState.position.fen == fen) ||
           (!currState.isAnalysisMode && currentState.position?.fen == fen)) {
+        // COMPREHENSIVE DEBUGGING - Track evaluation source and perspective
+        final fenParts = fen.split(' ');
+        final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
+        final rawCp =
+            cloudEval?.pvs.isNotEmpty == true ? cloudEval!.pvs.first.cp : 0;
+        final evaluationSource = cloudEval != null ? "cloudEval" : "fallback";
+
+        print("🚨 SETTING EVAL: fen=$fen");
+        print("🚨   side=$sideToMove, rawCp=$rawCp, finalEval=$evaluation");
+        print("🚨   source=$evaluationSource, shapes=${shapes.length}");
         print(
-            "------- Setting evaluation: $evaluation for fen: $fen, shapes: ${shapes.length}");
+            "🚨   evalBar expects: positive=white advantage, negative=black advantage");
+
+        // CRITICAL DEBUGGING: Position vs Move confusion analysis
+        if (currentState.isAnalysisMode &&
+            currentState.analysisState.moveSans.isNotEmpty) {
+          final lastMoveIndex = currentState.analysisState.currentMoveIndex - 1;
+          final lastMoveSan = lastMoveIndex >= 0 &&
+                  lastMoveIndex < currentState.analysisState.moveSans.length
+              ? currentState.analysisState.moveSans[lastMoveIndex]
+              : 'none';
+          final moveNumber = (lastMoveIndex / 2).floor() + 1;
+          final isWhiteMove = lastMoveIndex % 2 == 0;
+
+          print(
+              "🎯 MOVE CONTEXT: lastMove=$lastMoveSan (move#$moveNumber, ${isWhiteMove ? 'WHITE' : 'BLACK'} just moved)");
+          print(
+              "🎯   After ${isWhiteMove ? 'WHITE' : 'BLACK'} move, position has side=$sideToMove to move");
+          print(
+              "🎯   Evaluation should represent advantage for ${isWhiteMove ? 'WHITE' : 'BLACK'} (who just moved)");
+
+          // Sanity check: after white moves, black should be to move
+          if (isWhiteMove && sideToMove != 'b') {
+            print(
+                "⚠️  WARNING: After WHITE move, expected BLACK to move but side=$sideToMove");
+          }
+          if (!isWhiteMove && sideToMove != 'w') {
+            print(
+                "⚠️  WARNING: After BLACK move, expected WHITE to move but side=$sideToMove");
+          }
+        }
+
         state = AsyncValue.data(
           currState.copyWith(
             evaluation: evaluation,

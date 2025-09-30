@@ -68,7 +68,7 @@ class ChessGameNavigatorStateManager {
     final recentGames = await _getRecentGames();
     recentGames.remove(gameId);
     await Future.wait([
-      storage.delete('gs:$gameId'),
+      storage.removeData('gs:$gameId'),
       storage.setStringList(kRecentGamesKey, recentGames),
     ]);
   }

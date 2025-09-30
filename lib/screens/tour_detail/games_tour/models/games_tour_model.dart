@@ -255,6 +255,9 @@ class GamesTourModel {
         other.blackTimeDisplay == blackTimeDisplay &&
         other.whiteClockCentiseconds == whiteClockCentiseconds &&
         other.blackClockCentiseconds == blackClockCentiseconds &&
+        other.whiteClockSeconds == whiteClockSeconds &&
+        other.blackClockSeconds == blackClockSeconds &&
+        other.lastMoveTime == lastMoveTime &&
         other.gameStatus == gameStatus &&
         other.lastMove == lastMove &&
         other.fen == fen &&
@@ -272,6 +275,9 @@ class GamesTourModel {
         blackTimeDisplay.hashCode ^
         whiteClockCentiseconds.hashCode ^
         blackClockCentiseconds.hashCode ^
+        (whiteClockSeconds?.hashCode ?? 0) ^
+        (blackClockSeconds?.hashCode ?? 0) ^
+        (lastMoveTime?.hashCode ?? 0) ^
         gameStatus.hashCode ^
         (lastMove?.hashCode ?? 0) ^
         (fen?.hashCode ?? 0) ^

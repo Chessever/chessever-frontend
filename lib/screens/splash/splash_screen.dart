@@ -19,7 +19,10 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   void initState() {
     ///Remove Native Splash Screen
     FlutterNativeSplash.remove();
-    ref.read(splashScreenProvider).runAuthenticationPreProcessor(context);
+    Future.microtask(
+      () =>
+          ref.read(splashScreenProvider).runAuthenticationPreProcessor(context),
+    );
     super.initState();
   }
 
