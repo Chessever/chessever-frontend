@@ -99,7 +99,11 @@ class ChessGameNavigatorState {
     final moveIndex = movePointer.last;
 
     final lastBlackMove = currentLine!.lastWhereIndexedOrNull(
-        (index, move) => index <= moveIndex && move.turn == ChessColor.white);
+      (index, move) =>
+          index <= moveIndex &&
+          move.turn == ChessColor.white &&
+          move.clockTime != null,
+    );
 
     return lastBlackMove?.clockTime;
   }
@@ -112,7 +116,11 @@ class ChessGameNavigatorState {
     final moveIndex = movePointer.last;
 
     final lastWhiteMove = currentLine!.lastWhereIndexedOrNull(
-        (index, move) => index <= moveIndex && move.turn == ChessColor.black);
+      (index, move) =>
+          index <= moveIndex &&
+          move.turn == ChessColor.black &&
+          move.clockTime != null,
+    );
 
     return lastWhiteMove?.clockTime;
   }

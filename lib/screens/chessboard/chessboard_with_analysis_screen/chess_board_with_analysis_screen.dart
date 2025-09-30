@@ -8,7 +8,7 @@ import 'package:chessever2/repository/supabase/game/game_stream_repository.dart'
 import 'package:chessever2/screens/chessboard/chessboard_with_analysis_screen/chess_game.dart';
 import 'package:chessever2/screens/chessboard/chessboard_with_analysis_screen/chess_game_navigator.dart';
 import 'package:chessever2/screens/chessboard/chessboard_with_analysis_screen/chess_game_navigator_state_manager.dart';
-import 'package:chessever2/screens/chessboard/chessboard_with_analysis_screen/chess_moves_display.dart';
+import 'package:chessever2/screens/chessboard/chessboard_with_analysis_screen/chess_line_display.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
@@ -19,7 +19,6 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/evals.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessground/chessground.dart';
-import 'package:collection/collection.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -139,29 +138,32 @@ class _ChessBoardWithAnalysisScreenState
             style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
           ),
         ),
-        body: Column(
-          children: [
-            _buildPlayerInfo(isWhite: false),
-            SizedBox(height: 4.h),
-            _buildBoard(gameNavigatorState, gameNavigator),
-            SizedBox(height: 4.h),
-            _buildPlayerInfo(isWhite: true),
-            _buildControls(gameNavigator),
-            _buildPvs(),
-            Expanded(
-              child: Container(
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: kDarkGreyColor.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(12.sp),
-                    topRight: Radius.circular(12.sp),
+        body: SafeArea(
+          bottom: true,
+          child: Column(
+            children: [
+              _buildPlayerInfo(isWhite: false),
+              SizedBox(height: 4.h),
+              _buildBoard(gameNavigatorState, gameNavigator),
+              SizedBox(height: 4.h),
+              _buildPlayerInfo(isWhite: true),
+              _buildControls(gameNavigator),
+              _buildPvs(),
+              Expanded(
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: kDarkGreyColor.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(12.sp),
+                      topRight: Radius.circular(12.sp),
+                    ),
                   ),
+                  child: _buildMoves(gameNavigatorState, gameNavigator),
                 ),
-                child: _buildMoves(gameNavigatorState, gameNavigator),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -414,41 +416,6 @@ class _ChessBoardWithAnalysisScreenState
           );
         }).toList(),
       ),
-    );
-  }
-}
-
-class ChessLineDisplay extends StatelessWidget {
-  final String currentFen;
-  final ChessLine line;
-  final ChessMovePointer movePointer;
-  final void Function(ChessMovePointer)? onClick;
-
-  const ChessLineDisplay({
-    super.key,
-    required this.line,
-    required this.currentFen,
-    this.movePointer = const [],
-    this.onClick,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 2.sp,
-      runSpacing: 2.sp,
-      children: line.mapIndexed((index, move) {
-        return ChessMoveDisplay(
-          currentFen: currentFen,
-          move: move,
-          movePointer: [...movePointer, index],
-          onClick: (movePointer) {
-            if (onClick != null) {
-              onClick!(movePointer);
-            }
-          },
-        );
-      }).toList(),
     );
   }
 }
