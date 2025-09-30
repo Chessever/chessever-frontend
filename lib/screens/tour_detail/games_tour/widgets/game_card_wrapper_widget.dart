@@ -6,7 +6,6 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 
 class GameCardWrapperWidget extends ConsumerWidget {
   final GamesTourModel game;
@@ -30,19 +29,19 @@ class GameCardWrapperWidget extends ConsumerWidget {
 
     return isChessBoardVisible
         ? ChessBoardFromFENNew(
-            key: ValueKey(keyValue),
-            gamesTourModel: game,
-            onChanged: () => _navigateToChessBoard(context, ref),
-            pinnedIds: gamesData.pinnedGamedIs,
-            onPinToggle: (_) => _handlePinToggle(ref),
-          )
+          key: ValueKey(keyValue),
+          gamesTourModel: game,
+          onChanged: () => _navigateToChessBoard(context, ref),
+          pinnedIds: gamesData.pinnedGamedIs,
+          onPinToggle: (_) => _handlePinToggle(ref),
+        )
         : GameCard(
-            key: ValueKey(keyValue),
-            gamesTourModel: game,
-            pinnedIds: gamesData.pinnedGamedIs,
-            onPinToggle: (_) => _handlePinToggle(ref),
-            onTap: () => _navigateToChessBoard(context, ref),
-          );
+          key: ValueKey(keyValue),
+          gamesTourModel: game,
+          pinnedIds: gamesData.pinnedGamedIs,
+          onPinToggle: (_) => _handlePinToggle(ref),
+          onTap: () => _navigateToChessBoard(context, ref),
+        );
   }
 
   void _navigateToChessBoard(BuildContext context, WidgetRef ref) async {

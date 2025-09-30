@@ -13,7 +13,6 @@ import 'package:chessever2/screens/group_event/providers/countryman_games_tour_s
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/utils/evals.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:easy_debounce/easy_debounce.dart';
@@ -82,17 +81,14 @@ class ChessBoardScreenNotifierNew
     if (isBlackToMove) {
       // Black to move: Stockfish evaluation is from Black's perspective, flip it
       whitesPerspectiveEval = -evaluation;
-      print(
-          "🔍 EVAL CORRECTED: FEN=$fen, side=BLACK, inputEval=$evaluation, outputEval=$whitesPerspectiveEval (FLIPPED to white's perspective)");
+      print("🔍 EVAL CORRECTED: FEN=$fen, side=BLACK, inputEval=$evaluation, outputEval=$whitesPerspectiveEval (FLIPPED to white's perspective)");
     } else {
       // White to move: Stockfish evaluation is already from White's perspective
       whitesPerspectiveEval = evaluation;
-      print(
-          "🔍 EVAL UNCHANGED: FEN=$fen, side=WHITE, eval=$whitesPerspectiveEval (already white's perspective)");
+      print("🔍 EVAL UNCHANGED: FEN=$fen, side=WHITE, eval=$whitesPerspectiveEval (already white's perspective)");
     }
 
-    print(
-        "🔍   evalBar expects: positive=WHITE advantage, negative=BLACK advantage");
+    print("🔍   evalBar expects: positive=WHITE advantage, negative=BLACK advantage");
     return whitesPerspectiveEval;
   }
 
@@ -113,8 +109,7 @@ class ChessBoardScreenNotifierNew
 
             // Check if position changed (FEN or last_move) for evaluation updates
             final newFen = gameData['fen'] as String? ?? game.fen;
-            final newLastMove =
-                gameData['last_move'] as String? ?? game.lastMove;
+            final newLastMove = gameData['last_move'] as String? ?? game.lastMove;
             if (newFen != game.fen || newLastMove != game.lastMove) {
               needsEvaluation = true;
             }
@@ -127,12 +122,9 @@ class ChessBoardScreenNotifierNew
               lastMoveTime: gameData['last_move_time'] != null
                   ? DateTime.tryParse(gameData['last_move_time'] as String)
                   : game.lastMoveTime,
-              whiteClockSeconds:
-                  (gameData['last_clock_white'] as num?)?.round(),
-              blackClockSeconds:
-                  (gameData['last_clock_black'] as num?)?.round(),
-              gameStatus:
-                  _parseGameStatus(gameData['status'] as String? ?? '*'),
+              whiteClockSeconds: (gameData['last_clock_white'] as num?)?.round(),
+              blackClockSeconds: (gameData['last_clock_black'] as num?)?.round(),
+              gameStatus: _parseGameStatus(gameData['status'] as String? ?? '*'),
             );
 
             // Re-parse moves if PGN changed
@@ -146,9 +138,7 @@ class ChessBoardScreenNotifierNew
               if (currentState != null) {
                 // Parse the last move for proper board highlighting
                 Move? parsedLastMove;
-                if (newLastMove != null &&
-                    newLastMove.isNotEmpty &&
-                    newLastMove.length >= 4) {
+                if (newLastMove != null && newLastMove.isNotEmpty && newLastMove.length >= 4) {
                   try {
                     // Convert UCI move to Move object
                     final from = Square.fromName(newLastMove.substring(0, 2));
@@ -163,15 +153,13 @@ class ChessBoardScreenNotifierNew
                   currentState.copyWith(
                     game: game, // Updated game with new clock/position data
                     fenData: newFen, // Update FEN data for board display
-                    lastMove:
-                        parsedLastMove, // Update last move for highlighting
+                    lastMove: parsedLastMove, // Update last move for highlighting
                   ),
                 );
 
                 // Trigger evaluation update if position changed
                 if (needsEvaluation) {
-                  print(
-                      "-----Position changed, triggering evaluation update for FEN: $newFen");
+                  print("-----Position changed, triggering evaluation update for FEN: $newFen");
                   _updateEvaluation();
                 }
               }
@@ -210,8 +198,9 @@ class ChessBoardScreenNotifierNew
 
     try {
       // If no PGN in the current game object, fetch from repository
-      final gameWithPgn =
-          await ref.read(gameRepositoryProvider).getGameById(game.gameId);
+      final gameWithPgn = await ref
+          .read(gameRepositoryProvider)
+          .getGameById(game.gameId);
 
       // Check if still mounted after async operation
       if (!mounted) return;
@@ -516,9 +505,10 @@ class ChessBoardScreenNotifierNew
   bool isPromotionPawnMove(NormalMove move) {
     var currentState = state.value;
     if (currentState == null) return false;
-    Position pos = currentState.isAnalysisMode
-        ? currentState.analysisState.position
-        : currentState.position!;
+    Position pos =
+        currentState.isAnalysisMode
+            ? currentState.analysisState.position
+            : currentState.position!;
     return move.promotion == null &&
         pos.board.roleAt(move.from) == Role.pawn &&
         ((move.to.rank == Rank.first && pos.turn == Side.black) ||
@@ -528,9 +518,10 @@ class ChessBoardScreenNotifierNew
   void onAnalysisMove(NormalMove move, {bool? isDrop, bool? isPremove}) {
     var currentState = state.value;
     if (currentState == null) return;
-    Position pos = currentState.isAnalysisMode
-        ? currentState.analysisState.position
-        : currentState.position!;
+    Position pos =
+        currentState.isAnalysisMode
+            ? currentState.analysisState.position
+            : currentState.position!;
     AnalysisBoardState analysisState = currentState.analysisState;
     if (isPromotionPawnMove(move)) {
       state = AsyncValue.data(
@@ -622,9 +613,10 @@ class ChessBoardScreenNotifierNew
           analysisState.currentMoveIndex + 1,
         );
       }
-      Position pos = currentState.isAnalysisMode
-          ? currentState.analysisState.position
-          : currentState.position!;
+      Position pos =
+          currentState.isAnalysisMode
+              ? currentState.analysisState.position
+              : currentState.position!;
       final newPosition = pos.playUnchecked(move);
       final sanMove = pos.makeSan(move);
       pos = newPosition;
@@ -728,23 +720,21 @@ class ChessBoardScreenNotifierNew
       final currentState = state.value;
       if (currentState == null || currentState.isLoadingMoves) return;
 
-      final fen = currentState.isAnalysisMode
-          ? currentState.analysisState.position.fen
-          : currentState.position?.fen;
+      final fen =
+          currentState.isAnalysisMode
+              ? currentState.analysisState.position.fen
+              : currentState.position?.fen;
       print("----------- _evaluatePosition for fen: $fen");
 
       // CRITICAL DEBUGGING: Log detailed state information
       if (currentState.isAnalysisMode) {
         final analysisState = currentState.analysisState;
-        print(
-            "🔍 ANALYSIS MODE: moveIndex=${analysisState.currentMoveIndex}, historyLen=${analysisState.positionHistory.length}");
+        print("🔍 ANALYSIS MODE: moveIndex=${analysisState.currentMoveIndex}, historyLen=${analysisState.positionHistory.length}");
         print("🔍   lastMove=${analysisState.lastMove}, position.fen=$fen");
-        print(
-            "🔍   moveSans=${analysisState.moveSans.length > 0 ? analysisState.moveSans.last : 'none'}");
+        print("🔍   moveSans=${analysisState.moveSans.length > 0 ? analysisState.moveSans.last : 'none'}");
       } else {
         print("🔍 NORMAL MODE: position.fen=$fen");
-        print(
-            "🔍   lastMove=${currentState.position != null ? 'present' : 'null'}");
+        print("🔍   lastMove=${currentState.position != null ? 'present' : 'null'}");
       }
 
       if (fen == null) return;
@@ -766,7 +756,7 @@ class ChessBoardScreenNotifierNew
         print("🔄 FORCING FRESH EVALUATION for $fen (invalidating cache)");
         cloudEval = await ref.read(cascadeEvalProviderForBoard(fen).future);
         if (cloudEval?.pvs.isNotEmpty ?? false) {
-          evaluation = getConsistentEvaluation(
+          evaluation = _getConsistentEvaluation(
             cloudEval!.pvs.first.cp / 100.0,
             fen,
           );
@@ -818,8 +808,7 @@ class ChessBoardScreenNotifierNew
           );
           final fenParts = fen.split(' ');
           final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
-          print(
-              "🔴 EVAL SOURCE: STOCKFISH FALLBACK - fen=$fen, side=$sideToMove, rawCp=$rawCp, finalEval=$evaluation");
+          print("🔴 EVAL SOURCE: STOCKFISH FALLBACK - fen=$fen, side=$sideToMove, rawCp=$rawCp, finalEval=$evaluation");
         }
         cloudEval = result;
         try {
@@ -837,52 +826,45 @@ class ChessBoardScreenNotifierNew
       if (_cancelEvaluation || state.value == null || !mounted) return;
       var currState = state.value;
       if (currState == null) return;
-      Position pos = currState.isAnalysisMode
-          ? currState.analysisState.position
-          : currState.position!;
+      Position pos =
+          currState.isAnalysisMode
+              ? currState.analysisState.position
+              : currState.position!;
       var shapes = getBestMoveShape(pos, cloudEval);
       if ((currState.isAnalysisMode &&
               currState.analysisState.position.fen == fen) ||
           (!currState.isAnalysisMode && currentState.position?.fen == fen)) {
+
         // COMPREHENSIVE DEBUGGING - Track evaluation source and perspective
         final fenParts = fen.split(' ');
         final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
-        final rawCp =
-            cloudEval?.pvs.isNotEmpty == true ? cloudEval!.pvs.first.cp : 0;
+        final rawCp = cloudEval?.pvs.isNotEmpty == true ? cloudEval!.pvs.first.cp : 0;
         final evaluationSource = cloudEval != null ? "cloudEval" : "fallback";
 
         print("🚨 SETTING EVAL: fen=$fen");
         print("🚨   side=$sideToMove, rawCp=$rawCp, finalEval=$evaluation");
         print("🚨   source=$evaluationSource, shapes=${shapes.length}");
-        print(
-            "🚨   evalBar expects: positive=white advantage, negative=black advantage");
+        print("🚨   evalBar expects: positive=white advantage, negative=black advantage");
 
         // CRITICAL DEBUGGING: Position vs Move confusion analysis
-        if (currentState.isAnalysisMode &&
-            currentState.analysisState.moveSans.isNotEmpty) {
+        if (currentState.isAnalysisMode && currentState.analysisState.moveSans.isNotEmpty) {
           final lastMoveIndex = currentState.analysisState.currentMoveIndex - 1;
-          final lastMoveSan = lastMoveIndex >= 0 &&
-                  lastMoveIndex < currentState.analysisState.moveSans.length
+          final lastMoveSan = lastMoveIndex >= 0 && lastMoveIndex < currentState.analysisState.moveSans.length
               ? currentState.analysisState.moveSans[lastMoveIndex]
               : 'none';
           final moveNumber = (lastMoveIndex / 2).floor() + 1;
           final isWhiteMove = lastMoveIndex % 2 == 0;
 
-          print(
-              "🎯 MOVE CONTEXT: lastMove=$lastMoveSan (move#$moveNumber, ${isWhiteMove ? 'WHITE' : 'BLACK'} just moved)");
-          print(
-              "🎯   After ${isWhiteMove ? 'WHITE' : 'BLACK'} move, position has side=$sideToMove to move");
-          print(
-              "🎯   Evaluation should represent advantage for ${isWhiteMove ? 'WHITE' : 'BLACK'} (who just moved)");
+          print("🎯 MOVE CONTEXT: lastMove=$lastMoveSan (move#$moveNumber, ${isWhiteMove ? 'WHITE' : 'BLACK'} just moved)");
+          print("🎯   After ${isWhiteMove ? 'WHITE' : 'BLACK'} move, position has side=$sideToMove to move");
+          print("🎯   Evaluation should represent advantage for ${isWhiteMove ? 'WHITE' : 'BLACK'} (who just moved)");
 
           // Sanity check: after white moves, black should be to move
           if (isWhiteMove && sideToMove != 'b') {
-            print(
-                "⚠️  WARNING: After WHITE move, expected BLACK to move but side=$sideToMove");
+            print("⚠️  WARNING: After WHITE move, expected BLACK to move but side=$sideToMove");
           }
           if (!isWhiteMove && sideToMove != 'w') {
-            print(
-                "⚠️  WARNING: After BLACK move, expected WHITE to move but side=$sideToMove");
+            print("⚠️  WARNING: After BLACK move, expected WHITE to move but side=$sideToMove");
           }
         }
 
@@ -891,11 +873,11 @@ class ChessBoardScreenNotifierNew
             evaluation: evaluation,
             isEvaluating: false,
             shapes: shapes,
-            mate:
-                cloudEval?.pvs.first.mate ?? 0, // Default to 0 if no mate value
+            mate: cloudEval?.pvs.first.mate ?? 0, // Default to 0 if no mate value
           ),
         );
-      } else {
+      }
+      else{
         print("------- Skipping setting evaluation for outdated fen: $fen");
       }
     } catch (e) {
@@ -908,9 +890,10 @@ class ChessBoardScreenNotifierNew
   ISet<Shape> getBestMoveShape(Position pos, CloudEval? cloudEval) {
     ISet<Shape> shapes = const ISet.empty();
     if (cloudEval?.pvs.isNotEmpty ?? false) {
-      String bestMove = cloudEval!.pvs[0].moves
-          .split(" ")[0]
-          .toLowerCase(); // Normalize to lowercase
+      String bestMove =
+          cloudEval!.pvs[0].moves
+              .split(" ")[0]
+              .toLowerCase(); // Normalize to lowercase
 
       if (bestMove.length < 4 || bestMove.length > 5) {
         print('Invalid best move UCI: $bestMove');
@@ -923,26 +906,28 @@ class ChessBoardScreenNotifierNew
           if (bestMove.length != 4 || bestMove[1] != '@') return shapes;
           String toStr = bestMove.substring(2, 4);
           Square to = Square.fromName(toStr);
-          shapes = {
-            Arrow(
-              color: const Color.fromARGB(255, 152, 179, 154),
-              orig: to, // Same square as destination
-              dest: to,
-            ),
-          }.toISet();
+          shapes =
+              {
+                Arrow(
+                  color: const Color.fromARGB(255, 152, 179, 154),
+                  orig: to, // Same square as destination
+                  dest: to,
+                ),
+              }.toISet();
         } else {
           // Normal move or promotion (e.g., "e2e4" or "e7e8q")
           String fromStr = bestMove.substring(0, 2);
           String toStr = bestMove.substring(2, 4);
           Square from = Square.fromName(fromStr);
           Square to = Square.fromName(toStr);
-          shapes = {
-            Arrow(
-              color: const Color.fromARGB(255, 152, 179, 154),
-              orig: from,
-              dest: to,
-            ),
-          }.toISet();
+          shapes =
+              {
+                Arrow(
+                  color: const Color.fromARGB(255, 152, 179, 154),
+                  orig: from,
+                  dest: to,
+                ),
+              }.toISet();
         }
       } catch (e) {
         // Parsing failed, return empty
@@ -965,7 +950,9 @@ class ChessBoardScreenNotifierNew
       const Duration(milliseconds: 100),
       () {
         if (_cancelEvaluation || state.value == null || !mounted) return;
-        _evalOperation = CancelableOperation.fromFuture(_evaluatePosition());
+        _evalOperation = CancelableOperation.fromFuture(
+          _evaluatePosition()
+        );
       },
     );
   }
@@ -1031,13 +1018,15 @@ class ChessBoardScreenNotifierNew
 }
 
 final chessBoardScreenProviderNew = AutoDisposeStateNotifierProvider.family<
-    ChessBoardScreenNotifierNew,
-    AsyncValue<ChessBoardStateNew>,
-    int>((ref, index) {
+  ChessBoardScreenNotifierNew,
+  AsyncValue<ChessBoardStateNew>,
+  int
+>((ref, index) {
   final view = ref.watch(chessboardViewFromProviderNew);
-  final games = view == ChessboardView.tour
-      ? ref.watch(gamesTourScreenProvider).value!.gamesTourModels
-      : ref.watch(countrymanGamesTourScreenProvider).value!.gamesTourModels;
+  final games =
+      view == ChessboardView.tour
+          ? ref.watch(gamesTourScreenProvider).value!.gamesTourModels
+          : ref.watch(countrymanGamesTourScreenProvider).value!.gamesTourModels;
 
   // Try to get the rounds, but if the provider is disposed, use games directly
   List<GamesTourModel> arrangedGames;

@@ -151,8 +151,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
       next,
     ) {
       if (prev?.valueOrNull?.currentMoveIndex !=
-              next.valueOrNull?.currentMoveIndex &&
-          next.valueOrNull != null) {
+          next.valueOrNull?.currentMoveIndex && next.valueOrNull != null) {
+
         // CRITICAL FIX: Only play audio if this chess board screen is currently active
         // This prevents audio from playing when other games in the tournament get moves
         final route = ModalRoute.of(context);
@@ -183,8 +183,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
 
         // Final check: Make sure we're viewing the correct page in PageView
         // Use a small tolerance for floating-point comparison
-        final currentPage =
-            _pageController.page ?? _currentPageIndex.toDouble();
+        final currentPage = _pageController.page ?? _currentPageIndex.toDouble();
         if ((currentPage - _currentPageIndex).abs() > 0.1) {
           // PageView is not on the current game, don't play audio
           return;
@@ -200,8 +199,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
         final moveIndexForSound = isMovingForward ? currentIndex : prevIndex;
 
         // Check if we have a valid move to play sound for
-        if (moveIndexForSound >= 0 &&
-            moveIndexForSound < state.moveSans.length) {
+        if (moveIndexForSound >= 0 && moveIndexForSound < state.moveSans.length) {
           // Get the move notation for the appropriate move
           final moveSan = state.moveSans[moveIndexForSound];
 
@@ -230,8 +228,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
           // Moving back to the starting position (before first move)
           // Play a regular move sound for the "undo" action
           audioService.player.play(audioService.pieceMoveSfx);
-        } else if (currentIndex == state.moveSans.length &&
-            state.moveSans.isNotEmpty) {
+        } else if (currentIndex == state.moveSans.length && state.moveSans.isNotEmpty) {
           // We're at the end of the game, check for game-ending conditions
           final lastMoveSan = state.moveSans.last;
 
@@ -250,7 +247,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
           audioService.player.play(audioService.pieceMoveSfx);
         }
       }
-    }, onError: (e, st) {
+    },onError: (e,st) {
       debugPrint("Error in chessBoardScreenProviderNew listener: $e");
     });
     // OPTIMIZED: Only watch for updates to games that are currently visible in the PageView
@@ -265,10 +262,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
             final gameIds = widget.games.map((g) => g.gameId).toSet();
 
             // Return only the games relevant to this chess board screen
-            final relevantGames =
-                allGames.where((g) => gameIds.contains(g.gameId)).toList();
-            return AsyncValue.data(
-                value.value!.copyWith(gamesTourModels: relevantGames));
+            final relevantGames = allGames.where((g) => gameIds.contains(g.gameId)).toList();
+            return AsyncValue.data(value.value!.copyWith(gamesTourModels: relevantGames));
           }))
         : ref.watch(countrymanGamesTourScreenProvider);
 
@@ -284,7 +279,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
 
     // Map only the games relevant to this chess board screen
     final liveGamesMap = Map.fromEntries(
-        gamesAsync.value!.gamesTourModels.map((g) => MapEntry(g.gameId, g)));
+      gamesAsync.value!.gamesTourModels.map((g) => MapEntry(g.gameId, g))
+    );
     final liveGames = widget.games.map((originalGame) {
       // Get the updated game data from the live stream, or fallback to original if not found
       return liveGamesMap[originalGame.gameId] ?? originalGame;
@@ -300,23 +296,24 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
           gestures: <Type, GestureRecognizerFactory>{
             HorizontalDragGestureRecognizer:
                 GestureRecognizerFactoryWithHandlers<
-                        HorizontalDragGestureRecognizer>(
-                    () => HorizontalDragGestureRecognizer(), (
-              HorizontalDragGestureRecognizer instance,
-            ) {
-              instance.onStart = (_) {};
-              instance.onUpdate = (_) {};
-              instance.onEnd = (_) {};
-            }),
+                  HorizontalDragGestureRecognizer
+                >(() => HorizontalDragGestureRecognizer(), (
+                  HorizontalDragGestureRecognizer instance,
+                ) {
+                  instance.onStart = (_) {};
+                  instance.onUpdate = (_) {};
+                  instance.onEnd = (_) {};
+                }),
           },
           behavior: HitTestBehavior.translucent,
           child: PageView.builder(
             padEnds: true,
             allowImplicitScrolling: true,
             // helps the framework build ahead
-            physics: analysisMode
-                ? NeverScrollableScrollPhysics()
-                : const PageScrollPhysics(),
+            physics:
+                analysisMode
+                    ? NeverScrollableScrollPhysics()
+                    : const PageScrollPhysics(),
             controller: _pageController,
             onPageChanged: _onPageChanged,
             itemCount: liveGames.length,
@@ -326,7 +323,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
                   index == _currentPageIndex ||
                   index == _currentPageIndex + 1) {
                 try {
-                  return ref.watch(chessBoardScreenProviderNew(index)).when(
+                  return ref
+                      .watch(chessBoardScreenProviderNew(index))
+                      .when(
                         data: (chessBoardState) {
                           if (chessBoardState.isAnalysisMode != analysisMode) {
                             WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -347,12 +346,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
                           );
                         },
                         error: (e, _) => ErrorWidget(e),
-                        loading: () => _LoadingScreen(
-                          games: liveGames,
-                          currentGameIndex: index,
-                          onGameChanged: _navigateToGame,
-                          lastViewedIndex: _lastViewedIndex,
-                        ),
+                        loading:
+                            () => _LoadingScreen(
+                              games: liveGames,
+                              currentGameIndex: index,
+                              onGameChanged: _navigateToGame,
+                              lastViewedIndex: _lastViewedIndex,
+                            ),
                       );
                 } catch (e) {
                   // Fallback for when provider isn't ready
@@ -481,38 +481,39 @@ class _AppBar extends StatelessWidget implements PreferredSizeWidget {
           icon: const Icon(Icons.more_vert, color: kWhiteColor),
           enabled: !isLoading,
           onSelected: (_) {},
-          itemBuilder: (context) => [
-            PopupMenuItem(
-              value: 'share',
-              child: Row(
-                children: [
-                  Icon(Icons.share, color: kWhiteColor),
-                  SizedBox(width: 8.w),
-                  const Text('Share Game'),
-                ],
-              ),
-            ),
-            PopupMenuItem(
-              value: 'analyze',
-              child: Row(
-                children: [
-                  Icon(Icons.analytics, color: kWhiteColor),
-                  SizedBox(width: 8.w),
-                  const Text('Analyze'),
-                ],
-              ),
-            ),
-            PopupMenuItem(
-              value: 'copy_pgn',
-              child: Row(
-                children: [
-                  Icon(Icons.copy, color: kWhiteColor),
-                  SizedBox(width: 8.w),
-                  const Text('Copy PGN'),
-                ],
-              ),
-            ),
-          ],
+          itemBuilder:
+              (context) => [
+                PopupMenuItem(
+                  value: 'share',
+                  child: Row(
+                    children: [
+                      Icon(Icons.share, color: kWhiteColor),
+                      SizedBox(width: 8.w),
+                      const Text('Share Game'),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'analyze',
+                  child: Row(
+                    children: [
+                      Icon(Icons.analytics, color: kWhiteColor),
+                      SizedBox(width: 8.w),
+                      const Text('Analyze'),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'copy_pgn',
+                  child: Row(
+                    children: [
+                      Icon(Icons.copy, color: kWhiteColor),
+                      SizedBox(width: 8.w),
+                      const Text('Copy PGN'),
+                    ],
+                  ),
+                ),
+              ],
         ),
       ],
     );
@@ -589,13 +590,14 @@ class _GameSelectionDropdown extends StatelessWidget {
         borderRadius: BorderRadius.circular(20.sp),
         isExpanded: true,
         style: AppTypography.textMdBold,
-        onChanged: isLoading
-            ? null
-            : (int? newIndex) {
-                if (newIndex != null && newIndex != currentGameIndex) {
-                  onGameChanged(newIndex);
-                }
-              },
+        onChanged:
+            isLoading
+                ? null
+                : (int? newIndex) {
+                  if (newIndex != null && newIndex != currentGameIndex) {
+                    onGameChanged(newIndex);
+                  }
+                },
         selectedItemBuilder: (BuildContext context) {
           return games.asMap().entries.map<Widget>((entry) {
             final game = entry.value;
@@ -611,33 +613,34 @@ class _GameSelectionDropdown extends StatelessWidget {
             );
           }).toList();
         },
-        items: games.asMap().entries.map<DropdownMenuItem<int>>((entry) {
-          final index = entry.key;
-          final game = entry.value;
-          final isLast = index == games.length - 1;
+        items:
+            games.asMap().entries.map<DropdownMenuItem<int>>((entry) {
+              final index = entry.key;
+              final game = entry.value;
+              final isLast = index == games.length - 1;
 
-          return DropdownMenuItem<int>(
-            value: index,
-            child: SingleChildScrollView(
-              physics: const NeverScrollableScrollPhysics(),
-              child: Column(
-                children: [
-                  _GameDropdownItem(
-                    game: game,
-                    gameNumber: index + 1,
-                    isSelected: index == currentGameIndex,
-                    isLoading: isLoading && index == currentGameIndex,
+              return DropdownMenuItem<int>(
+                value: index,
+                child: SingleChildScrollView(
+                  physics: const NeverScrollableScrollPhysics(),
+                  child: Column(
+                    children: [
+                      _GameDropdownItem(
+                        game: game,
+                        gameNumber: index + 1,
+                        isSelected: index == currentGameIndex,
+                        isLoading: isLoading && index == currentGameIndex,
+                      ),
+                      if (!isLast)
+                        Padding(
+                          padding: EdgeInsets.symmetric(vertical: 5.h),
+                          child: DividerWidget(),
+                        ),
+                    ],
                   ),
-                  if (!isLast)
-                    Padding(
-                      padding: EdgeInsets.symmetric(vertical: 5.h),
-                      child: DividerWidget(),
-                    ),
-                ],
-              ),
-            ),
-          );
-        }).toList(),
+                ),
+              );
+            }).toList(),
       ),
     );
   }
@@ -702,12 +705,12 @@ class _GameDropdownItem extends StatelessWidget {
     // Try to extract number from various patterns
     // Examples: "round-12", "rapid-8", "blitz-8", "13", "game-4", "losers-r3--armageddon"
     final patterns = [
-      RegExp(r'round[-\s]?(\d+)', caseSensitive: false), // round-12, round 12
-      RegExp(r'rapid[-\s]?(\d+)', caseSensitive: false), // rapid-8
-      RegExp(r'blitz[-\s]?(\d+)', caseSensitive: false), // blitz-8
-      RegExp(r'^(\d+)$'), // just a number like "13"
-      RegExp(r'r(\d+)', caseSensitive: false), // r3 in losers-r3
-      RegExp(r'game[-\s]?(\d+)', caseSensitive: false), // game-4
+      RegExp(r'round[-\s]?(\d+)', caseSensitive: false),  // round-12, round 12
+      RegExp(r'rapid[-\s]?(\d+)', caseSensitive: false),  // rapid-8
+      RegExp(r'blitz[-\s]?(\d+)', caseSensitive: false),  // blitz-8
+      RegExp(r'^(\d+)$'),  // just a number like "13"
+      RegExp(r'r(\d+)', caseSensitive: false),  // r3 in losers-r3
+      RegExp(r'game[-\s]?(\d+)', caseSensitive: false),  // game-4
     ];
 
     for (final pattern in patterns) {
@@ -817,26 +820,16 @@ class _BottomNavBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+
     return ChessBoardBottomNavBar(
       gameIndex: index,
-      onFlip: () =>
-          ref.read(chessBoardScreenProviderNew(index).notifier).flipBoard(),
-      onRightMove: state.canMoveForward
-          ? () => ref
-              .read(chessBoardScreenProviderNew(index).notifier)
-              .moveForward()
-          : null,
-      onLeftMove: state.canMoveBackward
-          ? () => ref
-              .read(chessBoardScreenProviderNew(index).notifier)
-              .moveBackward()
-          : null,
+      onFlip: () => ref.read(chessBoardScreenProviderNew(index).notifier).flipBoard(),
+      onRightMove: state.canMoveForward ? () => ref.read(chessBoardScreenProviderNew(index).notifier).moveForward() : null,
+      onLeftMove: state.canMoveBackward ? () => ref.read(chessBoardScreenProviderNew(index).notifier).moveBackward() : null,
       canMoveForward: state.canMoveForward,
       canMoveBackward: state.canMoveBackward,
       isAnalysisMode: state.isAnalysisMode,
-      toggleAnalysisMode: () => ref
-          .read(chessBoardScreenProviderNew(index).notifier)
-          .toggleAnalysisMode(),
+      toggleAnalysisMode: () => ref.read(chessBoardScreenProviderNew(index).notifier).toggleAnalysisMode(),
     );
   }
 }
@@ -903,12 +896,14 @@ class _GameBody extends StatelessWidget {
                   child: _MovesDisplay(
                     index: index,
                     state: state,
-                    sanMoves: state.isAnalysisMode
-                        ? state.analysisState.moveSans
-                        : state.moveSans,
-                    currentMoveIndex: state.isAnalysisMode
-                        ? state.analysisState.currentMoveIndex
-                        : state.currentMoveIndex,
+                    sanMoves:
+                        state.isAnalysisMode
+                            ? state.analysisState.moveSans
+                            : state.moveSans,
+                    currentMoveIndex:
+                        state.isAnalysisMode
+                            ? state.analysisState.currentMoveIndex
+                            : state.currentMoveIndex,
                   ),
                 ),
               ),
@@ -941,7 +936,8 @@ class _PlayerWidget extends StatelessWidget {
 
     // Check whose turn it is currently
     final currentTurn = state.position?.turn ?? Side.white;
-    final isCurrentPlayer = (isWhitePlayer && currentTurn == Side.white) ||
+    final isCurrentPlayer =
+        (isWhitePlayer && currentTurn == Side.white) ||
         (!isWhitePlayer && currentTurn == Side.black);
 
     return PlayerFirstRowDetailWidget(
@@ -983,16 +979,16 @@ class _BoardWithSidebar extends StatelessWidget {
               ),
               state.isAnalysisMode
                   ? _AnalysisBoard(
-                      size: boardSize,
-                      chessBoardState: state,
-                      isFlipped: state.isBoardFlipped,
-                      index: index,
-                    )
+                    size: boardSize,
+                    chessBoardState: state,
+                    isFlipped: state.isBoardFlipped,
+                    index: index,
+                  )
                   : _ChessBoardNew(
-                      size: boardSize,
-                      chessBoardState: state,
-                      isFlipped: state.isBoardFlipped,
-                    ),
+                    size: boardSize,
+                    chessBoardState: state,
+                    isFlipped: state.isBoardFlipped,
+                  ),
             ],
           ),
         );
@@ -1041,8 +1037,7 @@ class _ChessBoardNew extends ConsumerWidget {
             coordinates: true,
             orientation: Side.black,
           ),
-          lastMove: HighlightDetails(
-              solidColor: getLastMoveHighlightColor(chessBoardState)),
+          lastMove: HighlightDetails(solidColor: getLastMoveHighlightColor(chessBoardState)),
           selected: const HighlightDetails(solidColor: kPrimaryColor),
           validMoves: kPrimaryColor,
           validPremoves: kPrimaryColor,
@@ -1050,9 +1045,10 @@ class _ChessBoardNew extends ConsumerWidget {
       ),
       orientation: isFlipped ? Side.black : Side.white,
       shapes: chessBoardState.shapes,
-      fen: chessBoardState.isLoadingMoves
-          ? (chessBoardState.fenData ?? "")
-          : chessBoardState.position!.fen,
+      fen:
+          chessBoardState.isLoadingMoves
+              ? (chessBoardState.fenData ?? "")
+              : chessBoardState.position!.fen,
       lastMove:
           chessBoardState.isLoadingMoves ? null : chessBoardState.lastMove,
     );
@@ -1084,6 +1080,7 @@ class _AnalysisBoard extends ConsumerWidget {
       size: size,
       settings: ChessboardSettings(
         enableCoordinates: true,
+
         animationDuration: const Duration(milliseconds: 200),
         dragFeedbackScale: 1,
         dragTargetKind: DragTargetKind.none,
@@ -1109,8 +1106,7 @@ class _AnalysisBoard extends ConsumerWidget {
             coordinates: true,
             orientation: Side.black,
           ),
-          lastMove: HighlightDetails(
-              solidColor: getAnalysisLastMoveHighlightColor(chessBoardState)),
+          lastMove: HighlightDetails(solidColor: getAnalysisLastMoveHighlightColor(chessBoardState)),
           selected: const HighlightDetails(solidColor: kPrimaryColor),
           validMoves: kPrimaryColor,
           validPremoves: kPrimaryColor,
@@ -1121,9 +1117,10 @@ class _AnalysisBoard extends ConsumerWidget {
       lastMove: chessBoardState.analysisState.lastMove,
       shapes: chessBoardState.shapes,
       game: GameData(
-        playerSide: chessBoardState.analysisState.position.turn == Side.white
-            ? PlayerSide.white
-            : PlayerSide.black,
+        playerSide:
+            chessBoardState.analysisState.position.turn == Side.white
+                ? PlayerSide.white
+                : PlayerSide.black,
         validMoves: chessBoardState.analysisState.validMoves,
         sideToMove: chessBoardState.analysisState.position.turn,
         isCheck: chessBoardState.analysisState.position.isCheck,
@@ -1150,6 +1147,8 @@ class _MovesDisplay extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+
+
     if (state.isLoadingMoves) {
       return _buildMovesLoadingSkeleton();
     }
@@ -1174,46 +1173,44 @@ class _MovesDisplay extends ConsumerWidget {
       child: Wrap(
         spacing: 2.sp,
         runSpacing: 2.sp,
-        children: sanMoves.asMap().entries.map((entry) {
-          final moveIndex = entry.key;
-          final move = entry.value;
+        children:
+            sanMoves.asMap().entries.map((entry) {
+              final moveIndex = entry.key;
+              final move = entry.value;
 
-          final isCurrentMove = moveIndex == currentMoveIndex;
-          final fullMoveNumber = (moveIndex / 2).floor() + 1;
-          final isWhiteMove = moveIndex % 2 == 0;
+              final isCurrentMove = moveIndex == currentMoveIndex;
+              final fullMoveNumber = (moveIndex / 2).floor() + 1;
+              final isWhiteMove = moveIndex % 2 == 0;
 
-          return GestureDetector(
-            onTap: () => ref
-                .read(chessBoardScreenProviderNew(index).notifier)
-                .goToMove(moveIndex),
-            child: Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: 6.sp,
-                vertical: 2.sp,
-              ),
-              decoration: BoxDecoration(
-                color: isCurrentMove
-                    ? kWhiteColor70.withOpacity(0.4)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(4.sp),
-                border: Border.all(
-                  color: isCurrentMove ? kWhiteColor : Colors.transparent,
-                  width: 0.5,
+              return GestureDetector(
+                onTap: () => ref.read(chessBoardScreenProviderNew(index).notifier).goToMove(moveIndex),
+                child: Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 6.sp,
+                    vertical: 2.sp,
+                  ),
+                  decoration: BoxDecoration(
+                    color:
+                        isCurrentMove
+                            ? kWhiteColor70.withOpacity(0.4)
+                            : Colors.transparent,
+                    borderRadius: BorderRadius.circular(4.sp),
+                    border: Border.all(
+                      color: isCurrentMove ? kWhiteColor : Colors.transparent,
+                      width: 0.5,
+                    ),
+                  ),
+                  child: Text(
+                    isWhiteMove ? '$fullMoveNumber. $move' : move,
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: ref.read(chessBoardScreenProviderNew(index).notifier).getMoveColor(move, moveIndex),
+                      fontWeight:
+                          isCurrentMove ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
                 ),
-              ),
-              child: Text(
-                isWhiteMove ? '$fullMoveNumber. $move' : move,
-                style: AppTypography.textXsMedium.copyWith(
-                  color: ref
-                      .read(chessBoardScreenProviderNew(index).notifier)
-                      .getMoveColor(move, moveIndex),
-                  fontWeight:
-                      isCurrentMove ? FontWeight.bold : FontWeight.normal,
-                ),
-              ),
-            ),
-          );
-        }).toList(),
+              );
+            }).toList(),
       ),
     );
   }

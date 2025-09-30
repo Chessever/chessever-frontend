@@ -73,9 +73,10 @@ class GameCard extends ConsumerWidget {
         Animation<double> animation,
         Animation<double> secondaryAnimation,
       ) {
-        final double menuTop = showAbove
-            ? cardPosition.dy - popupHeight - 8.sp
-            : cardPosition.dy + cardSize.height + 8.sp;
+        final double menuTop =
+            showAbove
+                ? cardPosition.dy - popupHeight - 8.sp
+                : cardPosition.dy + cardSize.height + 8.sp;
         return Material(
           color: Colors.transparent,
           child: GestureDetector(
@@ -198,9 +199,10 @@ class _CenterContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: gamesTourModel.gameStatus == GameStatus.ongoing
-          ? ChessProgressBar(gamesTourModel: gamesTourModel)
-          : _StatusText(status: gamesTourModel.gameStatus.displayText),
+      child:
+          gamesTourModel.gameStatus == GameStatus.ongoing
+              ? ChessProgressBar(gamesTourModel: gamesTourModel)
+              : _StatusText(status: gamesTourModel.gameStatus.displayText),
     );
   }
 }
@@ -257,8 +259,9 @@ class _GamesRound extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final validCountryCode =
-        ref.read(locationServiceProvider).getValidCountryCode(countryCode);
+    final validCountryCode = ref
+        .read(locationServiceProvider)
+        .getValidCountryCode(countryCode);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -369,19 +372,22 @@ class _TimerWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isClockRunning = gamesTourModel.gameStatus.isOngoing &&
+    final isClockRunning =
+        gamesTourModel.gameStatus.isOngoing &&
         gamesTourModel.lastMoveTime != null &&
         gamesTourModel.activePlayer != null &&
         ((isWhitePlayer && gamesTourModel.activePlayer == Side.white) ||
             (!isWhitePlayer && gamesTourModel.activePlayer == Side.black));
 
-    final clockCentiseconds = isWhitePlayer
-        ? gamesTourModel.whiteClockCentiseconds
-        : gamesTourModel.blackClockCentiseconds;
+    final clockCentiseconds =
+        isWhitePlayer
+            ? gamesTourModel.whiteClockCentiseconds
+            : gamesTourModel.blackClockCentiseconds;
 
-    final clockSeconds = isWhitePlayer
-        ? gamesTourModel.whiteClockSeconds
-        : gamesTourModel.blackClockSeconds;
+    final clockSeconds =
+        isWhitePlayer
+            ? gamesTourModel.whiteClockSeconds
+            : gamesTourModel.blackClockSeconds;
 
     // Removed excessive debug logging - only log for specific games if needed
     // print('🔥 GameCard Timer: Game ${gamesTourModel.gameId} ${isWhitePlayer ? 'White' : 'Black'} - '
@@ -396,9 +402,10 @@ class _TimerWidget extends StatelessWidget {
       lastMoveTime: gamesTourModel.lastMoveTime,
       isActive: isClockRunning,
       style: AppTypography.textXsMedium.copyWith(
-        color: gamesTourModel.gameStatus.isFinished
-            ? kWhiteColor
-            : (turn ? kPrimaryColor : kWhiteColor),
+        color:
+            gamesTourModel.gameStatus.isFinished
+                ? kWhiteColor
+                : (turn ? kPrimaryColor : kWhiteColor),
       ),
     );
   }
