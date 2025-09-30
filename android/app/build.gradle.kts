@@ -7,8 +7,6 @@
         keystoreProperties.load(keystorePropertiesFile.inputStream())
     }
 
-
-
     plugins {
         id("com.android.application")
         id("kotlin-android")
@@ -32,11 +30,13 @@
         }
 
         signingConfigs {
-            create("release") {
-                keyAlias = keystoreProperties["keyAlias"] as String
-                keyPassword = keystoreProperties["keyPassword"] as String
-                storeFile = file(keystoreProperties["storeFile"] as String)
-                storePassword = keystoreProperties["storePassword"] as String
+            if (keystorePropertiesFile.exists()) {
+                create("release") {
+                    keyAlias = keystoreProperties["keyAlias"]?.toString()
+                    keyPassword = keystoreProperties["keyPassword"]?.toString()
+                    storeFile = keystoreProperties["storeFile"]?.let { file(it.toString()) }
+                    storePassword = keystoreProperties["storePassword"]?.toString()
+                }
             }
         }
 
@@ -48,7 +48,9 @@
                     getDefaultProguardFile("proguard-android-optimize.txt"),
                     "proguard-rules.pro"
                 )
-                signingConfig = signingConfigs.getByName("release")
+                if (keystorePropertiesFile.exists()) {
+                    signingConfig = signingConfigs.getByName("release")
+                }
             }
         }
 
@@ -61,18 +63,6 @@
             targetSdk = 36
             versionCode = 55
             versionName = "2.0.55"
-        }
-
-        buildTypes {
-            release {
-                    isMinifyEnabled = true
-                isShrinkResources = true
-                proguardFiles(
-                    getDefaultProguardFile("proguard-android-optimize.txt"),
-                    "proguard-rules.pro"
-                )
-                signingConfig = signingConfigs.getByName("release")
-            }
         }
 
     }
