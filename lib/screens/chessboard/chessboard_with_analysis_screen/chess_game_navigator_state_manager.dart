@@ -22,7 +22,7 @@ class ChessGameNavigatorStateManager {
 
     if (recentGames.length > kMaxGames) {
       final oldestGameId = recentGames.removeAt(0);
-      await storage.delete('gs:$oldestGameId'); // Clean up old game state
+      await storage.removeData('gs:$oldestGameId'); // Clean up old game state
     }
 
     await Future.wait([
