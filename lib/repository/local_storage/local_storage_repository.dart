@@ -1,14 +1,14 @@
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-final sharedPreferencesRepository = AutoDisposeProvider<_SharedPreferences>((
+final sharedPreferencesRepository = AutoDisposeProvider<AppSharedPreferences>((
   ref,
 ) {
-  return _SharedPreferences();
+  return AppSharedPreferences();
 });
 
-class _SharedPreferences {
-  _SharedPreferences();
+class AppSharedPreferences {
+  AppSharedPreferences();
 
   Future<void> setInt(String key, int value) async {
     try {

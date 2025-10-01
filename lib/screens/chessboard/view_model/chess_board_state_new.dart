@@ -1,7 +1,46 @@
+import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
+import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:fast_immutable_collections/fast_immutable_collections.dart';
+
+class AnalysisLine {
+  final List<Move> moves;
+  final List<String> sanMoves;
+  final double? evaluation;
+  final int? mate;
+
+  const AnalysisLine({
+    this.moves = const [],
+    this.sanMoves = const [],
+    this.evaluation,
+    this.mate,
+  });
+
+  bool get isEmpty => moves.isEmpty;
+  bool get isMate => mate != null;
+  String get displayEval =>
+      isMate
+          ? '#$mate'
+          : evaluation != null
+          ? evaluation!.toStringAsFixed(1)
+          : '';
+
+  AnalysisLine copyWith({
+    List<Move>? moves,
+    List<String>? sanMoves,
+    double? evaluation,
+    int? mate,
+  }) {
+    return AnalysisLine(
+      moves: moves ?? this.moves,
+      sanMoves: sanMoves ?? this.sanMoves,
+      evaluation: evaluation ?? this.evaluation,
+      mate: mate ?? this.mate,
+    );
+  }
+}
 
 class AnalysisBoardState {
   final Move? lastMove;
@@ -13,6 +52,9 @@ class AnalysisBoardState {
   final Position position;
   final Position? startingPosition;
   final int currentMoveIndex;
+  final List<AnalysisLine> suggestionLines;
+  final ChessGame? game;
+  final ChessMovePointer movePointer;
 
   bool get canMoveForward => currentMoveIndex < allMoves.length - 1;
 
@@ -34,6 +76,9 @@ class AnalysisBoardState {
     this.position = Chess.initial,
     this.currentMoveIndex = -1,
     this.startingPosition,
+    this.suggestionLines = const [],
+    this.game,
+    this.movePointer = const [],
   });
 
   AnalysisBoardState copyWith({
@@ -47,6 +92,9 @@ class AnalysisBoardState {
     Position? position,
     int? currentMoveIndex,
     Position? startingPosition,
+    List<AnalysisLine>? suggestionLines,
+    ChessGame? game,
+    ChessMovePointer? movePointer,
   }) {
     return AnalysisBoardState(
       lastMove: lastMove ?? this.lastMove,
@@ -58,6 +106,9 @@ class AnalysisBoardState {
       position: position ?? this.position,
       currentMoveIndex: currentMoveIndex ?? this.currentMoveIndex,
       startingPosition: startingPosition ?? this.startingPosition,
+      suggestionLines: suggestionLines ?? this.suggestionLines,
+      game: game ?? this.game,
+      movePointer: movePointer ?? this.movePointer,
     );
   }
 }
@@ -79,11 +130,11 @@ class ChessBoardStateNew {
   final String? pgnData;
   final String? fenData;
   final ISet<Shape>? shapes;
-  // New field to track if in analysis mode
   final bool isAnalysisMode;
   final AnalysisBoardState analysisState;
   final int? mate;
-  // Computed properties
+  final List<AnalysisLine> principalVariations;
+
   bool get canMoveForward => currentMoveIndex < allMoves.length - 1;
 
   bool get canMoveBackward => currentMoveIndex >= 0;
@@ -114,6 +165,7 @@ class ChessBoardStateNew {
     this.analysisState = const AnalysisBoardState(),
     this.shapes = const ISet.empty(),
     this.mate,
+    this.principalVariations = const [],
   });
 
   ChessBoardStateNew copyWith({
@@ -136,6 +188,7 @@ class ChessBoardStateNew {
     bool? isAnalysisMode,
     AnalysisBoardState? analysisState,
     ISet<Shape>? shapes,
+    List<AnalysisLine>? principalVariations,
   }) {
     return ChessBoardStateNew(
       position: position ?? this.position,
@@ -156,6 +209,7 @@ class ChessBoardStateNew {
       mate: mate ?? this.mate,
       isAnalysisMode: isAnalysisMode ?? this.isAnalysisMode,
       shapes: shapes ?? this.shapes,
+      principalVariations: principalVariations ?? this.principalVariations,
       analysisState:
           analysisState != null
               ? analysisState.copyWith(
@@ -172,6 +226,7 @@ class ChessBoardStateNew {
                 startingPosition:
                     analysisState.startingPosition ??
                     this.analysisState.startingPosition,
+                suggestionLines: analysisState.suggestionLines,
                 fen: fenData ?? this.fenData,
               )
               : this.analysisState,

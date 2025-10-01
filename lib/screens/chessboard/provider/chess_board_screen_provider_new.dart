@@ -1,9 +1,12 @@
 import 'dart:async';
-import 'package:async/async.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.dart';
+import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/repository/supabase/evals/persist_cloud_eval.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
+import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
+import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
+import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator_state_manager.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
@@ -13,6 +16,7 @@ import 'package:chessever2/screens/group_event/providers/countryman_games_tour_s
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/evals.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:easy_debounce/easy_debounce.dart';
@@ -44,10 +48,12 @@ class ChessBoardScreenNotifierNew
   bool _hasParsedMoves = false;
   bool _isProcessingMove = false;
   bool _isLongPressing = false;
-  CancelableOperation<void>? _evalOperation;
   bool _cancelEvaluation = false;
   final Map<String, double> _evaluationCache = {};
   final Map<String, int?> _mateCache = {};
+  ChessGame? _analysisGame;
+  ChessGameNavigatorStateManager? _analysisStateManager;
+  ProviderSubscription<ChessGameNavigatorState>? _navigatorSubscription;
 
   void _initializeState() {
     state = AsyncValue.data(
@@ -61,35 +67,6 @@ class ChessBoardScreenNotifierNew
       ),
     );
     parseMoves();
-  }
-
-  /// Get evaluation with consistent perspective for evaluation bar display
-  /// Option 1: Always from white's perspective (consistent colors)
-  /// Option 2: From current player's perspective (intuitive for current player)
-  /// BULLETPROOF evaluation perspective handler
-  /// This method GUARANTEES that ALL evaluations are in WHITE'S PERSPECTIVE
-  double _getConsistentEvaluation(double evaluation, String fen) {
-    final fenParts = fen.split(' ');
-    final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
-    final isBlackToMove = sideToMove == 'b';
-
-    // CRITICAL FIX: Stockfish returns evaluations from CURRENT PLAYER'S perspective
-    // - When White to move: positive = good for White (already correct for eval bar)
-    // - When Black to move: positive = good for Black (must flip to White's perspective)
-
-    double whitesPerspectiveEval;
-    if (isBlackToMove) {
-      // Black to move: Stockfish evaluation is from Black's perspective, flip it
-      whitesPerspectiveEval = -evaluation;
-      print("🔍 EVAL CORRECTED: FEN=$fen, side=BLACK, inputEval=$evaluation, outputEval=$whitesPerspectiveEval (FLIPPED to white's perspective)");
-    } else {
-      // White to move: Stockfish evaluation is already from White's perspective
-      whitesPerspectiveEval = evaluation;
-      print("🔍 EVAL UNCHANGED: FEN=$fen, side=WHITE, eval=$whitesPerspectiveEval (already white's perspective)");
-    }
-
-    print("🔍   evalBar expects: positive=WHITE advantage, negative=BLACK advantage");
-    return whitesPerspectiveEval;
   }
 
   void _setupPgnStreamListener() {
@@ -109,7 +86,8 @@ class ChessBoardScreenNotifierNew
 
             // Check if position changed (FEN or last_move) for evaluation updates
             final newFen = gameData['fen'] as String? ?? game.fen;
-            final newLastMove = gameData['last_move'] as String? ?? game.lastMove;
+            final newLastMove =
+                gameData['last_move'] as String? ?? game.lastMove;
             if (newFen != game.fen || newLastMove != game.lastMove) {
               needsEvaluation = true;
             }
@@ -119,33 +97,42 @@ class ChessBoardScreenNotifierNew
               pgn: newPgn ?? game.pgn,
               fen: newFen,
               lastMove: newLastMove,
-              lastMoveTime: gameData['last_move_time'] != null
-                  ? DateTime.tryParse(gameData['last_move_time'] as String)
-                  : game.lastMoveTime,
-              whiteClockSeconds: (gameData['last_clock_white'] as num?)?.round(),
-              blackClockSeconds: (gameData['last_clock_black'] as num?)?.round(),
-              gameStatus: _parseGameStatus(gameData['status'] as String? ?? '*'),
+              lastMoveTime:
+                  gameData['last_move_time'] != null
+                      ? DateTime.tryParse(gameData['last_move_time'] as String)
+                      : game.lastMoveTime,
+              whiteClockSeconds:
+                  (gameData['last_clock_white'] as num?)?.round(),
+              blackClockSeconds:
+                  (gameData['last_clock_black'] as num?)?.round(),
+              gameStatus: _parseGameStatus(
+                gameData['status'] as String? ?? '*',
+              ),
             );
 
             // Re-parse moves if PGN changed
             if (needsReparse) {
               _hasParsedMoves = false;
               parseMoves();
-              print("-----Game updated with new PGN and clock data");
+              debugPrint("-----Game updated with new PGN and clock data");
             } else {
               // Update the current state with new clock/position data
               final currentState = state.value;
               if (currentState != null) {
                 // Parse the last move for proper board highlighting
                 Move? parsedLastMove;
-                if (newLastMove != null && newLastMove.isNotEmpty && newLastMove.length >= 4) {
+                if (newLastMove != null &&
+                    newLastMove.isNotEmpty &&
+                    newLastMove.length >= 4) {
                   try {
                     // Convert UCI move to Move object
                     final from = Square.fromName(newLastMove.substring(0, 2));
                     final to = Square.fromName(newLastMove.substring(2, 4));
                     parsedLastMove = NormalMove(from: from, to: to);
                   } catch (e) {
-                    print('Failed to parse last move: $newLastMove, error: $e');
+                    debugPrint(
+                      'Failed to parse last move: $newLastMove, error: $e',
+                    );
                   }
                 }
 
@@ -153,13 +140,16 @@ class ChessBoardScreenNotifierNew
                   currentState.copyWith(
                     game: game, // Updated game with new clock/position data
                     fenData: newFen, // Update FEN data for board display
-                    lastMove: parsedLastMove, // Update last move for highlighting
+                    lastMove:
+                        parsedLastMove, // Update last move for highlighting
                   ),
                 );
 
                 // Trigger evaluation update if position changed
                 if (needsEvaluation) {
-                  print("-----Position changed, triggering evaluation update for FEN: $newFen");
+                  debugPrint(
+                    "-----Position changed, triggering evaluation update for FEN: $newFen",
+                  );
                   _updateEvaluation();
                 }
               }
@@ -292,7 +282,7 @@ class ChessBoardScreenNotifierNew
         }
       }
     } catch (e) {
-      print('Error parsing PGN: $e');
+      debugPrint('Error parsing PGN: $e');
       // Fallback to regex method if dartchess parsing fails
       return _parseMoveTimesFromPgnFallback(pgn);
     }
@@ -341,6 +331,15 @@ class ChessBoardScreenNotifierNew
   }
 
   void analysisModeGoToMove(int moveIndex) {
+    if (_analysisGame != null) {
+      if (moveIndex < 0) {
+        _analysisNavigator?.goToMovePointerUnchecked(const []);
+      } else {
+        _analysisNavigator?.goToMovePointerUnchecked([moveIndex]);
+      }
+      return;
+    }
+
     if (_isProcessingMove) return;
     _isProcessingMove = true;
     final currentState = state.value;
@@ -355,7 +354,6 @@ class ChessBoardScreenNotifierNew
       _isProcessingMove = false;
       return;
     }
-    _evalOperation?.cancel();
     _cancelEvaluation = true;
     Position newPosition = currentState.analysisState.startingPosition!;
     Move? newLastMove;
@@ -371,6 +369,7 @@ class ChessBoardScreenNotifierNew
           position: newPosition,
           lastMove: newLastMove,
           currentMoveIndex: moveIndex,
+          suggestionLines: const [],
         ),
         evaluation: null, // Reset evaluation for new position
         isEvaluating: true, // Show loading indicator while evaluating
@@ -395,7 +394,6 @@ class ChessBoardScreenNotifierNew
       return;
     }
 
-    _evalOperation?.cancel();
     _cancelEvaluation = true;
 
     Position newPosition = currentState.startingPosition!;
@@ -413,6 +411,9 @@ class ChessBoardScreenNotifierNew
         currentMoveIndex: moveIndex,
         evaluation: null, // Reset evaluation for new position
         isEvaluating: true, // Show loading indicator while evaluating
+        analysisState: currentState.analysisState.copyWith(
+          suggestionLines: const [],
+        ),
       ),
     );
 
@@ -425,15 +426,15 @@ class ChessBoardScreenNotifierNew
     _updateEvaluation();
   }
 
+  void goToMovePointer(ChessMovePointer pointer) {
+    if (_analysisGame == null) return;
+    _analysisNavigator?.goToMovePointerUnchecked(pointer);
+  }
+
   void moveForward() {
     final currentState = state.value;
     if (currentState?.isAnalysisMode == true) {
-      if (currentState == null ||
-          !currentState.analysisState.canMoveForward ||
-          _isProcessingMove) {
-        return;
-      }
-      goToMove(currentState.analysisState.currentMoveIndex + 1);
+      _analysisNavigator?.goToNextMove();
     } else {
       if (currentState == null ||
           !currentState.canMoveForward ||
@@ -447,12 +448,7 @@ class ChessBoardScreenNotifierNew
   void moveBackward() {
     final currentState = state.value;
     if (currentState?.isAnalysisMode == true) {
-      if (currentState == null ||
-          !currentState.analysisState.canMoveBackward ||
-          _isProcessingMove) {
-        return;
-      }
-      goToMove(currentState.analysisState.currentMoveIndex - 1);
+      _analysisNavigator?.goToPreviousMove();
     } else {
       if (currentState == null ||
           !currentState.canMoveBackward ||
@@ -464,42 +460,75 @@ class ChessBoardScreenNotifierNew
   }
 
   void toggleAnalysisMode() {
-    if (state.value?.isAnalysisMode == false) {
-      initializeAnalysisBoard();
-    }
-    togglePlayPause();
     final currentState = state.value;
-
     if (currentState == null) return;
+
+    if (!currentState.isAnalysisMode) {
+      _initializeAnalysisBoard();
+    } else {
+      unawaited(_persistAnalysisState());
+      _analysisGame = null;
+      _navigatorSubscription?.close();
+      _navigatorSubscription = null;
+    }
+
+    togglePlayPause();
 
     state = AsyncValue.data(
       currentState.copyWith(isAnalysisMode: !currentState.isAnalysisMode),
     );
   }
 
-  void initializeAnalysisBoard() {
+  Future<void> _initializeAnalysisBoard() async {
     final currentState = state.value;
-    if (currentState == null || currentState.position == null) return;
+    if (currentState == null) return;
 
-    state = AsyncValue.data(
-      currentState.copyWith(
-        analysisState: AnalysisBoardState(
-          position: currentState.position!,
-          validMoves: makeLegalMoves(currentState.position!),
-          promotionMove: null,
-          lastMove: currentState.lastMove,
-          currentMoveIndex: currentState.currentMoveIndex,
-          allMoves: currentState.allMoves.sublist(
-            0,
-            currentState.currentMoveIndex + 1,
-          ),
-          moveSans: currentState.moveSans.sublist(
-            0,
-            currentState.currentMoveIndex + 1,
-          ),
-        ),
-      ),
+    // Ensure PGN is available
+    if (currentState.pgnData == null) {
+      await parseMoves();
+    }
+
+    final updatedState = state.value;
+    if (updatedState == null || updatedState.pgnData == null) {
+      return;
+    }
+
+    final pgn = updatedState.pgnData!;
+    _analysisGame = ChessGame.fromPgn(game.gameId, pgn);
+
+    final storage = ref.read(sharedPreferencesRepository);
+    _analysisStateManager = ChessGameNavigatorStateManager(storage: storage);
+
+    final navigator = ref.read(
+      chessGameNavigatorProvider(_analysisGame!).notifier,
     );
+
+    final savedState = await _analysisStateManager!.loadState(
+      updatedState.game.gameId,
+    );
+    if (savedState != null) {
+      navigator.replaceState(savedState);
+    } else {
+      navigator.replaceState(
+        ChessGameNavigatorState(game: _analysisGame!, movePointer: const []),
+      );
+    }
+
+    _navigatorSubscription?.close();
+    _navigatorSubscription = ref.listen<ChessGameNavigatorState>(
+      chessGameNavigatorProvider(_analysisGame!),
+      (previous, next) {
+        _syncAnalysisFromNavigator(next);
+      },
+      fireImmediately: true,
+    );
+  }
+
+  Future<void> _persistAnalysisState() async {
+    if (_analysisGame == null || _analysisStateManager == null) return;
+
+    final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+    await _analysisStateManager!.saveState(navigatorState);
   }
 
   bool isPromotionPawnMove(NormalMove move) {
@@ -516,62 +545,41 @@ class ChessBoardScreenNotifierNew
   }
 
   void onAnalysisMove(NormalMove move, {bool? isDrop, bool? isPremove}) {
+    if (_analysisGame != null) {
+      if (isPromotionPawnMove(move)) {
+        state = AsyncValue.data(
+          state.value!.copyWith(
+            analysisState: state.value!.analysisState.copyWith(
+              promotionMove: move,
+            ),
+          ),
+        );
+      } else {
+        _analysisNavigator?.makeOrGoToMove(move.uci);
+      }
+      return;
+    }
+
+    // Fallback for legacy behaviour when analysis navigator hasn't initialised
     var currentState = state.value;
     if (currentState == null) return;
-    Position pos =
+    final pos =
         currentState.isAnalysisMode
             ? currentState.analysisState.position
             : currentState.position!;
-    AnalysisBoardState analysisState = currentState.analysisState;
-    if (isPromotionPawnMove(move)) {
-      state = AsyncValue.data(
-        currentState.copyWith(
-          analysisState: currentState.analysisState.copyWith(
-            promotionMove: move,
-          ),
-        ),
-      );
-    } else if (pos.isLegal(move)) {
-      var positionHistory = analysisState.positionHistory;
-      var moveSans = analysisState.moveSans;
-      var allMoves = analysisState.allMoves;
-      if (analysisState.currentMoveIndex <
-          analysisState.positionHistory.length - 1) {
-        positionHistory = analysisState.positionHistory.sublist(
-          0,
-          analysisState.currentMoveIndex + 1,
-        );
-        moveSans = analysisState.moveSans.sublist(
-          0,
-          analysisState.currentMoveIndex,
-        );
-        allMoves = analysisState.allMoves.sublist(
-          0,
-          analysisState.currentMoveIndex + 1,
-        );
-      }
 
+    if (pos.isLegal(move)) {
       final newPosition = pos.playUnchecked(move);
-      final sanMove = pos.makeSan(move);
 
-      pos = newPosition;
-
-      // Add to history
-      final newPositionHistory = List<Position>.from(positionHistory)..add(pos);
-      final newMoveSans = List<String>.from(moveSans)..add(sanMove.$2);
-      final newAllMoves = List<Move>.from(allMoves)..add(move);
-      var currentMoveIndex = analysisState.currentMoveIndex + 1;
       state = AsyncValue.data(
         currentState.copyWith(
           analysisState: currentState.analysisState.copyWith(
-            currentMoveIndex: currentMoveIndex,
+            currentMoveIndex: currentState.analysisState.currentMoveIndex + 1,
             lastMove: move,
-            validMoves: makeLegalMoves(pos),
+            validMoves: makeLegalMoves(newPosition),
             promotionMove: null,
-            position: pos,
-            positionHistory: newPositionHistory,
-            moveSans: newMoveSans,
-            allMoves: newAllMoves,
+            position: newPosition,
+            suggestionLines: const [],
           ),
         ),
       );
@@ -580,6 +588,33 @@ class ChessBoardScreenNotifierNew
   }
 
   void onAnalysisPromotionSelection(Role? role) {
+    if (_analysisGame != null) {
+      if (role == null) {
+        state = AsyncValue.data(
+          state.value!.copyWith(
+            analysisState: state.value!.analysisState.copyWith(
+              promotionMove: null,
+            ),
+          ),
+        );
+        return;
+      }
+
+      final pending = state.value?.analysisState.promotionMove;
+      if (pending != null) {
+        final move = pending.withPromotion(role);
+        _analysisNavigator?.makeOrGoToMove(move.uci);
+        state = AsyncValue.data(
+          state.value!.copyWith(
+            analysisState: state.value!.analysisState.copyWith(
+              promotionMove: null,
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
     var currentState = state.value;
     if (currentState == null) return;
     if (role == null) {
@@ -590,71 +625,33 @@ class ChessBoardScreenNotifierNew
           ),
         ),
       );
-    } else if (currentState.analysisState.promotionMove != null) {
-      AnalysisBoardState analysisState = currentState.analysisState;
-
-      final move = analysisState.promotionMove!.withPromotion(role);
-      // Remove any future moves if we're in the middle of history
-      var positionHistory = analysisState.positionHistory;
-      var moveSans = analysisState.moveSans;
-      var allMoves = analysisState.allMoves;
-      if (analysisState.currentMoveIndex <
-          analysisState.positionHistory.length - 1) {
-        positionHistory = analysisState.positionHistory.sublist(
-          0,
-          analysisState.currentMoveIndex + 1,
-        );
-        moveSans = analysisState.moveSans.sublist(
-          0,
-          analysisState.currentMoveIndex,
-        );
-        allMoves = analysisState.allMoves.sublist(
-          0,
-          analysisState.currentMoveIndex + 1,
-        );
-      }
-      Position pos =
-          currentState.isAnalysisMode
-              ? currentState.analysisState.position
-              : currentState.position!;
-      final newPosition = pos.playUnchecked(move);
-      final sanMove = pos.makeSan(move);
-      pos = newPosition;
-
-      final newPositionHistory = List<Position>.from(positionHistory)..add(pos);
-      final newMoveSans = List<String>.from(moveSans)..add(sanMove.$2);
-      final newAllMoves = List<Move>.from(allMoves)..add(move);
-      var currentMoveIndex = analysisState.currentMoveIndex + 1;
-      state = AsyncValue.data(
-        currentState.copyWith(
-          analysisState: currentState.analysisState.copyWith(
-            currentMoveIndex: currentMoveIndex,
-            lastMove: move,
-            validMoves: makeLegalMoves(pos),
-            promotionMove: null,
-            position: pos,
-            positionHistory: newPositionHistory,
-            moveSans: newMoveSans,
-            allMoves: newAllMoves,
-          ),
-        ),
-      );
-      _updateEvaluation();
     }
   }
 
   void jumpToStart() {
-    goToMove(-1);
+    if (state.value?.isAnalysisMode == true) {
+      _analysisNavigator?.goToHead();
+    } else {
+      goToMove(-1);
+    }
   }
 
   void jumpToEnd() {
     final currentState = state.value;
     if (currentState == null) return;
-    goToMove(currentState.allMoves.length - 1);
+    if (currentState.isAnalysisMode) {
+      _analysisNavigator?.goToTail();
+    } else {
+      goToMove(currentState.allMoves.length - 1);
+    }
   }
 
   void resetGame() {
-    jumpToStart();
+    if (state.value?.isAnalysisMode == true) {
+      _analysisNavigator?.goToHead();
+    } else {
+      jumpToStart();
+    }
   }
 
   void flipBoard() {
@@ -682,7 +679,7 @@ class ChessBoardScreenNotifierNew
   Color getMoveColor(String move, int moveIndex) {
     final st = state.value!;
     if (st.isLoadingMoves) {
-      return kWhiteColor.withOpacity(0.3);
+      return kWhiteColor.withValues(alpha: 0.3);
     }
     if (moveIndex == st.currentMoveIndex - 1) {
       return kWhiteColor;
@@ -715,6 +712,72 @@ class ChessBoardScreenNotifierNew
 ''';
   }
 
+  List<AnalysisLine> _buildPrincipalVariations(String fen, List<Pv> pvs) {
+    if (pvs.isEmpty) {
+      return const [];
+    }
+
+    try {
+      final basePosition = Position.setupPosition(
+        Rule.chess,
+        Setup.parseFen(fen),
+      );
+
+      final lines = <AnalysisLine>[];
+
+      for (final pv in pvs) {
+        final moves = <Move>[];
+        final sanMoves = <String>[];
+        var position = basePosition;
+        double? evaluation;
+        int? mate;
+
+        if (pv.isMate && pv.mate != null) {
+          mate = pv.mate;
+        } else {
+          evaluation = getConsistentEvaluation(pv.cp / 100.0, fen);
+        }
+
+        for (final token in pv.moves.split(' ')) {
+          if (token.isEmpty) continue;
+          final parsedMove = Move.parse(token);
+          if (parsedMove == null) {
+            break;
+          }
+
+          try {
+            final (nextPosition, san) = position.makeSan(parsedMove);
+            moves.add(parsedMove);
+            sanMoves.add(san);
+            position = nextPosition;
+          } catch (_) {
+            break;
+          }
+        }
+
+        if (moves.isNotEmpty) {
+          lines.add(
+            AnalysisLine(
+              moves: moves,
+              sanMoves: sanMoves,
+              evaluation: evaluation,
+              mate: mate,
+            ),
+          );
+        }
+      }
+
+      return lines;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  ChessGameNavigator? get _analysisNavigator =>
+      _analysisGame == null
+          ? null
+          : ref.read(chessGameNavigatorProvider(_analysisGame!).notifier);
+
   Future<void> _evaluatePosition() async {
     try {
       final currentState = state.value;
@@ -724,46 +787,54 @@ class ChessBoardScreenNotifierNew
           currentState.isAnalysisMode
               ? currentState.analysisState.position.fen
               : currentState.position?.fen;
-      print("----------- _evaluatePosition for fen: $fen");
+      debugPrint("----------- _evaluatePosition for fen: $fen");
 
       // CRITICAL DEBUGGING: Log detailed state information
       if (currentState.isAnalysisMode) {
         final analysisState = currentState.analysisState;
-        print("🔍 ANALYSIS MODE: moveIndex=${analysisState.currentMoveIndex}, historyLen=${analysisState.positionHistory.length}");
-        print("🔍   lastMove=${analysisState.lastMove}, position.fen=$fen");
-        print("🔍   moveSans=${analysisState.moveSans.length > 0 ? analysisState.moveSans.last : 'none'}");
+        debugPrint(
+          "🔍 ANALYSIS MODE: moveIndex=${analysisState.currentMoveIndex}, historyLen=${analysisState.positionHistory.length}",
+        );
+        debugPrint(
+          "🔍   lastMove=${analysisState.lastMove}, position.fen=$fen",
+        );
+        debugPrint(
+          "🔍   moveSans=${analysisState.moveSans.isNotEmpty ? analysisState.moveSans.last : 'none'}",
+        );
       } else {
-        print("🔍 NORMAL MODE: position.fen=$fen");
-        print("🔍   lastMove=${currentState.position != null ? 'present' : 'null'}");
+        debugPrint("🔍 NORMAL MODE: position.fen=$fen");
+        debugPrint(
+          "🔍   lastMove=${currentState.position != null ? 'present' : 'null'}",
+        );
       }
 
       if (fen == null) return;
 
       CloudEval? cloudEval;
       double evaluation = 0.0;
-      print("Evaluating started for position: $fen");
+      List<AnalysisLine> pvLines = const [];
+      debugPrint("Evaluating started for position: $fen");
       // Set evaluating state to show loading
       state = AsyncValue.data(
-        currentState.copyWith(
-          shapes: const ISet.empty(),
-          isEvaluating: true,
-        ),
+        currentState.copyWith(shapes: const ISet.empty(), isEvaluating: true),
       );
       try {
         // Force invalidate to bypass any cached wrong evaluations
         ref.invalidate(cascadeEvalProviderForBoard(fen));
         // Also try to clear local cache for this specific FEN (if accessible)
-        print("🔄 FORCING FRESH EVALUATION for $fen (invalidating cache)");
+        debugPrint("🔄 FORCING FRESH EVALUATION for $fen (invalidating cache)");
         cloudEval = await ref.read(cascadeEvalProviderForBoard(fen).future);
-        if (cloudEval?.pvs.isNotEmpty ?? false) {
-          evaluation = _getConsistentEvaluation(
-            cloudEval!.pvs.first.cp / 100.0,
+        final fetchedEval = cloudEval;
+        if (fetchedEval != null && fetchedEval.pvs.isNotEmpty) {
+          evaluation = getConsistentEvaluation(
+            fetchedEval.pvs.first.cp / 100.0,
             fen,
           );
+          pvLines = _buildPrincipalVariations(fen, fetchedEval.pvs);
         }
-        print("Getting eval from cascadeEval: $fen");
+        debugPrint("Getting eval from cascadeEval: $fen");
       } catch (e) {
-        print('Cascade eval failed, using local stockfish: $e');
+        debugPrint('Cascade eval failed, using local stockfish: $e');
         CloudEval result;
         try {
           var evaluatePosRes = await StockfishSingleton().evaluatePosition(
@@ -771,17 +842,15 @@ class ChessBoardScreenNotifierNew
             depth: 15, // Reduced depth for faster evaluation
           );
           if (evaluatePosRes.isCancelled) {
-            print('Evaluation was cancelled for ${fen}');
+            debugPrint('Evaluation was cancelled for $fen');
             // Reset isEvaluating flag on cancellation
             final currState = state.value;
             if (currState != null) {
-              state = AsyncValue.data(
-                currState.copyWith(isEvaluating: false),
-              );
+              state = AsyncValue.data(currState.copyWith(isEvaluating: false));
             }
             return;
           } else {
-            print('Evaluation was successful for ${fen}');
+            debugPrint('Evaluation was successful for $fen');
           }
           result = CloudEval(
             fen: fen,
@@ -790,25 +859,23 @@ class ChessBoardScreenNotifierNew
             pvs: evaluatePosRes.pvs,
           );
         } catch (ex) {
-          print('Stockfish evaluation failed for ${fen} with error: $ex');
+          debugPrint('Stockfish evaluation failed for $fen with error: $ex');
           // Reset isEvaluating flag on error
           final currState = state.value;
           if (currState != null) {
-            state = AsyncValue.data(
-              currState.copyWith(isEvaluating: false),
-            );
+            state = AsyncValue.data(currState.copyWith(isEvaluating: false));
           }
           return;
         }
         if (result.pvs.isNotEmpty) {
           final rawCp = result.pvs.first.cp;
-          evaluation = _getConsistentEvaluation(
-            rawCp / 100.0,
-            fen,
-          );
+          evaluation = getConsistentEvaluation(rawCp / 100.0, fen);
+          pvLines = _buildPrincipalVariations(fen, result.pvs);
           final fenParts = fen.split(' ');
           final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
-          print("🔴 EVAL SOURCE: STOCKFISH FALLBACK - fen=$fen, side=$sideToMove, rawCp=$rawCp, finalEval=$evaluation");
+          debugPrint(
+            "🔴 EVAL SOURCE: STOCKFISH FALLBACK - fen=$fen, side=$sideToMove, rawCp=$rawCp, finalEval=$evaluation",
+          );
         }
         cloudEval = result;
         try {
@@ -819,7 +886,7 @@ class ChessBoardScreenNotifierNew
             local.save(fen, cloudEval),
           ]);
         } catch (cacheError) {
-          print('Cache error: $cacheError');
+          debugPrint('Cache error: $cacheError');
         }
       }
       // Only update state if the evaluation corresponds to the current move index
@@ -834,56 +901,142 @@ class ChessBoardScreenNotifierNew
       if ((currState.isAnalysisMode &&
               currState.analysisState.position.fen == fen) ||
           (!currState.isAnalysisMode && currentState.position?.fen == fen)) {
-
         // COMPREHENSIVE DEBUGGING - Track evaluation source and perspective
         final fenParts = fen.split(' ');
         final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
-        final rawCp = cloudEval?.pvs.isNotEmpty == true ? cloudEval!.pvs.first.cp : 0;
+        final rawCp =
+            cloudEval?.pvs.isNotEmpty == true ? cloudEval!.pvs.first.cp : 0;
         final evaluationSource = cloudEval != null ? "cloudEval" : "fallback";
 
-        print("🚨 SETTING EVAL: fen=$fen");
-        print("🚨   side=$sideToMove, rawCp=$rawCp, finalEval=$evaluation");
-        print("🚨   source=$evaluationSource, shapes=${shapes.length}");
-        print("🚨   evalBar expects: positive=white advantage, negative=black advantage");
+        debugPrint("🚨 SETTING EVAL: fen=$fen");
+        debugPrint(
+          "🚨   side=$sideToMove, rawCp=$rawCp, finalEval=$evaluation",
+        );
+        debugPrint("🚨   source=$evaluationSource, shapes=${shapes.length}");
+        debugPrint(
+          "🚨   evalBar expects: positive=white advantage, negative=black advantage",
+        );
 
         // CRITICAL DEBUGGING: Position vs Move confusion analysis
-        if (currentState.isAnalysisMode && currentState.analysisState.moveSans.isNotEmpty) {
+        if (currentState.isAnalysisMode &&
+            currentState.analysisState.moveSans.isNotEmpty) {
           final lastMoveIndex = currentState.analysisState.currentMoveIndex - 1;
-          final lastMoveSan = lastMoveIndex >= 0 && lastMoveIndex < currentState.analysisState.moveSans.length
-              ? currentState.analysisState.moveSans[lastMoveIndex]
-              : 'none';
+          final lastMoveSan =
+              lastMoveIndex >= 0 &&
+                      lastMoveIndex < currentState.analysisState.moveSans.length
+                  ? currentState.analysisState.moveSans[lastMoveIndex]
+                  : 'none';
           final moveNumber = (lastMoveIndex / 2).floor() + 1;
           final isWhiteMove = lastMoveIndex % 2 == 0;
 
-          print("🎯 MOVE CONTEXT: lastMove=$lastMoveSan (move#$moveNumber, ${isWhiteMove ? 'WHITE' : 'BLACK'} just moved)");
-          print("🎯   After ${isWhiteMove ? 'WHITE' : 'BLACK'} move, position has side=$sideToMove to move");
-          print("🎯   Evaluation should represent advantage for ${isWhiteMove ? 'WHITE' : 'BLACK'} (who just moved)");
+          debugPrint(
+            "🎯 MOVE CONTEXT: lastMove=$lastMoveSan (move#$moveNumber, ${isWhiteMove ? 'WHITE' : 'BLACK'} just moved)",
+          );
+          debugPrint(
+            "🎯   After ${isWhiteMove ? 'WHITE' : 'BLACK'} move, position has side=$sideToMove to move",
+          );
+          debugPrint(
+            "🎯   Evaluation should represent advantage for ${isWhiteMove ? 'WHITE' : 'BLACK'} (who just moved)",
+          );
 
           // Sanity check: after white moves, black should be to move
           if (isWhiteMove && sideToMove != 'b') {
-            print("⚠️  WARNING: After WHITE move, expected BLACK to move but side=$sideToMove");
+            debugPrint(
+              "⚠️  WARNING: After WHITE move, expected BLACK to move but side=$sideToMove",
+            );
           }
           if (!isWhiteMove && sideToMove != 'w') {
-            print("⚠️  WARNING: After BLACK move, expected WHITE to move but side=$sideToMove");
+            debugPrint(
+              "⚠️  WARNING: After BLACK move, expected WHITE to move but side=$sideToMove",
+            );
           }
         }
+
+        final mateScore =
+            (cloudEval?.pvs.isNotEmpty ?? false)
+                ? cloudEval!.pvs.first.mate
+                : null;
 
         state = AsyncValue.data(
           currState.copyWith(
             evaluation: evaluation,
             isEvaluating: false,
             shapes: shapes,
-            mate: cloudEval?.pvs.first.mate ?? 0, // Default to 0 if no mate value
+            mate: mateScore ?? currState.mate,
+            principalVariations: pvLines,
+            analysisState: currState.analysisState.copyWith(
+              suggestionLines: pvLines,
+            ),
           ),
         );
-      }
-      else{
-        print("------- Skipping setting evaluation for outdated fen: $fen");
+      } else {
+        debugPrint(
+          "------- Skipping setting evaluation for outdated fen: $fen",
+        );
       }
     } catch (e) {
       if (!_cancelEvaluation) {
-        print('Evaluation error: $e');
+        debugPrint('Evaluation error: $e');
       }
+    }
+  }
+
+  void _syncAnalysisFromNavigator(ChessGameNavigatorState navigatorState) {
+    final current = state.value;
+    if (current == null) {
+      return;
+    }
+
+    try {
+      final position = Position.setupPosition(
+        Rule.chess,
+        Setup.parseFen(navigatorState.currentFen),
+      );
+
+      Move? lastMove;
+      final currentMove = navigatorState.currentMove;
+      if (currentMove != null) {
+        final parsed = Move.parse(currentMove.uci);
+        if (parsed != null) {
+          lastMove = parsed;
+        }
+      }
+
+      int currentMoveIndex;
+      final chessMove = navigatorState.currentMove;
+      if (chessMove == null) {
+        currentMoveIndex = -1;
+      } else {
+        var moveNumber = chessMove.num;
+        final whiteJustMoved = chessMove.turn == ChessColor.black;
+        if (!whiteJustMoved) {
+          moveNumber = (moveNumber - 1).clamp(1, moveNumber);
+        }
+        currentMoveIndex =
+            whiteJustMoved ? (moveNumber - 1) * 2 : (moveNumber - 1) * 2 + 1;
+      }
+
+      state = AsyncValue.data(
+        current.copyWith(
+          analysisState: current.analysisState.copyWith(
+            game: navigatorState.game,
+            position: position,
+            validMoves: makeLegalMoves(position),
+            lastMove: lastMove,
+            moveSans:
+                navigatorState.currentLine?.map((move) => move.san).toList() ??
+                const [],
+            movePointer: navigatorState.movePointer,
+            currentMoveIndex: currentMoveIndex,
+          ),
+        ),
+      );
+
+      if (!_cancelEvaluation) {
+        _updateEvaluation();
+      }
+    } catch (e) {
+      debugPrint('Failed to sync analysis navigator state: $e');
     }
   }
 
@@ -896,7 +1049,7 @@ class ChessBoardScreenNotifierNew
               .toLowerCase(); // Normalize to lowercase
 
       if (bestMove.length < 4 || bestMove.length > 5) {
-        print('Invalid best move UCI: $bestMove');
+        debugPrint('Invalid best move UCI: $bestMove');
         return shapes; // Invalid UCI
       }
 
@@ -931,11 +1084,11 @@ class ChessBoardScreenNotifierNew
         }
       } catch (e) {
         // Parsing failed, return empty
-        print('Error parsing best move UCI: $e');
+        debugPrint('Error parsing best move UCI: $e');
         return const ISet.empty();
       }
     } else {
-      print('No evaluation data available.');
+      debugPrint('No evaluation data available.');
     }
     return shapes;
   }
@@ -943,16 +1096,13 @@ class ChessBoardScreenNotifierNew
   void _updateEvaluation() {
     if (_isLongPressing) return;
     _cancelEvaluation = false;
-    _evalOperation?.cancel();
 
     EasyDebounce.debounce(
       'evaluation-$index',
       const Duration(milliseconds: 100),
       () {
         if (_cancelEvaluation || state.value == null || !mounted) return;
-        _evalOperation = CancelableOperation.fromFuture(
-          _evaluatePosition()
-        );
+        _evaluatePosition();
       },
     );
   }
@@ -998,8 +1148,6 @@ class ChessBoardScreenNotifierNew
   void stopLongPress() {
     _longPressTimer?.cancel();
     _longPressTimer = null;
-    _evalOperation?.cancel();
-    _evalOperation = null;
     _cancelEvaluation = true;
     if (_isLongPressing) {
       _isLongPressing = false;
@@ -1013,6 +1161,9 @@ class ChessBoardScreenNotifierNew
     stopLongPress();
     _evaluationCache.clear();
     _mateCache.clear();
+    unawaited(_persistAnalysisState());
+    _navigatorSubscription?.close();
+    _navigatorSubscription = null;
     super.dispose();
   }
 }

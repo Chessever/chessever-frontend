@@ -1,5 +1,7 @@
 import 'package:chessever2/providers/board_settings_provider.dart';
 import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
+import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
+import 'package:chessever2/screens/chessboard/analysis/chess_line_display.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
@@ -34,12 +36,10 @@ Color getLastMoveHighlightColor(ChessBoardStateNew state) {
 
 // Helper function to get move highlight color for analysis mode
 Color getAnalysisLastMoveHighlightColor(ChessBoardStateNew state) {
-  if (state.analysisState.currentMoveIndex < 0) return kPrimaryColor;
+  if (state.analysisState.lastMove == null) return kPrimaryColor;
 
-  // Determine if the current move (last move played) was by white or black
-  // Move index 0 = white's first move, 1 = black's first move, etc.
-  final isWhiteMove = state.analysisState.currentMoveIndex % 2 == 0;
-
+  // If it's black's turn, white made the last move, and vice versa.
+  final isWhiteMove = state.analysisState.position.turn == Side.black;
   return isWhiteMove ? kPrimaryColor : kChessBlackMoveColor;
 }
 
@@ -146,126 +146,136 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
 
   @override
   Widget build(BuildContext context) {
-    ref.listen(chessBoardScreenProviderNew(_currentPageIndex), (
-      prev,
-      next,
-    ) {
-      if (prev?.valueOrNull?.currentMoveIndex !=
-          next.valueOrNull?.currentMoveIndex && next.valueOrNull != null) {
+    ref.listen(
+      chessBoardScreenProviderNew(_currentPageIndex),
+      (prev, next) {
+        if (prev?.valueOrNull?.currentMoveIndex !=
+                next.valueOrNull?.currentMoveIndex &&
+            next.valueOrNull != null) {
+          // CRITICAL FIX: Only play audio if this chess board screen is currently active
+          // This prevents audio from playing when other games in the tournament get moves
+          final route = ModalRoute.of(context);
+          if (route == null || !route.isCurrent) {
+            // Screen is not visible, don't play audio
+            return;
+          }
 
-        // CRITICAL FIX: Only play audio if this chess board screen is currently active
-        // This prevents audio from playing when other games in the tournament get moves
-        final route = ModalRoute.of(context);
-        if (route == null || !route.isCurrent) {
-          // Screen is not visible, don't play audio
-          return;
-        }
+          final state = next.valueOrNull!;
+          final prevIndex = prev?.valueOrNull?.currentMoveIndex ?? -1;
+          final currentIndex = state.currentMoveIndex;
 
-        final state = next.valueOrNull!;
-        final prevIndex = prev?.valueOrNull?.currentMoveIndex ?? -1;
-        final currentIndex = state.currentMoveIndex;
+          // ENHANCED FIX: Verify this update is for the currently viewed game
+          // Only play audio if the provider index matches the current page
+          final providerGameIndex = _currentPageIndex;
+          final viewGameId = widget.games[providerGameIndex].gameId;
+          if (state.game.gameId != viewGameId) {
+            // This update is for a different game, don't play audio
+            return;
+          }
 
-        // ENHANCED FIX: Verify this update is for the currently viewed game
-        // Only play audio if the provider index matches the current page
-        final providerGameIndex = _currentPageIndex;
-        final viewGameId = widget.games[providerGameIndex].gameId;
-        if (state.game.gameId != viewGameId) {
-          // This update is for a different game, don't play audio
-          return;
-        }
+          // Additional check: Only play audio for significant move index changes
+          // This prevents audio from playing due to minor state updates
+          if ((currentIndex - prevIndex).abs() != 1 && currentIndex != -1) {
+            // Not a sequential move change, likely a background update
+            return;
+          }
 
-        // Additional check: Only play audio for significant move index changes
-        // This prevents audio from playing due to minor state updates
-        if ((currentIndex - prevIndex).abs() != 1 && currentIndex != -1) {
-          // Not a sequential move change, likely a background update
-          return;
-        }
+          // Final check: Make sure we're viewing the correct page in PageView
+          // Use a small tolerance for floating-point comparison
+          final currentPage =
+              _pageController.page ?? _currentPageIndex.toDouble();
+          if ((currentPage - _currentPageIndex).abs() > 0.1) {
+            // PageView is not on the current game, don't play audio
+            return;
+          }
 
-        // Final check: Make sure we're viewing the correct page in PageView
-        // Use a small tolerance for floating-point comparison
-        final currentPage = _pageController.page ?? _currentPageIndex.toDouble();
-        if ((currentPage - _currentPageIndex).abs() > 0.1) {
-          // PageView is not on the current game, don't play audio
-          return;
-        }
+          final audioService = AudioPlayerService.instance;
 
-        final audioService = AudioPlayerService.instance;
+          // Determine if we're going forward or backward
+          final isMovingForward = currentIndex > prevIndex;
 
-        // Determine if we're going forward or backward
-        final isMovingForward = currentIndex > prevIndex;
+          // For backward navigation, we want to play the sound of the move we just "undid"
+          // For forward navigation, we want to play the sound of the move we just made
+          final moveIndexForSound = isMovingForward ? currentIndex : prevIndex;
 
-        // For backward navigation, we want to play the sound of the move we just "undid"
-        // For forward navigation, we want to play the sound of the move we just made
-        final moveIndexForSound = isMovingForward ? currentIndex : prevIndex;
+          // Check if we have a valid move to play sound for
+          if (moveIndexForSound >= 0 &&
+              moveIndexForSound < state.moveSans.length) {
+            // Get the move notation for the appropriate move
+            final moveSan = state.moveSans[moveIndexForSound];
 
-        // Check if we have a valid move to play sound for
-        if (moveIndexForSound >= 0 && moveIndexForSound < state.moveSans.length) {
-          // Get the move notation for the appropriate move
-          final moveSan = state.moveSans[moveIndexForSound];
+            // Determine which sound to play based on PGN notation
+            // Priority order matters: checkmate > check > special moves > capture > regular
+            if (moveSan.contains('#')) {
+              // Checkmate notation
+              audioService.player.play(audioService.pieceCheckmateSfx);
+            } else if (moveSan.contains('+')) {
+              // Check notation (but not checkmate)
+              audioService.player.play(audioService.pieceCheckSfx);
+            } else if (moveSan == 'O-O' || moveSan == 'O-O-O') {
+              // Castling (kingside or queenside) - exact match
+              audioService.player.play(audioService.pieceCastlingSfx);
+            } else if (moveSan.contains('=')) {
+              // Pawn promotion (e.g., e8=Q)
+              audioService.player.play(audioService.piecePromotionSfx);
+            } else if (moveSan.contains('x')) {
+              // Capture notation
+              audioService.player.play(audioService.pieceTakeoverSfx);
+            } else {
+              // Regular move (no special notation)
+              audioService.player.play(audioService.pieceMoveSfx);
+            }
+          } else if (currentIndex == -1 && prevIndex >= 0) {
+            // Moving back to the starting position (before first move)
+            // Play a regular move sound for the "undo" action
+            audioService.player.play(audioService.pieceMoveSfx);
+          } else if (currentIndex == state.moveSans.length &&
+              state.moveSans.isNotEmpty) {
+            // We're at the end of the game, check for game-ending conditions
+            final lastMoveSan = state.moveSans.last;
 
-          // Determine which sound to play based on PGN notation
-          // Priority order matters: checkmate > check > special moves > capture > regular
-          if (moveSan.contains('#')) {
-            // Checkmate notation
-            audioService.player.play(audioService.pieceCheckmateSfx);
-          } else if (moveSan.contains('+')) {
-            // Check notation (but not checkmate)
-            audioService.player.play(audioService.pieceCheckSfx);
-          } else if (moveSan == 'O-O' || moveSan == 'O-O-O') {
-            // Castling (kingside or queenside) - exact match
-            audioService.player.play(audioService.pieceCastlingSfx);
-          } else if (moveSan.contains('=')) {
-            // Pawn promotion (e.g., e8=Q)
-            audioService.player.play(audioService.piecePromotionSfx);
-          } else if (moveSan.contains('x')) {
-            // Capture notation
-            audioService.player.play(audioService.pieceTakeoverSfx);
+            if (lastMoveSan.contains('#')) {
+              // Game ended with checkmate
+              audioService.player.play(audioService.pieceCheckmateSfx);
+            } else if (state.game.gameStatus == GameStatus.draw) {
+              // Game ended in a draw
+              audioService.player.play(audioService.pieceDrawSfx);
+            } else {
+              // Other game endings (resignation, time out, etc.)
+              audioService.player.play(audioService.pieceMoveSfx);
+            }
           } else {
-            // Regular move (no special notation)
+            // Fallback for edge cases (shouldn't normally happen)
             audioService.player.play(audioService.pieceMoveSfx);
           }
-        } else if (currentIndex == -1 && prevIndex >= 0) {
-          // Moving back to the starting position (before first move)
-          // Play a regular move sound for the "undo" action
-          audioService.player.play(audioService.pieceMoveSfx);
-        } else if (currentIndex == state.moveSans.length && state.moveSans.isNotEmpty) {
-          // We're at the end of the game, check for game-ending conditions
-          final lastMoveSan = state.moveSans.last;
-
-          if (lastMoveSan.contains('#')) {
-            // Game ended with checkmate
-            audioService.player.play(audioService.pieceCheckmateSfx);
-          } else if (state.game.gameStatus == GameStatus.draw) {
-            // Game ended in a draw
-            audioService.player.play(audioService.pieceDrawSfx);
-          } else {
-            // Other game endings (resignation, time out, etc.)
-            audioService.player.play(audioService.pieceMoveSfx);
-          }
-        } else {
-          // Fallback for edge cases (shouldn't normally happen)
-          audioService.player.play(audioService.pieceMoveSfx);
         }
-      }
-    },onError: (e,st) {
-      debugPrint("Error in chessBoardScreenProviderNew listener: $e");
-    });
+      },
+      onError: (e, st) {
+        debugPrint("Error in chessBoardScreenProviderNew listener: $e");
+      },
+    );
     // OPTIMIZED: Only watch for updates to games that are currently visible in the PageView
     // This prevents rebuilds when other games in the tournament get updated
     final view = ref.watch(chessboardViewFromProviderNew);
-    final gamesAsync = view == ChessboardView.tour
-        ? ref.watch(gamesTourScreenProvider.select((value) {
-            // Only trigger rebuild if the games we care about have changed
-            if (!value.hasValue) return value;
+    final gamesAsync =
+        view == ChessboardView.tour
+            ? ref.watch(
+              gamesTourScreenProvider.select((value) {
+                // Only trigger rebuild if the games we care about have changed
+                if (!value.hasValue) return value;
 
-            final allGames = value.value!.gamesTourModels;
-            final gameIds = widget.games.map((g) => g.gameId).toSet();
+                final allGames = value.value!.gamesTourModels;
+                final gameIds = widget.games.map((g) => g.gameId).toSet();
 
-            // Return only the games relevant to this chess board screen
-            final relevantGames = allGames.where((g) => gameIds.contains(g.gameId)).toList();
-            return AsyncValue.data(value.value!.copyWith(gamesTourModels: relevantGames));
-          }))
-        : ref.watch(countrymanGamesTourScreenProvider);
+                // Return only the games relevant to this chess board screen
+                final relevantGames =
+                    allGames.where((g) => gameIds.contains(g.gameId)).toList();
+                return AsyncValue.data(
+                  value.value!.copyWith(gamesTourModels: relevantGames),
+                );
+              }),
+            )
+            : ref.watch(countrymanGamesTourScreenProvider);
 
     // Show loading screen if data isn't ready
     if (!gamesAsync.hasValue || gamesAsync.value?.gamesTourModels == null) {
@@ -279,17 +289,20 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
 
     // Map only the games relevant to this chess board screen
     final liveGamesMap = Map.fromEntries(
-      gamesAsync.value!.gamesTourModels.map((g) => MapEntry(g.gameId, g))
+      gamesAsync.value!.gamesTourModels.map((g) => MapEntry(g.gameId, g)),
     );
-    final liveGames = widget.games.map((originalGame) {
-      // Get the updated game data from the live stream, or fallback to original if not found
-      return liveGamesMap[originalGame.gameId] ?? originalGame;
-    }).toList();
+    final liveGames =
+        widget.games.map((originalGame) {
+          // Get the updated game data from the live stream, or fallback to original if not found
+          return liveGamesMap[originalGame.gameId] ?? originalGame;
+        }).toList();
 
-    return WillPopScope(
-      onWillPop: () async {
-        Navigator.of(context).pop(_lastViewedIndex);
-        return false;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          Navigator.of(context).pop(_lastViewedIndex);
+        }
       },
       child: Scaffold(
         body: RawGestureDetector(
@@ -705,12 +718,12 @@ class _GameDropdownItem extends StatelessWidget {
     // Try to extract number from various patterns
     // Examples: "round-12", "rapid-8", "blitz-8", "13", "game-4", "losers-r3--armageddon"
     final patterns = [
-      RegExp(r'round[-\s]?(\d+)', caseSensitive: false),  // round-12, round 12
-      RegExp(r'rapid[-\s]?(\d+)', caseSensitive: false),  // rapid-8
-      RegExp(r'blitz[-\s]?(\d+)', caseSensitive: false),  // blitz-8
-      RegExp(r'^(\d+)$'),  // just a number like "13"
-      RegExp(r'r(\d+)', caseSensitive: false),  // r3 in losers-r3
-      RegExp(r'game[-\s]?(\d+)', caseSensitive: false),  // game-4
+      RegExp(r'round[-\s]?(\d+)', caseSensitive: false), // round-12, round 12
+      RegExp(r'rapid[-\s]?(\d+)', caseSensitive: false), // rapid-8
+      RegExp(r'blitz[-\s]?(\d+)', caseSensitive: false), // blitz-8
+      RegExp(r'^(\d+)$'), // just a number like "13"
+      RegExp(r'r(\d+)', caseSensitive: false), // r3 in losers-r3
+      RegExp(r'game[-\s]?(\d+)', caseSensitive: false), // game-4
     ];
 
     for (final pattern in patterns) {
@@ -820,16 +833,33 @@ class _BottomNavBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-
     return ChessBoardBottomNavBar(
       gameIndex: index,
-      onFlip: () => ref.read(chessBoardScreenProviderNew(index).notifier).flipBoard(),
-      onRightMove: state.canMoveForward ? () => ref.read(chessBoardScreenProviderNew(index).notifier).moveForward() : null,
-      onLeftMove: state.canMoveBackward ? () => ref.read(chessBoardScreenProviderNew(index).notifier).moveBackward() : null,
+      onFlip:
+          () =>
+              ref.read(chessBoardScreenProviderNew(index).notifier).flipBoard(),
+      onRightMove:
+          state.canMoveForward
+              ? () =>
+                  ref
+                      .read(chessBoardScreenProviderNew(index).notifier)
+                      .moveForward()
+              : null,
+      onLeftMove:
+          state.canMoveBackward
+              ? () =>
+                  ref
+                      .read(chessBoardScreenProviderNew(index).notifier)
+                      .moveBackward()
+              : null,
       canMoveForward: state.canMoveForward,
       canMoveBackward: state.canMoveBackward,
       isAnalysisMode: state.isAnalysisMode,
-      toggleAnalysisMode: () => ref.read(chessBoardScreenProviderNew(index).notifier).toggleAnalysisMode(),
+      toggleAnalysisMode:
+          () =>
+              ref
+                  .read(chessBoardScreenProviderNew(index).notifier)
+                  .toggleAnalysisMode(),
     );
   }
 }
@@ -847,6 +877,10 @@ class _GameBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (state.isAnalysisMode) {
+      return _AnalysisGameBody(index: index, game: game, state: state);
+    }
+
     return Column(
       children: [
         _PlayerWidget(
@@ -868,7 +902,7 @@ class _GameBody extends StatelessWidget {
           child: Container(
             width: double.infinity,
             decoration: BoxDecoration(
-              color: kDarkGreyColor.withOpacity(0.3),
+              color: kDarkGreyColor.withValues(alpha: 0.3),
               borderRadius: BorderRadius.only(
                 topLeft: Radius.circular(12.sp),
                 topRight: Radius.circular(12.sp),
@@ -876,34 +910,25 @@ class _GameBody extends StatelessWidget {
             ),
             child: NotificationListener<ScrollNotification>(
               onNotification: (notification) {
-                // Allow only vertical scrolling
                 if (notification is ScrollStartNotification) {
-                  // You can add additional logic here if needed
+                  // additional logic hook
                 }
-                return false; // Allow the notification to continue bubbling up
+                return false;
               },
               child: SingleChildScrollView(
                 scrollDirection: Axis.vertical,
                 physics: const ClampingScrollPhysics(),
-                dragStartBehavior:
-                    DragStartBehavior.down, // Start drag from down gesture
+                dragStartBehavior: DragStartBehavior.down,
                 child: GestureDetector(
                   onHorizontalDragStart: (_) {},
-                  // Consume horizontal gestures
                   onHorizontalDragUpdate: (_) {},
                   onHorizontalDragEnd: (_) {},
                   behavior: HitTestBehavior.translucent,
                   child: _MovesDisplay(
                     index: index,
                     state: state,
-                    sanMoves:
-                        state.isAnalysisMode
-                            ? state.analysisState.moveSans
-                            : state.moveSans,
-                    currentMoveIndex:
-                        state.isAnalysisMode
-                            ? state.analysisState.currentMoveIndex
-                            : state.currentMoveIndex,
+                    sanMoves: state.moveSans,
+                    currentMoveIndex: state.currentMoveIndex,
                   ),
                 ),
               ),
@@ -911,6 +936,154 @@ class _GameBody extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _AnalysisGameBody extends ConsumerWidget {
+  final int index;
+  final GamesTourModel game;
+  final ChessBoardStateNew state;
+
+  const _AnalysisGameBody({
+    required this.index,
+    required this.game,
+    required this.state,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Column(
+      children: [
+        _PlayerWidget(
+          game: game,
+          isFlipped: state.isBoardFlipped,
+          blackPlayer: false,
+          state: state,
+        ),
+        SizedBox(height: 2.h),
+        _BoardWithSidebar(index: index, state: state),
+        if (state.principalVariations.isNotEmpty)
+          _PrincipalVariationList(index: index, state: state),
+        SizedBox(height: 2.h),
+        _PlayerWidget(
+          game: game,
+          isFlipped: state.isBoardFlipped,
+          blackPlayer: true,
+          state: state,
+        ),
+        _AnalysisControlsRow(index: index),
+        Expanded(
+          child: Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: kDarkGreyColor.withValues(alpha: 0.3),
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(12.sp),
+                topRight: Radius.circular(12.sp),
+              ),
+            ),
+            child: _AnalysisMovesDisplay(index: index, state: state),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AnalysisControlsRow extends ConsumerWidget {
+  final int index;
+
+  const _AnalysisControlsRow({required this.index});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final notifier = ref.read(chessBoardScreenProviderNew(index).notifier);
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 4.sp),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.fast_rewind, color: kWhiteColor),
+            onPressed: notifier.jumpToStart,
+          ),
+          IconButton(
+            icon: const Icon(Icons.arrow_back, color: kWhiteColor),
+            onPressed: notifier.moveBackward,
+          ),
+          IconButton(
+            icon: const Icon(Icons.arrow_forward, color: kWhiteColor),
+            onPressed: notifier.moveForward,
+          ),
+          IconButton(
+            icon: const Icon(Icons.fast_forward, color: kWhiteColor),
+            onPressed: notifier.jumpToEnd,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AnalysisMovesDisplay extends ConsumerWidget {
+  final int index;
+  final ChessBoardStateNew state;
+
+  const _AnalysisMovesDisplay({required this.index, required this.state});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final analysis = state.analysisState;
+    final game = analysis.game;
+
+    if (state.isLoadingMoves) {
+      return Center(
+        child: Padding(
+          padding: EdgeInsets.all(24.sp),
+          child: CircularProgressIndicator(color: kGreenColor),
+        ),
+      );
+    }
+
+    if (game == null) {
+      return Center(
+        child: Padding(
+          padding: EdgeInsets.all(24.sp),
+          child: CircularProgressIndicator(color: kGreenColor),
+        ),
+      );
+    }
+
+    if (game.mainline.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: EdgeInsets.all(20.sp),
+          child: Text(
+            'No moves available for this game',
+            style: AppTypography.textXsMedium.copyWith(
+              color: kWhiteColor70,
+              fontWeight: FontWeight.normal,
+            ),
+          ),
+        ),
+      );
+    }
+
+    final navigatorState = ref.watch(chessGameNavigatorProvider(game));
+
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(20.sp),
+      child: ChessLineDisplay(
+        line: navigatorState.game.mainline,
+        currentFen: navigatorState.currentFen,
+        movePointer: navigatorState.movePointer,
+        onClick: (pointer) {
+          ref
+              .read(chessBoardScreenProviderNew(index).notifier)
+              .goToMovePointer(pointer);
+        },
+      ),
     );
   }
 }
@@ -934,8 +1107,11 @@ class _PlayerWidget extends StatelessWidget {
     final isWhitePlayer =
         (blackPlayer && !isFlipped) || (!blackPlayer && isFlipped);
 
+    final currentPosition =
+        state.isAnalysisMode ? state.analysisState.position : state.position;
+
     // Check whose turn it is currently
-    final currentTurn = state.position?.turn ?? Side.white;
+    final currentTurn = currentPosition?.turn ?? Side.white;
     final isCurrentPlayer =
         (isWhitePlayer && currentTurn == Side.white) ||
         (!isWhitePlayer && currentTurn == Side.black);
@@ -1037,7 +1213,9 @@ class _ChessBoardNew extends ConsumerWidget {
             coordinates: true,
             orientation: Side.black,
           ),
-          lastMove: HighlightDetails(solidColor: getLastMoveHighlightColor(chessBoardState)),
+          lastMove: HighlightDetails(
+            solidColor: getLastMoveHighlightColor(chessBoardState),
+          ),
           selected: const HighlightDetails(solidColor: kPrimaryColor),
           validMoves: kPrimaryColor,
           validPremoves: kPrimaryColor,
@@ -1106,7 +1284,9 @@ class _AnalysisBoard extends ConsumerWidget {
             coordinates: true,
             orientation: Side.black,
           ),
-          lastMove: HighlightDetails(solidColor: getAnalysisLastMoveHighlightColor(chessBoardState)),
+          lastMove: HighlightDetails(
+            solidColor: getAnalysisLastMoveHighlightColor(chessBoardState),
+          ),
           selected: const HighlightDetails(solidColor: kPrimaryColor),
           validMoves: kPrimaryColor,
           validPremoves: kPrimaryColor,
@@ -1147,8 +1327,6 @@ class _MovesDisplay extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-
-
     if (state.isLoadingMoves) {
       return _buildMovesLoadingSkeleton();
     }
@@ -1183,7 +1361,10 @@ class _MovesDisplay extends ConsumerWidget {
               final isWhiteMove = moveIndex % 2 == 0;
 
               return GestureDetector(
-                onTap: () => ref.read(chessBoardScreenProviderNew(index).notifier).goToMove(moveIndex),
+                onTap:
+                    () => ref
+                        .read(chessBoardScreenProviderNew(index).notifier)
+                        .goToMove(moveIndex),
                 child: Container(
                   padding: EdgeInsets.symmetric(
                     horizontal: 6.sp,
@@ -1192,7 +1373,7 @@ class _MovesDisplay extends ConsumerWidget {
                   decoration: BoxDecoration(
                     color:
                         isCurrentMove
-                            ? kWhiteColor70.withOpacity(0.4)
+                            ? kWhiteColor70.withValues(alpha: 0.4)
                             : Colors.transparent,
                     borderRadius: BorderRadius.circular(4.sp),
                     border: Border.all(
@@ -1203,7 +1384,9 @@ class _MovesDisplay extends ConsumerWidget {
                   child: Text(
                     isWhiteMove ? '$fullMoveNumber. $move' : move,
                     style: AppTypography.textXsMedium.copyWith(
-                      color: ref.read(chessBoardScreenProviderNew(index).notifier).getMoveColor(move, moveIndex),
+                      color: ref
+                          .read(chessBoardScreenProviderNew(index).notifier)
+                          .getMoveColor(move, moveIndex),
                       fontWeight:
                           isCurrentMove ? FontWeight.bold : FontWeight.normal,
                     ),
@@ -1262,6 +1445,101 @@ class _MovesDisplay extends ConsumerWidget {
   }
 }
 
+class _PrincipalVariationList extends ConsumerWidget {
+  final int index;
+  final ChessBoardStateNew state;
+
+  const _PrincipalVariationList({required this.index, required this.state});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final lines = state.principalVariations.take(2).toList();
+    if (lines.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final position =
+        state.isAnalysisMode ? state.analysisState.position : state.position;
+    final baseMoveNumber = position?.fullmoves ?? 1;
+    final isWhiteToMove = (position?.turn ?? Side.white) == Side.white;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20.sp, 20.sp, 20.sp, 8.sp),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Engine suggestions',
+            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+          ),
+          SizedBox(height: 8.h),
+          ...lines.map((line) {
+            final sanMoves = _formatPv(
+              line.sanMoves,
+              baseMoveNumber,
+              isWhiteToMove,
+            );
+            final evalText = line.displayEval;
+
+            return Padding(
+              padding: EdgeInsets.only(bottom: 6.h),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    margin: EdgeInsets.only(right: 8.sp),
+                    decoration: BoxDecoration(
+                      color: kWhiteColor,
+                      borderRadius: BorderRadius.circular(4.sp),
+                    ),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 6.sp,
+                      vertical: 2.sp,
+                    ),
+                    child: Text(
+                      evalText.isEmpty ? '—' : evalText,
+                      style: AppTypography.textXsMedium.copyWith(
+                        color: kBlackColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      sanMoves.join(' '),
+                      style: AppTypography.textXsMedium.copyWith(
+                        color: kWhiteColor,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 2,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  List<String> _formatPv(
+    List<String> sanMoves,
+    int baseMoveNumber,
+    bool whiteToMove,
+  ) {
+    final formatted = <String>[];
+    for (var i = 0; i < sanMoves.length; i++) {
+      final moveOffset = i ~/ 2;
+      final moveNumber = baseMoveNumber + moveOffset;
+      final isWhiteMove = whiteToMove ? i.isEven : i.isOdd;
+      final prefix = isWhiteMove ? '$moveNumber.' : '$moveNumber...';
+      formatted.add('$prefix ${sanMoves[i]}');
+    }
+    return formatted;
+  }
+}
+
 class _SkeletonContainer extends StatefulWidget {
   final double height;
   final double width;
@@ -1310,7 +1588,7 @@ class _SkeletonContainerState extends State<_SkeletonContainer>
           height: widget.height,
           width: widget.width,
           decoration: BoxDecoration(
-            color: kWhiteColor.withOpacity(_animation.value * 0.15),
+            color: kWhiteColor.withValues(alpha: _animation.value * 0.15),
             borderRadius: BorderRadius.circular(widget.borderRadius),
           ),
         );
