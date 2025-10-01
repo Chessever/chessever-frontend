@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:ui';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
+import 'package:flutter/foundation.dart';
 import 'package:stockfish/stockfish.dart';
 
 // Enhanced CloudEval class with cancellation support
@@ -32,7 +32,10 @@ class StockfishSingleton {
   StreamSubscription? _currentSubscription;
   final Map<String, EnhancedCloudEval> _evaluationCache = {};
 
-  Future<EnhancedCloudEval> evaluatePosition(String fen, {int depth = 15}) async {
+  Future<EnhancedCloudEval> evaluatePosition(
+    String fen, {
+    int depth = 15,
+  }) async {
     // Validate depth range
     if (depth < 1 || depth > 25) {
       throw ArgumentError('Depth must be between 1 and 25, got: $depth');
@@ -49,7 +52,7 @@ class StockfishSingleton {
     final cacheKey = '${fen}_${depth}_$sideToMove';
 
     if (_evaluationCache.containsKey(cacheKey)) {
-      print('Returning cached evaluation for $fen');
+      debugPrint('Returning cached evaluation for $fen');
       return _evaluationCache[cacheKey]!;
     }
     // Cancel any ongoing evaluation
@@ -83,7 +86,7 @@ class StockfishSingleton {
           fen: _currentJob!.fen,
           knodes: 0,
           depth: 0,
-          pvs: [Pv(moves: '', cp: 0,mate: 0)],
+          pvs: [Pv(moves: '', cp: 0, mate: 0)],
           isCancelled: true,
         );
         _currentJob!.completer.complete(cancelledResult);
@@ -97,7 +100,7 @@ class StockfishSingleton {
           await Future.delayed(const Duration(milliseconds: 50));
         } catch (e) {
           // Ignore errors when stopping
-          print('Error sending stop command to Stockfish: $e');
+          debugPrint('Error sending stop command to Stockfish: $e');
         }
       }
 
@@ -128,7 +131,7 @@ class StockfishSingleton {
     int finalDepth = 0;
     bool evaluationComplete = false;
 
-      print('stock fish ouptput for fen $fen');
+    debugPrint('Stockfish output for fen $fen');
     _currentSubscription = _engine!.stdout.listen((line) {
       // Check if this is still the current job  8/5ppk/2p4p/2p5/8/P1BQ2P1/qP2r2P/2KR4 b - - 4 34
       if (_currentJob != job || completer.isCompleted) return;
@@ -150,6 +153,16 @@ class StockfishSingleton {
         if (pvMatch != null) {
           final moves = pvMatch.group(1)!.trim();
 
+          var multipvIndex = 1;
+          final multipvMatch = RegExp(r'multipv (\d+)').firstMatch(line);
+          if (multipvMatch != null) {
+            multipvIndex = int.parse(multipvMatch.group(1)!);
+          }
+
+          while (pvs.length < multipvIndex) {
+            pvs.add(Pv(moves: '', cp: 0));
+          }
+
           // Parse score (either cp or mate)
           final cpMatch = RegExp(r'score cp (-?\d+)').firstMatch(line);
           final mateMatch = RegExp(r'score mate (-?\d+)').firstMatch(line);
@@ -157,21 +170,12 @@ class StockfishSingleton {
           if (cpMatch != null) {
             final cp = int.parse(cpMatch.group(1)!);
             final pv = Pv(moves: moves, cp: cp, isMate: false);
-            // Replace or add the main PV (depth-based)
-            if (pvs.isEmpty) {
-              pvs.add(pv);
-            } else {
-              pvs[0] = pv; // Update main line
-            }
+            pvs[multipvIndex - 1] = pv;
           } else if (mateMatch != null) {
             final mate = int.parse(mateMatch.group(1)!);
             final cp = mate.sign * 100000; // Convert mate to large cp value
-            final pv = Pv(moves: moves, cp: cp, isMate: true,mate: mate);
-            if (pvs.isEmpty) {
-              pvs.add(pv);
-            } else {
-              pvs[0] = pv; // Update main line
-            }
+            final pv = Pv(moves: moves, cp: cp, isMate: true, mate: mate);
+            pvs[multipvIndex - 1] = pv;
           }
         }
       }
@@ -179,11 +183,14 @@ class StockfishSingleton {
       // When analysis is complete
       if (line.startsWith('bestmove') && !evaluationComplete) {
         evaluationComplete = true;
+        final filteredPvs = pvs
+            .where((pv) => pv.moves.isNotEmpty)
+            .toList(growable: false);
         final result = EnhancedCloudEval(
           fen: fen,
           knodes: knodes,
           depth: finalDepth,
-          pvs: pvs.isEmpty ? [Pv(moves: '', cp: 0)] : pvs,
+          pvs: filteredPvs.isEmpty ? [Pv(moves: '', cp: 0)] : filteredPvs,
           isCancelled: false,
         );
         if (!completer.isCompleted) {
@@ -195,10 +202,11 @@ class StockfishSingleton {
     });
 
     try {
+      _engine!.stdin = 'setoption name MultiPV value 3';
       _engine!.stdin = 'position fen $fen';
       _engine!.stdin = 'go depth $depth';
     } catch (e) {
-      print('Error sending commands to Stockfish: $e');
+      debugPrint('Error sending commands to Stockfish: $e');
       if (!completer.isCompleted) {
         final errorResult = EnhancedCloudEval(
           fen: fen,
@@ -217,11 +225,14 @@ class StockfishSingleton {
     // Set up timeout
     Timer(const Duration(seconds: 10), () {
       if (_currentJob == job && !completer.isCompleted && !evaluationComplete) {
+        final filteredPvs = pvs
+            .where((pv) => pv.moves.isNotEmpty)
+            .toList(growable: false);
         final fallbackResult = EnhancedCloudEval(
           fen: fen,
           knodes: knodes,
           depth: finalDepth,
-          pvs: pvs.isEmpty ? [Pv(moves: '', cp: 0)] : pvs,
+          pvs: filteredPvs.isEmpty ? [Pv(moves: '', cp: 0)] : filteredPvs,
           isCancelled: false,
         );
         completer.complete(fallbackResult);
@@ -254,13 +265,13 @@ class StockfishSingleton {
   }
 
   void clearCache() {
-    print("🧹 CLEARING STOCKFISH EVALUATION CACHE");
+    debugPrint("🧹 CLEARING STOCKFISH EVALUATION CACHE");
     _evaluationCache.clear();
   }
 
   /// Force clear cache for debugging perspective issues
   void clearCacheForDebugging() {
-    print("🧹 FORCE CLEARING ALL EVALUATION CACHES FOR DEBUGGING");
+    debugPrint("🧹 FORCE CLEARING ALL EVALUATION CACHES FOR DEBUGGING");
     _evaluationCache.clear();
   }
 }
