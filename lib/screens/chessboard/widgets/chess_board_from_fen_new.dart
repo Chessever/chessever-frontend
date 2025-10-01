@@ -28,18 +28,6 @@ class ChessBoardFromFENNew extends StatelessWidget {
 
   bool get isPinned => pinnedIds.contains(gamesTourModel.gameId);
 
-  Move? _uciToMove(String uci) {
-    if (uci.length != 4 && uci.length != 5) {
-      return null;
-    }
-    final from = _square(uci.substring(0, 2));
-    final to = _square(uci.substring(2, 4));
-    final promo = uci.length == 5 ? Role.fromChar(uci[4]) : null;
-    return NormalMove(from: from, to: to, promotion: promo);
-  }
-
-  Square _square(String name) => Square.fromName(name);
-
   void _showBlurredPopup(BuildContext context, LongPressStartDetails details) {
     final RenderBox boardRenderBox = context.findRenderObject() as RenderBox;
     final Offset boardPosition = boardRenderBox.localToGlobal(Offset.zero);
@@ -140,6 +128,133 @@ class ChessBoardFromFENNew extends StatelessWidget {
   }
 }
 
+class GridChessBoardFromFENNew extends StatelessWidget {
+  const GridChessBoardFromFENNew({
+    super.key,
+    required this.gamesTourModel,
+    required this.onChanged,
+    required this.pinnedIds,
+    required this.onPinToggle,
+  });
+
+  final GamesTourModel gamesTourModel;
+  final VoidCallback onChanged;
+  final List<String> pinnedIds;
+  final void Function(GamesTourModel game) onPinToggle;
+
+  bool get isPinned => pinnedIds.contains(gamesTourModel.gameId);
+
+  void _showBlurredPopup(BuildContext context, LongPressStartDetails details) {
+    final RenderBox boardRenderBox = context.findRenderObject() as RenderBox;
+    final Offset boardPosition = boardRenderBox.localToGlobal(Offset.zero);
+    final Size boardSize = boardRenderBox.size;
+
+    final double screenHeight = MediaQuery.of(context).size.height;
+    const double popupHeight = 100;
+    final double spaceBelow =
+        screenHeight - (boardPosition.dy + boardSize.height);
+
+    bool showAbove = spaceBelow < popupHeight;
+
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      pageBuilder: (
+        BuildContext buildContext,
+        Animation<double> animation,
+        Animation<double> secondaryAnimation,
+      ) {
+        final double menuTop =
+            showAbove
+                ? boardPosition.dy - popupHeight - 8.sp
+                : boardPosition.dy + boardSize.height + 8.sp;
+        return Material(
+          color: Colors.transparent,
+          child: GestureDetector(
+            onTap: () => Navigator.of(buildContext).pop(),
+            child: Stack(
+              children: [
+                SelectiveBlurBackground(
+                  clearPosition: boardPosition,
+                  clearSize: boardSize,
+                ),
+                Positioned(
+                  left: boardPosition.dx,
+                  top: boardPosition.dy,
+                  child: _ChessBoardContent(
+                    gamesTourModel: gamesTourModel,
+                    lastMove: _uciToMove(gamesTourModel.lastMove ?? ''),
+                    boardSize: boardSize,
+                    isPinned: isPinned,
+                  ),
+                ),
+
+                Positioned(
+                  left: details.globalPosition.dx - 120.w,
+                  top: menuTop,
+                  child: ContextPopupMenu(
+                    isPinned: isPinned,
+                    onPinToggle: () {
+                      onPinToggle(gamesTourModel);
+
+                      Future.microtask(() {
+                        Navigator.pop(buildContext);
+                      });
+                    },
+                    onShare: () {},
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        return FadeTransition(opacity: animation, child: child);
+      },
+      transitionDuration: const Duration(milliseconds: 300),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sideBarWidth = 10.w;
+    final horizontalPadding = 24.sp * 2;
+    final screenWidth = MediaQuery.of(context).size.width / 2;
+    final boardSize = screenWidth - sideBarWidth - horizontalPadding;
+    return Padding(
+      padding: EdgeInsets.only(left: 24.sp, right: 24.sp, bottom: 8.sp),
+      child: GestureDetector(
+        onTap: onChanged,
+        onLongPressStart: (details) {
+          HapticFeedback.lightImpact();
+          _showBlurredPopup(context, details);
+        },
+        child: _ChessBoardLayout(
+          gamesTourModel: gamesTourModel,
+          lastMove: _uciToMove(gamesTourModel.lastMove ?? ''),
+          sideBarWidth: sideBarWidth,
+          boardSize: boardSize,
+          isPinned: isPinned,
+        ),
+      ),
+    );
+  }
+}
+
+Move? _uciToMove(String uci) {
+  if (uci.length != 4 && uci.length != 5) {
+    return null;
+  }
+  final from = _square(uci.substring(0, 2));
+  final to = _square(uci.substring(2, 4));
+  final promo = uci.length == 5 ? Role.fromChar(uci[4]) : null;
+  return NormalMove(from: from, to: to, promotion: promo);
+}
+
+Square _square(String name) => Square.fromName(name);
+
 class _ChessBoardLayout extends ConsumerWidget {
   const _ChessBoardLayout({
     required this.gamesTourModel,
@@ -164,6 +279,7 @@ class _ChessBoardLayout extends ConsumerWidget {
           isWhitePlayer: false,
           isCurrentPlayer: gamesTourModel.activePlayer == Side.black,
           isPinned: isPinned,
+          playerView: PlayerView.gridView,
         ),
         SizedBox(height: 4.h),
         _ChessBoardWithEvaluation(
@@ -178,6 +294,7 @@ class _ChessBoardLayout extends ConsumerWidget {
           isWhitePlayer: true,
           isCurrentPlayer: gamesTourModel.activePlayer == Side.white,
           isPinned: false,
+          playerView: PlayerView.gridView,
         ),
       ],
     );
@@ -216,6 +333,7 @@ class _ChessBoardContent extends ConsumerWidget {
               isWhitePlayer: false,
               isCurrentPlayer: gamesTourModel.activePlayer == Side.black,
               isPinned: isPinned,
+              playerView: PlayerView.listView,
             ),
             SizedBox(height: 4.h),
             _ChessBoardWithEvaluation(
@@ -230,6 +348,7 @@ class _ChessBoardContent extends ConsumerWidget {
               isWhitePlayer: true,
               isCurrentPlayer: gamesTourModel.activePlayer == Side.white,
               isPinned: false,
+              playerView: PlayerView.listView,
             ),
           ],
         ),
@@ -244,12 +363,14 @@ class _PlayerRow extends StatelessWidget {
     required this.isWhitePlayer,
     required this.isCurrentPlayer,
     required this.isPinned,
+    required this.playerView,
   });
 
   final GamesTourModel gamesTourModel;
   final bool isWhitePlayer;
   final bool isCurrentPlayer;
   final bool isPinned;
+  final PlayerView playerView;
 
   @override
   Widget build(BuildContext context) {
@@ -257,7 +378,7 @@ class _PlayerRow extends StatelessWidget {
       gamesTourModel: gamesTourModel,
       isWhitePlayer: isWhitePlayer,
       isCurrentPlayer: isCurrentPlayer,
-      playerView: PlayerView.listView,
+      playerView: playerView,
       isPinned: isPinned,
     );
   }

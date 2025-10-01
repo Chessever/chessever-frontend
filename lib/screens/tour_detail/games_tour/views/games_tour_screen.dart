@@ -3,7 +3,7 @@ import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_body.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/chess_board_visibility_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -26,7 +26,7 @@ class GamesTourScreen extends ConsumerStatefulWidget {
 class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
   @override
   Widget build(BuildContext context) {
-    final isChessBoardVisible = ref.watch(chessBoardVisibilityProvider);
+    final gamesListViewMode = ref.watch(gamesListViewModeProvider);
     final gamesTourAsync = ref.watch(gamesTourScreenProvider);
 
     // Removed excessive debug logging to reduce console noise
@@ -84,7 +84,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
           strokeWidth: 3.w,
           child: GamesTourContentBody(
             gamesScreenModel: data,
-            isChessBoardVisible: isChessBoardVisible,
+            gamesListViewMode: gamesListViewMode,
           ),
         );
       },
