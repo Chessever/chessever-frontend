@@ -1,5 +1,9 @@
+import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/round_header_widget.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -11,7 +15,7 @@ class GamesListView extends ConsumerWidget {
   final List<GamesAppBarModel> rounds;
   final Map<String, List<GamesTourModel>> gamesByRound;
   final GamesScreenModel gamesData;
-  final bool isChessBoardVisible;
+  final GamesListViewMode gamesListViewMode;
   final ItemScrollController itemScrollController;
   final ItemPositionsListener itemPositionsListener;
   final void Function(int)? onReturnFromChessboard;
@@ -21,7 +25,7 @@ class GamesListView extends ConsumerWidget {
     required this.rounds,
     required this.gamesByRound,
     required this.gamesData,
-    required this.isChessBoardVisible,
+    required this.gamesListViewMode,
     required this.itemScrollController,
     required this.itemPositionsListener,
     this.onReturnFromChessboard,
@@ -30,12 +34,31 @@ class GamesListView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final reversedRounds = rounds.reversed.toList();
-    final items = _buildItems(
-      reversedRounds,
-      gamesByRound,
-      gamesData,
-      isChessBoardVisible,
-    );
+
+    if (gamesListViewMode == GamesListViewMode.chessBoardGrid) {
+      final items = _buildGridItems(
+        context,
+        ref,
+        reversedRounds,
+        gamesByRound,
+        gamesData,
+      );
+
+      return ScrollablePositionedList.builder(
+        itemScrollController: itemScrollController,
+        itemPositionsListener: itemPositionsListener,
+        itemCount: items.length,
+        itemBuilder: (context, index) => items[index],
+        padding: EdgeInsets.only(
+          left: 20.sp,
+          right: 20.sp,
+          top: 16.sp,
+          bottom: MediaQuery.of(context).viewPadding.bottom,
+        ),
+      );
+    }
+
+    final items = _buildItems(reversedRounds, gamesByRound, gamesData);
 
     return ScrollablePositionedList.builder(
       itemScrollController: itemScrollController,
@@ -80,11 +103,107 @@ class GamesListView extends ConsumerWidget {
     }
   }
 
+  List<Widget> _buildGridItems(
+    BuildContext context,
+    WidgetRef ref,
+    List<GamesAppBarModel> reversedRounds,
+    Map<String, List<GamesTourModel>> gamesByRound,
+    GamesScreenModel gamesData,
+  ) {
+    final items = <Widget>[];
+    for (final round in reversedRounds) {
+      items.add(
+        RoundHeader(round: round, roundGames: gamesByRound[round.id] ?? []),
+      );
+      final roundGames = gamesByRound[round.id] ?? [];
+      for (int i = 0; i < roundGames.length; i += 2) {
+        final game1 = roundGames[i];
+        final globalGameIndex1 = gamesData.gamesTourModels.indexWhere(
+          (g) => g.gameId == game1.gameId,
+        );
+
+        final hasSecondItem = i + 1 < roundGames.length;
+
+        items.add(
+          Padding(
+            padding: EdgeInsets.only(bottom: 12.sp),
+            child: GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+
+                crossAxisSpacing: 12.sp,
+                mainAxisSpacing: 12.sp,
+                childAspectRatio: 1,
+              ),
+              itemCount: hasSecondItem ? 2 : 1,
+              itemBuilder:
+                  (context, index) =>
+                      index == 0
+                          ? GridChessBoardFromFENNew(
+                            key: ValueKey('game_${game1.gameId}'),
+                            gamesTourModel: game1,
+                            onChanged:
+                                () => ref
+                                    .read(gameCardWrapperProvider)
+                                    .navigateToChessBoard(
+                                      context: context,
+                                      orderedGames: gamesData.gamesTourModels,
+                                      gameIndex: globalGameIndex1,
+                                      onReturnFromChessboard: (returnedIndex) {
+                                        _scrollToGameIndex(returnedIndex);
+                                        onReturnFromChessboard?.call(
+                                          returnedIndex,
+                                        );
+                                      },
+                                    ),
+                            pinnedIds: gamesData.pinnedGamedIs,
+                            onPinToggle:
+                                (_) async => await ref
+                                    .read(gamesTourScreenProvider.notifier)
+                                    .togglePinGame(game1.gameId),
+                          )
+                          : GridChessBoardFromFENNew(
+                            key: ValueKey('game_${roundGames[i + 1].gameId}'),
+                            gamesTourModel: roundGames[i + 1],
+                            onChanged:
+                                () => ref
+                                    .read(gameCardWrapperProvider)
+                                    .navigateToChessBoard(
+                                      context: context,
+                                      orderedGames: gamesData.gamesTourModels,
+                                      gameIndex: gamesData.gamesTourModels
+                                          .indexWhere(
+                                            (g) =>
+                                                g.gameId ==
+                                                roundGames[i + 1].gameId,
+                                          ),
+                                      onReturnFromChessboard: (returnedIndex) {
+                                        _scrollToGameIndex(returnedIndex);
+                                        onReturnFromChessboard?.call(
+                                          returnedIndex,
+                                        );
+                                      },
+                                    ),
+                            pinnedIds: gamesData.pinnedGamedIs,
+                            onPinToggle:
+                                (_) async => await ref
+                                    .read(gamesTourScreenProvider.notifier)
+                                    .togglePinGame(roundGames[i + 1].gameId),
+                          ),
+            ),
+          ),
+        );
+      }
+    }
+    return items;
+  }
+
   List<Widget> _buildItems(
     List<GamesAppBarModel> reversedRounds,
     Map<String, List<GamesTourModel>> gamesByRound,
     GamesScreenModel gamesData,
-    bool isChessBoardVisible,
   ) {
     final items = <Widget>[];
     for (final round in reversedRounds) {
@@ -104,7 +223,8 @@ class GamesListView extends ConsumerWidget {
               game: game,
               gamesData: gamesData,
               gameIndex: globalGameIndex,
-              isChessBoardVisible: isChessBoardVisible,
+              isChessBoardVisible:
+                  gamesListViewMode == GamesListViewMode.chessBoard,
               onReturnFromChessboard: (returnedIndex) {
                 _scrollToGameIndex(returnedIndex);
                 onReturnFromChessboard?.call(returnedIndex);
