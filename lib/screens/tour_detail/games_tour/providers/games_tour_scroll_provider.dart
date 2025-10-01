@@ -5,7 +5,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:flutter/widgets.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/chess_board_visibility_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 
 final gamesTourScrollProvider =
     StateNotifierProvider<_GamesTourScrollProvider, ItemScrollController>(
@@ -18,8 +18,8 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
     _itemPositionsListener.itemPositions.addListener(_onItemPositionsChanged);
 
     // Keep the same top item when chessBoard visibility toggles
-    _ref.listen<bool>(
-      chessBoardVisibilityProvider,
+    _ref.listen<GamesListViewMode>(
+      gamesListViewModeProvider,
       (previous, next) => _anchorTopAfterVisibilityChange(),
     );
   }

@@ -3,7 +3,7 @@ import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/chess_board_visibility_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
@@ -158,14 +158,17 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
         ref.read(gamesTourScreenProvider.notifier).unpinAllGames();
         break;
       case MenuAction.showHideFinishedGames:
-        ref.read(gamesTourScreenProvider.notifier).toggleFinishedGames(!showFinishedGames);
+        ref
+            .read(gamesTourScreenProvider.notifier)
+            .toggleFinishedGames(!showFinishedGames);
         setState(() {
           showFinishedGames = !showFinishedGames;
         });
         break;
     }
   }
-  bool showFinishedGames=true;
+
+  bool showFinishedGames = true;
   @override
   Widget build(BuildContext context) {
     final tourDetailAsync = ref.watch(tourDetailScreenProvider);
@@ -241,13 +244,9 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
                             child: AppBarIcons(
                               image: SvgAsset.chase_grid,
                               onTap: () {
-                                HapticFeedback.lightImpact();
-                                final current = ref.read(
-                                  chessBoardVisibilityProvider,
-                                );
                                 ref
-                                    .read(chessBoardVisibilityProvider.notifier)
-                                    .state = !current;
+                                    .read(gamesListViewModeSwitcher)
+                                    .toggleViewMode();
                               },
                             ),
                           ),
@@ -336,12 +335,18 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
                                             width: 200,
                                             child: Row(
                                               mainAxisAlignment:
-                                                  MainAxisAlignment.spaceBetween,
+                                                  MainAxisAlignment
+                                                      .spaceBetween,
                                               children: [
                                                 Text(
-                                                  showFinishedGames ? "Hide finished games" : "Show finished games",
-                                                  style: AppTypography.textXsMedium
-                                                      .copyWith(color: kWhiteColor),
+                                                  showFinishedGames
+                                                      ? "Hide finished games"
+                                                      : "Show finished games",
+                                                  style: AppTypography
+                                                      .textXsMedium
+                                                      .copyWith(
+                                                        color: kWhiteColor,
+                                                      ),
                                                 ),
                                                 SvgPicture.asset(
                                                   SvgAsset.active,

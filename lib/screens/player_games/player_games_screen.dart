@@ -1,5 +1,5 @@
 import 'package:chessever2/screens/player_games/providers/player_games_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
@@ -28,7 +28,8 @@ class PlayerGamesScreen extends ConsumerStatefulWidget {
 
 class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
   final ItemScrollController itemScrollController = ItemScrollController();
-  final ItemPositionsListener itemPositionsListener = ItemPositionsListener.create();
+  final ItemPositionsListener itemPositionsListener =
+      ItemPositionsListener.create();
 
   @override
   Widget build(BuildContext context) {
@@ -76,7 +77,10 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
                   children: [
                     if (widget.playerTitle?.isNotEmpty == true) ...[
                       Container(
-                        padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 8.w,
+                          vertical: 2.h,
+                        ),
                         margin: EdgeInsets.only(right: 8.w),
                         decoration: BoxDecoration(
                           color: kGreenColor,
@@ -151,10 +155,12 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
 
     // For now, let's just display all games in chronological order without grouping by date
     // We can add date grouping later if needed
-    final games = gamesData.gamesTourModels.asMap().entries.map((entry) => {
-      'game': entry.value,
-      'index': entry.key,
-    }).toList();
+    final games =
+        gamesData.gamesTourModels
+            .asMap()
+            .entries
+            .map((entry) => {'game': entry.value, 'index': entry.key})
+            .toList();
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -196,18 +202,18 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
       child: ListView.builder(
         padding: EdgeInsets.symmetric(horizontal: 20.sp),
         itemCount: 5,
-        itemBuilder: (context, index) => Padding(
-          padding: EdgeInsets.only(bottom: 12.sp),
-          child: Container(
-            height: 84.h,
-            decoration: BoxDecoration(
-              color: kBlack2Color,
-              borderRadius: BorderRadius.circular(12.br),
+        itemBuilder:
+            (context, index) => Padding(
+              padding: EdgeInsets.only(bottom: 12.sp),
+              child: Container(
+                height: 84.h,
+                decoration: BoxDecoration(
+                  color: kBlack2Color,
+                  borderRadius: BorderRadius.circular(12.br),
+                ),
+              ),
             ),
-          ),
-        ),
       ),
     );
   }
-
 }
