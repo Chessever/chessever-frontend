@@ -94,7 +94,7 @@ class _ChessBoardWithAnalysisScreenState
 
       final latestGame = ChessGame.fromPgn(widget.gameModel.gameId, gamePgn);
 
-      gameNavigator.updateWithLatestGame(latestGame);
+      gameNavigator.updateMainlineWithGame(latestGame);
     });
 
     await _gamePgnStreamController.addStream(

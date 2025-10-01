@@ -358,7 +358,7 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
     ));
   }
 
-  void updateWithLatestGame(final ChessGame latestGame) {
+  void updateMainlineWithGame(final ChessGame latestGame) {
     final ChessLine newMainline = [];
     final ChessMovePointer newMovePointer = List.of(state.movePointer);
 
