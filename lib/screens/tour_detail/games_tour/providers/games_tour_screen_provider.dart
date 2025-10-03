@@ -1,5 +1,3 @@
-import 'dart:collection';
-
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
@@ -41,6 +39,7 @@ final gamesTourScreenProvider = StateNotifierProvider<
 
 // Can use this in future to maintain the state across the app
 final showFinishedGamesProvider = StateProvider<bool>((ref) => true);
+
 class GamesTourScreenProvider
     extends StateNotifier<AsyncValue<GamesScreenModel>> {
   GamesTourScreenProvider({
@@ -120,16 +119,22 @@ class GamesTourScreenProvider
 
         if (!significantChange) {
           // Only clock/time updates, no need to recompute the entire screen
-          print('🔥 GamesTourScreenProvider: Only clock updates, skipping recomputation');
+          print(
+            '🔥 GamesTourScreenProvider: Only clock updates, skipping recomputation',
+          );
           return;
         }
       }
 
-      print('🔥 GamesTourScreenProvider: Received games update, isSearchMode: ${current?.isSearchMode}');
+      print(
+        '🔥 GamesTourScreenProvider: Received games update, isSearchMode: ${current?.isSearchMode}',
+      );
 
       // Skip recomputation during search mode to maintain search results
       if (current?.isSearchMode == true) {
-        print('🔥 GamesTourScreenProvider: In search mode - skipping recomputation');
+        print(
+          '🔥 GamesTourScreenProvider: In search mode - skipping recomputation',
+        );
         return;
       }
 
@@ -268,47 +273,50 @@ class GamesTourScreenProvider
       if (mounted) state = AsyncValue.error(e, st);
     }
   }
-  
-  Future<void> toggleFinishedGames( bool showFinishedGame) async{
+
+  Future<void> toggleFinishedGames(bool showFinishedGame) async {
     //  final currentValue = ref.read(showFinishedGamesProvider);
     // ref.read(showFinishedGamesProvider.notifier).state = !currentValue;
-  
-  if (showFinishedGame) { // Will be true after toggle
-    print("Showing finished games");
-    await showFinishedGames();
-  } else { // Will be false after toggle
-    print("Hiding finished games");
-    await hideFinishedGames();
-  }
+
+    if (showFinishedGame) {
+      // Will be true after toggle
+      print("Showing finished games");
+      await showFinishedGames();
+    } else {
+      // Will be false after toggle
+      print("Hiding finished games");
+      await hideFinishedGames();
+    }
   }
 
-  Future<void> showFinishedGames() async{
+  Future<void> showFinishedGames() async {
     var games = ref.read(gamesTourProvider(aboutTourModel!.id)).value ?? [];
     var pinnedIds =
-          ref.read(gamesPinprovider(aboutTourModel!.id)).value ??
-          const <String>[];
-           state = AsyncValue.data(
-          GamesScreenModel(
-            gamesTourModels: games.map((g) => GamesTourModel.fromGame(g)).toList(),
-            pinnedGamedIs: pinnedIds, 
-            isSearchMode: true,
-          ),
-        );
+        ref.read(gamesPinprovider(aboutTourModel!.id)).value ??
+        const <String>[];
+    state = AsyncValue.data(
+      GamesScreenModel(
+        gamesTourModels: games.map((g) => GamesTourModel.fromGame(g)).toList(),
+        pinnedGamedIs: pinnedIds,
+        isSearchMode: true,
+      ),
+    );
   }
 
-  Future<void> hideFinishedGames() async{
+  Future<void> hideFinishedGames() async {
     var games = ref.read(gamesTourProvider(aboutTourModel!.id)).value ?? [];
     var unfinishedGames = games.where((g) => g.status == '*').toList();
     final pinnedIds =
-          ref.read(gamesPinprovider(aboutTourModel!.id)).value ??
-          const <String>[];
+        ref.read(gamesPinprovider(aboutTourModel!.id)).value ??
+        const <String>[];
     state = AsyncValue.data(
-          GamesScreenModel(
-            gamesTourModels: unfinishedGames.map((g) => GamesTourModel.fromGame(g)).toList(),
-            pinnedGamedIs: pinnedIds, 
-            isSearchMode: true,
-          ),
-        );
+      GamesScreenModel(
+        gamesTourModels:
+            unfinishedGames.map((g) => GamesTourModel.fromGame(g)).toList(),
+        pinnedGamedIs: pinnedIds,
+        isSearchMode: true,
+      ),
+    );
   }
 
   Future<void> searchGamesEnhanced(String query) async {

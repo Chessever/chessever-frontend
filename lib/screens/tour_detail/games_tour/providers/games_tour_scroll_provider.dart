@@ -103,18 +103,29 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
   String? _getRoundIdFromItemIndex(int itemIndex) {
     final allRounds =
         _ref.read(gamesAppBarProvider).valueOrNull?.gamesAppBarModels ?? [];
-    // Filter to only include rounds with at least one game
     final rounds =
         allRounds.where((round) => _getGamesInRound(round.id) > 0).toList();
     final reversedRounds = rounds.reversed.toList();
+
     int currentIndex = 0;
     for (final round in reversedRounds) {
-      if (itemIndex == currentIndex) return round.id;
-      final gamesInRound = _getGamesInRound(round.id);
-      currentIndex += 1 + gamesInRound; // 1 for header + games
+      if (itemIndex == currentIndex) return round.id; // header
+      final itemCount =
+          1 +
+          _getGamesInRoundAsListItems(round.id); // header + games (grid aware)
+      currentIndex += itemCount;
       if (itemIndex < currentIndex) return round.id;
     }
     return null;
+  }
+
+  int _getGamesInRoundAsListItems(String roundId) {
+    final gamesCount = _getGamesInRound(roundId);
+    if (_ref.read(gamesListViewModeProvider) ==
+        GamesListViewMode.chessBoardGrid) {
+      return (gamesCount / 2).ceil(); // 2 per row
+    }
+    return gamesCount;
   }
 
   int _getGamesInRound(String roundId) {
