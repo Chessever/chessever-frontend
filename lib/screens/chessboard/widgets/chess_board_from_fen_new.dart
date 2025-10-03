@@ -218,6 +218,7 @@ class GridChessBoardFromFENNew extends StatelessWidget {
                           lastMove: _uciToMove(gamesTourModel.lastMove ?? ''),
                           sideBarWidth: sideBarWidth,
                           boardSize: size,
+                          playerView: PlayerView.gridView,
                         ),
                       ),
                       SizedBox(height: 4.h),
@@ -295,6 +296,7 @@ class GridChessBoardFromFENNew extends StatelessWidget {
               lastMove: _uciToMove(gamesTourModel.lastMove ?? ''),
               sideBarWidth: sideBarWidth,
               boardSize: boardSize,
+              playerView: PlayerView.gridView,
             ),
             SizedBox(height: 4.h),
             _PlayerRow(
@@ -355,6 +357,7 @@ class _ChessBoardLayout extends ConsumerWidget {
           lastMove: lastMove,
           sideBarWidth: sideBarWidth,
           boardSize: boardSize,
+          playerView: PlayerView.gridView,
         ),
         SizedBox(height: 4.h),
         _PlayerRow(
@@ -409,6 +412,7 @@ class _ChessBoardContent extends ConsumerWidget {
               lastMove: lastMove,
               sideBarWidth: sideBarWidth,
               boardSize: chessBoardSize,
+              playerView: PlayerView.listView,
             ),
             SizedBox(height: 4.h),
             _PlayerRow(
@@ -458,12 +462,14 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
     required this.lastMove,
     required this.sideBarWidth,
     required this.boardSize,
+    required this.playerView,
   });
 
   final GamesTourModel gamesTourModel;
   final Move? lastMove;
   final double sideBarWidth;
   final double boardSize;
+  final PlayerView playerView;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -473,6 +479,7 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
           width: sideBarWidth,
           height: boardSize,
           fen: gamesTourModel.fen ?? '',
+          playerView: playerView,
         ),
         _ChessBoardWidget(
           fen: gamesTourModel.fen ?? '',
