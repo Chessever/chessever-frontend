@@ -54,15 +54,14 @@ class GameCardWrapperWidget extends ConsumerWidget {
                   .read(gamesTourScreenProvider.notifier)
                   .togglePinGame(game.gameId),
           onTap:
-              () =>
-                  () => ref
-                      .read(gameCardWrapperProvider)
-                      .navigateToChessBoard(
-                        context: context,
-                        orderedGames: gamesData.gamesTourModels,
-                        gameIndex: gameIndex,
-                        onReturnFromChessboard: onReturnFromChessboard,
-                      ),
+              () => ref
+                  .read(gameCardWrapperProvider)
+                  .navigateToChessBoard(
+                    context: context,
+                    orderedGames: gamesData.gamesTourModels,
+                    gameIndex: gameIndex,
+                    onReturnFromChessboard: onReturnFromChessboard,
+                  ),
         );
   }
 }
