@@ -2,7 +2,7 @@ import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/chess_board_visibility_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/game_fen_stream_provider.dart';
 import 'package:chessever2/screens/group_event/widget/empty_widget.dart';
@@ -43,7 +43,7 @@ class CountrymanGamesList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isChessBoardVisible = ref.watch(chessBoardVisibilityProvider);
+    final gamesListViewMode = ref.watch(gamesListViewModeProvider);
 
     return ref
         .watch(countrymanGamesTourScreenProvider)
@@ -83,7 +83,7 @@ class CountrymanGamesList extends ConsumerWidget {
                 return Padding(
                   padding: EdgeInsets.only(bottom: 12.sp),
                   child:
-                      isChessBoardVisible
+                      gamesListViewMode == GamesListViewMode.chessBoard
                           ? ChessBoardFromFENNew(
                             pinnedIds: data.pinnedGamedIs,
 
@@ -302,9 +302,7 @@ class _GamesAppBarWidgetState extends ConsumerState<CountrymanGamesAppBar> {
                     AppBarIcons(
                       image: SvgAsset.chase_grid,
                       onTap: () {
-                        final current = ref.read(chessBoardVisibilityProvider);
-                        ref.read(chessBoardVisibilityProvider.notifier).state =
-                            !current;
+                        ref.read(gamesListViewModeSwitcher).toggleViewMode();
                       },
                     ),
                     SizedBox(width: 18.w),
