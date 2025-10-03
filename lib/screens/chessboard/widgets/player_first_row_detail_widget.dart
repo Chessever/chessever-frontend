@@ -1,5 +1,4 @@
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
-import 'package:chessever2/screens/chessboard/widgets/context_pop_up_menu.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -15,9 +14,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../../../utils/svg_asset.dart';
+import 'package:chessever2/utils/svg_asset.dart';
 
-enum PlayerView { listView, boardView }
+enum PlayerView { listView, gridView, boardView }
 
 class PlayerFirstRowDetailWidget extends HookConsumerWidget {
   final bool isCurrentPlayer;
@@ -69,8 +68,8 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
       }
       // For latest move: use live data (handled by clockSeconds)
       else if (chessBoardState != null &&
-               chessBoardState!.moveTimes.isNotEmpty &&
-               chessBoardState!.currentMoveIndex >= 0) {
+          chessBoardState!.moveTimes.isNotEmpty &&
+          chessBoardState!.currentMoveIndex >= 0) {
         // Look for this player's most recent move
         for (int i = chessBoardState!.currentMoveIndex; i >= 0; i--) {
           final wasMoveByThisPlayer =
@@ -100,6 +99,12 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               color: kLightYellowColor,
               height: 14.23.h / 8.5.h,
             )
+            : playerView == PlayerView.gridView
+            ? AppTypography.textXsMedium.copyWith(
+              color: kLightYellowColor,
+              fontWeight: FontWeight.w400,
+              fontSize: 4.f,
+            )
             : AppTypography.textXsMedium.copyWith(
               color: kLightYellowColor,
               fontWeight: FontWeight.w600,
@@ -113,6 +118,12 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               fontWeight: FontWeight.w500,
               color: kWhiteColor,
               height: 14.23.h / 8.5.h,
+            )
+            : playerView == PlayerView.gridView
+            ? AppTypography.textXsMedium.copyWith(
+              color: kWhiteColor,
+              fontWeight: FontWeight.w400,
+              fontSize: 4.f,
             )
             : AppTypography.textXsMedium.copyWith(
               color: kWhiteColor,
@@ -128,14 +139,30 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               color: kWhiteColor70,
               height: 14.23.h / 8.5.h,
             )
+            : playerView == PlayerView.gridView
+            ? AppTypography.textXsMedium.copyWith(
+              color: kWhiteColor70,
+              fontWeight: FontWeight.w400,
+              fontSize: 4.f,
+            )
             : AppTypography.textXsMedium.copyWith(
               color: kWhiteColor70,
               fontWeight: FontWeight.w500,
               fontSize: 14.f,
             );
 
-    final flagHeight = playerView == PlayerView.listView ? 10.h : 12.h;
-    final flagWidth = playerView == PlayerView.listView ? 12.w : 16.w;
+    final flagHeight =
+        playerView == PlayerView.listView
+            ? 10.h
+            : playerView == PlayerView.gridView
+            ? 8.h
+            : 12.h;
+    final flagWidth =
+        playerView == PlayerView.listView
+            ? 12.w
+            : playerView == PlayerView.gridView
+            ? 10.w
+            : 16.w;
 
     // Determine if we're showing scores
     final isShowingScore =
@@ -145,7 +172,6 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     final timeStyle =
         playerView == PlayerView.listView
             ? TextStyle(
-              // Use same white color for both players when showing scores
               color:
                   isShowingScore
                       ? kWhiteColor
@@ -153,8 +179,16 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               fontSize: 8.5.f,
               fontWeight: FontWeight.w500,
             )
+            : playerView == PlayerView.gridView
+            ? AppTypography.textXsMedium.copyWith(
+              color:
+                  isShowingScore
+                      ? kWhiteColor
+                      : (isCurrentPlayer ? kWhiteColor70 : kWhiteColor),
+              fontSize: 4.f,
+              fontWeight: FontWeight.w500,
+            )
             : AppTypography.textXsMedium.copyWith(
-              // Use same white color for both players when showing scores
               color:
                   isShowingScore
                       ? kWhiteColor
@@ -162,6 +196,9 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               fontSize: 14.f,
               fontWeight: FontWeight.w500,
             );
+
+    final initialPadding = playerView == PlayerView.gridView ? 8.w : 16.w;
+    final spacing = playerView == PlayerView.gridView ? 4.w : 8.w;
 
     return GestureDetector(
       onTap: () {
@@ -197,7 +234,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           if (playerCard.countryCode.toUpperCase() == 'FID') ...[
-            SizedBox(width: 16.w),
+            SizedBox(width: initialPadding),
             Image.asset(
               PngAsset.fideLogo,
               height: flagHeight,
@@ -206,17 +243,17 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               cacheWidth: 48,
               cacheHeight: 36,
             ),
-            SizedBox(width: 8.w),
+            SizedBox(width: spacing),
           ] else if (validCountryCode.isNotEmpty) ...[
-            SizedBox(width: 16.w),
+            SizedBox(width: initialPadding),
             CountryFlag.fromCountryCode(
               validCountryCode,
               height: flagHeight,
               width: flagWidth,
             ),
-            SizedBox(width: 8.w),
+            SizedBox(width: spacing),
           ] else
-            SizedBox(width: 16.w),
+            SizedBox(width: initialPadding),
           Expanded(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.start,
@@ -280,7 +317,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                   moveTime: moveTime,
                 ),
               ),
-          SizedBox(width: 8.w),
+          SizedBox(width: spacing),
         ],
       ),
     );
@@ -311,8 +348,9 @@ class _PlayerClock extends StatelessWidget {
     final isClockRunning =
         gamesTourModel.gameStatus.isOngoing &&
         gamesTourModel.lastMoveTime != null &&
-        isCurrentPlayer &&  // Use the isCurrentPlayer prop from parent which uses state.position.turn
-        (chessBoardState?.isAtEnd ?? true); // Only countdown when at latest move
+        isCurrentPlayer && // Use the isCurrentPlayer prop from parent which uses state.position.turn
+        (chessBoardState?.isAtEnd ??
+            true); // Only countdown when at latest move
 
     // Use atomic countdown text widget for optimized rebuilds
     // Get the clock values for this player
@@ -328,16 +366,20 @@ class _PlayerClock extends StatelessWidget {
             : gamesTourModel.blackClockCentiseconds;
 
     return AtomicCountdownText(
-      moveTime: moveTime, // Primary for past moves: PGN-parsed move times (more accurate for historical display)
+      moveTime:
+          moveTime, // Primary for past moves: PGN-parsed move times (more accurate for historical display)
       clockSeconds:
           // For live games at latest move: use database fields for accurate countdown math
           // For past moves: null (rely on PGN moveTime)
           (chessBoardState?.isAtEnd ?? true) && isClockRunning
-              ? (isWhitePlayer ? gamesTourModel.whiteClockSeconds : gamesTourModel.blackClockSeconds)
+              ? (isWhitePlayer
+                  ? gamesTourModel.whiteClockSeconds
+                  : gamesTourModel.blackClockSeconds)
               : null,
       clockCentiseconds:
           clockCentiseconds, // Fallback source: raw database clock
-      lastMoveTime: gamesTourModel.lastMoveTime, // Critical for live countdown timing
+      lastMoveTime:
+          gamesTourModel.lastMoveTime, // Critical for live countdown timing
       isActive: isClockRunning,
       style: timeStyle,
     );
