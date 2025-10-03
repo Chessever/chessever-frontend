@@ -106,7 +106,7 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!state.isAttached) return;
-      state.jumpTo(index: targetIndex, alignment: 0.0);
+      state.jumpTo(index: targetIndex, alignment: 0.1);
     });
   }
 

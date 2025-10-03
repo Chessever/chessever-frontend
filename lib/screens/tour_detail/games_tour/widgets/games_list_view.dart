@@ -20,7 +20,16 @@ class GamesListView extends ConsumerWidget {
   final ItemPositionsListener itemPositionsListener;
   final void Function(int)? onReturnFromChessboard;
 
-  const GamesListView({
+  /// Flattened items (header + games)
+  late final List<_ListItem> _flattened;
+
+  /// Direct lookup: globalGameIndex → listIndex
+  late final Map<int, int> _scrollIndexMap;
+
+  /// Direct lookup: gameId → globalIndex
+  late final Map<String, int> _globalIndexMap;
+
+  GamesListView({
     super.key,
     required this.rounds,
     required this.gamesByRound,
@@ -29,209 +38,176 @@ class GamesListView extends ConsumerWidget {
     required this.itemScrollController,
     required this.itemPositionsListener,
     this.onReturnFromChessboard,
-  });
+  }) {
+    _globalIndexMap = {
+      for (var i = 0; i < gamesData.gamesTourModels.length; i++)
+        gamesData.gamesTourModels[i].gameId: i,
+    };
+
+    final reversedRounds = rounds.reversed.toList();
+    _flattened = [];
+    _scrollIndexMap = {};
+
+    int listIndex = 0;
+    int currentGameIndex = 0;
+
+    for (final round in reversedRounds) {
+      final roundGames = gamesByRound[round.id] ?? [];
+
+      // header
+      _flattened.add(_HeaderItem(round, roundGames));
+      listIndex++;
+
+      if (gamesListViewMode == GamesListViewMode.chessBoardGrid) {
+        for (int i = 0; i < roundGames.length; i += 2) {
+          final game1 = roundGames[i];
+          final game2 = i + 1 < roundGames.length ? roundGames[i + 1] : null;
+
+          _flattened.add(
+            _GameRowItem(
+              game1,
+              _globalIndexMap[game1.gameId]!,
+              game2,
+              game2 != null ? _globalIndexMap[game2.gameId]! : null,
+            ),
+          );
+
+          // map both game indexes to same row index
+          _scrollIndexMap[currentGameIndex] = listIndex;
+          _scrollIndexMap[currentGameIndex + 1] = listIndex;
+
+          currentGameIndex += 2;
+          listIndex++;
+        }
+      } else {
+        for (final game in roundGames) {
+          final globalIndex = _globalIndexMap[game.gameId]!;
+          _flattened.add(_GameRowItem(game, globalIndex));
+          _scrollIndexMap[currentGameIndex] = listIndex;
+
+          currentGameIndex++;
+          listIndex++;
+        }
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final reversedRounds = rounds.reversed.toList();
-
-    if (gamesListViewMode == GamesListViewMode.chessBoardGrid) {
-      final items = _buildGridItems(
-        context,
-        ref,
-        reversedRounds,
-        gamesByRound,
-        gamesData,
-      );
-
-      return ScrollablePositionedList.builder(
-        itemScrollController: itemScrollController,
-        itemPositionsListener: itemPositionsListener,
-        itemCount: items.length,
-        itemBuilder: (context, index) => items[index],
-        padding: EdgeInsets.only(
-          left: 12.sp,
-          right: 12.sp,
-          top: 16.sp,
-          bottom: MediaQuery.of(context).viewPadding.bottom,
-        ),
-      );
-    }
-
-    final items = _buildItems(reversedRounds, gamesByRound, gamesData);
-
     return ScrollablePositionedList.builder(
       itemScrollController: itemScrollController,
       itemPositionsListener: itemPositionsListener,
-      itemCount: items.length,
-      itemBuilder: (context, index) => items[index],
+      itemCount: _flattened.length,
+      itemBuilder: (context, index) {
+        final item = _flattened[index];
+
+        if (item is _HeaderItem) {
+          return RoundHeader(round: item.round, roundGames: item.roundGames);
+        } else if (item is _GameRowItem) {
+          return gamesListViewMode == GamesListViewMode.chessBoardGrid
+              ? _buildGridRow(context, ref, item)
+              : _buildCardRow(context, ref, item);
+        }
+        return const SizedBox.shrink();
+      },
       padding: EdgeInsets.only(
-        left: 20.sp,
-        right: 20.sp,
+        left:
+            gamesListViewMode == GamesListViewMode.chessBoardGrid
+                ? 12.sp
+                : 20.sp,
+        right:
+            gamesListViewMode == GamesListViewMode.chessBoardGrid
+                ? 12.sp
+                : 20.sp,
         top: 16.sp,
         bottom: MediaQuery.of(context).viewPadding.bottom,
       ),
     );
   }
 
-  void _scrollToGameIndex(int gameIndex) {
-    final isGrid = gamesListViewMode == GamesListViewMode.chessBoardGrid;
-
-    int listIndex = 0;
-    int currentGameIndex = 0;
-
-    final reversedRounds = rounds.reversed.toList();
-
-    for (final round in reversedRounds) {
-      listIndex++; // header
-
-      final roundGames = gamesByRound[round.id] ?? [];
-      if (isGrid) {
-        for (int i = 0; i < roundGames.length; i += 2) {
-          if (currentGameIndex == gameIndex ||
-              currentGameIndex + 1 == gameIndex) {
-            itemScrollController.scrollTo(
-              index: listIndex,
-              duration: const Duration(milliseconds: 500),
-              curve: Curves.easeInOut,
-            );
-            return;
-          }
-          listIndex++;
-          currentGameIndex += 2;
-        }
-      } else {
-        for (int i = 0; i < roundGames.length; i++) {
-          if (currentGameIndex == gameIndex) {
-            itemScrollController.scrollTo(
-              index: listIndex,
-              duration: const Duration(milliseconds: 500),
-              curve: Curves.easeInOut,
-            );
-            return;
-          }
-          listIndex++;
-          currentGameIndex++;
-        }
-      }
-    }
+  Widget _buildGridRow(BuildContext context, WidgetRef ref, _GameRowItem item) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 12.sp),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          _buildGridGame(context, ref, item.game1, item.globalIndex1),
+          if (item.game2 != null)
+            _buildGridGame(context, ref, item.game2!, item.globalIndex2!),
+        ],
+      ),
+    );
   }
 
-  List<Widget> _buildGridItems(
+  Widget _buildGridGame(
     BuildContext context,
     WidgetRef ref,
-    List<GamesAppBarModel> reversedRounds,
-    Map<String, List<GamesTourModel>> gamesByRound,
-    GamesScreenModel gamesData,
+    GamesTourModel game,
+    int globalIndex,
   ) {
-    final items = <Widget>[];
-    for (final round in reversedRounds) {
-      items.add(
-        RoundHeader(round: round, roundGames: gamesByRound[round.id] ?? []),
-      );
-      final roundGames = gamesByRound[round.id] ?? [];
-      for (int i = 0; i < roundGames.length; i += 2) {
-        final game1 = roundGames[i];
-        final globalGameIndex1 = gamesData.gamesTourModels.indexWhere(
-          (g) => g.gameId == game1.gameId,
-        );
-
-        final hasSecondItem = i + 1 < roundGames.length;
-
-        items.add(
-          Padding(
-            padding: EdgeInsets.only(bottom: 12.sp),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                GridChessBoardFromFENNew(
-                  key: ValueKey('game_${game1.gameId}'),
-                  gamesTourModel: game1,
-                  onChanged:
-                      () => ref
-                          .read(gameCardWrapperProvider)
-                          .navigateToChessBoard(
-                            context: context,
-                            orderedGames: gamesData.gamesTourModels,
-                            gameIndex: globalGameIndex1,
-                            onReturnFromChessboard: (returnedIndex) {
-                              _scrollToGameIndex(returnedIndex);
-                              onReturnFromChessboard?.call(returnedIndex);
-                            },
-                          ),
-                  pinnedIds: gamesData.pinnedGamedIs,
-                  onPinToggle:
-                      (_) async => await ref
-                          .read(gamesTourScreenProvider.notifier)
-                          .togglePinGame(game1.gameId),
-                ),
-                if (hasSecondItem)
-                  GridChessBoardFromFENNew(
-                    key: ValueKey('game_${roundGames[i + 1].gameId}'),
-                    gamesTourModel: roundGames[i + 1],
-                    onChanged:
-                        () => ref
-                            .read(gameCardWrapperProvider)
-                            .navigateToChessBoard(
-                              context: context,
-                              orderedGames: gamesData.gamesTourModels,
-                              gameIndex: gamesData.gamesTourModels.indexWhere(
-                                (g) => g.gameId == roundGames[i + 1].gameId,
-                              ),
-                              onReturnFromChessboard: (returnedIndex) {
-                                _scrollToGameIndex(returnedIndex);
-                                onReturnFromChessboard?.call(returnedIndex);
-                              },
-                            ),
-                    pinnedIds: gamesData.pinnedGamedIs,
-                    onPinToggle:
-                        (_) async => await ref
-                            .read(gamesTourScreenProvider.notifier)
-                            .togglePinGame(roundGames[i + 1].gameId),
-                  ),
-              ],
-            ),
-          ),
-        );
-      }
-    }
-    return items;
+    return GridChessBoardFromFENNew(
+      key: ValueKey('game_${game.gameId}'),
+      gamesTourModel: game,
+      onChanged:
+          () => ref
+              .read(gameCardWrapperProvider)
+              .navigateToChessBoard(
+                context: context,
+                orderedGames: gamesData.gamesTourModels,
+                gameIndex: globalIndex,
+                onReturnFromChessboard: (returnedIndex) {
+                  _scrollToGameIndex(returnedIndex);
+                  onReturnFromChessboard?.call(returnedIndex);
+                },
+              ),
+      pinnedIds: gamesData.pinnedGamedIs,
+      onPinToggle:
+          (_) async => await ref
+              .read(gamesTourScreenProvider.notifier)
+              .togglePinGame(game.gameId),
+    );
   }
 
-  List<Widget> _buildItems(
-    List<GamesAppBarModel> reversedRounds,
-    Map<String, List<GamesTourModel>> gamesByRound,
-    GamesScreenModel gamesData,
-  ) {
-    final items = <Widget>[];
-    for (final round in reversedRounds) {
-      items.add(
-        RoundHeader(round: round, roundGames: gamesByRound[round.id] ?? []),
-      );
-      final roundGames = gamesByRound[round.id] ?? [];
-      for (int i = 0; i < roundGames.length; i++) {
-        final game = roundGames[i];
-        final globalGameIndex = gamesData.gamesTourModels.indexWhere(
-          (g) => g.gameId == game.gameId,
-        );
-        items.add(
-          Padding(
-            padding: EdgeInsets.only(bottom: 12.sp),
-            child: GameCardWrapperWidget(
-              game: game,
-              gamesData: gamesData,
-              gameIndex: globalGameIndex,
-              isChessBoardVisible:
-                  gamesListViewMode == GamesListViewMode.chessBoard,
-              onReturnFromChessboard: (returnedIndex) {
-                _scrollToGameIndex(returnedIndex);
-                onReturnFromChessboard?.call(returnedIndex);
-              },
-            ),
-          ),
-        );
-      }
-    }
-    return items;
+  Widget _buildCardRow(BuildContext context, WidgetRef ref, _GameRowItem item) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 12.sp),
+      child: GameCardWrapperWidget(
+        game: item.game1,
+        gamesData: gamesData,
+        gameIndex: item.globalIndex1,
+        isChessBoardVisible: gamesListViewMode == GamesListViewMode.chessBoard,
+        onReturnFromChessboard: (returnedIndex) {
+          _scrollToGameIndex(returnedIndex);
+          onReturnFromChessboard?.call(returnedIndex);
+        },
+      ),
+    );
   }
+
+  void _scrollToGameIndex(int gameIndex) {
+    final listIndex = _scrollIndexMap[gameIndex];
+    if (listIndex != null) {
+      itemScrollController.scrollTo(
+        index: listIndex,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+}
+
+sealed class _ListItem {}
+
+class _HeaderItem extends _ListItem {
+  final GamesAppBarModel round;
+  final List<GamesTourModel> roundGames;
+  _HeaderItem(this.round, this.roundGames);
+}
+
+class _GameRowItem extends _ListItem {
+  final GamesTourModel game1;
+  final int globalIndex1;
+  final GamesTourModel? game2;
+  final int? globalIndex2;
+  _GameRowItem(this.game1, this.globalIndex1, [this.game2, this.globalIndex2]);
 }
