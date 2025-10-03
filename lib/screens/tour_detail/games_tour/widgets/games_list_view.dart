@@ -50,8 +50,8 @@ class GamesListView extends ConsumerWidget {
         itemCount: items.length,
         itemBuilder: (context, index) => items[index],
         padding: EdgeInsets.only(
-          left: 20.sp,
-          right: 20.sp,
+          left: 12.sp,
+          right: 12.sp,
           top: 16.sp,
           bottom: MediaQuery.of(context).viewPadding.bottom,
         ),
@@ -127,71 +127,55 @@ class GamesListView extends ConsumerWidget {
         items.add(
           Padding(
             padding: EdgeInsets.only(bottom: 12.sp),
-            child: GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-
-                crossAxisSpacing: 12.sp,
-                mainAxisSpacing: 12.sp,
-                childAspectRatio: 1,
-              ),
-              itemCount: hasSecondItem ? 2 : 1,
-              itemBuilder:
-                  (context, index) =>
-                      index == 0
-                          ? GridChessBoardFromFENNew(
-                            key: ValueKey('game_${game1.gameId}'),
-                            gamesTourModel: game1,
-                            onChanged:
-                                () => ref
-                                    .read(gameCardWrapperProvider)
-                                    .navigateToChessBoard(
-                                      context: context,
-                                      orderedGames: gamesData.gamesTourModels,
-                                      gameIndex: globalGameIndex1,
-                                      onReturnFromChessboard: (returnedIndex) {
-                                        _scrollToGameIndex(returnedIndex);
-                                        onReturnFromChessboard?.call(
-                                          returnedIndex,
-                                        );
-                                      },
-                                    ),
-                            pinnedIds: gamesData.pinnedGamedIs,
-                            onPinToggle:
-                                (_) async => await ref
-                                    .read(gamesTourScreenProvider.notifier)
-                                    .togglePinGame(game1.gameId),
-                          )
-                          : GridChessBoardFromFENNew(
-                            key: ValueKey('game_${roundGames[i + 1].gameId}'),
-                            gamesTourModel: roundGames[i + 1],
-                            onChanged:
-                                () => ref
-                                    .read(gameCardWrapperProvider)
-                                    .navigateToChessBoard(
-                                      context: context,
-                                      orderedGames: gamesData.gamesTourModels,
-                                      gameIndex: gamesData.gamesTourModels
-                                          .indexWhere(
-                                            (g) =>
-                                                g.gameId ==
-                                                roundGames[i + 1].gameId,
-                                          ),
-                                      onReturnFromChessboard: (returnedIndex) {
-                                        _scrollToGameIndex(returnedIndex);
-                                        onReturnFromChessboard?.call(
-                                          returnedIndex,
-                                        );
-                                      },
-                                    ),
-                            pinnedIds: gamesData.pinnedGamedIs,
-                            onPinToggle:
-                                (_) async => await ref
-                                    .read(gamesTourScreenProvider.notifier)
-                                    .togglePinGame(roundGames[i + 1].gameId),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                GridChessBoardFromFENNew(
+                  key: ValueKey('game_${game1.gameId}'),
+                  gamesTourModel: game1,
+                  onChanged:
+                      () => ref
+                          .read(gameCardWrapperProvider)
+                          .navigateToChessBoard(
+                            context: context,
+                            orderedGames: gamesData.gamesTourModels,
+                            gameIndex: globalGameIndex1,
+                            onReturnFromChessboard: (returnedIndex) {
+                              _scrollToGameIndex(returnedIndex);
+                              onReturnFromChessboard?.call(returnedIndex);
+                            },
                           ),
+                  pinnedIds: gamesData.pinnedGamedIs,
+                  onPinToggle:
+                      (_) async => await ref
+                          .read(gamesTourScreenProvider.notifier)
+                          .togglePinGame(game1.gameId),
+                ),
+                if (hasSecondItem)
+                  GridChessBoardFromFENNew(
+                    key: ValueKey('game_${roundGames[i + 1].gameId}'),
+                    gamesTourModel: roundGames[i + 1],
+                    onChanged:
+                        () => ref
+                            .read(gameCardWrapperProvider)
+                            .navigateToChessBoard(
+                              context: context,
+                              orderedGames: gamesData.gamesTourModels,
+                              gameIndex: gamesData.gamesTourModels.indexWhere(
+                                (g) => g.gameId == roundGames[i + 1].gameId,
+                              ),
+                              onReturnFromChessboard: (returnedIndex) {
+                                _scrollToGameIndex(returnedIndex);
+                                onReturnFromChessboard?.call(returnedIndex);
+                              },
+                            ),
+                    pinnedIds: gamesData.pinnedGamedIs,
+                    onPinToggle:
+                        (_) async => await ref
+                            .read(gamesTourScreenProvider.notifier)
+                            .togglePinGame(roundGames[i + 1].gameId),
+                  ),
+              ],
             ),
           ),
         );

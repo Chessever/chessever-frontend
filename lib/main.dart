@@ -16,7 +16,6 @@ import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen.da
 import 'package:chessever2/screens/tour_detail/tournament_detail_screen.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
-import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chessever2/utils/notification_service.dart';
 import 'package:chessever2/utils/lifecycle_event_handler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -59,11 +58,11 @@ Future<void> main() async {
           },
         ),
       );
-      await AudioPlayerService.instance.initializeAndLoadAllAssets();
-      await _initRevenueCat();
+      // await AudioPlayerService.instance.initializeAndLoadAllAssets();
+      // await _initRevenueCat();
 
-      // Clear evaluation cache to start fresh (remove all wrong evaluations)
-      await _clearEvaluationCache();
+      // // Clear evaluation cache to start fresh (remove all wrong evaluations)
+      // await _clearEvaluationCache();
 
       // Initialize Supabase
       await Supabase.initialize(
