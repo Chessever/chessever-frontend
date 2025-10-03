@@ -144,15 +144,19 @@ class GridChessBoardFromFENNew extends StatelessWidget {
 
   bool get isPinned => pinnedIds.contains(gamesTourModel.gameId);
 
-  void _showBlurredPopup(BuildContext context, LongPressStartDetails details) {
-    final RenderBox boardRenderBox = context.findRenderObject() as RenderBox;
-    final Offset boardPosition = boardRenderBox.localToGlobal(Offset.zero);
-    final Size boardSize = boardRenderBox.size;
+  void _showBlurredPopup({
+    required BuildContext context,
+    required double size,
+    required double screenWidth,
+    required double sideBarWidth,
+    required LongPressStartDetails details,
+  }) {
+    final boardRenderBox = context.findRenderObject() as RenderBox;
+    final boardPosition = boardRenderBox.localToGlobal(Offset.zero);
 
-    final double screenHeight = MediaQuery.of(context).size.height;
-    const double popupHeight = 100;
-    final double spaceBelow =
-        screenHeight - (boardPosition.dy + boardSize.height);
+    final screenHeight = MediaQuery.of(context).size.height;
+    final popupHeight = 100.h;
+    final spaceBelow = screenHeight - (boardPosition.dy + screenWidth);
 
     bool showAbove = spaceBelow < popupHeight;
 
@@ -165,10 +169,6 @@ class GridChessBoardFromFENNew extends StatelessWidget {
         Animation<double> animation,
         Animation<double> secondaryAnimation,
       ) {
-        final double menuTop =
-            showAbove
-                ? boardPosition.dy - popupHeight - 8.sp
-                : boardPosition.dy + boardSize.height + 8.sp;
         return Material(
           color: Colors.transparent,
           child: GestureDetector(
@@ -177,32 +177,75 @@ class GridChessBoardFromFENNew extends StatelessWidget {
               children: [
                 SelectiveBlurBackground(
                   clearPosition: boardPosition,
-                  clearSize: boardSize,
+                  clearSize: Size(size, size),
                 ),
                 Positioned(
                   left: boardPosition.dx,
-                  top: boardPosition.dy,
-                  child: _ChessBoardContent(
-                    gamesTourModel: gamesTourModel,
-                    lastMove: _uciToMove(gamesTourModel.lastMove ?? ''),
-                    boardSize: boardSize,
-                    isPinned: isPinned,
-                  ),
-                ),
+                  top: boardPosition.dy - (showAbove ? popupHeight : 0),
+                  width: screenWidth,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (showAbove)
+                        Padding(
+                          padding: EdgeInsets.only(left: sideBarWidth),
+                          child: ContextPopupMenu(
+                            isPinned: isPinned,
+                            onPinToggle: () {
+                              onPinToggle(gamesTourModel);
 
-                Positioned(
-                  left: details.globalPosition.dx - 120.w,
-                  top: menuTop,
-                  child: ContextPopupMenu(
-                    isPinned: isPinned,
-                    onPinToggle: () {
-                      onPinToggle(gamesTourModel);
+                              Future.microtask(() {
+                                Navigator.pop(buildContext);
+                              });
+                            },
+                            onShare: () {},
+                          ),
+                        ),
+                      _PlayerRow(
+                        gamesTourModel: gamesTourModel,
+                        isWhitePlayer: false,
+                        isCurrentPlayer:
+                            gamesTourModel.activePlayer == Side.black,
+                        isPinned: isPinned,
+                        playerView: PlayerView.gridView,
+                      ),
+                      SizedBox(height: 4.h),
+                      SizedBox(
+                        height: size,
+                        child: _ChessBoardWithEvaluation(
+                          gamesTourModel: gamesTourModel,
+                          lastMove: _uciToMove(gamesTourModel.lastMove ?? ''),
+                          sideBarWidth: sideBarWidth,
+                          boardSize: size,
+                        ),
+                      ),
+                      SizedBox(height: 4.h),
+                      _PlayerRow(
+                        gamesTourModel: gamesTourModel,
+                        isWhitePlayer: true,
+                        isCurrentPlayer:
+                            gamesTourModel.activePlayer == Side.white,
+                        isPinned: false,
+                        playerView: PlayerView.gridView,
+                      ),
 
-                      Future.microtask(() {
-                        Navigator.pop(buildContext);
-                      });
-                    },
-                    onShare: () {},
+                      if (!showAbove)
+                        Padding(
+                          padding: EdgeInsets.only(left: sideBarWidth),
+                          child: ContextPopupMenu(
+                            isPinned: isPinned,
+                            onPinToggle: () {
+                              onPinToggle(gamesTourModel);
+
+                              Future.microtask(() {
+                                Navigator.pop(buildContext);
+                              });
+                            },
+                            onShare: () {},
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ],
@@ -220,23 +263,48 @@ class GridChessBoardFromFENNew extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sideBarWidth = 10.w;
-    final horizontalPadding = 24.sp * 2;
-    final screenWidth = MediaQuery.of(context).size.width / 2;
-    final boardSize = screenWidth - sideBarWidth - horizontalPadding;
-    return Padding(
-      padding: EdgeInsets.only(left: 24.sp, right: 24.sp, bottom: 8.sp),
-      child: GestureDetector(
-        onTap: onChanged,
-        onLongPressStart: (details) {
-          HapticFeedback.lightImpact();
-          _showBlurredPopup(context, details);
-        },
-        child: _ChessBoardLayout(
-          gamesTourModel: gamesTourModel,
-          lastMove: _uciToMove(gamesTourModel.lastMove ?? ''),
+    final screenWidth = (MediaQuery.of(context).size.width / 2) - 24.sp;
+    final boardSize = screenWidth - sideBarWidth;
+    return GestureDetector(
+      onTap: onChanged,
+      onLongPressStart: (details) {
+        HapticFeedback.lightImpact();
+        _showBlurredPopup(
+          context: context,
+          size: boardSize,
+          screenWidth: screenWidth,
           sideBarWidth: sideBarWidth,
-          boardSize: boardSize,
-          isPinned: isPinned,
+          details: details,
+        );
+      },
+      child: SizedBox(
+        width: screenWidth,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _PlayerRow(
+              gamesTourModel: gamesTourModel,
+              isWhitePlayer: false,
+              isCurrentPlayer: gamesTourModel.activePlayer == Side.black,
+              isPinned: isPinned,
+              playerView: PlayerView.gridView,
+            ),
+            SizedBox(height: 4.h),
+            _ChessBoardWithEvaluation(
+              gamesTourModel: gamesTourModel,
+              lastMove: _uciToMove(gamesTourModel.lastMove ?? ''),
+              sideBarWidth: sideBarWidth,
+              boardSize: boardSize,
+            ),
+            SizedBox(height: 4.h),
+            _PlayerRow(
+              gamesTourModel: gamesTourModel,
+              isWhitePlayer: true,
+              isCurrentPlayer: gamesTourModel.activePlayer == Side.white,
+              isPinned: false,
+              playerView: PlayerView.gridView,
+            ),
+          ],
         ),
       ),
     );
@@ -399,30 +467,19 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Container(
-      decoration: BoxDecoration(
-        boxShadow: [
-          BoxShadow(
-            color: kBoardLightGrey.withValues(alpha: 0.5),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          EvaluationBarWidgetForGames(
-            width: sideBarWidth,
-            height: boardSize,
-            fen: gamesTourModel.fen ?? '',
-          ),
-          _ChessBoardWidget(
-            fen: gamesTourModel.fen ?? '',
-            lastMove: lastMove,
-            boardSize: boardSize,
-          ),
-        ],
-      ),
+    return Row(
+      children: [
+        EvaluationBarWidgetForGames(
+          width: sideBarWidth,
+          height: boardSize,
+          fen: gamesTourModel.fen ?? '',
+        ),
+        _ChessBoardWidget(
+          fen: gamesTourModel.fen ?? '',
+          lastMove: lastMove,
+          boardSize: boardSize,
+        ),
+      ],
     );
   }
 }
@@ -445,9 +502,18 @@ class _ChessBoardWidget extends ConsumerWidget {
         .read(boardSettingsRepository)
         .getBoardTheme(boardSettingsValue.boardColor);
 
-    return SizedBox(
+    return Container(
       height: boardSize,
       width: boardSize,
+      decoration: BoxDecoration(
+        boxShadow: [
+          BoxShadow(
+            color: kBoardLightGrey.withValues(alpha: 0.5),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: AbsorbPointer(
         child: Chessboard.fixed(
           size: boardSize,

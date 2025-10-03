@@ -11,49 +11,54 @@ final cascadeEvalProvider = FutureProvider.family<CloudEval, String>((
   ref,
   fen,
 ) async {
-  if (fen.isEmpty) throw Exception('Empty FEN');
-
   final local = ref.read(localEvalCacheProvider);
   final persist = ref.read(persistCloudEvalProvider);
   final lichess = ref.read(lichessEvalRepoProvider);
-
-  // 1️⃣  Local cache
-  final cached = await local.fetch(fen);
-  if (cached != null) {
-    final fenParts = fen.split(' ');
-    final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
-    final cp = cached.pvs.isNotEmpty ? cached.pvs.first.cp : 0;
-    print("🔵 EVAL SOURCE (cascadeEval): LOCAL CACHE - fen=$fen, side=$sideToMove, cp=$cp");
-    return cached;
-  }
-
-  // 2️⃣  Supabase
-  final supabaseEval = await ref
-      .read(evalsRepositoryProvider)
-      .fetchFromSupabase(fen);
-  if (supabaseEval != null) {
-    final cloud = await ref
-        .read(evalsRepositoryProvider)
-        .evalsToCloudEval(fen, supabaseEval);
-    final fenParts = fen.split(' ');
-    final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
-    final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
-    print("🟡 EVAL SOURCE (cascadeEval): SUPABASE - fen=$fen, side=$sideToMove, cp=$cp");
-    await local.save(fen, cloud); // keep local in sync
-    return cloud;
-  }
-
-  // 3️⃣  Lichess → Supabase → local
-
   try {
+    if (fen.isEmpty) throw Exception('Empty FEN');
+
+    // 1️⃣  Local cache
+    final cached = await local.fetch(fen);
+    if (cached != null) {
+      final fenParts = fen.split(' ');
+      final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
+      final cp = cached.pvs.isNotEmpty ? cached.pvs.first.cp : 0;
+      print(
+        "🔵 EVAL SOURCE (cascadeEval): LOCAL CACHE - fen=$fen, side=$sideToMove, cp=$cp",
+      );
+      return cached;
+    }
+
+    // 2️⃣  Supabase
+    final supabaseEval = await ref
+        .read(evalsRepositoryProvider)
+        .fetchFromSupabase(fen);
+    if (supabaseEval != null) {
+      final cloud = await ref
+          .read(evalsRepositoryProvider)
+          .evalsToCloudEval(fen, supabaseEval);
+      final fenParts = fen.split(' ');
+      final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
+      final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
+      print(
+        "🟡 EVAL SOURCE (cascadeEval): SUPABASE - fen=$fen, side=$sideToMove, cp=$cp",
+      );
+      await local.save(fen, cloud); // keep local in sync
+      return cloud;
+    }
+
+    // 3️⃣  Lichess → Supabase → local
+
     final cloud = await lichess.getEval(fen);
     final fenParts = fen.split(' ');
     final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
     final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
-    print("🟢 EVAL SOURCE (cascadeEval): LICHESS - fen=$fen, side=$sideToMove, cp=$cp (after conversion)");
+    print(
+      "🟢 EVAL SOURCE (cascadeEval): LICHESS - fen=$fen, side=$sideToMove, cp=$cp (after conversion)",
+    );
     Future.wait<void>([persist.call(fen, cloud), local.save(fen, cloud)]);
     return cloud;
-  } on NoEvalException catch (_) {
+  } catch (_) {
     final sfEval = await StockfishSingleton().evaluatePosition(fen, depth: 15);
     final cloudFromSF = CloudEval(
       fen: fen,
@@ -141,7 +146,9 @@ final cascadeEvalProviderForBoard = FutureProvider.family<CloudEval, String>((
         final fenParts = fen.split(' ');
         final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
         final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
-        print("🟢 EVAL SOURCE: LICHESS (converted) - fen=$fen, side=$sideToMove, cp=$cp");
+        print(
+          "🟢 EVAL SOURCE: LICHESS (converted) - fen=$fen, side=$sideToMove, cp=$cp",
+        );
         // Don't await this - let it run in background
         Future.wait<void>([
           persist.call(fen, cloud), // writes positions, evals, pvs
@@ -155,7 +162,9 @@ final cascadeEvalProviderForBoard = FutureProvider.family<CloudEval, String>((
         print('Lichess eval invalid for $fen: cp=${cloud.pvs.first.cp}');
       }
     } on NoEvalException catch (_) {
-      print('No evaluation available on Lichess for $fen, will try Stockfish fallback');
+      print(
+        'No evaluation available on Lichess for $fen, will try Stockfish fallback',
+      );
       // Continue to Stockfish fallback - don't return here
     } catch (lichessError) {
       print('Lichess eval failed for $fen: $lichessError');

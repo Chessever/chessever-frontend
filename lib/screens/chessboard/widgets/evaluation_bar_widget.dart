@@ -27,7 +27,8 @@ class EvaluationBarWidget extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<EvaluationBarWidget> createState() => _EvaluationBarWidgetState();
+  ConsumerState<EvaluationBarWidget> createState() =>
+      _EvaluationBarWidgetState();
 }
 
 class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
@@ -108,7 +109,10 @@ class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
           Align(
             alignment: Alignment.topCenter,
             child: AnimatedContainer(
-              duration: shouldAnimate ? const Duration(milliseconds: 300) : Duration.zero,
+              duration:
+                  shouldAnimate
+                      ? const Duration(milliseconds: 300)
+                      : Duration.zero,
               curve: Curves.easeInOut,
               width: widget.width,
               height: topHeight,
@@ -119,7 +123,10 @@ class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
           Align(
             alignment: Alignment.bottomCenter,
             child: AnimatedContainer(
-              duration: shouldAnimate ? const Duration(milliseconds: 300) : Duration.zero,
+              duration:
+                  shouldAnimate
+                      ? const Duration(milliseconds: 300)
+                      : Duration.zero,
               curve: Curves.easeInOut,
               width: widget.width,
               height: bottomHeight,
@@ -127,7 +134,9 @@ class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
             ),
           ),
 
-          Center(child: Container(width: widget.width, height: 2, color: kRedColor)),
+          Center(
+            child: Container(width: widget.width, height: 2, color: kRedColor),
+          ),
 
           Center(
             child: Container(
@@ -140,8 +149,8 @@ class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
                 widget.evaluation == null || widget.isEvaluating
                     ? '...' // Show loading indicator when null or evaluating
                     : widget.evaluation!.abs() >= 10.0
-                        ? '#${widget.mate.abs()}' // Show absolute mate value
-                        : widget.evaluation!.abs().toStringAsFixed(1),
+                    ? '#${widget.mate.abs()}' // Show absolute mate value
+                    : widget.evaluation!.abs().toStringAsFixed(1),
                 maxLines: 1,
                 textAlign: TextAlign.center,
                 style: AppTypography.textSmRegular.copyWith(
@@ -184,7 +193,8 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
                 blackHeight: height * 0.5,
                 evaluation: 0.0,
                 isEvaluating: true,
-                isFlipped: false, // Game cards always show from white's perspective
+                isFlipped:
+                    false, // Game cards always show from white's perspective
               ),
             );
           },
@@ -196,7 +206,8 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
                 whiteHeight: height * 0.5,
                 blackHeight: height * 0.5,
                 evaluation: 0.0,
-                isFlipped: false, // Game cards always show from white's perspective
+                isFlipped:
+                    false, // Game cards always show from white's perspective
               ),
             );
           },
@@ -210,7 +221,8 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
                   whiteHeight: height * 0.5,
                   blackHeight: height * 0.5,
                   evaluation: 0.0,
-                  isFlipped: false, // Game cards always show from white's perspective
+                  isFlipped:
+                      false, // Game cards always show from white's perspective
                 ),
               );
             }
@@ -233,8 +245,10 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
             // evaluation: positive = white advantage, negative = black advantage
             // normalized: 0.0 = full black advantage, 1.0 = full white advantage
             final normalized = (evaluation.clamp(-5.0, 5.0) + 5.0) / 10.0;
-            final whiteRatio = normalized;      // How much white advantage (0.0 to 1.0)
-            final blackRatio = 1.0 - whiteRatio; // How much black advantage (0.0 to 1.0)
+            final whiteRatio =
+                normalized; // How much white advantage (0.0 to 1.0)
+            final blackRatio =
+                1.0 - whiteRatio; // How much black advantage (0.0 to 1.0)
 
             return _Bars(
               width: width,
@@ -242,7 +256,8 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
               blackHeight: blackRatio * height,
               whiteHeight: whiteRatio * height,
               evaluation: evaluation,
-              isFlipped: false, // Game cards always show from white's perspective
+              isFlipped:
+                  false, // Game cards always show from white's perspective
             );
           },
         );
@@ -301,7 +316,8 @@ class _BarsState extends State<_Bars> {
       shouldAnimate = false;
 
       // Calculate heights from cached evaluation to freeze the bar
-      final cachedNormalized = (_lastValidEvaluation!.clamp(-5.0, 5.0) + 5.0) / 10.0;
+      final cachedNormalized =
+          (_lastValidEvaluation!.clamp(-5.0, 5.0) + 5.0) / 10.0;
       final cachedWhiteRatio = cachedNormalized;
       final cachedBlackRatio = 1.0 - cachedWhiteRatio;
 
@@ -312,8 +328,10 @@ class _BarsState extends State<_Bars> {
     // Color scheme (consistent regardless of move traversal):
     // - White color (bottom when not flipped) = White advantage
     // - Dark color (top when not flipped) = Black advantage
-    final topHeight = widget.isFlipped ? whiteHeightForDisplay : blackHeightForDisplay;
-    final bottomHeight = widget.isFlipped ? blackHeightForDisplay : whiteHeightForDisplay;
+    final topHeight =
+        widget.isFlipped ? whiteHeightForDisplay : blackHeightForDisplay;
+    final bottomHeight =
+        widget.isFlipped ? blackHeightForDisplay : whiteHeightForDisplay;
 
     final topColor = widget.isFlipped ? kWhiteColor : kPopUpColor;
     final bottomColor = widget.isFlipped ? kPopUpColor : kWhiteColor;
@@ -327,7 +345,10 @@ class _BarsState extends State<_Bars> {
           Align(
             alignment: Alignment.topCenter,
             child: AnimatedContainer(
-              duration: shouldAnimate ? const Duration(milliseconds: 200) : Duration.zero,
+              duration:
+                  shouldAnimate
+                      ? const Duration(milliseconds: 200)
+                      : Duration.zero,
               curve: Curves.easeInOut,
               width: widget.width,
               height: topHeight,
@@ -337,7 +358,10 @@ class _BarsState extends State<_Bars> {
           Align(
             alignment: Alignment.bottomCenter,
             child: AnimatedContainer(
-              duration: shouldAnimate ? const Duration(milliseconds: 200) : Duration.zero,
+              duration:
+                  shouldAnimate
+                      ? const Duration(milliseconds: 200)
+                      : Duration.zero,
               curve: Curves.easeInOut,
               width: widget.width,
               height: bottomHeight,
@@ -358,8 +382,8 @@ class _BarsState extends State<_Bars> {
                 widget.isEvaluating
                     ? '...' // Show loading indicator when evaluating
                     : widget.evaluation.abs() >= 10.0
-                        ? "M" // Just show "M" for mate since we don't have the mate count here
-                        : widget.evaluation.abs().toStringAsFixed(1),
+                    ? "M" // Just show "M" for mate since we don't have the mate count here
+                    : widget.evaluation.abs().toStringAsFixed(1),
                 textAlign: TextAlign.center,
                 maxLines: 1,
                 style: AppTypography.textSmRegular.copyWith(
