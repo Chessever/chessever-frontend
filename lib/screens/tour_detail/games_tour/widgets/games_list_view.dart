@@ -75,30 +75,44 @@ class GamesListView extends ConsumerWidget {
   }
 
   void _scrollToGameIndex(int gameIndex) {
-    // Calculate the position in the list for the given game index
-    // We need to account for round headers and games before this index
+    final isGrid = gamesListViewMode == GamesListViewMode.chessBoardGrid;
+
     int listIndex = 0;
     int currentGameIndex = 0;
 
     final reversedRounds = rounds.reversed.toList();
 
     for (final round in reversedRounds) {
-      // Add 1 for the round header
-      listIndex++;
+      listIndex++; // header
 
       final roundGames = gamesByRound[round.id] ?? [];
-      for (int i = 0; i < roundGames.length; i++) {
-        if (currentGameIndex == gameIndex) {
-          // Found the target game, scroll to this position
-          itemScrollController.scrollTo(
-            index: listIndex,
-            duration: const Duration(milliseconds: 500),
-            curve: Curves.easeInOut,
-          );
-          return;
+      if (isGrid) {
+        for (int i = 0; i < roundGames.length; i += 2) {
+          if (currentGameIndex == gameIndex ||
+              currentGameIndex + 1 == gameIndex) {
+            itemScrollController.scrollTo(
+              index: listIndex,
+              duration: const Duration(milliseconds: 500),
+              curve: Curves.easeInOut,
+            );
+            return;
+          }
+          listIndex++;
+          currentGameIndex += 2;
         }
-        listIndex++;
-        currentGameIndex++;
+      } else {
+        for (int i = 0; i < roundGames.length; i++) {
+          if (currentGameIndex == gameIndex) {
+            itemScrollController.scrollTo(
+              index: listIndex,
+              duration: const Duration(milliseconds: 500),
+              curve: Curves.easeInOut,
+            );
+            return;
+          }
+          listIndex++;
+          currentGameIndex++;
+        }
       }
     }
   }

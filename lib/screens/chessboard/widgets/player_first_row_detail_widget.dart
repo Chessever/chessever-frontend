@@ -103,7 +103,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             ? AppTypography.textXsMedium.copyWith(
               color: kLightYellowColor,
               fontWeight: FontWeight.w400,
-              fontSize: 8.f,
+              fontSize: 4.f,
             )
             : AppTypography.textXsMedium.copyWith(
               color: kLightYellowColor,
@@ -123,7 +123,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             ? AppTypography.textXsMedium.copyWith(
               color: kWhiteColor,
               fontWeight: FontWeight.w400,
-              fontSize: 8.f,
+              fontSize: 4.f,
             )
             : AppTypography.textXsMedium.copyWith(
               color: kWhiteColor,
@@ -143,7 +143,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             ? AppTypography.textXsMedium.copyWith(
               color: kWhiteColor70,
               fontWeight: FontWeight.w400,
-              fontSize: 8.f,
+              fontSize: 4.f,
             )
             : AppTypography.textXsMedium.copyWith(
               color: kWhiteColor70,
@@ -161,7 +161,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
         playerView == PlayerView.listView
             ? 12.w
             : playerView == PlayerView.gridView
-            ? 8.w
+            ? 10.w
             : 16.w;
 
     // Determine if we're showing scores
@@ -185,7 +185,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                   isShowingScore
                       ? kWhiteColor
                       : (isCurrentPlayer ? kWhiteColor70 : kWhiteColor),
-              fontSize: 8.f,
+              fontSize: 4.f,
               fontWeight: FontWeight.w500,
             )
             : AppTypography.textXsMedium.copyWith(
@@ -196,6 +196,9 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               fontSize: 14.f,
               fontWeight: FontWeight.w500,
             );
+
+    final initialPadding = playerView == PlayerView.gridView ? 8.w : 16.w;
+    final spacing = playerView == PlayerView.gridView ? 4.w : 8.w;
 
     return GestureDetector(
       onTap: () {
@@ -231,7 +234,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           if (playerCard.countryCode.toUpperCase() == 'FID') ...[
-            SizedBox(width: 16.w),
+            SizedBox(width: initialPadding),
             Image.asset(
               PngAsset.fideLogo,
               height: flagHeight,
@@ -240,17 +243,17 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               cacheWidth: 48,
               cacheHeight: 36,
             ),
-            SizedBox(width: 8.w),
+            SizedBox(width: spacing),
           ] else if (validCountryCode.isNotEmpty) ...[
-            SizedBox(width: 16.w),
+            SizedBox(width: initialPadding),
             CountryFlag.fromCountryCode(
               validCountryCode,
               height: flagHeight,
               width: flagWidth,
             ),
-            SizedBox(width: 8.w),
+            SizedBox(width: spacing),
           ] else
-            SizedBox(width: 16.w),
+            SizedBox(width: initialPadding),
           Expanded(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.start,
@@ -314,7 +317,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                   moveTime: moveTime,
                 ),
               ),
-          SizedBox(width: 8.w),
+          SizedBox(width: spacing),
         ],
       ),
     );
