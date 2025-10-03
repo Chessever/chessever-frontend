@@ -32,6 +32,8 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
   ItemPositionsListener get itemPositionsListener =>
       _itemPositionsListener; // Expose for Riverpod
 
+  String? _lastVisibleGameId;
+
   void _onItemPositionsChanged() {
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 100), () {
@@ -42,6 +44,11 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
           positions.where((pos) => pos.itemLeadingEdge < 0.5).firstOrNull;
       if (topItem == null) return;
 
+      final gameId = _getGameIdFromItemIndex(topItem.index);
+      if (gameId != null && gameId != _lastVisibleGameId) {
+        _lastVisibleGameId = gameId;
+      }
+
       final visibleRoundId = _getRoundIdFromItemIndex(topItem.index);
       if (visibleRoundId != null && visibleRoundId != _lastVisibleRoundId) {
         _lastVisibleRoundId = visibleRoundId;
@@ -50,37 +57,99 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
     });
   }
 
+  String? _getGameIdFromItemIndex(int itemIndex) {
+    final allRounds =
+        _ref.read(gamesAppBarProvider).valueOrNull?.gamesAppBarModels ?? [];
+    final rounds = allRounds.where((r) => _getGamesInRound(r.id) > 0).toList();
+    final reversedRounds = rounds.reversed.toList();
+
+    int currentIndex = 0;
+    for (final round in reversedRounds) {
+      if (itemIndex == currentIndex) {
+        return null; // header row, no game
+      }
+      currentIndex++; // skip header
+
+      final games =
+          _ref
+              .read(gamesTourScreenProvider)
+              .valueOrNull
+              ?.gamesTourModels
+              .where((g) => g.roundId == round.id)
+              .toList() ??
+          [];
+
+      if (_ref.read(gamesListViewModeProvider) ==
+          GamesListViewMode.chessBoardGrid) {
+        final rowCount = (games.length / 2).ceil();
+        if (itemIndex < currentIndex + rowCount) {
+          final row = itemIndex - currentIndex;
+          return games[row * 2].gameId; // first game in that row
+        }
+        currentIndex += rowCount;
+      } else {
+        if (itemIndex < currentIndex + games.length) {
+          return games[itemIndex - currentIndex].gameId;
+        }
+        currentIndex += games.length;
+      }
+    }
+    return null;
+  }
+
   // Ensure the item anchored at the top remains the same after layout changes
   void _anchorTopAfterVisibilityChange() {
-    final positions = _itemPositionsListener.itemPositions.value;
-    if (positions.isEmpty) return;
+    if (_lastVisibleGameId == null) return;
 
-    // Prefer the first item whose leadingEdge is >= 0 (visible and closest to top)
-    ItemPosition? top = positions
-        .where((p) => p.itemLeadingEdge >= 0)
-        .fold<ItemPosition?>(null, (best, p) {
-          if (best == null) return p;
-          return p.itemLeadingEdge < best.itemLeadingEdge ? p : best;
-        });
+    final targetIndex = _getItemIndexForGameId(_lastVisibleGameId!);
+    if (targetIndex == null) return;
 
-    // If none are >= 0, pick the one just above the top (largest negative leadingEdge)
-    top ??= positions.where((p) => p.itemLeadingEdge < 0).fold<ItemPosition?>(
-      null,
-      (best, p) {
-        if (best == null) return p;
-        return p.itemLeadingEdge > best.itemLeadingEdge ? p : best;
-      },
-    );
-
-    if (top == null) return;
-
-    final targetIndex = top.index;
-
-    // After the frame (when visibility change has re-laid out), jump to keep the same top index.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!state.isAttached) return;
       state.jumpTo(index: targetIndex, alignment: 0.0);
     });
+  }
+
+  int? _getItemIndexForGameId(String gameId) {
+    final allRounds =
+        _ref.read(gamesAppBarProvider).valueOrNull?.gamesAppBarModels ?? [];
+    final rounds = allRounds.where((r) => _getGamesInRound(r.id) > 0).toList();
+    final reversedRounds = rounds.reversed.toList();
+
+    int currentIndex = 0;
+    for (final round in reversedRounds) {
+      // header
+      currentIndex++;
+
+      final games =
+          _ref
+              .read(gamesTourScreenProvider)
+              .valueOrNull
+              ?.gamesTourModels
+              .where((g) => g.roundId == round.id)
+              .toList() ??
+          [];
+
+      if (_ref.read(gamesListViewModeProvider) ==
+          GamesListViewMode.chessBoardGrid) {
+        for (int i = 0; i < games.length; i += 2) {
+          final rowIndex = currentIndex + (i ~/ 2);
+          if (games[i].gameId == gameId ||
+              (i + 1 < games.length && games[i + 1].gameId == gameId)) {
+            return rowIndex;
+          }
+        }
+        currentIndex += (games.length / 2).ceil();
+      } else {
+        for (int i = 0; i < games.length; i++) {
+          if (games[i].gameId == gameId) {
+            return currentIndex + i;
+          }
+        }
+        currentIndex += games.length;
+      }
+    }
+    return null;
   }
 
   void _notifyRoundChange(String roundId) {
