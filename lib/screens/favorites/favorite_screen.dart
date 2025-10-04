@@ -1,4 +1,6 @@
 import 'package:chessever2/repository/local_storage/unified_favorites/unified_favorites_provider.dart';
+import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
+import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -96,7 +98,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen>
                 ),
                 indicatorSize: TabBarIndicatorSize.tab,
                 labelColor: kWhiteColor,
-                unselectedLabelColor: kWhiteColor.withOpacity(0.6),
+                unselectedLabelColor: kWhiteColor.withValues(alpha: 0.6),
                 labelStyle: AppTypography.textSmMedium,
                 unselectedLabelStyle: AppTypography.textSmRegular,
                 tabs: [
@@ -203,13 +205,13 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen>
           Icon(
             Icons.favorite_outline,
             size: 48.ic,
-            color: kWhiteColor.withOpacity(0.5),
+            color: kWhiteColor.withValues(alpha: 0.5),
           ),
           SizedBox(height: 16.h),
           Text(
             title,
             style: AppTypography.textMdMedium.copyWith(
-              color: kWhiteColor.withOpacity(0.7),
+              color: kWhiteColor.withValues(alpha: 0.7),
             ),
           ),
           Padding(
@@ -218,7 +220,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen>
               subtitle,
               textAlign: TextAlign.center,
               style: AppTypography.textSmRegular.copyWith(
-                color: kWhiteColor.withOpacity(0.5),
+                color: kWhiteColor.withValues(alpha: 0.5),
               ),
             ),
           ),
@@ -240,7 +242,38 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen>
   }
 
   Future<void> _removeFavoritePlayer(String fideId) async {
+    // First get the player data to find their name
+    final playersAsync = ref.read(favoritePlayersProvider);
+    final players = playersAsync.maybeWhen(
+      data: (data) => data,
+      orElse: () => <Map<String, dynamic>>[],
+    );
+
+    final player = players.firstWhere(
+      (p) => p['fideId'] == fideId,
+      orElse: () => <String, dynamic>{},
+    );
+
+    // Remove from unified favorites
     await ref.removeFavoritePlayer(fideId);
+
+    // Also remove from tournament favorites if player name exists
+    if (player.isNotEmpty && player['name'] != null) {
+      final tournamentFavService = ref.read(favoriteStandingsPlayerService);
+      final tournamentFavorites = await tournamentFavService.getFavoritePlayers();
+
+      // Find and remove from tournament favorites by name
+      final tournamentFavIndex = tournamentFavorites.indexWhere(
+        (p) => p.name == player['name'],
+      );
+
+      if (tournamentFavIndex != -1) {
+        tournamentFavorites.removeAt(tournamentFavIndex);
+        await tournamentFavService.saveFavoritePlayers(tournamentFavorites);
+        // Invalidate tournament favorites provider
+        ref.invalidate(tournamentFavoritePlayersProvider);
+      }
+    }
   }
 
 }

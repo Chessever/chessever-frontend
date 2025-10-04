@@ -1,11 +1,15 @@
+import 'dart:math' as math;
+
 import 'package:chessever2/providers/board_settings_provider.dart';
 import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_line_display.dart';
+import 'package:chessever2/screens/chessboard/analysis/move_impact_analyzer.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
+import 'package:chessever2/screens/chessboard/widgets/move_annotation_overlay.dart';
 import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
@@ -80,7 +84,12 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Removed shouldStreamProvider manipulation - it's global and affects all screens
+    // Set the initial visible page index - delayed to avoid modifying provider during build
+    Future.microtask(() {
+      if (mounted) {
+        ref.read(currentlyVisiblePageIndexProvider.notifier).state = _currentPageIndex;
+      }
+    });
   }
 
   void _onPageChanged(int newIndex) {
@@ -93,6 +102,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
     setState(() {
       _currentPageIndex = newIndex;
     });
+
+    // CRITICAL: Update the global provider to track which page is visible
+    // This prevents off-screen games from playing audio
+    ref.read(currentlyVisiblePageIndexProvider.notifier).state = newIndex;
 
     // OPTIMIZED: Don't read provider state during page changes - just manage the chess board providers
     // This prevents unnecessary provider lookups that could trigger rebuilds
@@ -998,7 +1011,12 @@ class _AnalysisControlsRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(chessBoardScreenProviderNew(index)).valueOrNull;
     final notifier = ref.read(chessBoardScreenProviderNew(index).notifier);
+
+    // Check if variant is selected - if so, forward button plays variant moves
+    final hasSelectedVariant = state?.selectedVariantIndex != null;
+
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 4.sp),
       child: Row(
@@ -1010,11 +1028,14 @@ class _AnalysisControlsRow extends ConsumerWidget {
           ),
           IconButton(
             icon: const Icon(Icons.arrow_back, color: kWhiteColor),
-            onPressed: notifier.moveBackward,
+            onPressed: hasSelectedVariant ? notifier.playVariantMoveBackward : notifier.moveBackward,
           ),
           IconButton(
-            icon: const Icon(Icons.arrow_forward, color: kWhiteColor),
-            onPressed: notifier.moveForward,
+            icon: Icon(
+              Icons.arrow_forward,
+              color: hasSelectedVariant ? kGreenColor : kWhiteColor, // Highlight when variant selected
+            ),
+            onPressed: hasSelectedVariant ? notifier.playVariantMoveForward : notifier.moveForward,
           ),
           IconButton(
             icon: const Icon(Icons.fast_forward, color: kWhiteColor),
@@ -1126,19 +1147,68 @@ class _PlayerWidget extends StatelessWidget {
   }
 }
 
-class _BoardWithSidebar extends StatelessWidget {
+class _BoardWithSidebar extends ConsumerWidget {
   final int index;
   final ChessBoardStateNew state;
 
   const _BoardWithSidebar({required this.index, required this.state});
 
+  String? _getLastMoveSquare() {
+    if (state.lastMove == null) return null;
+    if (state.lastMove is NormalMove) {
+      final move = state.lastMove as NormalMove;
+      return move.to.name;
+    }
+    return null;
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final sideBarWidth = 20.w;
         final screenWidth = MediaQuery.of(context).size.width;
         final boardSize = screenWidth - sideBarWidth - 32.w;
+
+        // Evaluate ALL moves from PGN and get current move impact from the map
+        Map<int, MoveImpactAnalysis>? allMovesImpact;
+        MoveImpactAnalysis? currentMoveImpact;
+
+        if (state.pgnData != null && state.pgnData!.isNotEmpty) {
+          final params = PgnAnalysisParams(pgn: state.pgnData!);
+          final allMovesAsync = ref.watch(allMovesImpactFromPgnProvider(params));
+          allMovesImpact = allMovesAsync.valueOrNull;
+
+          debugPrint('===== BOARD: allMovesImpact has ${allMovesImpact?.length ?? 0} moves analyzed =====');
+
+          // If no impacts from PGN, use fallback with individual position evaluations
+          if ((allMovesImpact == null || allMovesImpact.isEmpty) && state.allMoves.isNotEmpty) {
+            debugPrint('===== BOARD: NO PGN EVALS, USING FALLBACK =====');
+
+            // Use memoized provider to get position FENs (prevents rebuild loop)
+            final fensParams = PositionFensParams(
+              allMoves: state.allMoves,
+              startingPosition: state.startingPosition,
+            );
+            final positionFens = ref.watch(positionFensProvider(fensParams));
+
+            final positionParams = PositionAnalysisParams(
+              positionFens: positionFens,
+              moveSans: state.moveSans,
+            );
+
+            final fallbackAsync = ref.watch(allMovesImpactFromPositionsProvider(positionParams));
+            allMovesImpact = fallbackAsync.valueOrNull;
+          }
+
+          // Get impact for current move from the map
+          if (allMovesImpact != null && state.currentMoveIndex >= 0) {
+            currentMoveImpact = allMovesImpact[state.currentMoveIndex];
+            if (currentMoveImpact != null) {
+              debugPrint('===== BOARD: Current move ${state.currentMoveIndex} impact: ${currentMoveImpact.impact.name} =====');
+            }
+          }
+        }
 
         return Container(
           margin: EdgeInsets.symmetric(horizontal: 16.sp),
@@ -1153,18 +1223,30 @@ class _BoardWithSidebar extends StatelessWidget {
                 mate: state.mate ?? 0,
                 isEvaluating: state.isEvaluating,
               ),
-              state.isAnalysisMode
-                  ? _AnalysisBoard(
-                    size: boardSize,
-                    chessBoardState: state,
-                    isFlipped: state.isBoardFlipped,
-                    index: index,
-                  )
-                  : _ChessBoardNew(
-                    size: boardSize,
-                    chessBoardState: state,
-                    isFlipped: state.isBoardFlipped,
-                  ),
+              Stack(
+                children: [
+                  state.isAnalysisMode
+                      ? _AnalysisBoard(
+                        size: boardSize,
+                        chessBoardState: state,
+                        isFlipped: state.isBoardFlipped,
+                        index: index,
+                      )
+                      : _ChessBoardNew(
+                        size: boardSize,
+                        chessBoardState: state,
+                        isFlipped: state.isBoardFlipped,
+                      ),
+                  // Add move annotation overlay - only show if impact is not normal
+                  if (currentMoveImpact != null && currentMoveImpact.impact != MoveImpactType.normal)
+                    BoardMoveAnnotation(
+                      moveImpact: currentMoveImpact,
+                      boardSize: boardSize,
+                      isFlipped: state.isBoardFlipped,
+                      lastMoveSquare: _getLastMoveSquare(),
+                    ),
+                ],
+              ),
             ],
           ),
         );
@@ -1345,6 +1427,51 @@ class _MovesDisplay extends ConsumerWidget {
       );
     }
 
+    // Evaluate ALL moves from PGN in parallel
+    Map<int, MoveImpactAnalysis>? allMovesImpact;
+    debugPrint('===== CHECKING PGN: ${state.pgnData?.substring(0, math.min(100, state.pgnData?.length ?? 0)) ?? "NO PGN"} =====');
+
+    if (state.pgnData != null && state.pgnData!.isNotEmpty) {
+      final params = PgnAnalysisParams(pgn: state.pgnData!);
+      final allMovesAsync = ref.watch(allMovesImpactFromPgnProvider(params));
+
+      debugPrint('===== PROVIDER STATE: ${allMovesAsync.isLoading ? "LOADING" : allMovesAsync.hasError ? "ERROR: ${allMovesAsync.error}" : "HAS VALUE"} =====');
+
+      allMovesImpact = allMovesAsync.valueOrNull;
+      debugPrint('===== MOVES DISPLAY: allMovesImpact has ${allMovesImpact?.length ?? 0} analyzed moves =====');
+
+      // If no impacts from PGN, use fallback with individual position evaluations
+      if ((allMovesImpact == null || allMovesImpact.isEmpty) && state.allMoves.isNotEmpty) {
+        debugPrint('===== NO PGN EVALS, USING FALLBACK PROVIDER =====');
+
+        // Use memoized provider to get position FENs (prevents rebuild loop)
+        final fensParams = PositionFensParams(
+          allMoves: state.allMoves,
+          startingPosition: state.startingPosition,
+        );
+        final positionFens = ref.watch(positionFensProvider(fensParams));
+
+        final positionParams = PositionAnalysisParams(
+          positionFens: positionFens,
+          moveSans: state.moveSans,
+        );
+
+        final fallbackAsync = ref.watch(allMovesImpactFromPositionsProvider(positionParams));
+        allMovesImpact = fallbackAsync.valueOrNull;
+
+        debugPrint('===== FALLBACK: Got ${allMovesImpact?.length ?? 0} analyzed moves =====');
+      }
+
+      if (allMovesImpact != null && allMovesImpact.isNotEmpty) {
+        debugPrint('===== FIRST 3 IMPACTS: =====');
+        allMovesImpact.entries.take(3).forEach((entry) {
+          debugPrint('Move ${entry.key}: ${entry.value.actualMoveSan} -> ${entry.value.impact.name} ${entry.value.impact.symbol}');
+        });
+      }
+    } else {
+      debugPrint('===== NO PGN AVAILABLE IN GAME =====');
+    }
+
     return Container(
       alignment: Alignment.centerLeft,
       padding: EdgeInsets.all(20.sp),
@@ -1359,6 +1486,27 @@ class _MovesDisplay extends ConsumerWidget {
               final isCurrentMove = moveIndex == currentMoveIndex;
               final fullMoveNumber = (moveIndex / 2).floor() + 1;
               final isWhiteMove = moveIndex % 2 == 0;
+
+              // Get impact from the map
+              final impact = allMovesImpact?[moveIndex];
+
+              final displayText = isWhiteMove ? '$fullMoveNumber. $move' : move;
+              final impactSymbol = impact?.impact.symbol ?? '';
+
+              // Debug log for first few moves
+              if (moveIndex < 3 && impact != null) {
+                debugPrint('===== MOVE $moveIndex: "$displayText" + symbol "$impactSymbol" (${impact.impact.name}) =====');
+              }
+
+              // Determine text color
+              Color textColor;
+              if (isCurrentMove) {
+                textColor = kWhiteColor;
+              } else if (impact != null && impact.impact != MoveImpactType.normal) {
+                textColor = impact.impact.color;
+              } else {
+                textColor = ref.read(chessBoardScreenProviderNew(index).notifier).getMoveColor(move, moveIndex);
+              }
 
               return GestureDetector(
                 onTap:
@@ -1381,14 +1529,25 @@ class _MovesDisplay extends ConsumerWidget {
                       width: 0.5,
                     ),
                   ),
-                  child: Text(
-                    isWhiteMove ? '$fullMoveNumber. $move' : move,
-                    style: AppTypography.textXsMedium.copyWith(
-                      color: ref
-                          .read(chessBoardScreenProviderNew(index).notifier)
-                          .getMoveColor(move, moveIndex),
-                      fontWeight:
-                          isCurrentMove ? FontWeight.bold : FontWeight.normal,
+                  child: RichText(
+                    text: TextSpan(
+                      children: [
+                        TextSpan(
+                          text: displayText,
+                          style: AppTypography.textXsMedium.copyWith(
+                            color: textColor,
+                            fontWeight: isCurrentMove ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                        if (impactSymbol.isNotEmpty)
+                          TextSpan(
+                            text: impactSymbol,
+                            style: AppTypography.textXsMedium.copyWith(
+                              color: impact!.impact.color,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ),
@@ -1473,7 +1632,11 @@ class _PrincipalVariationList extends ConsumerWidget {
             style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
           ),
           SizedBox(height: 8.h),
-          ...lines.map((line) {
+          ...lines.asMap().entries.map((entry) {
+            final variantIndex = entry.key;
+            final line = entry.value;
+            final isSelected = state?.selectedVariantIndex == variantIndex;
+
             final sanMoves = _formatPv(
               line.sanMoves,
               baseMoveNumber,
@@ -1481,40 +1644,55 @@ class _PrincipalVariationList extends ConsumerWidget {
             );
             final evalText = line.displayEval;
 
-            return Padding(
-              padding: EdgeInsets.only(bottom: 6.h),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    margin: EdgeInsets.only(right: 8.sp),
-                    decoration: BoxDecoration(
-                      color: kWhiteColor,
-                      borderRadius: BorderRadius.circular(4.sp),
-                    ),
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 6.sp,
-                      vertical: 2.sp,
-                    ),
-                    child: Text(
-                      evalText.isEmpty ? '—' : evalText,
-                      style: AppTypography.textXsMedium.copyWith(
-                        color: kBlackColor,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Text(
-                      sanMoves.join(' '),
-                      style: AppTypography.textXsMedium.copyWith(
+            return GestureDetector(
+              onTap: () {
+                ref
+                    .read(chessBoardScreenProviderNew(index).notifier)
+                    .selectVariant(variantIndex);
+              },
+              child: Container(
+                margin: EdgeInsets.only(bottom: 6.h),
+                decoration: BoxDecoration(
+                  border: isSelected
+                      ? Border.all(color: kGreenColor, width: 2)
+                      : null,
+                  borderRadius: BorderRadius.circular(6.sp),
+                  color: isSelected ? kGreenColor.withOpacity(0.1) : null,
+                ),
+                padding: EdgeInsets.all(isSelected ? 6.sp : 0),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      margin: EdgeInsets.only(right: 8.sp),
+                      decoration: BoxDecoration(
                         color: kWhiteColor,
+                        borderRadius: BorderRadius.circular(4.sp),
                       ),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 2,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 6.sp,
+                        vertical: 2.sp,
+                      ),
+                      child: Text(
+                        evalText.isEmpty ? '—' : evalText,
+                        style: AppTypography.textXsMedium.copyWith(
+                          color: kBlackColor,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
-                  ),
-                ],
+                    Expanded(
+                      child: Text(
+                        sanMoves.join(' '),
+                        style: AppTypography.textXsMedium.copyWith(
+                          color: kWhiteColor,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 2,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             );
           }),

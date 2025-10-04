@@ -49,24 +49,15 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
     final player = ref.read(selectedPlayerProvider);
 
     if (player != null) {
-      // Toggle in the old tournament players favorites system
+      // Toggle in the tournament players favorites system
       await favoritesService.toggleFavorite(player);
       ref.invalidate(tournamentFavoritePlayersProvider);
       final favorites = await favoritesService.getFavoritePlayers();
       final isNowFavorite = favorites.any((fav) => fav.name == player.name);
 
-      // Also toggle in the unified favorites system for global player favorites
-      try {
-        await ref.togglePlayerFavorite(
-          fideId: player.name, // Using name as fallback for fideId if not available
-          playerName: player.name,
-          countryCode: player.countryCode,
-          rating: player.score,
-          title: player.title,
-        );
-      } catch (e) {
-        // Handle error silently - main functionality still works with tournament favorites
-      }
+      // NOTE: We don't sync with unified favorites system here because
+      // PlayerStandingModel doesn't have fideId. Users should favorite
+      // players from the Players tab to add them to unified favorites.
 
       if (isNowFavorite) {
         _animationController.forward().then(
