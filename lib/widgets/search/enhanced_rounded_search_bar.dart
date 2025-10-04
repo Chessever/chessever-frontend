@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
@@ -25,6 +24,7 @@ class EnhancedRoundedSearchBar extends ConsumerStatefulWidget {
   final bool showProfile;
   final bool showFilter;
   final FocusNode? focusNode;
+  final VoidCallback? onClearSearchField;
 
   const EnhancedRoundedSearchBar({
     super.key,
@@ -39,6 +39,7 @@ class EnhancedRoundedSearchBar extends ConsumerStatefulWidget {
     this.showProfile = true,
     this.showFilter = true,
     this.focusNode,
+    this.onClearSearchField,
   });
 
   @override
@@ -97,7 +98,6 @@ class _EnhancedRoundedSearchBarState
   }
 
   void _onFocusChange() {
-    print('Focus changed: ${_effectiveNode.hasFocus}');
     ref.read(isSearchingProvider.notifier).state = _effectiveNode.hasFocus;
     setState(() {
       _showOverlay =
@@ -145,12 +145,12 @@ class _EnhancedRoundedSearchBarState
     _searchBarController.reverse();
   }
 
-  // FIXED: Clear search state when tapping outside
   void _clearSearchAndHide() {
     widget.controller.clear(); // Clear the search text
     ref.read(isSearchingProvider.notifier).state = false; // Clear search state
     ref.read(searchQueryProvider.notifier).state = ''; // Clear query state
     _hideOverlay();
+    widget.onClearSearchField?.call();
   }
 
   void _onTournamentSelected(GroupEventCardModel tournament) {
@@ -171,7 +171,7 @@ class _EnhancedRoundedSearchBarState
         if (_showOverlay)
           Positioned.fill(
             child: GestureDetector(
-              onTap: _clearSearchAndHide, // FIXED: Use the new method
+              onTap: _clearSearchAndHide,
               behavior: HitTestBehavior.opaque,
               child: Container(color: Colors.transparent),
             ),
