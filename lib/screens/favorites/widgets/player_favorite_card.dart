@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:country_flags/country_flags.dart';
 import '../../../utils/app_typography.dart';
@@ -7,7 +8,7 @@ import '../../../utils/responsive_helper.dart';
 import '../../../utils/svg_asset.dart';
 import '../../../utils/png_asset.dart';
 import '../../../widgets/svg_widget.dart';
-import '../../../screens/player_games/player_games_screen.dart';
+import '../player_games/player_games_screen.dart';
 
 class PlayerFavoriteCard extends ConsumerWidget {
   final Map<String, dynamic> playerData;
@@ -28,9 +29,38 @@ class PlayerFavoriteCard extends ConsumerWidget {
     final countryCode = playerData['countryCode'] as String? ?? '';
     final rating = playerData['rating'] as int? ?? 0;
 
-    return GestureDetector(
-      onTap: () => _navigateToPlayerScoreCard(context, ref),
-      child: Container(
+    return Dismissible(
+      key: Key(playerData['fideId']?.toString() ?? name),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        decoration: BoxDecoration(
+          color: kRedColor,
+          borderRadius: BorderRadius.circular(8.br),
+        ),
+        alignment: Alignment.centerRight,
+        padding: EdgeInsets.only(right: 20.sp),
+        child: Icon(
+          Icons.delete_outline,
+          color: kWhiteColor,
+          size: 24.ic,
+        ),
+      ),
+      confirmDismiss: (direction) async {
+        HapticFeedback.mediumImpact();
+        return await _showDeleteConfirmation(context, name);
+      },
+      onDismissed: (direction) {
+        if (onRemoveFavorite != null) {
+          onRemoveFavorite!();
+        }
+      },
+      child: GestureDetector(
+        onTap: () => _navigateToPlayerScoreCard(context, ref),
+        onLongPressStart: (details) {
+          HapticFeedback.lightImpact();
+          _showContextMenu(context, details.globalPosition, name);
+        },
+        child: Container(
         decoration: BoxDecoration(
           color: kBlack2Color,
           borderRadius: BorderRadius.circular(8.br),
@@ -134,21 +164,35 @@ class PlayerFavoriteCard extends ConsumerWidget {
           ),
         ],
         ),
+        ),
       ),
     );
   }
 
   void _navigateToPlayerScoreCard(BuildContext context, WidgetRef ref) {
     try {
+      debugPrint('===== PlayerFavoriteCard: playerData keys: ${playerData.keys.toList()} =====');
+      debugPrint('===== PlayerFavoriteCard: fideId value: ${playerData['fideId']} (type: ${playerData['fideId'].runtimeType}) =====');
+
+      final fideId = playerData['fideId']?.toString() ?? '';
       final name = playerData['name'] as String? ?? 'Unknown Player';
       final title = playerData['title'] as String?;
       final countryCode = playerData['countryCode'] as String? ?? '';
+
+      debugPrint('===== Navigating with fideId: $fideId, name: $name =====');
+
+      if (fideId.isEmpty) {
+        // Handle missing fideId silently
+        debugPrint('===== ERROR: fideId is empty! =====');
+        return;
+      }
 
       // Navigate to player games screen
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => PlayerGamesScreen(
+            fideId: fideId,
             playerName: name,
             playerTitle: title,
             countryCode: countryCode,
@@ -158,5 +202,93 @@ class PlayerFavoriteCard extends ConsumerWidget {
     } catch (e) {
       // Handle navigation error silently
     }
+  }
+
+  void _showContextMenu(BuildContext context, Offset position, String playerName) {
+    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+
+    showMenu(
+      context: context,
+      position: RelativeRect.fromRect(
+        position & const Size(40, 40),
+        Offset.zero & overlay.size,
+      ),
+      color: kBlack2Color,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8.br),
+      ),
+      items: [
+        PopupMenuItem(
+          value: 'delete',
+          child: Row(
+            children: [
+              Icon(
+                Icons.delete_outline,
+                color: kRedColor,
+                size: 20.ic,
+              ),
+              SizedBox(width: 12.w),
+              Text(
+                'Remove from favorites',
+                style: AppTypography.textSmRegular.copyWith(
+                  color: kRedColor,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ).then((value) {
+      if (value == 'delete') {
+        _showDeleteConfirmation(context, playerName).then((confirmed) {
+          if (confirmed == true && onRemoveFavorite != null) {
+            HapticFeedback.mediumImpact();
+            onRemoveFavorite!();
+          }
+        });
+      }
+    });
+  }
+
+  Future<bool?> _showDeleteConfirmation(BuildContext context, String playerName) {
+    return showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: kBlack2Color,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12.br),
+          ),
+          title: Text(
+            'Remove from favorites?',
+            style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
+          ),
+          content: Text(
+            'Are you sure you want to remove $playerName from your favorites?',
+            style: AppTypography.textSmRegular.copyWith(
+              color: kWhiteColor.withValues(alpha: 0.7),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(
+                'Cancel',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: kWhiteColor.withValues(alpha: 0.7),
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(
+                'Remove',
+                style: AppTypography.textSmMedium.copyWith(color: kRedColor),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 }

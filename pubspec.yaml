@@ -109,8 +109,9 @@ dependencies:
   flutter_soloud: ^3.3.6
 
   scrollable_positioned_list: ^0.3.8
+  worker_manager: ^7.2.7
 
-  
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

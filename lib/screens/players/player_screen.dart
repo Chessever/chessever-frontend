@@ -256,6 +256,8 @@ class _PlayerList extends ConsumerWidget {
   }
 
   void _toggleFavorite(WidgetRef ref, String playerId) async {
+    debugPrint('===== _toggleFavorite called with playerId: $playerId =====');
+
     final viewModel = ref.read(playerViewModelProvider);
     viewModel.toggleFavorite(playerId);
 
@@ -266,6 +268,8 @@ class _PlayerList extends ConsumerWidget {
       orElse: () => <String, dynamic>{},
     );
 
+    debugPrint('===== Found player: ${player['name']}, fideId from player data: ${player['fideId']} =====');
+
     if (player.isNotEmpty) {
       await ref.togglePlayerFavorite(
         fideId: playerId,
@@ -274,6 +278,7 @@ class _PlayerList extends ConsumerWidget {
         rating: player['rating'] as int?,
         title: player['title'] as String?,
       );
+      debugPrint('===== Saved to unified favorites with fideId: $playerId =====');
     }
   }
 }

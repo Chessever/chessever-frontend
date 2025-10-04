@@ -156,9 +156,12 @@ class GameRepository extends BaseRepository {
     });
   }
 
-  // Get all games for a specific player by name (more comprehensive search)
-  Future<List<Games>> getGamesByPlayerName(String playerName, {int? limit}) async {
+  // Get all games for a specific player by fideId
+  Future<List<Games>> getGamesByFideId(String fideId, {int? limit}) async {
     return handleApiCall(() async {
+      print('===== GameRepository: Fetching games for fideId: $fideId =====');
+
+      // Query games where the fideId appears in the players JSONB array
       var query = supabase
           .from('games')
           .select('''
@@ -185,7 +188,7 @@ class GameRepository extends BaseRepository {
           last_clock_white,
           last_clock_black
         ''')
-          .or('player_white.eq.$playerName,player_black.eq.$playerName')
+          .contains('players', [{'fideId': int.parse(fideId)}])
           .order('date_start', ascending: false)
           .order('time_start', ascending: false);
 
@@ -193,7 +196,51 @@ class GameRepository extends BaseRepository {
         query = query.limit(limit);
       }
 
+      print('===== GameRepository: Executing query with limit: $limit =====');
       final response = await query;
+
+      print('===== GameRepository: Received ${(response as List).length} games =====');
+      return (response as List).map((json) => Games.fromJson(json)).toList();
+    });
+  }
+
+  // Get games for a specific player by fideId with pagination
+  Future<List<Games>> getGamesByFideIdPaginated(
+    String fideId, {
+    required int limit,
+    required int offset,
+  }) async {
+    return handleApiCall(() async {
+      final response = await supabase
+          .from('games')
+          .select('''
+          id,
+          round_id,
+          round_slug,
+          tour_id,
+          tour_slug,
+          name,
+          fen,
+          players,
+          last_move,
+          think_time,
+          status,
+          pgn,
+          search,
+          lichess_id,
+          player_white,
+          player_black,
+          date_start,
+          time_start,
+          board_nr,
+          last_move_time,
+          last_clock_white,
+          last_clock_black
+        ''')
+          .contains('players', [{'fideId': int.parse(fideId)}])
+          .order('date_start', ascending: false)
+          .order('time_start', ascending: false)
+          .range(offset, offset + limit - 1);
 
       return (response as List).map((json) => Games.fromJson(json)).toList();
     });

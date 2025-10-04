@@ -30,6 +30,12 @@ final chessboardViewFromProviderNew = StateProvider<ChessboardView>((ref) {
   return ChessboardView.tour;
 });
 
+// Global provider to track the currently visible page index
+// This prevents off-screen games from playing audio or triggering unnecessary updates
+final currentlyVisiblePageIndexProvider = StateProvider<int>((ref) {
+  return 0;
+});
+
 class ChessBoardScreenNotifierNew
     extends StateNotifier<AsyncValue<ChessBoardStateNew>> {
   ChessBoardScreenNotifierNew(
@@ -75,6 +81,106 @@ class ChessBoardScreenNotifierNew
       ref.listen(gameUpdatesStreamProvider(game.gameId), (previous, next) {
         next.whenData((gameData) {
           if (gameData != null) {
+            final currentState = state.value;
+
+            // CRITICAL: Check if this game board is currently visible
+            // This prevents off-screen games from playing audio or resetting positions
+            final currentVisibleIndex = ref.read(currentlyVisiblePageIndexProvider);
+            final isCurrentlyVisible = currentVisibleIndex == index;
+
+            // CRITICAL: Don't update board state if user is actively analyzing
+            // This prevents resetting the board when viewing past positions or variants
+            if (currentState?.isAnalysisMode == true) {
+              // In analysis mode, only update the underlying game data
+              // but don't reset the board position
+              game = game.copyWith(
+                pgn: gameData['pgn'] as String? ?? game.pgn,
+                fen: gameData['fen'] as String? ?? game.fen,
+                lastMove: gameData['last_move'] as String? ?? game.lastMove,
+                lastMoveTime:
+                    gameData['last_move_time'] != null
+                        ? DateTime.tryParse(gameData['last_move_time'] as String)
+                        : game.lastMoveTime,
+                whiteClockSeconds:
+                    (gameData['last_clock_white'] as num?)?.round(),
+                blackClockSeconds:
+                    (gameData['last_clock_black'] as num?)?.round(),
+                gameStatus: _parseGameStatus(
+                  gameData['status'] as String? ?? '*',
+                ),
+              );
+
+              // Update only the game reference in state, preserve analysis position
+              if (currentState != null) {
+                state = AsyncValue.data(currentState.copyWith(game: game));
+              }
+
+              debugPrint("Game data updated but preserving analysis position");
+              return;
+            }
+
+            // CRITICAL: In normal mode, check if user is viewing a past position
+            // Don't auto-update if they've navigated away from the latest move
+            if (currentState != null &&
+                !currentState.isLoadingMoves &&
+                currentState.currentMoveIndex < currentState.allMoves.length - 1) {
+              // User is viewing a past position, only update game data
+              game = game.copyWith(
+                pgn: gameData['pgn'] as String? ?? game.pgn,
+                fen: gameData['fen'] as String? ?? game.fen,
+                lastMove: gameData['last_move'] as String? ?? game.lastMove,
+                lastMoveTime:
+                    gameData['last_move_time'] != null
+                        ? DateTime.tryParse(gameData['last_move_time'] as String)
+                        : game.lastMoveTime,
+                whiteClockSeconds:
+                    (gameData['last_clock_white'] as num?)?.round(),
+                blackClockSeconds:
+                    (gameData['last_clock_black'] as num?)?.round(),
+                gameStatus: _parseGameStatus(
+                  gameData['status'] as String? ?? '*',
+                ),
+              );
+
+              state = AsyncValue.data(currentState.copyWith(game: game));
+              debugPrint("Game data updated but preserving user's current position");
+              return;
+            }
+
+            // CRITICAL: If this game is not currently visible, update game data silently
+            // without triggering position changes that would cause audio to play
+            if (!isCurrentlyVisible) {
+              game = game.copyWith(
+                pgn: gameData['pgn'] as String? ?? game.pgn,
+                fen: gameData['fen'] as String? ?? game.fen,
+                lastMove: gameData['last_move'] as String? ?? game.lastMove,
+                lastMoveTime:
+                    gameData['last_move_time'] != null
+                        ? DateTime.tryParse(gameData['last_move_time'] as String)
+                        : game.lastMoveTime,
+                whiteClockSeconds:
+                    (gameData['last_clock_white'] as num?)?.round(),
+                blackClockSeconds:
+                    (gameData['last_clock_black'] as num?)?.round(),
+                gameStatus: _parseGameStatus(
+                  gameData['status'] as String? ?? '*',
+                ),
+              );
+
+              // Mark that moves need to be re-parsed when user switches to this game
+              _hasParsedMoves = false;
+
+              // Update only game data, don't trigger position updates
+              if (currentState != null) {
+                state = AsyncValue.data(currentState.copyWith(game: game));
+              }
+
+              debugPrint(
+                "Off-screen game ${game.gameId} updated silently (index: $index, visible: $currentVisibleIndex)",
+              );
+              return;
+            }
+
             bool needsReparse = false;
             bool needsEvaluation = false;
 
@@ -110,14 +216,24 @@ class ChessBoardScreenNotifierNew
               ),
             );
 
-            // Re-parse moves if PGN changed
-            if (needsReparse) {
+            // CRITICAL: Only reparse if this is the currently visible game
+            // This prevents off-screen games from triggering full position updates
+            if (needsReparse && isCurrentlyVisible) {
               _hasParsedMoves = false;
               parseMoves();
               debugPrint("-----Game updated with new PGN and clock data");
+            } else if (needsReparse && !isCurrentlyVisible) {
+              // Off-screen game with new PGN - mark for reparse but don't execute yet
+              _hasParsedMoves = false;
+              game = game.copyWith(pgn: newPgn ?? game.pgn);
+              if (currentState != null) {
+                state = AsyncValue.data(currentState.copyWith(game: game));
+              }
+              debugPrint(
+                "Off-screen game ${game.gameId} PGN updated, will reparse when visible",
+              );
             } else {
               // Update the current state with new clock/position data
-              final currentState = state.value;
               if (currentState != null) {
                 // Parse the last move for proper board highlighting
                 Move? parsedLastMove;
@@ -145,8 +261,8 @@ class ChessBoardScreenNotifierNew
                   ),
                 );
 
-                // Trigger evaluation update if position changed
-                if (needsEvaluation) {
+                // CRITICAL: Only trigger evaluation if this game is visible
+                if (needsEvaluation && isCurrentlyVisible) {
                   debugPrint(
                     "-----Position changed, triggering evaluation update for FEN: $newFen",
                   );
@@ -431,6 +547,99 @@ class ChessBoardScreenNotifierNew
     _analysisNavigator?.goToMovePointerUnchecked(pointer);
   }
 
+  void playPrincipalVariationMove(AnalysisLine line) {
+    if (!state.value!.isAnalysisMode) return;
+    if (line.moves.isEmpty) return;
+
+    // Play the first move of the selected principal variation
+    final firstMove = line.moves.first;
+    if (firstMove is NormalMove) {
+      if (isPromotionPawnMove(firstMove)) {
+        state = AsyncValue.data(
+          state.value!.copyWith(
+            analysisState: state.value!.analysisState.copyWith(
+              promotionMove: firstMove,
+            ),
+          ),
+        );
+      } else {
+        if (_analysisGame != null) {
+          _analysisNavigator?.makeOrGoToMove(firstMove.uci);
+        } else {
+          onAnalysisMove(firstMove);
+        }
+      }
+    }
+  }
+
+  /// Select a variant (engine suggestion) for navigation
+  void selectVariant(int variantIndex) {
+    final currentState = state.value;
+    if (currentState == null || !currentState.isAnalysisMode) return;
+    if (variantIndex < 0 || variantIndex >= currentState.principalVariations.length) return;
+
+    state = AsyncValue.data(
+      currentState.copyWith(
+        selectedVariantIndex: variantIndex,
+        variantMovePointer: const [], // Reset variant progress
+      ),
+    );
+  }
+
+  /// Play next move of the selected variant forward
+  void playVariantMoveForward() {
+    final currentState = state.value;
+    if (currentState == null || !currentState.isAnalysisMode) return;
+    if (currentState.selectedVariantIndex == null) return;
+
+    final selectedVariant = currentState.principalVariations[currentState.selectedVariantIndex!];
+    final currentPointerIndex = currentState.variantMovePointer.length;
+
+    // Check if there are more moves to play in the variant
+    if (currentPointerIndex >= selectedVariant.moves.length) return;
+
+    final nextMove = selectedVariant.moves[currentPointerIndex];
+    if (nextMove is NormalMove) {
+      if (isPromotionPawnMove(nextMove)) {
+        state = AsyncValue.data(
+          currentState.copyWith(
+            analysisState: currentState.analysisState.copyWith(
+              promotionMove: nextMove,
+            ),
+          ),
+        );
+      } else {
+        if (_analysisGame != null) {
+          _analysisNavigator?.makeOrGoToMove(nextMove.uci);
+        } else {
+          onAnalysisMove(nextMove);
+        }
+
+        // Update variant move pointer
+        final newPointer = List<int>.from(currentState.variantMovePointer)..add(currentPointerIndex);
+        state = AsyncValue.data(
+          currentState.copyWith(variantMovePointer: newPointer),
+        );
+      }
+    }
+  }
+
+  /// Undo last move of the selected variant
+  void playVariantMoveBackward() {
+    final currentState = state.value;
+    if (currentState == null || !currentState.isAnalysisMode) return;
+    if (currentState.variantMovePointer.isEmpty) return;
+
+    // Go back one move using analysis navigator
+    _analysisNavigator?.goToPreviousMove();
+
+    // Update variant move pointer
+    final newPointer = List<int>.from(currentState.variantMovePointer)..removeLast();
+    state = AsyncValue.data(
+      currentState.copyWith(variantMovePointer: newPointer),
+    );
+  }
+
   void moveForward() {
     final currentState = state.value;
     if (currentState?.isAnalysisMode == true) {
@@ -503,16 +712,19 @@ class ChessBoardScreenNotifierNew
       chessGameNavigatorProvider(_analysisGame!).notifier,
     );
 
-    final savedState = await _analysisStateManager!.loadState(
-      updatedState.game.gameId,
+    // Preserve the current move position when entering analysis mode
+    // Move pointer is a single-element array with the current move index
+    // For example: if at move 15, pointer should be [15], not [0,1,2,...,15]
+    final currentMoveIndex = updatedState.currentMoveIndex;
+    final movePointer = currentMoveIndex < 0
+        ? const <int>[]
+        : [currentMoveIndex];
+
+    // Always initialize at current position, ignore saved state
+    // This ensures analysis mode continues from wherever the user is viewing
+    navigator.replaceState(
+      ChessGameNavigatorState(game: _analysisGame!, movePointer: movePointer),
     );
-    if (savedState != null) {
-      navigator.replaceState(savedState);
-    } else {
-      navigator.replaceState(
-        ChessGameNavigatorState(game: _analysisGame!, movePointer: const []),
-      );
-    }
 
     _navigatorSubscription?.close();
     _navigatorSubscription = ref.listen<ChessGameNavigatorState>(
@@ -1043,49 +1255,65 @@ class ChessBoardScreenNotifierNew
   ISet<Shape> getBestMoveShape(Position pos, CloudEval? cloudEval) {
     ISet<Shape> shapes = const ISet.empty();
     if (cloudEval?.pvs.isNotEmpty ?? false) {
-      String bestMove =
-          cloudEval!.pvs[0].moves
-              .split(" ")[0]
-              .toLowerCase(); // Normalize to lowercase
+      final arrowShapes = <Arrow>[];
 
-      if (bestMove.length < 4 || bestMove.length > 5) {
-        debugPrint('Invalid best move UCI: $bestMove');
-        return shapes; // Invalid UCI
+      // Get up to 2 principal variations
+      final pvsToShow = cloudEval!.pvs.take(2).toList();
+
+      for (int i = 0; i < pvsToShow.length; i++) {
+        final pv = pvsToShow[i];
+        String bestMove =
+            pv.moves
+                .split(" ")[0]
+                .toLowerCase(); // Normalize to lowercase
+
+        if (bestMove.length < 4 || bestMove.length > 5) {
+          debugPrint('Invalid best move UCI: $bestMove');
+          continue; // Skip invalid UCI
+        }
+
+        try {
+          // Use different colors/opacity for first and second best moves
+          // First move: brighter green, second move: more transparent
+          final arrowColor = i == 0
+              ? const Color.fromARGB(255, 152, 179, 154) // Primary suggestion
+              : const Color.fromARGB(180, 152, 179, 154); // Secondary suggestion (more transparent)
+
+          if (bestMove.contains('@')) {
+            // Drop move (e.g., "p@e4")
+            if (bestMove.length != 4 || bestMove[1] != '@') continue;
+            String toStr = bestMove.substring(2, 4);
+            Square to = Square.fromName(toStr);
+            arrowShapes.add(
+              Arrow(
+                color: arrowColor,
+                orig: to, // Same square as destination
+                dest: to,
+              ),
+            );
+          } else {
+            // Normal move or promotion (e.g., "e2e4" or "e7e8q")
+            String fromStr = bestMove.substring(0, 2);
+            String toStr = bestMove.substring(2, 4);
+            Square from = Square.fromName(fromStr);
+            Square to = Square.fromName(toStr);
+            arrowShapes.add(
+              Arrow(
+                color: arrowColor,
+                orig: from,
+                dest: to,
+              ),
+            );
+          }
+        } catch (e) {
+          // Parsing failed for this PV, continue with next
+          debugPrint('Error parsing PV $i best move UCI: $e');
+          continue;
+        }
       }
 
-      try {
-        if (bestMove.contains('@')) {
-          // Drop move (e.g., "p@e4")
-          if (bestMove.length != 4 || bestMove[1] != '@') return shapes;
-          String toStr = bestMove.substring(2, 4);
-          Square to = Square.fromName(toStr);
-          shapes =
-              {
-                Arrow(
-                  color: const Color.fromARGB(255, 152, 179, 154),
-                  orig: to, // Same square as destination
-                  dest: to,
-                ),
-              }.toISet();
-        } else {
-          // Normal move or promotion (e.g., "e2e4" or "e7e8q")
-          String fromStr = bestMove.substring(0, 2);
-          String toStr = bestMove.substring(2, 4);
-          Square from = Square.fromName(fromStr);
-          Square to = Square.fromName(toStr);
-          shapes =
-              {
-                Arrow(
-                  color: const Color.fromARGB(255, 152, 179, 154),
-                  orig: from,
-                  dest: to,
-                ),
-              }.toISet();
-        }
-      } catch (e) {
-        // Parsing failed, return empty
-        debugPrint('Error parsing best move UCI: $e');
-        return const ISet.empty();
+      if (arrowShapes.isNotEmpty) {
+        shapes = arrowShapes.toISet();
       }
     } else {
       debugPrint('No evaluation data available.');
