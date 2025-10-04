@@ -13,10 +13,7 @@ class TournamentSortingService {
 
   TournamentSortingService(this.ref);
 
-  List<GroupEventCardModel> sortAllTours({
-    required List<GroupEventCardModel> tours,
-    required String dropDownSelectedCountry,
-  }) {
+  List<GroupEventCardModel> sortAllTours(List<GroupEventCardModel> tours) {
     final filteredList =
         tours
             .where((t) => t.tourEventCategory != TourEventCategory.upcoming)
@@ -41,10 +38,7 @@ class TournamentSortingService {
     return filteredList;
   }
 
-  List<GroupEventCardModel> sortUpcomingTours({
-    required List<GroupEventCardModel> tours,
-    required String dropDownSelectedCountry,
-  }) {
+  List<GroupEventCardModel> sortUpcomingTours(List<GroupEventCardModel> tours) {
     final filteredList =
         tours
             .where((t) => t.tourEventCategory == TourEventCategory.upcoming)
@@ -81,8 +75,9 @@ class TournamentSortingService {
   List<GroupEventCardModel> sortPastTours({
     required List<GroupEventCardModel> tours,
     required List<GroupBroadcast> groupBroadcasts,
-    required String dropDownSelectedCountry,
   }) {
+    final now = DateTime.now();
+
     final filteredList =
         tours
             .where((t) => t.tourEventCategory == TourEventCategory.completed)
@@ -101,15 +96,21 @@ class TournamentSortingService {
       final endDateA = broadcastA.dateEnd;
       final endDateB = broadcastB.dateEnd;
 
-      if (endDateA != null && endDateB != null) {
-        final dateComparison = endDateB.compareTo(endDateA);
-        if (dateComparison != 0) return dateComparison;
+      // Handle null dates safely
+      if (endDateA == null && endDateB == null) {
+        return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+      } else if (endDateA == null) {
+        return 1;
+      } else if (endDateB == null) {
+        return -1;
       }
 
-      if (endDateA != null && endDateB == null) return -1;
-      if (endDateA == null && endDateB != null) return 1;
+      // Calculate the absolute difference from current date
+      final diffA = (now.difference(endDateA)).abs();
+      final diffB = (now.difference(endDateB)).abs();
 
-      return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+      // Sort by whichever date is closer to now (smaller difference)
+      return diffA.compareTo(diffB);
     });
 
     return filteredList;

@@ -1,4 +1,3 @@
-import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/repository/local_storage/group_broadcast/group_broadcast_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
@@ -11,13 +10,12 @@ import 'package:chessever2/screens/group_event/providers/sorting_all_event_provi
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
-import 'package:country_picker/country_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
-import '../../../repository/local_storage/unified_favorites/unified_favorites_provider.dart';
-import '../../../widgets/event_card/starred_provider.dart';
+import 'package:chessever2/repository/local_storage/unified_favorites/unified_favorites_provider.dart';
+import 'package:chessever2/widgets/event_card/starred_provider.dart';
 
 final selectedPlayerNameProvider = StateProvider<String?>((ref) => null);
 final isSearchingProvider = StateProvider<bool>((ref) => false);
@@ -146,40 +144,29 @@ class _GroupEventScreenController
 
       _groupBroadcastList = tour;
 
-      final countryAsync = ref.watch(countryDropdownProvider);
-      if (countryAsync is AsyncData<Country>) {
-        final selectedCountry = countryAsync.value.name.toLowerCase();
-        final sortingService = ref.read(tournamentSortingServiceProvider);
+      final sortingService = ref.read(tournamentSortingServiceProvider);
 
-        final tourEventCardModel =
-            tour
-                .map(
-                  (t) => GroupEventCardModel.fromGroupBroadcast(
-                    t,
-                    liveIds ?? ref.read(liveBroadcastIdsProvider),
-                  ),
-                )
-                .toList();
+      final tourEventCardModel =
+          tour
+              .map(
+                (t) => GroupEventCardModel.fromGroupBroadcast(
+                  t,
+                  liveIds ?? ref.read(liveBroadcastIdsProvider),
+                ),
+              )
+              .toList();
 
-        final sortedTours =
-            tourEventCategory == GroupEventCategory.upcoming
-                ? sortingService.sortUpcomingTours(
-                  tours: tourEventCardModel,
-                  dropDownSelectedCountry: selectedCountry,
-                )
-                : tourEventCategory == GroupEventCategory.past
-                ? sortingService.sortPastTours(
-                  tours: tourEventCardModel,
-                  groupBroadcasts: tour,
-                  dropDownSelectedCountry: selectedCountry,
-                )
-                : sortingService.sortAllTours(
-                  tours: tourEventCardModel,
-                  dropDownSelectedCountry: selectedCountry,
-                );
+      final sortedTours =
+          tourEventCategory == GroupEventCategory.upcoming
+              ? sortingService.sortUpcomingTours(tourEventCardModel)
+              : tourEventCategory == GroupEventCategory.past
+              ? sortingService.sortPastTours(
+                tours: tourEventCardModel,
+                groupBroadcasts: tour,
+              )
+              : sortingService.sortAllTours(tourEventCardModel);
 
-        state = AsyncValue.data(sortedTours);
-      }
+      state = AsyncValue.data(sortedTours);
     } catch (error, _) {
       print(error);
     }
@@ -216,9 +203,7 @@ class _GroupEventScreenController
         final event = await ref
             .read(groupBroadcastRepositoryProvider)
             .getGroupBroadcastById(id);
-        if (event != null) {
-          missingStarredEvents.add(event);
-        }
+        missingStarredEvents.add(event);
       } catch (e) {
         continue;
       }
@@ -254,7 +239,13 @@ class _GroupEventScreenController
               .toList();
 
       final current = state.valueOrNull ?? [];
-      state = AsyncValue.data([...current, ...newModels]);
+      final totalEvents = [...current, ...newModels];
+
+      final sortedEvents = ref
+          .read(tournamentSortingServiceProvider)
+          .sortAllTours(totalEvents);
+
+      state = AsyncValue.data(sortedEvents);
 
       _pastOffset += newModels.length;
       pastHasMore = broadcasts.length == _pastLimit;
@@ -298,30 +289,17 @@ class _GroupEventScreenController
                 ),
               )
               .toList();
-      final countryAsync = ref.watch(countryDropdownProvider);
-      if (countryAsync is! AsyncData<Country>) {
-        state = const AsyncValue.loading();
-        return;
-      }
-      final country = countryAsync.value.name.toLowerCase();
       final sortingService = ref.read(tournamentSortingServiceProvider);
 
       final sortedTours =
           tourEventCategory == GroupEventCategory.upcoming
-              ? sortingService.sortUpcomingTours(
-                tours: tourEventCardModel,
-                dropDownSelectedCountry: country,
-              )
+              ? sortingService.sortUpcomingTours(tourEventCardModel)
               : tourEventCategory == GroupEventCategory.past
               ? sortingService.sortPastTours(
                 tours: tourEventCardModel,
                 groupBroadcasts: withStarred,
-                dropDownSelectedCountry: country,
               )
-              : sortingService.sortAllTours(
-                tours: tourEventCardModel,
-                dropDownSelectedCountry: country,
-              );
+              : sortingService.sortAllTours(tourEventCardModel);
 
       state = AsyncValue.data(sortedTours);
     } catch (err, stk) {
