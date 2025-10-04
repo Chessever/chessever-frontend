@@ -1,6 +1,5 @@
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 
 final tournamentSortingServiceProvider = Provider<TournamentSortingService>((
   ref,
@@ -72,45 +71,35 @@ class TournamentSortingService {
     return filteredList;
   }
 
-  List<GroupEventCardModel> sortPastTours({
-    required List<GroupEventCardModel> tours,
-    required List<GroupBroadcast> groupBroadcasts,
-  }) {
-    final now = DateTime.now();
-
+  List<GroupEventCardModel> sortPastTours(List<GroupEventCardModel> tours) {
     final filteredList =
         tours
             .where((t) => t.tourEventCategory == TourEventCategory.completed)
             .toList();
 
     filteredList.sort((a, b) {
-      final broadcastA = groupBroadcasts.firstWhere(
-        (broadcast) => broadcast.id == a.id,
-        orElse: () => groupBroadcasts.first,
-      );
-      final broadcastB = groupBroadcasts.firstWhere(
-        (broadcast) => broadcast.id == b.id,
-        orElse: () => groupBroadcasts.first,
-      );
+      final endDateA = a.endDate;
+      final endDateB = b.endDate;
 
-      final endDateA = broadcastA.dateEnd;
-      final endDateB = broadcastB.dateEnd;
-
-      // Handle null dates safely
+      // Handle null dates - push them to the bottom
       if (endDateA == null && endDateB == null) {
-        return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+        // Both null: sort by maxAvgElo (higher first)
+        return b.maxAvgElo.compareTo(a.maxAvgElo);
       } else if (endDateA == null) {
-        return 1;
+        return 1; // a goes to bottom
       } else if (endDateB == null) {
-        return -1;
+        return -1; // b goes to bottom
       }
 
-      // Calculate the absolute difference from current date
-      final diffA = (now.difference(endDateA)).abs();
-      final diffB = (now.difference(endDateB)).abs();
+      // Sort by end date: most recent first (descending order)
+      final dateComparison = endDateB.compareTo(endDateA);
 
-      // Sort by whichever date is closer to now (smaller difference)
-      return diffA.compareTo(diffB);
+      // If dates are the same, sort by maxAvgElo (higher first)
+      if (dateComparison == 0) {
+        return b.maxAvgElo.compareTo(a.maxAvgElo);
+      }
+
+      return dateComparison;
     });
 
     return filteredList;
@@ -138,41 +127,23 @@ class TournamentSortingService {
     required List<GroupEventCardModel> tours,
     required List<String> favorites,
   }) {
-    final hasFavorites = favorites.isNotEmpty;
+    if (favorites.isEmpty) {
+      return tours; // No favorites, return as-is
+    }
 
-    var sortedEvents = tours.toList();
-    sortedEvents.sort((a, b) {
-      final isFavoriteA = favorites.contains(a.id);
-      final isFavoriteB = favorites.contains(b.id);
+    // Separate favorites from non-favorites while preserving order
+    final favoriteEvents = <GroupEventCardModel>[];
+    final nonFavoriteEvents = <GroupEventCardModel>[];
 
-      // FIRST PRIORITY: Favorites (only for non-completed tournaments)
-
-      if (hasFavorites) {
-        if (isFavoriteA && !isFavoriteB) return -1;
-        if (!isFavoriteA && isFavoriteB) return 1;
+    for (final tour in tours) {
+      if (favorites.contains(tour.id)) {
+        favoriteEvents.add(tour);
+      } else {
+        nonFavoriteEvents.add(tour);
       }
+    }
 
-      // SECOND PRIORITY: ELO sorting (same logic as your other methods)
-      final isHighEloA = a.maxAvgElo > 3200;
-      final isHighEloB = b.maxAvgElo > 3200;
-
-      // If one has high ELO and the other doesn't, put high ELO at the end
-      if (isHighEloA && !isHighEloB) return 1;
-      if (!isHighEloA && isHighEloB) return -1;
-
-      // If both are high ELO or both are normal ELO, sort by ELO descending
-      final eloComparison = b.maxAvgElo.compareTo(a.maxAvgElo);
-      if (eloComparison != 0) return eloComparison;
-
-      final daysA = _extractDaysFromTimeUntilStart(a.timeUntilStart);
-      final daysB = _extractDaysFromTimeUntilStart(b.timeUntilStart);
-      final daysComparison = daysA.compareTo(daysB);
-      if (daysComparison != 0) return daysComparison;
-
-      // THIRD PRIORITY: Title alphabetically
-      return a.title.toLowerCase().compareTo(b.title.toLowerCase());
-    });
-
-    return sortedEvents;
+    // Return favorites first, then non-favorites (both in original order)
+    return [...favoriteEvents, ...nonFavoriteEvents];
   }
 }

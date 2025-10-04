@@ -70,7 +70,7 @@ class GroupBroadcastRepository extends BaseRepository {
   Future<List<GroupBroadcast>> getPastGroupBroadcasts({
     int? limit, // NEW
     int? offset, // NEW
-    String orderBy = 'max_avg_elo',
+    String orderBy = 'date_end',
     bool ascending = false,
   }) async {
     return handleApiCall(() async {
@@ -83,7 +83,6 @@ class GroupBroadcastRepository extends BaseRepository {
       if (offset != null) query = query.range(offset, offset + limit! - 1);
 
       final response = await query;
-      log("DEBUG: Received ${response.length} rows from group_broadcasts_past");
 
       return (response as List)
           .map((json) => GroupBroadcast.fromJson(json))
