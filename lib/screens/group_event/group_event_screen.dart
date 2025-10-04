@@ -51,7 +51,6 @@ class GroupEventScreen extends HookConsumerWidget {
     final pageController = usePageController(
       initialPage: GroupEventCategory.values.indexOf(selectedTourEvent),
     );
-    final isMounted = useIsMounted();
     final pastScrollController = useScrollController();
     final isAnimating = useRef(false);
     final isSearching = useState(false);
@@ -95,7 +94,7 @@ class GroupEventScreen extends HookConsumerWidget {
     });
 
     void onScroll() {
-      if (!isMounted() || selectedTourEvent != GroupEventCategory.past) {
+      if (!context.mounted || selectedTourEvent != GroupEventCategory.past) {
         return;
       }
 
@@ -152,7 +151,7 @@ class GroupEventScreen extends HookConsumerWidget {
                   onPlayerSelected: (player) {
                     FocusScope.of(context).unfocus();
                     searchController.text = player.name;
-                    if (isMounted()) {
+                    if (context.mounted) {
                       ref.read(searchQueryProvider.notifier).state =
                           player.name;
                     }
@@ -160,6 +159,9 @@ class GroupEventScreen extends HookConsumerWidget {
                   onFilterTap: () => _showFilterPopup(context),
                   onProfileTap:
                       () => HomeScreen.scaffoldKey.currentState?.openDrawer(),
+                  onClearSearchField: () {
+                    ref.read(groupEventScreenProvider.notifier).loadTours();
+                  },
                 ),
               ),
             ),
