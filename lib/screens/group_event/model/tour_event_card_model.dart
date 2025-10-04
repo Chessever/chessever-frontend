@@ -13,6 +13,7 @@ class GroupEventCardModel extends Equatable {
     required this.timeUntilStart,
     required this.tourEventCategory,
     required this.timeControl,
+    required this.endDate,
   });
 
   final String id;
@@ -22,6 +23,7 @@ class GroupEventCardModel extends Equatable {
   final String timeUntilStart;
   final TourEventCategory tourEventCategory;
   final String timeControl;
+  final DateTime? endDate;
 
   factory GroupEventCardModel.fromGroupBroadcast(
     GroupBroadcast groupBroadcast,
@@ -43,6 +45,7 @@ class GroupEventCardModel extends Equatable {
         liveGroupIds: liveGroupIds,
       ),
       timeControl: groupBroadcast.timeControl ?? '',
+      endDate: utcEnd,
     );
   }
 
@@ -98,6 +101,14 @@ class GroupEventCardModel extends Equatable {
   }
 
   @override
-  // TODO: implement props
-  List<Object?> get props => throw UnimplementedError();
+  List<Object?> get props => [
+    id,
+    title,
+    dates,
+    maxAvgElo,
+    timeUntilStart,
+    tourEventCategory,
+    timeControl,
+    endDate,
+  ];
 }

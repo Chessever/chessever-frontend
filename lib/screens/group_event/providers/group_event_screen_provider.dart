@@ -160,16 +160,11 @@ class _GroupEventScreenController
           tourEventCategory == GroupEventCategory.upcoming
               ? sortingService.sortUpcomingTours(tourEventCardModel)
               : tourEventCategory == GroupEventCategory.past
-              ? sortingService.sortPastTours(
-                tours: tourEventCardModel,
-                groupBroadcasts: tour,
-              )
+              ? sortingService.sortPastTours(tourEventCardModel)
               : sortingService.sortAllTours(tourEventCardModel);
 
       state = AsyncValue.data(sortedTours);
-    } catch (error, _) {
-      print(error);
-    }
+    } catch (error, _) {}
   }
 
   Future<List<GroupBroadcast>> _ensureStarredEventsIncluded(
@@ -295,10 +290,7 @@ class _GroupEventScreenController
           tourEventCategory == GroupEventCategory.upcoming
               ? sortingService.sortUpcomingTours(tourEventCardModel)
               : tourEventCategory == GroupEventCategory.past
-              ? sortingService.sortPastTours(
-                tours: tourEventCardModel,
-                groupBroadcasts: withStarred,
-              )
+              ? sortingService.sortPastTours(tourEventCardModel)
               : sortingService.sortAllTours(tourEventCardModel);
 
       state = AsyncValue.data(sortedTours);
