@@ -1,5 +1,6 @@
 import 'package:chessever2/providers/board_settings_provider.dart';
 import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
+import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
@@ -16,6 +17,7 @@ import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/divider_widget.dart';
@@ -445,7 +447,7 @@ class _LoadingScreen extends StatelessWidget {
   }
 }
 
-class _AppBar extends StatelessWidget implements PreferredSizeWidget {
+class _AppBar extends ConsumerWidget implements PreferredSizeWidget {
   final GamesTourModel game;
   final List<GamesTourModel> games;
   final int currentGameIndex;
@@ -461,9 +463,15 @@ class _AppBar extends StatelessWidget implements PreferredSizeWidget {
     this.isLoading = false,
     this.lastViewedIndex,
   });
-
+  copyPgnBtnClicked(WidgetRef ref) async{
+    final gameWithPgn = await ref
+          .read(gameRepositoryProvider)
+          .getGameById(game.gameId);
+    String pgn= gameWithPgn.pgn ?? "";
+    Clipboard.setData(ClipboardData(text: pgn));
+  }
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return AppBar(
       elevation: 0,
       leading: IconButton(
@@ -504,6 +512,9 @@ class _AppBar extends StatelessWidget implements PreferredSizeWidget {
                   ),
                 ),
                 PopupMenuItem(
+                  onTap: (){
+                    copyPgnBtnClicked(ref);
+                  },
                   value: 'copy_pgn',
                   child: Row(
                     children: [
