@@ -208,8 +208,9 @@ class GroupEventScreen extends HookConsumerWidget {
                   );
                 }
 
-                final controller = ref.watch(groupEventScreenProvider.notifier);
-                final isLoadingMore = isPast && controller.isFetchingMore;
+                final isLoadingMore =
+                    isPast &&
+                    ref.read(groupEventScreenProvider.notifier).isFetchingMore;
 
                 return ref
                     .watch(groupEventScreenProvider)
