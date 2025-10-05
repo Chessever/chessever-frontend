@@ -30,6 +30,17 @@ class GroupBroadcastLocalStorage {
     }
   }
 
+  String get localStorageTimeName {
+    switch (category) {
+      case GroupEventCategory.upcoming:
+        return '${_LocalGroupBroadcastStorage.upcoming.name}_time';
+      case GroupEventCategory.current:
+        return '${_LocalGroupBroadcastStorage.current.name}_time';
+      case GroupEventCategory.past:
+        return '${_LocalGroupBroadcastStorage.past.name}_time';
+    }
+  }
+
   Future<void> fetchAndSaveGroupBroadcasts() async {
     try {
       List<GroupBroadcast> broadcasts = [];
@@ -59,14 +70,32 @@ class GroupBroadcastLocalStorage {
             localStorageName,
             _encodeGroupBroadcastsList(broadcasts),
           );
+      await ref
+          .read(sharedPreferencesRepository)
+          .setInt(localStorageTimeName, DateTime.now().millisecondsSinceEpoch);
     } catch (_) {
       rethrow;
     }
   }
 
   Future<List<GroupBroadcast>> fetchGroupBroadcasts() async {
-    await fetchAndSaveGroupBroadcasts();
-    return getGroupBroadcasts();
+    final lastFetched = await ref
+        .read(sharedPreferencesRepository)
+        .getInt(localStorageTimeName);
+    if (lastFetched != null) {
+      final currentTime = DateTime.now().millisecondsSinceEpoch;
+      final difference = currentTime - lastFetched;
+      // If data is older than 25 minutes, refresh it
+      if (difference > 25 * 60 * 1000) {
+        await fetchAndSaveGroupBroadcasts();
+        return getGroupBroadcasts();
+      } else {
+        return getGroupBroadcasts();
+      }
+    } else {
+      await fetchAndSaveGroupBroadcasts();
+      return getGroupBroadcasts();
+    }
   }
 
   Future<List<GroupBroadcast>> getGroupBroadcasts() async {
@@ -74,12 +103,9 @@ class GroupBroadcastLocalStorage {
       final jsonList = await ref
           .read(sharedPreferencesRepository)
           .getStringList(localStorageName);
-
       if (jsonList.isEmpty) {
-        await fetchAndSaveGroupBroadcasts();
-        return getGroupBroadcasts();
+        return <GroupBroadcast>[];
       }
-
       return _decodeGroupBroadcastsList(jsonList);
     } catch (_) {
       return <GroupBroadcast>[];
@@ -96,11 +122,7 @@ class GroupBroadcastLocalStorage {
       if (jsonList.isNotEmpty) {
         return _decodeGroupBroadcastsList(jsonList);
       } else {
-        await fetchAndSaveGroupBroadcasts();
-        final fallback = await ref
-            .read(sharedPreferencesRepository)
-            .getStringList(localStorageName);
-        return _decodeGroupBroadcastsList(fallback);
+        return <GroupBroadcast>[];
       }
     } catch (_) {
       return <GroupBroadcast>[];
