@@ -23,8 +23,17 @@ class _ChessProgressBarState extends ConsumerState<ChessProgressBar> {
     );
 
     final evaluation = evalAsync.when(
-      loading: () => oldEvail,
-      error: (_, __) => oldEvail,
+    loading: () {
+        print('Loading state - using oldEvail: $oldEvail');
+        return oldEvail;
+      },
+      error: (error, stack) {
+        print('Error state:');
+        print('Error: $error');
+        print('Stack: $stack');
+        print('Using oldEvail: $oldEvail');
+        return oldEvail;
+      },
       data: (cloud) {
         final pv = cloud.pvs.firstOrNull;
 
