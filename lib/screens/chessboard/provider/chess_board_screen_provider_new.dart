@@ -694,6 +694,13 @@ class ChessBoardScreenNotifierNew
     return kWhiteColor70;
   }
 
+  Future<String?> getPgnByGameId(String gameId) async{
+    final gameWithPgn = await ref
+          .read(gameRepositoryProvider)
+          .getGameById(gameId);
+
+    return gameWithPgn.pgn ?? "";
+  }
   String _getSamplePgnData() {
     return '''
 [Event "Round 3: Binks, Michael - Hardman, Michael J"]
