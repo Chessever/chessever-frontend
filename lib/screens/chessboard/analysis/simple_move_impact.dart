@@ -35,7 +35,6 @@ class SimpleMoveImpactParams {
   int get hashCode => gameId.hashCode ^ positionFens.length.hashCode;
 }
 
-const int _kEvalConcurrency = 6;
 const int _kClassificationBatchSize = 16;
 
 /// Provider that calculates move impacts by analyzing engine alternatives
@@ -88,6 +87,28 @@ final simpleMoveImpactProvider = FutureProvider.family<Map<int, MoveImpactAnalys
     }
   }
 
+  const maxBrilliantPerGame = 2;
+  int brilliantCount = 0;
+  final sortedKeys = impactResults.keys.toList()..sort();
+  for (final key in sortedKeys) {
+    final analysis = impactResults[key]!;
+    if (analysis.impact == MoveImpactType.brilliant) {
+      if (brilliantCount >= maxBrilliantPerGame) {
+        impactResults[key] = MoveImpactAnalysis(
+          impact: MoveImpactType.great,
+          evalChange: analysis.evalChange,
+          bestMoveEval: analysis.bestMoveEval,
+          actualMoveEval: analysis.actualMoveEval,
+          bestMoveSan: analysis.bestMoveSan,
+          actualMoveSan: analysis.actualMoveSan,
+          moveIndex: analysis.moveIndex,
+        );
+      } else {
+        brilliantCount++;
+      }
+    }
+  }
+
   debugPrint('🎨 COMPREHENSIVE IMPACT: Classified ${impactResults.length} moves for ${params.gameId}');
   return impactResults;
 });
@@ -99,25 +120,21 @@ Future<List<CloudEval?>> _evaluatePositions(
 ) async {
   final results = List<CloudEval?>.filled(fens.length, null, growable: false);
 
-  for (int i = 0; i < fens.length; i += _kEvalConcurrency) {
-    final end = math.min(i + _kEvalConcurrency, fens.length);
-    final chunk = <Future<void>>[];
-
-    for (int j = i; j < end; j++) {
-      final fen = fens[j];
-      chunk.add(() async {
-        try {
-          final eval = await ref.read(cascadeEvalProviderForBoard(fen).future);
-          results[j] = eval;
-        } catch (e) {
-          debugPrint('⚠️ COMPREHENSIVE IMPACT: Failed to get eval for position $j in $gameId: $e');
-          results[j] = null;
-        }
-      }());
-    }
-
-    await Future.wait(chunk, eagerError: false);
+  final fetchTasks = <Future<void>>[];
+  for (int i = 0; i < fens.length; i++) {
+    final fen = fens[i];
+    fetchTasks.add(() async {
+      try {
+        final eval = await ref.read(cascadeEvalProviderForBoard(fen).future);
+        results[i] = eval;
+      } catch (e) {
+        debugPrint('⚠️ COMPREHENSIVE IMPACT: Failed to get eval for position $i in $gameId: $e');
+        results[i] = null;
+      }
+    }());
   }
+
+  await Future.wait(fetchTasks, eagerError: false);
 
   return results;
 }
