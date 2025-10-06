@@ -291,6 +291,7 @@ MoveImpactAnalysis? _calculateMoveImpactFromAlternatives({
     final phase = _detectGamePhase(positionEvalBeforeMove.fen);
     final nearBestCount = _countNearBestMoves(pvs);
     final decided = _isDecidedPosition(bestResultingCp);
+    final actualDecided = _isDecidedPosition(actualResultPlayer);
     final outcomeFlipAgainstPlayer = _flipsOutcomeClass(bestResultPlayer, actualResultPlayer);
     final bool lowConfidence = positionEvalBeforeMove.depth < 12 || positionEvalBeforeMove.knodes < 80;
 
@@ -299,6 +300,25 @@ MoveImpactAnalysis? _calculateMoveImpactFromAlternatives({
     final inaccuracyThreshold = thresholds.inaccuracy + _advantageBuffer(bestResultPlayer, factor: 0.02);
     final interestingThreshold = thresholds.interesting + _advantageBuffer(bestResultPlayer, factor: 0.01);
     final positiveGainThreshold = math.max(0.04, thresholds.great / 2);
+
+    final bool bothDecidedSame = decided && actualDecided &&
+        (bestResultPlayer == 0 || actualResultPlayer == 0 || bestResultPlayer.sign == actualResultPlayer.sign);
+    final AdvantageTier bestTier = _advantageTier(bestResultPlayer);
+    final AdvantageTier actualTier = _advantageTier(actualResultPlayer);
+    final bool bestInDrawBand = _inDrawBand(bestResultPlayer);
+    final bool actualInDrawBand = _inDrawBand(actualResultPlayer);
+    final bool drawBandCrossAgainstPlayer = bestInDrawBand && !actualInDrawBand && actualResultPlayer < 0;
+    final bool gaveAwayWin = _gaveAwayWin(bestResultPlayer, actualResultPlayer);
+    final bool handedOverAdvantage = _handedOverAdvantage(bestResultPlayer, actualResultPlayer);
+    final bool severeSignFlip = (bestResultPlayer > 0 && actualResultPlayer < 0) ||
+        (bestResultPlayer < 0 && actualResultPlayer > 0);
+    final bool stillClearlyWinning = bestTier == AdvantageTier.winning && actualTier == AdvantageTier.winning;
+    final int cpLoss = bestResultPlayer - actualResultPlayer;
+    final bool subtleDrawLeak = drawBandCrossAgainstPlayer && winProbLoss >= 0.03;
+    final bool bigDropInWonGame = stillClearlyWinning && cpLoss >= 320;
+
+    final double adjustedBlunderThreshold = bothDecidedSame ? math.max(blunderThreshold, 0.6) : blunderThreshold;
+    final double adjustedInaccuracyThreshold = bothDecidedSame ? math.max(inaccuracyThreshold, 0.12) : inaccuracyThreshold;
 
     MoveImpactType impact = MoveImpactType.normal;
 
@@ -312,16 +332,36 @@ MoveImpactAnalysis? _calculateMoveImpactFromAlternatives({
     }
 
     if (impact == MoveImpactType.normal) {
-      if (winProbLoss >= blunderThreshold || outcomeFlipAgainstPlayer) {
+      final bool qualifiesBlunder = winProbLoss >= adjustedBlunderThreshold ||
+          outcomeFlipAgainstPlayer ||
+          handedOverAdvantage ||
+          gaveAwayWin ||
+          drawBandCrossAgainstPlayer ||
+          (severeSignFlip && actualResultPlayer.abs() >= 150);
+
+      if (qualifiesBlunder) {
         impact = MoveImpactType.blunder;
-      } else if (winProbLoss >= inaccuracyThreshold) {
-        impact = MoveImpactType.inaccuracy;
+      } else {
+        final bool qualifiesInaccuracy = (!stillClearlyWinning &&
+                ((winProbLoss >= adjustedInaccuracyThreshold && (cpLoss >= 80 || winProbLoss >= 0.12)) ||
+                    subtleDrawLeak ||
+                    cpLoss >= 180)) ||
+            bigDropInWonGame;
+
+        if (qualifiesInaccuracy) {
+          impact = MoveImpactType.inaccuracy;
+        }
       }
     }
 
     if (impact == MoveImpactType.normal) {
       final bool candidateInteresting = playerMoveRank >= 2 && playerMoveRank <= 4;
-      if (candidateInteresting && (winProbLoss >= interestingThreshold || alternativesGap.abs() >= 70)) {
+      final double interestingLowerBound = math.max(0.04, interestingThreshold);
+      final bool interestingBand = winProbLoss >= interestingLowerBound && winProbLoss < adjustedInaccuracyThreshold;
+      final bool cpTension = cpLoss >= 120 && _inDrawBand(bestResultPlayer);
+
+      if (!bothDecidedSame && !decided && candidateInteresting && nearBestCount <= 3 &&
+          (interestingBand || cpTension)) {
         impact = MoveImpactType.interesting;
       }
     }
@@ -341,22 +381,23 @@ MoveImpactAnalysis? _calculateMoveImpactFromAlternatives({
             evalSwing: alternativesGap,
           );
 
-      if (playerMoveRank == 0 && !decided) {
+      if (playerMoveRank == 0 && !decided && !bothDecidedSame && pvs.length >= 3 && nearBestCount <= 2) {
         final bool preservesEval = winProbLoss <= 0.01;
         if (uniqueBest && tactical && preservesEval && !lowConfidence) {
           impact = MoveImpactType.brilliant;
         } else if ((uniqueBest || clearGap) && preservesEval && !lowConfidence) {
           impact = MoveImpactType.great;
         }
-      } else if (playerMoveRank == 0 && clearGap && !lowConfidence && winProbGain >= positiveGainThreshold && !decided) {
+      } else if (playerMoveRank == 0 && clearGap && !lowConfidence && pvs.length >= 3 &&
+          winProbGain >= positiveGainThreshold && !decided && !bothDecidedSame) {
         impact = MoveImpactType.great;
       }
     }
 
-    if (decided && impact == MoveImpactType.great) {
+    if ((decided || bothDecidedSame) && impact == MoveImpactType.great) {
       impact = MoveImpactType.normal;
     }
-    if (decided && impact == MoveImpactType.brilliant) {
+    if ((decided || bothDecidedSame) && impact == MoveImpactType.brilliant) {
       impact = MoveImpactType.great;
     }
 
@@ -455,6 +496,12 @@ enum GamePhase {
   opening,
   middlegame,
   endgame,
+}
+
+enum AdvantageTier {
+  equal,
+  slight,
+  winning,
 }
 
 /// Calculate move impact from consecutive evaluations
@@ -902,6 +949,37 @@ double _advantageBuffer(int cp, {double factor = 0.03}) {
   final normalized = cp.abs() / 200.0;
   final sigmoid = 1.0 / (1.0 + math.exp(-normalized));
   return factor * sigmoid;
+}
+
+bool _inDrawBand(int cp) => cp.abs() <= 120;
+
+AdvantageTier _advantageTier(int cp) {
+  if (cp.abs() <= 120) return AdvantageTier.equal;
+  if (cp.abs() <= 260) return AdvantageTier.slight;
+  return AdvantageTier.winning;
+}
+
+bool _gaveAwayWin(int bestCp, int actualCp) {
+  return bestCp >= 220 && actualCp <= 80;
+}
+
+bool _handedOverAdvantage(int bestCp, int actualCp) {
+  if (bestCp > 0 &&
+      _advantageTier(bestCp) == AdvantageTier.winning &&
+      _advantageTier(actualCp) != AdvantageTier.winning &&
+      actualCp <= 100) {
+    return true;
+  }
+
+  if (_advantageTier(bestCp) == AdvantageTier.slight && actualCp <= -120) {
+    return true;
+  }
+
+  if (_inDrawBand(bestCp) && actualCp <= -220) {
+    return true;
+  }
+
+  return false;
 }
 
 /// Count how many moves in PVs are "near-best" (within threshold of best move)
