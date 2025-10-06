@@ -203,6 +203,7 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
 
     debugPrint('🎯 NAVIGATOR makeOrGoToMove: playedMove=${playedMove?.uci}, currentIndex=$currentIndex');
     debugPrint('🎯 NAVIGATOR makeOrGoToMove: currentLine length=${currentLine?.length}');
+    debugPrint('🎯 NAVIGATOR makeOrGoToMove: currentFen=${state.currentFen}');
 
     if (playedMove == null || currentLine == null) {
       debugPrint('🎯 NAVIGATOR makeOrGoToMove: FAILED - playedMove or currentLine is null');
@@ -250,6 +251,18 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
       Rule.chess,
       Setup.parseFen(state.currentFen),
     );
+
+    // CRITICAL: Add error handling for illegal moves
+    try {
+      if (!position.isLegal(playedMove)) {
+        debugPrint('🎯 NAVIGATOR makeOrGoToMove: ERROR - Move $uci is ILLEGAL in position ${state.currentFen}');
+        debugPrint('🎯 NAVIGATOR makeOrGoToMove: Turn to move: ${position.turn}');
+        return;
+      }
+    } catch (e) {
+      debugPrint('🎯 NAVIGATOR makeOrGoToMove: ERROR - Failed to check move legality: $e');
+      return;
+    }
 
     final (newPosition, san) = position.makeSan(playedMove);
     final newMove = ChessMove(
