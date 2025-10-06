@@ -194,14 +194,9 @@ class GroupEventScreen extends HookConsumerWidget {
                 final currentCategory = GroupEventCategory.values[index];
                 final isPast = currentCategory == GroupEventCategory.past;
                 final scrollController = isPast ? pastScrollController : null;
-                print('Building page for $currentCategory');
-                final selectedCategory = ref.watch(
-                  selectedGroupCategoryProvider,
-                );
 
                 // Only load data for the currently selected tab
-                if (currentCategory != selectedCategory) {
-                  print(" Not the active tab, returning empty widget.");
+                if (currentCategory != selectedTourEvent) {
                   return const Center(
                     child:
                         SizedBox.shrink(), // Return empty widget for non-active tabs
