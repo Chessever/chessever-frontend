@@ -16,6 +16,7 @@ import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen.da
 import 'package:chessever2/screens/tour_detail/tournament_detail_screen.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
+import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chessever2/utils/notification_service.dart';
 import 'package:chessever2/utils/lifecycle_event_handler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -58,11 +59,10 @@ Future<void> main() async {
           },
         ),
       );
-      // await AudioPlayerService.instance.initializeAndLoadAllAssets();
+      unawaited(AudioPlayerService.instance.initializeAndLoadAllAssets());
       // await _initRevenueCat();
 
-      // // Clear evaluation cache to start fresh (remove all wrong evaluations)
-      // await _clearEvaluationCache();
+      await _clearEvaluationCache();
 
       // Initialize Supabase
       await Supabase.initialize(
@@ -100,36 +100,38 @@ Future<void> _initRevenueCat() async {
 /// Clears evaluation cache when cache version is updated
 /// Update CACHE_VERSION number to trigger cache clearing
 Future<void> _clearEvaluationCache() async {
-  const int CACHE_VERSION = 3; // Update this number to clear cache
-  const String versionKey = 'eval_cache_clear_version';
-  const String evalPrefix = 'cloud_eval_';
+  try {
+    const int CACHE_VERSION = 3; // Update this number to clear cache
+    const String versionKey = 'eval_cache_clear_version';
+    const String evalPrefix = 'cloud_eval_';
 
-  final prefs = await SharedPreferences.getInstance();
-  final currentVersion = prefs.getInt(versionKey) ?? 0;
+    final prefs = await SharedPreferences.getInstance();
+    final currentVersion = prefs.getInt(versionKey) ?? 0;
 
-  if (currentVersion < CACHE_VERSION) {
-    print(
-      '🧹 CLEARING EVALUATION CACHE: version $currentVersion -> $CACHE_VERSION',
-    );
+    if (currentVersion < CACHE_VERSION) {
+      print(
+        '🧹 CLEARING EVALUATION CACHE: version $currentVersion -> $CACHE_VERSION',
+      );
 
-    // Find and remove all evaluation cache entries
-    final keys = prefs.getKeys().where((k) => k.startsWith(evalPrefix));
-    int removedCount = 0;
+      // Find and remove all evaluation cache entries
+      final keys = prefs.getKeys().where((k) => k.startsWith(evalPrefix));
+      int removedCount = 0;
 
-    for (final key in keys) {
-      await prefs.remove(key);
-      removedCount++;
+      for (final key in keys) {
+        await prefs.remove(key);
+        removedCount++;
+      }
+
+      // Update version
+      await prefs.setInt(versionKey, CACHE_VERSION);
+
+      print(
+        '✅ Evaluation cache cleared: $removedCount entries removed, version updated to $CACHE_VERSION',
+      );
+    } else {
+      print('📁 Evaluation cache version $CACHE_VERSION is up to date');
     }
-
-    // Update version
-    await prefs.setInt(versionKey, CACHE_VERSION);
-
-    print(
-      '✅ Evaluation cache cleared: $removedCount entries removed, version updated to $CACHE_VERSION',
-    );
-  } else {
-    print('📁 Evaluation cache version $CACHE_VERSION is up to date');
-  }
+  } catch (e, _) {}
 }
 
 class MyApp extends ConsumerStatefulWidget {
