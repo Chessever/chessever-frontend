@@ -27,10 +27,14 @@ class _SplashScreenProvider {
       ref
           .read(groupBroadcastLocalStorage(GroupEventCategory.past))
           .fetchAndSaveGroupBroadcasts(),
+      ref
+          .read(starredProvider(GroupEventCategory.current.name).notifier)
+          .init(),
+      ref
+          .read(starredProvider(GroupEventCategory.upcoming.name).notifier)
+          .init(),
+      ref.read(starredProvider(GroupEventCategory.past.name).notifier).init(),
     ]);
-
-    //Fetch all starred tournament
-    ref.read(starredProvider.notifier).init();
 
     /// check if user   is already logged in
     final sessionManager = ref.read(sessionManagerProvider);
