@@ -3,6 +3,7 @@ import 'package:chessever2/repository/local_storage/board_settings_repository/bo
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_line_display.dart';
 import 'package:chessever2/screens/chessboard/analysis/move_impact_analyzer.dart';
+import 'package:chessever2/screens/chessboard/analysis/simple_move_impact.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
@@ -25,13 +26,12 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:flutter_svg/svg.dart';
 
-/// Provider that calculates move impacts, watching ONLY the moves fields
-/// This avoids rebuild loops from analysis mode / current move index changes
+/// Provider that calculates move impacts - COMPREHENSIVE ANALYSIS
+/// Analyzes engine alternatives, finds player move rank, classifies impact
 final gameMovesImpactProvider = FutureProvider.family.autoDispose<Map<int, MoveImpactAnalysis>?, ChessBoardProviderParams>((ref, params) async {
   debugPrint('🎨 gameMovesImpactProvider: START for game ${params.game.gameId}');
 
   // Use .select() to watch ONLY the moves data, not the entire state
-  // This prevents rebuilds when analysis mode, current move index, or other fields change
   final allMoves = ref.watch(chessBoardScreenProviderNew(params).select((state) => state.valueOrNull?.allMoves));
   final moveSans = ref.watch(chessBoardScreenProviderNew(params).select((state) => state.valueOrNull?.moveSans));
   final startingPosition = ref.watch(chessBoardScreenProviderNew(params).select((state) => state.valueOrNull?.startingPosition));
@@ -43,7 +43,7 @@ final gameMovesImpactProvider = FutureProvider.family.autoDispose<Map<int, MoveI
 
   debugPrint('🎨 gameMovesImpactProvider: Got ${allMoves.length} moves, ${moveSans.length} SANs');
 
-  // Now calculate impacts using the existing provider chain
+  // Generate position FENs (starting position + after each move)
   final fensParams = PositionFensParams(
     allMoves: allMoves,
     startingPosition: startingPosition,
@@ -52,16 +52,24 @@ final gameMovesImpactProvider = FutureProvider.family.autoDispose<Map<int, MoveI
   final positionFens = ref.watch(positionFensProvider(fensParams));
   debugPrint('🎨 gameMovesImpactProvider: Generated ${positionFens.length} position FENs');
 
-  final positionParams = PositionAnalysisParams(
+  // Determine which moves are white's
+  final isWhiteMoves = List.generate(
+    allMoves.length,
+    (i) => i % 2 == 0, // Even indices = white's moves
+  );
+
+  // Use COMPREHENSIVE impact provider that analyzes alternatives
+  final simpleParams = SimpleMoveImpactParams(
     positionFens: positionFens,
+    isWhiteMoves: isWhiteMoves,
     moveSans: moveSans,
     gameId: params.game.gameId,
   );
 
-  debugPrint('🎨 gameMovesImpactProvider: Calling allMovesImpactFromPositionsProvider...');
-  final impactsAsync = await ref.watch(allMovesImpactFromPositionsProvider(positionParams).future);
-  debugPrint('🎨 gameMovesImpactProvider: COMPLETE - got ${impactsAsync?.length ?? 0} impacts');
-  return impactsAsync;
+  debugPrint('🎨 gameMovesImpactProvider: Calling simpleMoveImpactProvider...');
+  final impacts = await ref.watch(simpleMoveImpactProvider(simpleParams).future);
+  debugPrint('🎨 gameMovesImpactProvider: COMPLETE - got ${impacts.length} impacts');
+  return impacts;
 });
 
 // Helper function to get move highlight color
