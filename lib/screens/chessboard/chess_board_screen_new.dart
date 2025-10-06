@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:chessever2/providers/board_settings_provider.dart';
 import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
@@ -30,6 +32,25 @@ import 'package:flutter_svg/svg.dart';
 /// Analyzes engine alternatives, finds player move rank, classifies impact
 final gameMovesImpactProvider = FutureProvider.family.autoDispose<Map<int, MoveImpactAnalysis>?, ChessBoardProviderParams>((ref, params) async {
   debugPrint('🎨 gameMovesImpactProvider: START for game ${params.game.gameId}');
+
+  final link = ref.keepAlive();
+  Timer? cleanupTimer;
+
+  ref.onCancel(() {
+    cleanupTimer = Timer(const Duration(seconds: 45), () {
+      debugPrint('🎨 gameMovesImpactProvider: releasing keepAlive for ${params.game.gameId}');
+      link.close();
+    });
+  });
+
+  ref.onResume(() {
+    cleanupTimer?.cancel();
+    cleanupTimer = null;
+  });
+
+  ref.onDispose(() {
+    cleanupTimer?.cancel();
+  });
 
   // Use .select() to watch ONLY the moves data, not the entire state
   final allMoves = ref.watch(chessBoardScreenProviderNew(params).select((state) => state.valueOrNull?.allMoves));
