@@ -70,8 +70,37 @@ class TournamentSortingService {
     return filteredList;
   }
 
-  List<GroupEventCardModel> sortPastTours(List<GroupEventCardModel> tours) {
-    return sortByEndDate(tours, false);
+  List<GroupEventCardModel> sortPastTours(
+    List<GroupEventCardModel> tours, {
+    bool ascending = false,
+  }) {
+    var sortedTours = <GroupEventCardModel>[];
+    sortedTours = tours;
+
+    sortedTours.sort((a, b) {
+      final datesA = _extractDates(a.dates);
+      final datesB = _extractDates(b.dates);
+
+      if (datesA == null && datesB == null) return 0;
+      if (datesA == null) return 1;
+      if (datesB == null) return -1;
+
+      final endDateA = datesA['end']!;
+      final endDateB = datesB['end']!;
+
+      final endComparison = endDateA.compareTo(endDateB);
+
+      if (endComparison != 0) {
+        return ascending ? endComparison : -endComparison;
+      } else {
+        final startDateA = datesA['start']!;
+        final startDateB = datesB['start']!;
+        final startComparison = startDateA.compareTo(startDateB);
+        return ascending ? startComparison : -startComparison;
+      }
+    });
+
+    return sortedTours;
   }
 
   int _extractDaysFromTimeUntilStart(String txt) {
@@ -114,38 +143,6 @@ class TournamentSortingService {
 
     // Return favorites first, then non-favorites (both in original order)
     return [...favoriteEvents, ...nonFavoriteEvents];
-  }
-
-  static List<GroupEventCardModel> sortByEndDate(
-    List<GroupEventCardModel> events,
-    bool ascending,
-  ) {
-    final sortedEvents = List<GroupEventCardModel>.from(events);
-
-    sortedEvents.sort((a, b) {
-      final datesA = _extractDates(a.dates);
-      final datesB = _extractDates(b.dates);
-
-      if (datesA == null && datesB == null) return 0;
-      if (datesA == null) return 1;
-      if (datesB == null) return -1;
-
-      final endDateA = datesA['end']!;
-      final endDateB = datesB['end']!;
-
-      final endComparison = endDateA.compareTo(endDateB);
-
-      if (endComparison != 0) {
-        return ascending ? endComparison : -endComparison;
-      } else {
-        final startDateA = datesA['start']!;
-        final startDateB = datesB['start']!;
-        final startComparison = startDateA.compareTo(startDateB);
-        return ascending ? startComparison : -startComparison;
-      }
-    });
-
-    return sortedEvents;
   }
 
   static Map<String, DateTime>? _extractDates(String dateString) {

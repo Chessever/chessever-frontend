@@ -87,7 +87,7 @@ class GroupEventScreen extends HookConsumerWidget {
           ref.read(searchQueryProvider.notifier).state = '';
           searchController.clear();
           FocusScope.of(context).unfocus();
-          ref.read(groupEventScreenProvider.notifier).loadTours();
+          // ref.read(groupEventScreenProvider.notifier).loadTours();
         }
       });
     });
