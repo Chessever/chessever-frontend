@@ -36,7 +36,7 @@ class SimpleMoveImpactParams {
 /// Provider that calculates move impacts by analyzing engine alternatives
 /// Uses the cascade eval provider to get multiple PV lines for each position
 final simpleMoveImpactProvider = FutureProvider.family<Map<int, MoveImpactAnalysis>, SimpleMoveImpactParams>((ref, params) async {
-  final Map<int, MoveImpactAnalysis> results = {};
+  final Map<int, MoveImpactAnalysis> impactResults = {};
 
   debugPrint('🎨 COMPREHENSIVE IMPACT: Starting for ${params.positionFens.length} positions, ${params.moveSans.length} moves');
 
@@ -194,7 +194,7 @@ final simpleMoveImpactProvider = FutureProvider.family<Map<int, MoveImpactAnalys
       impact = MoveImpactType.normal;
     }
 
-    results[i] = MoveImpactAnalysis(
+    impactResults[i] = MoveImpactAnalysis(
       impact: impact,
       evalChange: cpGap / 100.0,
       bestMoveEval: bestCpPlayer / 100.0,
@@ -205,17 +205,17 @@ final simpleMoveImpactProvider = FutureProvider.family<Map<int, MoveImpactAnalys
     );
   }
 
-  debugPrint('🎨 COMPREHENSIVE IMPACT: Classified ${results.length} moves');
+  debugPrint('🎨 COMPREHENSIVE IMPACT: Classified ${impactResults.length} moves');
   final counts = {
-    'brilliant': results.values.where((r) => r.impact == MoveImpactType.brilliant).length,
-    'great': results.values.where((r) => r.impact == MoveImpactType.great).length,
-    'interesting': results.values.where((r) => r.impact == MoveImpactType.interesting).length,
-    'inaccuracy': results.values.where((r) => r.impact == MoveImpactType.inaccuracy).length,
-    'blunder': results.values.where((r) => r.impact == MoveImpactType.blunder).length,
+    'brilliant': impactResults.values.where((r) => r.impact == MoveImpactType.brilliant).length,
+    'great': impactResults.values.where((r) => r.impact == MoveImpactType.great).length,
+    'interesting': impactResults.values.where((r) => r.impact == MoveImpactType.interesting).length,
+    'inaccuracy': impactResults.values.where((r) => r.impact == MoveImpactType.inaccuracy).length,
+    'blunder': impactResults.values.where((r) => r.impact == MoveImpactType.blunder).length,
   };
   debugPrint('🎨 COMPREHENSIVE IMPACT COUNTS: $counts');
 
-  return results;
+  return impactResults;
 });
 
 /// Convert UCI move to SAN notation
