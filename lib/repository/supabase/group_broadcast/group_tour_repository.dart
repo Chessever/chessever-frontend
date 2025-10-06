@@ -70,7 +70,7 @@ class GroupBroadcastRepository extends BaseRepository {
   Future<List<GroupBroadcast>> getPastGroupBroadcasts({
     int? limit, // NEW
     int? offset, // NEW
-    String orderBy = 'max_avg_elo',
+    String orderBy = 'date_end',
     bool ascending = false,
   }) async {
     return handleApiCall(() async {
@@ -83,7 +83,6 @@ class GroupBroadcastRepository extends BaseRepository {
       if (offset != null) query = query.range(offset, offset + limit! - 1);
 
       final response = await query;
-      log("DEBUG: Received ${response.length} rows from group_broadcasts_past");
 
       return (response as List)
           .map((json) => GroupBroadcast.fromJson(json))
@@ -102,98 +101,6 @@ class GroupBroadcastRepository extends BaseRepository {
               .single();
 
       return GroupBroadcast.fromJson(response);
-    });
-  }
-
-  /// Search group broadcasts whose name matches [searchQuery] (case-insensitive)
-  Future<List<GroupBroadcast>> searchGroupBroadcastsByName(
-    String searchQuery,
-  ) async {
-    return handleApiCall(() async {
-      final response = await supabase
-          .from('group_broadcasts')
-          .select()
-          .ilike('name', '%$searchQuery%')
-          .order('created_at', ascending: false);
-
-      return (response as List)
-          .map((json) => GroupBroadcast.fromJson(json))
-          .toList();
-    });
-  }
-
-  /// Filter group broadcasts that are active for the current date
-  Future<List<GroupBroadcast>> getActiveGroupBroadcasts() async {
-    final now = DateTime.now();
-    return handleApiCall(() async {
-      final response = await supabase
-          .from('group_broadcasts')
-          .select()
-          .order('created_at', ascending: false);
-
-      final broadcasts =
-          (response as List)
-              .map((json) => GroupBroadcast.fromJson(json))
-              .toList();
-
-      return broadcasts.where((gb) {
-        final starts = gb.dateStart;
-        final ends = gb.dateEnd;
-
-        if (starts == null || ends == null) return false;
-        return now.isAfter(starts) && now.isBefore(ends);
-      }).toList();
-    });
-  }
-
-  /// Fetch the most recently created group broadcasts
-  Future<List<GroupBroadcast>> getRecentGroupBroadcasts({
-    int limit = 10,
-  }) async {
-    return handleApiCall(() async {
-      final response = await supabase
-          .from('group_broadcasts')
-          .select()
-          .order('created_at', ascending: false)
-          .limit(limit);
-
-      return (response as List)
-          .map((json) => GroupBroadcast.fromJson(json))
-          .toList();
-    });
-  }
-
-  /// Filter by maximum average ELO ceiling
-  Future<List<GroupBroadcast>> getGroupBroadcastsByMaxAvgElo(
-    int maxAvgElo,
-  ) async {
-    return handleApiCall(() async {
-      final response = await supabase
-          .from('group_broadcasts')
-          .select()
-          .lte('max_avg_elo', maxAvgElo)
-          .order('max_avg_elo', ascending: true);
-
-      return (response as List)
-          .map((json) => GroupBroadcast.fromJson(json))
-          .toList();
-    });
-  }
-
-  /// Filter by time control
-  Future<List<GroupBroadcast>> getGroupBroadcastsByTimeControl(
-    String timeControl,
-  ) async {
-    return handleApiCall(() async {
-      final response = await supabase
-          .from('group_broadcasts')
-          .select()
-          .eq('time_control', timeControl)
-          .order('created_at', ascending: false);
-
-      return (response as List)
-          .map((json) => GroupBroadcast.fromJson(json))
-          .toList();
     });
   }
 

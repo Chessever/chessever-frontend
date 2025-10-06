@@ -1,5 +1,4 @@
 import 'dart:math';
-import 'package:chessever2/screens/group_event/providers/past_recorder_provider.dart';
 import 'package:chessever2/screens/group_event/widget/all_events_tab_widget.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/home/home_screen.dart';
@@ -19,7 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../../widgets/segmented_switcher.dart';
+import 'package:chessever2/widgets/segmented_switcher.dart';
 
 enum GroupEventCategory { past, current, upcoming }
 
@@ -51,7 +50,6 @@ class GroupEventScreen extends HookConsumerWidget {
     final pageController = usePageController(
       initialPage: GroupEventCategory.values.indexOf(selectedTourEvent),
     );
-    final isMounted = useIsMounted();
     final pastScrollController = useScrollController();
     final isAnimating = useRef(false);
     final isSearching = useState(false);
@@ -62,9 +60,9 @@ class GroupEventScreen extends HookConsumerWidget {
       focusNode.addListener(onFocus);
       return () => focusNode.removeListener(onFocus);
     }, [focusNode]);
+
     useEffect(() {
       final newIndex = GroupEventCategory.values.indexOf(selectedTourEvent);
-
       if (pageController.hasClients &&
           pageController.page?.round() != newIndex) {
         isAnimating.value = true;
@@ -78,6 +76,7 @@ class GroupEventScreen extends HookConsumerWidget {
       }
       return null;
     }, [selectedTourEvent]);
+
     ref.listen<GroupEventCategory>(selectedGroupCategoryProvider, (
       previous,
       next,
@@ -88,23 +87,24 @@ class GroupEventScreen extends HookConsumerWidget {
           ref.read(searchQueryProvider.notifier).state = '';
           searchController.clear();
           FocusScope.of(context).unfocus();
-          ref.read(groupEventScreenProvider.notifier).loadTours();
+          // ref.read(groupEventScreenProvider.notifier).loadTours();
         }
       });
     });
-    useEffect(() {
-      void onScroll() {
-        if (!isMounted() || selectedTourEvent != GroupEventCategory.past) {
-          return;
-        }
 
-        final max = pastScrollController.position.maxScrollExtent;
-        final current = pastScrollController.position.pixels;
-        if (max - current <= 200) {
-          ref.read(groupEventScreenProvider.notifier).loadMorePast();
-        }
+    void onScroll() {
+      if (!context.mounted || selectedTourEvent != GroupEventCategory.past) {
+        return;
       }
 
+      final max = pastScrollController.position.maxScrollExtent;
+      final current = pastScrollController.position.pixels;
+      if (max - current <= 200) {
+        ref.read(groupEventScreenProvider.notifier).loadMorePast();
+      }
+    }
+
+    useEffect(() {
       pastScrollController.addListener(onScroll);
       return () => pastScrollController.removeListener(onScroll);
     }, [pastScrollController, selectedTourEvent]);
@@ -150,7 +150,7 @@ class GroupEventScreen extends HookConsumerWidget {
                   onPlayerSelected: (player) {
                     FocusScope.of(context).unfocus();
                     searchController.text = player.name;
-                    if (isMounted()) {
+                    if (context.mounted) {
                       ref.read(searchQueryProvider.notifier).state =
                           player.name;
                     }
@@ -158,6 +158,9 @@ class GroupEventScreen extends HookConsumerWidget {
                   onFilterTap: () => _showFilterPopup(context),
                   onProfileTap:
                       () => HomeScreen.scaffoldKey.currentState?.openDrawer(),
+                  onClearSearchField: () {
+                    ref.read(groupEventScreenProvider.notifier).loadTours();
+                  },
                 ),
               ),
             ),
@@ -177,127 +180,120 @@ class GroupEventScreen extends HookConsumerWidget {
 
           SizedBox(height: 12.h),
           Expanded(
-  child: PageView.builder(
-    controller: pageController,
-    itemCount: GroupEventCategory.values.length,
-    onPageChanged: (index) {
-      if (!isAnimating.value) {
-        final newCategory = GroupEventCategory.values[index];
-        ref.read(selectedGroupCategoryProvider.notifier).state = newCategory;
-      }
-    },
-    itemBuilder: (context, index) {
-      final currentCategory = GroupEventCategory.values[index];
-      final isPast = currentCategory == GroupEventCategory.past;
-      final scrollController = isPast ? pastScrollController : null;
-      print('Building page for $currentCategory');
-      return Consumer(
-        builder: (context, ref, child) {
-          final selectedCategory = ref.watch(selectedGroupCategoryProvider);
-          
-          // Only load data for the currently selected tab
-          if (currentCategory != selectedCategory) {
-            print(" Not the active tab, returning empty widget.");
-            return const Center(
-              child: SizedBox.shrink(), // Return empty widget for non-active tabs
-            );
-          }
+            child: PageView.builder(
+              controller: pageController,
+              itemCount: GroupEventCategory.values.length,
+              onPageChanged: (index) {
+                if (!isAnimating.value) {
+                  final newCategory = GroupEventCategory.values[index];
+                  ref.read(selectedGroupCategoryProvider.notifier).state =
+                      newCategory;
+                }
+              },
+              itemBuilder: (context, index) {
+                final currentCategory = GroupEventCategory.values[index];
+                final isPast = currentCategory == GroupEventCategory.past;
+                final scrollController = isPast ? pastScrollController : null;
 
-          final controller = ref.watch(groupEventScreenProvider.notifier);
-          final isLoadingMore = isPast && controller.isFetchingMore;
+                // Only load data for the currently selected tab
+                if (currentCategory != selectedTourEvent) {
+                  return const Center(
+                    child:
+                        SizedBox.shrink(), // Return empty widget for non-active tabs
+                  );
+                }
 
-          return ref.watch(groupEventScreenProvider).when(
-            data: (filteredEvents) {
-              if (currentCategory != selectedCategory) {
-                print(" Not the active tab, returning empty widget.");
-                return const Center(
-                  child: SizedBox.shrink(), 
-                );
-              }
-              // Combine old starred favorites with new unified favorites
-              final starredFavorites = ref.watch(starredProvider);
-              final unifiedFavoritesAsync = ref.watch(favoriteEventsProvider);
-              final unifiedFavorites = unifiedFavoritesAsync.maybeWhen(
-                data: (events) => events
-                    .map((e) => e['id'] as String)
-                    .toList(),
-                orElse: () => <String>[],
-              );
+                final isLoadingMore =
+                    isPast &&
+                    ref.read(groupEventScreenProvider.notifier).isFetchingMore;
 
-              // Combine both lists
-              final allFavorites = <String>{
-                ...starredFavorites,
-                ...unifiedFavorites,
-              }.toList();
+                return ref
+                    .watch(groupEventScreenProvider)
+                    .when(
+                      data: (filteredEvents) {
+                        // Combine old starred favorites with new unified favorites
+                        final starredFavorites = ref.watch(starredProvider);
+                        final unifiedFavoritesAsync = ref.watch(
+                          favoriteEventsProvider,
+                        );
+                        final unifiedFavorites = unifiedFavoritesAsync
+                            .maybeWhen(
+                              data:
+                                  (events) =>
+                                      events
+                                          .map((e) => e['id'] as String)
+                                          .toList(),
+                              orElse: () => <String>[],
+                            );
 
-              final isSearching = searchController.text.trim().isNotEmpty;
-              final isPast = selectedTourEvent == GroupEventCategory.past;
+                        // Combine both lists
+                        final allFavorites =
+                            <String>{
+                              ...starredFavorites,
+                              ...unifiedFavorites,
+                            }.toList();
 
-              var finalEvents = isSearching
-                  ? filteredEvents
-                  : isPast
-                      ? ref.watch(
-                          pastEventsUiReorderProvider(filteredEvents),
-                        )
-                      : ref
-                          .read(tournamentSortingServiceProvider)
-                          .sortBasedOnFavorite(
-                            tours: filteredEvents,
-                            favorites: allFavorites,
-                          );
+                        final isSearching =
+                            searchController.text.trim().isNotEmpty;
 
-              if(isPast){
-                print(" Past Events count: ${finalEvents.length}");
-                 finalEvents = TournamentSorter.sortByEndDate(finalEvents, false);
-              } else {
-                print(" Current/Upcoming Events count: ${finalEvents.length}");
-              }
-              
-              return RefreshIndicator(
-                onRefresh: ref.read(homeScreenProvider).onPullRefresh,
-                color: kWhiteColor70,
-                backgroundColor: kDarkGreyColor,
-                displacement: 60.h,
-                strokeWidth: 3.w,
-                child: AllEventsTabWidget(
-                  filteredEvents: finalEvents,
-                  onSelect: (tourEventCardModel) => ref
-                      .read(groupEventScreenProvider.notifier)
-                      .onSelectTournament(
-                        context: context,
-                        id: tourEventCardModel.id,
-                      ),
-                  isLoadingMore: isLoadingMore,
-                  scrollController: scrollController,
-                ),
-              );
-            },
-            loading: () => SkeletonWidget(
-              child: AllEventsTabWidget(
-                onSelect: (_) {},
-                filteredEvents: List.generate(
-                  10,
-                  (index) => GroupEventCardModel(
-                    id: 'tour_001',
-                    title: 'World Chess Championship 2025',
-                    dates: 'Mar 15 - 25,2025',
-                    timeUntilStart: 'Starts in 8 months',
-                    tourEventCategory: TourEventCategory.values[
-                        Random().nextInt(TourEventCategory.values.length)],
-                    maxAvgElo: 0,
-                    timeControl: 'Standard',
-                  ),
-                ),
-              ),
+                        final finalEvents =
+                            isSearching
+                                ? filteredEvents
+                                : ref
+                                    .read(tournamentSortingServiceProvider)
+                                    .sortBasedOnFavorite(
+                                      tours: filteredEvents,
+                                      favorites: allFavorites,
+                                    );
+
+                        return RefreshIndicator(
+                          onRefresh: ref.read(homeScreenProvider).onPullRefresh,
+                          color: kWhiteColor70,
+                          backgroundColor: kDarkGreyColor,
+                          displacement: 60.h,
+                          strokeWidth: 3.w,
+                          child: AllEventsTabWidget(
+                            filteredEvents: finalEvents,
+                            onSelect:
+                                (tourEventCardModel) => ref
+                                    .read(groupEventScreenProvider.notifier)
+                                    .onSelectTournament(
+                                      context: context,
+                                      id: tourEventCardModel.id,
+                                    ),
+                            isLoadingMore: isLoadingMore,
+                            scrollController: scrollController,
+                          ),
+                        );
+                      },
+                      loading:
+                          () => SkeletonWidget(
+                            child: AllEventsTabWidget(
+                              onSelect: (_) {},
+                              filteredEvents: List.generate(
+                                10,
+                                (index) => GroupEventCardModel(
+                                  id: 'tour_001',
+                                  title: 'World Chess Championship 2025',
+                                  dates: 'Mar 15 - 25,2025',
+                                  timeUntilStart: 'Starts in 8 months',
+                                  tourEventCategory:
+                                      TourEventCategory.values[Random().nextInt(
+                                        TourEventCategory.values.length,
+                                      )],
+                                  maxAvgElo: 0,
+                                  timeControl: 'Standard',
+                                  endDate: null,
+                                ),
+                              ),
+                            ),
+                          ),
+                      error: (error, stackTrace) => const GenericErrorWidget(),
+                    );
+              },
             ),
-            error: (error, stackTrace) => const GenericErrorWidget(),
-          );
-        },
-      );
-    },
-  ),
-)
-         ],
+          ),
+        ],
       ),
     );
   }
@@ -338,144 +334,5 @@ class _SegmentedSwitcher extends ConsumerWidget {
         onSelectionChanged: onSelectedChanged,
       ),
     );
-  }
-}
-class TournamentSorter {
-  static List<GroupEventCardModel> sortByEndDate(
-    List<GroupEventCardModel> events,
-    bool ascending,
-  ) {
-    final sortedEvents = List<GroupEventCardModel>.from(events);
-
-    sortedEvents.sort((a, b) {
-      final datesA = _extractDates(a.dates);
-      final datesB = _extractDates(b.dates);
-
-      if (datesA == null && datesB == null) return 0;
-      if (datesA == null) return 1;
-      if (datesB == null) return -1;
-
-      final endDateA = datesA['end']!;
-      final endDateB = datesB['end']!;
-      
-      final endComparison = endDateA.compareTo(endDateB);
-      
-      if (endComparison != 0) {
-        return ascending ? endComparison : -endComparison;
-      } else {
-        final startDateA = datesA['start']!;
-        final startDateB = datesB['start']!;
-        final startComparison = startDateA.compareTo(startDateB);
-        return ascending ? startComparison : -startComparison;
-      }
-    });
-
-    return sortedEvents;
-  }
-
-  static Map<String, DateTime>? _extractDates(String dateString) {
-    try {
-      final cleaned = dateString.trim();
-      
-      final parts = cleaned.split(',');
-      if (parts.length != 2) return null;
-      
-      final year = parts[1].trim();
-      final datePart = parts[0].trim();
-      
-      if (datePart.contains('-')) {
-        final rangeParts = datePart.split('-').map((e) => e.trim()).toList();
-        if (rangeParts.length != 2) return null;
-        
-        final startDateStr = rangeParts[0].trim();
-        final endDateStr = rangeParts[1].trim();
-        
-        final startParts = startDateStr.split(' ');
-        final endParts = endDateStr.split(' ');
-        
-        DateTime? startDate;
-        DateTime? endDate;
-        
-        if (startParts.length == 2) {
-          final startMonth = _monthToNumber(startParts[0]);
-          final startDay = int.parse(startParts[1]);
-          final yearInt = int.parse(year);
-          startDate = DateTime(yearInt, startMonth, startDay);
-          
-          if (endParts.length == 2) {
-            final endDay = int.parse(endParts[0]);
-            final endMonth = _monthToNumber(endParts[1]);
-            endDate = DateTime(yearInt, endMonth, endDay);
-          } else if (endParts.length == 1) {
-            final endDay = int.parse(endParts[0]);
-            endDate = DateTime(yearInt, startMonth, endDay);
-          }
-        } else if (startParts.length == 1 && endParts.length == 2) {
-          final endDay = int.parse(endParts[0]);
-          final endMonth = _monthToNumber(endParts[1]);
-          final yearInt = int.parse(year);
-          endDate = DateTime(yearInt, endMonth, endDay);
-          
-          final startDay = int.parse(startParts[0]);
-          startDate = DateTime(yearInt, endMonth, startDay);
-        }
-        
-        if (startDate == null || endDate == null) return null;
-        
-        return {'start': startDate, 'end': endDate};
-      } else {
-        final date = _parseDate(datePart, year);
-        if (date == null) return null;
-        return {'start': date, 'end': date};
-      }
-    } catch (e) {
-      print('Error parsing date "$dateString": $e');
-      return null;
-    }
-  }
-
-  static DateTime? _parseDate(String datePart, String year) {
-    try {
-      final parts = datePart.trim().split(' ');
-      
-      if (parts.length == 2) {
-        final firstPart = parts[0];
-        final secondPart = parts[1];
-        
-        final firstNum = int.tryParse(firstPart);
-        
-        if (firstNum != null) {
-          final day = firstNum;
-          final month = _monthToNumber(secondPart);
-          final yearInt = int.parse(year);
-          return DateTime(yearInt, month, day);
-        } else {
-          final month = _monthToNumber(firstPart);
-          final day = int.parse(secondPart);
-          final yearInt = int.parse(year);
-          return DateTime(yearInt, month, day);
-        }
-      }
-      
-      return null;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  static int _monthToNumber(String month) {
-    final monthMap = {
-      'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4,
-      'May': 5, 'Jun': 6, 'Jul': 7, 'Aug': 8,
-      'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12,
-    };
-    
-    return monthMap[month] ?? 1;
-  }
-}
-
-extension GroupEventCardModelListExtension on List<GroupEventCardModel> {
-  List<GroupEventCardModel> sortedByEndDate({bool ascending = true}) {
-    return TournamentSorter.sortByEndDate(this, ascending);
   }
 }

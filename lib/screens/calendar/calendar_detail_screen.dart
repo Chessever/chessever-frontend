@@ -133,6 +133,7 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
                   timeUntilStart: 'Starts in 8 months',
                   tourEventCategory: TourEventCategory.live,
                   timeControl: 'Standard',
+                  endDate: null,
                 );
                 return Expanded(
                   child: SkeletonWidget(
