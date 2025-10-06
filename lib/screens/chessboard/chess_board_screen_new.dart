@@ -28,6 +28,8 @@ import 'package:flutter_svg/svg.dart';
 /// Provider that calculates move impacts, watching ONLY the moves fields
 /// This avoids rebuild loops from analysis mode / current move index changes
 final gameMovesImpactProvider = FutureProvider.family.autoDispose<Map<int, MoveImpactAnalysis>?, ChessBoardProviderParams>((ref, params) async {
+  debugPrint('🎨 gameMovesImpactProvider: START for game ${params.game.gameId}');
+
   // Use .select() to watch ONLY the moves data, not the entire state
   // This prevents rebuilds when analysis mode, current move index, or other fields change
   final allMoves = ref.watch(chessBoardScreenProviderNew(params).select((state) => state.valueOrNull?.allMoves));
@@ -35,8 +37,11 @@ final gameMovesImpactProvider = FutureProvider.family.autoDispose<Map<int, MoveI
   final startingPosition = ref.watch(chessBoardScreenProviderNew(params).select((state) => state.valueOrNull?.startingPosition));
 
   if (allMoves == null || allMoves.isEmpty || moveSans == null) {
+    debugPrint('🎨 gameMovesImpactProvider: NULL - no moves yet');
     return null;
   }
+
+  debugPrint('🎨 gameMovesImpactProvider: Got ${allMoves.length} moves, ${moveSans.length} SANs');
 
   // Now calculate impacts using the existing provider chain
   final fensParams = PositionFensParams(
@@ -45,6 +50,7 @@ final gameMovesImpactProvider = FutureProvider.family.autoDispose<Map<int, MoveI
     gameId: params.game.gameId,
   );
   final positionFens = ref.watch(positionFensProvider(fensParams));
+  debugPrint('🎨 gameMovesImpactProvider: Generated ${positionFens.length} position FENs');
 
   final positionParams = PositionAnalysisParams(
     positionFens: positionFens,
@@ -52,7 +58,9 @@ final gameMovesImpactProvider = FutureProvider.family.autoDispose<Map<int, MoveI
     gameId: params.game.gameId,
   );
 
+  debugPrint('🎨 gameMovesImpactProvider: Calling allMovesImpactFromPositionsProvider...');
   final impactsAsync = await ref.watch(allMovesImpactFromPositionsProvider(positionParams).future);
+  debugPrint('🎨 gameMovesImpactProvider: COMPLETE - got ${impactsAsync?.length ?? 0} impacts');
   return impactsAsync;
 });
 
