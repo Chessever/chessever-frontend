@@ -352,21 +352,21 @@ MoveImpactAnalysis? _calculateMoveImpactFromAlternatives({
     // BRILLIANT (!!) - Genius move that's very hard to find
     // Must be THE ONLY good move in a critical position
     else if (playerMoveRank == 0 &&         // THE best move
-        nearBestCount <= 2 &&               // Very unique (only 1-2 good options)
+        nearBestCount == 1 &&               // ONLY ONE good option (unique!)
         isTactical &&                       // Must be tactical/sacrificial
         !decided &&                         // Position not already decided
         !flipsOutcome &&
         pvs.length >= 4 &&
-        (bestResultPlayer - (isWhiteMove ? pvs[3].cp : -pvs[3].cp)).abs() >= 150) {  // Huge gap to 4th move
+        (bestResultPlayer - (isWhiteMove ? pvs[3].cp : -pvs[3].cp)).abs() >= 200) {  // HUGE gap to 4th move (2+ pawns)
       impact = MoveImpactType.brilliant;
     }
     // GREAT (!) - The objectively best move in position
-    // But ONLY if it's special (unique, tactical, or in complex position)
+    // But ONLY if it's BOTH unique AND tactical/forcing
     else if (playerMoveRank == 0 &&
              !decided &&                    // Not in decided position
-             (isTactical ||                 // Tactical move OR
-              nearBestCount <= 3 ||         // Unique (few good alternatives) OR
-              !allSimilar)) {               // Position has clear best move
+             nearBestCount <= 2 &&          // Very unique (1-2 good options)
+             isTactical &&                  // Must be tactical/forcing
+             alternativesGap >= 100) {      // Clear gap to worse alternatives (1+ pawn)
       impact = MoveImpactType.great;
     }
     // INTERESTING (!?) - Decent move but missed a MUCH better opportunity
@@ -468,6 +468,30 @@ enum GamePhase {
 /// - !? (Interesting): Missed opportunity for significantly better move
 /// - ? (Inaccuracy): Suboptimal move losing advantage
 /// - ?? (Blunder): Very bad move causing major disadvantage
+/// DEPRECATED: This function cannot properly classify moves from PGN evaluations alone
+///
+/// WHY THIS FUNCTION IS WRONG:
+/// ==========================
+/// PGN only contains evaluations before/after moves, NOT alternative move evaluations.
+/// According to correct chess engine understanding:
+/// - Engine evals ASSUME best moves will be played
+/// - After opponent blunders to +3.5, playing best move to keep +3.5 is NORMAL (not brilliant!)
+/// - You cannot "gain" advantage the engine already gave you
+/// - Move quality MUST be judged by comparing alternatives in THAT position
+///
+/// WHAT THIS MEANS:
+/// ===============
+/// Without alternative move data, we cannot know if:
+/// - The played move was the ONLY good move (brilliant/great)
+/// - There were 10 other moves just as good (normal)
+/// - Position change is IRRELEVANT for positive annotations
+///
+/// SOLUTION:
+/// ========
+/// This function now returns NORMAL for all moves with PGN data.
+/// The position-based provider (_calculateMoveImpactFromAlternatives) has the
+/// alternative move data needed for proper classification.
+///
 MoveImpactAnalysis? _calculateMoveImpactFromEvals({
   required double? evalBefore,
   required double? evalAfter,
@@ -481,77 +505,17 @@ MoveImpactAnalysis? _calculateMoveImpactFromEvals({
 
   try {
     // Evaluations in PGN are from white's perspective
-    // Convert to current player's perspective
+    // Convert to current player's perspective for display purposes only
     final evalBeforeFromPlayerPerspective = isWhiteMove ? evalBefore : -evalBefore;
     final evalAfterFromPlayerPerspective = isWhiteMove ? -evalAfter : evalAfter;
 
-    // Calculate evaluation change (how much the position changed for the player who moved)
-    // Negative evalDiff = position improved (player gained advantage)
-    // Positive evalDiff = position worsened (player lost advantage)
+    // Calculate evaluation change for informational purposes
     final evalDiff = evalBeforeFromPlayerPerspective - evalAfterFromPlayerPerspective;
 
-    // VERY STRICT THRESHOLDS - Most moves are normal!
-    // In professional chess, ±0.6 pawns is the minimum for significance
-    // First filter: Must have significant eval change (minimum ±0.6)
-
-    if (evalDiff.abs() < 0.6) {
-      // Insignificant change - definitely normal
-      return MoveImpactAnalysis(
-        impact: MoveImpactType.normal,
-        evalChange: evalDiff,
-        bestMoveEval: evalBeforeFromPlayerPerspective,
-        actualMoveEval: evalAfterFromPlayerPerspective,
-        bestMoveSan: null,
-        actualMoveSan: actualMoveSan,
-        moveIndex: moveIndex,
-      );
-    }
-
-    // Determine move impact based on evaluation change
-    MoveImpactType impact;
-
-    if (evalDiff < -0.6) {
-      // Position improved after this move
-      // Be VERY conservative with !! and ! annotations
-
-      if (evalDiff < -3.0) {
-        // Massive improvement (> 3.0 pawns gained)
-        // This is likely brilliant, but we can't verify uniqueness from PGN alone
-        // So mark as great instead (would need engine to check alternatives)
-        impact = MoveImpactType.great;
-      } else if (evalDiff < -2.0) {
-        // Significant improvement (2.0-3.0 pawns gained)
-        // Good move, but probably not unique enough for brilliant
-        impact = MoveImpactType.great;
-      } else {
-        // Moderate improvement (0.6-2.0 pawns) - still normal
-        // Many moves can achieve this, so not special enough
-        impact = MoveImpactType.normal;
-      }
-    } else if (evalDiff > 0.6) {
-      // Position worsened after this move
-
-      if (evalDiff > 4.0) {
-        // Catastrophic disadvantage (> 4.0 pawns lost) - clear blunder
-        impact = MoveImpactType.blunder;
-      } else if (evalDiff > 2.5) {
-        // Major disadvantage (2.5-4.0 pawns lost) - serious mistake
-        impact = MoveImpactType.inaccuracy;
-      } else if (evalDiff > 1.5) {
-        // Notable disadvantage (1.5-2.5 pawns lost) - missed better opportunity
-        impact = MoveImpactType.interesting;
-      } else {
-        // Small disadvantage (0.6-1.5 pawns) - still normal
-        // Common slight inaccuracies happen, not worth marking
-        impact = MoveImpactType.normal;
-      }
-    } else {
-      // Should not reach here, but fallback to normal
-      impact = MoveImpactType.normal;
-    }
-
+    // ALWAYS return NORMAL - we cannot properly classify without alternatives
+    // The position-based provider will handle actual classification
     return MoveImpactAnalysis(
-      impact: impact,
+      impact: MoveImpactType.normal,
       evalChange: evalDiff,
       bestMoveEval: evalBeforeFromPlayerPerspective,
       actualMoveEval: evalAfterFromPlayerPerspective,
