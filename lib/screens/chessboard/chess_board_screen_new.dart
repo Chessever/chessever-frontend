@@ -179,6 +179,11 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
         if (prev?.valueOrNull?.currentMoveIndex !=
                 next.valueOrNull?.currentMoveIndex &&
             next.valueOrNull != null) {
+          // SKIP audio in analysis mode - analysis moves should have different behavior
+          if (next.valueOrNull?.isAnalysisMode == true) {
+            return;
+          }
+
           // CRITICAL FIX: Only play audio if this chess board screen is currently active
           // This prevents audio from playing when other games in the tournament get moves
           final route = ModalRoute.of(context);
@@ -969,8 +974,6 @@ class _GameBody extends StatelessWidget {
                     index: index,
                     currentPageIndex: currentPageIndex,
                     state: state,
-                    sanMoves: state.moveSans,
-                    currentMoveIndex: state.currentMoveIndex,
                     game: game,
                   ),
                 ),
@@ -1554,16 +1557,12 @@ class _AnalysisBoard extends ConsumerWidget {
 class _MovesDisplay extends ConsumerWidget {
   final int index;
   final ChessBoardStateNew state;
-  final List<String> sanMoves;
-  final int currentMoveIndex;
   final GamesTourModel game;
   final int currentPageIndex;
 
   const _MovesDisplay({
     required this.state,
     required this.index,
-    required this.sanMoves,
-    required this.currentMoveIndex,
     required this.game,
     required this.currentPageIndex,
   });
@@ -1574,7 +1573,12 @@ class _MovesDisplay extends ConsumerWidget {
       return _buildMovesLoadingSkeleton();
     }
 
-    if (sanMoves.isEmpty && !state.isLoadingMoves) {
+    // Select correct state fields based on mode
+    final moves = state.isAnalysisMode ? state.analysisState.allMoves : state.allMoves;
+    final sans = state.isAnalysisMode ? state.analysisState.moveSans : state.moveSans;
+    final startPos = state.isAnalysisMode ? state.analysisState.startingPosition : state.startingPosition;
+
+    if (sans.isEmpty && !state.isLoadingMoves) {
       return Container(
         alignment: Alignment.center,
         padding: EdgeInsets.all(20.sp),
@@ -1587,11 +1591,6 @@ class _MovesDisplay extends ConsumerWidget {
         ),
       );
     }
-
-    // Select correct state fields based on mode
-    final moves = state.isAnalysisMode ? state.analysisState.allMoves : state.allMoves;
-    final sans = state.isAnalysisMode ? state.analysisState.moveSans : state.moveSans;
-    final startPos = state.isAnalysisMode ? state.analysisState.startingPosition : state.startingPosition;
 
     // Evaluate ALL moves from PGN in parallel - ONLY if this page is visible
     Map<int, MoveImpactAnalysis>? allMovesImpact;
@@ -1628,11 +1627,15 @@ class _MovesDisplay extends ConsumerWidget {
         spacing: 2.sp,
         runSpacing: 2.sp,
         children:
-            sanMoves.asMap().entries.map((entry) {
+            sans.asMap().entries.map((entry) {
               final moveIndex = entry.key;
               final move = entry.value;
 
-              final isCurrentMove = moveIndex == currentMoveIndex;
+              // Use mode-aware current index for highlighting
+              final modeAwareCurrentIndex = state.isAnalysisMode
+                  ? state.analysisState.currentMoveIndex
+                  : state.currentMoveIndex;
+              final isCurrentMove = moveIndex == modeAwareCurrentIndex;
               final fullMoveNumber = (moveIndex / 2).floor() + 1;
               final isWhiteMove = moveIndex % 2 == 0;
 
