@@ -12,9 +12,6 @@ import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
-import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/evals.dart';
 import 'package:chessground/chessground.dart';
@@ -87,6 +84,8 @@ class ChessBoardScreenNotifierNew
             // This prevents off-screen games from playing audio or resetting positions
             final currentVisibleIndex = ref.read(currentlyVisiblePageIndexProvider);
             final isCurrentlyVisible = currentVisibleIndex == index;
+
+            debugPrint('===== GAME UPDATE: Game ${game.gameId} (index $index), visible: $isCurrentlyVisible, analysisMode: ${currentState?.isAnalysisMode} =====');
 
             // CRITICAL: Don't update board state if user is actively analyzing
             // This prevents resetting the board when viewing past positions or variants
@@ -577,13 +576,50 @@ class ChessBoardScreenNotifierNew
     final currentState = state.value;
     if (currentState == null || !currentState.isAnalysisMode) return;
     if (variantIndex < 0 || variantIndex >= currentState.principalVariations.length) return;
+    if (_analysisGame == null || _analysisNavigator == null) return;
 
+    // Principal variations are generated for the position where analysis mode was entered
+    // So we need to reset the navigator back to that position before playing the variant
+    // The position is stored in analysisState.basePosition (the position when we entered analysis mode)
+
+    // First, go back to the root position (where we entered analysis mode)
+    // This is the position at currentMoveIndex when we called toggleAnalysisMode
+    final currentMoveIndex = currentState.currentMoveIndex;
+    final rootPointer = currentMoveIndex < 0 ? const <int>[] : [currentMoveIndex];
+
+    _analysisNavigator?.goToMovePointerUnchecked(rootPointer);
+
+    // Update state to show variant as selected
     state = AsyncValue.data(
       currentState.copyWith(
         selectedVariantIndex: variantIndex,
         variantMovePointer: const [], // Reset variant progress
       ),
     );
+
+    // Immediately play the first move of the selected variant to update the board
+    final selectedVariant = currentState.principalVariations[variantIndex];
+    if (selectedVariant.moves.isNotEmpty) {
+      final firstMove = selectedVariant.moves.first;
+      if (firstMove is NormalMove) {
+        if (isPromotionPawnMove(firstMove)) {
+          state = AsyncValue.data(
+            state.value!.copyWith(
+              analysisState: state.value!.analysisState.copyWith(
+                promotionMove: firstMove,
+              ),
+            ),
+          );
+        } else {
+          _analysisNavigator?.makeOrGoToMove(firstMove.uci);
+
+          // Update variant move pointer to reflect first move played
+          state = AsyncValue.data(
+            state.value!.copyWith(variantMovePointer: [0]),
+          );
+        }
+      }
+    }
   }
 
   /// Play next move of the selected variant forward
@@ -642,28 +678,52 @@ class ChessBoardScreenNotifierNew
 
   void moveForward() {
     final currentState = state.value;
-    if (currentState?.isAnalysisMode == true) {
-      _analysisNavigator?.goToNextMove();
+    // Bottom nav arrows always navigate real game moves, even in analysis mode
+    // This allows switching back and forth between analysis and real game
+    if (currentState == null || !currentState.canMoveForward || _isProcessingMove) {
+      return;
+    }
+
+    // If in analysis mode, exit it first and navigate to next real move
+    if (currentState.isAnalysisMode) {
+      // Deselect any variant
+      state = AsyncValue.data(
+        currentState.copyWith(
+          selectedVariantIndex: null,
+          variantMovePointer: const [],
+        ),
+      );
+      // Exit analysis mode will be handled by toggleAnalysisMode
+      toggleAnalysisMode();
+      // Then navigate to next move after a small delay to let analysis mode exit
+      Future.microtask(() => goToMove(currentState.currentMoveIndex + 1));
     } else {
-      if (currentState == null ||
-          !currentState.canMoveForward ||
-          _isProcessingMove) {
-        return;
-      }
       goToMove(currentState.currentMoveIndex + 1);
     }
   }
 
   void moveBackward() {
     final currentState = state.value;
-    if (currentState?.isAnalysisMode == true) {
-      _analysisNavigator?.goToPreviousMove();
+    // Bottom nav arrows always navigate real game moves, even in analysis mode
+    // This allows switching back and forth between analysis and real game
+    if (currentState == null || !currentState.canMoveBackward || _isProcessingMove) {
+      return;
+    }
+
+    // If in analysis mode, exit it first and navigate to previous real move
+    if (currentState.isAnalysisMode) {
+      // Deselect any variant
+      state = AsyncValue.data(
+        currentState.copyWith(
+          selectedVariantIndex: null,
+          variantMovePointer: const [],
+        ),
+      );
+      // Exit analysis mode
+      toggleAnalysisMode();
+      // Then navigate to previous move after a small delay
+      Future.microtask(() => goToMove(currentState.currentMoveIndex - 1));
     } else {
-      if (currentState == null ||
-          !currentState.canMoveBackward ||
-          _isProcessingMove) {
-        return;
-      }
       goToMove(currentState.currentMoveIndex - 1);
     }
   }
@@ -720,20 +780,28 @@ class ChessBoardScreenNotifierNew
         ? const <int>[]
         : [currentMoveIndex];
 
+    debugPrint('===== ANALYSIS MODE: Initializing at move index $currentMoveIndex, pointer: $movePointer =====');
+
+    // Set up listener BEFORE replaceState to capture the state change
+    _navigatorSubscription?.close();
+    _navigatorSubscription = ref.listen<ChessGameNavigatorState>(
+      chessGameNavigatorProvider(_analysisGame!),
+      (previous, next) {
+        debugPrint('===== ANALYSIS MODE: Navigator state changed, movePointer: ${next.movePointer} =====');
+        _syncAnalysisFromNavigator(next);
+      },
+      fireImmediately: false, // Don't fire immediately - we'll sync manually after replaceState
+    );
+
     // Always initialize at current position, ignore saved state
     // This ensures analysis mode continues from wherever the user is viewing
     navigator.replaceState(
       ChessGameNavigatorState(game: _analysisGame!, movePointer: movePointer),
     );
 
-    _navigatorSubscription?.close();
-    _navigatorSubscription = ref.listen<ChessGameNavigatorState>(
-      chessGameNavigatorProvider(_analysisGame!),
-      (previous, next) {
-        _syncAnalysisFromNavigator(next);
-      },
-      fireImmediately: true,
-    );
+    // Manually sync the initial state
+    final initialState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+    _syncAnalysisFromNavigator(initialState);
   }
 
   Future<void> _persistAnalysisState() async {
@@ -838,6 +906,18 @@ class ChessBoardScreenNotifierNew
         ),
       );
     }
+  }
+
+  /// Navigate forward in analysis mode (through main line when no variant selected)
+  void analysisStepForward() {
+    if (state.value?.isAnalysisMode != true) return;
+    _analysisNavigator?.goToNextMove();
+  }
+
+  /// Navigate backward in analysis mode (through main line when no variant selected)
+  void analysisStepBackward() {
+    if (state.value?.isAnalysisMode != true) return;
+    _analysisNavigator?.goToPreviousMove();
   }
 
   void jumpToStart() {
@@ -1396,53 +1476,38 @@ class ChessBoardScreenNotifierNew
   }
 }
 
+// Provider parameter to pass game directly instead of fetching from global provider
+class ChessBoardProviderParams {
+  final GamesTourModel game;
+  final int index;
+
+  const ChessBoardProviderParams({
+    required this.game,
+    required this.index,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ChessBoardProviderParams &&
+          runtimeType == other.runtimeType &&
+          game.gameId == other.game.gameId &&
+          index == other.index;
+
+  @override
+  int get hashCode => game.gameId.hashCode ^ index.hashCode;
+}
+
 final chessBoardScreenProviderNew = AutoDisposeStateNotifierProvider.family<
   ChessBoardScreenNotifierNew,
   AsyncValue<ChessBoardStateNew>,
-  int
->((ref, index) {
-  final view = ref.watch(chessboardViewFromProviderNew);
-  final games =
-      view == ChessboardView.tour
-          ? ref.watch(gamesTourScreenProvider).value!.gamesTourModels
-          : ref.watch(countrymanGamesTourScreenProvider).value!.gamesTourModels;
-
-  // Try to get the rounds, but if the provider is disposed, use games directly
-  List<GamesTourModel> arrangedGames;
-  try {
-    final roundsAsync = ref.read(gamesAppBarProvider);
-    if (roundsAsync.hasValue && roundsAsync.value != null) {
-      final rounds = roundsAsync.value!.gamesAppBarModels;
-      final reversedRounds = rounds.reversed.toList();
-
-      arrangedGames = <GamesTourModel>[];
-      for (var a = 0; a < reversedRounds.length; a++) {
-        for (var b = 0; b < games.length; b++) {
-          if (games[b].roundId == reversedRounds[a].id) {
-            arrangedGames.add(games[b]);
-          }
-        }
-      }
-    } else {
-      // Fallback: use games in their original order
-      arrangedGames = games;
-    }
-  } catch (e) {
-    // If gamesAppBarProvider is disposed or fails, use games as is
-    arrangedGames = games;
-  }
-
-  // Ensure index is valid
-  if (index >= arrangedGames.length) {
-    index = arrangedGames.length - 1;
-  }
-  if (index < 0) {
-    index = 0;
-  }
-
+  ChessBoardProviderParams
+>((ref, params) {
+  // DON'T watch global tournament provider - only watch THIS game's updates
+  // This prevents rebuilds when other games in the tournament update
   return ChessBoardScreenNotifierNew(
     ref,
-    game: arrangedGames[index],
-    index: index,
+    game: params.game,
+    index: params.index,
   );
 });

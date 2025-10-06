@@ -1,4 +1,3 @@
-import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
@@ -84,9 +83,11 @@ class MoveImpactAnalysis {
 /// Parameters for analyzing all moves from PGN
 class PgnAnalysisParams {
   final String pgn;
+  final String gameId; // Unique game identifier to prevent cross-game contamination
 
   const PgnAnalysisParams({
     required this.pgn,
+    required this.gameId,
   });
 
   @override
@@ -94,20 +95,23 @@ class PgnAnalysisParams {
       identical(this, other) ||
       other is PgnAnalysisParams &&
           runtimeType == other.runtimeType &&
-          pgn == other.pgn;
+          pgn == other.pgn &&
+          gameId == other.gameId;
 
   @override
-  int get hashCode => pgn.hashCode;
+  int get hashCode => pgn.hashCode ^ gameId.hashCode;
 }
 
 /// Parameters for analyzing moves using positions (fallback when PGN has no evals)
 class PositionAnalysisParams {
   final List<String> positionFens;
   final List<String> moveSans;
+  final String gameId; // Unique game identifier to prevent cross-game contamination
 
   const PositionAnalysisParams({
     required this.positionFens,
     required this.moveSans,
+    required this.gameId,
   });
 
   @override
@@ -116,10 +120,11 @@ class PositionAnalysisParams {
       other is PositionAnalysisParams &&
           runtimeType == other.runtimeType &&
           positionFens.length == other.positionFens.length &&
-          moveSans.length == other.moveSans.length;
+          moveSans.length == other.moveSans.length &&
+          gameId == other.gameId;
 
   @override
-  int get hashCode => positionFens.length.hashCode ^ moveSans.length.hashCode;
+  int get hashCode => positionFens.length.hashCode ^ moveSans.length.hashCode ^ gameId.hashCode;
 }
 
 /// Parse evaluations from PGN comments
@@ -185,35 +190,54 @@ MoveImpactAnalysis? _calculateMoveImpactFromEvals({
     // Positive evalDiff means the player lost advantage
     final evalDiff = evalBeforeFromPlayerPerspective - evalAfterFromPlayerPerspective;
 
+    // STRICT THRESHOLDS: Only mark moves as impactful if they truly are
+    // Impact is only calculated if absolute change is > 1.0 (as per requirements)
+    if (evalDiff.abs() <= 1.0) {
+      // No significant impact - normal move
+      return MoveImpactAnalysis(
+        impact: MoveImpactType.normal,
+        evalChange: evalDiff,
+        bestMoveEval: evalBeforeFromPlayerPerspective,
+        actualMoveEval: evalAfterFromPlayerPerspective,
+        bestMoveSan: null,
+        actualMoveSan: actualMoveSan,
+        moveIndex: moveIndex,
+      );
+    }
+
     // Determine move impact based on evaluation change
     MoveImpactType impact;
 
-    if (evalDiff < -0.5) {
-      // Position improved significantly - brilliant or great move
-      if (evalDiff < -1.5) {
+    if (evalDiff < -1.0) {
+      // Position improved - brilliant or great move
+      if (evalDiff < -2.5) {
+        // Huge improvement (> 2.5 pawns advantage gained)
         impact = MoveImpactType.brilliant;
-      } else {
-        impact = MoveImpactType.great;
-      }
-    } else if (evalDiff < 0.3) {
-      // Very small change or slight improvement - normal or great
-      if (evalDiff < -0.2) {
+      } else if (evalDiff < -1.5) {
+        // Significant improvement (1.5-2.5 pawns advantage gained)
         impact = MoveImpactType.great;
       } else {
+        // Moderate improvement (1.0-1.5 pawns) - still normal
         impact = MoveImpactType.normal;
       }
-    } else if (evalDiff < 0.5) {
-      // Slight loss - still normal
-      impact = MoveImpactType.normal;
-    } else if (evalDiff < 1.0) {
-      // Missed opportunity
-      impact = MoveImpactType.interesting;
-    } else if (evalDiff < 2.5) {
-      // Clear inaccuracy
-      impact = MoveImpactType.inaccuracy;
+    } else if (evalDiff > 1.0) {
+      // Position worsened - interesting, inaccuracy, or blunder
+      if (evalDiff > 3.0) {
+        // Huge disadvantage (> 3.0 pawns lost) - blunder
+        impact = MoveImpactType.blunder;
+      } else if (evalDiff > 2.0) {
+        // Significant disadvantage (2.0-3.0 pawns lost) - inaccuracy
+        impact = MoveImpactType.inaccuracy;
+      } else if (evalDiff > 1.5) {
+        // Moderate disadvantage (1.5-2.0 pawns lost) - interesting (missed opportunity)
+        impact = MoveImpactType.interesting;
+      } else {
+        // Small disadvantage (1.0-1.5 pawns) - still normal
+        impact = MoveImpactType.normal;
+      }
     } else {
-      // Major blunder
-      impact = MoveImpactType.blunder;
+      // Should not reach here given the abs check above, but fallback to normal
+      impact = MoveImpactType.normal;
     }
 
     return MoveImpactAnalysis(
@@ -250,10 +274,12 @@ final positionFensProvider = Provider.family<List<String>, PositionFensParams>((
 class PositionFensParams {
   final List<Move> allMoves;
   final Position? startingPosition;
+  final String gameId; // Unique game identifier to prevent cross-game contamination
 
   const PositionFensParams({
     required this.allMoves,
     this.startingPosition,
+    required this.gameId,
   });
 
   @override
@@ -261,15 +287,17 @@ class PositionFensParams {
       identical(this, other) ||
       other is PositionFensParams &&
           runtimeType == other.runtimeType &&
-          allMoves.length == other.allMoves.length;
+          allMoves.length == other.allMoves.length &&
+          gameId == other.gameId;
 
   @override
-  int get hashCode => allMoves.length.hashCode;
+  int get hashCode => allMoves.length.hashCode ^ gameId.hashCode;
 }
 
 /// Provider for individual position evaluation - used as fallback when PGN has no evals
 /// Uses cascade evaluation: cloud → Supabase → Lichess → Stockfish
-final individualPositionEvalProvider = FutureProvider.autoDispose.family<double?, String>((ref, fen) async {
+/// NOT auto-disposed - keeps evaluations cached for immediate display
+final individualPositionEvalProvider = FutureProvider.family<double?, String>((ref, fen) async {
   try {
     // Use the cascade eval provider for this position
     final evalResult = await ref.read(cascadeEvalProviderForBoard(fen).future);
@@ -289,22 +317,27 @@ final individualPositionEvalProvider = FutureProvider.autoDispose.family<double?
 });
 
 /// Fallback provider that evaluates all positions when PGN has no evaluations
-/// Uses individual position evaluation via cascade eval
+/// Uses individual position evaluation via cascade eval in PARALLEL with 75 isolates
+/// NOT auto-disposed - keeps calculations cached while on board page
 final allMovesImpactFromPositionsProvider = FutureProvider.family<Map<int, MoveImpactAnalysis>, PositionAnalysisParams>((ref, params) async {
   final Map<int, MoveImpactAnalysis> results = {};
 
   try {
-    debugPrint('===== FALLBACK: Evaluating ${params.positionFens.length} positions individually =====');
+    debugPrint('===== FALLBACK: Evaluating ${params.positionFens.length} positions in PARALLEL using isolates =====');
 
-    // Create evaluation tasks for all positions
+    // Execute ALL position evaluations in parallel using isolates (non-blocking)
+    // Each evaluation uses cascade: local cache → Supabase → Lichess → Stockfish
     final List<Future<double?>> evalTasks = [];
 
     for (String fen in params.positionFens) {
+      // Read provider asynchronously - evaluations run in parallel via cascade provider
       evalTasks.add(ref.read(individualPositionEvalProvider(fen).future));
     }
 
-    // Wait for all evaluations
+    // Wait for all evaluations to complete in parallel
     final evals = await Future.wait(evalTasks);
+
+    debugPrint('===== FALLBACK: Got ${evals.where((e) => e != null).length}/${evals.length} evaluations =====');
 
     // Calculate move impacts from position evaluations
     for (int i = 0; i < params.moveSans.length; i++) {
@@ -327,7 +360,7 @@ final allMovesImpactFromPositionsProvider = FutureProvider.family<Map<int, MoveI
       }
     }
 
-    debugPrint('===== FALLBACK: Analyzed ${results.length} moves using individual positions =====');
+    debugPrint('===== FALLBACK: Analyzed ${results.length} moves using parallel position evaluation =====');
     return results;
   } catch (e) {
     debugPrint('Error in allMovesImpactFromPositionsProvider: $e');
@@ -337,6 +370,7 @@ final allMovesImpactFromPositionsProvider = FutureProvider.family<Map<int, MoveI
 
 /// Provider to analyze ALL moves from PGN in parallel using worker isolates
 /// This parses evaluations from PGN comments and calculates move impacts
+/// NOT auto-disposed - keeps calculations cached while on board page
 final allMovesImpactFromPgnProvider = FutureProvider.family<Map<int, MoveImpactAnalysis>, PgnAnalysisParams>((ref, params) async {
   final Map<int, MoveImpactAnalysis> results = {};
 

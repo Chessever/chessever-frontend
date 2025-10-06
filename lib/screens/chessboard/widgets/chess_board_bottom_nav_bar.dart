@@ -4,14 +4,16 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-import '../provider/chess_board_screen_provider_new.dart';
-
 class ChessBoardBottomNavBar extends ConsumerWidget {
   final int gameIndex;
   final VoidCallback? onLeftMove;
   final VoidCallback? onRightMove;
   final VoidCallback onFlip;
   final VoidCallback? toggleAnalysisMode;
+  final VoidCallback? onLongPressBackwardStart;
+  final VoidCallback? onLongPressBackwardEnd;
+  final VoidCallback? onLongPressForwardStart;
+  final VoidCallback? onLongPressForwardEnd;
   final bool canMoveForward;
   final bool canMoveBackward;
   final bool isAnalysisMode;
@@ -26,6 +28,10 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
     required this.canMoveBackward,
     required this.toggleAnalysisMode,
     required this.isAnalysisMode,
+    this.onLongPressBackwardStart,
+    this.onLongPressBackwardEnd,
+    this.onLongPressForwardStart,
+    this.onLongPressForwardEnd,
   });
 
   @override
@@ -59,40 +65,16 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
                 svgPath: SvgAsset.left_arrow,
                 width: width,
                 onPressed: canMoveBackward ? onLeftMove : null,
-                onLongPressStart:
-                    canMoveBackward
-                        ? () =>
-                            ref
-                                .read(
-                                  chessBoardScreenProviderNew(gameIndex).notifier,
-                                )
-                                .startLongPressBackward()
-                        : null,
-                onLongPressEnd:
-                    () =>
-                        ref
-                            .read(chessBoardScreenProviderNew(gameIndex).notifier)
-                            .stopLongPress(),
+                onLongPressStart: canMoveBackward ? onLongPressBackwardStart : null,
+                onLongPressEnd: onLongPressBackwardEnd,
               ),
           
               ChessSvgBottomNavbarWithLongPress(
                 svgPath: SvgAsset.right_arrow,
                 width: width,
                 onPressed: canMoveForward ? onRightMove : null,
-                onLongPressStart:
-                    canMoveForward
-                        ? () =>
-                            ref
-                                .read(
-                                  chessBoardScreenProviderNew(gameIndex).notifier,
-                                )
-                                .startLongPressForward()
-                        : null,
-                onLongPressEnd:
-                    () =>
-                        ref
-                            .read(chessBoardScreenProviderNew(gameIndex).notifier)
-                            .stopLongPress(),
+                onLongPressStart: canMoveForward ? onLongPressForwardStart : null,
+                onLongPressEnd: onLongPressForwardEnd,
               ),
           
               // Chat Button
