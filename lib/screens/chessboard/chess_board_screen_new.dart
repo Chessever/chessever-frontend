@@ -113,8 +113,12 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
     // Only pause if the previous provider should still be alive (within ±1 range)
     if ((newIndex - previousIndex).abs() <= 1) {
       try {
+        final prevGame = widget.games[previousIndex];
         ref
-            .read(chessBoardScreenProviderNew(previousIndex).notifier)
+            .read(chessBoardScreenProviderNew(ChessBoardProviderParams(
+              game: prevGame,
+              index: previousIndex,
+            )).notifier)
             .pauseGame();
       } catch (e) {
         // Provider was disposed, which is fine
@@ -124,7 +128,11 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         try {
-          ref.read(chessBoardScreenProviderNew(newIndex).notifier).parseMoves();
+          final newGame = widget.games[newIndex];
+          ref.read(chessBoardScreenProviderNew(ChessBoardProviderParams(
+            game: newGame,
+            index: newIndex,
+          )).notifier).parseMoves();
         } catch (e) {
           debugPrint('Error parsing moves for new index: $e');
         }
@@ -143,8 +151,12 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
 
     // OPTIMIZED: Don't read provider during navigation - just pause the current game
     try {
+      final currentGame = widget.games[_currentPageIndex];
       ref
-          .read(chessBoardScreenProviderNew(_currentPageIndex).notifier)
+          .read(chessBoardScreenProviderNew(ChessBoardProviderParams(
+            game: currentGame,
+            index: _currentPageIndex,
+          )).notifier)
           .pauseGame();
     } catch (e) {
       debugPrint('Error pausing game during navigation: $e');
@@ -159,8 +171,12 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
 
   @override
   Widget build(BuildContext context) {
+    final currentGame = widget.games[_currentPageIndex];
     ref.listen(
-      chessBoardScreenProviderNew(_currentPageIndex),
+      chessBoardScreenProviderNew(ChessBoardProviderParams(
+        game: currentGame,
+        index: _currentPageIndex,
+      )),
       (prev, next) {
         if (prev?.valueOrNull?.currentMoveIndex !=
                 next.valueOrNull?.currentMoveIndex &&
@@ -349,8 +365,12 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
                   index == _currentPageIndex ||
                   index == _currentPageIndex + 1) {
                 try {
+                  final game = liveGames[index];
                   return ref
-                      .watch(chessBoardScreenProviderNew(index))
+                      .watch(chessBoardScreenProviderNew(ChessBoardProviderParams(
+                        game: game,
+                        index: index,
+                      )))
                       .when(
                         data: (chessBoardState) {
                           if (chessBoardState.isAnalysisMode != analysisMode) {
@@ -367,6 +387,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
                             state: chessBoardState,
                             games: liveGames,
                             currentGameIndex: index,
+                            currentPageIndex: _currentPageIndex,
                             onGameChanged: _navigateToGame,
                             lastViewedIndex: _lastViewedIndex,
                           );
@@ -405,6 +426,7 @@ class _GamePage extends StatelessWidget {
   final ChessBoardStateNew state;
   final List<GamesTourModel> games;
   final int currentGameIndex;
+  final int currentPageIndex;
   final void Function(int) onGameChanged;
   final int? lastViewedIndex;
 
@@ -413,6 +435,7 @@ class _GamePage extends StatelessWidget {
     required this.state,
     required this.games,
     required this.currentGameIndex,
+    required this.currentPageIndex,
     required this.onGameChanged,
     this.lastViewedIndex,
   });
@@ -420,7 +443,7 @@ class _GamePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      bottomNavigationBar: _BottomNavBar(index: currentGameIndex, state: state),
+      bottomNavigationBar: _BottomNavBar(index: currentGameIndex, state: state, game: game),
       appBar: _AppBar(
         game: game,
         games: games,
@@ -428,7 +451,12 @@ class _GamePage extends StatelessWidget {
         onGameChanged: onGameChanged,
         lastViewedIndex: lastViewedIndex,
       ),
-      body: _GameBody(index: currentGameIndex, game: game, state: state),
+      body: _GameBody(
+        index: currentGameIndex,
+        currentPageIndex: currentPageIndex,
+        game: game,
+        state: state,
+      ),
     );
   }
 }
@@ -841,49 +869,41 @@ class _GameDropdownItem extends StatelessWidget {
 class _BottomNavBar extends ConsumerWidget {
   final int index;
   final ChessBoardStateNew state;
+  final GamesTourModel game;
 
-  const _BottomNavBar({required this.index, required this.state});
+  const _BottomNavBar({required this.index, required this.state, required this.game});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final params = ChessBoardProviderParams(game: game, index: index);
+    final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+
     return ChessBoardBottomNavBar(
       gameIndex: index,
-      onFlip:
-          () =>
-              ref.read(chessBoardScreenProviderNew(index).notifier).flipBoard(),
-      onRightMove:
-          state.canMoveForward
-              ? () =>
-                  ref
-                      .read(chessBoardScreenProviderNew(index).notifier)
-                      .moveForward()
-              : null,
-      onLeftMove:
-          state.canMoveBackward
-              ? () =>
-                  ref
-                      .read(chessBoardScreenProviderNew(index).notifier)
-                      .moveBackward()
-              : null,
+      onFlip: () => notifier.flipBoard(),
+      onRightMove: state.canMoveForward ? () => notifier.moveForward() : null,
+      onLeftMove: state.canMoveBackward ? () => notifier.moveBackward() : null,
+      onLongPressBackwardStart: () => notifier.startLongPressBackward(),
+      onLongPressBackwardEnd: () => notifier.stopLongPress(),
+      onLongPressForwardStart: () => notifier.startLongPressForward(),
+      onLongPressForwardEnd: () => notifier.stopLongPress(),
       canMoveForward: state.canMoveForward,
       canMoveBackward: state.canMoveBackward,
       isAnalysisMode: state.isAnalysisMode,
-      toggleAnalysisMode:
-          () =>
-              ref
-                  .read(chessBoardScreenProviderNew(index).notifier)
-                  .toggleAnalysisMode(),
+      toggleAnalysisMode: () => notifier.toggleAnalysisMode(),
     );
   }
 }
 
 class _GameBody extends StatelessWidget {
   final int index;
+  final int currentPageIndex;
   final GamesTourModel game;
   final ChessBoardStateNew state;
 
   const _GameBody({
     required this.index,
+    required this.currentPageIndex,
     required this.game,
     required this.state,
   });
@@ -891,7 +911,12 @@ class _GameBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (state.isAnalysisMode) {
-      return _AnalysisGameBody(index: index, game: game, state: state);
+      return _AnalysisGameBody(
+        index: index,
+        currentPageIndex: currentPageIndex,
+        game: game,
+        state: state,
+      );
     }
 
     return Column(
@@ -903,7 +928,12 @@ class _GameBody extends StatelessWidget {
           state: state,
         ),
         SizedBox(height: 2.h),
-        _BoardWithSidebar(index: index, state: state),
+        _BoardWithSidebar(
+          index: index,
+          currentPageIndex: currentPageIndex,
+          state: state,
+          game: game,
+        ),
         SizedBox(height: 2.h),
         _PlayerWidget(
           game: game,
@@ -939,9 +969,11 @@ class _GameBody extends StatelessWidget {
                   behavior: HitTestBehavior.translucent,
                   child: _MovesDisplay(
                     index: index,
+                    currentPageIndex: currentPageIndex,
                     state: state,
                     sanMoves: state.moveSans,
                     currentMoveIndex: state.currentMoveIndex,
+                    game: game,
                   ),
                 ),
               ),
@@ -955,11 +987,13 @@ class _GameBody extends StatelessWidget {
 
 class _AnalysisGameBody extends ConsumerWidget {
   final int index;
+  final int currentPageIndex;
   final GamesTourModel game;
   final ChessBoardStateNew state;
 
   const _AnalysisGameBody({
     required this.index,
+    required this.currentPageIndex,
     required this.game,
     required this.state,
   });
@@ -975,9 +1009,14 @@ class _AnalysisGameBody extends ConsumerWidget {
           state: state,
         ),
         SizedBox(height: 2.h),
-        _BoardWithSidebar(index: index, state: state),
+        _BoardWithSidebar(
+          index: index,
+          currentPageIndex: currentPageIndex,
+          state: state,
+          game: game,
+        ),
         if (state.principalVariations.isNotEmpty)
-          _PrincipalVariationList(index: index, state: state),
+          _PrincipalVariationList(index: index, state: state, game: game),
         SizedBox(height: 2.h),
         _PlayerWidget(
           game: game,
@@ -985,7 +1024,7 @@ class _AnalysisGameBody extends ConsumerWidget {
           blackPlayer: true,
           state: state,
         ),
-        _AnalysisControlsRow(index: index),
+        _AnalysisControlsRow(index: index, game: game),
         Expanded(
           child: Container(
             width: double.infinity,
@@ -996,7 +1035,12 @@ class _AnalysisGameBody extends ConsumerWidget {
                 topRight: Radius.circular(12.sp),
               ),
             ),
-            child: _AnalysisMovesDisplay(index: index, state: state),
+            child: _AnalysisMovesDisplay(
+              index: index,
+              currentPageIndex: currentPageIndex,
+              state: state,
+              game: game,
+            ),
           ),
         ),
       ],
@@ -1006,13 +1050,15 @@ class _AnalysisGameBody extends ConsumerWidget {
 
 class _AnalysisControlsRow extends ConsumerWidget {
   final int index;
+  final GamesTourModel game;
 
-  const _AnalysisControlsRow({required this.index});
+  const _AnalysisControlsRow({required this.index, required this.game});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(chessBoardScreenProviderNew(index)).valueOrNull;
-    final notifier = ref.read(chessBoardScreenProviderNew(index).notifier);
+    final params = ChessBoardProviderParams(game: game, index: index);
+    final state = ref.watch(chessBoardScreenProviderNew(params)).valueOrNull;
+    final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
 
     // Check if variant is selected - if so, forward button plays variant moves
     final hasSelectedVariant = state?.selectedVariantIndex != null;
@@ -1027,15 +1073,18 @@ class _AnalysisControlsRow extends ConsumerWidget {
             onPressed: notifier.jumpToStart,
           ),
           IconButton(
-            icon: const Icon(Icons.arrow_back, color: kWhiteColor),
-            onPressed: hasSelectedVariant ? notifier.playVariantMoveBackward : notifier.moveBackward,
+            icon: Icon(
+              Icons.arrow_back,
+              color: hasSelectedVariant ? kGreenColor : kWhiteColor, // Highlight when variant selected
+            ),
+            onPressed: hasSelectedVariant ? notifier.playVariantMoveBackward : notifier.analysisStepBackward,
           ),
           IconButton(
             icon: Icon(
               Icons.arrow_forward,
               color: hasSelectedVariant ? kGreenColor : kWhiteColor, // Highlight when variant selected
             ),
-            onPressed: hasSelectedVariant ? notifier.playVariantMoveForward : notifier.moveForward,
+            onPressed: hasSelectedVariant ? notifier.playVariantMoveForward : notifier.analysisStepForward,
           ),
           IconButton(
             icon: const Icon(Icons.fast_forward, color: kWhiteColor),
@@ -1050,13 +1099,20 @@ class _AnalysisControlsRow extends ConsumerWidget {
 class _AnalysisMovesDisplay extends ConsumerWidget {
   final int index;
   final ChessBoardStateNew state;
+  final GamesTourModel game;
+  final int currentPageIndex;
 
-  const _AnalysisMovesDisplay({required this.index, required this.state});
+  const _AnalysisMovesDisplay({
+    required this.index,
+    required this.state,
+    required this.game,
+    required this.currentPageIndex,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final analysis = state.analysisState;
-    final game = analysis.game;
+    final chessGame = analysis.game;
 
     if (state.isLoadingMoves) {
       return Center(
@@ -1067,16 +1123,94 @@ class _AnalysisMovesDisplay extends ConsumerWidget {
       );
     }
 
-    if (game == null) {
-      return Center(
-        child: Padding(
-          padding: EdgeInsets.all(24.sp),
-          child: CircularProgressIndicator(color: kGreenColor),
+    // Get move impacts for colorful notation display - ONLY if this page is visible
+    Map<int, MoveImpactAnalysis>? allMovesImpact;
+    if (index == currentPageIndex &&
+        state.pgnData != null &&
+        state.pgnData!.isNotEmpty) {
+      final params = PgnAnalysisParams(
+        pgn: state.pgnData!,
+        gameId: game.gameId, // Use game ID for provider isolation
+      );
+      final allMovesAsync = ref.watch(allMovesImpactFromPgnProvider(params));
+      allMovesImpact = allMovesAsync.valueOrNull;
+
+      // If no impacts from PGN, use fallback with individual position evaluations
+      if ((allMovesImpact == null || allMovesImpact.isEmpty) && state.allMoves.isNotEmpty) {
+        final fensParams = PositionFensParams(
+          allMoves: state.allMoves,
+          startingPosition: state.startingPosition,
+          gameId: game.gameId,
+        );
+        final positionFens = ref.watch(positionFensProvider(fensParams));
+
+        final positionParams = PositionAnalysisParams(
+          positionFens: positionFens,
+          moveSans: state.moveSans,
+          gameId: game.gameId,
+        );
+
+        final fallbackAsync = ref.watch(allMovesImpactFromPositionsProvider(positionParams));
+        allMovesImpact = fallbackAsync.valueOrNull;
+      }
+    }
+
+    // Watch navigator only if chess game is available - no loading spinner
+    final navigatorState = chessGame != null
+        ? ref.watch(chessGameNavigatorProvider(chessGame))
+        : null;
+
+    // Fallback: show moves from state if navigator not ready or chess game null
+    if (navigatorState == null || chessGame == null) {
+      if (state.moveSans.isEmpty) {
+        return Center(
+          child: Padding(
+            padding: EdgeInsets.all(20.sp),
+            child: Text(
+              'No moves available for this game',
+              style: AppTypography.textXsMedium.copyWith(
+                color: kWhiteColor70,
+                fontWeight: FontWeight.normal,
+              ),
+            ),
+          ),
+        );
+      }
+
+      // Display existing moves while navigator initializes
+      return SingleChildScrollView(
+        padding: EdgeInsets.all(20.sp),
+        child: Wrap(
+          spacing: 4.sp,
+          runSpacing: 4.sp,
+          children: state.moveSans.asMap().entries.map((entry) {
+            final moveIndex = entry.key;
+            final move = entry.value;
+            final isCurrentMove = moveIndex == state.analysisState.currentMoveIndex;
+            final fullMoveNumber = (moveIndex / 2).floor() + 1;
+            final isWhiteMove = moveIndex % 2 == 0;
+            final displayText = isWhiteMove ? '$fullMoveNumber. $move' : move;
+
+            return Container(
+              padding: EdgeInsets.symmetric(horizontal: 6.sp, vertical: 2.sp),
+              decoration: BoxDecoration(
+                color: isCurrentMove ? kWhiteColor70.withValues(alpha: 0.4) : Colors.transparent,
+                borderRadius: BorderRadius.circular(4.sp),
+              ),
+              child: Text(
+                displayText,
+                style: AppTypography.textXsMedium.copyWith(
+                  color: isCurrentMove ? kWhiteColor : kWhiteColor70,
+                  fontWeight: isCurrentMove ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+            );
+          }).toList(),
         ),
       );
     }
 
-    if (game.mainline.isEmpty) {
+    if (navigatorState.game.mainline.isEmpty) {
       return Center(
         child: Padding(
           padding: EdgeInsets.all(20.sp),
@@ -1091,17 +1225,17 @@ class _AnalysisMovesDisplay extends ConsumerWidget {
       );
     }
 
-    final navigatorState = ref.watch(chessGameNavigatorProvider(game));
-
     return SingleChildScrollView(
       padding: EdgeInsets.all(20.sp),
       child: ChessLineDisplay(
         line: navigatorState.game.mainline,
         currentFen: navigatorState.currentFen,
-        movePointer: navigatorState.movePointer,
+        movePointer: const [], // Empty pointer for mainline - ChessLineDisplay builds child pointers
+        allMovesImpact: allMovesImpact,
         onClick: (pointer) {
+          final params = ChessBoardProviderParams(game: game, index: index);
           ref
-              .read(chessBoardScreenProviderNew(index).notifier)
+              .read(chessBoardScreenProviderNew(params).notifier)
               .goToMovePointer(pointer);
         },
       ),
@@ -1150,8 +1284,15 @@ class _PlayerWidget extends StatelessWidget {
 class _BoardWithSidebar extends ConsumerWidget {
   final int index;
   final ChessBoardStateNew state;
+  final int currentPageIndex;
+  final GamesTourModel game;
 
-  const _BoardWithSidebar({required this.index, required this.state});
+  const _BoardWithSidebar({
+    required this.index,
+    required this.state,
+    required this.currentPageIndex,
+    required this.game,
+  });
 
   String? _getLastMoveSquare() {
     if (state.lastMove == null) return null;
@@ -1170,31 +1311,33 @@ class _BoardWithSidebar extends ConsumerWidget {
         final screenWidth = MediaQuery.of(context).size.width;
         final boardSize = screenWidth - sideBarWidth - 32.w;
 
-        // Evaluate ALL moves from PGN and get current move impact from the map
+        // Evaluate ALL moves from PGN and get current move impact from the map - ONLY if this page is visible
         Map<int, MoveImpactAnalysis>? allMovesImpact;
         MoveImpactAnalysis? currentMoveImpact;
 
-        if (state.pgnData != null && state.pgnData!.isNotEmpty) {
-          final params = PgnAnalysisParams(pgn: state.pgnData!);
+        if (index == currentPageIndex &&
+            state.pgnData != null &&
+            state.pgnData!.isNotEmpty) {
+          final params = PgnAnalysisParams(
+            pgn: state.pgnData!,
+            gameId: game.gameId,
+          );
           final allMovesAsync = ref.watch(allMovesImpactFromPgnProvider(params));
           allMovesImpact = allMovesAsync.valueOrNull;
 
-          debugPrint('===== BOARD: allMovesImpact has ${allMovesImpact?.length ?? 0} moves analyzed =====');
-
           // If no impacts from PGN, use fallback with individual position evaluations
           if ((allMovesImpact == null || allMovesImpact.isEmpty) && state.allMoves.isNotEmpty) {
-            debugPrint('===== BOARD: NO PGN EVALS, USING FALLBACK =====');
-
-            // Use memoized provider to get position FENs (prevents rebuild loop)
             final fensParams = PositionFensParams(
               allMoves: state.allMoves,
               startingPosition: state.startingPosition,
+              gameId: game.gameId,
             );
             final positionFens = ref.watch(positionFensProvider(fensParams));
 
             final positionParams = PositionAnalysisParams(
               positionFens: positionFens,
               moveSans: state.moveSans,
+              gameId: game.gameId,
             );
 
             final fallbackAsync = ref.watch(allMovesImpactFromPositionsProvider(positionParams));
@@ -1204,9 +1347,6 @@ class _BoardWithSidebar extends ConsumerWidget {
           // Get impact for current move from the map
           if (allMovesImpact != null && state.currentMoveIndex >= 0) {
             currentMoveImpact = allMovesImpact[state.currentMoveIndex];
-            if (currentMoveImpact != null) {
-              debugPrint('===== BOARD: Current move ${state.currentMoveIndex} impact: ${currentMoveImpact.impact.name} =====');
-            }
           }
         }
 
@@ -1231,6 +1371,7 @@ class _BoardWithSidebar extends ConsumerWidget {
                         chessBoardState: state,
                         isFlipped: state.isBoardFlipped,
                         index: index,
+                        game: state.game,
                       )
                       : _ChessBoardNew(
                         size: boardSize,
@@ -1320,12 +1461,14 @@ class _AnalysisBoard extends ConsumerWidget {
   final ChessBoardStateNew chessBoardState;
   final bool isFlipped;
   final int index;
+  final GamesTourModel game;
 
   const _AnalysisBoard({
     required this.size,
     required this.chessBoardState,
     this.isFlipped = false,
     required this.index,
+    required this.game,
   });
 
   @override
@@ -1334,7 +1477,8 @@ class _AnalysisBoard extends ConsumerWidget {
     final boardTheme = ref
         .read(boardSettingsRepository)
         .getBoardTheme(boardSettingsValue.boardColor);
-    final notifier = ref.read(chessBoardScreenProviderNew(index).notifier);
+    final params = ChessBoardProviderParams(game: game, index: index);
+    final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
 
     return Chessboard(
       size: size,
@@ -1399,12 +1543,16 @@ class _MovesDisplay extends ConsumerWidget {
   final ChessBoardStateNew state;
   final List<String> sanMoves;
   final int currentMoveIndex;
+  final GamesTourModel game;
+  final int currentPageIndex;
 
   const _MovesDisplay({
     required this.state,
     required this.index,
     required this.sanMoves,
     required this.currentMoveIndex,
+    required this.game,
+    required this.currentPageIndex,
   });
 
   @override
@@ -1427,49 +1575,36 @@ class _MovesDisplay extends ConsumerWidget {
       );
     }
 
-    // Evaluate ALL moves from PGN in parallel
+    // Evaluate ALL moves from PGN in parallel - ONLY if this page is visible
     Map<int, MoveImpactAnalysis>? allMovesImpact;
-    debugPrint('===== CHECKING PGN: ${state.pgnData?.substring(0, math.min(100, state.pgnData?.length ?? 0)) ?? "NO PGN"} =====');
-
-    if (state.pgnData != null && state.pgnData!.isNotEmpty) {
-      final params = PgnAnalysisParams(pgn: state.pgnData!);
+    if (index == currentPageIndex &&
+        state.pgnData != null &&
+        state.pgnData!.isNotEmpty) {
+      final params = PgnAnalysisParams(
+        pgn: state.pgnData!,
+        gameId: game.gameId,
+      );
       final allMovesAsync = ref.watch(allMovesImpactFromPgnProvider(params));
-
-      debugPrint('===== PROVIDER STATE: ${allMovesAsync.isLoading ? "LOADING" : allMovesAsync.hasError ? "ERROR: ${allMovesAsync.error}" : "HAS VALUE"} =====');
-
       allMovesImpact = allMovesAsync.valueOrNull;
-      debugPrint('===== MOVES DISPLAY: allMovesImpact has ${allMovesImpact?.length ?? 0} analyzed moves =====');
 
       // If no impacts from PGN, use fallback with individual position evaluations
       if ((allMovesImpact == null || allMovesImpact.isEmpty) && state.allMoves.isNotEmpty) {
-        debugPrint('===== NO PGN EVALS, USING FALLBACK PROVIDER =====');
-
-        // Use memoized provider to get position FENs (prevents rebuild loop)
         final fensParams = PositionFensParams(
           allMoves: state.allMoves,
           startingPosition: state.startingPosition,
+          gameId: game.gameId,
         );
         final positionFens = ref.watch(positionFensProvider(fensParams));
 
         final positionParams = PositionAnalysisParams(
           positionFens: positionFens,
           moveSans: state.moveSans,
+          gameId: game.gameId,
         );
 
         final fallbackAsync = ref.watch(allMovesImpactFromPositionsProvider(positionParams));
         allMovesImpact = fallbackAsync.valueOrNull;
-
-        debugPrint('===== FALLBACK: Got ${allMovesImpact?.length ?? 0} analyzed moves =====');
       }
-
-      if (allMovesImpact != null && allMovesImpact.isNotEmpty) {
-        debugPrint('===== FIRST 3 IMPACTS: =====');
-        allMovesImpact.entries.take(3).forEach((entry) {
-          debugPrint('Move ${entry.key}: ${entry.value.actualMoveSan} -> ${entry.value.impact.name} ${entry.value.impact.symbol}');
-        });
-      }
-    } else {
-      debugPrint('===== NO PGN AVAILABLE IN GAME =====');
     }
 
     return Container(
@@ -1493,25 +1628,21 @@ class _MovesDisplay extends ConsumerWidget {
               final displayText = isWhiteMove ? '$fullMoveNumber. $move' : move;
               final impactSymbol = impact?.impact.symbol ?? '';
 
-              // Debug log for first few moves
-              if (moveIndex < 3 && impact != null) {
-                debugPrint('===== MOVE $moveIndex: "$displayText" + symbol "$impactSymbol" (${impact.impact.name}) =====');
-              }
-
               // Determine text color
+              final params = ChessBoardProviderParams(game: game, index: index);
               Color textColor;
               if (isCurrentMove) {
                 textColor = kWhiteColor;
               } else if (impact != null && impact.impact != MoveImpactType.normal) {
                 textColor = impact.impact.color;
               } else {
-                textColor = ref.read(chessBoardScreenProviderNew(index).notifier).getMoveColor(move, moveIndex);
+                textColor = ref.read(chessBoardScreenProviderNew(params).notifier).getMoveColor(move, moveIndex);
               }
 
               return GestureDetector(
                 onTap:
                     () => ref
-                        .read(chessBoardScreenProviderNew(index).notifier)
+                        .read(chessBoardScreenProviderNew(params).notifier)
                         .goToMove(moveIndex),
                 child: Container(
                   padding: EdgeInsets.symmetric(
@@ -1607,8 +1738,9 @@ class _MovesDisplay extends ConsumerWidget {
 class _PrincipalVariationList extends ConsumerWidget {
   final int index;
   final ChessBoardStateNew state;
+  final GamesTourModel game;
 
-  const _PrincipalVariationList({required this.index, required this.state});
+  const _PrincipalVariationList({required this.index, required this.state, required this.game});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1635,7 +1767,7 @@ class _PrincipalVariationList extends ConsumerWidget {
           ...lines.asMap().entries.map((entry) {
             final variantIndex = entry.key;
             final line = entry.value;
-            final isSelected = state?.selectedVariantIndex == variantIndex;
+            final isSelected = state.selectedVariantIndex == variantIndex;
 
             final sanMoves = _formatPv(
               line.sanMoves,
@@ -1644,10 +1776,11 @@ class _PrincipalVariationList extends ConsumerWidget {
             );
             final evalText = line.displayEval;
 
+            final params = ChessBoardProviderParams(game: game, index: index);
             return GestureDetector(
               onTap: () {
                 ref
-                    .read(chessBoardScreenProviderNew(index).notifier)
+                    .read(chessBoardScreenProviderNew(params).notifier)
                     .selectVariant(variantIndex);
               },
               child: Container(
@@ -1657,7 +1790,7 @@ class _PrincipalVariationList extends ConsumerWidget {
                       ? Border.all(color: kGreenColor, width: 2)
                       : null,
                   borderRadius: BorderRadius.circular(6.sp),
-                  color: isSelected ? kGreenColor.withOpacity(0.1) : null,
+                  color: isSelected ? kGreenColor.withValues(alpha: 0.1) : null,
                 ),
                 padding: EdgeInsets.all(isSelected ? 6.sp : 0),
                 child: Row(

@@ -52,11 +52,17 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     final moveTime = useMemoized(() {
       String? calculatedMoveTime;
 
-      // For past moves: Show the clock time at the current position
+      // In analysis mode, use the analysis state's current move index to show clock time
+      // Otherwise use the main state's current move index
+      final effectiveMoveIndex = chessBoardState?.isAnalysisMode == true
+          ? chessBoardState!.analysisState.currentMoveIndex
+          : chessBoardState?.currentMoveIndex ?? -1;
+
+      // For past moves or when in analysis mode: Show the clock time at the current position
       if (chessBoardState != null && !chessBoardState!.isAtEnd) {
         if (chessBoardState!.moveTimes.isNotEmpty) {
           // Find this player's most recent move up to current position
-          for (int i = chessBoardState!.currentMoveIndex; i >= 0; i--) {
+          for (int i = effectiveMoveIndex; i >= 0; i--) {
             final wasMoveByThisPlayer =
                 (i % 2 == 0 && isWhitePlayer) || (i % 2 == 1 && !isWhitePlayer);
 
@@ -67,12 +73,12 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
           }
         }
       }
-      // For latest move: use live data (handled by clockSeconds)
+      // For latest move in normal mode: use live data (handled by clockSeconds)
       else if (chessBoardState != null &&
                chessBoardState!.moveTimes.isNotEmpty &&
-               chessBoardState!.currentMoveIndex >= 0) {
+               effectiveMoveIndex >= 0) {
         // Look for this player's most recent move
-        for (int i = chessBoardState!.currentMoveIndex; i >= 0; i--) {
+        for (int i = effectiveMoveIndex; i >= 0; i--) {
           final wasMoveByThisPlayer =
               (i % 2 == 0 && isWhitePlayer) || (i % 2 == 1 && !isWhitePlayer);
 
@@ -308,11 +314,13 @@ class _PlayerClock extends StatelessWidget {
   Widget build(BuildContext context) {
     // Determine if this player's clock should be counting down
     // Only countdown for live games when at the latest move and it's this player's turn
+    // NEVER countdown in analysis mode - always show static clock time
     final isClockRunning =
         gamesTourModel.gameStatus.isOngoing &&
         gamesTourModel.lastMoveTime != null &&
         isCurrentPlayer &&  // Use the isCurrentPlayer prop from parent which uses state.position.turn
-        (chessBoardState?.isAtEnd ?? true); // Only countdown when at latest move
+        (chessBoardState?.isAtEnd ?? true) && // Only countdown when at latest move
+        (chessBoardState?.isAnalysisMode != true); // Never countdown in analysis mode
 
     // Use atomic countdown text widget for optimized rebuilds
     // Get the clock values for this player

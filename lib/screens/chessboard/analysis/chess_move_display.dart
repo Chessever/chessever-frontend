@@ -6,6 +6,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 
 import 'chess_game.dart';
 import 'chess_game_navigator.dart';
+import 'move_impact_analyzer.dart';
 
 class ChessMoveDisplay extends StatelessWidget {
   const ChessMoveDisplay({
@@ -14,17 +15,36 @@ class ChessMoveDisplay extends StatelessWidget {
     required this.currentFen,
     this.movePointer = const [],
     this.onClick,
+    this.moveImpact,
   });
 
   final ChessMove move;
   final String currentFen;
   final ChessMovePointer movePointer;
   final void Function(ChessMovePointer)? onClick;
+  final MoveImpactAnalysis? moveImpact;
 
   @override
   Widget build(BuildContext context) {
     final isWhiteMove = move.turn == ChessColor.black;
     final isSelected = currentFen == move.fen;
+
+    // Determine text color based on move impact
+    // For normal moves, use traditional colors (white for current, white70 for others, bordoish for captures)
+    // For impactful moves, use the impact color
+    Color textColor = kWhiteColor70;
+    if (isSelected) {
+      textColor = kWhiteColor;
+    } else if (moveImpact != null && moveImpact!.impact != MoveImpactType.normal) {
+      // Use impact color for non-normal moves
+      textColor = moveImpact!.impact.color;
+    } else if (move.san.contains('x')) {
+      // Bordoish/reddish color for captures (normal impact moves)
+      textColor = const Color(0xFFB33A3A);
+    }
+
+    final impactSymbol = moveImpact?.impact.symbol ?? '';
+    final moveText = isWhiteMove ? '${move.num}. ${move.san}' : move.san;
 
     return InkWell(
       onTap: () {
@@ -43,9 +63,24 @@ class ChessMoveDisplay extends StatelessWidget {
             width: 0.5,
           ),
         ),
-        child: Text(
-          isWhiteMove ? '${move.num}. ${move.san}' : move.san,
-          style: AppTypography.textXsMedium.copyWith(color: kWhiteColor70),
+        child: RichText(
+          text: TextSpan(
+            text: moveText,
+            style: AppTypography.textXsMedium.copyWith(
+              color: textColor,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            ),
+            children: [
+              if (impactSymbol.isNotEmpty)
+                TextSpan(
+                  text: impactSymbol,
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: moveImpact!.impact.color,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
