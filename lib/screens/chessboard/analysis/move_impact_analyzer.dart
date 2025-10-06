@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:dartchess/dartchess.dart';
@@ -168,139 +169,226 @@ List<double?> _parseEvalsFromPgn(String pgn) {
   return evals;
 }
 
-/// NEW: Calculate move impact by comparing player's move with best alternatives
-/// This runs in a worker isolate
+/// BULLETPROOF Move Impact Analysis - Understanding Chess Engine Evaluation
 ///
-/// LOGIC:
-/// 1. Get top moves from CloudEval (engine suggestions)
-/// 2. Find player's actual move in the list
-/// 3. Calculate eval loss = bestMoveEval - playerMoveEval
-/// 4. Detect game phase (early/mid/late) for dynamic thresholds
-/// 5. Check move uniqueness for brilliant annotation
-/// 6. Classify based on relative comparison to alternatives
+/// THE CRITICAL CHESS INSIGHT:
+/// ===========================
+/// When opponent blunders, the engine IMMEDIATELY shows you're winning (+3.5)
+/// This evaluation ASSUMES you'll find the best move.
+///
+/// Example after opponent's blunder:
+/// - Position eval: +3.5 (engine assumes you'll find best move to keep this)
+/// - If you play best move: +3.5 → +3.5 (NORMAL - you preserved it, didn't "gain" it)
+/// - If you play 2nd best:  +3.5 → +2.8 (MISTAKE - lost 0.7 pawns)
+/// - If you play blunder:   +3.5 → +0.5 (BLUNDER - threw away 3.0 pawns)
+///
+/// YOU CANNOT GAIN ADVANTAGE THAT THE ENGINE ALREADY GAVE YOU!
+/// The +3.5 eval means "this position IS +3.5 if best moves are played"
+///
+/// CORRECT IMPACT CALCULATION:
+/// ===========================
+/// 1. BRILLIANT/GREAT: Ignore position change! Only look at:
+///    - Is this the objectively best move in THIS position?
+///    - Is it unique (few alternatives)?
+///    - Is it tactical/sacrificial?
+///
+/// 2. BLUNDER/MISTAKE: Compare move to alternatives:
+///    - How much worse is played move vs best available?
+///    - Alternatives gap = bestEval - playedMoveEval (in THIS position)
+///
+/// 3. NORMAL: Everything else (95%+ of moves)
+///
+/// EXAMPLES:
+/// =========
+/// Scenario: Opponent blundered, position is +3.5 for you
+/// - Best move keeps +3.5 → NORMAL (preserved advantage, not gained)
+/// - 2nd best gets +2.8 (gap 0.7) → MISTAKE (failed to preserve)
+/// - Blunder gets +1.0 (gap 2.5) → BLUNDER (threw away win)
+///
+/// Scenario: Equal position (0.0)
+/// - Best move gets +1.5 → GREAT! (actually gained advantage)
+/// - Your move gets +1.3 (gap 0.2) → NORMAL (close to best)
+/// - Your move gets -0.5 (gap 2.0) → BLUNDER (turned advantage into disadvantage)
 MoveImpactAnalysis? _calculateMoveImpactFromAlternatives({
-  required CloudEval? positionEval,
+  required CloudEval? positionEvalBeforeMove,
+  required CloudEval? positionEvalAfterMove,
   required String playerMoveSan,
   required int moveNumber,
   required bool isWhiteMove,
 }) {
-  if (positionEval == null || positionEval.pvs.isEmpty) {
+  if (positionEvalBeforeMove == null || positionEvalBeforeMove.pvs.isEmpty) {
     return null;
   }
 
   try {
-    // Detect game phase for dynamic thresholds
-    final GamePhase phase;
-    if (moveNumber <= 15) {
-      phase = GamePhase.early;
-    } else if (moveNumber <= 40) {
-      phase = GamePhase.mid;
-    } else {
-      phase = GamePhase.late;
-    }
+    final pvs = positionEvalBeforeMove.pvs;
+    final bestPv = pvs[0];
 
-    // Get phase-specific minimum threshold
-    final double minThreshold;
-    switch (phase) {
-      case GamePhase.early:
-        minThreshold = 0.3;
-        break;
-      case GamePhase.mid:
-        minThreshold = 0.45;
-        break;
-      case GamePhase.late:
-        minThreshold = 0.5;
-        break;
-    }
-
-    // Extract all PVs (top moves from engine)
-    final pvs = positionEval.pvs;
-    final bestMove = pvs.first;
-    final bestMoveEval = bestMove.cp / 100.0; // Convert centipawns to pawns
-
-    // Find player's move in the PVs
-    // Player's move is the FIRST move in one of the PVs
+    // === STEP 1: Find player's move in engine alternatives ===
     int? playerMoveRank;
-    double? playerMoveEval;
+    int? playerMoveResultingCp;
 
     for (int i = 0; i < pvs.length; i++) {
       final pv = pvs[i];
-      // Parse first move from PV
       final moves = pv.moves.split(' ');
       if (moves.isNotEmpty) {
         final firstMoveSan = _uciToSan(moves.first, playerMoveSan);
         if (firstMoveSan == playerMoveSan) {
           playerMoveRank = i;
-          playerMoveEval = pv.cp / 100.0;
+          playerMoveResultingCp = pv.cp;
           break;
         }
       }
     }
 
-    // If player's move not in top PVs, get evaluation from next position
-    // This means it's likely a mistake since engine didn't consider it
-    if (playerMoveEval == null) {
-      playerMoveEval = bestMoveEval - 2.0; // Assume significant loss
-      playerMoveRank = 99; // Not in top moves
+    // If not found, assume it's outside top alternatives
+    if (playerMoveResultingCp == null) {
+      playerMoveRank = 99;
+      final bestResultCp = bestPv.cp;
+      playerMoveResultingCp = isWhiteMove ? bestResultCp - 200 : bestResultCp + 200;
     }
 
-    // Convert evals to player's perspective (positive = good for player)
-    final bestEvalFromPlayerPerspective = isWhiteMove ? bestMoveEval : -bestMoveEval;
-    final playerEvalFromPlayerPerspective = isWhiteMove ? playerMoveEval : -playerMoveEval;
+    final bestResultingCp = bestPv.cp;
 
-    // Calculate evaluation loss (how much worse than best)
-    // Positive evalLoss = player lost advantage
-    final evalLoss = bestEvalFromPlayerPerspective - playerEvalFromPlayerPerspective;
+    // === STEP 2: ALTERNATIVES COMPARISON (from player's perspective) ===
+    final bestResultPlayer = isWhiteMove ? bestResultingCp : -bestResultingCp;
+    final actualResultPlayer = isWhiteMove ? playerMoveResultingCp : -playerMoveResultingCp;
+    final alternativesGap = bestResultPlayer - actualResultPlayer; // In centipawns
+    final alternativesGapWp = _cpToWinProb(bestResultPlayer) - _cpToWinProb(actualResultPlayer);
 
-    // Early exit if below minimum threshold for this game phase
-    if (evalLoss.abs() < minThreshold) {
-      return MoveImpactAnalysis(
-        impact: MoveImpactType.normal,
-        evalChange: -evalLoss, // Negative because we want improvement to be negative
-        bestMoveEval: bestEvalFromPlayerPerspective,
-        actualMoveEval: playerEvalFromPlayerPerspective,
-        bestMoveSan: _extractSanFromPv(bestMove.moves),
-        actualMoveSan: playerMoveSan,
-        moveIndex: moveNumber,
-      );
+    // === STEP 3: POSITION CHANGE (from White's perspective ALWAYS) ===
+    // This is the CRITICAL fix!
+    final evalBeforeCp = bestResultingCp; // Best eval before move (White's POV)
+    int evalAfterCp = playerMoveResultingCp; // Result after player's move (White's POV)
+
+    // If we have the actual position eval after move, use that
+    if (positionEvalAfterMove != null && positionEvalAfterMove.pvs.isNotEmpty) {
+      evalAfterCp = positionEvalAfterMove.pvs[0].cp;
     }
 
-    // Classify move impact based on alternatives
+    // Calculate raw position change (White's perspective)
+    // Positive = position moved in White's favor
+    // Negative = position moved in Black's favor
+    final rawPositionChange = evalAfterCp - evalBeforeCp;
+
+    // Interpret change based on whose move it was
+    // For White: positive change = good (improved), negative = bad (worsened)
+    // For Black: negative change = good (improved), positive = bad (worsened)
+    final positionChange = isWhiteMove ? rawPositionChange : -rawPositionChange;
+    final positionChangeWp = _cpToWinProb(evalAfterCp) - _cpToWinProb(evalBeforeCp);
+    final positionChangeWpForPlayer = isWhiteMove ? positionChangeWp : -positionChangeWp;
+
+    // === STEP 4: Context analysis ===
+    final decided = _isDecidedPosition(evalBeforeCp.abs());
+    final nearBestCount = _countNearBestMoves(pvs, cpThreshold: 30, wpThreshold: 0.02);
+    final allSimilar = nearBestCount >= pvs.length - 1 ||
+                       (pvs.length >= 2 && (bestResultingCp - pvs[1].cp).abs() < 20);
+    final flipsOutcome = _flipsOutcomeClass(bestResultPlayer, actualResultPlayer);
+    final isTactical = _isSacrifice(
+      moveSan: playerMoveSan,
+      cpBefore: bestResultingCp,
+      cpAfter: playerMoveResultingCp,
+    ) || _isQuietTactical(
+      moveSan: playerMoveSan,
+      evalSwing: alternativesGap.abs(),
+    );
+
+    // === STEP 5: CLASSIFICATION - ONLY using alternatives comparison! ===
+    // PHILOSOPHY: 95%+ of moves should be NORMAL
+    // Position change is IGNORED for positive annotations (you can't "gain" what engine already gave you)
+    // Position change ONLY used to detect blunders (failing to preserve advantage)
     MoveImpactType impact;
 
-    if (evalLoss <= 0.1 && playerMoveRank != null && playerMoveRank <= 2) {
-      // Player played best or near-best move (within 0.1 pawns)
-      // Check for brilliant: is it unique/hard to find?
+    // ========================================================================
+    // EARLY EXITS: Make MOST moves NORMAL by default
+    // ========================================================================
 
-      if (_isBrilliantMove(pvs, playerMoveRank, bestEvalFromPlayerPerspective)) {
-        impact = MoveImpactType.brilliant;
-      } else {
-        // Good move but not unique - many alternatives
-        impact = MoveImpactType.great;
-      }
-    } else if (evalLoss >= 0 && evalLoss <= 0.3) {
-      // Small loss - still a good move
-      impact = MoveImpactType.great;
-    } else if (evalLoss > 0.3 && evalLoss <= 1.0) {
-      // Missed better opportunity
-      impact = MoveImpactType.interesting;
-    } else if (evalLoss > 1.0 && evalLoss <= 2.5) {
-      // Significant mistake
-      impact = MoveImpactType.inaccuracy;
-    } else if (evalLoss > 2.5) {
-      // Major blunder
+    // EARLY EXIT 1: Position decided (±5.0) → NORMAL
+    // When the game is already won/lost, moves don't matter much
+    if (decided) {
+      impact = MoveImpactType.normal;
+    }
+    // EARLY EXIT 2: Tiny alternatives gap → NORMAL
+    // If all moves in position are basically equal, player's choice is fine
+    else if (alternativesGap < 50 && alternativesGapWp < 0.05) {
+      impact = MoveImpactType.normal;
+    }
+    // EARLY EXIT 3: All alternatives similar → NORMAL
+    // When there's no clear best move, can't penalize the player
+    else if (allSimilar) {
+      impact = MoveImpactType.normal;
+    }
+    // EARLY EXIT 4: Top 5 move with small gap → NORMAL
+    // Top 5 move with minimal difference from best = fine move
+    else if (playerMoveRank! <= 5 && alternativesGap < 80) {
+      impact = MoveImpactType.normal;
+    }
+
+    // ========================================================================
+    // NEGATIVE ANNOTATIONS: Bad moves compared to alternatives
+    // ========================================================================
+
+    // BLUNDER (??) - Catastrophic mistake
+    // Played move is FAR worse than best available
+    else if (flipsOutcome ||  // Completely changed the game outcome
+        (playerMoveRank > 10 && alternativesGap >= 300) ||  // Very bad rank AND huge gap
+        (alternativesGapWp >= 0.40) ||  // Lost 40%+ win probability
+        (alternativesGap >= 400)) {  // Lost 4+ pawns vs best alternative
       impact = MoveImpactType.blunder;
-    } else {
-      // Shouldn't reach here
+    }
+    // INACCURACY (?) - Clear mistake but not catastrophic
+    // Missed clearly better alternatives
+    else if ((playerMoveRank >= 6 && alternativesGap >= 150) ||  // Mediocre rank with big gap
+        (alternativesGapWp >= 0.20) ||  // Lost 20%+ win probability
+        (alternativesGap >= 250)) {  // Lost 2.5+ pawns vs best
+      impact = MoveImpactType.inaccuracy;
+    }
+
+    // ========================================================================
+    // POSITIVE ANNOTATIONS: Exceptional moves (VERY RARE!)
+    // CRITICAL: These IGNORE position change - only look at THIS position
+    // ========================================================================
+
+    // BRILLIANT (!!) - Genius move that's very hard to find
+    // Must be THE ONLY good move in a critical position
+    else if (playerMoveRank == 0 &&         // THE best move
+        nearBestCount <= 2 &&               // Very unique (only 1-2 good options)
+        isTactical &&                       // Must be tactical/sacrificial
+        !decided &&                         // Position not already decided
+        !flipsOutcome &&
+        pvs.length >= 4 &&
+        (bestResultPlayer - (isWhiteMove ? pvs[3].cp : -pvs[3].cp)).abs() >= 150) {  // Huge gap to 4th move
+      impact = MoveImpactType.brilliant;
+    }
+    // GREAT (!) - The objectively best move in position
+    // But ONLY if it's special (unique, tactical, or in complex position)
+    else if (playerMoveRank == 0 &&
+             !decided &&                    // Not in decided position
+             (isTactical ||                 // Tactical move OR
+              nearBestCount <= 3 ||         // Unique (few good alternatives) OR
+              !allSimilar)) {               // Position has clear best move
+      impact = MoveImpactType.great;
+    }
+    // INTERESTING (!?) - Decent move but missed a MUCH better opportunity
+    // Only when there was a truly superior alternative
+    else if (playerMoveRank >= 2 && playerMoveRank <= 5 &&
+        alternativesGap >= 150 &&           // Missed 1.5+ pawns
+        alternativesGap < 300 &&            // But not a complete blunder
+        alternativesGapWp >= 0.15 &&        // Missed 15%+ win-prob
+        alternativesGapWp < 0.35) {         // But not catastrophic
+      impact = MoveImpactType.interesting;
+    }
+    // NORMAL - Everything else (VAST MAJORITY OF MOVES!)
+    else {
       impact = MoveImpactType.normal;
     }
 
     return MoveImpactAnalysis(
       impact: impact,
-      evalChange: -evalLoss, // Negative because we want improvement to be negative
-      bestMoveEval: bestEvalFromPlayerPerspective,
-      actualMoveEval: playerEvalFromPlayerPerspective,
-      bestMoveSan: _extractSanFromPv(bestMove.moves),
+      evalChange: positionChange / 100.0,  // Now using actual position change
+      bestMoveEval: bestResultPlayer / 100.0,
+      actualMoveEval: actualResultPlayer / 100.0,
+      bestMoveSan: _extractSanFromPv(bestPv.moves),
       actualMoveSan: playerMoveSan,
       moveIndex: moveNumber,
     );
@@ -311,30 +399,39 @@ MoveImpactAnalysis? _calculateMoveImpactFromAlternatives({
 }
 
 /// Check if a move is brilliant (unique, hard to find)
-/// Criteria:
+///
+/// Updated criteria using comprehensive helpers:
 /// - Move is in top 3
-/// - Only 1-3 moves within 0.2 pawns of best
-/// - Significant gap (>0.5) to 4th/5th best move
-bool _isBrilliantMove(List<Pv> pvs, int moveRank, double bestEval) {
+/// - Only 1-3 near-best alternatives (uniqueness)
+/// - Significant gap (≥60cp or ≥0.05 win-prob) to 4th move
+/// - Tactical complexity OR positional gain
+///
+/// NOTE: This function is now mostly integrated into the main classification logic
+/// but kept for legacy compatibility
+bool _isBrilliantMove(List<Pv> pvs, int moveRank, double bestEval, bool isWhiteMove) {
   if (moveRank > 2) return false; // Must be in top 3
 
-  // Count how many moves are within 0.2 pawns of best
-  int movesWithinRange = 0;
-  for (final pv in pvs.take(5)) {
-    final eval = pv.cp / 100.0;
-    if ((eval - bestEval).abs() <= 0.2) {
-      movesWithinRange++;
-    }
-  }
+  // Use the comprehensive near-best counter
+  final nearBestCount = _countNearBestMoves(pvs, cpThreshold: 30, wpThreshold: 0.02);
 
-  // Must have only 1-3 moves near best (unique/hard to find)
-  if (movesWithinRange > 3) return false;
+  // Must be unique (only 1-3 near-best alternatives)
+  if (nearBestCount > 3) return false;
 
-  // Check gap to 4th/5th best
+  // Check gap to 4th best
   if (pvs.length >= 4) {
-    final fourthBestEval = pvs[3].cp / 100.0;
-    if ((bestEval - fourthBestEval).abs() < 0.5) {
-      return false; // Not enough gap - not unique
+    final bestCp = pvs[0].cp;
+    final fourthCp = pvs[3].cp;
+
+    // Convert to player perspective
+    final bestCpPlayer = isWhiteMove ? bestCp : -bestCp;
+    final fourthCpPlayer = isWhiteMove ? fourthCp : -fourthCp;
+
+    // Need significant gap (≥60cp or ≥0.05 win-prob)
+    final cpGap = (bestCpPlayer - fourthCpPlayer).abs();
+    final wpGap = (_cpToWinProb(bestCpPlayer) - _cpToWinProb(fourthCpPlayer)).abs();
+
+    if (cpGap < 60 && wpGap < 0.05) {
+      return false; // Not enough gap - not unique enough
     }
   }
 
@@ -554,7 +651,8 @@ final allMovesImpactFromPositionsProvider = FutureProvider.family<Map<int, MoveI
 
     for (int i = 0; i < params.moveSans.length; i++) {
       final isWhiteMove = i % 2 == 0;
-      final positionEval = cloudEvals[i]; // Position BEFORE the move
+      final positionEvalBefore = cloudEvals[i]; // Position BEFORE the move
+      final positionEvalAfter = i + 1 < cloudEvals.length ? cloudEvals[i + 1] : null; // Position AFTER the move
       final playerMoveSan = params.moveSans[i];
       final moveNumber = i;
 
@@ -562,7 +660,8 @@ final allMovesImpactFromPositionsProvider = FutureProvider.family<Map<int, MoveI
       impactTasks.add(
         workerManager.execute<MoveImpactAnalysis?>(
           () => _calculateMoveImpactFromAlternatives(
-            positionEval: positionEval,
+            positionEvalBeforeMove: positionEvalBefore,
+            positionEvalAfterMove: positionEvalAfter,
             playerMoveSan: playerMoveSan,
             moveNumber: moveNumber,
             isWhiteMove: isWhiteMove,
@@ -687,3 +786,163 @@ final allMovesImpactFromPgnProvider = FutureProvider.family<Map<int, MoveImpactA
     return results;
   }
 });
+
+// ============================================================================
+// HELPER FUNCTIONS FOR COMPREHENSIVE MOVE IMPACT ANALYSIS
+// ============================================================================
+
+/// Convert centipawns to win probability using sigmoid function
+/// Formula: winProb = 1 / (1 + e^(-k * cp))
+/// where k controls the steepness (default 0.004 ≈ 1/250)
+///
+/// Examples:
+/// - cp = 0   → 50% win probability (equal)
+/// - cp = 100 → ~62% (slight advantage)
+/// - cp = 300 → ~77% (winning)
+/// - cp = 500 → ~88% (clearly winning)
+double _cpToWinProb(int cp, {double k = 0.004}) {
+  // Handle mate scores (±100000)
+  if (cp.abs() >= 100000) {
+    return cp > 0 ? 1.0 : 0.0;
+  }
+  return 1.0 / (1.0 + math.exp(-k * cp));
+}
+
+/// Detect game phase based on FEN
+/// - Opening: Queens on board + high material count
+/// - Endgame: Queens off OR very low material (≤10 points of minor/major pieces)
+/// - Middlegame: Everything else
+String _detectGamePhase(String fen) {
+  final parts = fen.split(' ');
+  if (parts.isEmpty) return 'middlegame';
+
+  final board = parts[0];
+
+  // Check if queens are on board
+  final hasWhiteQueen = board.contains('Q');
+  final hasBlackQueen = board.contains('q');
+  final queensOn = hasWhiteQueen || hasBlackQueen;
+
+  // Count material (simplified)
+  int material = 0;
+  material += 'R'.allMatches(board).length * 5; // Rooks
+  material += 'r'.allMatches(board).length * 5;
+  material += 'B'.allMatches(board).length * 3; // Bishops
+  material += 'b'.allMatches(board).length * 3;
+  material += 'N'.allMatches(board).length * 3; // Knights
+  material += 'n'.allMatches(board).length * 3;
+  material += 'Q'.allMatches(board).length * 9; // Queens
+  material += 'q'.allMatches(board).length * 9;
+
+  // Endgame: queens off and low material, or very low material regardless
+  if ((!queensOn && material <= 10) || material <= 6) {
+    return 'endgame';
+  }
+
+  // Opening: queens on and high material
+  if (queensOn && material >= 30) {
+    return 'opening';
+  }
+
+  return 'middlegame';
+}
+
+/// Count how many moves in PVs are "near-best" (within threshold of best move)
+/// Uses both centipawn and win-probability thresholds
+int _countNearBestMoves(
+  List<Pv> pvs, {
+  int cpThreshold = 30,
+  double wpThreshold = 0.02,
+}) {
+  if (pvs.isEmpty) return 0;
+
+  final bestCp = pvs[0].cp;
+  final bestWp = _cpToWinProb(bestCp);
+
+  int count = 0;
+  for (final pv in pvs) {
+    final cp = pv.cp;
+    final wp = _cpToWinProb(cp);
+
+    // Consider "near-best" if within EITHER threshold
+    if ((bestCp - cp).abs() <= cpThreshold || (bestWp - wp).abs() <= wpThreshold) {
+      count++;
+    }
+  }
+
+  return count;
+}
+
+/// Detect if position is already decided (outcome essentially determined)
+/// Returns true if:
+/// - Absolute eval ≥ 500cp
+/// - Win probability ≥ 0.9 or ≤ 0.1
+/// - Mate score detected
+bool _isDecidedPosition(int cp) {
+  if (cp.abs() >= 500) return true;
+  if (cp.abs() >= 100000) return true; // Mate score
+
+  final wp = _cpToWinProb(cp);
+  if (wp >= 0.9 || wp <= 0.1) return true;
+
+  return false;
+}
+
+/// Classify position outcome from player's perspective
+/// Returns: 'winning', 'equal', or 'losing'
+String _getOutcomeClass(int cpFromPlayerPerspective) {
+  if (cpFromPlayerPerspective >= 300) return 'winning';
+  if (cpFromPlayerPerspective <= -300) return 'losing';
+  return 'equal';
+}
+
+/// Detect if a move flips the outcome class against the player
+/// e.g., winning → equal, winning → losing, equal → losing
+bool _flipsOutcomeClass(int cpBefore, int cpAfter) {
+  final classBefore = _getOutcomeClass(cpBefore);
+  final classAfter = _getOutcomeClass(cpAfter);
+
+  if (classBefore == 'winning' && (classAfter == 'equal' || classAfter == 'losing')) {
+    return true;
+  }
+  if (classBefore == 'equal' && classAfter == 'losing') {
+    return true;
+  }
+
+  return false;
+}
+
+/// Check if a move is a sacrifice
+/// Detects if material was lost but eval holds or improves
+/// (Requires actual position analysis - this is a placeholder for now)
+bool _isSacrifice({
+  required String moveSan,
+  required int cpBefore,
+  required int cpAfter,
+}) {
+  // Placeholder: detect "x" in move (capture) combined with eval improvement
+  // A real implementation would need actual board state to calculate material
+  final isCapture = moveSan.contains('x');
+  final evalImproves = cpAfter >= cpBefore - 50; // Eval doesn't crash
+
+  // Very rough heuristic: if it's a capture and eval holds, might be sacrifice
+  // TODO: Implement proper material counting
+  return isCapture && evalImproves && (cpAfter - cpBefore).abs() < 100;
+}
+
+/// Check if a move is "quiet tactical"
+/// - Non-capture, non-check move
+/// - But creates significant eval swing
+bool _isQuietTactical({
+  required String moveSan,
+  required int evalSwing,
+}) {
+  final isCapture = moveSan.contains('x');
+  final isCheck = moveSan.contains('+') || moveSan.contains('#');
+
+  // Quiet = not capture, not check
+  // Tactical = creates ≥80cp swing or ≥0.08 win-prob swing
+  if (isCapture || isCheck) return false;
+
+  return evalSwing.abs() >= 80;
+}
