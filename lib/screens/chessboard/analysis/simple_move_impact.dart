@@ -1,9 +1,11 @@
+import 'dart:math' as math;
+
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/screens/chessboard/analysis/move_impact_analyzer.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
-import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:worker_manager/worker_manager.dart';
 
 /// COMPREHENSIVE MOVE IMPACT CALCULATION
 /// Gets eval before each move, analyzes engine alternatives, compares with actual move
@@ -33,229 +35,145 @@ class SimpleMoveImpactParams {
   int get hashCode => gameId.hashCode ^ positionFens.length.hashCode;
 }
 
+const int _kEvalConcurrency = 6;
+const int _kClassificationBatchSize = 16;
+
 /// Provider that calculates move impacts by analyzing engine alternatives
 /// Uses the cascade eval provider to get multiple PV lines for each position
 final simpleMoveImpactProvider = FutureProvider.family<Map<int, MoveImpactAnalysis>, SimpleMoveImpactParams>((ref, params) async {
   final Map<int, MoveImpactAnalysis> impactResults = {};
-
-  debugPrint('🎨 COMPREHENSIVE IMPACT: Starting for ${params.positionFens.length} positions, ${params.moveSans.length} moves');
-
-  // Get evaluations for ALL positions BEFORE moves using cascade provider
-  final List<CloudEval?> evalsBefore = [];
-  for (int i = 0; i < params.moveSans.length; i++) {
-    final fenBefore = params.positionFens[i];
-    try {
-      final eval = await ref.read(cascadeEvalProviderForBoard(fenBefore).future);
-      evalsBefore.add(eval);
-      debugPrint('📊 Move $i: Got eval for position BEFORE move, ${eval.pvs.length} PVs, best cp=${eval.pvs.first.cp}');
-    } catch (e) {
-      debugPrint('⚠️ Move $i: Failed to get eval BEFORE: $e');
-      evalsBefore.add(null);
-    }
+  final moveCount = params.moveSans.length;
+  if (moveCount == 0) {
+    debugPrint('🎨 COMPREHENSIVE IMPACT: No moves to analyze for ${params.gameId}');
+    return impactResults;
   }
 
-  // Also get eval AFTER each move (for actual result comparison)
-  final List<CloudEval?> evalsAfter = [];
-  for (int i = 0; i < params.moveSans.length; i++) {
-    final fenAfter = params.positionFens[i + 1];
-    try {
-      final eval = await ref.read(cascadeEvalProviderForBoard(fenAfter).future);
-      evalsAfter.add(eval);
-    } catch (e) {
-      debugPrint('⚠️ Move $i: Failed to get eval AFTER: $e');
-      evalsAfter.add(null);
-    }
+  if (params.positionFens.length != moveCount + 1) {
+    debugPrint('⚠️ COMPREHENSIVE IMPACT: FEN count mismatch for ${params.gameId} (fens=${params.positionFens.length}, moves=$moveCount)');
   }
 
-  debugPrint('🎨 COMPREHENSIVE IMPACT: Got ${evalsBefore.where((e) => e != null).length} evals BEFORE, ${evalsAfter.where((e) => e != null).length} AFTER');
+  debugPrint('🎨 COMPREHENSIVE IMPACT: Starting for ${params.positionFens.length} positions, $moveCount moves');
 
-  // Now analyze each move
-  for (int i = 0; i < params.moveSans.length; i++) {
-    final evalBefore = evalsBefore[i];
-    final evalAfter = evalsAfter[i];
-    final isWhiteMove = params.isWhiteMoves[i];
-    final actualMoveSan = params.moveSans[i];
+  final evaluations = await _evaluatePositions(ref, params.positionFens, params.gameId);
 
-    if (evalBefore == null || evalAfter == null) {
-      debugPrint('🎨 Move $i: Skipping - missing eval');
-      continue;
-    }
+  final availableEvalCount = evaluations.where((eval) => eval != null).length;
+  debugPrint('🎨 COMPREHENSIVE IMPACT: Retrieved $availableEvalCount/${evaluations.length} position evals');
 
-    if (evalBefore.pvs.isEmpty || evalAfter.pvs.isEmpty) {
-      debugPrint('🎨 Move $i: Skipping - empty PVs');
-      continue;
-    }
+  final tasks = <Future<List<_BatchClassificationResult>>>[];
+  for (int start = 0; start < moveCount; start += _kClassificationBatchSize) {
+    final end = math.min(start + _kClassificationBatchSize, moveCount);
+    final batchParams = _BatchClassificationParams(
+      evaluations: evaluations,
+      moveSans: params.moveSans,
+      isWhiteMoves: params.isWhiteMoves,
+      startIndex: start,
+      endIndex: end,
+      gameId: params.gameId,
+    );
 
-    // Get the best move from engine (first PV)
-    final bestPv = evalBefore.pvs.first;
-    final bestCp = bestPv.cp;
-
-    // Convert best engine move UCI to SAN
-    String? bestMoveSan;
-    try {
-      final fenBefore = params.positionFens[i];
-      final pos = Chess.fromSetup(Setup.parseFen(fenBefore));
-      if (bestPv.moves.isNotEmpty) {
-        bestMoveSan = _uciToSan(bestPv.moves.split(' ').first, pos);
-      }
-    } catch (e) {
-      debugPrint('⚠️ Move $i: Failed to convert best move UCI to SAN: $e');
-    }
-
-    // Get actual result after player's move
-    final actualCp = evalAfter.pvs.first.cp;
-
-    // Find player's move in the engine alternatives (PVs)
-    int? playerMoveRank;
-    int? playerMoveResultingCp;
-
-    for (int pvIndex = 0; pvIndex < evalBefore.pvs.length; pvIndex++) {
-      final pv = evalBefore.pvs[pvIndex];
-      if (pv.moves.isEmpty) continue;
-
-      try {
-        final fenBefore = params.positionFens[i];
-        final pos = Chess.fromSetup(Setup.parseFen(fenBefore));
-        final pvMoveSan = _uciToSan(pv.moves.split(' ').first, pos);
-
-        if (pvMoveSan != null && _movesMatch(pvMoveSan, actualMoveSan)) {
-          playerMoveRank = pvIndex;
-          playerMoveResultingCp = pv.cp;
-          debugPrint('   Move $i: Found player move "$actualMoveSan" at rank $pvIndex, cp=$playerMoveResultingCp');
-          break;
-        }
-      } catch (e) {
-        debugPrint('⚠️ Move $i PV $pvIndex: Error converting UCI: $e');
-      }
-    }
-
-    // If not found in engine alternatives, player made move outside top lines
-    if (playerMoveRank == null) {
-      playerMoveRank = 99;
-      playerMoveResultingCp = actualCp; // Use actual resulting position eval
-      debugPrint('   Move $i: Player move "$actualMoveSan" NOT in engine PVs, using actual cp=$actualCp');
-    }
-
-    // Convert to player's perspective (positive = advantage)
-    final bestCpPlayer = isWhiteMove ? bestCp : -bestCp;
-    final actualCpPlayer = isWhiteMove ? playerMoveResultingCp! : -playerMoveResultingCp!;
-
-    // Calculate gap: how much WORSE is the played move compared to best
-    final cpGap = bestCpPlayer - actualCpPlayer;
-
-    debugPrint('   Move $i (${isWhiteMove ? "White" : "Black"}): bestCp=$bestCpPlayer, actualCp=$actualCpPlayer, gap=$cpGap, rank=$playerMoveRank');
-
-    // === COMPREHENSIVE CLASSIFICATION ===
-    final MoveImpactType impact;
-    final bool isDecided = bestCp.abs() >= 500; // Position already winning/losing (5+ pawns)
-    final bool hasManyAlternatives = evalBefore.pvs.length >= 3;
-
-    // Count how many alternatives are near-best (within 30cp)
-    int nearBestCount = 0;
-    for (final pv in evalBefore.pvs) {
-      if ((bestCp - pv.cp).abs() < 30) nearBestCount++;
-    }
-    final bool allSimilar = hasManyAlternatives && nearBestCount >= evalBefore.pvs.length - 1;
-
-    if (cpGap >= 300) {
-      // BLUNDER (??) - Lost 3+ pawns
-      impact = MoveImpactType.blunder;
-      debugPrint('      → BLUNDER (lost ${cpGap}cp)');
-    } else if (cpGap >= 150) {
-      // INACCURACY/MISTAKE (?) - Lost 1.5+ pawns
-      impact = MoveImpactType.inaccuracy;
-      debugPrint('      → INACCURACY (lost ${cpGap}cp)');
-    } else if (playerMoveRank >= 2 && cpGap >= 50 && cpGap < 150) {
-      // INTERESTING (!?) - Top 2-4 move but missed clearly better option
-      impact = MoveImpactType.interesting;
-      debugPrint('      → INTERESTING (rank $playerMoveRank, missed ${cpGap}cp)');
-    } else if (playerMoveRank == 0 && !isDecided && hasManyAlternatives && !allSimilar) {
-      // Check if it's BRILLIANT or GREAT
-      final secondBestCp = evalBefore.pvs.length > 1 ? evalBefore.pvs[1].cp : bestCp;
-      final thirdBestCp = evalBefore.pvs.length > 2 ? evalBefore.pvs[2].cp : bestCp;
-
-      final gapTo2nd = (bestCp - secondBestCp).abs();
-      final gapTo3rd = (bestCp - thirdBestCp).abs();
-
-      // BRILLIANT (!!) - THE ONLY good move (huge gap to alternatives)
-      if (gapTo2nd >= 100 && gapTo3rd >= 150) {
-        impact = MoveImpactType.brilliant;
-        debugPrint('      → BRILLIANT (gap to 2nd: ${gapTo2nd}cp, to 3rd: ${gapTo3rd}cp)');
-      }
-      // GREAT (!) - Best move with clear advantage over alternatives
-      else if (gapTo2nd >= 50) {
-        impact = MoveImpactType.great;
-        debugPrint('      → GREAT (gap to 2nd: ${gapTo2nd}cp)');
-      } else {
-        impact = MoveImpactType.normal;
-      }
-    } else {
-      // NORMAL - Everything else
-      impact = MoveImpactType.normal;
-    }
-
-    impactResults[i] = MoveImpactAnalysis(
-      impact: impact,
-      evalChange: cpGap / 100.0,
-      bestMoveEval: bestCpPlayer / 100.0,
-      actualMoveEval: actualCpPlayer / 100.0,
-      bestMoveSan: bestMoveSan,
-      actualMoveSan: actualMoveSan,
-      moveIndex: i,
+    tasks.add(
+      workerManager.execute<List<_BatchClassificationResult>>(
+        () => _runBatchClassification(batchParams),
+        priority: WorkPriority.high,
+      ),
     );
   }
 
-  debugPrint('🎨 COMPREHENSIVE IMPACT: Classified ${impactResults.length} moves');
-  final counts = {
-    'brilliant': impactResults.values.where((r) => r.impact == MoveImpactType.brilliant).length,
-    'great': impactResults.values.where((r) => r.impact == MoveImpactType.great).length,
-    'interesting': impactResults.values.where((r) => r.impact == MoveImpactType.interesting).length,
-    'inaccuracy': impactResults.values.where((r) => r.impact == MoveImpactType.inaccuracy).length,
-    'blunder': impactResults.values.where((r) => r.impact == MoveImpactType.blunder).length,
-  };
-  debugPrint('🎨 COMPREHENSIVE IMPACT COUNTS: $counts');
+  final batchResults = await Future.wait(tasks, eagerError: false);
+  for (final batch in batchResults) {
+    for (final result in batch) {
+      if (result.analysis != null) {
+        impactResults[result.moveIndex] = result.analysis!;
+      }
+    }
+  }
 
+  debugPrint('🎨 COMPREHENSIVE IMPACT: Classified ${impactResults.length} moves for ${params.gameId}');
   return impactResults;
 });
 
-/// Convert UCI move to SAN notation
-String? _uciToSan(String uci, Chess position) {
-  try {
-    if (uci.length < 4) return null;
+Future<List<CloudEval?>> _evaluatePositions(
+  Ref ref,
+  List<String> fens,
+  String gameId,
+) async {
+  final results = List<CloudEval?>.filled(fens.length, null, growable: false);
 
-    final fromSquare = uci.substring(0, 2);
-    final toSquare = uci.substring(2, 4);
-    final promotion = uci.length > 4 ? uci[4] : null;
+  for (int i = 0; i < fens.length; i += _kEvalConcurrency) {
+    final end = math.min(i + _kEvalConcurrency, fens.length);
+    final chunk = <Future<void>>[];
 
-    final from = Square.fromName(fromSquare);
-    final to = Square.fromName(toSquare);
-
-    Move? move;
-    if (promotion != null) {
-      Role? promotionRole;
-      switch (promotion.toLowerCase()) {
-        case 'q': promotionRole = Role.queen; break;
-        case 'r': promotionRole = Role.rook; break;
-        case 'b': promotionRole = Role.bishop; break;
-        case 'n': promotionRole = Role.knight; break;
-        default: return null;
-      }
-      move = NormalMove(from: from, to: to, promotion: promotionRole);
-    } else {
-      move = NormalMove(from: from, to: to);
+    for (int j = i; j < end; j++) {
+      final fen = fens[j];
+      chunk.add(() async {
+        try {
+          final eval = await ref.read(cascadeEvalProviderForBoard(fen).future);
+          results[j] = eval;
+        } catch (e) {
+          debugPrint('⚠️ COMPREHENSIVE IMPACT: Failed to get eval for position $j in $gameId: $e');
+          results[j] = null;
+        }
+      }());
     }
 
-    final result = position.makeSan(move);
-    return result.$2; // Return just the SAN string from tuple
-  } catch (e) {
-    debugPrint('❌ ERROR converting UCI "$uci" to SAN: $e');
-    return null;
+    await Future.wait(chunk, eagerError: false);
   }
+
+  return results;
 }
 
-/// Check if two SAN moves match (ignoring check/checkmate symbols)
-bool _movesMatch(String san1, String san2) {
-  final clean1 = san1.replaceAll('+', '').replaceAll('#', '');
-  final clean2 = san2.replaceAll('+', '').replaceAll('#', '');
-  return clean1 == clean2;
+class _BatchClassificationParams {
+  final List<CloudEval?> evaluations;
+  final List<String> moveSans;
+  final List<bool> isWhiteMoves;
+  final int startIndex;
+  final int endIndex;
+  final String gameId;
+
+  const _BatchClassificationParams({
+    required this.evaluations,
+    required this.moveSans,
+    required this.isWhiteMoves,
+    required this.startIndex,
+    required this.endIndex,
+    required this.gameId,
+  });
+}
+
+class _BatchClassificationResult {
+  final int moveIndex;
+  final MoveImpactAnalysis? analysis;
+
+  const _BatchClassificationResult({
+    required this.moveIndex,
+    required this.analysis,
+  });
+}
+
+List<_BatchClassificationResult> _runBatchClassification(_BatchClassificationParams params) {
+  final results = <_BatchClassificationResult>[];
+
+  for (int index = params.startIndex; index < params.endIndex; index++) {
+    final evalBefore = index < params.evaluations.length ? params.evaluations[index] : null;
+    final evalAfter = (index + 1) < params.evaluations.length ? params.evaluations[index + 1] : null;
+    final moveSan = params.moveSans[index];
+    final isWhiteMove = params.isWhiteMoves[index];
+
+    MoveImpactAnalysis? analysis;
+    if (evalBefore != null) {
+      analysis = calculateMoveImpact(
+        positionEvalBeforeMove: evalBefore,
+        positionEvalAfterMove: evalAfter,
+        playerMoveSan: moveSan,
+        moveNumber: index,
+        isWhiteMove: isWhiteMove,
+      );
+    } else {
+      debugPrint('⚠️ COMPREHENSIVE IMPACT: Missing eval before move $index in ${params.gameId}');
+    }
+
+    results.add(_BatchClassificationResult(moveIndex: index, analysis: analysis));
+  }
+
+  return results;
 }

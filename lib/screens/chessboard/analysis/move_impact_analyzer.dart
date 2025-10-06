@@ -277,54 +277,87 @@ MoveImpactAnalysis? _calculateMoveImpactFromAlternatives({
     final bestResultPlayer = isWhiteMove ? bestResultingCp : -bestResultingCp;
     final actualResultPlayer = isWhiteMove ? playerMoveResultingCp : -playerMoveResultingCp;
 
-    // The gap is how much WORSE the played move is compared to best
-    // Positive gap = player's move is worse (lost advantage)
+    playerMoveRank ??= pvs.length;
+
+    // Perspective conversions for probability metrics
+    final wpBest = _cpToWinProb(bestResultPlayer);
+    final wpActual = _cpToWinProb(actualResultPlayer);
+    final winProbLoss = (wpBest - wpActual).clamp(-1.0, 1.0);
+    final winProbGain = (wpActual - wpBest).clamp(-1.0, 1.0);
+
+    // Centipawn gap remains informative for UI (positive ⇒ worse than best)
     final alternativesGap = bestResultPlayer - actualResultPlayer;
 
-    debugPrint('   📊 EVAL: best=${bestResultPlayer}cp, actual=${actualResultPlayer}cp, gap=${alternativesGap}cp, rank=$playerMoveRank');
+    final phase = _detectGamePhase(positionEvalBeforeMove.fen);
+    final nearBestCount = _countNearBestMoves(pvs);
+    final decided = _isDecidedPosition(bestResultingCp);
+    final outcomeFlipAgainstPlayer = _flipsOutcomeClass(bestResultPlayer, actualResultPlayer);
+    final bool lowConfidence = positionEvalBeforeMove.depth < 12 || positionEvalBeforeMove.knodes < 80;
 
-    // === STEP 3: SIMPLE CLASSIFICATION ===
-    MoveImpactType impact;
+    final thresholds = _phaseThresholdsMap[phase]!;
+    final blunderThreshold = thresholds.blunder + _advantageBuffer(bestResultPlayer, factor: 0.05);
+    final inaccuracyThreshold = thresholds.inaccuracy + _advantageBuffer(bestResultPlayer, factor: 0.02);
+    final interestingThreshold = thresholds.interesting + _advantageBuffer(bestResultPlayer, factor: 0.01);
+    final positiveGainThreshold = math.max(0.04, thresholds.great / 2);
 
-    // Position already decided (±500cp = ±5 pawns)
-    final decided = bestResultingCp.abs() >= 500;
+    MoveImpactType impact = MoveImpactType.normal;
 
-    // BLUNDER (??) - Lost 3+ pawns worth of advantage
-    if (alternativesGap >= 300) {
-      debugPrint('      → BLUNDER: gap=${alternativesGap}cp (lost 3+ pawns)');
+    final bool playerHadMate = bestResultPlayer >= 100000;
+    final bool playerFoundMate = actualResultPlayer >= 100000;
+    final bool opponentHadMateThreat = bestResultPlayer <= -100000;
+    final bool playerWalkedIntoMate = actualResultPlayer <= -100000;
+
+    if ((playerHadMate && !playerFoundMate) || (opponentHadMateThreat && playerWalkedIntoMate)) {
       impact = MoveImpactType.blunder;
     }
-    // MISTAKE (?) - Lost 1.5+ pawns worth of advantage
-    else if (alternativesGap >= 150) {
-      debugPrint('      → INACCURACY: gap=${alternativesGap}cp (lost 1.5+ pawns)');
-      impact = MoveImpactType.inaccuracy;
+
+    if (impact == MoveImpactType.normal) {
+      if (winProbLoss >= blunderThreshold || outcomeFlipAgainstPlayer) {
+        impact = MoveImpactType.blunder;
+      } else if (winProbLoss >= inaccuracyThreshold) {
+        impact = MoveImpactType.inaccuracy;
+      }
     }
-    // INTERESTING (!?) - Top 2-4 move but missed better move (0.5-1.5 pawns)
-    else if (playerMoveRank! >= 2 && playerMoveRank <= 4 && alternativesGap >= 50 && alternativesGap < 150) {
-      debugPrint('      → INTERESTING: rank=$playerMoveRank, gap=${alternativesGap}cp');
-      impact = MoveImpactType.interesting;
+
+    if (impact == MoveImpactType.normal) {
+      final bool candidateInteresting = playerMoveRank >= 2 && playerMoveRank <= 4;
+      if (candidateInteresting && (winProbLoss >= interestingThreshold || alternativesGap.abs() >= 70)) {
+        impact = MoveImpactType.interesting;
+      }
     }
-    // GREAT (!) - Best move in critical position with clear alternatives
-    else if (playerMoveRank == 0 &&
-             !decided &&
-             pvs.length >= 3 &&
-             (bestResultingCp - pvs[1].cp).abs() >= 50) {  // Clear gap to 2nd best
-      debugPrint('      → GREAT: best move with clear gap to alternatives');
-      impact = MoveImpactType.great;
+
+    if (impact == MoveImpactType.normal) {
+      final gapToSecond = pvs.length > 1 ? (bestResultingCp - pvs[1].cp).abs() : 0;
+      final gapToThird = pvs.length > 2 ? (bestResultingCp - pvs[2].cp).abs() : 0;
+      final bool uniqueBest = nearBestCount <= 1 && gapToSecond >= 60;
+      final bool clearGap = gapToSecond >= 80 || gapToThird >= 120;
+      final bool tactical = _isSacrifice(
+            moveSan: playerMoveSan,
+            cpBefore: bestResultPlayer,
+            cpAfter: actualResultPlayer,
+          ) ||
+          _isQuietTactical(
+            moveSan: playerMoveSan,
+            evalSwing: alternativesGap,
+          );
+
+      if (playerMoveRank == 0 && !decided) {
+        final bool preservesEval = winProbLoss <= 0.01;
+        if (uniqueBest && tactical && preservesEval && !lowConfidence) {
+          impact = MoveImpactType.brilliant;
+        } else if ((uniqueBest || clearGap) && preservesEval && !lowConfidence) {
+          impact = MoveImpactType.great;
+        }
+      } else if (playerMoveRank == 0 && clearGap && !lowConfidence && winProbGain >= positiveGainThreshold && !decided) {
+        impact = MoveImpactType.great;
+      }
     }
-    // BRILLIANT (!!) - Best move when it's THE ONLY good move
-    else if (playerMoveRank == 0 &&
-             !decided &&
-             pvs.length >= 3 &&
-             (bestResultingCp - pvs[1].cp).abs() >= 100 &&  // Huge gap to 2nd best (1+ pawn)
-             (bestResultingCp - pvs[2].cp).abs() >= 150) {  // Even bigger gap to 3rd
-      debugPrint('      → BRILLIANT: best move is ONLY good option');
-      impact = MoveImpactType.brilliant;
-    }
-    // NORMAL - Everything else
-    else {
-      debugPrint('      → NORMAL: gap=${alternativesGap}cp, rank=$playerMoveRank');
+
+    if (decided && impact == MoveImpactType.great) {
       impact = MoveImpactType.normal;
+    }
+    if (decided && impact == MoveImpactType.brilliant) {
+      impact = MoveImpactType.great;
     }
 
     return MoveImpactAnalysis(
@@ -332,7 +365,10 @@ MoveImpactAnalysis? _calculateMoveImpactFromAlternatives({
       evalChange: alternativesGap / 100.0,  // Eval difference in pawns
       bestMoveEval: bestResultPlayer / 100.0,
       actualMoveEval: actualResultPlayer / 100.0,
-      bestMoveSan: _extractSanFromPv(bestPv.moves),
+      bestMoveSan: bestPv.moves.isNotEmpty
+          ? (_uciToSan(bestPv.moves.split(' ').first, positionBeforeMove) ??
+              _extractSanFromPv(bestPv.moves))
+          : null,
       actualMoveSan: playerMoveSan,
       moveIndex: moveNumber,
     );
@@ -342,44 +378,20 @@ MoveImpactAnalysis? _calculateMoveImpactFromAlternatives({
   }
 }
 
-/// Check if a move is brilliant (unique, hard to find)
-///
-/// Updated criteria using comprehensive helpers:
-/// - Move is in top 3
-/// - Only 1-3 near-best alternatives (uniqueness)
-/// - Significant gap (≥60cp or ≥0.05 win-prob) to 4th move
-/// - Tactical complexity OR positional gain
-///
-/// NOTE: This function is now mostly integrated into the main classification logic
-/// but kept for legacy compatibility
-bool _isBrilliantMove(List<Pv> pvs, int moveRank, double bestEval, bool isWhiteMove) {
-  if (moveRank > 2) return false; // Must be in top 3
-
-  // Use the comprehensive near-best counter
-  final nearBestCount = _countNearBestMoves(pvs, cpThreshold: 30, wpThreshold: 0.02);
-
-  // Must be unique (only 1-3 near-best alternatives)
-  if (nearBestCount > 3) return false;
-
-  // Check gap to 4th best
-  if (pvs.length >= 4) {
-    final bestCp = pvs[0].cp;
-    final fourthCp = pvs[3].cp;
-
-    // Convert to player perspective
-    final bestCpPlayer = isWhiteMove ? bestCp : -bestCp;
-    final fourthCpPlayer = isWhiteMove ? fourthCp : -fourthCp;
-
-    // Need significant gap (≥60cp or ≥0.05 win-prob)
-    final cpGap = (bestCpPlayer - fourthCpPlayer).abs();
-    final wpGap = (_cpToWinProb(bestCpPlayer) - _cpToWinProb(fourthCpPlayer)).abs();
-
-    if (cpGap < 60 && wpGap < 0.05) {
-      return false; // Not enough gap - not unique enough
-    }
-  }
-
-  return true;
+MoveImpactAnalysis? calculateMoveImpact({
+  required CloudEval? positionEvalBeforeMove,
+  required CloudEval? positionEvalAfterMove,
+  required String playerMoveSan,
+  required int moveNumber,
+  required bool isWhiteMove,
+}) {
+  return _calculateMoveImpactFromAlternatives(
+    positionEvalBeforeMove: positionEvalBeforeMove,
+    positionEvalAfterMove: positionEvalAfterMove,
+    playerMoveSan: playerMoveSan,
+    moveNumber: moveNumber,
+    isWhiteMove: isWhiteMove,
+  );
 }
 
 /// Helper to extract SAN from PV moves string
@@ -402,7 +414,6 @@ String? _uciToSan(String uci, Position position) {
     // Convert square names to Square objects
     final from = Square.fromName(fromSquare);
     final to = Square.fromName(toSquare);
-    if (from == null || to == null) return null;
 
     // Create the move
     Move? move;
@@ -441,9 +452,9 @@ String? _uciToSan(String uci, Position position) {
 
 /// Game phase enum for dynamic thresholds
 enum GamePhase {
-  early, // moves 1-15
-  mid,   // moves 16-40
-  late,  // moves 41+
+  opening,
+  middlegame,
+  endgame,
 }
 
 /// Calculate move impact from consecutive evaluations
@@ -817,9 +828,9 @@ double _cpToWinProb(int cp, {double k = 0.004}) {
 /// - Opening: Queens on board + high material count
 /// - Endgame: Queens off OR very low material (≤10 points of minor/major pieces)
 /// - Middlegame: Everything else
-String _detectGamePhase(String fen) {
+GamePhase _detectGamePhase(String fen) {
   final parts = fen.split(' ');
-  if (parts.isEmpty) return 'middlegame';
+  if (parts.isEmpty) return GamePhase.middlegame;
 
   final board = parts[0];
 
@@ -841,15 +852,56 @@ String _detectGamePhase(String fen) {
 
   // Endgame: queens off and low material, or very low material regardless
   if ((!queensOn && material <= 10) || material <= 6) {
-    return 'endgame';
+    return GamePhase.endgame;
   }
 
   // Opening: queens on and high material
   if (queensOn && material >= 30) {
-    return 'opening';
+    return GamePhase.opening;
   }
 
-  return 'middlegame';
+  return GamePhase.middlegame;
+}
+
+class _PhaseThresholds {
+  final double blunder;
+  final double inaccuracy;
+  final double great;
+  final double interesting;
+
+  const _PhaseThresholds({
+    required this.blunder,
+    required this.inaccuracy,
+    required this.great,
+    required this.interesting,
+  });
+}
+
+const Map<GamePhase, _PhaseThresholds> _phaseThresholdsMap = {
+  GamePhase.opening: _PhaseThresholds(
+    blunder: 0.45,
+    inaccuracy: 0.08,
+    great: 0.18,
+    interesting: 0.04,
+  ),
+  GamePhase.middlegame: _PhaseThresholds(
+    blunder: 0.40,
+    inaccuracy: 0.06,
+    great: 0.22,
+    interesting: 0.05,
+  ),
+  GamePhase.endgame: _PhaseThresholds(
+    blunder: 0.30,
+    inaccuracy: 0.03,
+    great: 0.15,
+    interesting: 0.03,
+  ),
+};
+
+double _advantageBuffer(int cp, {double factor = 0.03}) {
+  final normalized = cp.abs() / 200.0;
+  final sigmoid = 1.0 / (1.0 + math.exp(-normalized));
+  return factor * sigmoid;
 }
 
 /// Count how many moves in PVs are "near-best" (within threshold of best move)
