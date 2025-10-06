@@ -1157,16 +1157,8 @@ class _AnalysisMovesDisplay extends ConsumerWidget {
         final fallbackAsync = ref.watch(allMovesImpactFromPositionsProvider(positionParams));
 
         // Handle async states properly - don't lose data while loading
-        fallbackAsync.when(
-          data: (data) {
-            allMovesImpact = data;
-          },
-          loading: () {
-            // Loading...
-          },
-          error: (err, stack) {
-            debugPrint('🎨 NOTATION (ChessLineDisplay): Error in position-based analysis: $err');
-          },
+        allMovesImpact = fallbackAsync.whenOrNull(
+          data: (data) => data,
         );
       }
     }
@@ -1351,16 +1343,8 @@ class _BoardWithSidebar extends ConsumerWidget {
             final fallbackAsync = ref.watch(allMovesImpactFromPositionsProvider(positionParams));
 
             // Handle async states properly - don't lose data while loading
-            fallbackAsync.when(
-              data: (data) {
-                allMovesImpact = data;
-              },
-              loading: () {
-                // Loading...
-              },
-              error: (err, stack) {
-                debugPrint('🎨 NOTATION (Board): Error in position-based analysis: $err');
-              },
+            allMovesImpact = fallbackAsync.whenOrNull(
+              data: (data) => data,
             );
           }
 
@@ -1618,16 +1602,8 @@ class _MovesDisplay extends ConsumerWidget {
         final fallbackAsync = ref.watch(allMovesImpactFromPositionsProvider(positionParams));
 
         // Handle async states properly - don't lose data while loading
-        fallbackAsync.when(
-          data: (data) {
-            allMovesImpact = data;
-          },
-          loading: () {
-            // Loading...
-          },
-          error: (err, stack) {
-            debugPrint('🎨 NOTATION (Wrap): Error in position-based analysis: $err');
-          },
+        allMovesImpact = fallbackAsync.whenOrNull(
+          data: (data) => data,
         );
       }
     }
