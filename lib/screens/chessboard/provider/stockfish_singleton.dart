@@ -31,6 +31,8 @@ class StockfishSingleton {
   _EvalJob? _currentJob;
   StreamSubscription? _currentSubscription;
   final Map<String, EnhancedCloudEval> _evaluationCache = {};
+  final List<_EvalJob> _jobQueue = []; // Queue for pending evaluations
+  bool _isProcessing = false; // Flag to prevent concurrent processing
 
   Future<EnhancedCloudEval> evaluatePosition(
     String fen, {
@@ -52,17 +54,21 @@ class StockfishSingleton {
     final cacheKey = '${fen}_${depth}_$sideToMove';
 
     if (_evaluationCache.containsKey(cacheKey)) {
-      debugPrint('Returning cached evaluation for $fen');
+      debugPrint('📦 CACHE HIT for $fen');
       return _evaluationCache[cacheKey]!;
     }
-    // Cancel any ongoing evaluation
-    await _cancelCurrentEvaluation();
 
+    // Create job and add to queue
     final completer = Completer<EnhancedCloudEval>();
-    _currentJob = _EvalJob(fen, depth, completer);
+    final job = _EvalJob(fen, depth, completer);
 
-    // Start the new evaluation
-    _processCurrentJob();
+    _jobQueue.add(job);
+    debugPrint('📋 QUEUE: Added job for $fen (queue size: ${_jobQueue.length})');
+
+    // Start processing queue if not already processing
+    if (!_isProcessing) {
+      _processQueue();
+    }
 
     final result = await completer.future;
 
@@ -108,6 +114,24 @@ class StockfishSingleton {
     }
   }
 
+  Future<void> _processQueue() async {
+    if (_isProcessing || _jobQueue.isEmpty) return;
+
+    _isProcessing = true;
+    debugPrint('🏭 QUEUE PROCESSOR: Starting, ${_jobQueue.length} jobs in queue');
+
+    while (_jobQueue.isNotEmpty) {
+      final job = _jobQueue.removeAt(0);
+      _currentJob = job;
+      debugPrint('⚙️ PROCESSING: ${job.fen} (${_jobQueue.length} remaining)');
+      await _processCurrentJob();
+      _currentJob = null;
+    }
+
+    _isProcessing = false;
+    debugPrint('✅ QUEUE PROCESSOR: All jobs complete');
+  }
+
   Future<void> _processCurrentJob() async {
     if (_currentJob == null) return;
 
@@ -131,9 +155,9 @@ class StockfishSingleton {
     int finalDepth = 0;
     bool evaluationComplete = false;
 
-    debugPrint('Stockfish output for fen $fen');
+    debugPrint('🔍 STOCKFISH: Analyzing $fen');
     _currentSubscription = _engine!.stdout.listen((line) {
-      // Check if this is still the current job  8/5ppk/2p4p/2p5/8/P1BQ2P1/qP2r2P/2KR4 b - - 4 34
+      // Check if this is still the current job
       if (_currentJob != job || completer.isCompleted) return;
       line = line.trim();
       // Parse info lines for analysis data
@@ -186,6 +210,14 @@ class StockfishSingleton {
         final filteredPvs = pvs
             .where((pv) => pv.moves.isNotEmpty)
             .toList(growable: false);
+
+        debugPrint('✅ STOCKFISH COMPLETE: depth=$finalDepth, pvs=${filteredPvs.length}, knodes=$knodes');
+        if (filteredPvs.isEmpty) {
+          debugPrint('⚠️ WARNING: No PVs found for $fen');
+        } else {
+          debugPrint('   Best move: ${filteredPvs[0].moves.split(' ').first}, cp=${filteredPvs[0].cp}');
+        }
+
         final result = EnhancedCloudEval(
           fen: fen,
           knodes: knodes,
@@ -195,18 +227,18 @@ class StockfishSingleton {
         );
         if (!completer.isCompleted) {
           completer.complete(result);
-          _currentJob = null;
           _currentSubscription = null;
         }
       }
     });
 
     try {
+      debugPrint('   → Sending: MultiPV 3, depth $depth');
       _engine!.stdin = 'setoption name MultiPV value 3';
       _engine!.stdin = 'position fen $fen';
       _engine!.stdin = 'go depth $depth';
     } catch (e) {
-      debugPrint('Error sending commands to Stockfish: $e');
+      debugPrint('❌ ERROR sending commands to Stockfish: $e');
       if (!completer.isCompleted) {
         final errorResult = EnhancedCloudEval(
           fen: fen,
@@ -259,6 +291,8 @@ class StockfishSingleton {
 
   void dispose() {
     _cancelCurrentEvaluation();
+    _jobQueue.clear();
+    _isProcessing = false;
     _engine?.dispose();
     _engine = null;
     _evaluationCache.clear();
