@@ -1125,18 +1125,23 @@ class _AnalysisMovesDisplay extends ConsumerWidget {
 
     // Get move impacts for colorful notation display - ONLY if this page is visible
     Map<int, MoveImpactAnalysis>? allMovesImpact;
-    if (index == currentPageIndex &&
-        state.pgnData != null &&
-        state.pgnData!.isNotEmpty) {
-      final params = PgnAnalysisParams(
-        pgn: state.pgnData!,
-        gameId: game.gameId, // Use game ID for provider isolation
-      );
-      final allMovesAsync = ref.watch(allMovesImpactFromPgnProvider(params));
-      allMovesImpact = allMovesAsync.valueOrNull;
+    if (index == currentPageIndex) {
+      // Try PGN-based analysis first (faster, more accurate)
+      if (state.pgnData != null && state.pgnData!.isNotEmpty) {
+        final params = PgnAnalysisParams(
+          pgn: state.pgnData!,
+          gameId: game.gameId, // Use game ID for provider isolation
+        );
+        final allMovesAsync = ref.watch(allMovesImpactFromPgnProvider(params));
+        allMovesImpact = allMovesAsync.valueOrNull;
 
-      // If no impacts from PGN, use fallback with individual position evaluations
+        debugPrint('🎨 NOTATION (ChessLineDisplay): PGN-based for game ${game.gameId}: ${allMovesImpact?.length ?? 0} moves');
+      }
+
+      // Fallback to position-based analysis (for live games or when PGN analysis fails)
       if ((allMovesImpact == null || allMovesImpact.isEmpty) && state.allMoves.isNotEmpty) {
+        debugPrint('🎨 NOTATION (ChessLineDisplay): Fallback to position-based for game ${game.gameId} with ${state.allMoves.length} moves');
+
         final fensParams = PositionFensParams(
           allMoves: state.allMoves,
           startingPosition: state.startingPosition,
@@ -1151,7 +1156,20 @@ class _AnalysisMovesDisplay extends ConsumerWidget {
         );
 
         final fallbackAsync = ref.watch(allMovesImpactFromPositionsProvider(positionParams));
-        allMovesImpact = fallbackAsync.valueOrNull;
+
+        // Handle async states properly - don't lose data while loading
+        fallbackAsync.when(
+          data: (data) {
+            allMovesImpact = data;
+            debugPrint('🎨 NOTATION (ChessLineDisplay): Position result: ${data.length} moves analyzed');
+          },
+          loading: () {
+            debugPrint('🎨 NOTATION (ChessLineDisplay): Still loading position-based analysis...');
+          },
+          error: (err, stack) {
+            debugPrint('🎨 NOTATION (ChessLineDisplay): Error in position-based analysis: $err');
+          },
+        );
       }
     }
 
@@ -1315,18 +1333,23 @@ class _BoardWithSidebar extends ConsumerWidget {
         Map<int, MoveImpactAnalysis>? allMovesImpact;
         MoveImpactAnalysis? currentMoveImpact;
 
-        if (index == currentPageIndex &&
-            state.pgnData != null &&
-            state.pgnData!.isNotEmpty) {
-          final params = PgnAnalysisParams(
-            pgn: state.pgnData!,
-            gameId: game.gameId,
-          );
-          final allMovesAsync = ref.watch(allMovesImpactFromPgnProvider(params));
-          allMovesImpact = allMovesAsync.valueOrNull;
+        if (index == currentPageIndex) {
+          // Try PGN-based analysis first (faster, more accurate)
+          if (state.pgnData != null && state.pgnData!.isNotEmpty) {
+            final params = PgnAnalysisParams(
+              pgn: state.pgnData!,
+              gameId: game.gameId,
+            );
+            final allMovesAsync = ref.watch(allMovesImpactFromPgnProvider(params));
+            allMovesImpact = allMovesAsync.valueOrNull;
 
-          // If no impacts from PGN, use fallback with individual position evaluations
+            debugPrint('🎨 NOTATION (Board): PGN-based for game ${game.gameId}: ${allMovesImpact?.length ?? 0} moves');
+          }
+
+          // Fallback to position-based analysis (for live games or when PGN analysis fails)
           if ((allMovesImpact == null || allMovesImpact.isEmpty) && state.allMoves.isNotEmpty) {
+            debugPrint('🎨 NOTATION (Board): Fallback to position-based for game ${game.gameId} with ${state.allMoves.length} moves');
+
             final fensParams = PositionFensParams(
               allMoves: state.allMoves,
               startingPosition: state.startingPosition,
@@ -1341,12 +1364,26 @@ class _BoardWithSidebar extends ConsumerWidget {
             );
 
             final fallbackAsync = ref.watch(allMovesImpactFromPositionsProvider(positionParams));
-            allMovesImpact = fallbackAsync.valueOrNull;
+
+            // Handle async states properly - don't lose data while loading
+            fallbackAsync.when(
+              data: (data) {
+                allMovesImpact = data;
+                debugPrint('🎨 NOTATION (Board): Position result: ${data.length} moves analyzed');
+              },
+              loading: () {
+                debugPrint('🎨 NOTATION (Board): Still loading position-based analysis...');
+              },
+              error: (err, stack) {
+                debugPrint('🎨 NOTATION (Board): Error in position-based analysis: $err');
+              },
+            );
           }
 
           // Get impact for current move from the map
-          if (allMovesImpact != null && state.currentMoveIndex >= 0) {
-            currentMoveImpact = allMovesImpact[state.currentMoveIndex];
+          final impacts = allMovesImpact;
+          if (impacts != null && state.currentMoveIndex >= 0) {
+            currentMoveImpact = impacts[state.currentMoveIndex];
           }
         }
 
@@ -1577,18 +1614,23 @@ class _MovesDisplay extends ConsumerWidget {
 
     // Evaluate ALL moves from PGN in parallel - ONLY if this page is visible
     Map<int, MoveImpactAnalysis>? allMovesImpact;
-    if (index == currentPageIndex &&
-        state.pgnData != null &&
-        state.pgnData!.isNotEmpty) {
-      final params = PgnAnalysisParams(
-        pgn: state.pgnData!,
-        gameId: game.gameId,
-      );
-      final allMovesAsync = ref.watch(allMovesImpactFromPgnProvider(params));
-      allMovesImpact = allMovesAsync.valueOrNull;
+    if (index == currentPageIndex) {
+      // Try PGN-based analysis first (faster, more accurate)
+      if (state.pgnData != null && state.pgnData!.isNotEmpty) {
+        final params = PgnAnalysisParams(
+          pgn: state.pgnData!,
+          gameId: game.gameId,
+        );
+        final allMovesAsync = ref.watch(allMovesImpactFromPgnProvider(params));
+        allMovesImpact = allMovesAsync.valueOrNull;
 
-      // If no impacts from PGN, use fallback with individual position evaluations
+        debugPrint('🎨 NOTATION (Wrap): PGN-based for game ${game.gameId}: ${allMovesImpact?.length ?? 0} moves');
+      }
+
+      // Fallback to position-based analysis (for live games or when PGN analysis fails)
       if ((allMovesImpact == null || allMovesImpact.isEmpty) && state.allMoves.isNotEmpty) {
+        debugPrint('🎨 NOTATION (Wrap): Fallback to position-based for game ${game.gameId} with ${state.allMoves.length} moves');
+
         final fensParams = PositionFensParams(
           allMoves: state.allMoves,
           startingPosition: state.startingPosition,
@@ -1603,7 +1645,20 @@ class _MovesDisplay extends ConsumerWidget {
         );
 
         final fallbackAsync = ref.watch(allMovesImpactFromPositionsProvider(positionParams));
-        allMovesImpact = fallbackAsync.valueOrNull;
+
+        // Handle async states properly - don't lose data while loading
+        fallbackAsync.when(
+          data: (data) {
+            allMovesImpact = data;
+            debugPrint('🎨 NOTATION (Wrap): Position result: ${data.length} moves analyzed');
+          },
+          loading: () {
+            debugPrint('🎨 NOTATION (Wrap): Still loading position-based analysis...');
+          },
+          error: (err, stack) {
+            debugPrint('🎨 NOTATION (Wrap): Error in position-based analysis: $err');
+          },
+        );
       }
     }
 

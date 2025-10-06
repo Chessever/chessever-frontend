@@ -30,17 +30,18 @@ class ChessMoveDisplay extends StatelessWidget {
     final isSelected = currentFen == move.fen;
 
     // Determine text color based on move impact
-    // For normal moves, use traditional colors (white for current, white70 for others, bordoish for captures)
-    // For impactful moves, use the impact color
+    // Priority: impact color > capture color > selected/unselected color
+    // Impact colors are preserved even when selected
     Color textColor = kWhiteColor70;
-    if (isSelected) {
-      textColor = kWhiteColor;
-    } else if (moveImpact != null && moveImpact!.impact != MoveImpactType.normal) {
-      // Use impact color for non-normal moves
+    if (moveImpact != null && moveImpact!.impact != MoveImpactType.normal) {
+      // Use impact color for non-normal moves, regardless of selection
       textColor = moveImpact!.impact.color;
     } else if (move.san.contains('x')) {
       // Bordoish/reddish color for captures (normal impact moves)
       textColor = const Color(0xFFB33A3A);
+    } else if (isSelected) {
+      // For normal, non-capture moves, use white when selected
+      textColor = kWhiteColor;
     }
 
     final impactSymbol = moveImpact?.impact.symbol ?? '';
