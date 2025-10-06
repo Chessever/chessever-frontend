@@ -614,50 +614,29 @@ class ChessBoardScreenNotifierNew
       debugPrint('🎯 SELECT VARIANT: FAILED - analysis game or navigator is null');
       return;
     }
+
+    // CRITICAL FIX: Use CURRENT navigator position as base, not stored base
+    // The PVs were generated for the current position we're viewing
+    final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+    final currentMovePointer = navigatorState.movePointer;
+    final currentFen = navigatorState.currentFen;
+
     debugPrint('🎯 SELECT VARIANT: Proceeding with selection');
+    debugPrint('🎯 SELECT VARIANT: Current FEN=$currentFen');
+    debugPrint('🎯 SELECT VARIANT: Current movePointer=$currentMovePointer');
 
-    // Principal variations are generated for the position where analysis mode was entered
-    // So we need to reset the navigator back to that position before playing the variant
-    // The position is stored in analysisState.basePosition (the position when we entered analysis mode)
-
-    // First, go back to the root position (where we entered analysis mode)
-    // This is the position at currentMoveIndex when we called toggleAnalysisMode
-    final currentMoveIndex = currentState.currentMoveIndex;
-    final rootPointer = currentMoveIndex < 0 ? const <int>[] : [currentMoveIndex];
-
-    _analysisNavigator?.goToMovePointerUnchecked(rootPointer);
-
-    // Update state to show variant as selected
+    // No need to navigate - we're already at the position where variants start
+    // Just mark the variant as selected
     state = AsyncValue.data(
       currentState.copyWith(
         selectedVariantIndex: variantIndex,
-        variantMovePointer: const [], // Reset variant progress
+        variantMovePointer: const [], // Start at beginning of variant (before first move)
+        variantBaseFen: currentFen, // Store current FEN as base
+        variantBaseMovePointer: currentMovePointer, // Store current pointer as base
       ),
     );
 
-    // Immediately play the first move of the selected variant to update the board
-    final selectedVariant = currentState.principalVariations[variantIndex];
-    if (selectedVariant.moves.isNotEmpty) {
-      final firstMove = selectedVariant.moves.first;
-      if (firstMove is NormalMove) {
-        if (isPromotionPawnMove(firstMove)) {
-          state = AsyncValue.data(
-            state.value!.copyWith(
-              analysisState: state.value!.analysisState.copyWith(
-                promotionMove: firstMove,
-              ),
-            ),
-          );
-        } else {
-          _analysisNavigator?.makeOrGoToMove(firstMove.uci);
-
-          // Update variant move pointer to reflect first move played
-          state = AsyncValue.data(
-            state.value!.copyWith(variantMovePointer: [0]),
-          );
-        }
-      }
-    }
+    debugPrint('🎯 SELECT VARIANT: Variant selected, ready for navigation');
   }
 
   /// Play next move of the selected variant forward
@@ -670,6 +649,10 @@ class ChessBoardScreenNotifierNew
     }
     if (currentState.selectedVariantIndex == null) {
       debugPrint('🎯 PLAY VARIANT FORWARD: No variant selected');
+      return;
+    }
+    if (_analysisGame == null || _analysisNavigator == null) {
+      debugPrint('🎯 PLAY VARIANT FORWARD: Analysis game or navigator is null');
       return;
     }
 
@@ -688,28 +671,51 @@ class ChessBoardScreenNotifierNew
     }
 
     final nextMove = selectedVariant.moves[nextMoveIndex];
-    if (nextMove is NormalMove) {
-      if (isPromotionPawnMove(nextMove)) {
-        state = AsyncValue.data(
-          currentState.copyWith(
-            analysisState: currentState.analysisState.copyWith(
-              promotionMove: nextMove,
-            ),
-          ),
-        );
-      } else {
-        if (_analysisGame != null) {
-          _analysisNavigator?.makeOrGoToMove(nextMove.uci);
-        } else {
-          onAnalysisMove(nextMove);
+    debugPrint('🎯 PLAY VARIANT FORWARD: Next move UCI=${nextMove.uci}');
+
+    // Get current position from navigator to verify move legality
+    final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+    final currentFen = navigatorState.currentFen;
+    debugPrint('🎯 PLAY VARIANT FORWARD: Current FEN=$currentFen');
+
+    // Verify the move is legal in the current position
+    try {
+      final position = Position.setupPosition(Rule.chess, Setup.parseFen(currentFen));
+
+      if (nextMove is NormalMove) {
+        // Check if move is legal
+        if (!position.isLegal(nextMove)) {
+          debugPrint('🎯 PLAY VARIANT FORWARD: ERROR - Move ${nextMove.uci} is illegal in position $currentFen');
+          debugPrint('🎯 PLAY VARIANT FORWARD: Turn to move: ${position.turn}');
+          return;
         }
 
-        // Add the move index we just played to the pointer
-        final newPointer = List<int>.from(currentState.variantMovePointer)..add(nextMoveIndex);
-        state = AsyncValue.data(
-          currentState.copyWith(variantMovePointer: newPointer),
-        );
+        if (isPromotionPawnMove(nextMove)) {
+          debugPrint('🎯 PLAY VARIANT FORWARD: Promotion move detected');
+          state = AsyncValue.data(
+            currentState.copyWith(
+              analysisState: currentState.analysisState.copyWith(
+                promotionMove: nextMove,
+              ),
+            ),
+          );
+        } else {
+          debugPrint('🎯 PLAY VARIANT FORWARD: Playing move ${nextMove.uci}');
+          _analysisNavigator?.makeOrGoToMove(nextMove.uci);
+
+          // Add the move index we just played to the pointer
+          final newPointer = List<int>.from(currentState.variantMovePointer)..add(nextMoveIndex);
+          debugPrint('🎯 PLAY VARIANT FORWARD: Updated pointer=$newPointer');
+          state = AsyncValue.data(
+            currentState.copyWith(variantMovePointer: newPointer),
+          );
+        }
       }
+    } catch (e) {
+      debugPrint('🎯 PLAY VARIANT FORWARD: ERROR - $e');
+      debugPrint('🎯 PLAY VARIANT FORWARD: Current FEN: $currentFen');
+      debugPrint('🎯 PLAY VARIANT FORWARD: Attempted move: ${nextMove.uci}');
+      debugPrint('🎯 PLAY VARIANT FORWARD: Variant base FEN: ${currentState.variantBaseFen}');
     }
   }
 
@@ -914,6 +920,25 @@ class ChessBoardScreenNotifierNew
     debugPrint('🎯 ANALYSIS MOVE: Received move ${move.uci}, isDrop=$isDrop, isPremove=$isPremove');
     debugPrint('🎯 ANALYSIS MOVE: _analysisGame is ${_analysisGame == null ? "null" : "not null"}');
     if (_analysisGame != null) {
+      // CRITICAL FIX: Verify move is legal in the current navigator position
+      final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+      final currentFen = navigatorState.currentFen;
+      debugPrint('🎯 ANALYSIS MOVE: Current FEN from navigator: $currentFen');
+
+      try {
+        final position = Position.setupPosition(Rule.chess, Setup.parseFen(currentFen));
+
+        // Check if move is legal in current position
+        if (!position.isLegal(move)) {
+          debugPrint('🎯 ANALYSIS MOVE: ERROR - Move ${move.uci} is ILLEGAL in current position $currentFen');
+          debugPrint('🎯 ANALYSIS MOVE: Turn to move: ${position.turn}');
+          return;
+        }
+      } catch (e) {
+        debugPrint('🎯 ANALYSIS MOVE: ERROR - Failed to verify move legality: $e');
+        return;
+      }
+
       if (isPromotionPawnMove(move)) {
         debugPrint('🎯 ANALYSIS MOVE: Promotion detected, storing move');
         state = AsyncValue.data(
@@ -924,7 +949,7 @@ class ChessBoardScreenNotifierNew
           ),
         );
       } else {
-        debugPrint('🎯 ANALYSIS MOVE: Calling makeOrGoToMove with ${move.uci}');
+        debugPrint('🎯 ANALYSIS MOVE: Move is legal, calling makeOrGoToMove with ${move.uci}');
         _analysisNavigator?.makeOrGoToMove(move.uci);
       }
       return;
@@ -1009,6 +1034,18 @@ class ChessBoardScreenNotifierNew
       debugPrint('🎯 ANALYSIS STEP FORWARD: Not in analysis mode');
       return;
     }
+    if (_analysisGame == null) {
+      debugPrint('🎯 ANALYSIS STEP FORWARD: ERROR - _analysisGame is null');
+      return;
+    }
+    if (_analysisNavigator == null) {
+      debugPrint('🎯 ANALYSIS STEP FORWARD: ERROR - _analysisNavigator is null');
+      return;
+    }
+
+    final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+    debugPrint('🎯 ANALYSIS STEP FORWARD: Current movePointer=${navigatorState.movePointer}');
+    debugPrint('🎯 ANALYSIS STEP FORWARD: Current FEN=${navigatorState.currentFen}');
     debugPrint('🎯 ANALYSIS STEP FORWARD: Calling goToNextMove on navigator');
     _analysisNavigator?.goToNextMove();
   }
@@ -1020,6 +1057,18 @@ class ChessBoardScreenNotifierNew
       debugPrint('🎯 ANALYSIS STEP BACKWARD: Not in analysis mode');
       return;
     }
+    if (_analysisGame == null) {
+      debugPrint('🎯 ANALYSIS STEP BACKWARD: ERROR - _analysisGame is null');
+      return;
+    }
+    if (_analysisNavigator == null) {
+      debugPrint('🎯 ANALYSIS STEP BACKWARD: ERROR - _analysisNavigator is null');
+      return;
+    }
+
+    final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+    debugPrint('🎯 ANALYSIS STEP BACKWARD: Current movePointer=${navigatorState.movePointer}');
+    debugPrint('🎯 ANALYSIS STEP BACKWARD: Current FEN=${navigatorState.currentFen}');
     debugPrint('🎯 ANALYSIS STEP BACKWARD: Calling goToPreviousMove on navigator');
     _analysisNavigator?.goToPreviousMove();
   }
@@ -1402,6 +1451,14 @@ class ChessBoardScreenNotifierNew
                 ? cloudEval!.pvs.first.mate
                 : null;
 
+        // Store the base position where these PVs were generated
+        final baseFen = fen;
+        final baseMovePointer = currState.isAnalysisMode
+            ? currState.analysisState.movePointer
+            : null;
+
+        debugPrint('🎯 PV GENERATION: Storing base position FEN=$baseFen, movePointer=$baseMovePointer');
+
         state = AsyncValue.data(
           currState.copyWith(
             evaluation: evaluation,
@@ -1409,6 +1466,8 @@ class ChessBoardScreenNotifierNew
             shapes: shapes,
             mate: mateScore ?? currState.mate,
             principalVariations: pvLines,
+            variantBaseFen: baseFen,
+            variantBaseMovePointer: baseMovePointer,
             analysisState: currState.analysisState.copyWith(
               suggestionLines: pvLines,
             ),
