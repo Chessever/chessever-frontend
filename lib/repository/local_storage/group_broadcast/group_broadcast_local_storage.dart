@@ -82,11 +82,12 @@ class GroupBroadcastLocalStorage {
     final lastFetched = await ref
         .read(sharedPreferencesRepository)
         .getInt(localStorageTimeName);
+    final totalValues = await getGroupBroadcasts();
     if (lastFetched != null) {
       final currentTime = DateTime.now().millisecondsSinceEpoch;
       final difference = currentTime - lastFetched;
       // If data is older than 25 minutes, refresh it
-      if (difference > 25 * 60 * 1000) {
+      if (difference > 25 * 60 * 1000 || totalValues.isEmpty) {
         await fetchAndSaveGroupBroadcasts();
         return getGroupBroadcasts();
       } else {

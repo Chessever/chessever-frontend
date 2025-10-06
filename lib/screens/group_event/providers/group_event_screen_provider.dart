@@ -123,7 +123,7 @@ class _GroupEventScreenController
     try {
       state = const AsyncValue.loading();
 
-      List<GroupBroadcast> tour;
+      List<GroupBroadcast> tour = <GroupBroadcast>[];
 
       if (inputBroadcast != null) {
         tour = inputBroadcast;
@@ -238,7 +238,7 @@ class _GroupEventScreenController
 
       final sortedEvents = ref
           .read(tournamentSortingServiceProvider)
-          .sortAllTours(totalEvents);
+          .sortPastTours(totalEvents);
 
       state = AsyncValue.data(sortedEvents);
 
@@ -269,14 +269,10 @@ class _GroupEventScreenController
           await ref
               .read(groupBroadcastLocalStorage(tourEventCategory))
               .refresh();
-      final withStarred =
-          tourEventCategory == GroupEventCategory.past
-              ? await _ensureStarredEventsIncluded(refreshed)
-              : refreshed;
 
-      _groupBroadcastList = withStarred;
+      _groupBroadcastList = refreshed;
       final tourEventCardModel =
-          withStarred
+          refreshed
               .map(
                 (t) => GroupEventCardModel.fromGroupBroadcast(
                   t,
