@@ -1136,21 +1136,22 @@ class _AnalysisMovesDisplay extends ConsumerWidget {
     }
 
     // Get move impacts for colorful notation display - ONLY if this page is visible
+    // Use analysis state since we're in analysis mode
     Map<int, MoveImpactAnalysis>? allMovesImpact;
     if (index == currentPageIndex) {
       // Use position-based analysis (has alternative move data for proper classification)
       // PGN-based analysis deprecated - cannot classify without alternatives
-      if (state.allMoves.isNotEmpty) {
+      if (analysis.allMoves.isNotEmpty) {
         final fensParams = PositionFensParams(
-          allMoves: state.allMoves,
-          startingPosition: state.startingPosition,
+          allMoves: analysis.allMoves,
+          startingPosition: analysis.startingPosition,
           gameId: game.gameId,
         );
         final positionFens = ref.watch(positionFensProvider(fensParams));
 
         final positionParams = PositionAnalysisParams(
           positionFens: positionFens,
-          moveSans: state.moveSans,
+          moveSans: analysis.moveSans,
           gameId: game.gameId,
         );
 
@@ -1303,10 +1304,11 @@ class _BoardWithSidebar extends ConsumerWidget {
   });
 
   String? _getLastMoveSquare() {
-    if (state.lastMove == null) return null;
-    if (state.lastMove is NormalMove) {
-      final move = state.lastMove as NormalMove;
-      return move.to.name;
+    // Use analysis state when in analysis mode, otherwise use live state
+    final lastMove = state.isAnalysisMode ? state.analysisState.lastMove : state.lastMove;
+    if (lastMove == null) return null;
+    if (lastMove is NormalMove) {
+      return lastMove.to.name;
     }
     return null;
   }
@@ -1319,6 +1321,12 @@ class _BoardWithSidebar extends ConsumerWidget {
         final screenWidth = MediaQuery.of(context).size.width;
         final boardSize = screenWidth - sideBarWidth - 32.w;
 
+        // Select correct state fields based on mode
+        final moves = state.isAnalysisMode ? state.analysisState.allMoves : state.allMoves;
+        final sans = state.isAnalysisMode ? state.analysisState.moveSans : state.moveSans;
+        final startPos = state.isAnalysisMode ? state.analysisState.startingPosition : state.startingPosition;
+        final currentIndex = state.isAnalysisMode ? state.analysisState.currentMoveIndex : state.currentMoveIndex;
+
         // Evaluate ALL moves from PGN and get current move impact from the map - ONLY if this page is visible
         Map<int, MoveImpactAnalysis>? allMovesImpact;
         MoveImpactAnalysis? currentMoveImpact;
@@ -1326,17 +1334,17 @@ class _BoardWithSidebar extends ConsumerWidget {
         if (index == currentPageIndex) {
           // Use position-based analysis (has alternative move data for proper classification)
           // PGN-based analysis deprecated - cannot classify without alternatives
-          if (state.allMoves.isNotEmpty) {
+          if (moves.isNotEmpty) {
             final fensParams = PositionFensParams(
-              allMoves: state.allMoves,
-              startingPosition: state.startingPosition,
+              allMoves: moves,
+              startingPosition: startPos,
               gameId: game.gameId,
             );
             final positionFens = ref.watch(positionFensProvider(fensParams));
 
             final positionParams = PositionAnalysisParams(
               positionFens: positionFens,
-              moveSans: state.moveSans,
+              moveSans: sans,
               gameId: game.gameId,
             );
 
@@ -1350,8 +1358,8 @@ class _BoardWithSidebar extends ConsumerWidget {
 
           // Get impact for current move from the map
           final impacts = allMovesImpact;
-          if (impacts != null && state.currentMoveIndex >= 0) {
-            currentMoveImpact = impacts[state.currentMoveIndex];
+          if (impacts != null && currentIndex >= 0) {
+            currentMoveImpact = impacts[currentIndex];
           }
         }
 
@@ -1580,22 +1588,27 @@ class _MovesDisplay extends ConsumerWidget {
       );
     }
 
+    // Select correct state fields based on mode
+    final moves = state.isAnalysisMode ? state.analysisState.allMoves : state.allMoves;
+    final sans = state.isAnalysisMode ? state.analysisState.moveSans : state.moveSans;
+    final startPos = state.isAnalysisMode ? state.analysisState.startingPosition : state.startingPosition;
+
     // Evaluate ALL moves from PGN in parallel - ONLY if this page is visible
     Map<int, MoveImpactAnalysis>? allMovesImpact;
     if (index == currentPageIndex) {
       // Use position-based analysis (has alternative move data for proper classification)
       // PGN-based analysis deprecated - cannot classify without alternatives
-      if (state.allMoves.isNotEmpty) {
+      if (moves.isNotEmpty) {
         final fensParams = PositionFensParams(
-          allMoves: state.allMoves,
-          startingPosition: state.startingPosition,
+          allMoves: moves,
+          startingPosition: startPos,
           gameId: game.gameId,
         );
         final positionFens = ref.watch(positionFensProvider(fensParams));
 
         final positionParams = PositionAnalysisParams(
           positionFens: positionFens,
-          moveSans: state.moveSans,
+          moveSans: sans,
           gameId: game.gameId,
         );
 
