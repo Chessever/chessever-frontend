@@ -1141,8 +1141,6 @@ class _AnalysisMovesDisplay extends ConsumerWidget {
       // Use position-based analysis (has alternative move data for proper classification)
       // PGN-based analysis deprecated - cannot classify without alternatives
       if (state.allMoves.isNotEmpty) {
-        debugPrint('🎨 NOTATION (ChessLineDisplay): Fallback to position-based for game ${game.gameId} with ${state.allMoves.length} moves');
-
         final fensParams = PositionFensParams(
           allMoves: state.allMoves,
           startingPosition: state.startingPosition,
@@ -1162,10 +1160,9 @@ class _AnalysisMovesDisplay extends ConsumerWidget {
         fallbackAsync.when(
           data: (data) {
             allMovesImpact = data;
-            debugPrint('🎨 NOTATION (ChessLineDisplay): Position result: ${data.length} moves analyzed');
           },
           loading: () {
-            debugPrint('🎨 NOTATION (ChessLineDisplay): Still loading position-based analysis...');
+            // Loading...
           },
           error: (err, stack) {
             debugPrint('🎨 NOTATION (ChessLineDisplay): Error in position-based analysis: $err');
@@ -1338,8 +1335,6 @@ class _BoardWithSidebar extends ConsumerWidget {
           // Use position-based analysis (has alternative move data for proper classification)
           // PGN-based analysis deprecated - cannot classify without alternatives
           if (state.allMoves.isNotEmpty) {
-            debugPrint('🎨 NOTATION (Board): Fallback to position-based for game ${game.gameId} with ${state.allMoves.length} moves');
-
             final fensParams = PositionFensParams(
               allMoves: state.allMoves,
               startingPosition: state.startingPosition,
@@ -1359,10 +1354,9 @@ class _BoardWithSidebar extends ConsumerWidget {
             fallbackAsync.when(
               data: (data) {
                 allMovesImpact = data;
-                debugPrint('🎨 NOTATION (Board): Position result: ${data.length} moves analyzed');
               },
               loading: () {
-                debugPrint('🎨 NOTATION (Board): Still loading position-based analysis...');
+                // Loading...
               },
               error: (err, stack) {
                 debugPrint('🎨 NOTATION (Board): Error in position-based analysis: $err');
@@ -1608,8 +1602,6 @@ class _MovesDisplay extends ConsumerWidget {
       // Use position-based analysis (has alternative move data for proper classification)
       // PGN-based analysis deprecated - cannot classify without alternatives
       if (state.allMoves.isNotEmpty) {
-        debugPrint('🎨 NOTATION (Wrap): Fallback to position-based for game ${game.gameId} with ${state.allMoves.length} moves');
-
         final fensParams = PositionFensParams(
           allMoves: state.allMoves,
           startingPosition: state.startingPosition,
@@ -1629,10 +1621,9 @@ class _MovesDisplay extends ConsumerWidget {
         fallbackAsync.when(
           data: (data) {
             allMovesImpact = data;
-            debugPrint('🎨 NOTATION (Wrap): Position result: ${data.length} moves analyzed');
           },
           loading: () {
-            debugPrint('🎨 NOTATION (Wrap): Still loading position-based analysis...');
+            // Loading...
           },
           error: (err, stack) {
             debugPrint('🎨 NOTATION (Wrap): Error in position-based analysis: $err');

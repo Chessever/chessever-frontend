@@ -715,15 +715,29 @@ class ChessBoardScreenNotifierNew
 
   /// Undo last move of the selected variant
   void playVariantMoveBackward() {
+    debugPrint('🎯 PLAY VARIANT BACKWARD called');
     final currentState = state.value;
-    if (currentState == null || !currentState.isAnalysisMode) return;
-    if (currentState.variantMovePointer.isEmpty) return;
+    if (currentState == null || !currentState.isAnalysisMode) {
+      debugPrint('🎯 PLAY VARIANT BACKWARD: Not in analysis mode');
+      return;
+    }
+    if (currentState.selectedVariantIndex == null) {
+      debugPrint('🎯 PLAY VARIANT BACKWARD: No variant selected');
+      return;
+    }
+    if (currentState.variantMovePointer.isEmpty) {
+      debugPrint('🎯 PLAY VARIANT BACKWARD: Already at variant start');
+      return;
+    }
+
+    debugPrint('🎯 PLAY VARIANT BACKWARD: Going back from move ${currentState.variantMovePointer.length - 1}');
 
     // Go back one move using analysis navigator
     _analysisNavigator?.goToPreviousMove();
 
     // Update variant move pointer
     final newPointer = List<int>.from(currentState.variantMovePointer)..removeLast();
+    debugPrint('🎯 PLAY VARIANT BACKWARD: New pointer length=${newPointer.length}');
     state = AsyncValue.data(
       currentState.copyWith(variantMovePointer: newPointer),
     );
@@ -783,9 +797,13 @@ class ChessBoardScreenNotifierNew
 
   Future<void> toggleAnalysisMode() async {
     final currentState = state.value;
-    if (currentState == null) return;
+    if (currentState == null) {
+      debugPrint('🎯 TOGGLE ANALYSIS: state is null, returning');
+      return;
+    }
 
     if (!currentState.isAnalysisMode) {
+      debugPrint('🎯 TOGGLE ANALYSIS: Entering analysis mode from move index ${currentState.currentMoveIndex}');
       // Set loading state first
       state = AsyncValue.data(
         currentState.copyWith(isAnalysisMode: true, isLoadingMoves: true),
@@ -796,9 +814,12 @@ class ChessBoardScreenNotifierNew
       // Clear loading state
       final updatedState = state.value;
       if (updatedState != null) {
+        debugPrint('🎯 TOGGLE ANALYSIS: Analysis mode initialized, clearing loading state');
         state = AsyncValue.data(updatedState.copyWith(isLoadingMoves: false));
       }
+      debugPrint('🎯 TOGGLE ANALYSIS: Analysis mode active, _analysisGame=${_analysisGame != null}');
     } else {
+      debugPrint('🎯 TOGGLE ANALYSIS: Exiting analysis mode');
       unawaited(_persistAnalysisState());
       _analysisGame = null;
       _navigatorSubscription?.close();
@@ -807,6 +828,7 @@ class ChessBoardScreenNotifierNew
       state = AsyncValue.data(
         currentState.copyWith(isAnalysisMode: false),
       );
+      debugPrint('🎯 TOGGLE ANALYSIS: Analysis mode deactivated');
     }
 
     togglePlayPause();
@@ -889,8 +911,11 @@ class ChessBoardScreenNotifierNew
   }
 
   void onAnalysisMove(NormalMove move, {bool? isDrop, bool? isPremove}) {
+    debugPrint('🎯 ANALYSIS MOVE: Received move ${move.uci}, isDrop=$isDrop, isPremove=$isPremove');
+    debugPrint('🎯 ANALYSIS MOVE: _analysisGame is ${_analysisGame == null ? "null" : "not null"}');
     if (_analysisGame != null) {
       if (isPromotionPawnMove(move)) {
+        debugPrint('🎯 ANALYSIS MOVE: Promotion detected, storing move');
         state = AsyncValue.data(
           state.value!.copyWith(
             analysisState: state.value!.analysisState.copyWith(
@@ -899,14 +924,19 @@ class ChessBoardScreenNotifierNew
           ),
         );
       } else {
+        debugPrint('🎯 ANALYSIS MOVE: Calling makeOrGoToMove with ${move.uci}');
         _analysisNavigator?.makeOrGoToMove(move.uci);
       }
       return;
     }
 
+    debugPrint('🎯 ANALYSIS MOVE: _analysisGame is null, using fallback');
     // Fallback for legacy behaviour when analysis navigator hasn't initialised
     var currentState = state.value;
-    if (currentState == null) return;
+    if (currentState == null) {
+      debugPrint('🎯 ANALYSIS MOVE: currentState is null, returning');
+      return;
+    }
     final pos =
         currentState.isAnalysisMode
             ? currentState.analysisState.position
@@ -995,18 +1025,65 @@ class ChessBoardScreenNotifierNew
   }
 
   void jumpToStart() {
-    if (state.value?.isAnalysisMode == true) {
-      _analysisNavigator?.goToHead();
+    debugPrint('🎯 JUMP TO START called');
+    final currentState = state.value;
+    if (currentState == null) return;
+
+    if (currentState.isAnalysisMode) {
+      // Check if variant is selected
+      if (currentState.selectedVariantIndex != null) {
+        debugPrint('🎯 JUMP TO START: Variant selected, jumping to variant start');
+        // Jump to start of variant (root position)
+        final currentMoveIndex = currentState.currentMoveIndex;
+        final rootPointer = currentMoveIndex < 0 ? const <int>[] : [currentMoveIndex];
+        _analysisNavigator?.goToMovePointerUnchecked(rootPointer);
+
+        // Reset variant move pointer
+        state = AsyncValue.data(
+          currentState.copyWith(variantMovePointer: const []),
+        );
+      } else {
+        debugPrint('🎯 JUMP TO START: No variant, jumping to game start');
+        _analysisNavigator?.goToHead();
+      }
     } else {
       goToMove(-1);
     }
   }
 
   void jumpToEnd() {
+    debugPrint('🎯 JUMP TO END called');
     final currentState = state.value;
     if (currentState == null) return;
+
     if (currentState.isAnalysisMode) {
-      _analysisNavigator?.goToTail();
+      // Check if variant is selected
+      if (currentState.selectedVariantIndex != null) {
+        debugPrint('🎯 JUMP TO END: Variant selected, playing all variant moves');
+        final selectedVariant = currentState.principalVariations[currentState.selectedVariantIndex!];
+        final totalMoves = selectedVariant.moves.length;
+        final currentProgress = currentState.variantMovePointer.length;
+
+        debugPrint('🎯 JUMP TO END: totalMoves=$totalMoves, currentProgress=$currentProgress');
+
+        // Play all remaining moves in the variant
+        for (int i = currentProgress; i < totalMoves; i++) {
+          final move = selectedVariant.moves[i];
+          if (move is NormalMove && !isPromotionPawnMove(move)) {
+            _analysisNavigator?.makeOrGoToMove(move.uci);
+          }
+        }
+
+        // Update variant move pointer to the end
+        state = AsyncValue.data(
+          currentState.copyWith(
+            variantMovePointer: List.generate(totalMoves, (index) => index),
+          ),
+        );
+      } else {
+        debugPrint('🎯 JUMP TO END: No variant, jumping to game end');
+        _analysisNavigator?.goToTail();
+      }
     } else {
       goToMove(currentState.allMoves.length - 1);
     }

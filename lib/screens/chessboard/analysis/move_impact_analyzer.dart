@@ -591,7 +591,8 @@ final allMovesImpactFromPositionsProvider = FutureProvider.family<Map<int, MoveI
   final Map<int, MoveImpactAnalysis> results = {};
 
   try {
-    debugPrint('===== ADVANCED: Evaluating ${params.positionFens.length} positions with FULL CloudEval in PARALLEL =====');
+    debugPrint('🎨🎨🎨 MOVE IMPACT: Starting analysis for game ${params.gameId}');
+    debugPrint('🎨 MOVE IMPACT: ${params.positionFens.length} positions, ${params.moveSans.length} moves');
 
     // Execute ALL position evaluations in parallel using isolates (non-blocking)
     // Each evaluation uses cascade: local cache → Supabase → Lichess → Stockfish
@@ -640,14 +641,46 @@ final allMovesImpactFromPositionsProvider = FutureProvider.family<Map<int, MoveI
 
     // Build results map
     int analyzedCount = 0;
+    int brilliantCount = 0, greatCount = 0, interestingCount = 0, inaccuracyCount = 0, blunderCount = 0;
+
     for (int i = 0; i < impacts.length; i++) {
       if (impacts[i] != null) {
         results[i] = impacts[i]!;
         analyzedCount++;
+
+        // Count impact types
+        switch (impacts[i]!.impact) {
+          case MoveImpactType.brilliant:
+            brilliantCount++;
+            debugPrint('🎨 !! BRILLIANT move $i: ${params.moveSans[i]}');
+            break;
+          case MoveImpactType.great:
+            greatCount++;
+            debugPrint('🎨 ! GREAT move $i: ${params.moveSans[i]}');
+            break;
+          case MoveImpactType.interesting:
+            interestingCount++;
+            debugPrint('🎨 !? INTERESTING move $i: ${params.moveSans[i]}');
+            break;
+          case MoveImpactType.inaccuracy:
+            inaccuracyCount++;
+            debugPrint('🎨 ? INACCURACY move $i: ${params.moveSans[i]}');
+            break;
+          case MoveImpactType.blunder:
+            blunderCount++;
+            debugPrint('🎨 ?? BLUNDER move $i: ${params.moveSans[i]}');
+            break;
+          case MoveImpactType.normal:
+            // Don't log normal moves
+            break;
+        }
       }
     }
 
-    debugPrint('===== ADVANCED: Analyzed $analyzedCount moves by comparing with alternatives =====');
+    debugPrint('🎨🎨🎨 MOVE IMPACT SUMMARY for game ${params.gameId}:');
+    debugPrint('🎨 Total analyzed: $analyzedCount moves');
+    debugPrint('🎨 Brilliant: $brilliantCount, Great: $greatCount, Interesting: $interestingCount');
+    debugPrint('🎨 Inaccuracy: $inaccuracyCount, Blunder: $blunderCount');
     return results;
   } catch (e) {
     debugPrint('Error in allMovesImpactFromPositionsProvider: $e');
