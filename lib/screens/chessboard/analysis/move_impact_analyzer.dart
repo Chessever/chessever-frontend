@@ -583,6 +583,17 @@ final fullPositionEvalProvider = FutureProvider.family<CloudEval?, String>((ref,
   }
 });
 
+/// Provider that watches ONLY game moves and provides impact analysis
+/// This isolates impact calculation from frequent state changes (analysis mode, current move, etc.)
+/// Only depends on game ID - internally extracts moves from a game-specific source
+/// Must be overridden per-game to provide actual moves data
+final gameMoveImpactsProvider = FutureProvider.family.autoDispose<Map<int, MoveImpactAnalysis>?, String>((ref, gameId) async {
+  // NOTE: This provider should be overridden in each screen that needs impact analysis
+  // For now, return null to avoid errors
+  // The screen must provide a provider that returns PositionAnalysisParams for the given gameId
+  return null;
+});
+
 /// NEW: Fallback provider that evaluates all positions using FULL CloudEval (top moves comparison)
 /// Compares player's move vs best alternatives from engine
 /// Uses cascade eval in PARALLEL with 75 isolates

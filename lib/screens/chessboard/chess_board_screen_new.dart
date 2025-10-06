@@ -25,6 +25,37 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:flutter_svg/svg.dart';
 
+/// Provider that calculates move impacts, watching ONLY the moves fields
+/// This avoids rebuild loops from analysis mode / current move index changes
+final gameMovesImpactProvider = FutureProvider.family.autoDispose<Map<int, MoveImpactAnalysis>?, ChessBoardProviderParams>((ref, params) async {
+  // Use .select() to watch ONLY the moves data, not the entire state
+  // This prevents rebuilds when analysis mode, current move index, or other fields change
+  final allMoves = ref.watch(chessBoardScreenProviderNew(params).select((state) => state.valueOrNull?.allMoves));
+  final moveSans = ref.watch(chessBoardScreenProviderNew(params).select((state) => state.valueOrNull?.moveSans));
+  final startingPosition = ref.watch(chessBoardScreenProviderNew(params).select((state) => state.valueOrNull?.startingPosition));
+
+  if (allMoves == null || allMoves.isEmpty || moveSans == null) {
+    return null;
+  }
+
+  // Now calculate impacts using the existing provider chain
+  final fensParams = PositionFensParams(
+    allMoves: allMoves,
+    startingPosition: startingPosition,
+    gameId: params.game.gameId,
+  );
+  final positionFens = ref.watch(positionFensProvider(fensParams));
+
+  final positionParams = PositionAnalysisParams(
+    positionFens: positionFens,
+    moveSans: moveSans,
+    gameId: params.game.gameId,
+  );
+
+  final impactsAsync = await ref.watch(allMovesImpactFromPositionsProvider(positionParams).future);
+  return impactsAsync;
+});
+
 // Helper function to get move highlight color
 Color getLastMoveHighlightColor(ChessBoardStateNew state) {
   if (state.currentMoveIndex < 0) return kPrimaryColor;
@@ -1139,32 +1170,12 @@ class _AnalysisMovesDisplay extends ConsumerWidget {
     }
 
     // Get move impacts for colorful notation display - ONLY if this page is visible
-    // Use analysis state since we're in analysis mode
+    // Watch impacts using provider params to avoid analysis mode rebuild loops
     Map<int, MoveImpactAnalysis>? allMovesImpact;
-    if (index == currentPageIndex) {
-      // Use position-based analysis (has alternative move data for proper classification)
-      // PGN-based analysis deprecated - cannot classify without alternatives
-      if (analysis.allMoves.isNotEmpty) {
-        final fensParams = PositionFensParams(
-          allMoves: analysis.allMoves,
-          startingPosition: analysis.startingPosition,
-          gameId: game.gameId,
-        );
-        final positionFens = ref.watch(positionFensProvider(fensParams));
-
-        final positionParams = PositionAnalysisParams(
-          positionFens: positionFens,
-          moveSans: analysis.moveSans,
-          gameId: game.gameId,
-        );
-
-        final fallbackAsync = ref.watch(allMovesImpactFromPositionsProvider(positionParams));
-
-        // Handle async states properly - don't lose data while loading
-        allMovesImpact = fallbackAsync.whenOrNull(
-          data: (data) => data,
-        );
-      }
+    if (index == currentPageIndex && analysis.allMoves.isNotEmpty) {
+      final params = ChessBoardProviderParams(game: game, index: index);
+      final impactsAsync = ref.watch(gameMovesImpactProvider(params));
+      allMovesImpact = impactsAsync.whenOrNull(data: (data) => data);
     }
 
     // Watch navigator only if chess game is available - no loading spinner
@@ -1334,35 +1345,14 @@ class _BoardWithSidebar extends ConsumerWidget {
         Map<int, MoveImpactAnalysis>? allMovesImpact;
         MoveImpactAnalysis? currentMoveImpact;
 
-        if (index == currentPageIndex) {
-          // Use position-based analysis (has alternative move data for proper classification)
-          // PGN-based analysis deprecated - cannot classify without alternatives
-          if (moves.isNotEmpty) {
-            final fensParams = PositionFensParams(
-              allMoves: moves,
-              startingPosition: startPos,
-              gameId: game.gameId,
-            );
-            final positionFens = ref.watch(positionFensProvider(fensParams));
+        // Watch impacts using provider params to avoid analysis mode rebuild loops
+        if (index == currentPageIndex && state.allMoves.isNotEmpty) {
+          final params = ChessBoardProviderParams(game: game, index: index);
+          final impactsAsync = ref.watch(gameMovesImpactProvider(params));
+          allMovesImpact = impactsAsync.whenOrNull(data: (data) => data);
 
-            final positionParams = PositionAnalysisParams(
-              positionFens: positionFens,
-              moveSans: sans,
-              gameId: game.gameId,
-            );
-
-            final fallbackAsync = ref.watch(allMovesImpactFromPositionsProvider(positionParams));
-
-            // Handle async states properly - don't lose data while loading
-            allMovesImpact = fallbackAsync.whenOrNull(
-              data: (data) => data,
-            );
-          }
-
-          // Get impact for current move from the map
-          final impacts = allMovesImpact;
-          if (impacts != null && currentIndex >= 0) {
-            currentMoveImpact = impacts[currentIndex];
+          if (allMovesImpact != null && currentIndex >= 0) {
+            currentMoveImpact = allMovesImpact[currentIndex];
           }
         }
 
@@ -1592,32 +1582,12 @@ class _MovesDisplay extends ConsumerWidget {
       );
     }
 
-    // Evaluate ALL moves from PGN in parallel - ONLY if this page is visible
+    // Watch impacts using provider params to avoid analysis mode rebuild loops
     Map<int, MoveImpactAnalysis>? allMovesImpact;
-    if (index == currentPageIndex) {
-      // Use position-based analysis (has alternative move data for proper classification)
-      // PGN-based analysis deprecated - cannot classify without alternatives
-      if (moves.isNotEmpty) {
-        final fensParams = PositionFensParams(
-          allMoves: moves,
-          startingPosition: startPos,
-          gameId: game.gameId,
-        );
-        final positionFens = ref.watch(positionFensProvider(fensParams));
-
-        final positionParams = PositionAnalysisParams(
-          positionFens: positionFens,
-          moveSans: sans,
-          gameId: game.gameId,
-        );
-
-        final fallbackAsync = ref.watch(allMovesImpactFromPositionsProvider(positionParams));
-
-        // Handle async states properly - don't lose data while loading
-        allMovesImpact = fallbackAsync.whenOrNull(
-          data: (data) => data,
-        );
-      }
+    if (index == currentPageIndex && state.allMoves.isNotEmpty) {
+      final params = ChessBoardProviderParams(game: game, index: index);
+      final impactsAsync = ref.watch(gameMovesImpactProvider(params));
+      allMovesImpact = impactsAsync.whenOrNull(data: (data) => data);
     }
 
     return Container(
