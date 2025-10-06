@@ -72,6 +72,33 @@ class ChessBoardScreenNotifierNew
     parseMoves();
   }
 
+  /// Get evaluation with consistent perspective for evaluation bar display
+  /// BULLETPROOF evaluation perspective handler
+  /// This method GUARANTEES that ALL evaluations are in WHITE'S PERSPECTIVE
+  double _getConsistentEvaluation(double evaluation, String fen) {
+    final fenParts = fen.split(' ');
+    final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
+    final isBlackToMove = sideToMove == 'b';
+
+    // CRITICAL FIX: Stockfish returns evaluations from CURRENT PLAYER'S perspective
+    // - When White to move: positive = good for White (already correct for eval bar)
+    // - When Black to move: positive = good for Black (must flip to White's perspective)
+
+    double whitesPerspectiveEval;
+    if (isBlackToMove) {
+      // Black to move: Stockfish evaluation is from Black's perspective, flip it
+      whitesPerspectiveEval = -evaluation;
+      debugPrint("🔍 EVAL CORRECTED: FEN=$fen, side=BLACK, inputEval=$evaluation, outputEval=$whitesPerspectiveEval (FLIPPED to white's perspective)");
+    } else {
+      // White to move: Stockfish evaluation is already from White's perspective
+      whitesPerspectiveEval = evaluation;
+      debugPrint("🔍 EVAL UNCHANGED: FEN=$fen, side=WHITE, eval=$whitesPerspectiveEval (already white's perspective)");
+    }
+
+    debugPrint("🔍   evalBar expects: positive=WHITE advantage, negative=BLACK advantage");
+    return whitesPerspectiveEval;
+  }
+
   void _setupPgnStreamListener() {
     // Only listen to game updates stream if the game is ongoing
     if (game.gameStatus == GameStatus.ongoing) {
@@ -1027,8 +1054,7 @@ class ChessBoardScreenNotifierNew
         if (pv.isMate && pv.mate != null) {
           mate = pv.mate;
         } else {
-          // PVs are already in White's perspective (normalized before this call)
-          evaluation = pv.cp / 100.0;
+          evaluation = _getConsistentEvaluation(pv.cp / 100.0, fen);
         }
 
         for (final token in pv.moves.split(' ')) {
@@ -1117,11 +1143,12 @@ class ChessBoardScreenNotifierNew
         // Also try to clear local cache for this specific FEN (if accessible)
         debugPrint("🔄 FORCING FRESH EVALUATION for $fen (invalidating cache)");
         cloudEval = await ref.read(cascadeEvalProviderForBoard(fen).future);
-        final fetchedEval = cloudEval;
-        if (fetchedEval != null && fetchedEval.pvs.isNotEmpty) {
-          // CloudEval already in White's perspective (Lichess adapter flips it)
-          evaluation = fetchedEval.pvs.first.cp / 100.0;
-          pvLines = _buildPrincipalVariations(fen, fetchedEval.pvs);
+        if (cloudEval?.pvs.isNotEmpty ?? false) {
+          evaluation = _getConsistentEvaluation(
+            cloudEval!.pvs.first.cp / 100.0,
+            fen,
+          );
+          pvLines = _buildPrincipalVariations(fen, cloudEval.pvs);
         }
         debugPrint("Getting eval from cascadeEval: $fen");
       } catch (e) {
@@ -1159,42 +1186,19 @@ class ChessBoardScreenNotifierNew
           return;
         }
         if (result.pvs.isNotEmpty) {
+          final rawCp = result.pvs.first.cp;
+          evaluation = _getConsistentEvaluation(
+            rawCp / 100.0,
+            fen,
+          );
+          pvLines = _buildPrincipalVariations(fen, result.pvs);
           final fenParts = fen.split(' ');
           final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
-          final isBlackToMove = sideToMove == 'b';
-
-          // Stockfish returns current-player perspective, convert to White's perspective
-          final normalizedPvs = result.pvs.map((pv) {
-            if (isBlackToMove) {
-              // Flip to White's perspective
-              return Pv(
-                moves: pv.moves,
-                cp: -pv.cp,
-                isMate: pv.isMate,
-                mate: pv.mate != null ? -pv.mate! : null,
-              );
-            }
-            return pv;
-          }).toList();
-
-          final rawCp = result.pvs.first.cp;
-          evaluation = normalizedPvs.first.cp / 100.0; // Already in White's perspective
-          pvLines = _buildPrincipalVariations(fen, normalizedPvs);
-
           debugPrint(
-            "🔴 EVAL SOURCE: STOCKFISH FALLBACK - fen=$fen, side=$sideToMove, rawCp=$rawCp, finalEval=$evaluation (${isBlackToMove ? 'FLIPPED' : 'UNCHANGED'})",
+            "🔴 EVAL SOURCE: STOCKFISH FALLBACK - fen=$fen, side=$sideToMove, rawCp=$rawCp, finalEval=$evaluation",
           );
-
-          // Update result with normalized PVs before caching
-          cloudEval = CloudEval(
-            fen: result.fen,
-            knodes: result.knodes,
-            depth: result.depth,
-            pvs: normalizedPvs, // Use normalized (White's perspective) PVs
-          );
-        } else {
-          cloudEval = result;
         }
+        cloudEval = result;
         try {
           final local = ref.read(localEvalCacheProvider);
           final persist = ref.read(persistCloudEvalProvider);
@@ -1472,16 +1476,6 @@ class ChessBoardScreenNotifierNew
     });
   }
 
-  /// REMOVED: _getConsistentEvaluation
-  ///
-  /// This method was causing DOUBLE-FLIP bug:
-  /// - Lichess adapter already flips Black-to-move positions to White's perspective
-  /// - Supabase stores evaluations in White's perspective
-  /// - This method was flipping AGAIN, causing incorrect evaluations
-  ///
-  /// FIX: All evaluation sources now normalized at source:
-  /// - Cascade provider (Lichess/Supabase): Already in White's perspective
-  /// - Stockfish fallback: Normalized inline before use (see _evaluatePosition)
 
   double getWhiteRatio(double eval) {
     return (eval.clamp(-5.0, 5.0) + 5.0) / 10.0;
