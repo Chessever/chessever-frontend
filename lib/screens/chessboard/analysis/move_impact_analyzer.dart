@@ -612,11 +612,20 @@ final allMovesImpactFromPositionsProvider = FutureProvider.family<Map<int, MoveI
 
     for (String fen in params.positionFens) {
       // Read full position eval provider - returns CloudEval with all PVs
-      evalTasks.add(ref.read(fullPositionEvalProvider(fen).future));
+      // Add timeout to prevent hanging indefinitely
+      final evalFuture = ref.read(fullPositionEvalProvider(fen).future)
+        .timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            debugPrint('⏱️ TIMEOUT evaluating position: ${fen.substring(0, 30)}...');
+            return null;
+          },
+        );
+      evalTasks.add(evalFuture);
     }
 
-    // Wait for all evaluations to complete in parallel
-    final cloudEvals = await Future.wait(evalTasks);
+    // Wait for all evaluations to complete in parallel (with timeouts)
+    final cloudEvals = await Future.wait(evalTasks, eagerError: false);
 
     final validCount = cloudEvals.where((e) => e != null).length;
     debugPrint('===== ADVANCED: Got $validCount/${cloudEvals.length} full evaluations with alternatives =====');
