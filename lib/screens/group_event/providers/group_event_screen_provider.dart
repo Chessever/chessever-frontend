@@ -14,7 +14,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
-import 'package:chessever2/repository/local_storage/unified_favorites/unified_favorites_provider.dart';
 import 'package:chessever2/widgets/event_card/starred_provider.dart';
 
 final selectedPlayerNameProvider = StateProvider<String?>((ref) => null);
@@ -171,15 +170,9 @@ class _GroupEventScreenController
     List<GroupBroadcast> tours,
   ) async {
     // Get starred event IDs
-    final starredIds = ref.read(starredProvider);
-    final unifiedFavoritesAsync = ref.read(favoriteEventsProvider);
-    final unifiedFavorites = await unifiedFavoritesAsync.when(
-      data: (events) => events.map((e) => e['id'] as String).toList(),
-      loading: () => <String>[],
-      error: (_, __) => <String>[],
-    );
+    final starredIds = ref.read(starredProvider(tourEventCategory.name));
 
-    final allStarredIds = <String>{...starredIds, ...unifiedFavorites};
+    final allStarredIds = <String>{...starredIds};
 
     if (allStarredIds.isEmpty) return tours;
 
