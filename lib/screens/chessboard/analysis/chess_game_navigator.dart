@@ -1,5 +1,6 @@
 import 'package:collection/collection.dart';
 import 'package:dartchess/dartchess.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import 'chess_game.dart';
@@ -193,17 +194,26 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
   }
 
   void makeOrGoToMove(String uci) {
+    debugPrint('🎯 NAVIGATOR makeOrGoToMove: uci=$uci');
     final playedMove = Move.parse(uci);
     final currentLine = state.currentLine;
     final currentMove = state.currentMove;
     final currentIndex =
         state.movePointer.isEmpty ? -1 : state.movePointer.last;
 
-    if (playedMove == null || currentLine == null) return;
+    debugPrint('🎯 NAVIGATOR makeOrGoToMove: playedMove=${playedMove?.uci}, currentIndex=$currentIndex');
+    debugPrint('🎯 NAVIGATOR makeOrGoToMove: currentLine length=${currentLine?.length}');
 
+    if (playedMove == null || currentLine == null) {
+      debugPrint('🎯 NAVIGATOR makeOrGoToMove: FAILED - playedMove or currentLine is null');
+      return;
+    }
+
+    // Check if next move in current line matches
     if (currentIndex < currentLine.length - 1) {
       final nextMove = currentLine[currentIndex + 1];
       if (nextMove.uci == uci) {
+        debugPrint('🎯 NAVIGATOR makeOrGoToMove: Moving to next move in line');
         final pointer = List.of(state.movePointer);
         pointer.last = currentIndex + 1;
         replaceState(
@@ -213,10 +223,13 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
       }
     }
 
+    // Check if move exists in variations
     if (currentMove?.variations != null) {
-      for (var i = 0; i < currentMove!.variations!.length; i++) {
+      debugPrint('🎯 NAVIGATOR makeOrGoToMove: Checking ${currentMove!.variations!.length} variations');
+      for (var i = 0; i < currentMove.variations!.length; i++) {
         final variation = currentMove.variations![i];
         if (variation.isNotEmpty && variation[0].uci == uci) {
+          debugPrint('🎯 NAVIGATOR makeOrGoToMove: Found move in variation $i');
           replaceState(
             ChessGameNavigatorState(
               game: state.game,
@@ -231,6 +244,8 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
       }
     }
 
+    // Create new move/variation
+    debugPrint('🎯 NAVIGATOR makeOrGoToMove: Creating new move/variation');
     final position = Position.setupPosition(
       Rule.chess,
       Setup.parseFen(state.currentFen),
@@ -247,7 +262,9 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
     );
 
     if (currentIndex == -1) {
+      debugPrint('🎯 NAVIGATOR makeOrGoToMove: At starting position');
       if (state.game.mainline.isEmpty) {
+        debugPrint('🎯 NAVIGATOR makeOrGoToMove: Creating first move in mainline');
         replaceState(
           ChessGameNavigatorState(
             game: state.game.copyWith(mainline: [newMove]),
@@ -257,6 +274,7 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
         return;
       }
 
+      debugPrint('🎯 NAVIGATOR makeOrGoToMove: Adding variation to first move');
       final firstMove = state.game.mainline.first;
       final updatedVariations = List.of(firstMove.variations ?? <ChessLine>[]);
       updatedVariations.add([newMove]);
@@ -275,6 +293,7 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
       return;
     }
 
+    debugPrint('🎯 NAVIGATOR makeOrGoToMove: Adding move at current position');
     final newMainline = List.of(state.game.mainline);
     final pointer = List.of(state.movePointer);
 
@@ -290,9 +309,11 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
     }
 
     if (currentIndex == currentLine.length - 1) {
+      debugPrint('🎯 NAVIGATOR makeOrGoToMove: Appending to end of line');
       line.add(newMove);
       pointer.last++;
     } else {
+      debugPrint('🎯 NAVIGATOR makeOrGoToMove: Creating variation mid-line');
       final nextMove = line[pointer.last + 1];
       final updatedVariations = List.of(nextMove.variations ?? <ChessLine>[]);
       updatedVariations.add([newMove]);
@@ -304,6 +325,7 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
       pointer.add(0);
     }
 
+    debugPrint('🎯 NAVIGATOR makeOrGoToMove: Successfully created move');
     replaceState(
       ChessGameNavigatorState(
         game: state.game.copyWith(mainline: newMainline),
