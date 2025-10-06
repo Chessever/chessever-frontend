@@ -600,10 +600,21 @@ class ChessBoardScreenNotifierNew
 
   /// Select a variant (engine suggestion) for navigation
   void selectVariant(int variantIndex) {
+    debugPrint('🎯 SELECT VARIANT: index=$variantIndex');
     final currentState = state.value;
-    if (currentState == null || !currentState.isAnalysisMode) return;
-    if (variantIndex < 0 || variantIndex >= currentState.principalVariations.length) return;
-    if (_analysisGame == null || _analysisNavigator == null) return;
+    if (currentState == null || !currentState.isAnalysisMode) {
+      debugPrint('🎯 SELECT VARIANT: FAILED - state null or not in analysis mode');
+      return;
+    }
+    if (variantIndex < 0 || variantIndex >= currentState.principalVariations.length) {
+      debugPrint('🎯 SELECT VARIANT: FAILED - invalid index (pvs=${currentState.principalVariations.length})');
+      return;
+    }
+    if (_analysisGame == null || _analysisNavigator == null) {
+      debugPrint('🎯 SELECT VARIANT: FAILED - analysis game or navigator is null');
+      return;
+    }
+    debugPrint('🎯 SELECT VARIANT: Proceeding with selection');
 
     // Principal variations are generated for the position where analysis mode was entered
     // So we need to reset the navigator back to that position before playing the variant
@@ -651,17 +662,32 @@ class ChessBoardScreenNotifierNew
 
   /// Play next move of the selected variant forward
   void playVariantMoveForward() {
+    debugPrint('🎯 PLAY VARIANT FORWARD called');
     final currentState = state.value;
-    if (currentState == null || !currentState.isAnalysisMode) return;
-    if (currentState.selectedVariantIndex == null) return;
+    if (currentState == null || !currentState.isAnalysisMode) {
+      debugPrint('🎯 PLAY VARIANT FORWARD: Not in analysis mode');
+      return;
+    }
+    if (currentState.selectedVariantIndex == null) {
+      debugPrint('🎯 PLAY VARIANT FORWARD: No variant selected');
+      return;
+    }
 
     final selectedVariant = currentState.principalVariations[currentState.selectedVariantIndex!];
-    final currentPointerIndex = currentState.variantMovePointer.length;
+
+    // variantMovePointer tracks which moves we've played so far
+    // If we've played moves [0, 1], length is 2, so next move is index 2
+    final nextMoveIndex = currentState.variantMovePointer.length;
+
+    debugPrint('🎯 PLAY VARIANT FORWARD: nextMoveIndex=$nextMoveIndex, variantLength=${selectedVariant.moves.length}');
 
     // Check if there are more moves to play in the variant
-    if (currentPointerIndex >= selectedVariant.moves.length) return;
+    if (nextMoveIndex >= selectedVariant.moves.length) {
+      debugPrint('🎯 PLAY VARIANT FORWARD: No more moves in variant');
+      return;
+    }
 
-    final nextMove = selectedVariant.moves[currentPointerIndex];
+    final nextMove = selectedVariant.moves[nextMoveIndex];
     if (nextMove is NormalMove) {
       if (isPromotionPawnMove(nextMove)) {
         state = AsyncValue.data(
@@ -678,8 +704,8 @@ class ChessBoardScreenNotifierNew
           onAnalysisMove(nextMove);
         }
 
-        // Update variant move pointer
-        final newPointer = List<int>.from(currentState.variantMovePointer)..add(currentPointerIndex);
+        // Add the move index we just played to the pointer
+        final newPointer = List<int>.from(currentState.variantMovePointer)..add(nextMoveIndex);
         state = AsyncValue.data(
           currentState.copyWith(variantMovePointer: newPointer),
         );
@@ -755,24 +781,35 @@ class ChessBoardScreenNotifierNew
     }
   }
 
-  void toggleAnalysisMode() {
+  Future<void> toggleAnalysisMode() async {
     final currentState = state.value;
     if (currentState == null) return;
 
     if (!currentState.isAnalysisMode) {
-      _initializeAnalysisBoard();
+      // Set loading state first
+      state = AsyncValue.data(
+        currentState.copyWith(isAnalysisMode: true, isLoadingMoves: true),
+      );
+
+      await _initializeAnalysisBoard();
+
+      // Clear loading state
+      final updatedState = state.value;
+      if (updatedState != null) {
+        state = AsyncValue.data(updatedState.copyWith(isLoadingMoves: false));
+      }
     } else {
       unawaited(_persistAnalysisState());
       _analysisGame = null;
       _navigatorSubscription?.close();
       _navigatorSubscription = null;
+
+      state = AsyncValue.data(
+        currentState.copyWith(isAnalysisMode: false),
+      );
     }
 
     togglePlayPause();
-
-    state = AsyncValue.data(
-      currentState.copyWith(isAnalysisMode: !currentState.isAnalysisMode),
-    );
   }
 
   Future<void> _initializeAnalysisBoard() async {
@@ -937,13 +974,23 @@ class ChessBoardScreenNotifierNew
 
   /// Navigate forward in analysis mode (through main line when no variant selected)
   void analysisStepForward() {
-    if (state.value?.isAnalysisMode != true) return;
+    debugPrint('🎯 ANALYSIS STEP FORWARD called');
+    if (state.value?.isAnalysisMode != true) {
+      debugPrint('🎯 ANALYSIS STEP FORWARD: Not in analysis mode');
+      return;
+    }
+    debugPrint('🎯 ANALYSIS STEP FORWARD: Calling goToNextMove on navigator');
     _analysisNavigator?.goToNextMove();
   }
 
   /// Navigate backward in analysis mode (through main line when no variant selected)
   void analysisStepBackward() {
-    if (state.value?.isAnalysisMode != true) return;
+    debugPrint('🎯 ANALYSIS STEP BACKWARD called');
+    if (state.value?.isAnalysisMode != true) {
+      debugPrint('🎯 ANALYSIS STEP BACKWARD: Not in analysis mode');
+      return;
+    }
+    debugPrint('🎯 ANALYSIS STEP BACKWARD: Calling goToPreviousMove on navigator');
     _analysisNavigator?.goToPreviousMove();
   }
 

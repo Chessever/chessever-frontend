@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:chessever2/providers/board_settings_provider.dart';
 import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
@@ -1075,16 +1073,30 @@ class _AnalysisControlsRow extends ConsumerWidget {
           IconButton(
             icon: Icon(
               Icons.arrow_back,
-              color: hasSelectedVariant ? kGreenColor : kWhiteColor, // Highlight when variant selected
+              color: hasSelectedVariant ? kWhiteColor.withValues(alpha: 0.7) : kWhiteColor,
             ),
-            onPressed: hasSelectedVariant ? notifier.playVariantMoveBackward : notifier.analysisStepBackward,
+            onPressed: () {
+              debugPrint('🎯 NAV BACK: hasSelectedVariant=$hasSelectedVariant');
+              if (hasSelectedVariant) {
+                notifier.playVariantMoveBackward();
+              } else {
+                notifier.analysisStepBackward();
+              }
+            },
           ),
           IconButton(
             icon: Icon(
               Icons.arrow_forward,
-              color: hasSelectedVariant ? kGreenColor : kWhiteColor, // Highlight when variant selected
+              color: hasSelectedVariant ? kWhiteColor.withValues(alpha: 0.7) : kWhiteColor,
             ),
-            onPressed: hasSelectedVariant ? notifier.playVariantMoveForward : notifier.analysisStepForward,
+            onPressed: () {
+              debugPrint('🎯 NAV FORWARD: hasSelectedVariant=$hasSelectedVariant');
+              if (hasSelectedVariant) {
+                notifier.playVariantMoveForward();
+              } else {
+                notifier.analysisStepForward();
+              }
+            },
           ),
           IconButton(
             icon: const Icon(Icons.fast_forward, color: kWhiteColor),
@@ -1650,13 +1662,14 @@ class _MovesDisplay extends ConsumerWidget {
               final displayText = isWhiteMove ? '$fullMoveNumber. $move' : move;
               final impactSymbol = impact?.impact.symbol ?? '';
 
-              // Determine text color
+              // Determine text color - PRIORITY: impact color > current move > default
               final params = ChessBoardProviderParams(game: game, index: index);
               Color textColor;
-              if (isCurrentMove) {
-                textColor = kWhiteColor;
-              } else if (impact != null && impact.impact != MoveImpactType.normal) {
+              if (impact != null && impact.impact != MoveImpactType.normal) {
+                // Impact color has highest priority (even when selected)
                 textColor = impact.impact.color;
+              } else if (isCurrentMove) {
+                textColor = kWhiteColor;
               } else {
                 textColor = ref.read(chessBoardScreenProviderNew(params).notifier).getMoveColor(move, moveIndex);
               }
@@ -1801,6 +1814,7 @@ class _PrincipalVariationList extends ConsumerWidget {
             final params = ChessBoardProviderParams(game: game, index: index);
             return GestureDetector(
               onTap: () {
+                debugPrint('🎯 VARIANT TAP: Selecting variant $variantIndex');
                 ref
                     .read(chessBoardScreenProviderNew(params).notifier)
                     .selectVariant(variantIndex);
@@ -1809,19 +1823,21 @@ class _PrincipalVariationList extends ConsumerWidget {
                 margin: EdgeInsets.only(bottom: 6.h),
                 decoration: BoxDecoration(
                   border: isSelected
-                      ? Border.all(color: kGreenColor, width: 2)
-                      : null,
+                      ? Border.all(color: kWhiteColor.withValues(alpha: 0.3), width: 1)
+                      : Border.all(color: kWhiteColor.withValues(alpha: 0.1), width: 1),
                   borderRadius: BorderRadius.circular(6.sp),
-                  color: isSelected ? kGreenColor.withValues(alpha: 0.1) : null,
+                  color: isSelected
+                      ? kWhiteColor.withValues(alpha: 0.08)
+                      : kWhiteColor.withValues(alpha: 0.02),
                 ),
-                padding: EdgeInsets.all(isSelected ? 6.sp : 0),
+                padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 6.sp),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
                       margin: EdgeInsets.only(right: 8.sp),
                       decoration: BoxDecoration(
-                        color: kWhiteColor,
+                        color: kWhiteColor.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(4.sp),
                       ),
                       padding: EdgeInsets.symmetric(
@@ -1831,7 +1847,7 @@ class _PrincipalVariationList extends ConsumerWidget {
                       child: Text(
                         evalText.isEmpty ? '—' : evalText,
                         style: AppTypography.textXsMedium.copyWith(
-                          color: kBlackColor,
+                          color: kWhiteColor,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -1840,7 +1856,8 @@ class _PrincipalVariationList extends ConsumerWidget {
                       child: Text(
                         sanMoves.join(' '),
                         style: AppTypography.textXsMedium.copyWith(
-                          color: kWhiteColor,
+                          color: kWhiteColor.withValues(alpha: 0.85),
+                          fontWeight: isSelected ? FontWeight.w500 : FontWeight.normal,
                         ),
                         overflow: TextOverflow.ellipsis,
                         maxLines: 2,
