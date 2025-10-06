@@ -8,6 +8,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'chess_game.dart';
 import 'chess_game_navigator.dart';
 import 'chess_move_display.dart';
+import 'move_impact_analyzer.dart';
 
 class ChessLineDisplay extends StatelessWidget {
   const ChessLineDisplay({
@@ -16,12 +17,14 @@ class ChessLineDisplay extends StatelessWidget {
     required this.currentFen,
     this.movePointer = const [],
     this.onClick,
+    this.allMovesImpact,
   });
 
   final List<ChessMove> line;
   final String currentFen;
   final ChessMovePointer movePointer;
   final void Function(ChessMovePointer)? onClick;
+  final Map<int, MoveImpactAnalysis>? allMovesImpact;
 
   @override
   Widget build(BuildContext context) {
@@ -37,6 +40,7 @@ class ChessLineDisplay extends StatelessWidget {
               currentFen: currentFen,
               movePointer: pointer,
               onClick: onClick,
+              moveImpact: allMovesImpact?[moveIndex],
             );
 
             if (move.variations == null || move.variations!.isEmpty) {
@@ -65,6 +69,7 @@ class ChessLineDisplay extends StatelessWidget {
                               currentFen: currentFen,
                               movePointer: variationPointer,
                               onClick: onClick,
+                              allMovesImpact: allMovesImpact,
                             ),
                           ),
                         ),

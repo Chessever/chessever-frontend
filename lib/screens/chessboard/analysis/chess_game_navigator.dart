@@ -161,10 +161,11 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
   }
 
   void goToHead() {
+    // Go to the starting position (before any moves)
     replaceState(
       ChessGameNavigatorState(
         game: state.game,
-        movePointer: state.game.mainline.isNotEmpty ? [0] : [],
+        movePointer: const [],
       ),
     );
   }
