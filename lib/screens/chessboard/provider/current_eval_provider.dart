@@ -162,10 +162,24 @@ final cascadeEvalProviderForBoard = FutureProvider.family<CloudEval, String>((
       // Continue to fallback - don't return here
     }
 
-    // 4️⃣  If all else fails, throw to trigger local Stockfish fallback
-    throw Exception(
-      'All cloud evaluation sources failed or returned invalid data for $fen',
+    // 4️⃣  Stockfish fallback - when all cloud sources fail
+    print('⚡ EVAL SOURCE: STOCKFISH FALLBACK for $fen (cloud sources unavailable)');
+    final sfEval = await StockfishSingleton().evaluatePosition(fen, depth: 15);
+    final cloudFromSF = CloudEval(
+      fen: fen,
+      knodes: sfEval.knodes,
+      depth: sfEval.depth,
+      pvs: sfEval.pvs,
     );
+    // Save to cache for future use (background)
+    Future.wait<void>([
+      persist.call(fen, cloudFromSF),
+      local.save(fen, cloudFromSF),
+    ]).catchError((e) {
+      print('Background save failed for Stockfish eval $fen: $e');
+      return <void>[];
+    });
+    return cloudFromSF;
   } catch (error, _) {
     rethrow;
   }
