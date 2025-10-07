@@ -14,12 +14,17 @@ import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.d
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/evals.dart';
+import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:easy_debounce/easy_debounce.dart';
 import 'package:fast_immutable_collections/fast_immutable_collections.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:worker_manager/worker_manager.dart';
+
+const int _kMaxPrincipalVariations = 3;
+const int _kMaxMovesPerPv = 8;
 
 enum ChessboardView { tour, countryman }
 
@@ -92,10 +97,14 @@ class ChessBoardScreenNotifierNew
 
             // CRITICAL: Check if this game board is currently visible
             // This prevents off-screen games from playing audio or resetting positions
-            final currentVisibleIndex = ref.read(currentlyVisiblePageIndexProvider);
+            final currentVisibleIndex = ref.read(
+              currentlyVisiblePageIndexProvider,
+            );
             final isCurrentlyVisible = currentVisibleIndex == index;
 
-            debugPrint('===== GAME UPDATE: Game ${game.gameId} (index $index), visible: $isCurrentlyVisible, analysisMode: ${currentState?.isAnalysisMode} =====');
+            debugPrint(
+              '===== GAME UPDATE: Game ${game.gameId} (index $index), visible: $isCurrentlyVisible, analysisMode: ${currentState?.isAnalysisMode} =====',
+            );
 
             // CRITICAL: Don't update board state if user is actively analyzing
             // This prevents resetting the board when viewing past positions or variants
@@ -108,7 +117,9 @@ class ChessBoardScreenNotifierNew
                 lastMove: gameData['last_move'] as String? ?? game.lastMove,
                 lastMoveTime:
                     gameData['last_move_time'] != null
-                        ? DateTime.tryParse(gameData['last_move_time'] as String)
+                        ? DateTime.tryParse(
+                          gameData['last_move_time'] as String,
+                        )
                         : game.lastMoveTime,
                 whiteClockSeconds:
                     (gameData['last_clock_white'] as num?)?.round(),
@@ -132,7 +143,8 @@ class ChessBoardScreenNotifierNew
             // Don't auto-update if they've navigated away from the latest move
             if (currentState != null &&
                 !currentState.isLoadingMoves &&
-                currentState.currentMoveIndex < currentState.allMoves.length - 1) {
+                currentState.currentMoveIndex <
+                    currentState.allMoves.length - 1) {
               // User is viewing a past position, only update game data
               game = game.copyWith(
                 pgn: gameData['pgn'] as String? ?? game.pgn,
@@ -140,7 +152,9 @@ class ChessBoardScreenNotifierNew
                 lastMove: gameData['last_move'] as String? ?? game.lastMove,
                 lastMoveTime:
                     gameData['last_move_time'] != null
-                        ? DateTime.tryParse(gameData['last_move_time'] as String)
+                        ? DateTime.tryParse(
+                          gameData['last_move_time'] as String,
+                        )
                         : game.lastMoveTime,
                 whiteClockSeconds:
                     (gameData['last_clock_white'] as num?)?.round(),
@@ -152,7 +166,9 @@ class ChessBoardScreenNotifierNew
               );
 
               state = AsyncValue.data(currentState.copyWith(game: game));
-              debugPrint("Game data updated but preserving user's current position");
+              debugPrint(
+                "Game data updated but preserving user's current position",
+              );
               return;
             }
 
@@ -165,7 +181,9 @@ class ChessBoardScreenNotifierNew
                 lastMove: gameData['last_move'] as String? ?? game.lastMove,
                 lastMoveTime:
                     gameData['last_move_time'] != null
-                        ? DateTime.tryParse(gameData['last_move_time'] as String)
+                        ? DateTime.tryParse(
+                          gameData['last_move_time'] as String,
+                        )
                         : game.lastMoveTime,
                 whiteClockSeconds:
                     (gameData['last_clock_white'] as num?)?.round(),
@@ -456,6 +474,15 @@ class ChessBoardScreenNotifierNew
   }
 
   void analysisModeGoToMove(int moveIndex) {
+    var currentState = state.value;
+    if (currentState == null) return;
+
+    final clearedState = _clearVariantSelection(currentState);
+    if (!identical(clearedState, currentState)) {
+      state = AsyncValue.data(clearedState);
+      currentState = clearedState;
+    }
+
     if (_analysisGame != null) {
       if (moveIndex < 0) {
         _analysisNavigator?.goToMovePointerUnchecked(const []);
@@ -467,8 +494,6 @@ class ChessBoardScreenNotifierNew
 
     if (_isProcessingMove) return;
     _isProcessingMove = true;
-    final currentState = state.value;
-    if (currentState == null) return;
     if (currentState.isLoadingMoves) {
       _isProcessingMove = false;
       return;
@@ -553,32 +578,25 @@ class ChessBoardScreenNotifierNew
 
   void goToMovePointer(ChessMovePointer pointer) {
     if (_analysisGame == null) return;
+    final currentState = state.value;
+    if (currentState != null) {
+      final cleared = _clearVariantSelection(currentState);
+      if (!identical(cleared, currentState)) {
+        state = AsyncValue.data(cleared);
+      }
+    }
     _analysisNavigator?.goToMovePointerUnchecked(pointer);
   }
 
   void playPrincipalVariationMove(AnalysisLine line) {
-    if (!state.value!.isAnalysisMode) return;
-    if (line.moves.isEmpty) return;
+    final currentState = state.value;
+    if (currentState == null || !currentState.isAnalysisMode) return;
 
-    // Play the first move of the selected principal variation
-    final firstMove = line.moves.first;
-    if (firstMove is NormalMove) {
-      if (isPromotionPawnMove(firstMove)) {
-        state = AsyncValue.data(
-          state.value!.copyWith(
-            analysisState: state.value!.analysisState.copyWith(
-              promotionMove: firstMove,
-            ),
-          ),
-        );
-      } else {
-        if (_analysisGame != null) {
-          _analysisNavigator?.makeOrGoToMove(firstMove.uci);
-        } else {
-          onAnalysisMove(firstMove);
-        }
-      }
-    }
+    final index = currentState.principalVariations.indexOf(line);
+    if (index == -1) return;
+
+    selectVariant(index);
+    playVariantMoveForward();
   }
 
   /// Select a variant (engine suggestion) for navigation
@@ -586,38 +604,35 @@ class ChessBoardScreenNotifierNew
     debugPrint('🎯 SELECT VARIANT: index=$variantIndex');
     final currentState = state.value;
     if (currentState == null || !currentState.isAnalysisMode) {
-      debugPrint('🎯 SELECT VARIANT: FAILED - state null or not in analysis mode');
+      debugPrint(
+        '🎯 SELECT VARIANT: FAILED - state null or not in analysis mode',
+      );
       return;
     }
-    if (variantIndex < 0 || variantIndex >= currentState.principalVariations.length) {
-      debugPrint('🎯 SELECT VARIANT: FAILED - invalid index (pvs=${currentState.principalVariations.length})');
+    if (variantIndex < 0 ||
+        variantIndex >= currentState.principalVariations.length) {
+      debugPrint(
+        '🎯 SELECT VARIANT: FAILED - invalid index (pvs=${currentState.principalVariations.length})',
+      );
       return;
     }
-    if (_analysisGame == null || _analysisNavigator == null) {
-      debugPrint('🎯 SELECT VARIANT: FAILED - analysis game or navigator is null');
-      return;
-    }
+    final baseFen = currentState.analysisState.position.fen;
+    final basePointer = currentState.analysisState.movePointer;
 
-    // CRITICAL FIX: Use CURRENT navigator position as base, not stored base
-    // The PVs were generated for the current position we're viewing
-    final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
-    final currentMovePointer = navigatorState.movePointer;
-    final currentFen = navigatorState.currentFen;
-
-    debugPrint('🎯 SELECT VARIANT: Proceeding with selection');
-    debugPrint('🎯 SELECT VARIANT: Current FEN=$currentFen');
-    debugPrint('🎯 SELECT VARIANT: Current movePointer=$currentMovePointer');
-
-    // No need to navigate - we're already at the position where variants start
-    // Just mark the variant as selected
-    state = AsyncValue.data(
-      currentState.copyWith(
-        selectedVariantIndex: variantIndex,
-        variantMovePointer: const [], // Start at beginning of variant (before first move)
-        variantBaseFen: currentFen, // Store current FEN as base
-        variantBaseMovePointer: currentMovePointer, // Store current pointer as base
-      ),
+    debugPrint(
+      '🎯 SELECT VARIANT: Proceeding with selection (fen=$baseFen, pointer=$basePointer)',
     );
+
+    final updatedState = currentState.copyWith(
+      selectedVariantIndex: variantIndex,
+      variantMovePointer: const [],
+      variantBaseFen: baseFen,
+      variantBaseMovePointer: basePointer,
+      variantBaseLastMove: currentState.analysisState.lastMove,
+      variantBaseMoveIndex: currentState.analysisState.currentMoveIndex,
+    );
+
+    state = AsyncValue.data(updatedState);
 
     debugPrint('🎯 SELECT VARIANT: Variant selected, ready for navigation');
   }
@@ -634,20 +649,20 @@ class ChessBoardScreenNotifierNew
       debugPrint('🎯 PLAY VARIANT FORWARD: No variant selected');
       return;
     }
-    if (_analysisGame == null || _analysisNavigator == null) {
-      debugPrint('🎯 PLAY VARIANT FORWARD: Analysis game or navigator is null');
+    if (currentState.variantBaseFen == null) {
+      debugPrint('🎯 PLAY VARIANT FORWARD: Missing base FEN, aborting');
       return;
     }
 
-    final selectedVariant = currentState.principalVariations[currentState.selectedVariantIndex!];
+    final selectedVariant =
+        currentState.principalVariations[currentState.selectedVariantIndex!];
 
-    // variantMovePointer tracks which moves we've played so far
-    // If we've played moves [0, 1], length is 2, so next move is index 2
     final nextMoveIndex = currentState.variantMovePointer.length;
 
-    debugPrint('🎯 PLAY VARIANT FORWARD: nextMoveIndex=$nextMoveIndex, variantLength=${selectedVariant.moves.length}');
+    debugPrint(
+      '🎯 PLAY VARIANT FORWARD: nextMoveIndex=$nextMoveIndex, variantLength=${selectedVariant.moves.length}',
+    );
 
-    // Check if there are more moves to play in the variant
     if (nextMoveIndex >= selectedVariant.moves.length) {
       debugPrint('🎯 PLAY VARIANT FORWARD: No more moves in variant');
       return;
@@ -656,50 +671,45 @@ class ChessBoardScreenNotifierNew
     final nextMove = selectedVariant.moves[nextMoveIndex];
     debugPrint('🎯 PLAY VARIANT FORWARD: Next move UCI=${nextMove.uci}');
 
-    // Get current position from navigator to verify move legality
-    final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
-    final currentFen = navigatorState.currentFen;
-    debugPrint('🎯 PLAY VARIANT FORWARD: Current FEN=$currentFen');
-
-    // Verify the move is legal in the current position
-    try {
-      final position = Position.setupPosition(Rule.chess, Setup.parseFen(currentFen));
-
-      if (nextMove is NormalMove) {
-        // Check if move is legal
-        if (!position.isLegal(nextMove)) {
-          debugPrint('🎯 PLAY VARIANT FORWARD: ERROR - Move ${nextMove.uci} is illegal in position $currentFen');
-          debugPrint('🎯 PLAY VARIANT FORWARD: Turn to move: ${position.turn}');
-          return;
-        }
-
-        if (isPromotionPawnMove(nextMove)) {
-          debugPrint('🎯 PLAY VARIANT FORWARD: Promotion move detected');
-          state = AsyncValue.data(
-            currentState.copyWith(
-              analysisState: currentState.analysisState.copyWith(
-                promotionMove: nextMove,
-              ),
-            ),
-          );
-        } else {
-          debugPrint('🎯 PLAY VARIANT FORWARD: Playing move ${nextMove.uci}');
-          _analysisNavigator?.makeOrGoToMove(nextMove.uci);
-
-          // Add the move index we just played to the pointer
-          final newPointer = List<int>.from(currentState.variantMovePointer)..add(nextMoveIndex);
-          debugPrint('🎯 PLAY VARIANT FORWARD: Updated pointer=$newPointer');
-          state = AsyncValue.data(
-            currentState.copyWith(variantMovePointer: newPointer),
-          );
-        }
-      }
-    } catch (e) {
-      debugPrint('🎯 PLAY VARIANT FORWARD: ERROR - $e');
-      debugPrint('🎯 PLAY VARIANT FORWARD: Current FEN: $currentFen');
-      debugPrint('🎯 PLAY VARIANT FORWARD: Attempted move: ${nextMove.uci}');
-      debugPrint('🎯 PLAY VARIANT FORWARD: Variant base FEN: ${currentState.variantBaseFen}');
+    if (nextMove is NormalMove && isPromotionPawnMove(nextMove)) {
+      state = AsyncValue.data(
+        currentState.copyWith(
+          analysisState: currentState.analysisState.copyWith(
+            promotionMove: nextMove,
+          ),
+        ),
+      );
+      return;
     }
+
+    final newPointer = List<int>.from(currentState.variantMovePointer)
+      ..add(nextMoveIndex);
+    final appliedCount = newPointer.length;
+    final positionAfter = _variantPositionFromBase(
+      currentState,
+      selectedVariant,
+      appliedCount,
+    );
+
+    final updatedState = currentState.copyWith(
+      variantMovePointer: newPointer,
+      analysisState: currentState.analysisState.copyWith(
+        position: positionAfter,
+        lastMove: nextMove,
+        currentMoveIndex:
+            currentState.variantBaseMoveIndex ??
+            currentState.analysisState.currentMoveIndex,
+        validMoves: makeLegalMoves(positionAfter),
+        promotionMove: null,
+      ),
+    );
+
+    state = AsyncValue.data(updatedState);
+    final sanMoves = selectedVariant.sanMoves;
+    if (nextMoveIndex < sanMoves.length) {
+      _playSoundForSan(sanMoves[nextMoveIndex]);
+    }
+    _updateEvaluation();
   }
 
   /// Undo last move of the selected variant
@@ -715,40 +725,67 @@ class ChessBoardScreenNotifierNew
       return;
     }
     if (currentState.variantMovePointer.isEmpty) {
-      debugPrint('🎯 PLAY VARIANT BACKWARD: Already at variant start');
+      debugPrint(
+        '🎯 PLAY VARIANT BACKWARD: Already at variant start, reverting to main line',
+      );
+      analysisStepBackward();
       return;
     }
 
-    debugPrint('🎯 PLAY VARIANT BACKWARD: Going back from move ${currentState.variantMovePointer.length - 1}');
-
-    // Go back one move using analysis navigator
-    _analysisNavigator?.goToPreviousMove();
-
-    // Update variant move pointer
-    final newPointer = List<int>.from(currentState.variantMovePointer)..removeLast();
-    debugPrint('🎯 PLAY VARIANT BACKWARD: New pointer length=${newPointer.length}');
-    state = AsyncValue.data(
-      currentState.copyWith(variantMovePointer: newPointer),
+    final newPointer = List<int>.from(currentState.variantMovePointer)
+      ..removeLast();
+    final appliedCount = newPointer.length;
+    final selectedVariant =
+        currentState.principalVariations[currentState.selectedVariantIndex!];
+    final positionAfter = _variantPositionFromBase(
+      currentState,
+      selectedVariant,
+      appliedCount,
     );
+
+    final lastMove =
+        appliedCount > 0
+            ? selectedVariant.moves[appliedCount - 1]
+            : currentState.variantBaseLastMove;
+
+    final updatedState = currentState.copyWith(
+      variantMovePointer: newPointer,
+      analysisState: currentState.analysisState.copyWith(
+        position: positionAfter,
+        lastMove: lastMove,
+        currentMoveIndex:
+            currentState.variantBaseMoveIndex ??
+            currentState.analysisState.currentMoveIndex,
+        validMoves: makeLegalMoves(positionAfter),
+        promotionMove: null,
+      ),
+    );
+
+    state = AsyncValue.data(updatedState);
+    final sanMoves = selectedVariant.sanMoves;
+    if (appliedCount < sanMoves.length) {
+      final sanForUndo = sanMoves[appliedCount];
+      _playSoundForSan(sanForUndo);
+    } else {
+      _playSoundForSan('');
+    }
+    _updateEvaluation();
   }
 
   void moveForward() {
     final currentState = state.value;
     // Bottom nav arrows always navigate real game moves, even in analysis mode
     // This allows switching back and forth between analysis and real game
-    if (currentState == null || !currentState.canMoveForward || _isProcessingMove) {
+    if (currentState == null ||
+        !currentState.canMoveForward ||
+        _isProcessingMove) {
       return;
     }
 
     // If in analysis mode, exit it first and navigate to next real move
     if (currentState.isAnalysisMode) {
       // Deselect any variant
-      state = AsyncValue.data(
-        currentState.copyWith(
-          selectedVariantIndex: null,
-          variantMovePointer: const [],
-        ),
-      );
+      state = AsyncValue.data(_clearVariantSelection(currentState));
       // Exit analysis mode will be handled by toggleAnalysisMode
       toggleAnalysisMode();
       // Then navigate to next move after a small delay to let analysis mode exit
@@ -762,19 +799,16 @@ class ChessBoardScreenNotifierNew
     final currentState = state.value;
     // Bottom nav arrows always navigate real game moves, even in analysis mode
     // This allows switching back and forth between analysis and real game
-    if (currentState == null || !currentState.canMoveBackward || _isProcessingMove) {
+    if (currentState == null ||
+        !currentState.canMoveBackward ||
+        _isProcessingMove) {
       return;
     }
 
     // If in analysis mode, exit it first and navigate to previous real move
     if (currentState.isAnalysisMode) {
       // Deselect any variant
-      state = AsyncValue.data(
-        currentState.copyWith(
-          selectedVariantIndex: null,
-          variantMovePointer: const [],
-        ),
-      );
+      state = AsyncValue.data(_clearVariantSelection(currentState));
       // Exit analysis mode
       toggleAnalysisMode();
       // Then navigate to previous move after a small delay
@@ -792,7 +826,9 @@ class ChessBoardScreenNotifierNew
     }
 
     if (!currentState.isAnalysisMode) {
-      debugPrint('🎯 TOGGLE ANALYSIS: Entering analysis mode from move index ${currentState.currentMoveIndex}');
+      debugPrint(
+        '🎯 TOGGLE ANALYSIS: Entering analysis mode from move index ${currentState.currentMoveIndex}',
+      );
       // Set loading state first
       state = AsyncValue.data(
         currentState.copyWith(isAnalysisMode: true, isLoadingMoves: true),
@@ -803,10 +839,14 @@ class ChessBoardScreenNotifierNew
       // Clear loading state
       final updatedState = state.value;
       if (updatedState != null) {
-        debugPrint('🎯 TOGGLE ANALYSIS: Analysis mode initialized, clearing loading state');
+        debugPrint(
+          '🎯 TOGGLE ANALYSIS: Analysis mode initialized, clearing loading state',
+        );
         state = AsyncValue.data(updatedState.copyWith(isLoadingMoves: false));
       }
-      debugPrint('🎯 TOGGLE ANALYSIS: Analysis mode active, _analysisGame=${_analysisGame != null}');
+      debugPrint(
+        '🎯 TOGGLE ANALYSIS: Analysis mode active, _analysisGame=${_analysisGame != null}',
+      );
     } else {
       debugPrint('🎯 TOGGLE ANALYSIS: Exiting analysis mode');
       unawaited(_persistAnalysisState());
@@ -814,9 +854,8 @@ class ChessBoardScreenNotifierNew
       _navigatorSubscription?.close();
       _navigatorSubscription = null;
 
-      state = AsyncValue.data(
-        currentState.copyWith(isAnalysisMode: false),
-      );
+      final clearedState = _clearVariantSelection(currentState);
+      state = AsyncValue.data(clearedState.copyWith(isAnalysisMode: false));
       debugPrint('🎯 TOGGLE ANALYSIS: Analysis mode deactivated');
     }
 
@@ -851,21 +890,25 @@ class ChessBoardScreenNotifierNew
     // Move pointer is a single-element array with the current move index
     // For example: if at move 15, pointer should be [15], not [0,1,2,...,15]
     final currentMoveIndex = updatedState.currentMoveIndex;
-    final movePointer = currentMoveIndex < 0
-        ? const <int>[]
-        : [currentMoveIndex];
+    final movePointer =
+        currentMoveIndex < 0 ? const <int>[] : [currentMoveIndex];
 
-    debugPrint('===== ANALYSIS MODE: Initializing at move index $currentMoveIndex, pointer: $movePointer =====');
+    debugPrint(
+      '===== ANALYSIS MODE: Initializing at move index $currentMoveIndex, pointer: $movePointer =====',
+    );
 
     // Set up listener BEFORE replaceState to capture the state change
     _navigatorSubscription?.close();
     _navigatorSubscription = ref.listen<ChessGameNavigatorState>(
       chessGameNavigatorProvider(_analysisGame!),
       (previous, next) {
-        debugPrint('===== ANALYSIS MODE: Navigator state changed, movePointer: ${next.movePointer} =====');
+        debugPrint(
+          '===== ANALYSIS MODE: Navigator state changed, movePointer: ${next.movePointer} =====',
+        );
         _syncAnalysisFromNavigator(next);
       },
-      fireImmediately: false, // Don't fire immediately - we'll sync manually after replaceState
+      fireImmediately:
+          false, // Don't fire immediately - we'll sync manually after replaceState
     );
 
     // Always initialize at current position, ignore saved state
@@ -900,25 +943,52 @@ class ChessBoardScreenNotifierNew
   }
 
   void onAnalysisMove(NormalMove move, {bool? isDrop, bool? isPremove}) {
-    debugPrint('🎯 ANALYSIS MOVE: Received move ${move.uci}, isDrop=$isDrop, isPremove=$isPremove');
-    debugPrint('🎯 ANALYSIS MOVE: _analysisGame is ${_analysisGame == null ? "null" : "not null"}');
+    debugPrint(
+      '🎯 ANALYSIS MOVE: Received move ${move.uci}, isDrop=$isDrop, isPremove=$isPremove',
+    );
+    debugPrint(
+      '🎯 ANALYSIS MOVE: _analysisGame is ${_analysisGame == null ? "null" : "not null"}',
+    );
+    final currentState = state.value;
+    if (currentState == null) {
+      debugPrint('🎯 ANALYSIS MOVE: state is null, aborting');
+      return;
+    }
+
+    final clearedState = _clearVariantSelection(currentState);
+    if (!identical(clearedState, currentState)) {
+      state = AsyncValue.data(clearedState);
+    }
+
     if (_analysisGame != null) {
       // CRITICAL FIX: Verify move is legal in the current navigator position
-      final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+      final navigatorState = ref.read(
+        chessGameNavigatorProvider(_analysisGame!),
+      );
       final currentFen = navigatorState.currentFen;
       debugPrint('🎯 ANALYSIS MOVE: Current FEN from navigator: $currentFen');
 
+      String? sanNotation;
       try {
-        final position = Position.setupPosition(Rule.chess, Setup.parseFen(currentFen));
+        final position = Position.setupPosition(
+          Rule.chess,
+          Setup.parseFen(currentFen),
+        );
 
-        // Check if move is legal in current position
         if (!position.isLegal(move)) {
-          debugPrint('🎯 ANALYSIS MOVE: ERROR - Move ${move.uci} is ILLEGAL in current position $currentFen');
+          debugPrint(
+            '🎯 ANALYSIS MOVE: ERROR - Move ${move.uci} is ILLEGAL in current position $currentFen',
+          );
           debugPrint('🎯 ANALYSIS MOVE: Turn to move: ${position.turn}');
           return;
         }
+
+        final (_, san) = position.makeSan(move);
+        sanNotation = san;
       } catch (e) {
-        debugPrint('🎯 ANALYSIS MOVE: ERROR - Failed to verify move legality: $e');
+        debugPrint(
+          '🎯 ANALYSIS MOVE: ERROR - Failed to verify move legality: $e',
+        );
         return;
       }
 
@@ -932,31 +1002,33 @@ class ChessBoardScreenNotifierNew
           ),
         );
       } else {
-        debugPrint('🎯 ANALYSIS MOVE: Move is legal, calling makeOrGoToMove with ${move.uci}');
+        debugPrint(
+          '🎯 ANALYSIS MOVE: Move is legal, calling makeOrGoToMove with ${move.uci}',
+        );
         _analysisNavigator?.makeOrGoToMove(move.uci);
+        if (sanNotation != null) {
+          _playSoundForSan(sanNotation);
+        }
       }
       return;
     }
 
     debugPrint('🎯 ANALYSIS MOVE: _analysisGame is null, using fallback');
     // Fallback for legacy behaviour when analysis navigator hasn't initialised
-    var currentState = state.value;
-    if (currentState == null) {
-      debugPrint('🎯 ANALYSIS MOVE: currentState is null, returning');
-      return;
-    }
     final pos =
-        currentState.isAnalysisMode
-            ? currentState.analysisState.position
-            : currentState.position!;
+        clearedState.isAnalysisMode
+            ? clearedState.analysisState.position
+            : clearedState.position!;
 
     if (pos.isLegal(move)) {
-      final newPosition = pos.playUnchecked(move);
+      String sanNotation = '';
+      final (newPosition, san) = pos.makeSan(move);
+      sanNotation = san;
 
       state = AsyncValue.data(
-        currentState.copyWith(
-          analysisState: currentState.analysisState.copyWith(
-            currentMoveIndex: currentState.analysisState.currentMoveIndex + 1,
+        clearedState.copyWith(
+          analysisState: clearedState.analysisState.copyWith(
+            currentMoveIndex: clearedState.analysisState.currentMoveIndex + 1,
             lastMove: move,
             validMoves: makeLegalMoves(newPosition),
             promotionMove: null,
@@ -965,6 +1037,7 @@ class ChessBoardScreenNotifierNew
           ),
         ),
       );
+      _playSoundForSan(sanNotation);
       _updateEvaluation();
     }
   }
@@ -1017,18 +1090,31 @@ class ChessBoardScreenNotifierNew
       debugPrint('🎯 ANALYSIS STEP FORWARD: Not in analysis mode');
       return;
     }
+    final currentState = state.value;
+    if (currentState == null) return;
     if (_analysisGame == null) {
       debugPrint('🎯 ANALYSIS STEP FORWARD: ERROR - _analysisGame is null');
       return;
     }
     if (_analysisNavigator == null) {
-      debugPrint('🎯 ANALYSIS STEP FORWARD: ERROR - _analysisNavigator is null');
+      debugPrint(
+        '🎯 ANALYSIS STEP FORWARD: ERROR - _analysisNavigator is null',
+      );
       return;
     }
 
+    if (currentState.selectedVariantIndex != null ||
+        currentState.variantMovePointer.isNotEmpty) {
+      state = AsyncValue.data(_clearVariantSelection(currentState));
+    }
+
     final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
-    debugPrint('🎯 ANALYSIS STEP FORWARD: Current movePointer=${navigatorState.movePointer}');
-    debugPrint('🎯 ANALYSIS STEP FORWARD: Current FEN=${navigatorState.currentFen}');
+    debugPrint(
+      '🎯 ANALYSIS STEP FORWARD: Current movePointer=${navigatorState.movePointer}',
+    );
+    debugPrint(
+      '🎯 ANALYSIS STEP FORWARD: Current FEN=${navigatorState.currentFen}',
+    );
     debugPrint('🎯 ANALYSIS STEP FORWARD: Calling goToNextMove on navigator');
     _analysisNavigator?.goToNextMove();
   }
@@ -1040,19 +1126,34 @@ class ChessBoardScreenNotifierNew
       debugPrint('🎯 ANALYSIS STEP BACKWARD: Not in analysis mode');
       return;
     }
+    final currentState = state.value;
+    if (currentState == null) return;
     if (_analysisGame == null) {
       debugPrint('🎯 ANALYSIS STEP BACKWARD: ERROR - _analysisGame is null');
       return;
     }
     if (_analysisNavigator == null) {
-      debugPrint('🎯 ANALYSIS STEP BACKWARD: ERROR - _analysisNavigator is null');
+      debugPrint(
+        '🎯 ANALYSIS STEP BACKWARD: ERROR - _analysisNavigator is null',
+      );
       return;
     }
 
+    if (currentState.selectedVariantIndex != null ||
+        currentState.variantMovePointer.isNotEmpty) {
+      state = AsyncValue.data(_clearVariantSelection(currentState));
+    }
+
     final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
-    debugPrint('🎯 ANALYSIS STEP BACKWARD: Current movePointer=${navigatorState.movePointer}');
-    debugPrint('🎯 ANALYSIS STEP BACKWARD: Current FEN=${navigatorState.currentFen}');
-    debugPrint('🎯 ANALYSIS STEP BACKWARD: Calling goToPreviousMove on navigator');
+    debugPrint(
+      '🎯 ANALYSIS STEP BACKWARD: Current movePointer=${navigatorState.movePointer}',
+    );
+    debugPrint(
+      '🎯 ANALYSIS STEP BACKWARD: Current FEN=${navigatorState.currentFen}',
+    );
+    debugPrint(
+      '🎯 ANALYSIS STEP BACKWARD: Calling goToPreviousMove on navigator',
+    );
     _analysisNavigator?.goToPreviousMove();
   }
 
@@ -1064,10 +1165,13 @@ class ChessBoardScreenNotifierNew
     if (currentState.isAnalysisMode) {
       // Check if variant is selected
       if (currentState.selectedVariantIndex != null) {
-        debugPrint('🎯 JUMP TO START: Variant selected, jumping to variant start');
+        debugPrint(
+          '🎯 JUMP TO START: Variant selected, jumping to variant start',
+        );
         // Jump to start of variant (root position)
         final currentMoveIndex = currentState.currentMoveIndex;
-        final rootPointer = currentMoveIndex < 0 ? const <int>[] : [currentMoveIndex];
+        final rootPointer =
+            currentMoveIndex < 0 ? const <int>[] : [currentMoveIndex];
         _analysisNavigator?.goToMovePointerUnchecked(rootPointer);
 
         // Reset variant move pointer
@@ -1091,12 +1195,18 @@ class ChessBoardScreenNotifierNew
     if (currentState.isAnalysisMode) {
       // Check if variant is selected
       if (currentState.selectedVariantIndex != null) {
-        debugPrint('🎯 JUMP TO END: Variant selected, playing all variant moves');
-        final selectedVariant = currentState.principalVariations[currentState.selectedVariantIndex!];
+        debugPrint(
+          '🎯 JUMP TO END: Variant selected, playing all variant moves',
+        );
+        final selectedVariant =
+            currentState.principalVariations[currentState
+                .selectedVariantIndex!];
         final totalMoves = selectedVariant.moves.length;
         final currentProgress = currentState.variantMovePointer.length;
 
-        debugPrint('🎯 JUMP TO END: totalMoves=$totalMoves, currentProgress=$currentProgress');
+        debugPrint(
+          '🎯 JUMP TO END: totalMoves=$totalMoves, currentProgress=$currentProgress',
+        );
 
         // Play all remaining moves in the variant
         for (int i = currentProgress; i < totalMoves; i++) {
@@ -1187,71 +1297,224 @@ class ChessBoardScreenNotifierNew
 ''';
   }
 
-  List<AnalysisLine> _buildPrincipalVariations(String fen, List<Pv> pvs) {
+  Future<List<AnalysisLine>> _buildPrincipalVariations(
+    String fen,
+    List<Pv> pvs,
+  ) async {
     if (pvs.isEmpty) {
       return const [];
     }
 
+    final limitedPvs = pvs.take(_kMaxPrincipalVariations).toList();
+    final payload = {
+      'fen': fen,
+      'pvs':
+          limitedPvs
+              .map(
+                (pv) => {
+                  'moves': pv.moves,
+                  'cp': pv.cp,
+                  'isMate': pv.isMate,
+                  'mate': pv.mate,
+                },
+              )
+              .toList(),
+    };
+
+    List<Map<String, dynamic>> workerResult = const [];
     try {
-      final basePosition = Position.setupPosition(
-        Rule.chess,
-        Setup.parseFen(fen),
+      workerResult = await workerManager.execute<List<Map<String, dynamic>>>(
+        () => _analysisLinesWorker(payload),
+        priority: WorkPriority.high,
       );
+    } catch (e) {
+      debugPrint('⚠️ Failed to build PV lines on worker: $e');
+      workerResult = const [];
+    }
 
-      final lines = <AnalysisLine>[];
+    if (workerResult.isEmpty) return const [];
 
-      for (final pv in pvs) {
-        final moves = <Move>[];
-        final sanMoves = <String>[];
-        var position = basePosition;
-        double? evaluation;
-        int? mate;
+    final basePosition = Position.setupPosition(
+      Rule.chess,
+      Setup.parseFen(fen),
+    );
 
-        if (pv.isMate && pv.mate != null) {
-          mate = pv.mate;
-        } else {
-          evaluation = _getConsistentEvaluation(pv.cp / 100.0, fen);
+    final lines = <AnalysisLine>[];
+    for (final entry in workerResult) {
+      final uciMoves =
+          (entry['uci'] as List<dynamic>? ?? const []).cast<String>();
+      final sanMoves =
+          (entry['san'] as List<dynamic>? ?? const []).cast<String>();
+      final bool isMate = entry['isMate'] == true;
+      final mateValue = entry['mate'];
+      final cpValue = entry['cp'];
+
+      var position = basePosition;
+      final moves = <Move>[];
+      var valid = true;
+
+      for (final uci in uciMoves) {
+        if (uci.isEmpty) {
+          continue;
         }
-
-        for (final token in pv.moves.split(' ')) {
-          if (token.isEmpty) continue;
-          final parsedMove = Move.parse(token);
-          if (parsedMove == null) {
-            break;
-          }
-
-          try {
-            final (nextPosition, san) = position.makeSan(parsedMove);
-            moves.add(parsedMove);
-            sanMoves.add(san);
-            position = nextPosition;
-          } catch (_) {
-            break;
-          }
+        final parsedMove = Move.parse(uci);
+        if (parsedMove == null) {
+          valid = false;
+          break;
         }
-
-        if (moves.isNotEmpty) {
-          lines.add(
-            AnalysisLine(
-              moves: moves,
-              sanMoves: sanMoves,
-              evaluation: evaluation,
-              mate: mate,
-            ),
-          );
+        try {
+          position = position.play(parsedMove);
+          moves.add(parsedMove);
+        } catch (_) {
+          valid = false;
+          break;
         }
       }
 
-      return lines;
-    } catch (_) {
-      return const [];
+      if (!valid || moves.isEmpty) {
+        continue;
+      }
+
+      double? evaluation;
+      int? mate;
+
+      if (isMate) {
+        mate =
+            mateValue is int
+                ? mateValue
+                : int.tryParse(mateValue?.toString() ?? '');
+      } else {
+        final cp =
+            cpValue is int
+                ? cpValue
+                : int.tryParse(cpValue?.toString() ?? '0') ?? 0;
+        evaluation = _getConsistentEvaluation(cp / 100.0, fen);
+      }
+
+      lines.add(
+        AnalysisLine(
+          moves: moves,
+          sanMoves: sanMoves,
+          evaluation: evaluation,
+          mate: mate,
+        ),
+      );
     }
+
+    return lines;
   }
 
   ChessGameNavigator? get _analysisNavigator =>
       _analysisGame == null
           ? null
           : ref.read(chessGameNavigatorProvider(_analysisGame!).notifier);
+
+  void _playSoundForSan(String san) {
+    final audio = AudioPlayerService.instance;
+    if (san.contains('#')) {
+      audio.player.play(audio.pieceCheckmateSfx);
+    } else if (san.contains('+')) {
+      audio.player.play(audio.pieceCheckSfx);
+    } else if (san == 'O-O' || san == 'O-O-O') {
+      audio.player.play(audio.pieceCastlingSfx);
+    } else if (san.contains('=')) {
+      audio.player.play(audio.piecePromotionSfx);
+    } else if (san.contains('x')) {
+      audio.player.play(audio.pieceTakeoverSfx);
+    } else {
+      audio.player.play(audio.pieceMoveSfx);
+    }
+  }
+
+  ChessBoardStateNew _clearVariantSelection(ChessBoardStateNew stateToUpdate) {
+    if (stateToUpdate.selectedVariantIndex == null &&
+        stateToUpdate.variantMovePointer.isEmpty &&
+        stateToUpdate.variantBaseFen == null) {
+      return stateToUpdate;
+    }
+
+    return stateToUpdate.copyWith(
+      selectedVariantIndex: null,
+      variantMovePointer: const [],
+      variantBaseFen: null,
+      variantBaseMovePointer: null,
+      variantBaseLastMove: null,
+      variantBaseMoveIndex: null,
+    );
+  }
+
+  ChessBoardStateNew _setVariantProgress({
+    required ChessBoardStateNew currentState,
+    required Position currentPosition,
+  }) {
+    final selectedIndex = currentState.selectedVariantIndex;
+    final baseFen = currentState.variantBaseFen;
+
+    if (selectedIndex == null || baseFen == null) {
+      return currentState;
+    }
+
+    if (selectedIndex >= currentState.principalVariations.length) {
+      return _clearVariantSelection(currentState);
+    }
+
+    final variant = currentState.principalVariations[selectedIndex];
+    if (variant.moves.isEmpty) {
+      return _clearVariantSelection(currentState);
+    }
+
+    final progress = _calculateVariantProgress(
+      baseFen,
+      variant.moves,
+      currentPosition.fen,
+    );
+
+    if (progress < 0) {
+      return _clearVariantSelection(currentState);
+    }
+
+    final pointer = List<int>.generate(progress, (index) => index);
+    return currentState.copyWith(variantMovePointer: pointer);
+  }
+
+  int _calculateVariantProgress(
+    String baseFen,
+    List<Move> moves,
+    String currentFen,
+  ) {
+    try {
+      var position = Position.setupPosition(
+        Rule.chess,
+        Setup.parseFen(baseFen),
+      );
+      if (position.fen == currentFen) return 0;
+
+      for (int i = 0; i < moves.length; i++) {
+        position = position.play(moves[i]);
+        if (position.fen == currentFen) {
+          return i + 1;
+        }
+      }
+    } catch (_) {
+      return -1;
+    }
+    return -1;
+  }
+
+  Position _variantPositionFromBase(
+    ChessBoardStateNew state,
+    AnalysisLine variant,
+    int movesToApply,
+  ) {
+    final baseFen = state.variantBaseFen ?? state.analysisState.position.fen;
+    var position = Position.setupPosition(Rule.chess, Setup.parseFen(baseFen));
+
+    for (int i = 0; i < movesToApply && i < variant.moves.length; i++) {
+      position = position.play(variant.moves[i]);
+    }
+
+    return position;
+  }
 
   Future<void> _evaluatePosition() async {
     try {
@@ -1300,7 +1563,7 @@ class ChessBoardScreenNotifierNew
             cloudEval!.pvs.first.cp / 100.0,
             fen,
           );
-          pvLines = _buildPrincipalVariations(fen, cloudEval.pvs);
+          pvLines = await _buildPrincipalVariations(fen, cloudEval.pvs);
         }
         debugPrint("Getting eval from cascadeEval: $fen");
       } catch (e) {
@@ -1339,11 +1602,8 @@ class ChessBoardScreenNotifierNew
         }
         if (result.pvs.isNotEmpty) {
           final rawCp = result.pvs.first.cp;
-          evaluation = _getConsistentEvaluation(
-            rawCp / 100.0,
-            fen,
-          );
-          pvLines = _buildPrincipalVariations(fen, result.pvs);
+          evaluation = _getConsistentEvaluation(rawCp / 100.0, fen);
+          pvLines = await _buildPrincipalVariations(fen, result.pvs);
           final fenParts = fen.split(' ');
           final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
           debugPrint(
@@ -1432,26 +1692,56 @@ class ChessBoardScreenNotifierNew
 
         // Store the base position where these PVs were generated
         final baseFen = fen;
-        final baseMovePointer = currState.isAnalysisMode
-            ? currState.analysisState.movePointer
-            : null;
+        final baseMovePointer =
+            currState.isAnalysisMode
+                ? currState.analysisState.movePointer
+                : null;
 
-        debugPrint('🎯 PV GENERATION: Storing base position FEN=$baseFen, movePointer=$baseMovePointer');
+        debugPrint(
+          '🎯 PV GENERATION: Storing base position FEN=$baseFen, movePointer=$baseMovePointer',
+        );
 
-        state = AsyncValue.data(
-          currState.copyWith(
-            evaluation: evaluation,
-            isEvaluating: false,
-            shapes: shapes,
-            mate: mateScore ?? currState.mate,
-            principalVariations: pvLines,
-            variantBaseFen: baseFen,
-            variantBaseMovePointer: baseMovePointer,
-            analysisState: currState.analysisState.copyWith(
-              suggestionLines: pvLines,
-            ),
+        final previousSelection = currState.selectedVariantIndex;
+        final previousBaseFen = currState.variantBaseFen;
+        final previousVariantPointer = currState.variantMovePointer;
+
+        var nextState = currState.copyWith(
+          evaluation: evaluation,
+          isEvaluating: false,
+          shapes: shapes,
+          mate: mateScore ?? currState.mate,
+          principalVariations: pvLines,
+          analysisState: currState.analysisState.copyWith(
+            suggestionLines: pvLines,
           ),
         );
+
+        if (previousSelection == null) {
+          nextState = nextState.copyWith(
+            variantBaseFen: baseFen,
+            variantBaseMovePointer: baseMovePointer,
+            variantBaseLastMove: currState.analysisState.lastMove,
+            variantBaseMoveIndex: currState.analysisState.currentMoveIndex,
+          );
+        }
+
+        if (previousSelection != null &&
+            previousSelection < pvLines.length &&
+            currState.isAnalysisMode) {
+          nextState = nextState.copyWith(
+            selectedVariantIndex: previousSelection,
+            variantMovePointer:
+                previousBaseFen == baseFen ? previousVariantPointer : const [],
+          );
+          nextState = _setVariantProgress(
+            currentState: nextState,
+            currentPosition: pos,
+          );
+        } else {
+          nextState = _clearVariantSelection(nextState);
+        }
+
+        state = AsyncValue.data(nextState);
       } else {
         debugPrint(
           "------- Skipping setting evaluation for outdated fen: $fen",
@@ -1499,20 +1789,22 @@ class ChessBoardScreenNotifierNew
             whiteJustMoved ? (moveNumber - 1) * 2 : (moveNumber - 1) * 2 + 1;
       }
 
-      state = AsyncValue.data(
-        current.copyWith(
-          analysisState: current.analysisState.copyWith(
-            game: navigatorState.game,
-            position: position,
-            validMoves: makeLegalMoves(position),
-            lastMove: lastMove,
-            moveSans:
-                navigatorState.currentLine?.map((move) => move.san).toList() ??
-                const [],
-            movePointer: navigatorState.movePointer,
-            currentMoveIndex: currentMoveIndex,
-          ),
+      final nextState = current.copyWith(
+        analysisState: current.analysisState.copyWith(
+          game: navigatorState.game,
+          position: position,
+          validMoves: makeLegalMoves(position),
+          lastMove: lastMove,
+          moveSans:
+              navigatorState.currentLine?.map((move) => move.san).toList() ??
+              const [],
+          movePointer: navigatorState.movePointer,
+          currentMoveIndex: currentMoveIndex,
         ),
+      );
+
+      state = AsyncValue.data(
+        _setVariantProgress(currentState: nextState, currentPosition: position),
       );
 
       if (!_cancelEvaluation) {
@@ -1528,15 +1820,13 @@ class ChessBoardScreenNotifierNew
     if (cloudEval?.pvs.isNotEmpty ?? false) {
       final arrowShapes = <Arrow>[];
 
-      // Get up to 2 principal variations
-      final pvsToShow = cloudEval!.pvs.take(2).toList();
+      // Get up to [_kMaxPrincipalVariations] principal variations
+      final pvsToShow = cloudEval!.pvs.take(_kMaxPrincipalVariations).toList();
 
       for (int i = 0; i < pvsToShow.length; i++) {
         final pv = pvsToShow[i];
         String bestMove =
-            pv.moves
-                .split(" ")[0]
-                .toLowerCase(); // Normalize to lowercase
+            pv.moves.split(" ")[0].toLowerCase(); // Normalize to lowercase
 
         if (bestMove.length < 4 || bestMove.length > 5) {
           debugPrint('Invalid best move UCI: $bestMove');
@@ -1544,11 +1834,12 @@ class ChessBoardScreenNotifierNew
         }
 
         try {
-          // Use different colors/opacity for first and second best moves
-          // First move: brighter green, second move: more transparent
-          final arrowColor = i == 0
-              ? const Color.fromARGB(255, 152, 179, 154) // Primary suggestion
-              : const Color.fromARGB(180, 152, 179, 154); // Secondary suggestion (more transparent)
+          // Use different colors/opacity for primary, secondary, tertiary moves
+          final arrowColor = switch (i) {
+            0 => const Color.fromARGB(255, 152, 179, 154),
+            1 => const Color.fromARGB(200, 152, 179, 154),
+            _ => const Color.fromARGB(150, 152, 179, 154),
+          };
 
           if (bestMove.contains('@')) {
             // Drop move (e.g., "p@e4")
@@ -1568,13 +1859,7 @@ class ChessBoardScreenNotifierNew
             String toStr = bestMove.substring(2, 4);
             Square from = Square.fromName(fromStr);
             Square to = Square.fromName(toStr);
-            arrowShapes.add(
-              Arrow(
-                color: arrowColor,
-                orig: from,
-                dest: to,
-              ),
-            );
+            arrowShapes.add(Arrow(color: arrowColor, orig: from, dest: to));
           }
         } catch (e) {
           // Parsing failed for this PV, continue with next
@@ -1638,7 +1923,6 @@ class ChessBoardScreenNotifierNew
     });
   }
 
-
   double getWhiteRatio(double eval) {
     return (eval.clamp(-5.0, 5.0) + 5.0) / 10.0;
   }
@@ -1673,10 +1957,7 @@ class ChessBoardProviderParams {
   final GamesTourModel game;
   final int index;
 
-  const ChessBoardProviderParams({
-    required this.game,
-    required this.index,
-  });
+  const ChessBoardProviderParams({required this.game, required this.index});
 
   @override
   bool operator ==(Object other) =>
@@ -1703,3 +1984,81 @@ final chessBoardScreenProviderNew = AutoDisposeStateNotifierProvider.family<
     index: params.index,
   );
 });
+
+List<Map<String, dynamic>> _analysisLinesWorker(Map<String, dynamic> payload) {
+  try {
+    final fen = payload['fen'] as String? ?? '';
+    if (fen.isEmpty) return const [];
+
+    final pvsData =
+        (payload['pvs'] as List<dynamic>? ?? const [])
+            .cast<Map<String, dynamic>>();
+
+    final basePosition = Position.setupPosition(
+      Rule.chess,
+      Setup.parseFen(fen),
+    );
+
+    final results = <Map<String, dynamic>>[];
+
+    for (final pvData in pvsData) {
+      final movesString = pvData['moves'] as String? ?? '';
+      if (movesString.isEmpty) continue;
+
+      final tokens =
+          movesString
+              .split(' ')
+              .where((token) => token.isNotEmpty)
+              .take(_kMaxMovesPerPv)
+              .toList();
+
+      var position = basePosition;
+      final uciMoves = <String>[];
+      final sanMoves = <String>[];
+      var valid = true;
+
+      for (final token in tokens) {
+        final parsedMove = Move.parse(token);
+        if (parsedMove == null) {
+          valid = false;
+          break;
+        }
+        try {
+          final (nextPosition, san) = position.makeSan(parsedMove);
+          position = nextPosition;
+          uciMoves.add(token);
+          sanMoves.add(san);
+        } catch (_) {
+          valid = false;
+          break;
+        }
+      }
+
+      if (!valid || uciMoves.isEmpty) {
+        continue;
+      }
+
+      final bool isMate = pvData['isMate'] == true;
+      final int? rawMate =
+          pvData['mate'] == null
+              ? null
+              : int.tryParse(pvData['mate'].toString());
+      final int cpValue =
+          pvData['cp'] is int
+              ? pvData['cp'] as int
+              : int.tryParse(pvData['cp']?.toString() ?? '0') ?? 0;
+
+      results.add({
+        'uci': uciMoves,
+        'san': sanMoves,
+        'isMate': isMate,
+        'mate': rawMate,
+        'cp': cpValue,
+      });
+    }
+
+    return results;
+  } catch (_) {
+    return const [];
+  }
+}

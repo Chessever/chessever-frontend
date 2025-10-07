@@ -137,7 +137,10 @@ class ChessBoardStateNew {
   final int? selectedVariantIndex; // Track which engine suggestion is selected
   final List<int> variantMovePointer; // Track progress through selected variant
   final String? variantBaseFen; // FEN position where current PVs were generated
-  final ChessMovePointer? variantBaseMovePointer; // Navigator position where PVs start
+  final ChessMovePointer?
+  variantBaseMovePointer; // Navigator position where PVs start
+  final Move? variantBaseLastMove; // Last move before variant exploration
+  final int? variantBaseMoveIndex; // Move index before variant exploration
 
   bool get canMoveForward => currentMoveIndex < allMoves.length - 1;
 
@@ -174,6 +177,8 @@ class ChessBoardStateNew {
     this.variantMovePointer = const [],
     this.variantBaseFen,
     this.variantBaseMovePointer,
+    this.variantBaseLastMove,
+    this.variantBaseMoveIndex,
   });
 
   ChessBoardStateNew copyWith({
@@ -201,6 +206,8 @@ class ChessBoardStateNew {
     List<int>? variantMovePointer,
     String? variantBaseFen,
     ChessMovePointer? variantBaseMovePointer,
+    Move? variantBaseLastMove,
+    int? variantBaseMoveIndex,
   }) {
     return ChessBoardStateNew(
       position: position ?? this.position,
@@ -225,7 +232,10 @@ class ChessBoardStateNew {
       selectedVariantIndex: selectedVariantIndex ?? this.selectedVariantIndex,
       variantMovePointer: variantMovePointer ?? this.variantMovePointer,
       variantBaseFen: variantBaseFen ?? this.variantBaseFen,
-      variantBaseMovePointer: variantBaseMovePointer ?? this.variantBaseMovePointer,
+      variantBaseMovePointer:
+          variantBaseMovePointer ?? this.variantBaseMovePointer,
+      variantBaseLastMove: variantBaseLastMove ?? this.variantBaseLastMove,
+      variantBaseMoveIndex: variantBaseMoveIndex ?? this.variantBaseMoveIndex,
       analysisState:
           analysisState != null
               ? analysisState.copyWith(
