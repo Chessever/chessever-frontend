@@ -24,7 +24,7 @@ enum MoveImpactType {
 
   // Interesting move (!?) - Missed opportunity for a much better move
   interesting(
-    symbol: '!?',
+    symbol: '?!',
     color: Color(0xFF1565C0), // Blue
     description: 'Inaccuracy - Draw-range mistake',
   ),
@@ -168,6 +168,25 @@ List<double?> _parseEvalsFromPgn(String pgn) {
 
   return evals;
 }
+
+// Centipawn / win probability thresholds for negative move classification
+const int _kDrawInaccuracyCpThreshold = 80; // 0.8 pawns swing inside draw range
+const double _kDrawInaccuracyWinProbThreshold = 0.045;
+
+const int _kCourseChangeMistakeCpThreshold = 90; // loss of win/draw boundary
+const double _kCourseChangeMistakeWinProbThreshold = 0.055;
+const int _kCourseChangeBlunderCpThreshold = 200;
+const double _kCourseChangeBlunderWinProbThreshold = 0.11;
+
+const int _kStayingMistakeCpThreshold = 110;
+const double _kStayingMistakeWinProbThreshold = 0.075;
+const double _kStayingMistakeRelativeThreshold = 0.55;
+
+const int _kStayingInterestingCpThreshold = 80;
+const double _kStayingInterestingWinProbThreshold = 0.05;
+const double _kStayingInterestingRelativeThreshold = 0.4;
+
+const double _kDrawSignFlipWinProbAssist = 0.04;
 
 /// BULLETPROOF Move Impact Analysis - Understanding Chess Engine Evaluation
 ///
@@ -355,89 +374,109 @@ MoveImpactAnalysis? _calculateMoveImpactFromAlternatives({
       }
     }
 
-    final bool smallDrift = outcomeBefore == outcomeAfter && cpLoss < 80 && winProbLoss < 0.07;
+    final bool smallDrift = outcomeBefore == outcomeAfter &&
+        cpLoss < _kStayingInterestingCpThreshold &&
+        winProbLoss < _kStayingInterestingWinProbThreshold;
 
     if (impact == MoveImpactType.normal && !preservedOrBetter && cpLoss > 0 && !smallDrift) {
-      final bool courseToLosing = outcomeAfter == PositionOutcome.losing && outcomeBefore != PositionOutcome.losing;
-      final bool winningToDraw = outcomeBefore == PositionOutcome.winning && outcomeAfter == PositionOutcome.draw;
-      final bool drawStayed = outcomeBefore == PositionOutcome.draw && outcomeAfter == PositionOutcome.draw;
-      final bool stayedWinning = outcomeBefore == PositionOutcome.winning && outcomeAfter == PositionOutcome.winning;
-      final bool stayedLosing = outcomeBefore == PositionOutcome.losing && outcomeAfter == PositionOutcome.losing;
+      final bool beforeWinning = outcomeBefore == PositionOutcome.winning;
+      final bool beforeLosing = outcomeBefore == PositionOutcome.losing;
+      final bool beforeDraw = outcomeBefore == PositionOutcome.draw;
+      final bool afterWinning = outcomeAfter == PositionOutcome.winning;
+      final bool afterLosing = outcomeAfter == PositionOutcome.losing;
+      final bool afterDraw = outcomeAfter == PositionOutcome.draw;
       final bool severeSignFlip = (bestResultPlayer > 0 && actualResultPlayer < 0) ||
           (bestResultPlayer < 0 && actualResultPlayer > 0);
+      final double bestMagnitude = bestResultPlayer.abs().toDouble();
+      final double relativeLoss =
+          bestMagnitude == 0 ? 0.0 : cpLoss / math.max(bestMagnitude, 120.0);
 
-      if (courseToLosing) {
-        final bool severeDrop = cpLoss >= 200 || actualResultPlayer <= -200 || winProbLoss >= 0.12 || severeSignFlip;
-        if (playerMoveFoundInPv && severeDrop) {
+      if (beforeWinning && afterLosing) {
+        final bool severeDrop = cpLoss >= _kCourseChangeBlunderCpThreshold ||
+            winProbLoss >= _kCourseChangeBlunderWinProbThreshold ||
+            actualResultPlayer <= -160;
+        if (severeDrop) {
           debugPrint(
-            '🔺 BLUNDER reason={courseToLosing:true, cpLoss:$cpLoss, wpLoss:${winProbLoss.toStringAsFixed(3)}} '
-            'move=$playerMoveSan (#$moveNumber ${isWhiteMove ? 'white' : 'black'})',
+            "🔺 BLUNDER reason={winToLoss:true, cpLoss:$cpLoss, wpLoss:${winProbLoss.toStringAsFixed(3)}} "
+            "move=$playerMoveSan (#$moveNumber ${isWhiteMove ? 'white' : 'black'})",
           );
           impact = MoveImpactType.blunder;
-        } else if (cpLoss >= 30 || winProbLoss >= 0.04) {
+        } else {
           debugPrint(
-            '⚠️ MISTAKE reason={courseToLosing:true, cpLoss:$cpLoss, wpLoss:${winProbLoss.toStringAsFixed(3)}} '
-            'move=$playerMoveSan (#$moveNumber ${isWhiteMove ? 'white' : 'black'})',
+            "⚠️ MISTAKE reason={winToLoss:true, cpLoss:$cpLoss, wpLoss:${winProbLoss.toStringAsFixed(3)}} "
+            "move=$playerMoveSan (#$moveNumber ${isWhiteMove ? 'white' : 'black'})",
           );
           impact = MoveImpactType.inaccuracy;
-        } else if (playerMoveFoundInPv && (cpLoss >= 70 || winProbLoss >= 0.035)) {
-          debugPrint(
-            '🔹 INACCURACY reason={courseToLosing:true, cpLoss:$cpLoss, wpLoss:${winProbLoss.toStringAsFixed(3)}} '
-            'move=$playerMoveSan (#$moveNumber ${isWhiteMove ? 'white' : 'black'})',
-          );
-          impact = MoveImpactType.interesting;
         }
-      } else if (winningToDraw) {
-        const int mistakeThresholdCp = 100; // 1.0 pawn
-        const int blunderThresholdCp = 200; // 2.0 pawns
-        final bool blunderDrop = playerMoveFoundInPv && (cpLoss >= blunderThresholdCp || winProbLoss >= 0.12);
-        if (blunderDrop) {
+      } else if (beforeWinning && afterDraw) {
+        final bool severeDrop = cpLoss >= _kCourseChangeBlunderCpThreshold ||
+            winProbLoss >= _kCourseChangeBlunderWinProbThreshold;
+        if (severeDrop) {
           debugPrint(
-            '🔺 BLUNDER reason={winningToDraw:true, cpLoss:$cpLoss, wpLoss:${winProbLoss.toStringAsFixed(3)}} '
-            'move=$playerMoveSan (#$moveNumber ${isWhiteMove ? 'white' : 'black'})',
+            "🔺 BLUNDER reason={winToDraw:true, cpLoss:$cpLoss, wpLoss:${winProbLoss.toStringAsFixed(3)}} "
+            "move=$playerMoveSan (#$moveNumber ${isWhiteMove ? 'white' : 'black'})",
           );
           impact = MoveImpactType.blunder;
-        } else if (playerMoveFoundInPv && (cpLoss >= mistakeThresholdCp || winProbLoss >= 0.06)) {
+        } else {
           debugPrint(
-            '⚠️ MISTAKE reason={winningToDraw:true, cpLoss:$cpLoss, wpLoss:${winProbLoss.toStringAsFixed(3)}} '
-            'move=$playerMoveSan (#$moveNumber ${isWhiteMove ? 'white' : 'black'})',
+            "⚠️ MISTAKE reason={winToDraw:true, cpLoss:$cpLoss, wpLoss:${winProbLoss.toStringAsFixed(3)}, severeFlip:$severeSignFlip} "
+            "move=$playerMoveSan (#$moveNumber ${isWhiteMove ? 'white' : 'black'})",
           );
           impact = MoveImpactType.inaccuracy;
-        } else if (playerMoveFoundInPv && (cpLoss >= 70 || winProbLoss >= 0.04)) {
+        }
+      } else if (beforeDraw && afterLosing) {
+        final bool severeDrop = cpLoss >= _kCourseChangeBlunderCpThreshold ||
+            winProbLoss >= _kCourseChangeBlunderWinProbThreshold ||
+            actualResultPlayer <= -160;
+        if (severeDrop) {
           debugPrint(
-            '🔹 INACCURACY reason={winningToDraw:true, cpLoss:$cpLoss, wpLoss:${winProbLoss.toStringAsFixed(3)}} '
-            'move=$playerMoveSan (#$moveNumber ${isWhiteMove ? 'white' : 'black'})',
+            "🔺 BLUNDER reason={drawToLoss:true, cpLoss:$cpLoss, wpLoss:${winProbLoss.toStringAsFixed(3)}} "
+            "move=$playerMoveSan (#$moveNumber ${isWhiteMove ? 'white' : 'black'})",
+          );
+          impact = MoveImpactType.blunder;
+        } else {
+          debugPrint(
+            "⚠️ MISTAKE reason={drawToLoss:true, cpLoss:$cpLoss, wpLoss:${winProbLoss.toStringAsFixed(3)}, severeFlip:$severeSignFlip} "
+            "move=$playerMoveSan (#$moveNumber ${isWhiteMove ? 'white' : 'black'})",
+          );
+          impact = MoveImpactType.inaccuracy;
+        }
+      } else if (beforeDraw && afterDraw) {
+        if (cpLoss >= _kDrawInaccuracyCpThreshold ||
+            winProbLoss >= _kDrawInaccuracyWinProbThreshold ||
+            (severeSignFlip && winProbLoss >= _kDrawSignFlipWinProbAssist)) {
+          debugPrint(
+            "🔹 INACCURACY reason={drawSwing:true, cpLoss:$cpLoss, wpLoss:${winProbLoss.toStringAsFixed(3)}} "
+            "move=$playerMoveSan (#$moveNumber ${isWhiteMove ? 'white' : 'black'})",
           );
           impact = MoveImpactType.interesting;
         }
-      } else if (drawStayed) {
-        if (playerMoveFoundInPv &&
-            (cpLoss >= 120 || winProbLoss >= 0.06 || (severeSignFlip && winProbLoss >= 0.045))) {
+      } else if ((beforeWinning && afterWinning) || (beforeLosing && afterLosing)) {
+        if (cpLoss >= _kStayingMistakeCpThreshold ||
+            winProbLoss >= _kStayingMistakeWinProbThreshold ||
+            relativeLoss >= _kStayingMistakeRelativeThreshold) {
           debugPrint(
-            '🔹 INACCURACY reason={drawStayed:true, cpLoss:$cpLoss, wpLoss:${winProbLoss.toStringAsFixed(3)}} '
-            'move=$playerMoveSan (#$moveNumber ${isWhiteMove ? 'white' : 'black'})',
-          );
-          impact = MoveImpactType.interesting;
-        }
-      } else if (stayedWinning || stayedLosing) {
-        if (playerMoveFoundInPv && (cpLoss >= 200 || winProbLoss >= 0.1 || severeSignFlip)) {
-          debugPrint(
-            '⚠️ MISTAKE reason={advantageLeak:true, cpLoss:$cpLoss, wpLoss:${winProbLoss.toStringAsFixed(3)}} '
-            'move=$playerMoveSan (#$moveNumber ${isWhiteMove ? 'white' : 'black'})',
+            "⚠️ MISTAKE reason={advantageLeak:true, cpLoss:$cpLoss, wpLoss:${winProbLoss.toStringAsFixed(3)}, relLoss:${relativeLoss.toStringAsFixed(2)}} "
+            "move=$playerMoveSan (#$moveNumber ${isWhiteMove ? 'white' : 'black'})",
           );
           impact = MoveImpactType.inaccuracy;
-        } else if (playerMoveFoundInPv && (cpLoss >= 100 || winProbLoss >= 0.05)) {
+        } else if (cpLoss >= _kStayingInterestingCpThreshold ||
+            winProbLoss >= _kStayingInterestingWinProbThreshold ||
+            relativeLoss >= _kStayingInterestingRelativeThreshold) {
           debugPrint(
-            '🔹 INACCURACY reason={advantageLeak:true, cpLoss:$cpLoss, wpLoss:${winProbLoss.toStringAsFixed(3)}} '
-            'move=$playerMoveSan (#$moveNumber ${isWhiteMove ? 'white' : 'black'})',
+            "🔹 INACCURACY reason={advantageLeakLight:true, cpLoss:$cpLoss, wpLoss:${winProbLoss.toStringAsFixed(3)}, relLoss:${relativeLoss.toStringAsFixed(2)}} "
+            "move=$playerMoveSan (#$moveNumber ${isWhiteMove ? 'white' : 'black'})",
           );
           impact = MoveImpactType.interesting;
         }
       }
     }
 
-    if (!playerMoveFoundInPv && impact == MoveImpactType.inaccuracy) {
-      debugPrint('ℹ️ Downgrading mistake to draw-range inaccuracy due to low PV confidence');
+    if (!playerMoveFoundInPv &&
+        impact == MoveImpactType.inaccuracy &&
+        cpLoss < (_kCourseChangeMistakeCpThreshold + 30) &&
+        winProbLoss < 0.08) {
+      debugPrint('ℹ️ Downgrading mistake to draw-range inaccuracy due to low PV confidence (cpLoss:$cpLoss)');
       impact = MoveImpactType.interesting;
     }
 
