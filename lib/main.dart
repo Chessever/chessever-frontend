@@ -46,8 +46,8 @@ Future<void> main() async {
   await dotenv.load(fileName: ".env");
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize worker manager with 75 isolates for parallel move evaluation
-  await workerManager.init(isolatesCount: 75);
+  // Initialize worker manager with 150 isolates for parallel move evaluation
+  await workerManager.init(isolatesCount: 150);
 
   await NotificationService.initialize();
 
