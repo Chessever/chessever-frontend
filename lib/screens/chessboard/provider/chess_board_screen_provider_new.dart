@@ -56,6 +56,7 @@ class ChessBoardScreenNotifierNew
   bool _isProcessingMove = false;
   bool _isLongPressing = false;
   bool _cancelEvaluation = false;
+  bool _resumeVariantAutoPlay = false;
   final Map<String, double> _evaluationCache = {};
   final Map<String, int?> _mateCache = {};
   ChessGame? _analysisGame;
@@ -634,6 +635,7 @@ class ChessBoardScreenNotifierNew
     final selectedVariant = currentState.principalVariations[variantIndex];
     final arrowShapes = _variantArrowShapes(selectedVariant, 0);
 
+    _resumeVariantAutoPlay = false;
     state = AsyncValue.data(updatedState.copyWith(shapes: arrowShapes));
 
     debugPrint('🎯 SELECT VARIANT: Variant selected, ready for navigation');
@@ -642,6 +644,7 @@ class ChessBoardScreenNotifierNew
   /// Play next move of the selected variant forward
   void playVariantMoveForward() {
     debugPrint('🎯 PLAY VARIANT FORWARD called');
+    _resumeVariantAutoPlay = false;
     final currentState = state.value;
     if (currentState == null || !currentState.isAnalysisMode) {
       debugPrint('🎯 PLAY VARIANT FORWARD: Not in analysis mode');
@@ -667,18 +670,16 @@ class ChessBoardScreenNotifierNew
 
     if (nextMoveIndex >= selectedVariant.moves.length) {
       debugPrint('🎯 PLAY VARIANT FORWARD: No more moves in variant');
-      final clearedState = _clearVariantSelection(
-        currentState.copyWith(
-          shapes: const ISet.empty(),
-          principalVariations: const [],
-          evaluation: null,
-          isEvaluating: true,
-          analysisState: currentState.analysisState.copyWith(
-            suggestionLines: const [],
+      _resumeVariantAutoPlay = true;
+      if (currentState.isEvaluating != true) {
+        state = AsyncValue.data(
+          currentState.copyWith(
+            evaluation: currentState.evaluation,
+            isEvaluating: true,
+            shapes: const ISet.empty(),
           ),
-        ),
-      );
-      state = AsyncValue.data(clearedState);
+        );
+      }
       _updateEvaluation();
       return;
     }
@@ -708,7 +709,6 @@ class ChessBoardScreenNotifierNew
 
     final updatedState = currentState.copyWith(
       variantMovePointer: newPointer,
-      principalVariations: const [],
       evaluation: null,
       isEvaluating: true,
       analysisState: currentState.analysisState.copyWith(
@@ -719,7 +719,6 @@ class ChessBoardScreenNotifierNew
             currentState.analysisState.currentMoveIndex,
         validMoves: makeLegalMoves(positionAfter),
         promotionMove: null,
-        suggestionLines: const [],
       ),
     );
 
@@ -736,6 +735,7 @@ class ChessBoardScreenNotifierNew
   /// Undo last move of the selected variant
   void playVariantMoveBackward() {
     debugPrint('🎯 PLAY VARIANT BACKWARD called');
+    _resumeVariantAutoPlay = false;
     final currentState = state.value;
     if (currentState == null || !currentState.isAnalysisMode) {
       debugPrint('🎯 PLAY VARIANT BACKWARD: Not in analysis mode');
@@ -771,6 +771,8 @@ class ChessBoardScreenNotifierNew
 
     final updatedState = currentState.copyWith(
       variantMovePointer: newPointer,
+      evaluation: null,
+      isEvaluating: true,
       analysisState: currentState.analysisState.copyWith(
         position: positionAfter,
         lastMove: lastMove,
@@ -793,6 +795,31 @@ class ChessBoardScreenNotifierNew
       _playSoundForSan('');
     }
     _updateEvaluation();
+  }
+
+  void cycleVariant(int delta) {
+    final currentState = state.value;
+    if (currentState == null ||
+        !currentState.isAnalysisMode ||
+        currentState.principalVariations.isEmpty) {
+      return;
+    }
+
+    final count = currentState.principalVariations.length;
+    int targetIndex;
+    final currentIndex = currentState.selectedVariantIndex;
+    if (currentIndex == null) {
+      targetIndex = delta > 0 ? 0 : count - 1;
+    } else {
+      targetIndex = (currentIndex + delta) % count;
+      if (targetIndex < 0) {
+        targetIndex += count;
+      }
+      if (targetIndex == currentIndex) {
+        return;
+      }
+    }
+    selectVariant(targetIndex);
   }
 
   void moveForward() {
@@ -1478,6 +1505,7 @@ class ChessBoardScreenNotifierNew
   }
 
   ChessBoardStateNew _clearVariantSelection(ChessBoardStateNew stateToUpdate) {
+    _resumeVariantAutoPlay = false;
     if (stateToUpdate.selectedVariantIndex == null &&
         stateToUpdate.variantMovePointer.isEmpty &&
         stateToUpdate.variantBaseFen == null) {
@@ -1558,7 +1586,6 @@ class ChessBoardScreenNotifierNew
     if (previousSelection != null &&
         previousSelection < pvLines.length &&
         currentState.isAnalysisMode) {
-      final preserveProgress = previousBaseFen == baseFen;
       nextState = nextState.copyWith(
         selectedVariantIndex: previousSelection,
         variantBaseFen: baseFen,
@@ -1566,7 +1593,7 @@ class ChessBoardScreenNotifierNew
         variantBaseLastMove: currentState.analysisState.lastMove,
         variantBaseMoveIndex: currentState.analysisState.currentMoveIndex,
       );
-      if (preserveProgress) {
+      if (previousBaseFen == baseFen) {
         nextState = nextState.copyWith(
           variantMovePointer: previousVariantPointer,
         );
@@ -1593,7 +1620,20 @@ class ChessBoardScreenNotifierNew
       nextState = _clearVariantSelection(nextState);
     }
 
+    final shouldAutoContinue =
+        _resumeVariantAutoPlay &&
+        nextState.selectedVariantIndex != null &&
+        nextState.selectedVariantIndex! < pvLines.length &&
+        pvLines[nextState.selectedVariantIndex!].moves.isNotEmpty &&
+        nextState.variantMovePointer.length <
+            pvLines[nextState.selectedVariantIndex!].moves.length;
+
+    _resumeVariantAutoPlay = false;
     state = AsyncValue.data(nextState);
+
+    if (shouldAutoContinue) {
+      Future.microtask(() => playVariantMoveForward());
+    }
   }
 
   int _calculateVariantProgress(
@@ -1911,13 +1951,6 @@ class ChessBoardScreenNotifierNew
       var progressedState = _setVariantProgress(
         currentState: nextState,
         currentPosition: position,
-      );
-
-      progressedState = progressedState.copyWith(
-        principalVariations: const [],
-        analysisState: progressedState.analysisState.copyWith(
-          suggestionLines: const [],
-        ),
       );
 
       state = AsyncValue.data(progressedState);

@@ -1808,6 +1808,8 @@ class _PrincipalVariationList extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
+    final params = ChessBoardProviderParams(game: game, index: index);
+    final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
     final position =
         state.isAnalysisMode ? state.analysisState.position : state.position;
     final baseMoveNumber = position?.fullmoves ?? 1;
@@ -1834,9 +1836,44 @@ class _PrincipalVariationList extends ConsumerWidget {
           ),
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Engine suggestions',
-              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            Row(
+              children: [
+                Text(
+                  'Engine suggestions',
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: kWhiteColor,
+                  ),
+                ),
+                const Spacer(),
+                if (lines.length > 1)
+                  Row(
+                    children: [
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        iconSize: 18.sp,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        onPressed: () => notifier.cycleVariant(-1),
+                        icon: const Icon(
+                          Icons.chevron_left,
+                          color: kWhiteColor,
+                        ),
+                      ),
+                      SizedBox(width: 8.w),
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        iconSize: 18.sp,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        onPressed: () => notifier.cycleVariant(1),
+                        icon: const Icon(
+                          Icons.chevron_right,
+                          color: kWhiteColor,
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
             ),
             SizedBox(height: 8.h),
             SingleChildScrollView(
@@ -1858,14 +1895,6 @@ class _PrincipalVariationList extends ConsumerWidget {
                     final evalText = _formatEvalLabel(line);
                     final evalBackground = _variantEvalBackground(line);
                     final evalBorder = _variantEvalBorder(line, isSelected);
-
-                    final params = ChessBoardProviderParams(
-                      game: game,
-                      index: index,
-                    );
-                    final notifier = ref.read(
-                      chessBoardScreenProviderNew(params).notifier,
-                    );
 
                     return Padding(
                       padding: EdgeInsets.only(right: 8.sp),
