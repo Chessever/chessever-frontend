@@ -1294,10 +1294,6 @@ class ChessBoardScreenNotifierNew
         currentState.copyWith(shapes: const ISet.empty(), isEvaluating: true),
       );
       try {
-        // Force invalidate to bypass any cached wrong evaluations
-        ref.invalidate(cascadeEvalProviderForBoard(fen));
-        // Also try to clear local cache for this specific FEN (if accessible)
-        debugPrint("🔄 FORCING FRESH EVALUATION for $fen (invalidating cache)");
         cloudEval = await ref.read(cascadeEvalProviderForBoard(fen).future);
         if (cloudEval?.pvs.isNotEmpty ?? false) {
           evaluation = _getConsistentEvaluation(
