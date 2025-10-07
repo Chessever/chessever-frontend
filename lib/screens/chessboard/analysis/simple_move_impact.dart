@@ -129,8 +129,10 @@ Future<List<CloudEval?>> _evaluatePositions(
 ) async {
   final results = List<CloudEval?>.filled(fens.length, null, growable: false);
 
+  // Process in reverse order (end game first) - these are usually faster
   final indices = List<int>.generate(fens.length, (i) => fens.length - 1 - i);
 
+  // Process sequentially in chunks to avoid overwhelming Lichess API
   for (int chunkStart = 0; chunkStart < indices.length; chunkStart += _kEvalConcurrency) {
     final end = math.min(chunkStart + _kEvalConcurrency, indices.length);
     final chunk = <Future<void>>[];

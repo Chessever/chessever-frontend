@@ -40,6 +40,33 @@ class LocalEvalCache {
     }
   }
 
+  /// Batch fetch multiple evals at once - much faster than individual fetches
+  Future<Map<String, CloudEval>> batchFetch(List<String> fens) async {
+    final result = <String, CloudEval>{};
+    if (fens.isEmpty) return result;
+
+    final prefs = await SharedPreferences.getInstance();
+    final storedVersion = prefs.getInt(_versionKey) ?? 1;
+    if (storedVersion < _currentVersion) {
+      await _clearWithPrefs(prefs);
+      await prefs.setInt(_versionKey, _currentVersion);
+      return result;
+    }
+
+    for (final fen in fens) {
+      final raw = prefs.getString('$_prefix$fen');
+      if (raw != null) {
+        try {
+          result[fen] = CloudEval.fromJson(jsonDecode(raw));
+        } catch (_) {
+          // corrupted entry → skip it
+        }
+      }
+    }
+
+    return result;
+  }
+
   Future<void> clear() async {
     final prefs = await SharedPreferences.getInstance();
     await _clearWithPrefs(prefs);
