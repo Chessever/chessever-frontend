@@ -62,9 +62,8 @@ class _GameSearchController extends StateNotifier<GameSearchState> {
     _cachedRounds = List.unmodifiable(rounds);
     _roundOrderMap = {};
 
-    final reversedRounds = rounds.reversed.toList();
-    for (int i = 0; i < reversedRounds.length; i++) {
-      final roundId = reversedRounds[i].id;
+    for (int i = 0; i < rounds.length; i++) {
+      final roundId = rounds[i].id;
       if (roundId.isNotEmpty) {
         _roundOrderMap![roundId] = i;
       }
