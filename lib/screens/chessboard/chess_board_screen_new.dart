@@ -1827,7 +1827,11 @@ class _PrincipalVariationList extends ConsumerWidget {
               ),
             ),
         child: Column(
-          key: ValueKey(lines.map((line) => line.sanMoves.join(' ')).join('|')),
+          key: ValueKey(
+            lines
+                .map((line) => '${line.sanMoves.join(' ')}|${line.displayEval}')
+                .join('|'),
+          ),
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
@@ -1835,76 +1839,123 @@ class _PrincipalVariationList extends ConsumerWidget {
               style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
             ),
             SizedBox(height: 8.h),
-            ...lines.asMap().entries.map((entry) {
-              final variantIndex = entry.key;
-              final line = entry.value;
-              final isSelected = state.selectedVariantIndex == variantIndex;
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              child: Row(
+                children: [
+                  ...lines.asMap().entries.map((entry) {
+                    final variantIndex = entry.key;
+                    final line = entry.value;
+                    final isSelected =
+                        state.selectedVariantIndex == variantIndex;
 
-              final sanMoves = _formatPv(
-                line.sanMoves,
-                baseMoveNumber,
-                isWhiteToMove,
-              );
-              final evalText = line.displayEval;
+                    final sanMoves = _formatPv(
+                      line.sanMoves,
+                      baseMoveNumber,
+                      isWhiteToMove,
+                    );
+                    final evalText = _formatEvalLabel(line);
+                    final evalBackground = _variantEvalBackground(line);
+                    final evalBorder = _variantEvalBorder(line, isSelected);
 
-              final params = ChessBoardProviderParams(game: game, index: index);
-              final notifier = ref.read(
-                chessBoardScreenProviderNew(params).notifier,
-              );
+                    final params = ChessBoardProviderParams(
+                      game: game,
+                      index: index,
+                    );
+                    final notifier = ref.read(
+                      chessBoardScreenProviderNew(params).notifier,
+                    );
 
-              return GestureDetector(
-                onTap: () {
-                  if (isSelected) {
-                    notifier.playVariantMoveForward();
-                  } else {
-                    notifier.selectVariant(variantIndex);
-                  }
-                },
-                child: Container(
-                  margin: EdgeInsets.only(bottom: 6.h),
-                  decoration: BoxDecoration(
-                    border: Border.all(
-                      color:
-                          isSelected
-                              ? kWhiteColor.withValues(alpha: 0.4)
-                              : kWhiteColor.withValues(alpha: 0.12),
-                      width: isSelected ? 1.2 : 1,
-                    ),
-                    borderRadius: BorderRadius.circular(6.sp),
-                    color:
-                        isSelected
-                            ? kPrimaryColor.withValues(alpha: 0.15)
-                            : kWhiteColor.withValues(alpha: 0.05),
-                  ),
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 10.sp,
-                    vertical: 8.sp,
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        margin: EdgeInsets.only(right: 10.sp),
-                        decoration: BoxDecoration
-                      Expanded(
-                        child: Text(
-                          sanMoves.join(' '),
-                          style: AppTypography.textXsMedium.copyWith(
-                            color: kWhiteColor.withValues(alpha: 0.9),
-                            fontWeight:
-                                isSelected
-                                    ? FontWeight.w600
-                                    : FontWeight.normal,
+                    return Padding(
+                      padding: EdgeInsets.only(right: 8.sp),
+                      child: SizedBox(
+                        width: 240.w,
+                        child: GestureDetector(
+                          onTap:
+                              () =>
+                                  isSelected
+                                      ? notifier.playVariantMoveForward()
+                                      : notifier.playPrincipalVariationMove(
+                                        line,
+                                      ),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color:
+                                    isSelected
+                                        ? kWhiteColor.withValues(alpha: 0.4)
+                                        : kWhiteColor.withValues(alpha: 0.12),
+                                width: isSelected ? 1.2 : 1,
+                              ),
+                              borderRadius: BorderRadius.circular(6.sp),
+                              color:
+                                  isSelected
+                                      ? kPrimaryColor.withValues(alpha: 0.15)
+                                      : kWhiteColor.withValues(alpha: 0.05),
+                            ),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 10.sp,
+                              vertical: 8.sp,
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  margin: EdgeInsets.only(right: 10.sp),
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 8.sp,
+                                    vertical: 4.sp,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: evalBackground,
+                                    borderRadius: BorderRadius.circular(4.sp),
+                                    border: Border.all(
+                                      color: evalBorder,
+                                      width: 0.8,
+                                    ),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: AnimatedSwitcher(
+                                    duration: const Duration(milliseconds: 200),
+                                    child: Text(
+                                      evalText,
+                                      key: ValueKey(evalText),
+                                      style: AppTypography.textXsMedium
+                                          .copyWith(
+                                            color: kWhiteColor,
+                                            fontWeight:
+                                                isSelected
+                                                    ? FontWeight.w600
+                                                    : FontWeight.w500,
+                                          ),
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Text(
+                                    sanMoves.join(' '),
+                                    style: AppTypography.textXsMedium.copyWith(
+                                      color: kWhiteColor.withValues(alpha: 0.9),
+                                      fontWeight:
+                                          isSelected
+                                              ? FontWeight.w600
+                                              : FontWeight.normal,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 2,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 2,
                         ),
                       ),
-                    ],
-                  ),
-                ),
-              );
-            }),
+                    );
+                  }),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -1925,6 +1976,61 @@ class _PrincipalVariationList extends ConsumerWidget {
       formatted.add('$prefix ${sanMoves[i]}');
     }
     return formatted;
+  }
+
+  String _formatEvalLabel(AnalysisLine line) {
+    if (line.isMate) {
+      final mate = line.mate ?? 0;
+      final absMate = mate.abs();
+      final prefix = mate >= 0 ? '#+' : '#-';
+      return '$prefix$absMate';
+    }
+
+    final eval = line.evaluation;
+    if (eval == null) {
+      return '--';
+    }
+
+    final formatted = eval.abs().toStringAsFixed(1);
+    return eval >= 0 ? '+$formatted' : '-$formatted';
+  }
+
+  Color _variantEvalBackground(AnalysisLine line) {
+    if (line.isMate) {
+      final mate = line.mate ?? 0;
+      return mate >= 0
+          ? kPrimaryColor.withValues(alpha: 0.35)
+          : kRedColor.withValues(alpha: 0.35);
+    }
+
+    final eval = line.evaluation ?? 0;
+    if (eval >= 1.5) {
+      return kPrimaryColor.withValues(alpha: 0.35);
+    }
+    if (eval <= -1.5) {
+      return kRedColor.withValues(alpha: 0.35);
+    }
+    return kWhiteColor.withValues(alpha: 0.08);
+  }
+
+  Color _variantEvalBorder(AnalysisLine line, bool isSelected) {
+    if (isSelected) {
+      return kWhiteColor.withValues(alpha: 0.5);
+    }
+    if (line.isMate) {
+      final mate = line.mate ?? 0;
+      return mate >= 0
+          ? kPrimaryColor.withValues(alpha: 0.55)
+          : kRedColor.withValues(alpha: 0.55);
+    }
+    final eval = line.evaluation ?? 0;
+    if (eval >= 1.5) {
+      return kPrimaryColor.withValues(alpha: 0.45);
+    }
+    if (eval <= -1.5) {
+      return kRedColor.withValues(alpha: 0.45);
+    }
+    return kWhiteColor.withValues(alpha: 0.15);
   }
 }
 
