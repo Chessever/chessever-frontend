@@ -61,10 +61,9 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
     final allRounds =
         _ref.read(gamesAppBarProvider).valueOrNull?.gamesAppBarModels ?? [];
     final rounds = allRounds.where((r) => _getGamesInRound(r.id) > 0).toList();
-    final reversedRounds = rounds.reversed.toList();
 
     int currentIndex = 0;
-    for (final round in reversedRounds) {
+    for (final round in rounds) {
       if (itemIndex == currentIndex) {
         return null; // header row, no game
       }
@@ -114,10 +113,9 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
     final allRounds =
         _ref.read(gamesAppBarProvider).valueOrNull?.gamesAppBarModels ?? [];
     final rounds = allRounds.where((r) => _getGamesInRound(r.id) > 0).toList();
-    final reversedRounds = rounds.reversed.toList();
 
     int currentIndex = 0;
-    for (final round in reversedRounds) {
+    for (final round in rounds) {
       // header
       currentIndex++;
 
@@ -174,10 +172,9 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
         _ref.read(gamesAppBarProvider).valueOrNull?.gamesAppBarModels ?? [];
     final rounds =
         allRounds.where((round) => _getGamesInRound(round.id) > 0).toList();
-    final reversedRounds = rounds.reversed.toList();
 
     int currentIndex = 0;
-    for (final round in reversedRounds) {
+    for (final round in rounds) {
       if (itemIndex == currentIndex) return round.id; // header
       final itemCount =
           1 +
