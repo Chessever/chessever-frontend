@@ -72,39 +72,75 @@ class EvalRepository extends BaseRepository {
     final evals = await getByPositionId(pos.id);
     if (evals.isEmpty) return null;
 
-    final first = evals.first;
-    final pvsList = first.pvs;
-    final hasWhitePerspective = pvsList is List &&
-        pvsList.isNotEmpty &&
-        pvsList.every(
-          (entry) => entry is Map<String, dynamic> && (entry['whitePerspective'] ?? false) == true,
-        );
-
-    if (!hasWhitePerspective) {
-      print('🔧 SUPABASE: Cached eval for $fen missing whitePerspective flag, forcing refresh from Lichess');
-      return null;
-    }
-
-    return first;
+    return evals.first;
   }
 
   CloudEval evalsToCloudEval(String fen, Evals eval) {
     final fenParts = fen.split(' ');
-    final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
+    final isBlackToMove = fenParts.length >= 2 && fenParts[1] == 'b';
 
-    final pvsList = (eval.pvs as List)
-        .map(
-          (entry) => Pv.fromJson(
-            Map<String, dynamic>.from(entry as Map),
-          ),
-        )
-        .toList();
+    bool legacyPerspective = false;
 
-    final cp = pvsList.isNotEmpty ? pvsList.first.cp : 0;
+    final pvsList = <Pv>[];
+    for (final entry in (eval.pvs as List)) {
+      final map = Map<String, dynamic>.from(entry as Map);
+      final hasPerspectiveKey = map.containsKey('whitePerspective');
 
-    // With the fixed saving logic, all new evaluations should be in white's perspective
-    // But old data might still be wrong, so this serves as a fallback
-    print("🔧 SUPABASE: fen=$fen, side=$sideToMove, cp=$cp (assuming white's perspective from fixed saving logic)");
+      final moves = (map['moves'] as String?) ?? '';
+
+      int cp = 0;
+      bool isMate = false;
+      int? mate;
+
+      final dynamic mateValue = map['mate'];
+      if (mateValue != null) {
+        final parsedMate = int.tryParse(mateValue.toString());
+        if (parsedMate != null) {
+          mate = parsedMate;
+          isMate = true;
+          cp = parsedMate.sign * 100000;
+        }
+      }
+
+      if (!isMate) {
+        final dynamic cpValue = map['cp'];
+        if (cpValue is int) {
+          cp = cpValue;
+        } else if (cpValue != null) {
+          cp = int.tryParse(cpValue.toString()) ?? 0;
+        }
+      }
+
+      bool whitePerspective = (map['whitePerspective'] as bool?) ?? false;
+
+      if (!whitePerspective && !hasPerspectiveKey) {
+        legacyPerspective = true;
+        whitePerspective = true;
+        if (isBlackToMove) {
+          cp = -cp;
+          if (mate != null) mate = -mate;
+        }
+      } else if (!whitePerspective) {
+        // Stored from black's perspective explicitly - normalize
+        whitePerspective = true;
+        cp = -cp;
+        if (mate != null) mate = -mate;
+      }
+
+      pvsList.add(
+        Pv(
+          moves: moves,
+          cp: cp,
+          isMate: isMate,
+          mate: mate,
+          whitePerspective: whitePerspective,
+        ),
+      );
+    }
+
+    if (legacyPerspective) {
+      print('🔧 SUPABASE: Normalized legacy evaluation for $fen to white perspective');
+    }
 
     return CloudEval(
       fen: fen,
