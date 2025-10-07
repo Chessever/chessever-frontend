@@ -28,6 +28,41 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:flutter_svg/svg.dart';
 
+/// Cached move impact results keyed by game id/signature to avoid recomputation
+class CachedMoveImpact {
+  final String signature;
+  final Map<int, MoveImpactAnalysis> impacts;
+
+  const CachedMoveImpact({
+    required this.signature,
+    required this.impacts,
+  });
+}
+
+class MoveImpactCacheNotifier extends StateNotifier<Map<String, CachedMoveImpact>> {
+  MoveImpactCacheNotifier() : super(<String, CachedMoveImpact>{});
+
+  CachedMoveImpact? lookup(String gameId) => state[gameId];
+
+  void store(String gameId, CachedMoveImpact cached) {
+    state = {
+      ...state,
+      gameId: cached,
+    };
+  }
+
+  void invalidate(String gameId) {
+    if (!state.containsKey(gameId)) return;
+    final copy = {...state};
+    copy.remove(gameId);
+    state = copy;
+  }
+}
+
+final moveImpactCacheProvider = StateNotifierProvider<MoveImpactCacheNotifier, Map<String, CachedMoveImpact>>(
+  (ref) => MoveImpactCacheNotifier(),
+);
+
 /// Provider that calculates move impacts - COMPREHENSIVE ANALYSIS
 /// Analyzes engine alternatives, finds player move rank, classifies impact
 final gameMovesImpactProvider = FutureProvider.family.autoDispose<Map<int, MoveImpactAnalysis>?, ChessBoardProviderParams>((ref, params) async {
@@ -64,6 +99,13 @@ final gameMovesImpactProvider = FutureProvider.family.autoDispose<Map<int, MoveI
 
   debugPrint('🎨 gameMovesImpactProvider: Got ${allMoves.length} moves, ${moveSans.length} SANs');
 
+  final cacheSignature = '${moveSans.length}:${moveSans.join('|')}';
+  final cachedImpact = ref.read(moveImpactCacheProvider)[params.game.gameId];
+  if (cachedImpact != null && cachedImpact.signature == cacheSignature) {
+    debugPrint('🎨 gameMovesImpactProvider: Using cached impacts for ${params.game.gameId}');
+    return cachedImpact.impacts;
+  }
+
   // Generate position FENs (starting position + after each move)
   final fensParams = PositionFensParams(
     allMoves: allMoves,
@@ -90,6 +132,14 @@ final gameMovesImpactProvider = FutureProvider.family.autoDispose<Map<int, MoveI
   debugPrint('🎨 gameMovesImpactProvider: Calling simpleMoveImpactProvider...');
   final impacts = await ref.watch(simpleMoveImpactProvider(simpleParams).future);
   debugPrint('🎨 gameMovesImpactProvider: COMPLETE - got ${impacts.length} impacts');
+
+  ref.read(moveImpactCacheProvider.notifier).store(
+        params.game.gameId,
+        CachedMoveImpact(
+          signature: cacheSignature,
+          impacts: Map.unmodifiable(impacts),
+        ),
+      );
   return impacts;
 });
 
