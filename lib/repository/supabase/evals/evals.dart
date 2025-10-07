@@ -27,5 +27,6 @@ class Evals {
     'knodes': knodes,
     'depth': depth,
     'pvs': pvs,
+    'pvs_count': pvs.length,
   };
 }

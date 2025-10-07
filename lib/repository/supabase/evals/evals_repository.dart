@@ -15,21 +15,38 @@ class EvalRepository extends BaseRepository {
 
   Future<Evals> upsert(Evals eval) => handleApiCall(() async {
     final pvsCount = eval.pvs.length;
-    final existingRecord =
-        await supabase
-            .from('evals')
-            .select()
-            .eq('position_id', eval.positionId)
-            .eq('knodes', eval.knodes)
-            .eq('depth', eval.depth)
-            .eq('pvs_count', pvsCount)
-            .maybeSingle();
+    final existingRecord = await supabase
+        .from('evals')
+        .select()
+        .eq('position_id', eval.positionId)
+        .eq('depth', eval.depth)
+        .maybeSingle();
+
     if (existingRecord != null) {
-      print('Eval record already exists, returning existing record');
-      return eval;
+      final id = existingRecord['id'] as int?;
+      if (id != null) {
+        final updatePayload = {
+          'knodes': eval.knodes,
+          'depth': eval.depth,
+          'pvs': eval.pvs,
+          'pvs_count': pvsCount,
+        };
+        final updated = await supabase
+            .from('evals')
+            .update(updatePayload)
+            .eq('id', id)
+            .select()
+            .single();
+        print('Eval record updated for position ${eval.positionId} (id=$id)');
+        return Evals.fromJson(updated);
+      }
+      print('Eval record exists without id for position ${eval.positionId}, reusing existing data');
+      return Evals.fromJson(Map<String, dynamic>.from(existingRecord));
     }
+
+    final payload = eval.toJson();
     final newData =
-        await supabase.from('evals').insert(eval.toJson()).select().single();
+        await supabase.from('evals').insert(payload).select().single();
     return Evals.fromJson(newData);
   });
 
@@ -55,17 +72,35 @@ class EvalRepository extends BaseRepository {
     if (pos == null) return null;
 
     final evals = await getByPositionId(pos.id);
-    return evals.isEmpty ? null : evals.first;
+    if (evals.isEmpty) return null;
+
+    final first = evals.first;
+    final pvsList = first.pvs;
+    final hasWhitePerspective = pvsList is List &&
+        pvsList.isNotEmpty &&
+        pvsList.every(
+          (entry) => entry is Map<String, dynamic> && (entry['whitePerspective'] ?? false) == true,
+        );
+
+    if (!hasWhitePerspective) {
+      print('🔧 SUPABASE: Cached eval for $fen missing whitePerspective flag, forcing refresh from Lichess');
+      return null;
+    }
+
+    return first;
   }
 
   CloudEval evalsToCloudEval(String fen, Evals eval) {
     final fenParts = fen.split(' ');
     final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
 
-    final pvsList = (eval.pvs as List).map((e) => Pv(
-      moves: e['moves'] ?? '',
-      cp: e['cp'] ?? 0,
-    )).toList();
+    final pvsList = (eval.pvs as List)
+        .map(
+          (entry) => Pv.fromJson(
+            Map<String, dynamic>.from(entry as Map),
+          ),
+        )
+        .toList();
 
     final cp = pvsList.isNotEmpty ? pvsList.first.cp : 0;
 
