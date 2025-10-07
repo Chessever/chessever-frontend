@@ -169,7 +169,6 @@ class _RoundDropdown extends HookConsumerWidget {
         final offset = renderBox.localToGlobal(Offset.zero);
         final availableHeight =
             MediaQuery.of(context).size.height - offset.dy - size.height - 20;
-        final reversedRounds = rounds.reversed.toList();
         overlayEntry = OverlayEntry(
           builder:
               (context) => GestureDetector(
@@ -201,7 +200,7 @@ class _RoundDropdown extends HookConsumerWidget {
                               child: ListView.separated(
                                 padding: EdgeInsets.zero,
                                 shrinkWrap: true,
-                                itemCount: reversedRounds.length,
+                                itemCount: rounds.length,
                                 separatorBuilder: (context, index) {
                                   return Padding(
                                     padding: EdgeInsets.symmetric(
@@ -211,7 +210,7 @@ class _RoundDropdown extends HookConsumerWidget {
                                   );
                                 },
                                 itemBuilder: (context, index) {
-                                  final round = reversedRounds[index];
+                                  final round = rounds[index];
                                   final isSelected =
                                       round.id == selectedRoundId;
 
@@ -279,13 +278,12 @@ class _RoundDropdown extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final layerLink = useMemoized(() => LayerLink());
     final isOpen = useState(false);
-    final reversedRounds = rounds.reversed.toList();
-    final selected = reversedRounds.firstWhere(
+    final selected = rounds.firstWhere(
       (r) => r.id == selectedRoundId,
       orElse:
           () =>
               rounds.isNotEmpty
-                  ? reversedRounds.first
+                  ? rounds.first
                   : GamesAppBarModel(
                     id: 'default',
                     name: 'No rounds',
