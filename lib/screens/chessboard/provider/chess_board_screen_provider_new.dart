@@ -76,27 +76,10 @@ class ChessBoardScreenNotifierNew
   /// BULLETPROOF evaluation perspective handler
   /// This method GUARANTEES that ALL evaluations are in WHITE'S PERSPECTIVE
   double _getConsistentEvaluation(double evaluation, String fen) {
-    final fenParts = fen.split(' ');
-    final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
-    final isBlackToMove = sideToMove == 'b';
-
-    // CRITICAL FIX: Stockfish returns evaluations from CURRENT PLAYER'S perspective
-    // - When White to move: positive = good for White (already correct for eval bar)
-    // - When Black to move: positive = good for Black (must flip to White's perspective)
-
-    double whitesPerspectiveEval;
-    if (isBlackToMove) {
-      // Black to move: Stockfish evaluation is from Black's perspective, flip it
-      whitesPerspectiveEval = -evaluation;
-      debugPrint("🔍 EVAL CORRECTED: FEN=$fen, side=BLACK, inputEval=$evaluation, outputEval=$whitesPerspectiveEval (FLIPPED to white's perspective)");
-    } else {
-      // White to move: Stockfish evaluation is already from White's perspective
-      whitesPerspectiveEval = evaluation;
-      debugPrint("🔍 EVAL UNCHANGED: FEN=$fen, side=WHITE, eval=$whitesPerspectiveEval (already white's perspective)");
-    }
-
-    debugPrint("🔍   evalBar expects: positive=WHITE advantage, negative=BLACK advantage");
-    return whitesPerspectiveEval;
+    debugPrint(
+      "🔍 EVAL WHITE PERSPECTIVE: FEN=$fen, eval=$evaluation (positive=WHITE advantage, negative=BLACK advantage)",
+    );
+    return evaluation;
   }
 
   void _setupPgnStreamListener() {

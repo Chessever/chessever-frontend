@@ -211,6 +211,8 @@ class StockfishSingleton {
             .where((pv) => pv.moves.isNotEmpty)
             .toList(growable: false);
 
+        final normalizedPvs = _normalizeToWhitePerspective(filteredPvs, fen);
+
         debugPrint('✅ STOCKFISH COMPLETE: depth=$finalDepth, pvs=${filteredPvs.length}, knodes=$knodes');
         if (filteredPvs.isEmpty) {
           debugPrint('⚠️ WARNING: No PVs found for $fen');
@@ -222,7 +224,7 @@ class StockfishSingleton {
           fen: fen,
           knodes: knodes,
           depth: finalDepth,
-          pvs: filteredPvs.isEmpty ? [Pv(moves: '', cp: 0)] : filteredPvs,
+          pvs: normalizedPvs.isEmpty ? [Pv(moves: '', cp: 0)] : normalizedPvs,
           isCancelled: false,
         );
         if (!completer.isCompleted) {
@@ -260,11 +262,12 @@ class StockfishSingleton {
         final filteredPvs = pvs
             .where((pv) => pv.moves.isNotEmpty)
             .toList(growable: false);
+        final normalizedPvs = _normalizeToWhitePerspective(filteredPvs, fen);
         final fallbackResult = EnhancedCloudEval(
           fen: fen,
           knodes: knodes,
           depth: finalDepth,
-          pvs: filteredPvs.isEmpty ? [Pv(moves: '', cp: 0)] : filteredPvs,
+          pvs: normalizedPvs.isEmpty ? [Pv(moves: '', cp: 0)] : normalizedPvs,
           isCancelled: false,
         );
         completer.complete(fallbackResult);
@@ -273,6 +276,38 @@ class StockfishSingleton {
         _currentSubscription = null;
       }
     });
+  }
+
+  List<Pv> _normalizeToWhitePerspective(List<Pv> pvs, String fen) {
+    if (pvs.isEmpty) return pvs;
+
+    final fenParts = fen.split(' ');
+    final isBlackToMove = fenParts.length >= 2 && fenParts[1] == 'b';
+    if (!isBlackToMove) {
+      return pvs
+          .map(
+            (pv) => Pv(
+              moves: pv.moves,
+              cp: pv.cp,
+              isMate: pv.isMate,
+              mate: pv.mate,
+              whitePerspective: true,
+            ),
+          )
+          .toList(growable: false);
+    }
+
+    return pvs
+        .map(
+          (pv) => Pv(
+            moves: pv.moves,
+            cp: -pv.cp,
+            isMate: pv.isMate,
+            mate: pv.mate != null ? -pv.mate! : null,
+            whitePerspective: true,
+          ),
+        )
+        .toList(growable: false);
   }
 
   Future<void> _waitUntilReady() async {
