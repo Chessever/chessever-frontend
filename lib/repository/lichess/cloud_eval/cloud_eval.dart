@@ -49,20 +49,27 @@ class Pv {
   factory Pv.fromJson(Map<String, dynamic> json) {
     final moves = json['moves'] as String;
 
-    int cp;
-    bool isMate;
+    int cp = 0;
+    bool isMate = false;
     int? mate;
-    if (json.containsKey('mate')) {
-      // convert "mate in X" to a big centipawn score
-      final mateInt = int.parse(json['mate'].toString());
-      cp = mateInt.sign * 100_000;
-      isMate = true;
-      mate = mateInt;
-    } else {
-      // normal centipawn score
-      cp = int.parse(json['cp'].toString());
-      isMate = false;
-      mate = null; // No mate score available
+
+    final dynamic mateValue = json['mate'];
+    if (mateValue != null) {
+      final parsedMate = int.tryParse(mateValue.toString());
+      if (parsedMate != null) {
+        cp = parsedMate.sign * 100_000;
+        isMate = true;
+        mate = parsedMate;
+      }
+    }
+
+    if (!isMate) {
+      final dynamic cpValue = json['cp'];
+      if (cpValue is int) {
+        cp = cpValue;
+      } else if (cpValue != null) {
+        cp = int.tryParse(cpValue.toString()) ?? 0;
+      }
     }
 
     final bool perspective = (json['whitePerspective'] as bool?) ?? true;

@@ -14,7 +14,6 @@ class EvalRepository extends BaseRepository {
   final ref;
 
   Future<Evals> upsert(Evals eval) => handleApiCall(() async {
-    final pvsCount = eval.pvs.length;
     final existingRecord = await supabase
         .from('evals')
         .select()
@@ -29,7 +28,6 @@ class EvalRepository extends BaseRepository {
           'knodes': eval.knodes,
           'depth': eval.depth,
           'pvs': eval.pvs,
-          'pvs_count': pvsCount,
         };
         final updated = await supabase
             .from('evals')
