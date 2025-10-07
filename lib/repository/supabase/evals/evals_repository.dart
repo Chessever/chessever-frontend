@@ -75,6 +75,68 @@ class EvalRepository extends BaseRepository {
     return evals.first;
   }
 
+  /// Batch fetch evals for multiple FENs - much faster than individual fetches
+  Future<Map<String, Evals>> batchFetchFromSupabase(List<String> fens) async {
+    if (fens.isEmpty) return {};
+
+    final result = <String, Evals>{};
+
+    try {
+      // Fetch all positions at once using IN clause
+      final positions = await supabase
+          .from('positions')
+          .select()
+          .inFilter('fen', fens);
+
+      if (positions.isEmpty) return {};
+
+      final positionIds = <int>[];
+      final fenToPositionId = <String, int>{};
+
+      for (final pos in positions) {
+        final id = pos['id'] as int?;
+        final fen = pos['fen'] as String?;
+        if (id != null && fen != null) {
+          positionIds.add(id);
+          fenToPositionId[fen] = id;
+        }
+      }
+
+      if (positionIds.isEmpty) return {};
+
+      // Fetch all evals at once using IN clause
+      final evalsData = await supabase
+          .from('evals')
+          .select()
+          .inFilter('position_id', positionIds);
+
+      // Group evals by position_id and take first (highest depth)
+      final evalsByPositionId = <int, Evals>{};
+      for (final evalJson in evalsData) {
+        final eval = Evals.fromJson(evalJson);
+        final posId = eval.positionId;
+
+        if (!evalsByPositionId.containsKey(posId) ||
+            evalsByPositionId[posId]!.depth < eval.depth) {
+          evalsByPositionId[posId] = eval;
+        }
+      }
+
+      // Map back to FENs
+      for (final entry in fenToPositionId.entries) {
+        final fen = entry.key;
+        final posId = entry.value;
+        if (evalsByPositionId.containsKey(posId)) {
+          result[fen] = evalsByPositionId[posId]!;
+        }
+      }
+    } catch (e) {
+      print('❌ Batch fetch from Supabase failed: $e');
+    }
+
+    return result;
+  }
+
   CloudEval evalsToCloudEval(String fen, Evals eval) {
     final fenParts = fen.split(' ');
     final isBlackToMove = fenParts.length >= 2 && fenParts[1] == 'b';
