@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
@@ -35,6 +37,7 @@ class SimpleMoveImpactParams {
   int get hashCode => gameId.hashCode ^ positionFens.length.hashCode;
 }
 
+const int _kEvalConcurrency = 6;
 const int _kClassificationBatchSize = 16;
 
 /// Provider that calculates move impacts by analyzing engine alternatives
@@ -64,7 +67,7 @@ final simpleMoveImpactProvider = FutureProvider.family<Map<int, MoveImpactAnalys
     final batchParams = _BatchClassificationParams(
       evaluations: evaluations,
       moveSans: params.moveSans,
-      isWhiteMoves: params.isWhiteMoves,
+      positionFens: params.positionFens,
       startIndex: start,
       endIndex: end,
       gameId: params.gameId,
@@ -109,7 +112,13 @@ final simpleMoveImpactProvider = FutureProvider.family<Map<int, MoveImpactAnalys
     }
   }
 
+  final typeCounts = <MoveImpactType, int>{};
+  for (final analysis in impactResults.values) {
+    typeCounts.update(analysis.impact, (value) => value + 1, ifAbsent: () => 1);
+  }
+
   debugPrint('🎨 COMPREHENSIVE IMPACT: Classified ${impactResults.length} moves for ${params.gameId}');
+  debugPrint('🎨 IMPACT DISTRIBUTION: ${typeCounts.map((k, v) => MapEntry(k.symbol.isEmpty ? 'regular' : k.symbol, v))}');
   return impactResults;
 });
 
@@ -120,29 +129,76 @@ Future<List<CloudEval?>> _evaluatePositions(
 ) async {
   final results = List<CloudEval?>.filled(fens.length, null, growable: false);
 
-  final fetchTasks = <Future<void>>[];
-  for (int i = 0; i < fens.length; i++) {
-    final fen = fens[i];
-    fetchTasks.add(() async {
-      try {
-        final eval = await ref.read(cascadeEvalProviderForBoard(fen).future);
-        results[i] = eval;
-      } catch (e) {
-        debugPrint('⚠️ COMPREHENSIVE IMPACT: Failed to get eval for position $i in $gameId: $e');
-        results[i] = null;
-      }
-    }());
+  final indices = List<int>.generate(fens.length, (i) => fens.length - 1 - i);
+
+  for (int chunkStart = 0; chunkStart < indices.length; chunkStart += _kEvalConcurrency) {
+    final end = math.min(chunkStart + _kEvalConcurrency, indices.length);
+    final chunk = <Future<void>>[];
+
+    for (int idx = chunkStart; idx < end; idx++) {
+      final fenIndex = indices[idx];
+      final fen = fens[fenIndex];
+      chunk.add(() async {
+        results[fenIndex] = await _fetchEvalWithRetry(
+          ref,
+          fen,
+          gameId,
+          fenIndex,
+        );
+      }());
+    }
+
+    await Future.wait(chunk, eagerError: false);
   }
 
-  await Future.wait(fetchTasks, eagerError: false);
-
   return results;
+}
+
+Future<CloudEval?> _fetchEvalWithRetry(
+  Ref ref,
+  String fen,
+  String gameId,
+  int index, {
+  int maxAttempts = 4,
+  Duration initialDelay = const Duration(milliseconds: 600),
+}) async {
+  Duration delay = initialDelay;
+
+  for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await ref.read(cascadeEvalProviderForBoard(fen).future);
+    } catch (e) {
+      final bool rateLimited = _isRateLimitError(e);
+      if (!rateLimited || attempt == maxAttempts) {
+        debugPrint('⚠️ COMPREHENSIVE IMPACT: Failed to get eval for position $index in $gameId: $e');
+        return null;
+      }
+
+      debugPrint(
+        '⏳ COMPREHENSIVE IMPACT: Rate limited for position $index in $gameId. '
+        'Retrying in ${delay.inMilliseconds}ms (attempt ${attempt + 1}/$maxAttempts)',
+      );
+      await Future.delayed(delay);
+      delay = Duration(milliseconds: (delay.inMilliseconds * 1.8).round());
+    }
+  }
+
+  return null;
+}
+
+bool _isRateLimitError(Object error) {
+  if (error is HttpException) {
+    return error.message.contains('429') || error.message.contains('Too Many Requests');
+  }
+
+  final message = error.toString();
+  return message.contains('429') || message.contains('Too Many Requests');
 }
 
 class _BatchClassificationParams {
   final List<CloudEval?> evaluations;
   final List<String> moveSans;
-  final List<bool> isWhiteMoves;
+  final List<String> positionFens;
   final int startIndex;
   final int endIndex;
   final String gameId;
@@ -150,7 +206,7 @@ class _BatchClassificationParams {
   const _BatchClassificationParams({
     required this.evaluations,
     required this.moveSans,
-    required this.isWhiteMoves,
+    required this.positionFens,
     required this.startIndex,
     required this.endIndex,
     required this.gameId,
@@ -174,16 +230,18 @@ List<_BatchClassificationResult> _runBatchClassification(_BatchClassificationPar
     final evalBefore = index < params.evaluations.length ? params.evaluations[index] : null;
     final evalAfter = (index + 1) < params.evaluations.length ? params.evaluations[index + 1] : null;
     final moveSan = params.moveSans[index];
-    final isWhiteMove = params.isWhiteMoves[index];
+    final fenBefore = index < params.positionFens.length ? params.positionFens[index] : '';
+    final fenAfter = (index + 1) < params.positionFens.length ? params.positionFens[index + 1] : null;
 
     MoveImpactAnalysis? analysis;
     if (evalBefore != null) {
       analysis = calculateMoveImpact(
         positionEvalBeforeMove: evalBefore,
         positionEvalAfterMove: evalAfter,
+        positionFenBeforeMove: fenBefore,
+        positionFenAfterMove: fenAfter,
         playerMoveSan: moveSan,
         moveNumber: index,
-        isWhiteMove: isWhiteMove,
       );
     } else {
       debugPrint('⚠️ COMPREHENSIVE IMPACT: Missing eval before move $index in ${params.gameId}');
