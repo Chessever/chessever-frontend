@@ -139,16 +139,43 @@ Future<List<CloudEval?>> _evaluatePositions(
       final fenIndex = indices[idx];
       final fen = fens[fenIndex];
       chunk.add(() async {
-        results[fenIndex] = await _fetchEvalWithRetry(
-          ref,
-          fen,
-          gameId,
-          fenIndex,
-        );
+        try {
+          // Add timeout to prevent individual eval from hanging forever
+          results[fenIndex] = await _fetchEvalWithRetry(
+            ref,
+            fen,
+            gameId,
+            fenIndex,
+          ).timeout(
+            const Duration(seconds: 30),
+            onTimeout: () {
+              debugPrint('⏱️ COMPREHENSIVE IMPACT: Timeout fetching eval for position $fenIndex in $gameId');
+              return null;
+            },
+          );
+        } catch (e) {
+          debugPrint('⚠️ COMPREHENSIVE IMPACT: Error fetching eval for position $fenIndex in $gameId: $e');
+          results[fenIndex] = null;
+        }
       }());
     }
 
-    await Future.wait(chunk, eagerError: false);
+    // Add timeout to chunk processing to prevent entire batch from hanging
+    try {
+      await Future.wait(chunk, eagerError: false).timeout(
+        const Duration(seconds: 45),
+        onTimeout: () {
+          debugPrint('⏱️ COMPREHENSIVE IMPACT: Chunk timeout for positions $chunkStart-$end in $gameId');
+          return <void>[];
+        },
+      );
+    } catch (e) {
+      debugPrint('⚠️ COMPREHENSIVE IMPACT: Chunk error for positions $chunkStart-$end in $gameId: $e');
+    }
+
+    // Log progress every chunk
+    final completedSoFar = results.where((e) => e != null).length;
+    debugPrint('🎨 COMPREHENSIVE IMPACT: Progress $completedSoFar/${fens.length} evals completed');
   }
 
   return results;

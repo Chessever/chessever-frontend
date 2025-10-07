@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/lichess_eval_repository.dart';
 import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.dart';
 import 'package:chessever2/repository/supabase/evals/evals_repository.dart';
 import 'package:chessever2/repository/supabase/evals/persist_cloud_eval.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart' show FutureProvider;
 import 'stockfish_singleton.dart';
 
@@ -164,22 +167,35 @@ final cascadeEvalProviderForBoard = FutureProvider.family<CloudEval, String>((
 
     // 4️⃣  Stockfish fallback - when all cloud sources fail
     print('⚡ EVAL SOURCE: STOCKFISH FALLBACK for $fen (cloud sources unavailable)');
-    final sfEval = await StockfishSingleton().evaluatePosition(fen, depth: 15);
-    final cloudFromSF = CloudEval(
-      fen: fen,
-      knodes: sfEval.knodes,
-      depth: sfEval.depth,
-      pvs: sfEval.pvs,
-    );
-    // Save to cache for future use (background)
-    Future.wait<void>([
-      persist.call(fen, cloudFromSF),
-      local.save(fen, cloudFromSF),
-    ]).catchError((e) {
-      print('Background save failed for Stockfish eval $fen: $e');
-      return <void>[];
-    });
-    return cloudFromSF;
+    try {
+      final sfEval = await StockfishSingleton()
+          .evaluatePosition(fen, depth: 15)
+          .timeout(
+            const Duration(seconds: 20),
+            onTimeout: () {
+              print('⏱️ Stockfish evaluation timeout for $fen');
+              throw TimeoutException('Stockfish evaluation took too long');
+            },
+          );
+      final cloudFromSF = CloudEval(
+        fen: fen,
+        knodes: sfEval.knodes,
+        depth: sfEval.depth,
+        pvs: sfEval.pvs,
+      );
+      // Save to cache for future use (background)
+      Future.wait<void>([
+        persist.call(fen, cloudFromSF),
+        local.save(fen, cloudFromSF),
+      ]).catchError((e) {
+        print('Background save failed for Stockfish eval $fen: $e');
+        return <void>[];
+      });
+      return cloudFromSF;
+    } catch (e) {
+      print('❌ Stockfish fallback failed for $fen: $e');
+      rethrow;
+    }
   } catch (error, _) {
     rethrow;
   }
