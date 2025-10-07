@@ -36,8 +36,15 @@ class Pv {
   final int cp; // centipawns (positive = white advantage)
   final bool isMate;
   final int? mate;
+  final bool whitePerspective;
 
-  Pv({required this.moves, required this.cp, this.isMate = false, this.mate});
+  Pv({
+    required this.moves,
+    required this.cp,
+    this.isMate = false,
+    this.mate,
+    bool? whitePerspective,
+  }) : whitePerspective = whitePerspective ?? true;
 
   factory Pv.fromJson(Map<String, dynamic> json) {
     final moves = json['moves'] as String;
@@ -58,7 +65,15 @@ class Pv {
       mate = null; // No mate score available
     }
 
-    return Pv(moves: moves, cp: cp, isMate: isMate, mate: mate );
+    final bool perspective = (json['whitePerspective'] as bool?) ?? true;
+
+    return Pv(
+      moves: moves,
+      cp: cp,
+      isMate: isMate,
+      mate: mate,
+      whitePerspective: perspective,
+    );
   }
 
   Map<String, dynamic> toJson() => {
@@ -66,5 +81,6 @@ class Pv {
     if (cp.abs() != 100_000) 'cp': cp,
     'isMate': isMate,
     'mate': mate,
+    'whitePerspective': whitePerspective,
   };
 }
