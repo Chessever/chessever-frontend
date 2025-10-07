@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:chessever2/providers/board_settings_provider.dart';
 import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
-import 'package:chessever2/screens/chessboard/analysis/chess_line_display.dart';
 import 'package:chessever2/screens/chessboard/analysis/move_impact_analyzer.dart';
 import 'package:chessever2/screens/chessboard/analysis/simple_move_impact.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
@@ -33,22 +32,17 @@ class CachedMoveImpact {
   final String signature;
   final Map<int, MoveImpactAnalysis> impacts;
 
-  const CachedMoveImpact({
-    required this.signature,
-    required this.impacts,
-  });
+  const CachedMoveImpact({required this.signature, required this.impacts});
 }
 
-class MoveImpactCacheNotifier extends StateNotifier<Map<String, CachedMoveImpact>> {
+class MoveImpactCacheNotifier
+    extends StateNotifier<Map<String, CachedMoveImpact>> {
   MoveImpactCacheNotifier() : super(<String, CachedMoveImpact>{});
 
   CachedMoveImpact? lookup(String gameId) => state[gameId];
 
   void store(String gameId, CachedMoveImpact cached) {
-    state = {
-      ...state,
-      gameId: cached,
-    };
+    state = {...state, gameId: cached};
   }
 
   void invalidate(String gameId) {
@@ -59,21 +53,29 @@ class MoveImpactCacheNotifier extends StateNotifier<Map<String, CachedMoveImpact
   }
 }
 
-final moveImpactCacheProvider = StateNotifierProvider<MoveImpactCacheNotifier, Map<String, CachedMoveImpact>>(
-  (ref) => MoveImpactCacheNotifier(),
-);
+final moveImpactCacheProvider = StateNotifierProvider<
+  MoveImpactCacheNotifier,
+  Map<String, CachedMoveImpact>
+>((ref) => MoveImpactCacheNotifier());
 
 /// Provider that calculates move impacts - COMPREHENSIVE ANALYSIS
 /// Analyzes engine alternatives, finds player move rank, classifies impact
-final gameMovesImpactProvider = FutureProvider.family.autoDispose<Map<int, MoveImpactAnalysis>?, ChessBoardProviderParams>((ref, params) async {
-  debugPrint('🎨 gameMovesImpactProvider: START for game ${params.game.gameId}');
+final gameMovesImpactProvider = FutureProvider.family.autoDispose<
+  Map<int, MoveImpactAnalysis>?,
+  ChessBoardProviderParams
+>((ref, params) async {
+  debugPrint(
+    '🎨 gameMovesImpactProvider: START for game ${params.game.gameId}',
+  );
 
   final link = ref.keepAlive();
   Timer? cleanupTimer;
 
   ref.onCancel(() {
     cleanupTimer = Timer(const Duration(seconds: 45), () {
-      debugPrint('🎨 gameMovesImpactProvider: releasing keepAlive for ${params.game.gameId}');
+      debugPrint(
+        '🎨 gameMovesImpactProvider: releasing keepAlive for ${params.game.gameId}',
+      );
       link.close();
     });
   });
@@ -88,21 +90,37 @@ final gameMovesImpactProvider = FutureProvider.family.autoDispose<Map<int, MoveI
   });
 
   // Use .select() to watch ONLY the moves data, not the entire state
-  final allMoves = ref.watch(chessBoardScreenProviderNew(params).select((state) => state.valueOrNull?.allMoves));
-  final moveSans = ref.watch(chessBoardScreenProviderNew(params).select((state) => state.valueOrNull?.moveSans));
-  final startingPosition = ref.watch(chessBoardScreenProviderNew(params).select((state) => state.valueOrNull?.startingPosition));
+  final allMoves = ref.watch(
+    chessBoardScreenProviderNew(
+      params,
+    ).select((state) => state.valueOrNull?.allMoves),
+  );
+  final moveSans = ref.watch(
+    chessBoardScreenProviderNew(
+      params,
+    ).select((state) => state.valueOrNull?.moveSans),
+  );
+  final startingPosition = ref.watch(
+    chessBoardScreenProviderNew(
+      params,
+    ).select((state) => state.valueOrNull?.startingPosition),
+  );
 
   if (allMoves == null || allMoves.isEmpty || moveSans == null) {
     debugPrint('🎨 gameMovesImpactProvider: NULL - no moves yet');
     return null;
   }
 
-  debugPrint('🎨 gameMovesImpactProvider: Got ${allMoves.length} moves, ${moveSans.length} SANs');
+  debugPrint(
+    '🎨 gameMovesImpactProvider: Got ${allMoves.length} moves, ${moveSans.length} SANs',
+  );
 
   final cacheSignature = '${moveSans.length}:${moveSans.join('|')}';
   final cachedImpact = ref.read(moveImpactCacheProvider)[params.game.gameId];
   if (cachedImpact != null && cachedImpact.signature == cacheSignature) {
-    debugPrint('🎨 gameMovesImpactProvider: Using cached impacts for ${params.game.gameId}');
+    debugPrint(
+      '🎨 gameMovesImpactProvider: Using cached impacts for ${params.game.gameId}',
+    );
     return cachedImpact.impacts;
   }
 
@@ -113,7 +131,9 @@ final gameMovesImpactProvider = FutureProvider.family.autoDispose<Map<int, MoveI
     gameId: params.game.gameId,
   );
   final positionFens = ref.watch(positionFensProvider(fensParams));
-  debugPrint('🎨 gameMovesImpactProvider: Generated ${positionFens.length} position FENs');
+  debugPrint(
+    '🎨 gameMovesImpactProvider: Generated ${positionFens.length} position FENs',
+  );
 
   // Determine which moves are white's
   final isWhiteMoves = List.generate(
@@ -130,10 +150,16 @@ final gameMovesImpactProvider = FutureProvider.family.autoDispose<Map<int, MoveI
   );
 
   debugPrint('🎨 gameMovesImpactProvider: Calling simpleMoveImpactProvider...');
-  final impacts = await ref.watch(simpleMoveImpactProvider(simpleParams).future);
-  debugPrint('🎨 gameMovesImpactProvider: COMPLETE - got ${impacts.length} impacts');
+  final impacts = await ref.watch(
+    simpleMoveImpactProvider(simpleParams).future,
+  );
+  debugPrint(
+    '🎨 gameMovesImpactProvider: COMPLETE - got ${impacts.length} impacts',
+  );
 
-  ref.read(moveImpactCacheProvider.notifier).store(
+  ref
+      .read(moveImpactCacheProvider.notifier)
+      .store(
         params.game.gameId,
         CachedMoveImpact(
           signature: cacheSignature,
@@ -203,7 +229,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
     // Set the initial visible page index - delayed to avoid modifying provider during build
     Future.microtask(() {
       if (mounted) {
-        ref.read(currentlyVisiblePageIndexProvider.notifier).state = _currentPageIndex;
+        ref.read(currentlyVisiblePageIndexProvider.notifier).state =
+            _currentPageIndex;
       }
     });
   }
@@ -231,10 +258,11 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
       try {
         final prevGame = widget.games[previousIndex];
         ref
-            .read(chessBoardScreenProviderNew(ChessBoardProviderParams(
-              game: prevGame,
-              index: previousIndex,
-            )).notifier)
+            .read(
+              chessBoardScreenProviderNew(
+                ChessBoardProviderParams(game: prevGame, index: previousIndex),
+              ).notifier,
+            )
             .pauseGame();
       } catch (e) {
         // Provider was disposed, which is fine
@@ -245,10 +273,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
       if (mounted) {
         try {
           final newGame = widget.games[newIndex];
-          ref.read(chessBoardScreenProviderNew(ChessBoardProviderParams(
-            game: newGame,
-            index: newIndex,
-          )).notifier).parseMoves();
+          ref
+              .read(
+                chessBoardScreenProviderNew(
+                  ChessBoardProviderParams(game: newGame, index: newIndex),
+                ).notifier,
+              )
+              .parseMoves();
         } catch (e) {
           debugPrint('Error parsing moves for new index: $e');
         }
@@ -269,10 +300,14 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
     try {
       final currentGame = widget.games[_currentPageIndex];
       ref
-          .read(chessBoardScreenProviderNew(ChessBoardProviderParams(
-            game: currentGame,
-            index: _currentPageIndex,
-          )).notifier)
+          .read(
+            chessBoardScreenProviderNew(
+              ChessBoardProviderParams(
+                game: currentGame,
+                index: _currentPageIndex,
+              ),
+            ).notifier,
+          )
           .pauseGame();
     } catch (e) {
       debugPrint('Error pausing game during navigation: $e');
@@ -289,19 +324,26 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   Widget build(BuildContext context) {
     final currentGame = widget.games[_currentPageIndex];
     ref.listen(
-      chessBoardScreenProviderNew(ChessBoardProviderParams(
-        game: currentGame,
-        index: _currentPageIndex,
-      )),
+      chessBoardScreenProviderNew(
+        ChessBoardProviderParams(game: currentGame, index: _currentPageIndex),
+      ),
       (prev, next) {
-        if (prev?.valueOrNull?.currentMoveIndex !=
-                next.valueOrNull?.currentMoveIndex &&
-            next.valueOrNull != null) {
-          // SKIP audio in analysis mode - analysis moves should have different behavior
-          if (next.valueOrNull?.isAnalysisMode == true) {
-            return;
-          }
+        final prevState = prev?.valueOrNull;
+        final nextState = next.valueOrNull;
+        final prevIndex =
+            prevState == null
+                ? -1
+                : (prevState.isAnalysisMode
+                    ? prevState.analysisState.currentMoveIndex
+                    : prevState.currentMoveIndex);
+        final currentIndex =
+            nextState == null
+                ? -1
+                : (nextState.isAnalysisMode
+                    ? nextState.analysisState.currentMoveIndex
+                    : nextState.currentMoveIndex);
 
+        if (prevIndex != currentIndex && next.valueOrNull != null) {
           // CRITICAL FIX: Only play audio if this chess board screen is currently active
           // This prevents audio from playing when other games in the tournament get moves
           final route = ModalRoute.of(context);
@@ -310,9 +352,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
             return;
           }
 
-          final state = next.valueOrNull!;
-          final prevIndex = prev?.valueOrNull?.currentMoveIndex ?? -1;
-          final currentIndex = state.currentMoveIndex;
+          final state = nextState!;
 
           // ENHANCED FIX: Verify this update is for the currently viewed game
           // Only play audio if the provider index matches the current page
@@ -348,11 +388,15 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
           // For forward navigation, we want to play the sound of the move we just made
           final moveIndexForSound = isMovingForward ? currentIndex : prevIndex;
 
+          final movesSan =
+              state.isAnalysisMode
+                  ? state.analysisState.moveSans
+                  : state.moveSans;
+
           // Check if we have a valid move to play sound for
-          if (moveIndexForSound >= 0 &&
-              moveIndexForSound < state.moveSans.length) {
+          if (moveIndexForSound >= 0 && moveIndexForSound < movesSan.length) {
             // Get the move notation for the appropriate move
-            final moveSan = state.moveSans[moveIndexForSound];
+            final moveSan = movesSan[moveIndexForSound];
 
             // Determine which sound to play based on PGN notation
             // Priority order matters: checkmate > check > special moves > capture > regular
@@ -379,10 +423,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
             // Moving back to the starting position (before first move)
             // Play a regular move sound for the "undo" action
             audioService.player.play(audioService.pieceMoveSfx);
-          } else if (currentIndex == state.moveSans.length &&
-              state.moveSans.isNotEmpty) {
+          } else if (currentIndex == movesSan.length && movesSan.isNotEmpty) {
             // We're at the end of the game, check for game-ending conditions
-            final lastMoveSan = state.moveSans.last;
+            final lastMoveSan = movesSan.last;
 
             if (lastMoveSan.contains('#')) {
               // Game ended with checkmate
@@ -488,10 +531,11 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
                 try {
                   final game = liveGames[index];
                   return ref
-                      .watch(chessBoardScreenProviderNew(ChessBoardProviderParams(
-                        game: game,
-                        index: index,
-                      )))
+                      .watch(
+                        chessBoardScreenProviderNew(
+                          ChessBoardProviderParams(game: game, index: index),
+                        ),
+                      )
                       .when(
                         data: (chessBoardState) {
                           if (chessBoardState.isAnalysisMode != analysisMode) {
@@ -564,7 +608,11 @@ class _GamePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      bottomNavigationBar: _BottomNavBar(index: currentGameIndex, state: state, game: game),
+      bottomNavigationBar: _BottomNavBar(
+        index: currentGameIndex,
+        state: state,
+        game: game,
+      ),
       appBar: _AppBar(
         game: game,
         games: games,
@@ -992,7 +1040,11 @@ class _BottomNavBar extends ConsumerWidget {
   final ChessBoardStateNew state;
   final GamesTourModel game;
 
-  const _BottomNavBar({required this.index, required this.state, required this.game});
+  const _BottomNavBar({
+    required this.index,
+    required this.state,
+    required this.game,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1154,11 +1206,30 @@ class _AnalysisGameBody extends ConsumerWidget {
                 topRight: Radius.circular(12.sp),
               ),
             ),
-            child: _AnalysisMovesDisplay(
-              index: index,
-              currentPageIndex: currentPageIndex,
-              state: state,
-              game: game,
+            child: NotificationListener<ScrollNotification>(
+              onNotification: (notification) {
+                if (notification is ScrollStartNotification) {
+                  // placeholder hook
+                }
+                return false;
+              },
+              child: SingleChildScrollView(
+                scrollDirection: Axis.vertical,
+                physics: const ClampingScrollPhysics(),
+                dragStartBehavior: DragStartBehavior.down,
+                child: GestureDetector(
+                  onHorizontalDragStart: (_) {},
+                  onHorizontalDragUpdate: (_) {},
+                  onHorizontalDragEnd: (_) {},
+                  behavior: HitTestBehavior.translucent,
+                  child: _MovesDisplay(
+                    index: index,
+                    currentPageIndex: currentPageIndex,
+                    state: state,
+                    game: game,
+                  ),
+                ),
+              ),
             ),
           ),
         ),
@@ -1194,7 +1265,10 @@ class _AnalysisControlsRow extends ConsumerWidget {
           IconButton(
             icon: Icon(
               Icons.arrow_back,
-              color: hasSelectedVariant ? kWhiteColor.withValues(alpha: 0.7) : kWhiteColor,
+              color:
+                  hasSelectedVariant
+                      ? kWhiteColor.withValues(alpha: 0.7)
+                      : kWhiteColor,
             ),
             onPressed: () {
               debugPrint('🎯 NAV BACK: hasSelectedVariant=$hasSelectedVariant');
@@ -1208,10 +1282,15 @@ class _AnalysisControlsRow extends ConsumerWidget {
           IconButton(
             icon: Icon(
               Icons.arrow_forward,
-              color: hasSelectedVariant ? kWhiteColor.withValues(alpha: 0.7) : kWhiteColor,
+              color:
+                  hasSelectedVariant
+                      ? kWhiteColor.withValues(alpha: 0.7)
+                      : kWhiteColor,
             ),
             onPressed: () {
-              debugPrint('🎯 NAV FORWARD: hasSelectedVariant=$hasSelectedVariant');
+              debugPrint(
+                '🎯 NAV FORWARD: hasSelectedVariant=$hasSelectedVariant',
+              );
               if (hasSelectedVariant) {
                 notifier.playVariantMoveForward();
               } else {
@@ -1224,130 +1303,6 @@ class _AnalysisControlsRow extends ConsumerWidget {
             onPressed: notifier.jumpToEnd,
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _AnalysisMovesDisplay extends ConsumerWidget {
-  final int index;
-  final ChessBoardStateNew state;
-  final GamesTourModel game;
-  final int currentPageIndex;
-
-  const _AnalysisMovesDisplay({
-    required this.index,
-    required this.state,
-    required this.game,
-    required this.currentPageIndex,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final analysis = state.analysisState;
-    final chessGame = analysis.game;
-
-    if (state.isLoadingMoves) {
-      return Center(
-        child: Padding(
-          padding: EdgeInsets.all(24.sp),
-          child: CircularProgressIndicator(color: kGreenColor),
-        ),
-      );
-    }
-
-    // Get move impacts for colorful notation display - ONLY if this page is visible
-    // Watch impacts using provider params to avoid analysis mode rebuild loops
-    Map<int, MoveImpactAnalysis>? allMovesImpact;
-    if (index == currentPageIndex && analysis.allMoves.isNotEmpty) {
-      final params = ChessBoardProviderParams(game: game, index: index);
-      final impactsAsync = ref.watch(gameMovesImpactProvider(params));
-      allMovesImpact = impactsAsync.whenOrNull(data: (data) => data);
-    }
-
-    // Watch navigator only if chess game is available - no loading spinner
-    final navigatorState = chessGame != null
-        ? ref.watch(chessGameNavigatorProvider(chessGame))
-        : null;
-
-    // Fallback: show moves from state if navigator not ready or chess game null
-    if (navigatorState == null || chessGame == null) {
-      if (state.moveSans.isEmpty) {
-        return Center(
-          child: Padding(
-            padding: EdgeInsets.all(20.sp),
-            child: Text(
-              'No moves available for this game',
-              style: AppTypography.textXsMedium.copyWith(
-                color: kWhiteColor70,
-                fontWeight: FontWeight.normal,
-              ),
-            ),
-          ),
-        );
-      }
-
-      // Display existing moves while navigator initializes
-      return SingleChildScrollView(
-        padding: EdgeInsets.all(20.sp),
-        child: Wrap(
-          spacing: 4.sp,
-          runSpacing: 4.sp,
-          children: state.moveSans.asMap().entries.map((entry) {
-            final moveIndex = entry.key;
-            final move = entry.value;
-            final isCurrentMove = moveIndex == state.analysisState.currentMoveIndex;
-            final fullMoveNumber = (moveIndex / 2).floor() + 1;
-            final isWhiteMove = moveIndex % 2 == 0;
-            final displayText = isWhiteMove ? '$fullMoveNumber. $move' : move;
-
-            return Container(
-              padding: EdgeInsets.symmetric(horizontal: 6.sp, vertical: 2.sp),
-              decoration: BoxDecoration(
-                color: isCurrentMove ? kWhiteColor70.withValues(alpha: 0.4) : Colors.transparent,
-                borderRadius: BorderRadius.circular(4.sp),
-              ),
-              child: Text(
-                displayText,
-                style: AppTypography.textXsMedium.copyWith(
-                  color: isCurrentMove ? kWhiteColor : kWhiteColor70,
-                  fontWeight: isCurrentMove ? FontWeight.bold : FontWeight.normal,
-                ),
-              ),
-            );
-          }).toList(),
-        ),
-      );
-    }
-
-    if (navigatorState.game.mainline.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: EdgeInsets.all(20.sp),
-          child: Text(
-            'No moves available for this game',
-            style: AppTypography.textXsMedium.copyWith(
-              color: kWhiteColor70,
-              fontWeight: FontWeight.normal,
-            ),
-          ),
-        ),
-      );
-    }
-
-    return SingleChildScrollView(
-      padding: EdgeInsets.all(20.sp),
-      child: ChessLineDisplay(
-        line: navigatorState.game.mainline,
-        currentFen: navigatorState.currentFen,
-        movePointer: const [], // Empty pointer for mainline - ChessLineDisplay builds child pointers
-        allMovesImpact: allMovesImpact,
-        onClick: (pointer) {
-          final params = ChessBoardProviderParams(game: game, index: index);
-          ref
-              .read(chessBoardScreenProviderNew(params).notifier)
-              .goToMovePointer(pointer);
-        },
       ),
     );
   }
@@ -1406,7 +1361,8 @@ class _BoardWithSidebar extends ConsumerWidget {
 
   String? _getLastMoveSquare() {
     // Use analysis state when in analysis mode, otherwise use live state
-    final lastMove = state.isAnalysisMode ? state.analysisState.lastMove : state.lastMove;
+    final lastMove =
+        state.isAnalysisMode ? state.analysisState.lastMove : state.lastMove;
     if (lastMove == null) return null;
     if (lastMove is NormalMove) {
       return lastMove.to.name;
@@ -1423,10 +1379,22 @@ class _BoardWithSidebar extends ConsumerWidget {
         final boardSize = screenWidth - sideBarWidth - 32.w;
 
         // Select correct state fields based on mode
-        final moves = state.isAnalysisMode ? state.analysisState.allMoves : state.allMoves;
-        final sans = state.isAnalysisMode ? state.analysisState.moveSans : state.moveSans;
-        final startPos = state.isAnalysisMode ? state.analysisState.startingPosition : state.startingPosition;
-        final currentIndex = state.isAnalysisMode ? state.analysisState.currentMoveIndex : state.currentMoveIndex;
+        final moves =
+            state.isAnalysisMode
+                ? state.analysisState.allMoves
+                : state.allMoves;
+        final sans =
+            state.isAnalysisMode
+                ? state.analysisState.moveSans
+                : state.moveSans;
+        final startPos =
+            state.isAnalysisMode
+                ? state.analysisState.startingPosition
+                : state.startingPosition;
+        final currentIndex =
+            state.isAnalysisMode
+                ? state.analysisState.currentMoveIndex
+                : state.currentMoveIndex;
 
         // Evaluate ALL moves from PGN and get current move impact from the map - ONLY if this page is visible
         Map<int, MoveImpactAnalysis>? allMovesImpact;
@@ -1472,7 +1440,8 @@ class _BoardWithSidebar extends ConsumerWidget {
                         isFlipped: state.isBoardFlipped,
                       ),
                   // Add move annotation overlay - only show if impact is not normal
-                  if (currentMoveImpact != null && currentMoveImpact.impact != MoveImpactType.normal)
+                  if (currentMoveImpact != null &&
+                      currentMoveImpact.impact != MoveImpactType.normal)
                     BoardMoveAnnotation(
                       moveImpact: currentMoveImpact,
                       boardSize: boardSize,
@@ -1651,9 +1620,14 @@ class _MovesDisplay extends ConsumerWidget {
     }
 
     // Select correct state fields based on mode
-    final moves = state.isAnalysisMode ? state.analysisState.allMoves : state.allMoves;
-    final sans = state.isAnalysisMode ? state.analysisState.moveSans : state.moveSans;
-    final startPos = state.isAnalysisMode ? state.analysisState.startingPosition : state.startingPosition;
+    final moves =
+        state.isAnalysisMode ? state.analysisState.allMoves : state.allMoves;
+    final sans =
+        state.isAnalysisMode ? state.analysisState.moveSans : state.moveSans;
+    final startPos =
+        state.isAnalysisMode
+            ? state.analysisState.startingPosition
+            : state.startingPosition;
 
     if (sans.isEmpty && !state.isLoadingMoves) {
       return Container(
@@ -1689,9 +1663,10 @@ class _MovesDisplay extends ConsumerWidget {
               final move = entry.value;
 
               // Use mode-aware current index for highlighting
-              final modeAwareCurrentIndex = state.isAnalysisMode
-                  ? state.analysisState.currentMoveIndex
-                  : state.currentMoveIndex;
+              final modeAwareCurrentIndex =
+                  state.isAnalysisMode
+                      ? state.analysisState.currentMoveIndex
+                      : state.currentMoveIndex;
               final isCurrentMove = moveIndex == modeAwareCurrentIndex;
               final fullMoveNumber = (moveIndex / 2).floor() + 1;
               final isWhiteMove = moveIndex % 2 == 0;
@@ -1711,7 +1686,9 @@ class _MovesDisplay extends ConsumerWidget {
               } else if (isCurrentMove) {
                 textColor = kWhiteColor;
               } else {
-                textColor = ref.read(chessBoardScreenProviderNew(params).notifier).getMoveColor(move, moveIndex);
+                textColor = ref
+                    .read(chessBoardScreenProviderNew(params).notifier)
+                    .getMoveColor(move, moveIndex);
               }
 
               return GestureDetector(
@@ -1742,7 +1719,10 @@ class _MovesDisplay extends ConsumerWidget {
                           text: displayText,
                           style: AppTypography.textXsMedium.copyWith(
                             color: textColor,
-                            fontWeight: isCurrentMove ? FontWeight.bold : FontWeight.normal,
+                            fontWeight:
+                                isCurrentMove
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
                           ),
                         ),
                         if (impactSymbol.isNotEmpty)
@@ -1815,11 +1795,15 @@ class _PrincipalVariationList extends ConsumerWidget {
   final ChessBoardStateNew state;
   final GamesTourModel game;
 
-  const _PrincipalVariationList({required this.index, required this.state, required this.game});
+  const _PrincipalVariationList({
+    required this.index,
+    required this.state,
+    required this.game,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final lines = state.principalVariations.take(2).toList();
+    final lines = state.principalVariations.take(3).toList();
     if (lines.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -1831,84 +1815,98 @@ class _PrincipalVariationList extends ConsumerWidget {
 
     return Padding(
       padding: EdgeInsets.fromLTRB(20.sp, 20.sp, 20.sp, 8.sp),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Engine suggestions',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
-          ),
-          SizedBox(height: 8.h),
-          ...lines.asMap().entries.map((entry) {
-            final variantIndex = entry.key;
-            final line = entry.value;
-            final isSelected = state.selectedVariantIndex == variantIndex;
-
-            final sanMoves = _formatPv(
-              line.sanMoves,
-              baseMoveNumber,
-              isWhiteToMove,
-            );
-            final evalText = line.displayEval;
-
-            final params = ChessBoardProviderParams(game: game, index: index);
-            return GestureDetector(
-              onTap: () {
-                debugPrint('🎯 VARIANT TAP: Selecting variant $variantIndex');
-                ref
-                    .read(chessBoardScreenProviderNew(params).notifier)
-                    .selectVariant(variantIndex);
-              },
-              child: Container(
-                margin: EdgeInsets.only(bottom: 6.h),
-                decoration: BoxDecoration(
-                  border: isSelected
-                      ? Border.all(color: kWhiteColor.withValues(alpha: 0.3), width: 1)
-                      : Border.all(color: kWhiteColor.withValues(alpha: 0.1), width: 1),
-                  borderRadius: BorderRadius.circular(6.sp),
-                  color: isSelected
-                      ? kWhiteColor.withValues(alpha: 0.08)
-                      : kWhiteColor.withValues(alpha: 0.02),
-                ),
-                padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 6.sp),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      margin: EdgeInsets.only(right: 8.sp),
-                      decoration: BoxDecoration(
-                        color: kWhiteColor.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(4.sp),
-                      ),
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 6.sp,
-                        vertical: 2.sp,
-                      ),
-                      child: Text(
-                        evalText.isEmpty ? '—' : evalText,
-                        style: AppTypography.textXsMedium.copyWith(
-                          color: kWhiteColor,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        sanMoves.join(' '),
-                        style: AppTypography.textXsMedium.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.85),
-                          fontWeight: isSelected ? FontWeight.w500 : FontWeight.normal,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 2,
-                      ),
-                    ),
-                  ],
-                ),
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 250),
+        transitionBuilder:
+            (child, animation) => FadeTransition(
+              opacity: animation,
+              child: SizeTransition(
+                sizeFactor: animation,
+                axisAlignment: -1,
+                child: child,
               ),
-            );
-          }),
-        ],
+            ),
+        child: Column(
+          key: ValueKey(lines.map((line) => line.sanMoves.join(' ')).join('|')),
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Engine suggestions',
+              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            ),
+            SizedBox(height: 8.h),
+            ...lines.asMap().entries.map((entry) {
+              final variantIndex = entry.key;
+              final line = entry.value;
+              final isSelected = state.selectedVariantIndex == variantIndex;
+
+              final sanMoves = _formatPv(
+                line.sanMoves,
+                baseMoveNumber,
+                isWhiteToMove,
+              );
+              final evalText = line.displayEval;
+
+              final params = ChessBoardProviderParams(game: game, index: index);
+              final notifier = ref.read(
+                chessBoardScreenProviderNew(params).notifier,
+              );
+
+              return GestureDetector(
+                onTap: () {
+                  if (isSelected) {
+                    notifier.playVariantMoveForward();
+                  } else {
+                    notifier.selectVariant(variantIndex);
+                  }
+                },
+                child: Container(
+                  margin: EdgeInsets.only(bottom: 6.h),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color:
+                          isSelected
+                              ? kWhiteColor.withValues(alpha: 0.4)
+                              : kWhiteColor.withValues(alpha: 0.12),
+                      width: isSelected ? 1.2 : 1,
+                    ),
+                    borderRadius: BorderRadius.circular(6.sp),
+                    color:
+                        isSelected
+                            ? kPrimaryColor.withValues(alpha: 0.15)
+                            : kWhiteColor.withValues(alpha: 0.05),
+                  ),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 10.sp,
+                    vertical: 8.sp,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        margin: EdgeInsets.only(right: 10.sp),
+                        decoration: BoxDecoration
+                      Expanded(
+                        child: Text(
+                          sanMoves.join(' '),
+                          style: AppTypography.textXsMedium.copyWith(
+                            color: kWhiteColor.withValues(alpha: 0.9),
+                            fontWeight:
+                                isSelected
+                                    ? FontWeight.w600
+                                    : FontWeight.normal,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ],
+        ),
       ),
     );
   }
