@@ -44,14 +44,13 @@ class GamesListView extends ConsumerWidget {
         gamesData.gamesTourModels[i].gameId: i,
     };
 
-    final reversedRounds = rounds.reversed.toList();
     _flattened = [];
     _scrollIndexMap = {};
 
     int listIndex = 0;
     int currentGameIndex = 0;
 
-    for (final round in reversedRounds) {
+    for (final round in rounds) {
       final roundGames = gamesByRound[round.id] ?? [];
 
       // header
