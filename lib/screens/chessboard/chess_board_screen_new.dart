@@ -1188,7 +1188,7 @@ class _AnalysisGameBody extends ConsumerWidget {
           state: state,
           game: game,
         ),
-        if (state.principalVariations.isNotEmpty)
+        if (state.isAnalysisMode)
           _PrincipalVariationList(index: index, state: state, game: game),
         SizedBox(height: 2.h),
         _PlayerWidget(
@@ -1863,8 +1863,11 @@ class _PrincipalVariationListState
     final isEvaluating = widget.state.isEvaluating;
     final lines = widget.state.principalVariations.take(3).toList();
 
-    // Show skeleton loading when evaluating and no lines yet
-    final showSkeleton = isEvaluating && lines.isEmpty;
+    // Show skeleton loading when:
+    // 1. Currently evaluating and no lines yet, OR
+    // 2. Just entered analysis mode and no lines calculated yet
+    final showSkeleton = (isEvaluating && lines.isEmpty) ||
+                         (widget.state.isAnalysisMode && lines.isEmpty);
 
     return Padding(
       padding: EdgeInsets.fromLTRB(20.sp, 20.sp, 20.sp, 8.sp),
