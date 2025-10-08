@@ -22,6 +22,7 @@ import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/divider_widget.dart';
@@ -1250,8 +1251,8 @@ class _AnalysisControlsRow extends ConsumerWidget {
     final state = ref.watch(chessBoardScreenProviderNew(params)).valueOrNull;
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
 
-    // Check if variant is selected - if so, forward button plays variant moves
-    final hasSelectedVariant = state?.selectedVariantIndex != null;
+    // Use variants when available; default to first PV if none explicitly selected
+    final hasVariant = state?.principalVariations.isNotEmpty ?? false;
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 4.sp),
@@ -1266,13 +1267,11 @@ class _AnalysisControlsRow extends ConsumerWidget {
             icon: Icon(
               Icons.arrow_back,
               color:
-                  hasSelectedVariant
-                      ? kWhiteColor.withValues(alpha: 0.7)
-                      : kWhiteColor,
+                  hasVariant ? kWhiteColor.withValues(alpha: 0.7) : kWhiteColor,
             ),
             onPressed: () {
-              debugPrint('🎯 NAV BACK: hasSelectedVariant=$hasSelectedVariant');
-              if (hasSelectedVariant) {
+              debugPrint('🎯 NAV BACK: hasVariant=$hasVariant');
+              if (hasVariant) {
                 notifier.playVariantMoveBackward();
               } else {
                 notifier.analysisStepBackward();
@@ -1283,15 +1282,11 @@ class _AnalysisControlsRow extends ConsumerWidget {
             icon: Icon(
               Icons.arrow_forward,
               color:
-                  hasSelectedVariant
-                      ? kWhiteColor.withValues(alpha: 0.7)
-                      : kWhiteColor,
+                  hasVariant ? kWhiteColor.withValues(alpha: 0.7) : kWhiteColor,
             ),
             onPressed: () {
-              debugPrint(
-                '🎯 NAV FORWARD: hasSelectedVariant=$hasSelectedVariant',
-              );
-              if (hasSelectedVariant) {
+              debugPrint('🎯 NAV FORWARD: hasVariant=$hasVariant');
+              if (hasVariant) {
                 notifier.playVariantMoveForward();
               } else {
                 notifier.analysisStepForward();
@@ -1441,7 +1436,9 @@ class _BoardWithSidebar extends ConsumerWidget {
                       ),
                   // Add move annotation overlay - only show if impact is not normal
                   if (currentMoveImpact != null &&
-                      currentMoveImpact.impact != MoveImpactType.normal)
+                      currentMoveImpact.impact != MoveImpactType.normal &&
+                      !(state.isAnalysisMode &&
+                          state.selectedVariantIndex != null))
                     BoardMoveAnnotation(
                       moveImpact: currentMoveImpact,
                       boardSize: boardSize,
@@ -1876,114 +1873,107 @@ class _PrincipalVariationList extends ConsumerWidget {
               ],
             ),
             SizedBox(height: 8.h),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              child: Row(
-                children: [
-                  ...lines.asMap().entries.map((entry) {
-                    final variantIndex = entry.key;
-                    final line = entry.value;
-                    final isSelected =
-                        state.selectedVariantIndex == variantIndex;
+            Column(
+              children: [
+                ...lines.asMap().entries.map((entry) {
+                  final variantIndex = entry.key;
+                  final line = entry.value;
+                  final isSelected = state.selectedVariantIndex == variantIndex;
 
-                    final sanMoves = _formatPv(
-                      line.sanMoves,
-                      baseMoveNumber,
-                      isWhiteToMove,
-                    );
-                    final evalText = _formatEvalLabel(line);
-                    final evalBackground = _variantEvalBackground(line);
-                    final evalBorder = _variantEvalBorder(line, isSelected);
+                  final sanMoves = _formatPv(
+                    line.sanMoves,
+                    baseMoveNumber,
+                    isWhiteToMove,
+                  );
+                  final evalText = _formatEvalLabel(line);
+                  final evalBackground = _variantEvalBackground(line);
+                  final evalBorder = _variantEvalBorder(line, isSelected);
 
-                    return Padding(
-                      padding: EdgeInsets.only(right: 8.sp),
-                      child: SizedBox(
-                        width: 240.w,
-                        child: GestureDetector(
-                          onTap:
-                              () =>
-                                  isSelected
-                                      ? notifier.playVariantMoveForward()
-                                      : notifier.playPrincipalVariationMove(
-                                        line,
-                                      ),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color:
-                                    isSelected
-                                        ? kWhiteColor.withValues(alpha: 0.4)
-                                        : kWhiteColor.withValues(alpha: 0.12),
-                                width: isSelected ? 1.2 : 1,
-                              ),
-                              borderRadius: BorderRadius.circular(6.sp),
-                              color:
-                                  isSelected
-                                      ? kPrimaryColor.withValues(alpha: 0.15)
-                                      : kWhiteColor.withValues(alpha: 0.05),
-                            ),
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 10.sp,
-                              vertical: 8.sp,
-                            ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  margin: EdgeInsets.only(right: 10.sp),
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: 8.sp,
-                                    vertical: 4.sp,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: evalBackground,
-                                    borderRadius: BorderRadius.circular(4.sp),
-                                    border: Border.all(
-                                      color: evalBorder,
-                                      width: 0.8,
-                                    ),
-                                  ),
-                                  alignment: Alignment.center,
-                                  child: AnimatedSwitcher(
-                                    duration: const Duration(milliseconds: 200),
-                                    child: Text(
-                                      evalText,
-                                      key: ValueKey(evalText),
-                                      style: AppTypography.textXsMedium
-                                          .copyWith(
-                                            color: kWhiteColor,
-                                            fontWeight:
-                                                isSelected
-                                                    ? FontWeight.w600
-                                                    : FontWeight.w500,
-                                          ),
-                                    ),
-                                  ),
-                                ),
-                                Expanded(
-                                  child: Text(
-                                    sanMoves.join(' '),
-                                    style: AppTypography.textXsMedium.copyWith(
-                                      color: kWhiteColor.withValues(alpha: 0.9),
-                                      fontWeight:
-                                          isSelected
-                                              ? FontWeight.w600
-                                              : FontWeight.normal,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                    maxLines: 2,
-                                  ),
-                                ),
-                              ],
-                            ),
+                  return Padding(
+                    padding: EdgeInsets.only(bottom: 8.sp),
+                    child: GestureDetector(
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        if (isSelected) {
+                          notifier.playVariantMoveForward();
+                        } else {
+                          notifier.playPrincipalVariationMove(line);
+                        }
+                      },
+                      child: Container(
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color:
+                                isSelected
+                                    ? kWhiteColor.withValues(alpha: 0.4)
+                                    : kWhiteColor.withValues(alpha: 0.12),
+                            width: isSelected ? 1.2 : 1,
                           ),
+                          borderRadius: BorderRadius.circular(6.sp),
+                          color:
+                              isSelected
+                                  ? kPrimaryColor.withValues(alpha: 0.15)
+                                  : kWhiteColor.withValues(alpha: 0.05),
+                        ),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 12.sp,
+                          vertical: 10.sp,
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              margin: EdgeInsets.only(right: 10.sp),
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 8.sp,
+                                vertical: 4.sp,
+                              ),
+                              decoration: BoxDecoration(
+                                color: evalBackground,
+                                borderRadius: BorderRadius.circular(4.sp),
+                                border: Border.all(
+                                  color: evalBorder,
+                                  width: 0.8,
+                                ),
+                              ),
+                              alignment: Alignment.center,
+                              child: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 200),
+                                child: Text(
+                                  evalText,
+                                  key: ValueKey(evalText),
+                                  style: AppTypography.textXsMedium.copyWith(
+                                    color: kWhiteColor,
+                                    fontWeight:
+                                        isSelected
+                                            ? FontWeight.w600
+                                            : FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: Text(
+                                sanMoves.join(' '),
+                                style: AppTypography.textXsMedium.copyWith(
+                                  color: kWhiteColor.withValues(alpha: 0.9),
+                                  fontWeight:
+                                      isSelected
+                                          ? FontWeight.w600
+                                          : FontWeight.normal,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 3,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    );
-                  }),
-                ],
-              ),
+                    ),
+                  );
+                }),
+              ],
             ),
           ],
         ),
