@@ -120,12 +120,11 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
       final allGames = gamesData.gamesTourModels;
 
       final rounds = ref.read(gamesAppBarProvider).value!.gamesAppBarModels;
-      final reversedRounds = rounds.reversed.toList();
 
       var arrangedGames = <GamesTourModel>[];
-      for (var a = 0; a < reversedRounds.length; a++) {
+      for (var a = 0; a < rounds.length; a++) {
         for (var b = 0; b < allGames.length; b++) {
-          if (allGames[b].roundId == reversedRounds[a].id) {
+          if (allGames[b].roundId == rounds[a].id) {
             arrangedGames.add(allGames[b]);
           }
         }

@@ -105,14 +105,12 @@ class _GamesAppBarNotifier
           return gamesInRound > 0;
         }).toList();
 
-    final reversedRounds = rounds.reversed.toList();
-
     final viewMode = ref.read(gamesListViewModeProvider);
     final bool isGrid = viewMode == GamesListViewMode.chessBoardGrid;
 
     int index = 0;
 
-    for (final round in reversedRounds) {
+    for (final round in rounds) {
       // If this is the round we want to scroll to, return the index of its header.
       if (round.id == roundId) {
         return index;
@@ -167,6 +165,19 @@ class _GamesAppBarNotifier
           rounds
               .map((r) => GamesAppBarModel.fromRound(r, _liveRounds))
               .toList();
+
+      models.sort((a, b) {
+        final aDate = a.startsAt;
+        final bDate = b.startsAt;
+
+        // --- Null handling ---
+        if (aDate == null && bDate == null) return 0;
+        if (aDate == null) return 1; // nulls go last
+        if (bDate == null) return -1;
+
+        // --- Sort by date descending (latest first) ---
+        return bDate.compareTo(aDate);
+      });
 
       await _applySelectionFrom(models, tourId!);
     } catch (e, st) {
