@@ -1122,6 +1122,9 @@ class ChessBoardScreenNotifierNew
 
     if (isPromotionPawnMove(move)) {
       debugPrint('🎯 ANALYSIS MOVE: Promotion detected, storing move');
+      debugPrint('🎯 ANALYSIS MOVE: Promotion move UCI: ${move.uci}');
+      debugPrint('🎯 ANALYSIS MOVE: Promotion move from: ${move.from}, to: ${move.to}');
+      debugPrint('🎯 ANALYSIS MOVE: Current position FEN: ${boardPosition.fen}');
       state = AsyncValue.data(
         currentState.copyWith(
           analysisState: currentState.analysisState.copyWith(
@@ -1238,7 +1241,11 @@ class ChessBoardScreenNotifierNew
 
       final pending = state.value?.analysisState.promotionMove;
       if (pending != null) {
+        debugPrint('🎯 PROMOTION SELECTION: Pending move UCI: ${pending.uci}');
+        debugPrint('🎯 PROMOTION SELECTION: Pending from: ${pending.from}, to: ${pending.to}');
+        debugPrint('🎯 PROMOTION SELECTION: Selected role: $role');
         final move = pending.withPromotion(role);
+        debugPrint('🎯 PROMOTION SELECTION: Final move UCI with promotion: ${move.uci}');
         _analysisNavigator?.makeOrGoToMove(move.uci);
         state = AsyncValue.data(
           state.value!.copyWith(
