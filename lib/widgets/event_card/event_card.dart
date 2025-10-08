@@ -5,7 +5,6 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/event_card/starred_provider.dart';
-import 'package:chessever2/repository/local_storage/unified_favorites/unified_favorites_provider.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -254,7 +253,6 @@ class _StarWidgetState extends ConsumerState<_StarWidget> {
         ref
             .read(starredProvider(eventCategory.name).notifier)
             .toggleStarred(widget.tourEventCardModel.id);
-        await ref.toggleEventFavorite(widget.tourEventCardModel);
       },
       child: Container(
         alignment: Alignment.centerRight,
