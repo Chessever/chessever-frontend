@@ -52,7 +52,7 @@ class GamesTourContentBody extends ConsumerWidget {
     // Create a properly ordered flat list that matches the ListView display order
     final orderedGamesForChessBoard = <GamesTourModel>[];
 
-    for (final round in visibleRounds.reversed) {
+    for (final round in visibleRounds) {
       final roundGames = gamesByRound[round.id] ?? [];
       orderedGamesForChessBoard.addAll(roundGames);
     }
