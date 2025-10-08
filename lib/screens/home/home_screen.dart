@@ -1,8 +1,10 @@
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
+import 'package:chessever2/screens/authentication/auth_screen.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/premium/premium_screen.dart'; // Import premium screen
 import 'package:chessever2/screens/premium/provider/premium_screen_provider.dart';
+import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -40,7 +42,13 @@ class HomeScreen extends ConsumerWidget {
                 builder: (_) => const PremiumScreen(),
               );
             } else {
-              Navigator.pushNamed(context, '/countryman_screen');
+              showAlertModal(
+                context: context,
+                barrierDismissible: false,
+                horizontalPadding: 0,
+                verticalPadding: 0,
+                child: CountryPickerWidget(isHamburgerMode: true),
+              );
             }
           },
           onAnalysisBoardPressed: () {},

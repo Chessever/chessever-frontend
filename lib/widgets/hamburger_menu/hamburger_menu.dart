@@ -4,6 +4,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu_dialogs.dart';
+import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
@@ -89,14 +90,14 @@ class HamburgerMenu extends StatelessWidget {
                         callbacks.onFavoritesPressed();
                       },
                     ),
-                    // SizedBox(height: 12.h),
-                    // _CountryMan(
-                    //   onCountryManPressed: () {
-                    //     Navigator.pop(context); // Close drawer first
-                    //     callbacks.onCountrymanPressed();
-                    //   },
-                    // ),
-                    // SizedBox(height: 12.h),
+                    SizedBox(height: 12.h),
+                    _CountryMan(
+                      onCountryManPressed: () {
+                        Navigator.pop(context); // Close drawer first
+                        callbacks.onCountrymanPressed();
+                      },
+                    ),
+                    SizedBox(height: 12.h),
                     // _MenuItem(
                     //   customIcon: AnalysisBoardIcon(size: 20.ic),
                     //   title: 'Board',
@@ -251,11 +252,17 @@ class _CountryMan extends ConsumerWidget {
     return countryMan.when(
       data: (data) {
         return _MenuItem(
-          customIcon: CountryFlag.fromCountryCode(
-            data.countryCode,
-            height: 12.h,
-            width: 24.w,
-            shape: RoundedRectangle(0),
+          customIcon: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 4.w),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: CountryFlag.fromCountryCode(
+                data.countryCode,
+                height: 20.h,
+                width: 20.w,
+                shape: RoundedRectangle(0),
+              ),
+            ),
           ),
           title: 'Countryman',
           textColors: kGreenColor,
@@ -264,29 +271,35 @@ class _CountryMan extends ConsumerWidget {
         );
       },
       error: (error, _) {
-        return _MenuItem(
-          customIcon: CountryFlag.fromCountryCode(
-            'US',
-            height: 12.h,
-            width: 24.w,
-            shape: RoundedRectangle(0),
+        return SkeletonWidget(
+          ignoreContainers: true,
+          child: _MenuItem(
+            customIcon: CountryFlag.fromCountryCode(
+              'US',
+              height: 20.h,
+              width: 20.w,
+              shape: RoundedRectangle(0),
+            ),
+            title: 'Countryman',
+            onPressed: onCountryManPressed,
+            showChevron: false,
           ),
-          title: 'Countryman',
-          onPressed: onCountryManPressed,
-          showChevron: false,
         );
       },
       loading: () {
-        return _MenuItem(
-          customIcon: CountryFlag.fromCountryCode(
-            'US',
-            height: 12.h,
-            width: 24.w,
-            shape: RoundedRectangle(0),
+        return SkeletonWidget(
+          ignoreContainers: true,
+          child: _MenuItem(
+            customIcon: CountryFlag.fromCountryCode(
+              'US',
+              height: 20.h,
+              width: 20.w,
+              shape: RoundedRectangle(0),
+            ),
+            title: 'Countryman',
+            onPressed: onCountryManPressed,
+            showChevron: false,
           ),
-          title: 'Countryman',
-          onPressed: onCountryManPressed,
-          showChevron: false,
         );
       },
     );
