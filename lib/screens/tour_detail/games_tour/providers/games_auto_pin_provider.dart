@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:country_code/country_code.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -16,6 +17,7 @@ class _AutoPinLogController {
 
   Future<List<String>> getAutoPinnedGames() async {
     final countryCode = ref.read(countryDropdownProvider).value!.countryCode;
+    final players = await ref.read(tournamentFavoritePlayersProvider.future);
 
     final gamesList =
         ref.watch(gamesTourScreenProvider).value?.gamesTourModels ?? [];
@@ -36,11 +38,28 @@ class _AutoPinLogController {
             .map((e) => e.gameId)
             .toList();
 
+    final favPlayers =
+        gamesList
+            .where((games) {
+              return players.any(
+                    (player) =>
+                        player.name == games.whitePlayer.name &&
+                        games.whitePlayer.federation == player.countryCode,
+                  ) ||
+                  players.any(
+                    (player) =>
+                        player.name == games.blackPlayer.name &&
+                        games.blackPlayer.federation == player.countryCode,
+                  );
+            })
+            .map((e) => e.gameId)
+            .toList();
+
     if (filteredGames.length == gamesList.length) {
-      return [];
+      return [...favPlayers];
     }
 
-    return filteredGames;
+    return [...favPlayers, ...filteredGames];
   }
 }
 
