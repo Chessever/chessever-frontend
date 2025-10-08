@@ -243,8 +243,8 @@ class StockfishSingleton {
     });
 
     try {
-      debugPrint('   → Sending: MultiPV 4, depth $depth');
-      _engine!.stdin = 'setoption name MultiPV value 4';
+      debugPrint('   → Sending: MultiPV 3, depth $depth');
+      _engine!.stdin = 'setoption name MultiPV value 3';
       _engine!.stdin = 'position fen $fen';
       _engine!.stdin = 'go depth $depth';
     } catch (e) {
@@ -284,6 +284,10 @@ class StockfishSingleton {
         _currentSubscription = null;
       }
     });
+
+    // CRITICAL FIX: Wait for the completer to complete before returning
+    // This ensures the queue processor doesn't move to the next job until this one is done
+    await completer.future;
   }
 
   List<Pv> _normalizeToWhitePerspective(List<Pv> pvs, String fen) {

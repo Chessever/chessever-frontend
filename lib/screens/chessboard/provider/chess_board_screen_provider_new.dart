@@ -23,7 +23,7 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:worker_manager/worker_manager.dart';
 
-const int _kMaxPrincipalVariations = 4;
+const int _kMaxPrincipalVariations = 3;
 
 enum ChessboardView { tour, countryman }
 
@@ -57,6 +57,7 @@ class ChessBoardScreenNotifierNew
   bool _isLongPressing = false;
   bool _cancelEvaluation = false;
   bool _resumeVariantAutoPlay = false;
+  bool _isPlayingVariant = false;
   final Map<String, double> _evaluationCache = {};
   final Map<String, int?> _mateCache = {};
   final Map<String, List<AnalysisLine>> _pvCache = {};
@@ -596,8 +597,25 @@ class ChessBoardScreenNotifierNew
     final index = currentState.principalVariations.indexOf(line);
     if (index == -1) return;
 
+    debugPrint('🎯 PLAY PV MOVE: index=$index, currentSelected=${currentState.selectedVariantIndex}');
+
+    // If already on this variant, just play forward
+    if (currentState.selectedVariantIndex == index) {
+      debugPrint('🎯 PLAY PV MOVE: Already selected, playing forward');
+      playVariantMoveForward();
+      return;
+    }
+
+    // Select variant first (this will update the arrows)
+    debugPrint('🎯 PLAY PV MOVE: Selecting new variant');
     selectVariant(index);
-    playVariantMoveForward();
+
+    // Then play the first move forward
+    Future.microtask(() {
+      if (mounted && state.value?.selectedVariantIndex == index) {
+        playVariantMoveForward();
+      }
+    });
   }
 
   /// Select a variant (engine suggestion) for navigation
@@ -617,11 +635,25 @@ class ChessBoardScreenNotifierNew
       );
       return;
     }
+
+    // CRITICAL: If same variant already selected, don't reset - just return
+    if (currentState.selectedVariantIndex == variantIndex) {
+      debugPrint('🎯 SELECT VARIANT: Already selected, skipping re-selection');
+      return;
+    }
+
+    // CRITICAL: Lock the EXACT current position as the base for this variant exploration
     final baseFen = currentState.analysisState.position.fen;
     final basePointer = currentState.analysisState.movePointer;
 
     debugPrint(
-      '🎯 SELECT VARIANT: Proceeding with selection (fen=$baseFen, pointer=$basePointer)',
+      '🎯 SELECT VARIANT: Locking base state (fen=$baseFen, pointer=$basePointer)',
+    );
+
+    // Show all 3 variants as arrows
+    final arrowShapes = _getAllVariantArrowShapes(
+      currentState.principalVariations,
+      variantIndex,
     );
 
     final updatedState = currentState.copyWith(
@@ -631,112 +663,155 @@ class ChessBoardScreenNotifierNew
       variantBaseMovePointer: basePointer,
       variantBaseLastMove: currentState.analysisState.lastMove,
       variantBaseMoveIndex: currentState.analysisState.currentMoveIndex,
+      shapes: arrowShapes,
     );
 
-    final selectedVariant = currentState.principalVariations[variantIndex];
-    final arrowShapes = _variantArrowShapes(selectedVariant, 0);
-
     _resumeVariantAutoPlay = false;
-    state = AsyncValue.data(updatedState.copyWith(shapes: arrowShapes));
+    _isPlayingVariant = false;
+    state = AsyncValue.data(updatedState);
 
-    debugPrint('🎯 SELECT VARIANT: Variant selected, ready for navigation');
+    debugPrint('🎯 SELECT VARIANT: Variant selected, base locked');
   }
 
   /// Play next move of the selected variant forward
   void playVariantMoveForward() {
     debugPrint('🎯 PLAY VARIANT FORWARD called');
-    var currentState = state.value;
-    if (currentState == null || !currentState.isAnalysisMode) {
-      debugPrint('🎯 PLAY VARIANT FORWARD: Not in analysis mode');
-      return;
-    }
-    if (!_ensureVariantSelection()) {
-      debugPrint('🎯 PLAY VARIANT FORWARD: No variants available');
-      return;
-    }
-    currentState = state.value;
-    if (currentState == null || currentState.selectedVariantIndex == null) {
-      debugPrint('🎯 PLAY VARIANT FORWARD: Variant selection failed');
-      return;
-    }
-    if (currentState.variantBaseFen == null) {
-      debugPrint('🎯 PLAY VARIANT FORWARD: Missing base FEN, aborting');
-      return;
-    }
 
-    final selectedVariant =
-        currentState.principalVariations[currentState.selectedVariantIndex!];
-    final nextMoveIndex = currentState.variantMovePointer.length;
+    // CRITICAL: Prevent concurrent execution
+    if (_isPlayingVariant) {
+      debugPrint('🎯 PLAY VARIANT FORWARD: Already playing, skipping');
+      return;
+    }
+    _isPlayingVariant = true;
 
-    debugPrint(
-      '🎯 PLAY VARIANT FORWARD: nextMoveIndex=$nextMoveIndex, variantLength=${selectedVariant.moves.length}',
-    );
-
-    if (nextMoveIndex >= selectedVariant.moves.length) {
-      if (!_resumeVariantAutoPlay) {
-        debugPrint(
-          '🎯 PLAY VARIANT FORWARD: No more moves in variant, requesting extension',
-        );
-        _resumeVariantAutoPlay = true;
-        final currentFen = currentState.analysisState.position.fen;
-        _pvCache.remove(currentFen);
-        _evaluationCache.remove(currentFen);
-        _mateCache.remove(currentFen);
-        state = AsyncValue.data(currentState.copyWith(isEvaluating: true));
-        _updateEvaluation();
-      } else {
-        debugPrint(
-          '🎯 PLAY VARIANT FORWARD: Extension already in progress, waiting',
-        );
+    try {
+      var currentState = state.value;
+      if (currentState == null || !currentState.isAnalysisMode) {
+        debugPrint('🎯 PLAY VARIANT FORWARD: Not in analysis mode');
+        return;
       }
-      return;
-    }
+      if (!_ensureVariantSelection()) {
+        debugPrint('🎯 PLAY VARIANT FORWARD: No variants available');
+        return;
+      }
+      currentState = state.value;
+      if (currentState == null || currentState.selectedVariantIndex == null) {
+        debugPrint('🎯 PLAY VARIANT FORWARD: Variant selection failed');
+        return;
+      }
+      if (currentState.variantBaseFen == null) {
+        debugPrint('🎯 PLAY VARIANT FORWARD: Missing base FEN, aborting');
+        return;
+      }
 
-    _resumeVariantAutoPlay = false;
+      final selectedVariant =
+          currentState.principalVariations[currentState.selectedVariantIndex!];
+      final nextMoveIndex = currentState.variantMovePointer.length;
 
-    final nextMove = selectedVariant.moves[nextMoveIndex];
-    debugPrint('🎯 PLAY VARIANT FORWARD: Next move UCI=${nextMove.uci}');
+      debugPrint(
+        '🎯 PLAY VARIANT FORWARD: nextMoveIndex=$nextMoveIndex, variantLength=${selectedVariant.moves.length}',
+      );
 
-    if (nextMove is NormalMove && isPromotionPawnMove(nextMove)) {
-      state = AsyncValue.data(
-        currentState.copyWith(
-          analysisState: currentState.analysisState.copyWith(
-            promotionMove: nextMove,
+      if (nextMoveIndex >= selectedVariant.moves.length) {
+        if (!_resumeVariantAutoPlay) {
+          debugPrint(
+            '🎯 PLAY VARIANT FORWARD: Reached end of variant, requesting extension',
+          );
+          _resumeVariantAutoPlay = true;
+          final currentFen = currentState.analysisState.position.fen;
+          _pvCache.remove(currentFen);
+          _evaluationCache.remove(currentFen);
+          _mateCache.remove(currentFen);
+
+          // CRITICAL: Update variant base to CURRENT position for extension
+          // The new PVs will start from here, and variantMovePointer resets to []
+          final updatedForExtension = currentState.copyWith(
+            isEvaluating: true,
+            variantBaseFen: currentFen,
+            variantBaseMovePointer: currentState.analysisState.movePointer,
+            variantMovePointer: const [], // Reset pointer for new base
+          );
+          state = AsyncValue.data(updatedForExtension);
+
+          debugPrint(
+            '🎯 PLAY VARIANT FORWARD: Extension base set to $currentFen, resetting pointer',
+          );
+          _updateEvaluation();
+        } else {
+          debugPrint(
+            '🎯 PLAY VARIANT FORWARD: Extension already in progress, waiting',
+          );
+        }
+        return;
+      }
+
+      _resumeVariantAutoPlay = false;
+
+      final nextMove = selectedVariant.moves[nextMoveIndex];
+      debugPrint('🎯 PLAY VARIANT FORWARD: Next move UCI=${nextMove.uci}');
+
+      if (nextMove is NormalMove && isPromotionPawnMove(nextMove)) {
+        state = AsyncValue.data(
+          currentState.copyWith(
+            analysisState: currentState.analysisState.copyWith(
+              promotionMove: nextMove,
+            ),
           ),
+        );
+        return;
+      }
+
+      // CRITICAL: Validate the move is legal from the base position
+      final newPointer = List<int>.from(currentState.variantMovePointer)
+        ..add(nextMoveIndex);
+
+      Position positionAfter;
+      try {
+        positionAfter = _variantPositionFromBase(
+          currentState,
+          selectedVariant,
+          newPointer.length,
+        );
+      } catch (e) {
+        debugPrint(
+          '🎯 PLAY VARIANT FORWARD: ERROR - Failed to calculate position: $e',
+        );
+        debugPrint('   Base FEN: ${currentState.variantBaseFen}');
+        debugPrint('   Moves to apply: ${newPointer.length}');
+        debugPrint('   Variant moves: ${selectedVariant.moves.map((m) => m.uci).join(" ")}');
+        // Clear variant on error
+        state = AsyncValue.data(_clearVariantSelection(currentState));
+        return;
+      }
+
+      final updatedState = currentState.copyWith(
+        variantMovePointer: newPointer,
+        analysisState: currentState.analysisState.copyWith(
+          position: positionAfter,
+          lastMove: nextMove,
+          currentMoveIndex:
+              currentState.variantBaseMoveIndex ??
+              currentState.analysisState.currentMoveIndex,
+          validMoves: makeLegalMoves(positionAfter),
+          promotionMove: null,
         ),
       );
-      return;
+
+      // Show all variants as arrows
+      final arrowShapes = _getAllVariantArrowShapes(
+        currentState.principalVariations,
+        currentState.selectedVariantIndex!,
+      );
+
+      state = AsyncValue.data(updatedState.copyWith(shapes: arrowShapes));
+      final sanMoves = selectedVariant.sanMoves;
+      if (nextMoveIndex < sanMoves.length) {
+        _playSoundForSan(sanMoves[nextMoveIndex]);
+      }
+      _updateEvaluation();
+    } finally {
+      _isPlayingVariant = false;
     }
-
-    final newPointer = List<int>.from(currentState.variantMovePointer)
-      ..add(nextMoveIndex);
-    final positionAfter = _variantPositionFromBase(
-      currentState,
-      selectedVariant,
-      newPointer.length,
-    );
-
-    final updatedState = currentState.copyWith(
-      variantMovePointer: newPointer,
-      analysisState: currentState.analysisState.copyWith(
-        position: positionAfter,
-        lastMove: nextMove,
-        currentMoveIndex:
-            currentState.variantBaseMoveIndex ??
-            currentState.analysisState.currentMoveIndex,
-        validMoves: makeLegalMoves(positionAfter),
-        promotionMove: null,
-      ),
-    );
-
-    final arrowShapes = _variantArrowShapes(selectedVariant, newPointer.length);
-
-    state = AsyncValue.data(updatedState.copyWith(shapes: arrowShapes));
-    final sanMoves = selectedVariant.sanMoves;
-    if (nextMoveIndex < sanMoves.length) {
-      _playSoundForSan(sanMoves[nextMoveIndex]);
-    }
-    _updateEvaluation();
   }
 
   /// Undo last move of the selected variant
@@ -1105,8 +1180,15 @@ class ChessBoardScreenNotifierNew
         currentState.analysisState.positionHistory.take(currentIndex + 1),
       )..add(newPosition);
 
-      final updatedState = currentState.copyWith(
-        analysisState: currentState.analysisState.copyWith(
+      // Clear variant selection and PV cache for the new position
+      final clearedState = _clearVariantSelection(currentState);
+      final newFen = newPosition.fen;
+      _pvCache.remove(newFen);
+      _evaluationCache.remove(newFen);
+      _mateCache.remove(newFen);
+
+      final updatedState = clearedState.copyWith(
+        analysisState: clearedState.analysisState.copyWith(
           currentMoveIndex: currentIndex + 1,
           lastMove: move,
           validMoves: makeLegalMoves(newPosition),
@@ -1119,12 +1201,23 @@ class ChessBoardScreenNotifierNew
           movePointer: const [],
         ),
         evaluation: null,
+        mate: null,
         isEvaluating: true,
+        principalVariations: const [], // Clear old variants
+        shapes: const ISet.empty(), // Clear old shapes
+        selectedVariantIndex: null, // Clear variant selection
+        variantMovePointer: const [],
+        variantBaseFen: null,
+        variantBaseMovePointer: null,
+        variantBaseLastMove: null,
+        variantBaseMoveIndex: null,
       );
 
       state = AsyncValue.data(updatedState);
       _playSoundForSan(san);
       _updateEvaluation();
+
+      debugPrint('🎯 MANUAL MOVE: Evaluation triggered for new position');
     } catch (e) {
       debugPrint('🎯 ANALYSIS MOVE: ERROR - Failed manual move apply: $e');
     }
@@ -1589,6 +1682,7 @@ class ChessBoardScreenNotifierNew
     final previousSelection = currentState.selectedVariantIndex;
     final previousBaseFen = currentState.variantBaseFen;
     final previousVariantPointer = currentState.variantMovePointer;
+    final shouldResumeAutoPlay = _resumeVariantAutoPlay;
 
     // CRITICAL: Preserve evaluation, mate, and isEvaluating from currentState
     // The caller already set these values and we must NOT reset them
@@ -1608,7 +1702,15 @@ class ChessBoardScreenNotifierNew
         pvLines.isNotEmpty &&
         currentState.isAnalysisMode;
 
+    // CRITICAL FIX: Check if we're in middle of variant exploration
+    final bool inVariantExploration =
+        previousSelection != null &&
+        previousVariantPointer.isNotEmpty &&
+        previousBaseFen != null;
+
     if (shouldDefaultSelect) {
+      // New variant selection - lock current position as base
+      final arrowShapes = _getAllVariantArrowShapes(pvLines, 0);
       nextState = nextState.copyWith(
         selectedVariantIndex: 0,
         variantBaseFen: baseFen,
@@ -1616,37 +1718,42 @@ class ChessBoardScreenNotifierNew
         variantBaseLastMove: currentState.analysisState.lastMove,
         variantBaseMoveIndex: currentState.analysisState.currentMoveIndex,
         variantMovePointer: const [],
-        shapes: _variantArrowShapes(pvLines.first, 0),
+        shapes: arrowShapes,
       );
     } else if (previousSelection != null &&
         previousSelection < pvLines.length &&
         currentState.isAnalysisMode) {
-      nextState = nextState.copyWith(
-        selectedVariantIndex: previousSelection,
-        variantBaseFen: baseFen,
-        variantBaseMovePointer: baseMovePointer,
-        variantBaseLastMove: currentState.analysisState.lastMove,
-        variantBaseMoveIndex: currentState.analysisState.currentMoveIndex,
-      );
-      if (previousBaseFen == baseFen) {
+      // Variant was already selected
+
+      if (inVariantExploration) {
+        // CRITICAL: We're exploring a variant
+        // ALWAYS keep the original locked base - even if current position changed
+        debugPrint(
+          '🎯 PV RESULTS: Preserving locked base FEN during variant exploration',
+        );
+        final arrowShapes = _getAllVariantArrowShapes(pvLines, previousSelection);
         nextState = nextState.copyWith(
+          selectedVariantIndex: previousSelection,
+          // Keep the ORIGINAL base FEN, don't update it!
+          variantBaseFen: previousBaseFen,
+          variantBaseMovePointer: currentState.variantBaseMovePointer,
+          variantBaseLastMove: currentState.variantBaseLastMove,
+          variantBaseMoveIndex: currentState.variantBaseMoveIndex,
           variantMovePointer: previousVariantPointer,
+          shapes: arrowShapes,
         );
-        nextState = _setVariantProgress(
-          currentState: nextState,
-          currentPosition: currentPosition,
-        );
-        final maintainedVariant = pvLines[previousSelection];
-        final nextVariantIndex = nextState.variantMovePointer.length;
-        final arrowShapes = _variantArrowShapes(
-          maintainedVariant,
-          nextVariantIndex,
-        );
-        nextState = nextState.copyWith(shapes: arrowShapes);
       } else {
-        final maintainedVariant = pvLines[previousSelection];
-        final arrowShapes = _variantArrowShapes(maintainedVariant, 0);
+        // Not in variant exploration - safe to update base
+        debugPrint(
+          '🎯 PV RESULTS: Not in variant exploration, setting new base FEN',
+        );
+        final arrowShapes = _getAllVariantArrowShapes(pvLines, previousSelection);
         nextState = nextState.copyWith(
+          selectedVariantIndex: previousSelection,
+          variantBaseFen: baseFen,
+          variantBaseMovePointer: baseMovePointer,
+          variantBaseLastMove: currentState.analysisState.lastMove,
+          variantBaseMoveIndex: currentState.analysisState.currentMoveIndex,
           variantMovePointer: const [],
           shapes: arrowShapes,
         );
@@ -1657,6 +1764,36 @@ class ChessBoardScreenNotifierNew
 
     _resumeVariantAutoPlay = false;
     state = AsyncValue.data(nextState);
+
+    // CRITICAL FIX: Auto-resume variant playback if we were waiting for extension
+    if (shouldResumeAutoPlay &&
+        nextState.selectedVariantIndex != null &&
+        nextState.selectedVariantIndex! < pvLines.length) {
+      final newVariant = pvLines[nextState.selectedVariantIndex!];
+
+      debugPrint(
+        '🎯 AUTO-RESUME: Extension completed, newVariantLength=${newVariant.moves.length}',
+      );
+
+      // After extension, variantMovePointer was reset to []
+      // and variantBaseFen was updated to current position
+      // So we can start playing from index 0 of the new variant
+      if (newVariant.moves.isNotEmpty) {
+        debugPrint(
+          '🎯 AUTO-RESUME: New PVs available, resuming playback from new base',
+        );
+        // Use Future.microtask to avoid calling during build
+        Future.microtask(() {
+          if (mounted && state.value?.selectedVariantIndex != null) {
+            playVariantMoveForward();
+          }
+        });
+      } else {
+        debugPrint(
+          '🎯 AUTO-RESUME: No moves in extended variant - game may be over',
+        );
+      }
+    }
   }
 
   int _calculateVariantProgress(
@@ -1747,52 +1884,72 @@ class ChessBoardScreenNotifierNew
       double? evaluation;
       List<AnalysisLine> pvLines = const [];
 
+      debugPrint('🎯 EVAL START: Evaluating position $fen');
+
+      // CRITICAL: Use Stockfish as PRIMARY source to guarantee 3 PVs
       try {
-        primaryEval = await ref.read(cascadeEvalProviderForBoard(fen).future);
-        if (primaryEval != null && primaryEval!.pvs.isNotEmpty) {
+        debugPrint('🎯 EVAL: Requesting Stockfish evaluation...');
+        final localEval = await StockfishSingleton().evaluatePosition(
+          fen,
+          depth: _resumeVariantAutoPlay ? 12 : 15,
+        );
+        debugPrint('🎯 EVAL: Stockfish completed, isCancelled=${localEval.isCancelled}, pvs.length=${localEval.pvs.length}');
+
+        if (!localEval.isCancelled && localEval.pvs.isNotEmpty) {
+          primaryEval = CloudEval(
+            fen: fen,
+            knodes: localEval.knodes,
+            depth: localEval.depth,
+            pvs: localEval.pvs,
+          );
           evaluation = _getConsistentEvaluation(
-            primaryEval!.pvs.first.cp / 100.0,
+            localEval.pvs.first.cp / 100.0,
             fen,
           );
-          pvLines = await _buildPrincipalVariations(fen, primaryEval!.pvs);
+          debugPrint('🎯 EVAL: Building principal variations...');
+          pvLines = await _buildPrincipalVariations(fen, localEval.pvs);
+          debugPrint('🎯 EVAL: Stockfish SUCCESS - returned ${pvLines.length} variants, eval=$evaluation');
         } else {
-          primaryEval = null;
+          debugPrint('🎯 EVAL: Stockfish returned cancelled or empty result');
         }
-      } catch (e) {
-        debugPrint('Cascade evaluation failed for $fen: $e');
+      } catch (e, stack) {
+        debugPrint('🎯 EVAL ERROR: Stockfish failed for $fen: $e');
+        debugPrint('Stack: $stack');
       }
 
-      var evalSource = 'cascade';
-
+      // Try cascade/cloud as fallback only if Stockfish failed
       if (evaluation == null || pvLines.isEmpty) {
         try {
-          final localEval = await StockfishSingleton().evaluatePosition(
-            fen,
-            depth: _resumeVariantAutoPlay ? 12 : 15,
-          );
-          if (!localEval.isCancelled && localEval.pvs.isNotEmpty) {
-            primaryEval = CloudEval(
-              fen: fen,
-              knodes: localEval.knodes,
-              depth: localEval.depth,
-              pvs: localEval.pvs,
-            );
+          final cascadeEval = await ref.read(cascadeEvalProviderForBoard(fen).future);
+          if (cascadeEval.pvs.isNotEmpty) {
+            primaryEval = cascadeEval;
             evaluation = _getConsistentEvaluation(
-              localEval.pvs.first.cp / 100.0,
+              cascadeEval.pvs.first.cp / 100.0,
               fen,
             );
-            pvLines = await _buildPrincipalVariations(fen, localEval.pvs);
-            evalSource = 'local';
+            pvLines = await _buildPrincipalVariations(fen, cascadeEval.pvs);
+            debugPrint('🎯 EVAL: Cascade returned ${pvLines.length} variants');
+          } else {
+            debugPrint('🎯 EVAL: Cascade returned empty PVs');
           }
         } catch (e) {
-          debugPrint('Local fallback evaluation failed for $fen: $e');
+          debugPrint('🎯 EVAL ERROR: Cascade failed for $fen: $e');
         }
       }
 
       if (evaluation == null || pvLines.isEmpty || primaryEval == null) {
+        debugPrint('🎯 EVAL FAILED: No valid evaluation available for $fen');
+        debugPrint('   evaluation=$evaluation, pvLines.length=${pvLines.length}, primaryEval=$primaryEval');
         final fallbackState = state.value;
         if (fallbackState != null) {
-          state = AsyncValue.data(fallbackState.copyWith(isEvaluating: false));
+          // Set a default evaluation to prevent stuck loading state
+          state = AsyncValue.data(
+            fallbackState.copyWith(
+              isEvaluating: false,
+              evaluation: 0.0,
+              principalVariations: const [],
+            ),
+          );
         }
         return;
       }
@@ -1817,12 +1974,17 @@ class ChessBoardScreenNotifierNew
           inAnalysis
               ? currentSnapshot.analysisState.position
               : currentSnapshot.position!;
-      if (position.fen != fen) {
+
+      // Allow small FEN differences (like move counters) during variant exploration
+      final currentFenBase = position.fen.split(' ').take(3).join(' ');
+      final evalFenBase = fen.split(' ').take(3).join(' ');
+
+      if (currentFenBase != evalFenBase) {
+        debugPrint('🎯 EVAL: Position changed during eval (current=$currentFenBase vs eval=$evalFenBase), aborting');
         state = AsyncValue.data(currentSnapshot.copyWith(isEvaluating: false));
         return;
       }
 
-      final shapes = getBestMoveShape(position, primaryEval);
       final basePointer =
           inAnalysis ? currentSnapshot.analysisState.movePointer : null;
       final mateScore = primaryEval.pvs.first.mate ?? currentSnapshot.mate;
@@ -1831,61 +1993,42 @@ class ChessBoardScreenNotifierNew
       _mateCache[fen] = mateScore;
       _pvCache[fen] = pvLines;
 
+      // CRITICAL: Don't overwrite variant base if we're exploring a variant
+      final inVariantExploration =
+          currentSnapshot.selectedVariantIndex != null &&
+          currentSnapshot.variantMovePointer.isNotEmpty &&
+          currentSnapshot.variantBaseFen != null;
+
+      // CRITICAL: Use multi-variant arrows if variant selected, otherwise use best move
+      final ISet<Shape> shapes;
+      if (currentSnapshot.selectedVariantIndex != null && pvLines.isNotEmpty) {
+        shapes = _getAllVariantArrowShapes(
+          pvLines,
+          currentSnapshot.selectedVariantIndex!,
+        );
+      } else {
+        shapes = getBestMoveShape(position, primaryEval);
+      }
+
       currentSnapshot = currentSnapshot.copyWith(
         evaluation: evaluation,
         mate: mateScore,
         isEvaluating: false,
         shapes: shapes,
         principalVariations: pvLines,
-        variantBaseFen: fen,
-        variantBaseMovePointer: basePointer,
+        // Only update variantBaseFen if NOT in variant exploration
+        variantBaseFen: inVariantExploration ? currentSnapshot.variantBaseFen : fen,
+        variantBaseMovePointer:
+            inVariantExploration
+                ? currentSnapshot.variantBaseMovePointer
+                : basePointer,
         analysisState: currentSnapshot.analysisState.copyWith(
           suggestionLines: pvLines,
         ),
       );
       state = AsyncValue.data(currentSnapshot);
 
-      // If the primary source provided fewer lines than we can show, supplement
-      if (evalSource != 'local' && pvLines.length < _kMaxPrincipalVariations) {
-        Future<void>(() async {
-          try {
-            final supplement = await StockfishSingleton().evaluatePosition(
-              fen,
-              depth: _resumeVariantAutoPlay ? 14 : 18,
-            );
-            if (supplement.isCancelled || supplement.pvs.isEmpty) return;
-            final extraLines =
-                (await _buildPrincipalVariations(
-                  fen,
-                  supplement.pvs,
-                )).take(_kMaxPrincipalVariations).toList();
-            if (extraLines.isEmpty) return;
-
-            if (!mounted || state.value == null) return;
-            final latestState = state.value!;
-            final latestPosition =
-                latestState.isAnalysisMode
-                    ? latestState.analysisState.position
-                    : latestState.position!;
-            if (latestPosition.fen != fen) return;
-
-            _pvCache[fen] = extraLines;
-
-            _applyPrincipalVariationResults(
-              currentState: latestState,
-              currentPosition: latestPosition,
-              baseFen: fen,
-              baseMovePointer:
-                  latestState.isAnalysisMode
-                      ? latestState.analysisState.movePointer
-                      : null,
-              pvLines: extraLines,
-            );
-          } catch (e) {
-            debugPrint('Supplemental PV evaluation failed for $fen: $e');
-          }
-        });
-      }
+      // Note: Removed supplemental eval since Stockfish is now primary with MultiPV=3
     } catch (e) {
       if (!_cancelEvaluation) {
         debugPrint('Evaluation error: $e');
@@ -2043,6 +2186,46 @@ class ChessBoardScreenNotifierNew
     } catch (_) {
       return const ISet.empty();
     }
+  }
+
+  /// Show all 3 variant first moves as arrows with different opacity
+  ISet<Shape> _getAllVariantArrowShapes(
+    List<AnalysisLine> variants,
+    int selectedIndex,
+  ) {
+    final arrows = <Arrow>[];
+
+    for (int i = 0; i < variants.length && i < 3; i++) {
+      final variant = variants[i];
+      if (variant.moves.isEmpty) continue;
+
+      final move = variant.moves[0];
+      if (move is! NormalMove) continue;
+
+      try {
+        // Selected variant gets brightest arrow, others get dimmer
+        final Color arrowColor;
+        if (i == selectedIndex) {
+          arrowColor = kPrimaryColor.withValues(alpha: 0.9);
+        } else if (i == 0) {
+          arrowColor = const Color.fromARGB(180, 152, 179, 154);
+        } else if (i == 1) {
+          arrowColor = const Color.fromARGB(140, 152, 179, 154);
+        } else {
+          arrowColor = const Color.fromARGB(100, 152, 179, 154);
+        }
+
+        arrows.add(Arrow(
+          color: arrowColor,
+          orig: move.from,
+          dest: move.to,
+        ));
+      } catch (_) {
+        continue;
+      }
+    }
+
+    return arrows.toISet();
   }
 
   void _updateEvaluation() {
