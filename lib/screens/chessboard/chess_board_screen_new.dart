@@ -1671,15 +1671,26 @@ class _MovesDisplay extends ConsumerWidget {
               // Get impact from the map
               final impact = allMovesImpact?[moveIndex];
 
+              // Check if this is a variant-explored move (user made manual analysis moves)
+              final isVariantMove =
+                  state.isAnalysisMode &&
+                  moveIndex >= (state.variantBaseMoveIndex ?? state.allMoves.length);
+
               final displayText = isWhiteMove ? '$fullMoveNumber. $move' : move;
               final impactSymbol = impact?.impact.symbol ?? '';
 
-              // Determine text color - PRIORITY: impact color > current move > default
+              // Determine text color - PRIORITY: impact color > variant > current move > default
               final params = ChessBoardProviderParams(game: game, index: index);
               Color textColor;
+              Color? backgroundColor;
+
               if (impact != null && impact.impact != MoveImpactType.normal) {
                 // Impact color has highest priority (even when selected)
                 textColor = impact.impact.color;
+              } else if (isVariantMove) {
+                // Variant moves get special coloring
+                textColor = kPrimaryColor;
+                backgroundColor = kPrimaryColor.withValues(alpha: 0.2);
               } else if (isCurrentMove) {
                 textColor = kWhiteColor;
               } else {
@@ -1700,9 +1711,10 @@ class _MovesDisplay extends ConsumerWidget {
                   ),
                   decoration: BoxDecoration(
                     color:
-                        isCurrentMove
+                        backgroundColor ??
+                        (isCurrentMove
                             ? kWhiteColor70.withValues(alpha: 0.4)
-                            : Colors.transparent,
+                            : Colors.transparent),
                     borderRadius: BorderRadius.circular(4.sp),
                     border: Border.all(
                       color: isCurrentMove ? kWhiteColor : Colors.transparent,
