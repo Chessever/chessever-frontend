@@ -1,3 +1,4 @@
+import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/repository/local_storage/group_broadcast/group_broadcast_local_storage.dart';
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
@@ -42,6 +43,9 @@ class _SplashScreenProvider {
     print('Is user logged in: $isLoggedIn');
 
     if (isLoggedIn || kDebugMode) {
+      await Future.microtask(() async {
+        ref.read(countryDropdownProvider);
+      });
       Navigator.pushNamedAndRemoveUntil(context, '/home_screen', (_) => false);
     } else {
       Navigator.pushNamedAndRemoveUntil(context, '/auth_screen', (_) => false);
