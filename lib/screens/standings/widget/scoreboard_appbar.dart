@@ -3,10 +3,10 @@ import 'package:chessever2/screens/standings/widget/player_dropdown.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../../../utils/svg_asset.dart';
-import '../../../widgets/svg_widget.dart';
-import '../score_card_screen.dart';
-import '../../tour_detail/player_tour/player_tour_screen_provider.dart';
+import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/svg_widget.dart';
+import 'package:chessever2/screens/standings/score_card_screen.dart';
+import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 
 class ScoreboardAppbar extends ConsumerStatefulWidget {
   final String playerName;

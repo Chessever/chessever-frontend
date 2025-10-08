@@ -6,7 +6,7 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provi
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../../../repository/local_storage/favorite/favourate_standings_player_services.dart';
+import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
 
 // Provider for the standings state
 final playerTourScreenProvider = StateNotifierProvider<
@@ -63,16 +63,22 @@ class _PlayerTourScreenController
       // Calculate scores from actual games for each player
       for (int i = 0; i < tournamentPlayer.length; i++) {
         final player = tournamentPlayer[i];
-        final playerGames = allGames.where((game) =>
-            game.whitePlayer.name == player.name ||
-            game.blackPlayer.name == player.name).toList();
+        final playerGames =
+            allGames
+                .where(
+                  (game) =>
+                      game.whitePlayer.name == player.name ||
+                      game.blackPlayer.name == player.name,
+                )
+                .toList();
 
         double calculatedScore = 0.0;
         int gamesPlayed = 0;
 
         for (final game in playerGames) {
           // Skip ongoing games
-          if (game.gameStatus == GameStatus.ongoing || game.gameStatus == GameStatus.unknown) {
+          if (game.gameStatus == GameStatus.ongoing ||
+              game.gameStatus == GameStatus.unknown) {
             continue;
           }
 
@@ -125,17 +131,8 @@ class _PlayerTourScreenController
   }
 }
 
-final tournamentFavoritePlayersProvider = FutureProvider<List<PlayerStandingModel>>((
-  ref,
-) async {
-  final favoritesService = ref.read(favoriteStandingsPlayerService);
-  return await favoritesService.getFavoritePlayers();
-});
-
-final isTournamentPlayerFavoriteProvider = FutureProvider.family<bool, String>((
-  ref,
-  playerName,
-) async {
-  final favoritesService = ref.read(favoriteStandingsPlayerService);
-  return await favoritesService.isFavorite(playerName);
-});
+final tournamentFavoritePlayersProvider =
+    FutureProvider<List<PlayerStandingModel>>((ref) async {
+      final favoritesService = ref.read(favoriteStandingsPlayerService);
+      return await favoritesService.getFavoritePlayers();
+    });
