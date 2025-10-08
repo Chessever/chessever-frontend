@@ -63,7 +63,9 @@ class StockfishSingleton {
     final job = _EvalJob(fen, depth, completer);
 
     _jobQueue.add(job);
-    debugPrint('📋 QUEUE: Added job for $fen (queue size: ${_jobQueue.length})');
+    debugPrint(
+      '📋 QUEUE: Added job for $fen (queue size: ${_jobQueue.length})',
+    );
 
     // Start processing queue if not already processing
     if (!_isProcessing) {
@@ -118,7 +120,9 @@ class StockfishSingleton {
     if (_isProcessing || _jobQueue.isEmpty) return;
 
     _isProcessing = true;
-    debugPrint('🏭 QUEUE PROCESSOR: Starting, ${_jobQueue.length} jobs in queue');
+    debugPrint(
+      '🏭 QUEUE PROCESSOR: Starting, ${_jobQueue.length} jobs in queue',
+    );
 
     while (_jobQueue.isNotEmpty) {
       final job = _jobQueue.removeAt(0);
@@ -213,11 +217,15 @@ class StockfishSingleton {
 
         final normalizedPvs = _normalizeToWhitePerspective(filteredPvs, fen);
 
-        debugPrint('✅ STOCKFISH COMPLETE: depth=$finalDepth, pvs=${filteredPvs.length}, knodes=$knodes');
+        debugPrint(
+          '✅ STOCKFISH COMPLETE: depth=$finalDepth, pvs=${filteredPvs.length}, knodes=$knodes',
+        );
         if (filteredPvs.isEmpty) {
           debugPrint('⚠️ WARNING: No PVs found for $fen');
         } else {
-          debugPrint('   Best move: ${filteredPvs[0].moves.split(' ').first}, cp=${filteredPvs[0].cp}');
+          debugPrint(
+            '   Best move: ${filteredPvs[0].moves.split(' ').first}, cp=${filteredPvs[0].cp}',
+          );
         }
 
         final result = EnhancedCloudEval(
@@ -235,8 +243,8 @@ class StockfishSingleton {
     });
 
     try {
-      debugPrint('   → Sending: MultiPV 3, depth $depth');
-      _engine!.stdin = 'setoption name MultiPV value 3';
+      debugPrint('   → Sending: MultiPV 4, depth $depth');
+      _engine!.stdin = 'setoption name MultiPV value 4';
       _engine!.stdin = 'position fen $fen';
       _engine!.stdin = 'go depth $depth';
     } catch (e) {
