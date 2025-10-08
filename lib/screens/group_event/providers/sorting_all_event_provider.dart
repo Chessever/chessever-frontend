@@ -12,10 +12,7 @@ class TournamentSortingService {
   TournamentSortingService(this.ref);
 
   List<GroupEventCardModel> sortAllTours(List<GroupEventCardModel> tours) {
-    final filteredList =
-        tours
-            .where((t) => t.tourEventCategory != TourEventCategory.upcoming)
-            .toList();
+    final filteredList = tours.toList();
 
     filteredList.sort((a, b) {
       final isHighEloA = a.maxAvgElo > 3200;
@@ -37,10 +34,7 @@ class TournamentSortingService {
   }
 
   List<GroupEventCardModel> sortUpcomingTours(List<GroupEventCardModel> tours) {
-    final filteredList =
-        tours
-            .where((t) => t.tourEventCategory == TourEventCategory.upcoming)
-            .toList();
+    final filteredList = tours.toList();
 
     filteredList.sort((a, b) {
       // For upcoming tournaments, also sort by maxElo after favorites

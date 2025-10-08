@@ -14,16 +14,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 class EventCard extends ConsumerWidget {
   final GroupEventCardModel tourEventCardModel;
   final VoidCallback? onTap;
-  final bool isFavorite;
-  final VoidCallback? onFavoritePressed;
 
-  const EventCard({
-    required this.tourEventCardModel,
-    this.onTap,
-    this.isFavorite = false,
-    this.onFavoritePressed,
-    super.key,
-  });
+  const EventCard({required this.tourEventCardModel, this.onTap, super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -232,8 +224,6 @@ class _StarWidget extends ConsumerStatefulWidget {
 }
 
 class _StarWidgetState extends ConsumerState<_StarWidget> {
-  var isFav = false;
-
   @override
   Widget build(BuildContext context) {
     // Check both old system (for backward compatibility) and new system
@@ -241,16 +231,11 @@ class _StarWidgetState extends ConsumerState<_StarWidget> {
     final starredList = ref.watch(starredProvider(eventCategory.name));
 
     final isStarred = starredList.contains(widget.tourEventCardModel.id);
-    isFav = isStarred;
 
     return InkWell(
       onTap: () async {
-        setState(() {
-          isFav = !isFav;
-        });
-
         // Toggle in both old and new systems for compatibility
-        ref
+        await ref
             .read(starredProvider(eventCategory.name).notifier)
             .toggleStarred(widget.tourEventCardModel.id);
       },
