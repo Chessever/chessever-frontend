@@ -1684,6 +1684,25 @@ class ChessBoardScreenNotifierNew
     final previousVariantPointer = currentState.variantMovePointer;
     final shouldResumeAutoPlay = _resumeVariantAutoPlay;
 
+    // CRITICAL: Validate PVs match the variant base FEN
+    // BUT: Allow PV updates during extension (when pointer is empty and we're resuming)
+    // Extension means we updated the base to current position and reset pointer to []
+    final isExtensionUpdate = previousVariantPointer.isEmpty && shouldResumeAutoPlay;
+
+    if (previousSelection != null && previousBaseFen != null && !isExtensionUpdate) {
+      // Only validate if NOT an extension update
+      final baseFenCompare = previousBaseFen.split(' ').take(3).join(' ');
+      final pvFenCompare = baseFen.split(' ').take(3).join(' ');
+
+      if (baseFenCompare != pvFenCompare) {
+        debugPrint('🎯 PV RESULTS: REJECTING - PVs for different position');
+        debugPrint('   Expected base: $baseFenCompare');
+        debugPrint('   PV evaluated from: $pvFenCompare');
+        // Keep current state, don't apply these PVs
+        return;
+      }
+    }
+
     // CRITICAL: Preserve evaluation, mate, and isEvaluating from currentState
     // The caller already set these values and we must NOT reset them
     var nextState = currentState.copyWith(
@@ -2189,6 +2208,24 @@ class ChessBoardScreenNotifierNew
   }
 
   /// Show all 3 variant first moves as arrows with different opacity
+  /// Get color for a variant index (used for both arrows and card borders)
+  Color getVariantColor(int variantIndex, bool isSelected) {
+    if (isSelected) {
+      return kPrimaryColor.withValues(alpha: 0.9);
+    }
+
+    switch (variantIndex) {
+      case 0:
+        return const Color.fromARGB(180, 152, 179, 154); // Green
+      case 1:
+        return const Color.fromARGB(180, 100, 149, 237); // Blue
+      case 2:
+        return const Color.fromARGB(180, 255, 165, 0);   // Orange
+      default:
+        return const Color.fromARGB(100, 152, 179, 154);
+    }
+  }
+
   ISet<Shape> _getAllVariantArrowShapes(
     List<AnalysisLine> variants,
     int selectedIndex,
@@ -2203,17 +2240,7 @@ class ChessBoardScreenNotifierNew
       if (move is! NormalMove) continue;
 
       try {
-        // Selected variant gets brightest arrow, others get dimmer
-        final Color arrowColor;
-        if (i == selectedIndex) {
-          arrowColor = kPrimaryColor.withValues(alpha: 0.9);
-        } else if (i == 0) {
-          arrowColor = const Color.fromARGB(180, 152, 179, 154);
-        } else if (i == 1) {
-          arrowColor = const Color.fromARGB(140, 152, 179, 154);
-        } else {
-          arrowColor = const Color.fromARGB(100, 152, 179, 154);
-        }
+        final arrowColor = getVariantColor(i, i == selectedIndex);
 
         arrows.add(Arrow(
           color: arrowColor,

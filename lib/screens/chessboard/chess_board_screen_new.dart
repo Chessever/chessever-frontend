@@ -1848,7 +1848,7 @@ class _PrincipalVariationList extends ConsumerWidget {
             Row(
               children: [
                 Text(
-                  'Engine suggestions',
+                  'Engine suggestions (${lines.length})',
                   style: AppTypography.textSmMedium.copyWith(
                     color: kWhiteColor,
                   ),
@@ -1885,11 +1885,14 @@ class _PrincipalVariationList extends ConsumerWidget {
               ],
             ),
             SizedBox(height: 8.h),
-            Column(
-              children: [
-                ...lines.asMap().entries.map((entry) {
-                  final variantIndex = entry.key;
-                  final line = entry.value;
+            SizedBox(
+              height: 78.h,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: lines.length,
+                itemBuilder: (context, index) {
+                  final variantIndex = index;
+                  final line = lines[index];
                   final isSelected = state.selectedVariantIndex == variantIndex;
 
                   final sanMoves = _formatPv(
@@ -1901,8 +1904,13 @@ class _PrincipalVariationList extends ConsumerWidget {
                   final evalBackground = _variantEvalBackground(line);
                   final evalBorder = _variantEvalBorder(line, isSelected);
 
+                  // Get variant color matching the arrow color
+                  final variantColor = notifier.getVariantColor(variantIndex, isSelected);
+
                   return Padding(
-                    padding: EdgeInsets.only(bottom: 8.sp),
+                    padding: EdgeInsets.only(
+                      right: index < lines.length - 1 ? 8.sp : 0,
+                    ),
                     child: GestureDetector(
                       onTap: () {
                         HapticFeedback.selectionClick();
@@ -1913,20 +1921,17 @@ class _PrincipalVariationList extends ConsumerWidget {
                         }
                       },
                       child: Container(
-                        width: double.infinity,
+                        width: MediaQuery.of(context).size.width - 40.sp,
                         decoration: BoxDecoration(
                           border: Border.all(
-                            color:
-                                isSelected
-                                    ? kWhiteColor.withValues(alpha: 0.4)
-                                    : kWhiteColor.withValues(alpha: 0.12),
-                            width: isSelected ? 1.2 : 1,
+                            color: variantColor.withValues(alpha: isSelected ? 0.7 : 0.4),
+                            width: isSelected ? 2.0 : 1.5,
                           ),
                           borderRadius: BorderRadius.circular(6.sp),
                           color:
                               isSelected
-                                  ? kPrimaryColor.withValues(alpha: 0.15)
-                                  : kWhiteColor.withValues(alpha: 0.05),
+                                  ? variantColor.withValues(alpha: 0.15)
+                                  : variantColor.withValues(alpha: 0.05),
                         ),
                         padding: EdgeInsets.symmetric(
                           horizontal: 12.sp,
@@ -1984,8 +1989,8 @@ class _PrincipalVariationList extends ConsumerWidget {
                       ),
                     ),
                   );
-                }),
-              ],
+                },
+              ),
             ),
           ],
         ),
