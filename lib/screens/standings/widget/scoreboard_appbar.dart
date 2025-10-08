@@ -1,5 +1,4 @@
 import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
-import 'package:chessever2/repository/local_storage/unified_favorites/unified_favorites_provider.dart';
 import 'package:chessever2/screens/standings/widget/player_dropdown.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -56,15 +55,7 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
       final isNowFavorite = favorites.any((fav) => fav.name == player.name);
 
       // Also toggle in the unified favorites system for global player favorites
-      try {
-        await ref.togglePlayerFavorite(
-          fideId: player.name, // Using name as fallback for fideId if not available
-          playerName: player.name,
-          countryCode: player.countryCode,
-          rating: player.score,
-          title: player.title,
-        );
-      } catch (e) {
+      try {} catch (e) {
         // Handle error silently - main functionality still works with tournament favorites
       }
 
@@ -99,9 +90,7 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
           icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24.ic),
         ),
         SizedBox(width: 16.w),
-        Expanded(
-          child: const PlayerDropDown(),
-        ),
+        Expanded(child: const PlayerDropDown()),
         SizedBox(width: 16.w),
         GestureDetector(
           onTap: _toggleFavorite,
