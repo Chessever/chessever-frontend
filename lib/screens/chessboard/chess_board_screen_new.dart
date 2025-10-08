@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:skeletonizer/skeletonizer.dart';
 import 'package:chessever2/providers/board_settings_provider.dart';
 import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
@@ -1799,7 +1800,7 @@ class _MovesDisplay extends ConsumerWidget {
   }
 }
 
-class _PrincipalVariationList extends ConsumerWidget {
+class _PrincipalVariationList extends ConsumerStatefulWidget {
   final int index;
   final ChessBoardStateNew state;
   final GamesTourModel game;
@@ -1811,18 +1812,59 @@ class _PrincipalVariationList extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final lines = state.principalVariations.take(3).toList();
-    if (lines.isEmpty) {
-      return const SizedBox.shrink();
-    }
+  ConsumerState<_PrincipalVariationList> createState() =>
+      _PrincipalVariationListState();
+}
 
-    final params = ChessBoardProviderParams(game: game, index: index);
+class _PrincipalVariationListState
+    extends ConsumerState<_PrincipalVariationList> {
+  late PageController _pageController;
+  int _currentPage = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentPage = widget.state.selectedVariantIndex ?? 0;
+    _pageController = PageController(initialPage: _currentPage);
+  }
+
+  @override
+  void didUpdateWidget(_PrincipalVariationList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Update page when variant selection changes externally
+    final newIndex = widget.state.selectedVariantIndex ?? 0;
+    if (newIndex != _currentPage && newIndex < 3) {
+      _currentPage = newIndex;
+      if (_pageController.hasClients) {
+        _pageController.animateToPage(
+          newIndex,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final params = ChessBoardProviderParams(game: widget.game, index: widget.index);
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
     final position =
-        state.isAnalysisMode ? state.analysisState.position : state.position;
+        widget.state.isAnalysisMode ? widget.state.analysisState.position : widget.state.position;
     final baseMoveNumber = position?.fullmoves ?? 1;
     final isWhiteToMove = (position?.turn ?? Side.white) == Side.white;
+
+    final isEvaluating = widget.state.isEvaluating;
+    final lines = widget.state.principalVariations.take(3).toList();
+
+    // Show skeleton loading when evaluating and no lines yet
+    final showSkeleton = isEvaluating && lines.isEmpty;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(20.sp, 20.sp, 20.sp, 8.sp),
@@ -1856,141 +1898,169 @@ class _PrincipalVariationList extends ConsumerWidget {
                 const Spacer(),
                 if (lines.length > 1)
                   Row(
-                    children: [
-                      IconButton(
-                        visualDensity: VisualDensity.compact,
-                        iconSize: 18.sp,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                        onPressed: () => notifier.cycleVariant(-1),
-                        icon: const Icon(
-                          Icons.chevron_left,
-                          color: kWhiteColor,
+                    mainAxisSize: MainAxisSize.min,
+                    children: List.generate(lines.length, (index) {
+                      final variantColor = notifier.getVariantColor(
+                        index,
+                        index == _currentPage,
+                      );
+                      return GestureDetector(
+                        onTap: () {
+                          _pageController.animateToPage(
+                            index,
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                          );
+                        },
+                        child: Container(
+                          margin: EdgeInsets.symmetric(horizontal: 3.w),
+                          width: index == _currentPage ? 8.w : 6.w,
+                          height: index == _currentPage ? 8.w : 6.w,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: variantColor.withValues(
+                              alpha: index == _currentPage ? 0.9 : 0.4,
+                            ),
+                          ),
                         ),
-                      ),
-                      SizedBox(width: 8.w),
-                      IconButton(
-                        visualDensity: VisualDensity.compact,
-                        iconSize: 18.sp,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                        onPressed: () => notifier.cycleVariant(1),
-                        icon: const Icon(
-                          Icons.chevron_right,
-                          color: kWhiteColor,
-                        ),
-                      ),
-                    ],
+                      );
+                    }),
                   ),
               ],
             ),
             SizedBox(height: 8.h),
             SizedBox(
               height: 78.h,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: lines.length,
-                itemBuilder: (context, index) {
-                  final variantIndex = index;
-                  final line = lines[index];
-                  final isSelected = state.selectedVariantIndex == variantIndex;
-
-                  final sanMoves = _formatPv(
-                    line.sanMoves,
-                    baseMoveNumber,
-                    isWhiteToMove,
-                  );
-                  final evalText = _formatEvalLabel(line);
-                  final evalBackground = _variantEvalBackground(line);
-                  final evalBorder = _variantEvalBorder(line, isSelected);
-
-                  // Get variant color matching the arrow color
-                  final variantColor = notifier.getVariantColor(variantIndex, isSelected);
-
-                  return Padding(
-                    padding: EdgeInsets.only(
-                      right: index < lines.length - 1 ? 8.sp : 0,
-                    ),
-                    child: GestureDetector(
-                      onTap: () {
-                        HapticFeedback.selectionClick();
-                        if (isSelected) {
-                          notifier.playVariantMoveForward();
-                        } else {
-                          notifier.playPrincipalVariationMove(line);
-                        }
-                      },
-                      child: Container(
+              child: Skeletonizer(
+                enabled: showSkeleton,
+                child: PageView.builder(
+                  controller: _pageController,
+                  physics: showSkeleton ? const NeverScrollableScrollPhysics() : null,
+                  onPageChanged: showSkeleton ? null : (pageIndex) {
+                    setState(() {
+                      _currentPage = pageIndex;
+                    });
+                    // Update variant selection when page changes
+                    notifier.selectVariant(pageIndex);
+                  },
+                  itemCount: showSkeleton ? 1 : lines.length,
+                  itemBuilder: (context, index) {
+                    // Show skeleton placeholder when evaluating
+                    if (showSkeleton) {
+                      return Container(
                         width: MediaQuery.of(context).size.width - 40.sp,
+                        margin: EdgeInsets.symmetric(horizontal: 2.sp),
                         decoration: BoxDecoration(
                           border: Border.all(
-                            color: variantColor.withValues(alpha: isSelected ? 0.7 : 0.4),
-                            width: isSelected ? 2.0 : 1.5,
+                            color: kWhiteColor.withValues(alpha: 0.2),
+                            width: 1.5,
                           ),
                           borderRadius: BorderRadius.circular(6.sp),
-                          color:
-                              isSelected
-                                  ? variantColor.withValues(alpha: 0.15)
-                                  : variantColor.withValues(alpha: 0.05),
+                          color: kWhiteColor.withValues(alpha: 0.05),
                         ),
                         padding: EdgeInsets.symmetric(
                           horizontal: 12.sp,
                           vertical: 10.sp,
                         ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              margin: EdgeInsets.only(right: 10.sp),
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 8.sp,
-                                vertical: 4.sp,
-                              ),
-                              decoration: BoxDecoration(
-                                color: evalBackground,
-                                borderRadius: BorderRadius.circular(4.sp),
-                                border: Border.all(
-                                  color: evalBorder,
-                                  width: 0.8,
-                                ),
-                              ),
-                              alignment: Alignment.center,
-                              child: AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 200),
-                                child: Text(
-                                  evalText,
-                                  key: ValueKey(evalText),
-                                  style: AppTypography.textXsMedium.copyWith(
-                                    color: kWhiteColor,
-                                    fontWeight:
-                                        isSelected
-                                            ? FontWeight.w600
-                                            : FontWeight.w500,
-                                  ),
-                                ),
+                        child: const Bone.text(words: 10),
+                      );
+                    }
+
+                    final variantIndex = index;
+                    final line = lines[index];
+                    final isSelected = widget.state.selectedVariantIndex == variantIndex;
+
+                    final sanMoves = _formatPv(
+                      line.sanMoves,
+                      baseMoveNumber,
+                      isWhiteToMove,
+                    );
+                    final evalText = _formatEvalLabel(line);
+
+                  // Get variant color matching the arrow color
+                  final variantColor = notifier.getVariantColor(variantIndex, isSelected);
+
+                  return GestureDetector(
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      if (isSelected) {
+                        notifier.playVariantMoveForward();
+                      } else {
+                        notifier.playPrincipalVariationMove(line);
+                      }
+                    },
+                    child: Container(
+                      width: MediaQuery.of(context).size.width - 40.sp,
+                      margin: EdgeInsets.symmetric(horizontal: 2.sp),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: variantColor.withValues(alpha: isSelected ? 0.7 : 0.4),
+                          width: isSelected ? 2.0 : 1.5,
+                        ),
+                        borderRadius: BorderRadius.circular(6.sp),
+                        color:
+                            isSelected
+                                ? variantColor.withValues(alpha: 0.15)
+                                : variantColor.withValues(alpha: 0.05),
+                      ),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 12.sp,
+                        vertical: 10.sp,
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            margin: EdgeInsets.only(right: 10.sp),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 8.sp,
+                              vertical: 4.sp,
+                            ),
+                            decoration: BoxDecoration(
+                              color: variantColor.withValues(alpha: 0.3),
+                              borderRadius: BorderRadius.circular(4.sp),
+                              border: Border.all(
+                                color: variantColor.withValues(alpha: 0.6),
+                                width: 1.0,
                               ),
                             ),
-                            Expanded(
+                            alignment: Alignment.center,
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 200),
                               child: Text(
-                                sanMoves.join(' '),
+                                evalText,
+                                key: ValueKey(evalText),
                                 style: AppTypography.textXsMedium.copyWith(
-                                  color: kWhiteColor.withValues(alpha: 0.9),
+                                  color: kWhiteColor,
                                   fontWeight:
                                       isSelected
                                           ? FontWeight.w600
-                                          : FontWeight.normal,
+                                          : FontWeight.w500,
                                 ),
-                                overflow: TextOverflow.ellipsis,
-                                maxLines: 3,
                               ),
                             ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              sanMoves.join(' '),
+                              style: AppTypography.textXsMedium.copyWith(
+                                color: kWhiteColor.withValues(alpha: 0.9),
+                                fontWeight:
+                                    isSelected
+                                        ? FontWeight.w600
+                                        : FontWeight.normal,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 3,
+                            ),
+                          ),
                           ],
                         ),
                       ),
-                    ),
                   );
                 },
               ),
+            ),
             ),
           ],
         ),
@@ -2031,43 +2101,6 @@ class _PrincipalVariationList extends ConsumerWidget {
     return eval >= 0 ? '+$formatted' : '-$formatted';
   }
 
-  Color _variantEvalBackground(AnalysisLine line) {
-    if (line.isMate) {
-      final mate = line.mate ?? 0;
-      return mate >= 0
-          ? kPrimaryColor.withValues(alpha: 0.35)
-          : kRedColor.withValues(alpha: 0.35);
-    }
-
-    final eval = line.evaluation ?? 0;
-    if (eval >= 1.5) {
-      return kPrimaryColor.withValues(alpha: 0.35);
-    }
-    if (eval <= -1.5) {
-      return kRedColor.withValues(alpha: 0.35);
-    }
-    return kWhiteColor.withValues(alpha: 0.08);
-  }
-
-  Color _variantEvalBorder(AnalysisLine line, bool isSelected) {
-    if (isSelected) {
-      return kWhiteColor.withValues(alpha: 0.5);
-    }
-    if (line.isMate) {
-      final mate = line.mate ?? 0;
-      return mate >= 0
-          ? kPrimaryColor.withValues(alpha: 0.55)
-          : kRedColor.withValues(alpha: 0.55);
-    }
-    final eval = line.evaluation ?? 0;
-    if (eval >= 1.5) {
-      return kPrimaryColor.withValues(alpha: 0.45);
-    }
-    if (eval <= -1.5) {
-      return kRedColor.withValues(alpha: 0.45);
-    }
-    return kWhiteColor.withValues(alpha: 0.15);
-  }
 }
 
 class _SkeletonContainer extends StatefulWidget {

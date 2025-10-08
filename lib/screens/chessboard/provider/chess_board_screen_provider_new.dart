@@ -2208,22 +2208,23 @@ class ChessBoardScreenNotifierNew
   }
 
   /// Show all 3 variant first moves as arrows with different opacity
+  /// Stable variant colors - always in this order regardless of evaluations
+  static const List<Color> _variantColors = [
+    Color.fromARGB(180, 152, 179, 154), // Green - Always 1st variant
+    Color.fromARGB(180, 100, 149, 237), // Blue - Always 2nd variant
+    Color.fromARGB(180, 255, 165, 0),   // Orange - Always 3rd variant
+  ];
+
   /// Get color for a variant index (used for both arrows and card borders)
   Color getVariantColor(int variantIndex, bool isSelected) {
     if (isSelected) {
       return kPrimaryColor.withValues(alpha: 0.9);
     }
 
-    switch (variantIndex) {
-      case 0:
-        return const Color.fromARGB(180, 152, 179, 154); // Green
-      case 1:
-        return const Color.fromARGB(180, 100, 149, 237); // Blue
-      case 2:
-        return const Color.fromARGB(180, 255, 165, 0);   // Orange
-      default:
-        return const Color.fromARGB(100, 152, 179, 154);
+    if (variantIndex >= 0 && variantIndex < _variantColors.length) {
+      return _variantColors[variantIndex];
     }
+    return const Color.fromARGB(100, 152, 179, 154);
   }
 
   ISet<Shape> _getAllVariantArrowShapes(
