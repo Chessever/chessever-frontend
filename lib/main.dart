@@ -10,7 +10,6 @@ import 'package:chessever2/screens/countryman_games_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/players/player_screen.dart';
 import 'package:chessever2/screens/players/providers/player_providers.dart';
-import 'package:chessever2/screens/favorites/favorite_screen.dart';
 import 'package:chessever2/screens/splash/splash_screen.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen.dart';
 import 'package:chessever2/screens/tour_detail/tournament_detail_screen.dart';
@@ -192,8 +191,6 @@ class _MyAppState extends ConsumerState<MyApp> {
 
         // New Screen
         '/player_list_screen': (context) => const PlayerListScreen(),
-        // Updated to use the navigation component
-        '/favorites_screen': (context) => const FavoriteScreen(),
         // Updated to use the new FavoriteScreen
         '/countryman_games_screen': (context) => const CountrymanGamesScreen(),
         '/standings': (context) => const PlayerTourScreen(),
