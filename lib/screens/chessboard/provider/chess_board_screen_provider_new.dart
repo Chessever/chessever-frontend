@@ -780,7 +780,27 @@ class ChessBoardScreenNotifierNew
         return;
       }
 
-      // CRITICAL: Validate the move is legal from the base position
+      // NEW APPROACH: Commit the move to the navigator instead of just exploring
+      // This makes PV moves part of the permanent analysis history
+      if (_analysisNavigator != null) {
+        debugPrint('🎯 PLAY VARIANT FORWARD: Committing move to navigator');
+        final (_, san) = currentState.analysisState.position.makeSan(nextMove);
+
+        // Clear variant selection after committing - we're now on mainline
+        final clearedState = _clearVariantSelection(currentState);
+        state = AsyncValue.data(clearedState);
+
+        // Make move through navigator - this is now the single source of truth
+        _analysisNavigator!.makeOrGoToMove(nextMove.uci);
+        _playSoundForSan(san);
+
+        // Trigger new evaluation for the new position
+        _updateEvaluation();
+        return;
+      }
+
+      // FALLBACK: Old pointer-based navigation if navigator unavailable
+      debugPrint('🎯 PLAY VARIANT FORWARD: FALLBACK - Navigator unavailable, using pointer');
       final newPointer = List<int>.from(currentState.variantMovePointer)
         ..add(nextMoveIndex);
 
@@ -843,7 +863,7 @@ class ChessBoardScreenNotifierNew
     }
   }
 
-  /// Undo last move of the selected variant
+  /// Undo last move of the selected variant OR navigator move
   void playVariantMoveBackward() {
     debugPrint('🎯 PLAY VARIANT BACKWARD called');
     _resumeVariantAutoPlay = false;
@@ -852,6 +872,27 @@ class ChessBoardScreenNotifierNew
       debugPrint('🎯 PLAY VARIANT BACKWARD: Not in analysis mode');
       return;
     }
+
+    // NEW APPROACH: If no active variant pointer, use navigator undo
+    // This handles moves that were committed (via forward PV or manual board moves)
+    if (currentState.variantMovePointer.isEmpty || currentState.selectedVariantIndex == null) {
+      debugPrint('🎯 PLAY VARIANT BACKWARD: No active variant exploration, using navigator undo');
+      if (_analysisNavigator != null) {
+        final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+        if (navigatorState.movePointer.isNotEmpty) {
+          debugPrint('🎯 PLAY VARIANT BACKWARD: Navigator undo available');
+          analysisStepBackward();
+        } else {
+          debugPrint('🎯 PLAY VARIANT BACKWARD: At start of game');
+        }
+      } else {
+        debugPrint('🎯 PLAY VARIANT BACKWARD: Navigator unavailable');
+        analysisStepBackward();
+      }
+      return;
+    }
+
+    // OLD APPROACH: Handle pointer-based variant exploration (fallback)
     if (!_ensureVariantSelection()) {
       debugPrint('🎯 PLAY VARIANT BACKWARD: No variants available');
       return;

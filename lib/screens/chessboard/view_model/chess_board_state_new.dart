@@ -56,15 +56,34 @@ class AnalysisBoardState {
   final ChessGame? game;
   final ChessMovePointer movePointer;
 
-  bool get canMoveForward => currentMoveIndex < allMoves.length - 1;
+  // Analysis variation tracking
+  final int? branchPointMoveIndex; // The move index where analysis branch started
+  final List<String> analysisMoveSans; // SAN moves made in analysis mode
+  final List<Move> analysisMoves; // Moves made in analysis mode
+  final List<Position> analysisPositionHistory; // Position history for analysis moves
+
+  bool get canMoveForward =>
+      isInAnalysisVariation
+          ? currentMoveIndex < (branchPointMoveIndex ?? -1) + analysisMoves.length
+          : currentMoveIndex < allMoves.length - 1;
 
   bool get canMoveBackward => currentMoveIndex >= 0;
 
   bool get isAtStart => currentMoveIndex == -1;
 
-  bool get isAtEnd => currentMoveIndex == allMoves.length - 1;
+  bool get isAtEnd =>
+      isInAnalysisVariation
+          ? currentMoveIndex == (branchPointMoveIndex ?? -1) + analysisMoves.length
+          : currentMoveIndex == allMoves.length - 1;
 
-  int get totalMoves => allMoves.length;
+  int get totalMoves =>
+      isInAnalysisVariation
+          ? (branchPointMoveIndex ?? 0) + 1 + analysisMoves.length
+          : allMoves.length;
+
+  bool get isInAnalysisVariation => branchPointMoveIndex != null && analysisMoves.isNotEmpty;
+
+  bool get isAtBranchPoint => currentMoveIndex == branchPointMoveIndex;
 
   const AnalysisBoardState({
     this.lastMove,
@@ -79,6 +98,10 @@ class AnalysisBoardState {
     this.suggestionLines = const [],
     this.game,
     this.movePointer = const [],
+    this.branchPointMoveIndex,
+    this.analysisMoveSans = const [],
+    this.analysisMoves = const [],
+    this.analysisPositionHistory = const [],
   });
 
   AnalysisBoardState copyWith({
@@ -95,6 +118,10 @@ class AnalysisBoardState {
     List<AnalysisLine>? suggestionLines,
     ChessGame? game,
     ChessMovePointer? movePointer,
+    int? branchPointMoveIndex,
+    List<String>? analysisMoveSans,
+    List<Move>? analysisMoves,
+    List<Position>? analysisPositionHistory,
   }) {
     return AnalysisBoardState(
       lastMove: lastMove ?? this.lastMove,
@@ -109,7 +136,47 @@ class AnalysisBoardState {
       suggestionLines: suggestionLines ?? this.suggestionLines,
       game: game ?? this.game,
       movePointer: movePointer ?? this.movePointer,
+      branchPointMoveIndex: branchPointMoveIndex ?? this.branchPointMoveIndex,
+      analysisMoveSans: analysisMoveSans ?? this.analysisMoveSans,
+      analysisMoves: analysisMoves ?? this.analysisMoves,
+      analysisPositionHistory: analysisPositionHistory ?? this.analysisPositionHistory,
     );
+  }
+
+  /// Get combined move SAN list (mainline + analysis moves)
+  List<String> get combinedMoveSans {
+    if (!isInAnalysisVariation) {
+      return moveSans;
+    }
+    final branchIndex = branchPointMoveIndex ?? -1;
+    return [
+      ...moveSans.take(branchIndex + 1),
+      ...analysisMoveSans,
+    ];
+  }
+
+  /// Get combined move list (mainline + analysis moves)
+  List<Move> get combinedMoves {
+    if (!isInAnalysisVariation) {
+      return allMoves;
+    }
+    final branchIndex = branchPointMoveIndex ?? -1;
+    return [
+      ...allMoves.take(branchIndex + 1),
+      ...analysisMoves,
+    ];
+  }
+
+  /// Get combined position history (mainline + analysis positions)
+  List<Position> get combinedPositionHistory {
+    if (!isInAnalysisVariation) {
+      return positionHistory;
+    }
+    final branchIndex = branchPointMoveIndex ?? -1;
+    return [
+      ...positionHistory.take(branchIndex + 2), // +2 because history includes starting position
+      ...analysisPositionHistory,
+    ];
   }
 }
 
