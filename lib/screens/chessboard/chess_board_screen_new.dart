@@ -1311,8 +1311,6 @@ class _AnalysisGameBody extends ConsumerWidget {
           state: state,
           game: game,
         ),
-        if (state.isAnalysisMode)
-          _PrincipalVariationList(index: index, state: state, game: game),
         SizedBox(height: 2.h),
         _PlayerWidget(
           game: game,
@@ -1320,7 +1318,10 @@ class _AnalysisGameBody extends ConsumerWidget {
           blackPlayer: true,
           state: state,
         ),
-        _AnalysisControlsRow(index: index, game: game),
+        if (state.isAnalysisMode) ...[
+          _PrincipalVariationList(index: index, state: state, game: game),
+          _AnalysisControlsRow(index: index, game: game),
+        ],
         Expanded(
           child: Container(
             width: double.infinity,
@@ -2043,48 +2044,15 @@ class _PrincipalVariationListState
     final showEndOfGame = isGameOver && widget.state.isAnalysisMode;
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(20.sp, 20.sp, 20.sp, 8.sp),
+      padding: EdgeInsets.fromLTRB(20.sp, 8.sp, 20.sp, 8.sp),
       child: Column(
           key: ValueKey(
             lines
                 .map((line) => '${line.sanMoves.join(' ')}|${line.displayEval}')
                 .join('|'),
           ),
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Row(
-              children: [
-                Text(
-                  'Engine suggestions (${lines.length})',
-                  style: AppTypography.textSmMedium.copyWith(
-                    color: kWhiteColor,
-                  ),
-                ),
-                const Spacer(),
-                if (lines.length > 1)
-                  SmoothPageIndicator(
-                    controller: _pageController,
-                    count: lines.length,
-                    effect: ScrollingDotsEffect(
-                      activeDotColor: notifier.getVariantColor(_currentPage, true),
-                      dotColor: kWhiteColor.withValues(alpha: 0.3),
-                      dotHeight: 6.w,
-                      dotWidth: 6.w,
-                      activeDotScale: 1.33,
-                      spacing: 6.w,
-                      maxVisibleDots: 5,
-                    ),
-                    onDotClicked: (index) {
-                      _pageController.animateToPage(
-                        index,
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeInOut,
-                      );
-                    },
-                  ),
-              ],
-            ),
-            SizedBox(height: 8.h),
             SizedBox(
               height: 78.h,
               child: showEndOfGame
@@ -2262,9 +2230,32 @@ class _PrincipalVariationListState
                   );
                 },
               ),
-            ),
+            )),
+            if (lines.length > 1) ...[
+              SizedBox(height: 8.h),
+              SmoothPageIndicator(
+                controller: _pageController,
+                count: lines.length,
+                effect: ScrollingDotsEffect(
+                  activeDotColor: notifier.getVariantColor(_currentPage, true),
+                  dotColor: kWhiteColor.withValues(alpha: 0.3),
+                  dotHeight: 6.w,
+                  dotWidth: 6.w,
+                  activeDotScale: 1.33,
+                  spacing: 6.w,
+                  maxVisibleDots: 5,
+                ),
+                onDotClicked: (index) {
+                  _pageController.animateToPage(
+                    index,
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                  );
+                },
+              ),
+            ],
+          ],
         ),
-          ])
     );
   }
 
@@ -2278,8 +2269,14 @@ class _PrincipalVariationListState
       final moveOffset = i ~/ 2;
       final moveNumber = baseMoveNumber + moveOffset;
       final isWhiteMove = whiteToMove ? i.isEven : i.isOdd;
-      final prefix = isWhiteMove ? '$moveNumber.' : '$moveNumber...';
-      formatted.add('$prefix ${sanMoves[i]}');
+
+      // Add move number prefix only for white moves
+      if (isWhiteMove) {
+        formatted.add('$moveNumber.');
+      }
+
+      // Add the move notation
+      formatted.add(sanMoves[i]);
     }
     return formatted;
   }
