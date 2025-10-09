@@ -1,21 +1,23 @@
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
+import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/favorites/player_games/view_model/player_games_state.dart';
+import 'package:chessever2/screens/favorites/player_games/models/player_identifier.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 const int _pageSize = 20; // Number of games per page
 
 /// AsyncNotifier for paginated player games
-class PlayerGamesNotifier extends AutoDisposeFamilyAsyncNotifier<PlayerGamesState, String> {
-  String get fideId => arg;
+class PlayerGamesNotifier extends AutoDisposeFamilyAsyncNotifier<PlayerGamesState, PlayerIdentifier> {
+  PlayerIdentifier get playerIdentifier => arg;
 
   GameRepository get _gameRepository => ref.read(gameRepositoryProvider);
   TourRepository get _tourRepository => ref.read(tourRepositoryProvider);
 
   @override
-  Future<PlayerGamesState> build(String arg) async {
+  Future<PlayerGamesState> build(PlayerIdentifier arg) async {
     // Load initial games on build
     return await _loadInitialGames();
   }
@@ -23,17 +25,27 @@ class PlayerGamesNotifier extends AutoDisposeFamilyAsyncNotifier<PlayerGamesStat
   /// Load initial games (first page)
   Future<PlayerGamesState> _loadInitialGames() async {
     try {
-      debugPrint('===== PlayerGamesNotifier: Loading games for fideId: $fideId =====');
+      debugPrint('===== PlayerGamesNotifier: Loading games for player: ${playerIdentifier.playerName} =====');
+      debugPrint('===== Has fideId: ${playerIdentifier.hasFideId}, fideId: ${playerIdentifier.fideId} =====');
 
-      final games = await _gameRepository.getGamesByFideId(
-        fideId,
-        limit: _pageSize,
-      );
+      // Fetch games by fideId if available, otherwise by name
+      final List<Games> games;
+      if (playerIdentifier.hasFideId) {
+        games = await _gameRepository.getGamesByFideId(
+          playerIdentifier.fideId!,
+          limit: _pageSize,
+        );
+      } else {
+        games = await _gameRepository.getGamesByPlayerName(
+          playerIdentifier.playerName,
+          limit: _pageSize,
+        );
+      }
 
       debugPrint('===== Fetched ${games.length} games from repository =====');
 
       if (games.isEmpty) {
-        debugPrint('===== No games found for fideId: $fideId =====');
+        debugPrint('===== No games found for player: ${playerIdentifier.playerName} =====');
         return const PlayerGamesState(
           tournamentGroups: [],
           isLoading: false,
@@ -62,7 +74,7 @@ class PlayerGamesNotifier extends AutoDisposeFamilyAsyncNotifier<PlayerGamesStat
       );
     } catch (e, stack) {
       debugPrint('===== ERROR in _loadInitialGames =====');
-      debugPrint('FideId: $fideId');
+      debugPrint('Player: ${playerIdentifier.playerName}');
       debugPrint('Error type: ${e.runtimeType}');
       debugPrint('Error: $e');
       debugPrint('Stack trace: $stack');
@@ -85,11 +97,20 @@ class PlayerGamesNotifier extends AutoDisposeFamilyAsyncNotifier<PlayerGamesStat
       final offset = currentState.totalGamesCount;
 
       // Fetch next page
-      final games = await _gameRepository.getGamesByFideIdPaginated(
-        fideId,
-        limit: _pageSize,
-        offset: offset,
-      );
+      final List<Games> games;
+      if (playerIdentifier.hasFideId) {
+        games = await _gameRepository.getGamesByFideIdPaginated(
+          playerIdentifier.fideId!,
+          limit: _pageSize,
+          offset: offset,
+        );
+      } else {
+        games = await _gameRepository.getGamesByPlayerNamePaginated(
+          playerIdentifier.playerName,
+          limit: _pageSize,
+          offset: offset,
+        );
+      }
 
       if (games.isEmpty) {
         state = AsyncValue.data(currentState.copyWith(
@@ -284,6 +305,6 @@ class PlayerGamesNotifier extends AutoDisposeFamilyAsyncNotifier<PlayerGamesStat
 
 /// Provider factory for player games using AsyncNotifier
 final playerGamesProvider = AsyncNotifierProvider.autoDispose
-    .family<PlayerGamesNotifier, PlayerGamesState, String>(
+    .family<PlayerGamesNotifier, PlayerGamesState, PlayerIdentifier>(
   () => PlayerGamesNotifier(),
 );

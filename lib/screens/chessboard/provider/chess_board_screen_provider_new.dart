@@ -795,6 +795,7 @@ class ChessBoardScreenNotifierNew
         _playSoundForSan(san);
 
         // Trigger new evaluation for the new position
+        // Cache will be checked first, fresh eval if needed
         _updateEvaluation();
         return;
       }
@@ -1242,6 +1243,7 @@ class ChessBoardScreenNotifierNew
           '🎯 ANALYSIS MOVE: Navigator aligned, applying move via navigator',
         );
         final (_, san) = boardPosition.makeSan(move);
+
         _analysisNavigator?.makeOrGoToMove(move.uci);
         _playSoundForSan(san);
         return;
@@ -2190,7 +2192,16 @@ class ChessBoardScreenNotifierNew
       final evalFenBase = fen.split(' ').take(3).join(' ');
 
       if (currentFenBase != evalFenBase) {
-        debugPrint('🎯 EVAL: Position changed during eval (current=$currentFenBase vs eval=$evalFenBase), aborting');
+        debugPrint('🎯 EVAL: Position changed during eval (current=$currentFenBase vs eval=$evalFenBase)');
+        debugPrint('🎯 EVAL: Caching result for $evalFenBase but not applying to current position');
+
+        // CRITICAL: Still cache the evaluation result even if position changed
+        // This prevents wasted computation and speeds up navigation
+        _evaluationCache[fen] = evaluation;
+        _mateCache[fen] = primaryEval.pvs.first.mate ?? currentSnapshot.mate;
+        _pvCache[fen] = pvLines;
+
+        // Don't apply to current state since position changed, but keep evaluating flag off
         state = AsyncValue.data(currentSnapshot.copyWith(isEvaluating: false));
         return;
       }
@@ -2499,7 +2510,7 @@ class ChessBoardScreenNotifierNew
 
     EasyDebounce.debounce(
       'evaluation-$index',
-      const Duration(milliseconds: 100),
+      const Duration(milliseconds: 50),  // Reduced from 100ms for faster response
       () {
         if (_cancelEvaluation || state.value == null || !mounted) return;
         _evaluatePosition();

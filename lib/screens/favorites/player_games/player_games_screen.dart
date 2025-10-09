@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/favorites/player_games/provider/player_games_provider.dart';
 import 'package:chessever2/screens/favorites/player_games/view_model/player_games_state.dart';
+import 'package:chessever2/screens/favorites/player_games/models/player_identifier.dart';
 import 'package:chessever2/screens/favorites/player_games/widgets/tournament_group_header.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -12,14 +13,14 @@ import '../../../theme/app_theme.dart';
 import '../../../utils/app_typography.dart';
 
 class PlayerGamesScreen extends ConsumerStatefulWidget {
-  final String fideId;
+  final String? fideId;
   final String playerName;
   final String? playerTitle;
   final String? countryCode;
 
   const PlayerGamesScreen({
     super.key,
-    required this.fideId,
+    this.fideId,
     required this.playerName,
     this.playerTitle,
     this.countryCode,
@@ -31,11 +32,17 @@ class PlayerGamesScreen extends ConsumerStatefulWidget {
 
 class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
   final ScrollController _scrollController = ScrollController();
+  late final PlayerIdentifier _playerIdentifier;
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+
+    // Create player identifier
+    _playerIdentifier = widget.fideId != null && widget.fideId!.isNotEmpty
+        ? PlayerIdentifier.fromFideId(widget.fideId!, widget.playerName)
+        : PlayerIdentifier.fromName(widget.playerName);
   }
 
   @override
@@ -50,13 +57,13 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
     final scrollPosition = _scrollController.position;
     if (scrollPosition.pixels >= scrollPosition.maxScrollExtent * 0.8) {
       // Load more games
-      ref.read(playerGamesProvider(widget.fideId).notifier).loadMoreGames();
+      ref.read(playerGamesProvider(_playerIdentifier).notifier).loadMoreGames();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final playerGamesAsync = ref.watch(playerGamesProvider(widget.fideId));
+    final playerGamesAsync = ref.watch(playerGamesProvider(_playerIdentifier));
 
     return Scaffold(
       backgroundColor: kBackgroundColor,
@@ -204,7 +211,7 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
     return RefreshIndicator(
       onRefresh: () async {
         await ref
-            .read(playerGamesProvider(widget.fideId).notifier)
+            .read(playerGamesProvider(_playerIdentifier).notifier)
             .refreshGames();
       },
       color: kWhiteColor70,
