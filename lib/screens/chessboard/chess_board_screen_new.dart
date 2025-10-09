@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:skeletonizer/skeletonizer.dart';
+import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:chessever2/providers/board_settings_provider.dart';
 import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
@@ -1556,6 +1557,8 @@ class _BoardWithSidebar extends ConsumerWidget {
                         size: boardSize,
                         chessBoardState: state,
                         isFlipped: state.isBoardFlipped,
+                        index: index,
+                        game: state.game,
                       ),
                   // Add move annotation overlay - only show if impact is not normal
                   if (currentMoveImpact != null &&
@@ -1582,23 +1585,38 @@ class _ChessBoardNew extends ConsumerWidget {
   final double size;
   final ChessBoardStateNew chessBoardState;
   final bool isFlipped;
+  final int index;
+  final GamesTourModel game;
 
   const _ChessBoardNew({
     required this.size,
     required this.chessBoardState,
     this.isFlipped = false,
+    required this.index,
+    required this.game,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final params = ChessBoardProviderParams(game: game, index: index);
+    final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
     final boardSettingsValue = ref.watch(boardSettingsProvider);
     final boardTheme = ref
         .read(boardSettingsRepository)
         .getBoardTheme(boardSettingsValue.boardColor);
 
-    return Chessboard.fixed(
+    // CRITICAL: Auto-enable analysis mode for move interaction
+    // This ensures single source of truth through ChessGameNavigator
+    return Chessboard(
       size: size,
       settings: ChessboardSettings(
+        enableCoordinates: true,
+        animationDuration: const Duration(milliseconds: 200),
+        dragFeedbackScale: 1,
+        dragTargetKind: DragTargetKind.none,
+        pieceShiftMethod: PieceShiftMethod.either,
+        autoQueenPromotionOnPremove: false,
+        pieceOrientationBehavior: PieceOrientationBehavior.facingUser,
         colorScheme: ChessboardColorScheme(
           lightSquare: boardTheme.lightSquareColor,
           darkSquare: boardTheme.darkSquareColor,
@@ -1634,6 +1652,33 @@ class _ChessBoardNew extends ConsumerWidget {
               : chessBoardState.position!.fen,
       lastMove:
           chessBoardState.isLoadingMoves ? null : chessBoardState.lastMove,
+      game: chessBoardState.position != null && !chessBoardState.isLoadingMoves
+          ? GameData(
+              playerSide: chessBoardState.position!.turn == Side.white
+                  ? PlayerSide.white
+                  : PlayerSide.black,
+              validMoves: makeLegalMoves(chessBoardState.position!),
+              sideToMove: chessBoardState.position!.turn,
+              isCheck: chessBoardState.position!.isCheck,
+              promotionMove: null,
+              onMove: (move, {isDrop, isPremove}) async {
+                // Auto-enter analysis mode on first move attempt
+                if (!chessBoardState.isAnalysisMode) {
+                  await notifier.toggleAnalysisMode();
+                  // Wait a frame for state to update
+                  await Future.delayed(const Duration(milliseconds: 50));
+                }
+                notifier.onAnalysisMove(move, isDrop: isDrop, isPremove: isPremove);
+              },
+              onPromotionSelection: (role) async {
+                if (!chessBoardState.isAnalysisMode) {
+                  await notifier.toggleAnalysisMode();
+                  await Future.delayed(const Duration(milliseconds: 50));
+                }
+                notifier.onAnalysisPromotionSelection(role);
+              },
+            )
+          : null,
     );
   }
 }
@@ -1988,31 +2033,15 @@ class _PrincipalVariationListState
     // Check if position is terminal (game over)
     final isGameOver = position?.isGameOver ?? false;
 
-    // Show skeleton loading when:
-    // 1. Currently evaluating and no lines yet, OR
-    // 2. Just entered analysis mode and no lines calculated yet
-    // BUT NOT when game is over (checkmate/stalemate)
-    final showSkeleton = !isGameOver &&
-        ((isEvaluating && lines.isEmpty) ||
-            (widget.state.isAnalysisMode && lines.isEmpty));
+    // Show skeleton ONLY when first loading (no lines yet) AND not game over
+    final showSkeleton = !isGameOver && lines.isEmpty;
 
     // Show end of game message when position is terminal
     final showEndOfGame = isGameOver && widget.state.isAnalysisMode;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(20.sp, 20.sp, 20.sp, 8.sp),
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 250),
-        transitionBuilder:
-            (child, animation) => FadeTransition(
-              opacity: animation,
-              child: SizeTransition(
-                sizeFactor: animation,
-                axisAlignment: -1,
-                child: child,
-              ),
-            ),
-        child: Column(
+      child: Column(
           key: ValueKey(
             lines
                 .map((line) => '${line.sanMoves.join(' ')}|${line.displayEval}')
@@ -2030,34 +2059,25 @@ class _PrincipalVariationListState
                 ),
                 const Spacer(),
                 if (lines.length > 1)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: List.generate(lines.length, (index) {
-                      final variantColor = notifier.getVariantColor(
+                  SmoothPageIndicator(
+                    controller: _pageController,
+                    count: lines.length,
+                    effect: ScrollingDotsEffect(
+                      activeDotColor: notifier.getVariantColor(_currentPage, true),
+                      dotColor: kWhiteColor.withValues(alpha: 0.3),
+                      dotHeight: 6.w,
+                      dotWidth: 6.w,
+                      activeDotScale: 1.33,
+                      spacing: 6.w,
+                      maxVisibleDots: 5,
+                    ),
+                    onDotClicked: (index) {
+                      _pageController.animateToPage(
                         index,
-                        index == _currentPage,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
                       );
-                      return GestureDetector(
-                        onTap: () {
-                          _pageController.animateToPage(
-                            index,
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeInOut,
-                          );
-                        },
-                        child: Container(
-                          margin: EdgeInsets.symmetric(horizontal: 3.w),
-                          width: index == _currentPage ? 8.w : 6.w,
-                          height: index == _currentPage ? 8.w : 6.w,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: variantColor.withValues(
-                              alpha: index == _currentPage ? 0.9 : 0.4,
-                            ),
-                          ),
-                        ),
-                      );
-                    }),
+                    },
                   ),
               ],
             ),
@@ -2154,7 +2174,9 @@ class _PrincipalVariationListState
                   final variantColor = notifier.getVariantColor(variantIndex, isSelected);
 
                   return GestureDetector(
-                    onTap: () {
+                    onTap: isEvaluating
+                        ? null
+                        : () {
                       HapticFeedback.selectionClick();
                       if (isSelected) {
                         notifier.playVariantMoveForward();
@@ -2162,82 +2184,84 @@ class _PrincipalVariationListState
                         notifier.playPrincipalVariationMove(line);
                       }
                     },
-                    child: Container(
-                      width: MediaQuery.of(context).size.width - 40.sp,
-                      margin: EdgeInsets.symmetric(horizontal: 2.sp),
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: variantColor.withValues(alpha: isSelected ? 0.7 : 0.4),
-                          width: isSelected ? 2.0 : 1.5,
+                    child: AnimatedOpacity(
+                      opacity: isEvaluating ? 0.4 : 1.0,
+                      duration: const Duration(milliseconds: 200),
+                      child: Container(
+                        width: MediaQuery.of(context).size.width - 40.sp,
+                        margin: EdgeInsets.symmetric(horizontal: 2.sp),
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: variantColor.withValues(alpha: isSelected ? 0.7 : 0.4),
+                            width: isSelected ? 2.0 : 1.5,
+                          ),
+                          borderRadius: BorderRadius.circular(6.sp),
+                          color:
+                              isSelected
+                                  ? variantColor.withValues(alpha: 0.15)
+                                  : variantColor.withValues(alpha: 0.05),
                         ),
-                        borderRadius: BorderRadius.circular(6.sp),
-                        color:
-                            isSelected
-                                ? variantColor.withValues(alpha: 0.15)
-                                : variantColor.withValues(alpha: 0.05),
-                      ),
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 12.sp,
-                        vertical: 10.sp,
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            margin: EdgeInsets.only(right: 10.sp),
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 8.sp,
-                              vertical: 4.sp,
-                            ),
-                            decoration: BoxDecoration(
-                              color: variantColor.withValues(alpha: 0.3),
-                              borderRadius: BorderRadius.circular(4.sp),
-                              border: Border.all(
-                                color: variantColor.withValues(alpha: 0.6),
-                                width: 1.0,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 12.sp,
+                          vertical: 10.sp,
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              margin: EdgeInsets.only(right: 10.sp),
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 8.sp,
+                                vertical: 4.sp,
                               ),
-                            ),
-                            alignment: Alignment.center,
-                            child: AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 200),
-                              child: Text(
-                                evalText,
-                                key: ValueKey(evalText),
-                                style: AppTypography.textXsMedium.copyWith(
-                                  color: kWhiteColor,
-                                  fontWeight:
-                                      isSelected
-                                          ? FontWeight.w600
-                                          : FontWeight.w500,
+                              decoration: BoxDecoration(
+                                color: variantColor.withValues(alpha: 0.3),
+                                borderRadius: BorderRadius.circular(4.sp),
+                                border: Border.all(
+                                  color: variantColor.withValues(alpha: 0.6),
+                                  width: 1.0,
+                                ),
+                              ),
+                              alignment: Alignment.center,
+                              child: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 200),
+                                child: Text(
+                                  evalText,
+                                  key: ValueKey(evalText),
+                                  style: AppTypography.textXsMedium.copyWith(
+                                    color: kWhiteColor,
+                                    fontWeight:
+                                        isSelected
+                                            ? FontWeight.w600
+                                            : FontWeight.w500,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                          Expanded(
-                            child: Text(
-                              sanMoves.join(' '),
-                              style: AppTypography.textXsMedium.copyWith(
-                                color: kWhiteColor.withValues(alpha: 0.9),
-                                fontWeight:
-                                    isSelected
-                                        ? FontWeight.w600
-                                        : FontWeight.normal,
+                            Expanded(
+                              child: Text(
+                                sanMoves.join(' '),
+                                style: AppTypography.textXsMedium.copyWith(
+                                  color: kWhiteColor.withValues(alpha: 0.9),
+                                  fontWeight:
+                                      isSelected
+                                          ? FontWeight.w600
+                                          : FontWeight.normal,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 3,
                               ),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 3,
                             ),
-                          ),
                           ],
                         ),
                       ),
+                    ),
                   );
                 },
               ),
             ),
-            ),
-          ],
         ),
-      ),
+          ])
     );
   }
 

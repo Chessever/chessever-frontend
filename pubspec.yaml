@@ -110,6 +110,7 @@ dependencies:
 
   scrollable_positioned_list: ^0.3.8
   worker_manager: ^7.2.7
+  smooth_page_indicator: ^1.2.1
 
 
 dev_dependencies:

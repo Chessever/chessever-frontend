@@ -2431,6 +2431,31 @@ class ChessBoardScreenNotifierNew
     if (_isLongPressing) return;
     _cancelEvaluation = false;
 
+    // CRITICAL: Clear stale PVs immediately when position changes
+    final currentState = state.value;
+    if (currentState != null && currentState.principalVariations.isNotEmpty) {
+      final fenToEval = currentState.isAnalysisMode
+          ? currentState.analysisState.position.fen
+          : currentState.position?.fen;
+
+      // Check if current PVs match the position we're about to evaluate
+      // Use variantBaseFen which tracks the position PVs were calculated for
+      if (currentState.variantBaseFen != null && fenToEval != null) {
+        final pvFenBase = currentState.variantBaseFen!.split(' ').take(3).join(' ');
+        final currentFenBase = fenToEval.split(' ').take(3).join(' ');
+
+        if (pvFenBase != currentFenBase) {
+          debugPrint('🎯 UPDATE EVAL: Clearing stale PVs for new position');
+          state = AsyncValue.data(currentState.copyWith(
+            principalVariations: const [],
+            selectedVariantIndex: null,
+            variantBaseFen: null,
+            variantMovePointer: const [],
+          ));
+        }
+      }
+    }
+
     EasyDebounce.debounce(
       'evaluation-$index',
       const Duration(milliseconds: 100),
