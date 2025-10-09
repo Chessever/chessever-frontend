@@ -20,16 +20,6 @@ class _PinGameLocalStorage {
     return prefs.getStringList(key) ?? [];
   }
 
-  // Save pinned game IDs for a specific tournament
-  Future<void> savePinnedGameIds(
-    String tournamentId,
-    List<String> pinnedIds,
-  ) async {
-    final prefs = await SharedPreferences.getInstance();
-    final key = _getTournamentKey(tournamentId);
-    await prefs.setStringList(key, pinnedIds);
-  }
-
   // Add a pinned game ID for a specific tournament
   Future<void> addPinnedGameId(String tournamentId, String gameId) async {
     final prefs = await SharedPreferences.getInstance();
@@ -66,28 +56,5 @@ class _PinGameLocalStorage {
     for (final key in tournamentKeys) {
       await prefs.remove(key);
     }
-  }
-
-  // Get all tournament IDs that have pinned games
-  Future<List<String>> getTournamentsWithPinnedGames() async {
-    final prefs = await SharedPreferences.getInstance();
-    final keys = prefs.getKeys();
-    final tournamentKeys = keys.where((key) => key.startsWith(_keyPrefix));
-
-    return tournamentKeys
-        .map((key) => key.replaceFirst(_keyPrefix, ''))
-        .toList();
-  }
-
-  // Check if a game is pinned in a specific tournament
-  Future<bool> isGamePinned(String tournamentId, String gameId) async {
-    final pinnedIds = await getPinnedGameIds(tournamentId);
-    return pinnedIds.contains(gameId);
-  }
-
-  // Get total count of pinned games for a tournament
-  Future<int> getPinnedGamesCount(String tournamentId) async {
-    final pinnedIds = await getPinnedGameIds(tournamentId);
-    return pinnedIds.length;
   }
 }

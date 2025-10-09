@@ -1,40 +1,35 @@
-import 'dart:ui';
-
 import 'package:chessever2/repository/local_storage/starred_repository/starred_repository.dart';
-import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-final starredProvider = StateNotifierProvider<_StarredRepository, List<String>>(
-  (ref) {
-    final currentEvent = ref.watch(selectedGroupCategoryProvider);
-    return _StarredRepository(ref: ref, tournamentCategory: currentEvent);
-  },
-);
+final starredProvider =
+    StateNotifierProvider.family<_StarredRepository, List<String>, String>((
+      ref,
+      tournamentKey,
+    ) {
+      return _StarredRepository(ref: ref, tournamentKey: tournamentKey);
+    });
 
 class _StarredRepository extends StateNotifier<List<String>> {
-  _StarredRepository({required this.ref, required this.tournamentCategory})
-    : super([]) {
+  _StarredRepository({required this.ref, required this.tournamentKey})
+    : super(<String>[]) {
     init();
   }
 
   final Ref ref;
-  final GroupEventCategory tournamentCategory;
+  final String tournamentKey;
 
   Future<void> init() async {
     try {
-      final key =
-          tournamentCategory == GroupEventCategory.upcoming
-              ? StarRepoKey.upcomingEvent.name
-              : StarRepoKey.liveEvent.name;
-      final starredList = await ref.read(starredRepository).getStar(key);
+      final starredList = await ref
+          .read(starredRepository)
+          .getStar(tournamentKey);
       state = starredList;
     } catch (error, _) {
       rethrow;
     }
   }
 
-  Future<void> toggleStarred(
-    String value) async {
+  Future<void> toggleStarred(String value) async {
     try {
       final currentSaved = List<String>.from(state);
       if (currentSaved.contains(value)) {
@@ -43,18 +38,13 @@ class _StarredRepository extends StateNotifier<List<String>> {
         currentSaved.add(value);
       }
 
-      final key =
-          tournamentCategory == GroupEventCategory.upcoming
-              ? StarRepoKey.upcomingEvent.name
-              : StarRepoKey.liveEvent.name;
-
-      await ref.read(starredRepository).toggleStar(key, value);
+      await ref.read(starredRepository).toggleStar(tournamentKey, value);
       state = currentSaved;
     } catch (error, _) {
       rethrow;
     }
   }
-  
+
   Future<List<String>> getStarred(String key) async {
     try {
       return state;

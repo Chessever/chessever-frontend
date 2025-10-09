@@ -98,7 +98,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       barrierDismissible: false,
       horizontalPadding: 0,
       verticalPadding: 0,
-      child: _AuthCountryDropdownWidget(),
+      child: CountryPickerWidget(),
     );
   }
 
@@ -159,16 +159,17 @@ class _AuthButtonWidget extends ConsumerWidget {
   }
 }
 
-class _AuthCountryDropdownWidget extends ConsumerStatefulWidget {
-  const _AuthCountryDropdownWidget({super.key});
+class CountryPickerWidget extends ConsumerStatefulWidget {
+  const CountryPickerWidget({this.isHamburgerMode = false, super.key});
+
+  final bool isHamburgerMode;
 
   @override
-  ConsumerState<_AuthCountryDropdownWidget> createState() =>
-      _AuthCountryDropdownWidgetState();
+  ConsumerState<CountryPickerWidget> createState() =>
+      _CountryPickerWidgetState();
 }
 
-class _AuthCountryDropdownWidgetState
-    extends ConsumerState<_AuthCountryDropdownWidget>
+class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
@@ -217,176 +218,185 @@ class _AuthCountryDropdownWidgetState
     return Scaffold(
       backgroundColor: Colors.transparent,
       extendBody: true,
-      body: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, child) {
-          return Stack(
-            children: [
-              // Background content with subtle fade
-              Opacity(opacity: _fadeAnimation.value, child: BlurBackground()),
+      body: GestureDetector(
+        onTap: widget.isHamburgerMode ? Navigator.of(context).pop : null,
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            return Stack(
+              children: [
+                // Background content with subtle fade
+                Opacity(opacity: _fadeAnimation.value, child: BlurBackground()),
 
-              // Main content with minimal slide
-              FadeTransition(
-                opacity: _fadeAnimation,
-                child: SlideTransition(
-                  position: _slideAnimation,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // Country selection box (centered)
-                      Container(
-                        margin: EdgeInsets.symmetric(horizontal: 40.sp),
-                        child: Column(
-                          children: [
-                            Container(
-                              width: double.infinity,
-                              padding: EdgeInsets.symmetric(horizontal: 10.sp),
-                              child: Text(
-                                'Select your Country',
-                                style: AppTypography.textMdBold.copyWith(
-                                  color: kWhiteColor,
+                // Main content with minimal slide
+                FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: SlideTransition(
+                    position: _slideAnimation,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // Country selection box (centered)
+                        Container(
+                          margin: EdgeInsets.symmetric(horizontal: 40.sp),
+                          child: Column(
+                            children: [
+                              Container(
+                                width: double.infinity,
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 10.sp,
+                                ),
+                                child: Text(
+                                  'Select your Country',
+                                  style: AppTypography.textMdBold.copyWith(
+                                    color: kWhiteColor,
+                                  ),
                                 ),
                               ),
-                            ),
 
-                            // Dropdown
-                            Container(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 10.sp,
-                                vertical: 5.sp,
-                              ),
-                              child: countryState.when(
-                                loading:
-                                    () => CountryDropdown(
-                                      selectedCountryCode: '',
-                                      onChanged: (_) {},
-                                      hintText: 'Loading country...',
-                                      isLoading: true,
-                                    ),
-                                error:
-                                    (err, _) => AppButton(
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: 16.sp,
+                              // Dropdown
+                              Container(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 10.sp,
+                                  vertical: 5.sp,
+                                ),
+                                child: countryState.when(
+                                  loading:
+                                      () => CountryDropdown(
+                                        selectedCountryCode: '',
+                                        onChanged: (_) {},
+                                        hintText: 'Loading country...',
+                                        isLoading: true,
                                       ),
-                                      text: 'Retry Getting Countries',
-                                      onPressed: () {
-                                        ref.invalidate(countryDropdownProvider);
-                                      },
-                                    ),
-                                data: (country) {
-                                  return CountryDropdown(
-                                    selectedCountryCode: country.countryCode,
-                                    onChanged: (Country newCountry) async {
-                                      await ref
-                                          .read(
-                                            countryDropdownProvider.notifier,
-                                          )
-                                          .selectCountry(
-                                            newCountry.countryCode,
+                                  error:
+                                      (err, _) => AppButton(
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: 16.sp,
+                                        ),
+                                        text: 'Retry Getting Countries',
+                                        onPressed: () {
+                                          ref.invalidate(
+                                            countryDropdownProvider,
                                           );
-                                    },
-                                  );
-                                },
+                                        },
+                                      ),
+                                  data: (country) {
+                                    return CountryDropdown(
+                                      selectedCountryCode: country.countryCode,
+                                      onChanged: (Country newCountry) async {
+                                        await ref
+                                            .read(
+                                              countryDropdownProvider.notifier,
+                                            )
+                                            .selectCountry(
+                                              newCountry.countryCode,
+                                            );
+                                      },
+                                    );
+                                  },
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
 
-              // Bottom button area with fade-in
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                child: FadeTransition(
-                  opacity: _fadeAnimation,
-                  child: ClipRRect(
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(25),
-                    ),
-                    child: Container(
-                      padding: EdgeInsets.fromLTRB(
-                        20.sp,
-                        20.sp,
-                        20.sp,
-                        MediaQuery.of(context).viewPadding.bottom + 28.sp,
+                // Bottom button area with fade-in
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: FadeTransition(
+                    opacity: _fadeAnimation,
+                    child: ClipRRect(
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(25),
                       ),
                       child: Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: kWhiteColor.withOpacity(0.8),
-                              blurRadius: 8,
-                              spreadRadius: 2,
-                              offset: const Offset(-1, 0),
-                            ),
-                            BoxShadow(
-                              color: kWhiteColor.withOpacity(0.5),
-                              blurRadius: 20,
-                              spreadRadius: 2,
-                              offset: const Offset(0, 2),
-                            ),
-                            BoxShadow(
-                              color: kWhiteColor.withOpacity(0.3),
-                              blurRadius: 35,
-                              spreadRadius: 2,
-                              offset: const Offset(0, 4),
-                            ),
-                            BoxShadow(
-                              color: kBlackColor.withOpacity(0.2),
-                              blurRadius: 15,
-                              spreadRadius: 1,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
+                        padding: EdgeInsets.fromLTRB(
+                          20.sp,
+                          20.sp,
+                          20.sp,
+                          MediaQuery.of(context).viewPadding.bottom + 28.sp,
                         ),
-                        child: ElevatedButton(
-                          onPressed: countryState.maybeWhen(
-                            loading: () => null,
-                            orElse:
-                                () => () async {
-                                  await _dismissWithAnimation();
-                                  if (mounted) {
-                                    notifier.hideCountrySelection();
-                                    Navigator.of(context).pop();
-                                    Navigator.pushReplacementNamed(
-                                      context,
-                                      '/home_screen',
-                                    );
-                                  }
-                                },
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: kWhiteColor.withOpacity(0.8),
+                                blurRadius: 8,
+                                spreadRadius: 2,
+                                offset: const Offset(-1, 0),
+                              ),
+                              BoxShadow(
+                                color: kWhiteColor.withOpacity(0.5),
+                                blurRadius: 20,
+                                spreadRadius: 2,
+                                offset: const Offset(0, 2),
+                              ),
+                              BoxShadow(
+                                color: kWhiteColor.withOpacity(0.3),
+                                blurRadius: 35,
+                                spreadRadius: 2,
+                                offset: const Offset(0, 4),
+                              ),
+                              BoxShadow(
+                                color: kBlackColor.withOpacity(0.2),
+                                blurRadius: 15,
+                                spreadRadius: 1,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
                           ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: countryState.maybeWhen(
-                              loading: () => kWhiteColor.withOpacity(0.4),
-                              orElse: () => kWhiteColor,
+                          child: ElevatedButton(
+                            onPressed: countryState.maybeWhen(
+                              loading: () => null,
+                              orElse:
+                                  () => () async {
+                                    await _dismissWithAnimation();
+                                    if (mounted) {
+                                      notifier.hideCountrySelection();
+                                      Navigator.of(context).pop();
+                                      if (!widget.isHamburgerMode) {
+                                        Navigator.pushReplacementNamed(
+                                          context,
+                                          '/home_screen',
+                                        );
+                                      }
+                                    }
+                                  },
                             ),
-                            foregroundColor: kBlackColor,
-                            padding: EdgeInsets.symmetric(vertical: 16.sp),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12.br),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: countryState.maybeWhen(
+                                loading: () => kWhiteColor.withOpacity(0.4),
+                                orElse: () => kWhiteColor,
+                              ),
+                              foregroundColor: kBlackColor,
+                              padding: EdgeInsets.symmetric(vertical: 16.sp),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12.br),
+                              ),
+                              elevation: 0,
+                              shadowColor: Colors.transparent,
                             ),
-                            elevation: 0,
-                            shadowColor: Colors.transparent,
-                          ),
-                          child: Text(
-                            'Continue',
-                            style: AppTypography.textLgMedium,
+                            child: Text(
+                              'Continue',
+                              style: AppTypography.textLgMedium,
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            ],
-          );
-        },
+              ],
+            );
+          },
+        ),
       ),
     );
   }

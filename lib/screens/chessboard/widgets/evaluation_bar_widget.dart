@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
+import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -146,9 +147,8 @@ class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
                     ? '...'
                     : ((widget.evaluation ?? _lastValidEvaluation)!.abs() >=
                             10.0 &&
-                        widget.mate != null &&
                         widget.mate != 0)
-                    ? '#${widget.mate!.abs()}'
+                    ? '#${widget.mate.abs()}'
                     : (widget.evaluation ?? _lastValidEvaluation)!
                         .abs()
                         .toStringAsFixed(1),
@@ -172,11 +172,13 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
   final double width;
   final double height;
   final String fen;
+  final PlayerView playerView;
 
   const EvaluationBarWidgetForGames({
     required this.width,
     required this.height,
     required this.fen,
+    required this.playerView,
     super.key,
   });
 
@@ -194,6 +196,7 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
                 blackHeight: height * 0.5,
                 evaluation: 0.0,
                 isEvaluating: true,
+                playerView: playerView,
                 isFlipped:
                     false, // Game cards always show from white's perspective
               ),
@@ -207,6 +210,7 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
                 whiteHeight: height * 0.5,
                 blackHeight: height * 0.5,
                 evaluation: 0.0,
+                playerView: playerView,
                 isFlipped:
                     false, // Game cards always show from white's perspective
               ),
@@ -222,6 +226,7 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
                   whiteHeight: height * 0.5,
                   blackHeight: height * 0.5,
                   evaluation: 0.0,
+                  playerView: playerView,
                   isFlipped:
                       false, // Game cards always show from white's perspective
                 ),
@@ -257,6 +262,7 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
               blackHeight: blackRatio * height,
               whiteHeight: whiteRatio * height,
               evaluation: evaluation,
+              playerView: playerView,
               isFlipped:
                   false, // Game cards always show from white's perspective
             );
@@ -272,8 +278,10 @@ class _Bars extends StatefulWidget {
     required this.whiteHeight,
     required this.blackHeight,
     required this.evaluation,
+    required this.playerView,
     this.isEvaluating = false,
     this.isFlipped = false,
+
     super.key,
   });
 
@@ -282,6 +290,7 @@ class _Bars extends StatefulWidget {
   final double whiteHeight;
   final double blackHeight;
   final double evaluation;
+  final PlayerView playerView;
   final bool isEvaluating;
   final bool isFlipped;
 
@@ -389,8 +398,12 @@ class _BarsState extends State<_Bars> {
                 maxLines: 1,
                 style: AppTypography.textSmRegular.copyWith(
                   color: kWhiteColor,
-                  fontSize: 1.5.f,
-                  fontWeight: FontWeight.w600,
+                  fontSize:
+                      widget.playerView == PlayerView.gridView ? 0.2.f : 1.5.f,
+                  fontWeight:
+                      widget.playerView == PlayerView.gridView
+                          ? FontWeight.w300
+                          : FontWeight.w600,
                 ),
               ),
             ),

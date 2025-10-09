@@ -1,26 +1,18 @@
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 
-final tournamentSortingServiceProvider = Provider<TournamentSortingService>((
-  ref,
-) {
-  return TournamentSortingService(ref);
-});
+final tournamentSortingServiceProvider =
+    AutoDisposeProvider<TournamentSortingService>((ref) {
+      return TournamentSortingService(ref);
+    });
 
 class TournamentSortingService {
   final Ref ref;
 
   TournamentSortingService(this.ref);
 
-  List<GroupEventCardModel> sortAllTours({
-    required List<GroupEventCardModel> tours,
-    required String dropDownSelectedCountry,
-  }) {
-    final filteredList =
-        tours
-            .where((t) => t.tourEventCategory != TourEventCategory.upcoming)
-            .toList();
+  List<GroupEventCardModel> sortAllTours(List<GroupEventCardModel> tours) {
+    final filteredList = tours.toList();
 
     filteredList.sort((a, b) {
       final isHighEloA = a.maxAvgElo > 3200;
@@ -41,14 +33,8 @@ class TournamentSortingService {
     return filteredList;
   }
 
-  List<GroupEventCardModel> sortUpcomingTours({
-    required List<GroupEventCardModel> tours,
-    required String dropDownSelectedCountry,
-  }) {
-    final filteredList =
-        tours
-            .where((t) => t.tourEventCategory == TourEventCategory.upcoming)
-            .toList();
+  List<GroupEventCardModel> sortUpcomingTours(List<GroupEventCardModel> tours) {
+    final filteredList = tours.toList();
 
     filteredList.sort((a, b) {
       // For upcoming tournaments, also sort by maxElo after favorites
@@ -78,41 +64,37 @@ class TournamentSortingService {
     return filteredList;
   }
 
-  List<GroupEventCardModel> sortPastTours({
-    required List<GroupEventCardModel> tours,
-    required List<GroupBroadcast> groupBroadcasts,
-    required String dropDownSelectedCountry,
+  List<GroupEventCardModel> sortPastTours(
+    List<GroupEventCardModel> tours, {
+    bool ascending = false,
   }) {
-    final filteredList =
-        tours
-            .where((t) => t.tourEventCategory == TourEventCategory.completed)
-            .toList();
+    var sortedTours = <GroupEventCardModel>[];
+    sortedTours = tours;
 
-    filteredList.sort((a, b) {
-      final broadcastA = groupBroadcasts.firstWhere(
-        (broadcast) => broadcast.id == a.id,
-        orElse: () => groupBroadcasts.first,
-      );
-      final broadcastB = groupBroadcasts.firstWhere(
-        (broadcast) => broadcast.id == b.id,
-        orElse: () => groupBroadcasts.first,
-      );
+    sortedTours.sort((a, b) {
+      final datesA = _extractDates(a.dates);
+      final datesB = _extractDates(b.dates);
 
-      final endDateA = broadcastA.dateEnd;
-      final endDateB = broadcastB.dateEnd;
+      if (datesA == null && datesB == null) return 0;
+      if (datesA == null) return 1;
+      if (datesB == null) return -1;
 
-      if (endDateA != null && endDateB != null) {
-        final dateComparison = endDateB.compareTo(endDateA);
-        if (dateComparison != 0) return dateComparison;
+      final endDateA = datesA['end']!;
+      final endDateB = datesB['end']!;
+
+      final endComparison = endDateA.compareTo(endDateB);
+
+      if (endComparison != 0) {
+        return ascending ? endComparison : -endComparison;
+      } else {
+        final startDateA = datesA['start']!;
+        final startDateB = datesB['start']!;
+        final startComparison = startDateA.compareTo(startDateB);
+        return ascending ? startComparison : -startComparison;
       }
-
-      if (endDateA != null && endDateB == null) return -1;
-      if (endDateA == null && endDateB != null) return 1;
-
-      return a.title.toLowerCase().compareTo(b.title.toLowerCase());
     });
 
-    return filteredList;
+    return sortedTours;
   }
 
   int _extractDaysFromTimeUntilStart(String txt) {
@@ -137,41 +119,132 @@ class TournamentSortingService {
     required List<GroupEventCardModel> tours,
     required List<String> favorites,
   }) {
-    final hasFavorites = favorites.isNotEmpty;
+    if (favorites.isEmpty) {
+      return tours; // No favorites, return as-is
+    }
 
-    var sortedEvents = tours.toList();
-    sortedEvents.sort((a, b) {
-      final isFavoriteA = favorites.contains(a.id);
-      final isFavoriteB = favorites.contains(b.id);
+    // Separate favorites from non-favorites while preserving order
+    final favoriteEvents = <GroupEventCardModel>[];
+    final nonFavoriteEvents = <GroupEventCardModel>[];
 
-      // FIRST PRIORITY: Favorites (only for non-completed tournaments)
+    for (final tour in tours) {
+      if (favorites.contains(tour.id)) {
+        favoriteEvents.add(tour);
+      } else {
+        nonFavoriteEvents.add(tour);
+      }
+    }
 
-      if (hasFavorites) {
-        if (isFavoriteA && !isFavoriteB) return -1;
-        if (!isFavoriteA && isFavoriteB) return 1;
+    // Return favorites first, then non-favorites (both in original order)
+    return [...favoriteEvents, ...nonFavoriteEvents];
+  }
+
+  static Map<String, DateTime>? _extractDates(String dateString) {
+    try {
+      final cleaned = dateString.trim();
+
+      final parts = cleaned.split(',');
+      if (parts.length != 2) return null;
+
+      final year = parts[1].trim();
+      final datePart = parts[0].trim();
+
+      if (datePart.contains('-')) {
+        final rangeParts = datePart.split('-').map((e) => e.trim()).toList();
+        if (rangeParts.length != 2) return null;
+
+        final startDateStr = rangeParts[0].trim();
+        final endDateStr = rangeParts[1].trim();
+
+        final startParts = startDateStr.split(' ');
+        final endParts = endDateStr.split(' ');
+
+        DateTime? startDate;
+        DateTime? endDate;
+
+        if (startParts.length == 2) {
+          final startMonth = _monthToNumber(startParts[0]);
+          final startDay = int.parse(startParts[1]);
+          final yearInt = int.parse(year);
+          startDate = DateTime(yearInt, startMonth, startDay);
+
+          if (endParts.length == 2) {
+            final endDay = int.parse(endParts[0]);
+            final endMonth = _monthToNumber(endParts[1]);
+            endDate = DateTime(yearInt, endMonth, endDay);
+          } else if (endParts.length == 1) {
+            final endDay = int.parse(endParts[0]);
+            endDate = DateTime(yearInt, startMonth, endDay);
+          }
+        } else if (startParts.length == 1 && endParts.length == 2) {
+          final endDay = int.parse(endParts[0]);
+          final endMonth = _monthToNumber(endParts[1]);
+          final yearInt = int.parse(year);
+          endDate = DateTime(yearInt, endMonth, endDay);
+
+          final startDay = int.parse(startParts[0]);
+          startDate = DateTime(yearInt, endMonth, startDay);
+        }
+
+        if (startDate == null || endDate == null) return null;
+
+        return {'start': startDate, 'end': endDate};
+      } else {
+        final date = _parseDate(datePart, year);
+        if (date == null) return null;
+        return {'start': date, 'end': date};
+      }
+    } catch (e) {
+      print('Error parsing date "$dateString": $e');
+      return null;
+    }
+  }
+
+  static DateTime? _parseDate(String datePart, String year) {
+    try {
+      final parts = datePart.trim().split(' ');
+
+      if (parts.length == 2) {
+        final firstPart = parts[0];
+        final secondPart = parts[1];
+
+        final firstNum = int.tryParse(firstPart);
+
+        if (firstNum != null) {
+          final day = firstNum;
+          final month = _monthToNumber(secondPart);
+          final yearInt = int.parse(year);
+          return DateTime(yearInt, month, day);
+        } else {
+          final month = _monthToNumber(firstPart);
+          final day = int.parse(secondPart);
+          final yearInt = int.parse(year);
+          return DateTime(yearInt, month, day);
+        }
       }
 
-      // SECOND PRIORITY: ELO sorting (same logic as your other methods)
-      final isHighEloA = a.maxAvgElo > 3200;
-      final isHighEloB = b.maxAvgElo > 3200;
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
 
-      // If one has high ELO and the other doesn't, put high ELO at the end
-      if (isHighEloA && !isHighEloB) return 1;
-      if (!isHighEloA && isHighEloB) return -1;
+  static int _monthToNumber(String month) {
+    final monthMap = {
+      'Jan': 1,
+      'Feb': 2,
+      'Mar': 3,
+      'Apr': 4,
+      'May': 5,
+      'Jun': 6,
+      'Jul': 7,
+      'Aug': 8,
+      'Sep': 9,
+      'Oct': 10,
+      'Nov': 11,
+      'Dec': 12,
+    };
 
-      // If both are high ELO or both are normal ELO, sort by ELO descending
-      final eloComparison = b.maxAvgElo.compareTo(a.maxAvgElo);
-      if (eloComparison != 0) return eloComparison;
-
-      final daysA = _extractDaysFromTimeUntilStart(a.timeUntilStart);
-      final daysB = _extractDaysFromTimeUntilStart(b.timeUntilStart);
-      final daysComparison = daysA.compareTo(daysB);
-      if (daysComparison != 0) return daysComparison;
-
-      // THIRD PRIORITY: Title alphabetically
-      return a.title.toLowerCase().compareTo(b.title.toLowerCase());
-    });
-
-    return sortedEvents;
+    return monthMap[month] ?? 1;
   }
 }

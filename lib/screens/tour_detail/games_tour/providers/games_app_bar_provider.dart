@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -83,14 +84,14 @@ class _GamesAppBarNotifier
     final itemIndex = _calculateRoundHeaderIndex(roundId);
     if (itemIndex >= 0) {
       if (controller.isAttached) {
-        controller.jumpTo(index: itemIndex, alignment: 0.0);
+        controller.jumpTo(index: itemIndex, alignment: 0.02);
       }
     }
   }
 
   int _calculateRoundHeaderIndex(String roundId) {
     final allRounds = state.valueOrNull?.gamesAppBarModels ?? [];
-    // Filter to only include rounds with at least one game
+
     final rounds =
         allRounds.where((round) {
           final gamesInRound =
@@ -103,12 +104,19 @@ class _GamesAppBarNotifier
               0;
           return gamesInRound > 0;
         }).toList();
-    final reversedRounds = rounds.reversed.toList();
+
+    final viewMode = ref.read(gamesListViewModeProvider);
+    final bool isGrid = viewMode == GamesListViewMode.chessBoardGrid;
+
     int index = 0;
-    for (final round in reversedRounds) {
+
+    for (final round in rounds) {
+      // If this is the round we want to scroll to, return the index of its header.
       if (round.id == roundId) {
         return index;
       }
+
+      // count games in this round
       final gamesInRound =
           ref
               .read(gamesTourScreenProvider)
@@ -117,9 +125,18 @@ class _GamesAppBarNotifier
               .where((g) => g.roundId == round.id)
               .length ??
           0;
-      index += 1 + gamesInRound; // 1 for header + games
+
+      if (isGrid) {
+        // grid: 1 header + ceil(games/2) rows (each row holds up to 2 games)
+        final rows = (gamesInRound + 1) ~/ 2; // integer ceil
+        index += 1 + rows;
+      } else {
+        // list: 1 header + gamesInRound items
+        index += 1 + gamesInRound;
+      }
     }
-    return -1; // Invalid index
+
+    return -1; // not found
   }
 
   Future<void> _load() async {
@@ -148,6 +165,19 @@ class _GamesAppBarNotifier
           rounds
               .map((r) => GamesAppBarModel.fromRound(r, _liveRounds))
               .toList();
+
+      models.sort((a, b) {
+        final aDate = a.startsAt;
+        final bDate = b.startsAt;
+
+        // --- Null handling ---
+        if (aDate == null && bDate == null) return 0;
+        if (aDate == null) return 1; // nulls go last
+        if (bDate == null) return -1;
+
+        // --- Sort by date descending (latest first) ---
+        return bDate.compareTo(aDate);
+      });
 
       await _applySelectionFrom(models, tourId!);
     } catch (e, st) {
