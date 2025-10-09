@@ -1856,9 +1856,9 @@ class _MovesDisplay extends ConsumerWidget {
                 // Impact color has highest priority (even when selected)
                 textColor = impact.impact.color;
               } else if (isVariantMove) {
-                // Variant moves get special coloring
+                // Variant moves get special coloring - use underline instead of background
                 textColor = kPrimaryColor;
-                backgroundColor = kPrimaryColor.withValues(alpha: 0.2);
+                // backgroundColor removed - will use underline instead
               } else if (isCurrentMove) {
                 textColor = kWhiteColor;
               } else {
@@ -1900,6 +1900,9 @@ class _MovesDisplay extends ConsumerWidget {
                                 isCurrentMove
                                     ? FontWeight.bold
                                     : FontWeight.normal,
+                            decoration: isVariantMove ? TextDecoration.underline : null,
+                            decorationColor: isVariantMove ? kPrimaryColor : null,
+                            decorationThickness: isVariantMove ? 1.5 : null,
                           ),
                         ),
                         if (impactSymbol.isNotEmpty)

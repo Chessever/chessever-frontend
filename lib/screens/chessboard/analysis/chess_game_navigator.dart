@@ -265,13 +265,26 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
     }
 
     final (newPosition, san) = position.makeSan(playedMove);
+
+    // CRITICAL: Preserve move number context when creating variations
+    // position.turn = who is about to move (before the move)
+    // newPosition.turn = who will move next (after the move)
+    // The move being made is by position.turn
+    final movingColor = position.turn == Side.white ? ChessColor.white : ChessColor.black;
+
+    // Calculate move number based on previous move
+    final moveNumber = currentMove != null
+        ? (currentMove.turn == ChessColor.black
+            ? currentMove.num + 1  // Black just played, white is moving -> increment
+            : currentMove.num)      // White just played, black is moving -> same number
+        : (movingColor == ChessColor.white ? 1 : 1);  // First move
+
     final newMove = ChessMove(
-      num: newPosition.fullmoves,
+      num: moveNumber,
       fen: newPosition.fen,
       san: san,
       uci: uci,
-      turn:
-          newPosition.turn == Side.white ? ChessColor.white : ChessColor.black,
+      turn: movingColor,  // Store who made this move
     );
 
     if (currentIndex == -1) {

@@ -174,25 +174,19 @@ class PlayerFavoriteCard extends ConsumerWidget {
       debugPrint('===== PlayerFavoriteCard: playerData keys: ${playerData.keys.toList()} =====');
       debugPrint('===== PlayerFavoriteCard: fideId value: ${playerData['fideId']} (type: ${playerData['fideId'].runtimeType}) =====');
 
-      final fideId = playerData['fideId']?.toString() ?? '';
+      final fideId = playerData['fideId']?.toString();
       final name = playerData['name'] as String? ?? 'Unknown Player';
       final title = playerData['title'] as String?;
       final countryCode = playerData['countryCode'] as String? ?? '';
 
       debugPrint('===== Navigating with fideId: $fideId, name: $name =====');
 
-      if (fideId.isEmpty) {
-        // Handle missing fideId silently
-        debugPrint('===== ERROR: fideId is empty! =====');
-        return;
-      }
-
-      // Navigate to player games screen
+      // Navigate to player games screen (works with or without fideId)
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => PlayerGamesScreen(
-            fideId: fideId,
+            fideId: (fideId != null && fideId.isNotEmpty) ? fideId : null,
             playerName: name,
             playerTitle: title,
             countryCode: countryCode,
@@ -200,7 +194,7 @@ class PlayerFavoriteCard extends ConsumerWidget {
         ),
       );
     } catch (e) {
-      // Handle navigation error silently
+      debugPrint('===== ERROR navigating to player games: $e =====');
     }
   }
 
