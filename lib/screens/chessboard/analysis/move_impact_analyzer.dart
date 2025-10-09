@@ -247,7 +247,9 @@ MoveImpactAnalysis? _calculateMoveImpactFromAlternatives({
     final bool isWhiteMove = _isWhiteToMove(positionFenBeforeMove);
 
     // Parse the position FEN to get dartchess Position for UCI→SAN conversion
-    final positionBeforeMove = Position.setupPosition(Rule.chess, Setup.parseFen(positionEvalBeforeMove.fen));
+    // CRITICAL: Use the actual position FEN passed as parameter, NOT the eval's FEN
+    // The eval's FEN might be normalized differently or from a cached different position
+    final positionBeforeMove = Position.setupPosition(Rule.chess, Setup.parseFen(positionFenBeforeMove));
 
     // === STEP 1: Find player's move in engine alternatives ===
     int? playerMoveRank;
