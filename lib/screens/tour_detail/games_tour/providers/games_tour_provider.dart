@@ -69,13 +69,17 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       return;
     }
 
-    print('🔥 GamesTourNotifier: Setting up stream listeners for ${games.length} games');
+    print(
+      '🔥 GamesTourNotifier: Setting up stream listeners for ${games.length} games',
+    );
 
     // Set up listeners for each ongoing game
     for (final game in games) {
       print('🔥 GamesTourNotifier: Game ${game.id} status: ${game.status}');
       if (game.status == "*") {
-        print('🔥 GamesTourNotifier: Setting up streams for ongoing game ${game.id}');
+        print(
+          '🔥 GamesTourNotifier: Setting up streams for ongoing game ${game.id}',
+        );
         _listenToGameStreams(game.id);
       }
     }
@@ -109,15 +113,16 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     subscriptions.add(lastMoveSubscription);
 
     // Listen to white clock stream
-    final whiteClockSubscription = ref.listen<AsyncValue<int?>>(
-      gameWhiteClockStreamProvider(gameId),
-      (previous, next) {
-        next.whenData((whiteClockData) {
-          print('🔥 GamesTourNotifier: White clock update for $gameId: $whiteClockData');
-          _updateGameData(gameId, whiteClockSeconds: whiteClockData);
-        });
-      },
-    );
+    final whiteClockSubscription = ref.listen<
+      AsyncValue<int?>
+    >(gameWhiteClockStreamProvider(gameId), (previous, next) {
+      next.whenData((whiteClockData) {
+        print(
+          '🔥 GamesTourNotifier: White clock update for $gameId: $whiteClockData',
+        );
+        _updateGameData(gameId, whiteClockSeconds: whiteClockData);
+      });
+    });
     subscriptions.add(whiteClockSubscription);
 
     // Listen to black clock stream
@@ -146,7 +151,8 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     _streamSubscriptions[gameId] = subscriptions;
   }
 
-  void _updateGameData(String gameId, {
+  void _updateGameData(
+    String gameId, {
     String? fen,
     String? lastMove,
     int? whiteClockSeconds,
@@ -169,11 +175,14 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
 
     if (targetGame != null) {
       // Only update if values actually changed
-      hasChanges = (fen != null && fen != targetGame.fen) ||
-                  (lastMove != null && lastMove != targetGame.lastMove) ||
-                  (whiteClockSeconds != null && whiteClockSeconds != targetGame.lastClockWhite) ||
-                  (blackClockSeconds != null && blackClockSeconds != targetGame.lastClockBlack) ||
-                  (lastMoveTime != null && lastMoveTime != targetGame.lastMoveTime);
+      hasChanges =
+          (fen != null && fen != targetGame.fen) ||
+          (lastMove != null && lastMove != targetGame.lastMove) ||
+          (whiteClockSeconds != null &&
+              whiteClockSeconds != targetGame.lastClockWhite) ||
+          (blackClockSeconds != null &&
+              blackClockSeconds != targetGame.lastClockBlack) ||
+          (lastMoveTime != null && lastMoveTime != targetGame.lastMoveTime);
     }
 
     if (!hasChanges) {
@@ -182,9 +191,11 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     }
 
     // Debug logging only for actual updates
-    print('🔥 GamesTourNotifier: Updating game $gameId - '
-          'whiteClockSeconds: $whiteClockSeconds, blackClockSeconds: $blackClockSeconds, '
-          'lastMoveTime: $lastMoveTime');
+    print(
+      '🔥 GamesTourNotifier: Updating game $gameId - '
+      'whiteClockSeconds: $whiteClockSeconds, blackClockSeconds: $blackClockSeconds, '
+      'lastMoveTime: $lastMoveTime',
+    );
 
     final updatedGames =
         currentGames.map((game) {
@@ -207,7 +218,9 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   }
 
   void _cleanupStreamSubscriptions() {
-    print('🔥 GamesTourNotifier: Cleaning up ${_streamSubscriptions.length} stream subscriptions');
+    print(
+      '🔥 GamesTourNotifier: Cleaning up ${_streamSubscriptions.length} stream subscriptions',
+    );
     for (final subscriptions in _streamSubscriptions.values) {
       for (final subscription in subscriptions) {
         subscription.close();

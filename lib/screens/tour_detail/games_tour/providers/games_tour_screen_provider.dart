@@ -5,6 +5,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/repository/local_storage/tournament/games/pin_games_local_storage.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -14,7 +15,7 @@ final gamesTourScreenProvider = StateNotifierProvider<
   AsyncValue<GamesScreenModel>
 >((ref) {
   // Watch tour details first - this is the primary dependency
-  final tourDetailAsync = ref.watch(tourDetailScreenProvider);
+  final tourDetailAsync = ref.watch(gamesTourScreenModeProvider);
   final showFinishedGames = ref.watch(showFinishedGamesProvider);
   if (tourDetailAsync.isLoading) {
     return GamesTourScreenProvider.loading(ref: ref);
@@ -27,11 +28,8 @@ final gamesTourScreenProvider = StateNotifierProvider<
     );
   }
 
-  final aboutTourModel = tourDetailAsync.valueOrNull?.aboutTourModel;
-
-  if (aboutTourModel == null) {
-    return GamesTourScreenProvider.loading(ref: ref);
-  }
+  final aboutTourModel =
+      ref.watch(tourDetailScreenProvider).value?.aboutTourModel;
 
   // The notifier will read games/pins itself and keep state in sync
   return GamesTourScreenProvider(ref: ref, aboutTourModel: aboutTourModel);

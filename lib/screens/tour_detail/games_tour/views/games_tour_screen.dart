@@ -1,7 +1,5 @@
 import 'dart:async';
 import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_body.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
@@ -29,25 +27,8 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     final gamesListViewMode = ref.watch(gamesListViewModeProvider);
     final gamesTourAsync = ref.watch(gamesTourScreenProvider);
 
-    // Removed excessive debug logging to reduce console noise
-
     return gamesTourAsync.when(
       data: (data) {
-        final aboutTourModel =
-            ref.watch(tourDetailScreenProvider).valueOrNull?.aboutTourModel;
-
-        // Add loading check for dependencies before showing empty state
-        final tourDetailAsync = ref.watch(tourDetailScreenProvider);
-        final gamesAsync =
-            aboutTourModel != null
-                ? ref.watch(gamesTourProvider(aboutTourModel.id))
-                : const AsyncValue.loading();
-
-        // Don't show empty state if we're still loading dependencies
-        if (tourDetailAsync.isLoading || gamesAsync.isLoading) {
-          return const TourLoadingWidget();
-        }
-
         if (data.gamesTourModels.isEmpty) {
           if (data.isSearchMode && data.searchQuery != null) {
             return EmptySearchWidget(query: data.searchQuery!);
@@ -104,13 +85,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
   Future<void> _handleRefresh() async {
     try {
       FocusScope.of(context).unfocus();
-      final futures = <Future>[];
-      futures.add(
-        ref.read(tourDetailScreenProvider.notifier).refreshTourDetails(),
-      );
-      futures.add(ref.read(gamesAppBarProvider.notifier).refresh());
-      futures.add(ref.read(gamesTourScreenProvider.notifier).refreshGames());
-      await Future.wait(futures);
+      ref.refresh(tourDetailScreenProvider);
     } catch (_) {}
   }
 }
