@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
-import 'package:chessever2/repository/local_storage/unified_favorites/unified_favorites_service.dart';
 
 final favoriteStandingsPlayerService = Provider<_FavoriteStandingsPlayer>((
   ref,
@@ -47,10 +46,6 @@ class _FavoriteStandingsPlayer {
       favorites.add(player);
     }
     await saveFavoritePlayers(favorites);
-
-    // Also save to unified favorites system
-    final unifiedService = ref.read(unifiedFavoritesService);
-    await unifiedService.toggleTournamentPlayerFavorite(player);
   }
 
   Future<bool> isFavorite(String playerName) async {

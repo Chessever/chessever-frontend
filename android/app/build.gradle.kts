@@ -17,7 +17,7 @@
     }
 
     android {
-        namespace = "com.Chessever.app"
+        namespace = "com.chessEver.app"
         compileSdk = 36
         ndkVersion = "27.0.12077973"
 
@@ -59,8 +59,8 @@
             // For more information, see: https://flutter.dev/to/review-gradle-config.
             minSdk = flutter.minSdkVersion
             targetSdk = 36
-            versionCode = 55
-            versionName = "2.0.55"
+            versionCode = 61
+            versionName = "2.0.61"
         }
 
         buildTypes {
@@ -78,7 +78,7 @@
     }
     dependencies {
         // Latest stable Kotlin version compatible with Flutter 2025
-        implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.0.21")
+        implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.2.0")
 
         // Core library desugaring dependency
         coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")

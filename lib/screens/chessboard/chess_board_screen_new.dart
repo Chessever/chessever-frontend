@@ -18,6 +18,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessground/chessground.dart';
@@ -671,7 +672,7 @@ class _LoadingScreen extends StatelessWidget {
   }
 }
 
-class _AppBar extends StatelessWidget implements PreferredSizeWidget {
+class _AppBar extends ConsumerWidget implements PreferredSizeWidget {
   final GamesTourModel game;
   final List<GamesTourModel> games;
   final int currentGameIndex;
@@ -687,9 +688,16 @@ class _AppBar extends StatelessWidget implements PreferredSizeWidget {
     this.isLoading = false,
     this.lastViewedIndex,
   });
+  copyPgnBtnClicked(WidgetRef ref) async {
+    final gameWithPgn = await ref
+        .read(gameRepositoryProvider)
+        .getGameById(game.gameId);
+    String pgn = gameWithPgn.pgn ?? "";
+    Clipboard.setData(ClipboardData(text: pgn));
+  }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return AppBar(
       elevation: 0,
       leading: IconButton(
@@ -730,6 +738,9 @@ class _AppBar extends StatelessWidget implements PreferredSizeWidget {
                   ),
                 ),
                 PopupMenuItem(
+                  onTap: () {
+                    copyPgnBtnClicked(ref);
+                  },
                   value: 'copy_pgn',
                   child: Row(
                     children: [
@@ -1067,11 +1078,7 @@ class _BottomNavBar extends ConsumerWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(
-                  Icons.info_outline,
-                  color: kPrimaryColor,
-                  size: 48,
-                ),
+                const Icon(Icons.info_outline, color: kPrimaryColor, size: 48),
                 const SizedBox(height: 16),
                 const Text(
                   'Exit Analysis Mode?',
@@ -1157,30 +1164,32 @@ class _BottomNavBar extends ConsumerWidget {
     return ChessBoardBottomNavBar(
       gameIndex: index,
       onFlip: () => notifier.flipBoard(),
-      onRightMove: state.canMoveForward
-          ? () {
-              if (state.isAnalysisMode) {
-                _showExitAnalysisConfirmation(
-                  context,
-                  () => notifier.moveForward(),
-                );
-              } else {
-                notifier.moveForward();
+      onRightMove:
+          state.canMoveForward
+              ? () {
+                if (state.isAnalysisMode) {
+                  _showExitAnalysisConfirmation(
+                    context,
+                    () => notifier.moveForward(),
+                  );
+                } else {
+                  notifier.moveForward();
+                }
               }
-            }
-          : null,
-      onLeftMove: state.canMoveBackward
-          ? () {
-              if (state.isAnalysisMode) {
-                _showExitAnalysisConfirmation(
-                  context,
-                  () => notifier.moveBackward(),
-                );
-              } else {
-                notifier.moveBackward();
+              : null,
+      onLeftMove:
+          state.canMoveBackward
+              ? () {
+                if (state.isAnalysisMode) {
+                  _showExitAnalysisConfirmation(
+                    context,
+                    () => notifier.moveBackward(),
+                  );
+                } else {
+                  notifier.moveBackward();
+                }
               }
-            }
-          : null,
+              : null,
       onLongPressBackwardStart: () => notifier.startLongPressBackward(),
       onLongPressBackwardEnd: () => notifier.stopLongPress(),
       onLongPressForwardStart: () => notifier.startLongPressForward(),
@@ -1653,33 +1662,39 @@ class _ChessBoardNew extends ConsumerWidget {
               : chessBoardState.position!.fen,
       lastMove:
           chessBoardState.isLoadingMoves ? null : chessBoardState.lastMove,
-      game: chessBoardState.position != null && !chessBoardState.isLoadingMoves
-          ? GameData(
-              playerSide: chessBoardState.position!.turn == Side.white
-                  ? PlayerSide.white
-                  : PlayerSide.black,
-              validMoves: makeLegalMoves(chessBoardState.position!),
-              sideToMove: chessBoardState.position!.turn,
-              isCheck: chessBoardState.position!.isCheck,
-              promotionMove: null,
-              onMove: (move, {isDrop, isPremove}) async {
-                // Auto-enter analysis mode on first move attempt
-                if (!chessBoardState.isAnalysisMode) {
-                  await notifier.toggleAnalysisMode();
-                  // Wait a frame for state to update
-                  await Future.delayed(const Duration(milliseconds: 50));
-                }
-                notifier.onAnalysisMove(move, isDrop: isDrop, isPremove: isPremove);
-              },
-              onPromotionSelection: (role) async {
-                if (!chessBoardState.isAnalysisMode) {
-                  await notifier.toggleAnalysisMode();
-                  await Future.delayed(const Duration(milliseconds: 50));
-                }
-                notifier.onAnalysisPromotionSelection(role);
-              },
-            )
-          : null,
+      game:
+          chessBoardState.position != null && !chessBoardState.isLoadingMoves
+              ? GameData(
+                playerSide:
+                    chessBoardState.position!.turn == Side.white
+                        ? PlayerSide.white
+                        : PlayerSide.black,
+                validMoves: makeLegalMoves(chessBoardState.position!),
+                sideToMove: chessBoardState.position!.turn,
+                isCheck: chessBoardState.position!.isCheck,
+                promotionMove: null,
+                onMove: (move, {isDrop, isPremove}) async {
+                  // Auto-enter analysis mode on first move attempt
+                  if (!chessBoardState.isAnalysisMode) {
+                    await notifier.toggleAnalysisMode();
+                    // Wait a frame for state to update
+                    await Future.delayed(const Duration(milliseconds: 50));
+                  }
+                  notifier.onAnalysisMove(
+                    move,
+                    isDrop: isDrop,
+                    isPremove: isPremove,
+                  );
+                },
+                onPromotionSelection: (role) async {
+                  if (!chessBoardState.isAnalysisMode) {
+                    await notifier.toggleAnalysisMode();
+                    await Future.delayed(const Duration(milliseconds: 50));
+                  }
+                  notifier.onAnalysisPromotionSelection(role);
+                },
+              )
+              : null,
     );
   }
 }
@@ -1843,7 +1858,8 @@ class _MovesDisplay extends ConsumerWidget {
               // Check if this is a variant-explored move (user made manual analysis moves)
               final isVariantMove =
                   state.isAnalysisMode &&
-                  moveIndex >= (state.variantBaseMoveIndex ?? state.allMoves.length);
+                  moveIndex >=
+                      (state.variantBaseMoveIndex ?? state.allMoves.length);
 
               final displayText = isWhiteMove ? '$fullMoveNumber. $move' : move;
               final impactSymbol = impact?.impact.symbol ?? '';
@@ -1901,8 +1917,10 @@ class _MovesDisplay extends ConsumerWidget {
                                 isCurrentMove
                                     ? FontWeight.bold
                                     : FontWeight.normal,
-                            decoration: isVariantMove ? TextDecoration.underline : null,
-                            decorationColor: isVariantMove ? kPrimaryColor : null,
+                            decoration:
+                                isVariantMove ? TextDecoration.underline : null,
+                            decorationColor:
+                                isVariantMove ? kPrimaryColor : null,
                             decorationThickness: isVariantMove ? 1.5 : null,
                           ),
                         ),
@@ -2024,10 +2042,15 @@ class _PrincipalVariationListState
 
   @override
   Widget build(BuildContext context) {
-    final params = ChessBoardProviderParams(game: widget.game, index: widget.index);
+    final params = ChessBoardProviderParams(
+      game: widget.game,
+      index: widget.index,
+    );
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
     final position =
-        widget.state.isAnalysisMode ? widget.state.analysisState.position : widget.state.position;
+        widget.state.isAnalysisMode
+            ? widget.state.analysisState.position
+            : widget.state.position;
     final baseMoveNumber = position?.fullmoves ?? 1;
     final isWhiteToMove = (position?.turn ?? Side.white) == Side.white;
 
@@ -2046,17 +2069,18 @@ class _PrincipalVariationListState
     return Padding(
       padding: EdgeInsets.fromLTRB(20.sp, 8.sp, 20.sp, 8.sp),
       child: Column(
-          key: ValueKey(
-            lines
-                .map((line) => '${line.sanMoves.join(' ')}|${line.displayEval}')
-                .join('|'),
-          ),
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            SizedBox(
-              height: 78.h,
-              child: showEndOfGame
-                  ? Center(
+        key: ValueKey(
+          lines
+              .map((line) => '${line.sanMoves.join(' ')}|${line.displayEval}')
+              .join('|'),
+        ),
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(
+            height: 78.h,
+            child:
+                showEndOfGame
+                    ? Center(
                       child: Container(
                         width: MediaQuery.of(context).size.width - 40.sp,
                         margin: EdgeInsets.symmetric(horizontal: 2.sp),
@@ -2093,20 +2117,24 @@ class _PrincipalVariationListState
                         ),
                       ),
                     )
-                  : Skeletonizer(
+                    : Skeletonizer(
                       enabled: showSkeleton,
                       child: PageView.builder(
                         controller: _pageController,
-                        physics: showSkeleton ? const NeverScrollableScrollPhysics() : null,
-                        onPageChanged: showSkeleton
-                            ? null
-                            : (pageIndex) {
-                                setState(() {
-                                  _currentPage = pageIndex;
-                                });
-                                // Update variant selection when page changes
-                                notifier.selectVariant(pageIndex);
-                              },
+                        physics:
+                            showSkeleton
+                                ? const NeverScrollableScrollPhysics()
+                                : null,
+                        onPageChanged:
+                            showSkeleton
+                                ? null
+                                : (pageIndex) {
+                                  setState(() {
+                                    _currentPage = pageIndex;
+                                  });
+                                  // Update variant selection when page changes
+                                  notifier.selectVariant(pageIndex);
+                                },
                         itemCount: showSkeleton ? 1 : lines.length,
                         itemBuilder: (context, index) {
                           // Show skeleton placeholder when evaluating
@@ -2130,132 +2158,157 @@ class _PrincipalVariationListState
                             );
                           }
 
-                    final variantIndex = index;
-                    final line = lines[index];
-                    final isSelected = widget.state.selectedVariantIndex == variantIndex;
+                          final variantIndex = index;
+                          final line = lines[index];
+                          final isSelected =
+                              widget.state.selectedVariantIndex == variantIndex;
 
-                    final sanMoves = _formatPv(
-                      line.sanMoves,
-                      baseMoveNumber,
-                      isWhiteToMove,
-                    );
-                    final evalText = _formatEvalLabel(line);
+                          final sanMoves = _formatPv(
+                            line.sanMoves,
+                            baseMoveNumber,
+                            isWhiteToMove,
+                          );
+                          final evalText = _formatEvalLabel(line);
 
-                  // Get variant color matching the arrow color
-                  final variantColor = notifier.getVariantColor(variantIndex, isSelected);
+                          // Get variant color matching the arrow color
+                          final variantColor = notifier.getVariantColor(
+                            variantIndex,
+                            isSelected,
+                          );
 
-                  return GestureDetector(
-                    onTap: isEvaluating
-                        ? null
-                        : () {
-                      HapticFeedback.selectionClick();
-                      if (isSelected) {
-                        notifier.playVariantMoveForward();
-                      } else {
-                        notifier.playPrincipalVariationMove(line);
-                      }
-                    },
-                    child: AnimatedOpacity(
-                      opacity: isEvaluating ? 0.4 : 1.0,
-                      duration: const Duration(milliseconds: 200),
-                      child: Container(
-                        width: MediaQuery.of(context).size.width - 40.sp,
-                        margin: EdgeInsets.symmetric(horizontal: 2.sp),
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: variantColor.withValues(alpha: isSelected ? 0.7 : 0.4),
-                            width: isSelected ? 2.0 : 1.5,
-                          ),
-                          borderRadius: BorderRadius.circular(6.sp),
-                          color:
-                              isSelected
-                                  ? variantColor.withValues(alpha: 0.15)
-                                  : variantColor.withValues(alpha: 0.05),
-                        ),
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 12.sp,
-                          vertical: 10.sp,
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              margin: EdgeInsets.only(right: 10.sp),
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 8.sp,
-                                vertical: 4.sp,
-                              ),
-                              decoration: BoxDecoration(
-                                color: variantColor.withValues(alpha: 0.3),
-                                borderRadius: BorderRadius.circular(4.sp),
-                                border: Border.all(
-                                  color: variantColor.withValues(alpha: 0.6),
-                                  width: 1.0,
-                                ),
-                              ),
-                              alignment: Alignment.center,
-                              child: AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 200),
-                                child: Text(
-                                  evalText,
-                                  key: ValueKey(evalText),
-                                  style: AppTypography.textXsMedium.copyWith(
-                                    color: kWhiteColor,
-                                    fontWeight:
-                                        isSelected
-                                            ? FontWeight.w600
-                                            : FontWeight.w500,
+                          return GestureDetector(
+                            onTap:
+                                isEvaluating
+                                    ? null
+                                    : () {
+                                      HapticFeedback.selectionClick();
+                                      if (isSelected) {
+                                        notifier.playVariantMoveForward();
+                                      } else {
+                                        notifier.playPrincipalVariationMove(
+                                          line,
+                                        );
+                                      }
+                                    },
+                            child: AnimatedOpacity(
+                              opacity: isEvaluating ? 0.4 : 1.0,
+                              duration: const Duration(milliseconds: 200),
+                              child: Container(
+                                width:
+                                    MediaQuery.of(context).size.width - 40.sp,
+                                margin: EdgeInsets.symmetric(horizontal: 2.sp),
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: variantColor.withValues(
+                                      alpha: isSelected ? 0.7 : 0.4,
+                                    ),
+                                    width: isSelected ? 2.0 : 1.5,
                                   ),
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              child: Text(
-                                sanMoves.join(' '),
-                                style: AppTypography.textXsMedium.copyWith(
-                                  color: kWhiteColor.withValues(alpha: 0.9),
-                                  fontWeight:
+                                  borderRadius: BorderRadius.circular(6.sp),
+                                  color:
                                       isSelected
-                                          ? FontWeight.w600
-                                          : FontWeight.normal,
+                                          ? variantColor.withValues(alpha: 0.15)
+                                          : variantColor.withValues(
+                                            alpha: 0.05,
+                                          ),
                                 ),
-                                overflow: TextOverflow.ellipsis,
-                                maxLines: 3,
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 12.sp,
+                                  vertical: 10.sp,
+                                ),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Container(
+                                      margin: EdgeInsets.only(right: 10.sp),
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: 8.sp,
+                                        vertical: 4.sp,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: variantColor.withValues(
+                                          alpha: 0.3,
+                                        ),
+                                        borderRadius: BorderRadius.circular(
+                                          4.sp,
+                                        ),
+                                        border: Border.all(
+                                          color: variantColor.withValues(
+                                            alpha: 0.6,
+                                          ),
+                                          width: 1.0,
+                                        ),
+                                      ),
+                                      alignment: Alignment.center,
+                                      child: AnimatedSwitcher(
+                                        duration: const Duration(
+                                          milliseconds: 200,
+                                        ),
+                                        child: Text(
+                                          evalText,
+                                          key: ValueKey(evalText),
+                                          style: AppTypography.textXsMedium
+                                              .copyWith(
+                                                color: kWhiteColor,
+                                                fontWeight:
+                                                    isSelected
+                                                        ? FontWeight.w600
+                                                        : FontWeight.w500,
+                                              ),
+                                        ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: Text(
+                                        sanMoves.join(' '),
+                                        style: AppTypography.textXsMedium
+                                            .copyWith(
+                                              color: kWhiteColor.withValues(
+                                                alpha: 0.9,
+                                              ),
+                                              fontWeight:
+                                                  isSelected
+                                                      ? FontWeight.w600
+                                                      : FontWeight.normal,
+                                            ),
+                                        overflow: TextOverflow.ellipsis,
+                                        maxLines: 3,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                          ],
-                        ),
+                          );
+                        },
                       ),
                     ),
-                  );
-                },
+          ),
+          if (lines.length > 1) ...[
+            SizedBox(height: 8.h),
+            SmoothPageIndicator(
+              controller: _pageController,
+              count: lines.length,
+              effect: ScrollingDotsEffect(
+                activeDotColor: notifier.getVariantColor(_currentPage, true),
+                dotColor: kWhiteColor.withValues(alpha: 0.3),
+                dotHeight: 6.w,
+                dotWidth: 6.w,
+                activeDotScale: 1.33,
+                spacing: 6.w,
+                maxVisibleDots: 5,
               ),
-            )),
-            if (lines.length > 1) ...[
-              SizedBox(height: 8.h),
-              SmoothPageIndicator(
-                controller: _pageController,
-                count: lines.length,
-                effect: ScrollingDotsEffect(
-                  activeDotColor: notifier.getVariantColor(_currentPage, true),
-                  dotColor: kWhiteColor.withValues(alpha: 0.3),
-                  dotHeight: 6.w,
-                  dotWidth: 6.w,
-                  activeDotScale: 1.33,
-                  spacing: 6.w,
-                  maxVisibleDots: 5,
-                ),
-                onDotClicked: (index) {
-                  _pageController.animateToPage(
-                    index,
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeInOut,
-                  );
-                },
-              ),
-            ],
+              onDotClicked: (index) {
+                _pageController.animateToPage(
+                  index,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                );
+              },
+            ),
           ],
-        ),
+        ],
+      ),
     );
   }
 
@@ -2297,7 +2350,6 @@ class _PrincipalVariationListState
     final formatted = eval.abs().toStringAsFixed(1);
     return eval >= 0 ? '+$formatted' : '-$formatted';
   }
-
 }
 
 class _SkeletonContainer extends StatefulWidget {

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 import 'dart:io' show Platform;
+import 'package:chessever2/providers/error_logger_provider.dart';
 import 'package:chessever2/repository/authentication/model/app_user.dart';
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
 import 'package:crypto/crypto.dart';
@@ -86,8 +87,8 @@ class AuthRepository {
       await sessionManager.saveSession(session, user);
 
       return AppUser.fromSupabaseUser(user);
-    } catch (e) {
-      debugPrint('Google sign in error: $e');
+    } catch (e, st) {
+      await ref.read(errorLoggerProvider).logError(e, st);
       rethrow;
     }
   }
@@ -178,8 +179,8 @@ class AuthRepository {
             'Apple sign in failed. Check capability, iCloud login, and time settings.',
           );
       }
-    } catch (e) {
-      debugPrint('Apple sign in error: $e');
+    } catch (e, st) {
+      await ref.read(errorLoggerProvider).logError(e, st);
       rethrow;
     }
   }
@@ -193,29 +194,8 @@ class AuthRepository {
       }
 
       await _supabase.auth.signOut();
-    } catch (e) {
-      debugPrint('Sign out error: $e');
-      rethrow;
-    }
-  }
-
-  // Delete Account
-  Future<void> deleteAccount() async {
-    try {
-      final user = _supabase.auth.currentUser;
-      if (user == null) {
-        throw Exception('No user logged in');
-      }
-
-      // Sign out from third-party providers
-      if (await _googleSignIn.isSignedIn()) {
-        await _googleSignIn.signOut();
-      }
-
-      // Delete user from Supabase (requires RLS policy or admin rights)
-      await _supabase.auth.admin.deleteUser(user.id);
-    } catch (e) {
-      debugPrint('Delete account error: $e');
+    } catch (e, st) {
+      await ref.read(errorLoggerProvider).logError(e, st);
       rethrow;
     }
   }

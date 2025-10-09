@@ -1,12 +1,10 @@
-import 'dart:developer';
-
+import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/event_card/starred_provider.dart';
-import 'package:chessever2/repository/local_storage/unified_favorites/unified_favorites_provider.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -16,18 +14,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 class EventCard extends ConsumerWidget {
   final GroupEventCardModel tourEventCardModel;
   final VoidCallback? onTap;
-  final bool isFavorite;
-  final VoidCallback? onFavoritePressed;
-  final VoidCallback? onMorePressed;
 
-  const EventCard({
-    required this.tourEventCardModel,
-    this.onTap,
-    this.isFavorite = false,
-    this.onFavoritePressed,
-    this.onMorePressed,
-    super.key,
-  });
+  const EventCard({required this.tourEventCardModel, this.onTap, super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -111,10 +99,7 @@ class EventCard extends ConsumerWidget {
             ),
             Expanded(
               flex: 1,
-              child: _BuildTrailingButton(
-                tourEventCardModel: tourEventCardModel,
-                onMorePressed: onMorePressed,
-              ),
+              child: _StarWidget(tourEventCardModel: tourEventCardModel),
             ),
           ],
         ),
@@ -150,17 +135,11 @@ class EventCard extends ConsumerWidget {
       // Default fallback - show text if unknown format
       return Text(
         tourEventCardModel.timeControl,
-        style: AppTypography.textXsMedium.copyWith(
-          color: kWhiteColor70,
-        ),
+        style: AppTypography.textXsMedium.copyWith(color: kWhiteColor70),
       );
     }
 
-    return Icon(
-      icon,
-      size: 14.sp,
-      color: iconColor,
-    );
+    return Icon(icon, size: 14.sp, color: iconColor);
   }
 }
 
@@ -235,48 +214,6 @@ class _LiveTag extends StatelessWidget {
   }
 }
 
-class _BuildTrailingButton extends ConsumerWidget {
-  const _BuildTrailingButton({
-    required this.tourEventCardModel,
-    this.onMorePressed,
-  });
-
-  final GroupEventCardModel tourEventCardModel;
-  final VoidCallback? onMorePressed;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // final currentLocation =
-    //     ref
-    //         .read(locationServiceProvider)
-    //         .getCountryName(tourEventCardModel.location)
-    //         .toLowerCase();
-
-    // final dropDownSelectedCountry =
-    //     ref.watch(countryDropdownProvider).value?.name.toLowerCase() ?? '';
-
-    // if (currentLocation.isNotEmpty &&
-    //     dropDownSelectedCountry.isNotEmpty &&
-    //     currentLocation.contains(dropDownSelectedCountry)) {
-    //   return _CountrymenStarWidget();
-    // }
-
-    switch (tourEventCardModel.tourEventCategory) {
-      case TourEventCategory.upcoming:
-        return _StarWidget(tourEventCardModel: tourEventCardModel);
-
-      case TourEventCategory.live:
-        return _StarWidget(tourEventCardModel: tourEventCardModel);
-
-      case TourEventCategory.completed:
-        return _StarWidget(tourEventCardModel: tourEventCardModel);
-
-      case TourEventCategory.ongoing:
-        return _StarWidget(tourEventCardModel: tourEventCardModel);
-    }
-  }
-}
-
 class _StarWidget extends ConsumerStatefulWidget {
   const _StarWidget({required this.tourEventCardModel});
 
@@ -287,36 +224,20 @@ class _StarWidget extends ConsumerStatefulWidget {
 }
 
 class _StarWidgetState extends ConsumerState<_StarWidget> {
-  var isFav = false;
-
   @override
   Widget build(BuildContext context) {
     // Check both old system (for backward compatibility) and new system
-    final starredList = ref.watch(starredProvider);
-    final isEventFavoriteAsync = ref.watch(
-      isEventFavoriteProvider(widget.tourEventCardModel.id),
-    );
+    final eventCategory = ref.watch(selectedGroupCategoryProvider);
+    final starredList = ref.watch(starredProvider(eventCategory.name));
 
-    final isStarredOld = starredList.contains(widget.tourEventCardModel.id);
-    final isStarredNew = isEventFavoriteAsync.maybeWhen(
-      data: (isFavorite) => isFavorite,
-      orElse: () => false,
-    );
-
-    final isStarred = isStarredOld || isStarredNew;
-    isFav = isStarred;
+    final isStarred = starredList.contains(widget.tourEventCardModel.id);
 
     return InkWell(
       onTap: () async {
-        setState(() {
-          isFav = !isFav;
-        });
-
         // Toggle in both old and new systems for compatibility
-        ref
-            .read(starredProvider.notifier)
+        await ref
+            .read(starredProvider(eventCategory.name).notifier)
             .toggleStarred(widget.tourEventCardModel.id);
-        await ref.toggleEventFavorite(widget.tourEventCardModel);
       },
       child: Container(
         alignment: Alignment.centerRight,
