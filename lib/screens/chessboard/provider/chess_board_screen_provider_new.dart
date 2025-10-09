@@ -699,6 +699,25 @@ class ChessBoardScreenNotifierNew
         debugPrint('🎯 PLAY VARIANT FORWARD: Variant selection failed');
         return;
       }
+
+      // CRITICAL: Validate variant navigation is safe
+      if (!_isVariantNavigationValid(currentState)) {
+        debugPrint(
+          '🎯 PLAY VARIANT FORWARD: Variant navigation invalid, clearing stale PVs',
+        );
+        debugPrint(
+          '🎯 PLAY VARIANT FORWARD: New PVs will be calculated for current position',
+        );
+        // Clear variant selection AND old PVs, then trigger fresh evaluation
+        final clearedState = _clearVariantSelection(currentState).copyWith(
+          principalVariations: const [],
+          isEvaluating: true,
+        );
+        state = AsyncValue.data(clearedState);
+        _updateEvaluation(); // Force fresh evaluation for current position
+        return;
+      }
+
       if (currentState.variantBaseFen == null) {
         debugPrint('🎯 PLAY VARIANT FORWARD: Missing base FEN, aborting');
         return;
@@ -774,13 +793,23 @@ class ChessBoardScreenNotifierNew
         );
       } catch (e) {
         debugPrint(
-          '🎯 PLAY VARIANT FORWARD: ERROR - Failed to calculate position: $e',
+          '🎯 PLAY VARIANT FORWARD: ERROR - Variant moves don\'t match base position',
         );
+        debugPrint('   Error: $e');
         debugPrint('   Base FEN: ${currentState.variantBaseFen}');
+        debugPrint('   Current FEN: ${currentState.analysisState.position.fen}');
         debugPrint('   Moves to apply: ${newPointer.length}');
         debugPrint('   Variant moves: ${selectedVariant.moves.map((m) => m.uci).join(" ")}');
-        // Clear variant on error
-        state = AsyncValue.data(_clearVariantSelection(currentState));
+        debugPrint(
+          '🎯 PLAY VARIANT FORWARD: Clearing stale variant and triggering fresh evaluation',
+        );
+        // Clear stale variant and PVs, trigger fresh evaluation
+        final clearedState = _clearVariantSelection(currentState).copyWith(
+          principalVariations: const [],
+          isEvaluating: true,
+        );
+        state = AsyncValue.data(clearedState);
+        _updateEvaluation();
         return;
       }
 
@@ -832,6 +861,25 @@ class ChessBoardScreenNotifierNew
       debugPrint('🎯 PLAY VARIANT BACKWARD: Variant selection failed');
       return;
     }
+
+    // CRITICAL: Validate variant navigation is safe
+    if (!_isVariantNavigationValid(currentState)) {
+      debugPrint(
+        '🎯 PLAY VARIANT BACKWARD: Variant navigation invalid, clearing stale PVs',
+      );
+      debugPrint(
+        '🎯 PLAY VARIANT BACKWARD: New PVs will be calculated for current position',
+      );
+      // Clear variant selection AND old PVs, then trigger fresh evaluation
+      final clearedState = _clearVariantSelection(currentState).copyWith(
+        principalVariations: const [],
+        isEvaluating: true,
+      );
+      state = AsyncValue.data(clearedState);
+      _updateEvaluation(); // Force fresh evaluation for current position
+      return;
+    }
+
     if (currentState.variantMovePointer.isEmpty) {
       debugPrint(
         '🎯 PLAY VARIANT BACKWARD: Already at variant start, reverting to main line',
@@ -990,7 +1038,13 @@ class ChessBoardScreenNotifierNew
       _navigatorSubscription = null;
 
       final clearedState = _clearVariantSelection(currentState);
-      state = AsyncValue.data(clearedState.copyWith(isAnalysisMode: false));
+      state = AsyncValue.data(
+        clearedState.copyWith(
+          isAnalysisMode: false,
+          shapes: const ISet.empty(), // Clear all arrows when exiting analysis
+          principalVariations: const [], // Clear PVs
+        ),
+      );
       debugPrint('🎯 TOGGLE ANALYSIS: Analysis mode deactivated');
     }
 
@@ -1168,61 +1222,34 @@ class ChessBoardScreenNotifierNew
     NormalMove move,
   ) {
     try {
-      final (newPosition, san) = currentPosition.makeSan(move);
-      final currentIndex = currentState.analysisState.currentMoveIndex;
+      debugPrint('🎯 MANUAL MOVE FALLBACK: Applying move ${move.uci}');
 
-      final trimmedMoves = List<Move>.from(
-        currentState.analysisState.allMoves.take(currentIndex + 1),
-      )..add(move);
+      // CRITICAL: Navigator must be the single source of truth for analysis moves
+      // If navigator is out of sync, this is a bug that should not happen
+      if (_analysisNavigator == null) {
+        debugPrint('🎯 MANUAL MOVE FALLBACK: ERROR - Navigator is null, cannot apply move');
+        return;
+      }
 
-      final trimmedSans = List<String>.from(
-        currentState.analysisState.moveSans.take(currentIndex + 1),
-      )..add(san);
-
-      final trimmedHistory = List<Position>.from(
-        currentState.analysisState.positionHistory.take(currentIndex + 1),
-      )..add(newPosition);
-
-      // Clear variant selection and PV cache for the new position
-      final clearedState = _clearVariantSelection(currentState);
-      final newFen = newPosition.fen;
-      _pvCache.remove(newFen);
-      _evaluationCache.remove(newFen);
-      _mateCache.remove(newFen);
-
-      final updatedState = clearedState.copyWith(
-        analysisState: clearedState.analysisState.copyWith(
-          currentMoveIndex: currentIndex + 1,
-          lastMove: move,
-          validMoves: makeLegalMoves(newPosition),
-          promotionMove: null,
-          position: newPosition,
-          suggestionLines: const [],
-          allMoves: trimmedMoves,
-          moveSans: trimmedSans,
-          positionHistory: trimmedHistory,
-          movePointer: const [],
-        ),
-        evaluation: null,
-        mate: null,
-        isEvaluating: true,
-        principalVariations: const [], // Clear old variants
-        shapes: const ISet.empty(), // Clear old shapes
-        selectedVariantIndex: null, // Clear variant selection
-        variantMovePointer: const [],
-        variantBaseFen: null,
-        variantBaseMovePointer: null,
-        variantBaseLastMove: null,
-        variantBaseMoveIndex: null,
+      final navigatorState = ref.read(
+        chessGameNavigatorProvider(_analysisGame!),
       );
 
-      state = AsyncValue.data(updatedState);
-      _playSoundForSan(san);
-      _updateEvaluation();
+      if (navigatorState.currentFen != currentPosition.fen) {
+        debugPrint('🎯 MANUAL MOVE FALLBACK: CRITICAL - Navigator out of sync!');
+        debugPrint('   Navigator FEN: ${navigatorState.currentFen}');
+        debugPrint('   Board FEN: ${currentPosition.fen}');
+        debugPrint('   This should not happen - navigator should always match board');
+        return;
+      }
 
-      debugPrint('🎯 MANUAL MOVE: Evaluation triggered for new position');
+      // Navigator is in sync, apply move through it
+      debugPrint('🎯 MANUAL MOVE FALLBACK: Navigator in sync, applying move');
+      _analysisNavigator?.makeOrGoToMove(move.uci);
+      return;
     } catch (e) {
-      debugPrint('🎯 ANALYSIS MOVE: ERROR - Failed manual move apply: $e');
+      debugPrint('🎯 MANUAL MOVE FALLBACK: ERROR - $e');
+      return;
     }
   }
 
@@ -1244,9 +1271,34 @@ class ChessBoardScreenNotifierNew
         debugPrint('🎯 PROMOTION SELECTION: Pending move UCI: ${pending.uci}');
         debugPrint('🎯 PROMOTION SELECTION: Pending from: ${pending.from}, to: ${pending.to}');
         debugPrint('🎯 PROMOTION SELECTION: Selected role: $role');
+
+        final currentState = state.value!;
+        final boardPosition = currentState.analysisState.position;
         final move = pending.withPromotion(role);
+
         debugPrint('🎯 PROMOTION SELECTION: Final move UCI with promotion: ${move.uci}');
-        _analysisNavigator?.makeOrGoToMove(move.uci);
+        debugPrint('🎯 PROMOTION SELECTION: Board FEN: ${boardPosition.fen}');
+
+        // Verify navigator is in sync before applying promotion
+        if (_analysisNavigator != null) {
+          final navigatorState = ref.read(
+            chessGameNavigatorProvider(_analysisGame!),
+          );
+          debugPrint('🎯 PROMOTION SELECTION: Navigator FEN: ${navigatorState.currentFen}');
+
+          if (navigatorState.currentFen == boardPosition.fen) {
+            debugPrint('🎯 PROMOTION SELECTION: Navigator in sync, applying via navigator');
+            _analysisNavigator?.makeOrGoToMove(move.uci);
+          } else {
+            debugPrint('🎯 PROMOTION SELECTION: Navigator OUT OF SYNC, using manual fallback');
+            // Use manual application as fallback
+            _applyManualAnalysisMove(currentState, boardPosition, move);
+          }
+        } else {
+          debugPrint('🎯 PROMOTION SELECTION: No navigator, using manual fallback');
+          _applyManualAnalysisMove(currentState, boardPosition, move);
+        }
+
         state = AsyncValue.data(
           state.value!.copyWith(
             analysisState: state.value!.analysisState.copyWith(
@@ -1627,6 +1679,66 @@ class ChessBoardScreenNotifierNew
     return true;
   }
 
+  /// Validates if variant navigation is safe from the current position
+  /// Returns false if the variant base FEN is stale or unreachable
+  bool _isVariantNavigationValid(ChessBoardStateNew state) {
+    if (state.variantBaseFen == null) {
+      debugPrint('🎯 VARIANT VALIDATION: No variant base FEN');
+      return false;
+    }
+    if (state.selectedVariantIndex == null) {
+      debugPrint('🎯 VARIANT VALIDATION: No variant selected');
+      return false;
+    }
+    if (state.selectedVariantIndex! >= state.principalVariations.length) {
+      debugPrint('🎯 VARIANT VALIDATION: Invalid variant index');
+      return false;
+    }
+
+    final currentFen = state.analysisState.position.fen;
+    final baseFen = state.variantBaseFen!;
+
+    // Compare first 3 FEN components (position, turn, castling)
+    final currentParts = currentFen.split(' ').take(3).join(' ');
+    final baseParts = baseFen.split(' ').take(3).join(' ');
+
+    // If we're at the base position, it's valid
+    if (currentParts == baseParts) {
+      debugPrint('🎯 VARIANT VALIDATION: At base position - VALID');
+      return true;
+    }
+
+    // If we've applied variant moves from base, verify the position is reachable
+    if (state.variantMovePointer.isNotEmpty) {
+      try {
+        final selectedVariant =
+            state.principalVariations[state.selectedVariantIndex!];
+        final testPosition = _variantPositionFromBase(
+          state,
+          selectedVariant,
+          state.variantMovePointer.length,
+        );
+        final matches = testPosition.fen.split(' ').take(3).join(' ') ==
+            currentParts;
+        debugPrint(
+          '🎯 VARIANT VALIDATION: Position reachable from base - ${matches ? "VALID" : "INVALID"}',
+        );
+        return matches;
+      } catch (e) {
+        debugPrint('🎯 VARIANT VALIDATION: ERROR calculating position: $e');
+        return false;
+      }
+    }
+
+    // CRITICAL FIX: If pointer is empty, we MUST be at the base position
+    // If we're not at base and pointer is empty, the variant base is stale
+    // This means PVs were recalculated for a new position
+    debugPrint(
+      '🎯 VARIANT VALIDATION: Position mismatch with empty pointer - base FEN is stale, INVALID',
+    );
+    return false;
+  }
+
   ChessBoardStateNew _clearVariantSelection(ChessBoardStateNew stateToUpdate) {
     _resumeVariantAutoPlay = false;
     if (stateToUpdate.selectedVariantIndex == null &&
@@ -1771,18 +1883,49 @@ class ChessBoardScreenNotifierNew
       } else {
         // Not in variant exploration - safe to update base
         debugPrint(
-          '🎯 PV RESULTS: Not in variant exploration, setting new base FEN',
+          '🎯 PV RESULTS: Not in variant exploration, updating base FEN',
         );
-        final arrowShapes = _getAllVariantArrowShapes(pvLines, previousSelection);
-        nextState = nextState.copyWith(
-          selectedVariantIndex: previousSelection,
-          variantBaseFen: baseFen,
-          variantBaseMovePointer: baseMovePointer,
-          variantBaseLastMove: currentState.analysisState.lastMove,
-          variantBaseMoveIndex: currentState.analysisState.currentMoveIndex,
-          variantMovePointer: const [],
-          shapes: arrowShapes,
-        );
+
+        // CRITICAL: Validate the selected variant is still valid for the new base
+        // The variant index might be the same, but the actual variant is different now
+        final newSelectedVariant = pvLines[previousSelection];
+        bool variantIsValid = true;
+
+        if (newSelectedVariant.moves.isNotEmpty) {
+          try {
+            // Try to apply the first move from the new base position
+            final testPosition = Position.setupPosition(
+              Rule.chess,
+              Setup.parseFen(baseFen),
+            );
+            testPosition.play(newSelectedVariant.moves.first);
+          } catch (e) {
+            debugPrint(
+              '🎯 PV RESULTS: Selected variant no longer valid for new base position',
+            );
+            debugPrint('   Old base: $previousBaseFen');
+            debugPrint('   New base: $baseFen');
+            debugPrint('   First move: ${newSelectedVariant.moves.first.uci}');
+            variantIsValid = false;
+          }
+        }
+
+        if (variantIsValid) {
+          final arrowShapes = _getAllVariantArrowShapes(pvLines, previousSelection);
+          nextState = nextState.copyWith(
+            selectedVariantIndex: previousSelection,
+            variantBaseFen: baseFen,
+            variantBaseMovePointer: baseMovePointer,
+            variantBaseLastMove: currentState.analysisState.lastMove,
+            variantBaseMoveIndex: currentState.analysisState.currentMoveIndex,
+            variantMovePointer: const [],
+            shapes: arrowShapes,
+          );
+        } else {
+          // Variant is invalid, clear selection
+          debugPrint('🎯 PV RESULTS: Clearing invalid variant selection');
+          nextState = _clearVariantSelection(nextState);
+        }
       }
     } else {
       nextState = _clearVariantSelection(nextState);
@@ -2054,6 +2197,15 @@ class ChessBoardScreenNotifierNew
       );
       state = AsyncValue.data(currentSnapshot);
 
+      // CRITICAL: Apply PV results to handle variant extension and auto-resume
+      _applyPrincipalVariationResults(
+        currentState: currentSnapshot,
+        currentPosition: position,
+        baseFen: fen,
+        baseMovePointer: basePointer,
+        pvLines: pvLines,
+      );
+
       // Note: Removed supplemental eval since Stockfish is now primary with MultiPV=3
     } catch (e) {
       if (!_cancelEvaluation) {
@@ -2101,6 +2253,16 @@ class ChessBoardScreenNotifierNew
             whiteJustMoved ? (moveNumber - 1) * 2 : (moveNumber - 1) * 2 + 1;
       }
 
+      // CRITICAL: Sync allMoves from navigator to ensure move history is displayed
+      final movesFromNavigator = navigatorState.currentLine
+              ?.map((chessMove) {
+                final parsed = Move.parse(chessMove.uci);
+                return parsed;
+              })
+              .whereType<Move>()
+              .toList() ??
+          const <Move>[];
+
       final nextState = current.copyWith(
         analysisState: current.analysisState.copyWith(
           game: navigatorState.game,
@@ -2110,6 +2272,7 @@ class ChessBoardScreenNotifierNew
           moveSans:
               navigatorState.currentLine?.map((move) => move.san).toList() ??
               const [],
+          allMoves: movesFromNavigator, // Sync allMoves from navigator
           movePointer: navigatorState.movePointer,
           currentMoveIndex: currentMoveIndex,
         ),
@@ -2223,13 +2386,14 @@ class ChessBoardScreenNotifierNew
   ];
 
   /// Get color for a variant index (used for both arrows and card borders)
+  /// Always returns the static variant color (Green/Blue/Orange)
+  /// Selection is indicated by higher opacity, not different color
   Color getVariantColor(int variantIndex, bool isSelected) {
-    if (isSelected) {
-      return kPrimaryColor.withValues(alpha: 0.9);
-    }
-
     if (variantIndex >= 0 && variantIndex < _variantColors.length) {
-      return _variantColors[variantIndex];
+      // Use static variant color, adjust opacity for selection
+      return _variantColors[variantIndex].withValues(
+        alpha: isSelected ? 0.95 : 0.7,
+      );
     }
     return const Color.fromARGB(100, 152, 179, 154);
   }

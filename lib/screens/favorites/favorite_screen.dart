@@ -1,6 +1,5 @@
 import 'package:chessever2/repository/local_storage/unified_favorites/unified_favorites_provider.dart';
-import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
-import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
+import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -137,10 +136,12 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen>
   }
 
   Widget _buildPlayersTab() {
-    final filteredPlayersAsync = ref.watch(filteredFavoritePlayersProvider);
+    // Watch tournament favorites instead of unified favorites
+    // since players favorited from scoreboard don't have fideId
+    final filteredPlayersAsync = ref.watch(filteredFavoriteTournamentPlayersProvider);
 
     return filteredPlayersAsync.when(
-      data: (players) => _buildPlayersList(players),
+      data: (players) => _buildTournamentPlayersList(players),
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, stack) => const Center(child: Text('Error loading favorite players')),
     );
@@ -171,7 +172,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen>
     );
   }
 
-  Widget _buildPlayersList(List<Map<String, dynamic>> players) {
+  Widget _buildTournamentPlayersList(List<PlayerStandingModel> players) {
     if (players.isEmpty) {
       return _buildEmptyState(
         'No favorite players yet',
@@ -186,10 +187,18 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen>
         separatorBuilder: (context, index) => SizedBox(height: 12.h),
         itemBuilder: (context, index) {
           final player = players[index];
+          // Convert PlayerStandingModel to Map format for PlayerFavoriteCard
+          final playerData = {
+            'name': player.name,
+            'title': player.title,
+            'countryCode': player.countryCode,
+            'rating': player.score,
+            'fideId': player.fideId, // Now includes fideId from PlayerStandingModel
+          };
           return PlayerFavoriteCard(
-            playerData: player,
+            playerData: playerData,
             rank: index + 1,
-            onRemoveFavorite: () => _removeFavoritePlayer(player['fideId'] as String),
+            onRemoveFavorite: () => _removeTournamentFavoritePlayer(player.name),
           );
         },
       ),
@@ -241,39 +250,8 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen>
     await ref.removeFavoriteEvent(eventId);
   }
 
-  Future<void> _removeFavoritePlayer(String fideId) async {
-    // First get the player data to find their name
-    final playersAsync = ref.read(favoritePlayersProvider);
-    final players = playersAsync.maybeWhen(
-      data: (data) => data,
-      orElse: () => <Map<String, dynamic>>[],
-    );
-
-    final player = players.firstWhere(
-      (p) => p['fideId'] == fideId,
-      orElse: () => <String, dynamic>{},
-    );
-
-    // Remove from unified favorites
-    await ref.removeFavoritePlayer(fideId);
-
-    // Also remove from tournament favorites if player name exists
-    if (player.isNotEmpty && player['name'] != null) {
-      final tournamentFavService = ref.read(favoriteStandingsPlayerService);
-      final tournamentFavorites = await tournamentFavService.getFavoritePlayers();
-
-      // Find and remove from tournament favorites by name
-      final tournamentFavIndex = tournamentFavorites.indexWhere(
-        (p) => p.name == player['name'],
-      );
-
-      if (tournamentFavIndex != -1) {
-        tournamentFavorites.removeAt(tournamentFavIndex);
-        await tournamentFavService.saveFavoritePlayers(tournamentFavorites);
-        // Invalidate tournament favorites provider
-        ref.invalidate(tournamentFavoritePlayersProvider);
-      }
-    }
+  Future<void> _removeTournamentFavoritePlayer(String playerName) async {
+    await ref.removeFavoriteTournamentPlayer(playerName);
   }
 
 }

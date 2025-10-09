@@ -1048,6 +1048,106 @@ class _BottomNavBar extends ConsumerWidget {
     required this.game,
   });
 
+  void _showExitAnalysisConfirmation(
+    BuildContext context,
+    VoidCallback onConfirm,
+  ) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return Dialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.info_outline,
+                  color: kPrimaryColor,
+                  size: 48,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Exit Analysis Mode?',
+                  style: TextStyle(
+                    color: kWhiteColor,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'This will reset the position to the actual game and clear variant exploration.',
+                  style: TextStyle(
+                    color: Color(0xFFB0B0B0),
+                    fontSize: 14,
+                    height: 1.5,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        style: TextButton.styleFrom(
+                          backgroundColor: const Color(0xFF2A2A2A),
+                          foregroundColor: kWhiteColor,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: const Text(
+                          'Dismiss',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () {
+                          Navigator.of(dialogContext).pop();
+                          onConfirm();
+                        },
+                        style: TextButton.styleFrom(
+                          backgroundColor: kPrimaryColor,
+                          foregroundColor: kWhiteColor,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: const Text(
+                          'Confirm',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final params = ChessBoardProviderParams(game: game, index: index);
@@ -1056,8 +1156,30 @@ class _BottomNavBar extends ConsumerWidget {
     return ChessBoardBottomNavBar(
       gameIndex: index,
       onFlip: () => notifier.flipBoard(),
-      onRightMove: state.canMoveForward ? () => notifier.moveForward() : null,
-      onLeftMove: state.canMoveBackward ? () => notifier.moveBackward() : null,
+      onRightMove: state.canMoveForward
+          ? () {
+              if (state.isAnalysisMode) {
+                _showExitAnalysisConfirmation(
+                  context,
+                  () => notifier.moveForward(),
+                );
+              } else {
+                notifier.moveForward();
+              }
+            }
+          : null,
+      onLeftMove: state.canMoveBackward
+          ? () {
+              if (state.isAnalysisMode) {
+                _showExitAnalysisConfirmation(
+                  context,
+                  () => notifier.moveBackward(),
+                );
+              } else {
+                notifier.moveBackward();
+              }
+            }
+          : null,
       onLongPressBackwardStart: () => notifier.startLongPressBackward(),
       onLongPressBackwardEnd: () => notifier.stopLongPress(),
       onLongPressForwardStart: () => notifier.startLongPressForward(),
@@ -1863,11 +1985,19 @@ class _PrincipalVariationListState
     final isEvaluating = widget.state.isEvaluating;
     final lines = widget.state.principalVariations.take(3).toList();
 
+    // Check if position is terminal (game over)
+    final isGameOver = position?.isGameOver ?? false;
+
     // Show skeleton loading when:
     // 1. Currently evaluating and no lines yet, OR
     // 2. Just entered analysis mode and no lines calculated yet
-    final showSkeleton = (isEvaluating && lines.isEmpty) ||
-                         (widget.state.isAnalysisMode && lines.isEmpty);
+    // BUT NOT when game is over (checkmate/stalemate)
+    final showSkeleton = !isGameOver &&
+        ((isEvaluating && lines.isEmpty) ||
+            (widget.state.isAnalysisMode && lines.isEmpty));
+
+    // Show end of game message when position is terminal
+    final showEndOfGame = isGameOver && widget.state.isAnalysisMode;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(20.sp, 20.sp, 20.sp, 8.sp),
@@ -1934,40 +2064,80 @@ class _PrincipalVariationListState
             SizedBox(height: 8.h),
             SizedBox(
               height: 78.h,
-              child: Skeletonizer(
-                enabled: showSkeleton,
-                child: PageView.builder(
-                  controller: _pageController,
-                  physics: showSkeleton ? const NeverScrollableScrollPhysics() : null,
-                  onPageChanged: showSkeleton ? null : (pageIndex) {
-                    setState(() {
-                      _currentPage = pageIndex;
-                    });
-                    // Update variant selection when page changes
-                    notifier.selectVariant(pageIndex);
-                  },
-                  itemCount: showSkeleton ? 1 : lines.length,
-                  itemBuilder: (context, index) {
-                    // Show skeleton placeholder when evaluating
-                    if (showSkeleton) {
-                      return Container(
+              child: showEndOfGame
+                  ? Center(
+                      child: Container(
                         width: MediaQuery.of(context).size.width - 40.sp,
                         margin: EdgeInsets.symmetric(horizontal: 2.sp),
                         decoration: BoxDecoration(
                           border: Border.all(
-                            color: kWhiteColor.withValues(alpha: 0.2),
+                            color: kPrimaryColor.withValues(alpha: 0.3),
                             width: 1.5,
                           ),
                           borderRadius: BorderRadius.circular(6.sp),
-                          color: kWhiteColor.withValues(alpha: 0.05),
+                          color: kPrimaryColor.withValues(alpha: 0.1),
                         ),
                         padding: EdgeInsets.symmetric(
                           horizontal: 12.sp,
                           vertical: 10.sp,
                         ),
-                        child: const Bone.text(words: 10),
-                      );
-                    }
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.flag_outlined,
+                              color: kPrimaryColor,
+                              size: 20.sp,
+                            ),
+                            SizedBox(width: 8.w),
+                            Text(
+                              'Game Over',
+                              style: TextStyle(
+                                color: kWhiteColor,
+                                fontSize: 14.sp,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : Skeletonizer(
+                      enabled: showSkeleton,
+                      child: PageView.builder(
+                        controller: _pageController,
+                        physics: showSkeleton ? const NeverScrollableScrollPhysics() : null,
+                        onPageChanged: showSkeleton
+                            ? null
+                            : (pageIndex) {
+                                setState(() {
+                                  _currentPage = pageIndex;
+                                });
+                                // Update variant selection when page changes
+                                notifier.selectVariant(pageIndex);
+                              },
+                        itemCount: showSkeleton ? 1 : lines.length,
+                        itemBuilder: (context, index) {
+                          // Show skeleton placeholder when evaluating
+                          if (showSkeleton) {
+                            return Container(
+                              width: MediaQuery.of(context).size.width - 40.sp,
+                              margin: EdgeInsets.symmetric(horizontal: 2.sp),
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: kWhiteColor.withValues(alpha: 0.2),
+                                  width: 1.5,
+                                ),
+                                borderRadius: BorderRadius.circular(6.sp),
+                                color: kWhiteColor.withValues(alpha: 0.05),
+                              ),
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 12.sp,
+                                vertical: 10.sp,
+                              ),
+                              child: const Bone.text(words: 10),
+                            );
+                          }
 
                     final variantIndex = index;
                     final line = lines[index];
