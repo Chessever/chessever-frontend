@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_list_view.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -8,12 +9,12 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class GamesTourContentBody extends ConsumerWidget {
   final GamesScreenModel gamesScreenModel;
-  final bool isChessBoardVisible;
+  final GamesListViewMode gamesListViewMode;
 
   const GamesTourContentBody({
     super.key,
     required this.gamesScreenModel,
-    required this.isChessBoardVisible,
+    required this.gamesListViewMode,
   });
 
   @override
@@ -51,7 +52,7 @@ class GamesTourContentBody extends ConsumerWidget {
     // Create a properly ordered flat list that matches the ListView display order
     final orderedGamesForChessBoard = <GamesTourModel>[];
 
-    for (final round in visibleRounds.reversed) {
+    for (final round in visibleRounds) {
       final roundGames = gamesByRound[round.id] ?? [];
       orderedGamesForChessBoard.addAll(roundGames);
     }
@@ -67,11 +68,11 @@ class GamesTourContentBody extends ConsumerWidget {
         ref.read(gamesTourScrollProvider.notifier).itemPositionsListener;
 
     return GamesListView(
-      key: ValueKey('games_list_${isChessBoardVisible ? 'chess' : 'card'}'),
+      key: ValueKey('games_list_${gamesListViewMode.name}'),
       rounds: visibleRounds,
       gamesByRound: gamesByRound,
       gamesData: orderedGamesData,
-      isChessBoardVisible: isChessBoardVisible,
+      gamesListViewMode: gamesListViewMode,
       itemScrollController: itemScrollController,
       itemPositionsListener: itemPositionsListener,
       onReturnFromChessboard: (returnedIndex) {

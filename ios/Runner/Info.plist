@@ -16,6 +16,8 @@
 		<array>
 			<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 		</array>
+		<key>ITSAppUsesNonExemptEncryption</key>
+		<false />
 		<key>CFBundleInfoDictionaryVersion</key>
 		<string>6.0</string>
 		<key>CFBundleName</key>

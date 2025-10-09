@@ -5,8 +5,6 @@ final starredRepository = AutoDisposeProvider<_FavoriteRepository>((ref) {
   return _FavoriteRepository(ref);
 });
 
-enum StarRepoKey { upcomingEvent, liveEvent }
-
 class _FavoriteRepository {
   _FavoriteRepository(this.ref);
 
@@ -21,7 +19,7 @@ class _FavoriteRepository {
       } else {
         currentSaved.add(value);
       }
-      prefs.setStringList(key, currentSaved);
+      await prefs.setStringList(key, currentSaved);
     } catch (error, _) {
       rethrow;
     }

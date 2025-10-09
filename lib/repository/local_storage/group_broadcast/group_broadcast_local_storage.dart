@@ -30,9 +30,20 @@ class GroupBroadcastLocalStorage {
     }
   }
 
+  String get localStorageTimeName {
+    switch (category) {
+      case GroupEventCategory.upcoming:
+        return '${_LocalGroupBroadcastStorage.upcoming.name}_time';
+      case GroupEventCategory.current:
+        return '${_LocalGroupBroadcastStorage.current.name}_time';
+      case GroupEventCategory.past:
+        return '${_LocalGroupBroadcastStorage.past.name}_time';
+    }
+  }
+
   Future<void> fetchAndSaveGroupBroadcasts() async {
     try {
-      final broadcasts;
+      List<GroupBroadcast> broadcasts = [];
       switch (category) {
         case GroupEventCategory.upcoming:
           broadcasts =
@@ -53,33 +64,39 @@ class GroupBroadcastLocalStorage {
           break;
       }
 
-      broadcasts.sort((GroupBroadcast a, GroupBroadcast b) {
-        // If both have null maxAvgElo, maintain original order
-        if (a.maxAvgElo == null && b.maxAvgElo == null) return 0;
-
-        // If a is null, put it after b
-        if (a.maxAvgElo == null) return 1;
-
-        // If b is null, put it after a
-        if (b.maxAvgElo == null) return -1;
-
-        // Both are non-null, sort in descending order
-        return b.maxAvgElo!.compareTo(a.maxAvgElo!);
-      });
-
-      final encoded = _encodeGroupBroadcastsList(broadcasts);
-
       await ref
           .read(sharedPreferencesRepository)
-          .setStringList(localStorageName, encoded);
+          .setStringList(
+            localStorageName,
+            _encodeGroupBroadcastsList(broadcasts),
+          );
+      await ref
+          .read(sharedPreferencesRepository)
+          .setInt(localStorageTimeName, DateTime.now().millisecondsSinceEpoch);
     } catch (_) {
       rethrow;
     }
   }
 
   Future<List<GroupBroadcast>> fetchGroupBroadcasts() async {
-    await fetchAndSaveGroupBroadcasts();
-    return getGroupBroadcasts();
+    final lastFetched = await ref
+        .read(sharedPreferencesRepository)
+        .getInt(localStorageTimeName);
+    final totalValues = await getGroupBroadcasts();
+    if (lastFetched != null) {
+      final currentTime = DateTime.now().millisecondsSinceEpoch;
+      final difference = currentTime - lastFetched;
+      // If data is older than 25 minutes, refresh it
+      if (difference > 25 * 60 * 1000 || totalValues.isEmpty) {
+        await fetchAndSaveGroupBroadcasts();
+        return getGroupBroadcasts();
+      } else {
+        return getGroupBroadcasts();
+      }
+    } else {
+      await fetchAndSaveGroupBroadcasts();
+      return getGroupBroadcasts();
+    }
   }
 
   Future<List<GroupBroadcast>> getGroupBroadcasts() async {
@@ -87,12 +104,9 @@ class GroupBroadcastLocalStorage {
       final jsonList = await ref
           .read(sharedPreferencesRepository)
           .getStringList(localStorageName);
-
       if (jsonList.isEmpty) {
-        await fetchAndSaveGroupBroadcasts();
-        return getGroupBroadcasts();
+        return <GroupBroadcast>[];
       }
-
       return _decodeGroupBroadcastsList(jsonList);
     } catch (_) {
       return <GroupBroadcast>[];
@@ -109,11 +123,7 @@ class GroupBroadcastLocalStorage {
       if (jsonList.isNotEmpty) {
         return _decodeGroupBroadcastsList(jsonList);
       } else {
-        await fetchAndSaveGroupBroadcasts();
-        final fallback = await ref
-            .read(sharedPreferencesRepository)
-            .getStringList(localStorageName);
-        return _decodeGroupBroadcastsList(fallback);
+        return <GroupBroadcast>[];
       }
     } catch (_) {
       return <GroupBroadcast>[];
@@ -150,35 +160,6 @@ class GroupBroadcastLocalStorage {
       }).toList();
     } catch (e) {
       return <GroupBroadcast>[];
-    }
-  }
-
-  /// Paginated loader for PAST tab (25 at a time)
-  Future<List<GroupBroadcast>> fetchPastGroupBroadcastsPaginated({
-    required int limit,
-    required int offset,
-  }) async {
-    try {
-      final broadcasts = await ref
-          .read(groupBroadcastRepositoryProvider)
-          .getPastGroupBroadcasts(limit: limit, offset: offset);
-
-      // keep the same maxAvgElo sort & cache overwrite as the full fetch
-      broadcasts.sort((a, b) {
-        if (a.maxAvgElo == null && b.maxAvgElo == null) return 0;
-        if (a.maxAvgElo == null) return 1;
-        if (b.maxAvgElo == null) return -1;
-        return b.maxAvgElo!.compareTo(a.maxAvgElo!);
-      });
-
-      final encoded = _encodeGroupBroadcastsList(broadcasts);
-      await ref
-          .read(sharedPreferencesRepository)
-          .setStringList(localStorageName, encoded);
-
-      return broadcasts;
-    } catch (_) {
-      rethrow;
     }
   }
 }
