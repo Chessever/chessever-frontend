@@ -2,15 +2,15 @@ import 'package:chessever2/screens/favorites/player_games/provider/player_games_
 import 'package:chessever2/screens/favorites/player_games/view_model/player_games_state.dart';
 import 'package:chessever2/screens/favorites/player_games/models/player_identifier.dart';
 import 'package:chessever2/screens/favorites/player_games/widgets/tournament_group_header.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../../../theme/app_theme.dart';
-import '../../../utils/app_typography.dart';
+import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/app_typography.dart';
 
 class PlayerGamesScreen extends ConsumerStatefulWidget {
   final String? fideId;
@@ -40,9 +40,10 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
     _scrollController.addListener(_onScroll);
 
     // Create player identifier
-    _playerIdentifier = widget.fideId != null && widget.fideId!.isNotEmpty
-        ? PlayerIdentifier.fromFideId(widget.fideId!, widget.playerName)
-        : PlayerIdentifier.fromName(widget.playerName);
+    _playerIdentifier =
+        widget.fideId != null && widget.fideId!.isNotEmpty
+            ? PlayerIdentifier.fromFideId(widget.fideId!, widget.playerName)
+            : PlayerIdentifier.fromName(widget.playerName);
   }
 
   @override
@@ -131,7 +132,10 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
                   children: [
                     if (widget.playerTitle?.isNotEmpty == true) ...[
                       Container(
-                        padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 8.w,
+                          vertical: 2.h,
+                        ),
                         margin: EdgeInsets.only(right: 8.w),
                         decoration: BoxDecoration(
                           color: kGreenColor,
@@ -231,7 +235,10 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
     );
   }
 
-  int _calculateItemCount(List<TournamentGamesGroup> tournamentGroups, bool isLoading) {
+  int _calculateItemCount(
+    List<TournamentGamesGroup> tournamentGroups,
+    bool isLoading,
+  ) {
     int count = 0;
     for (final group in tournamentGroups) {
       count++; // Header
@@ -241,7 +248,11 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
     return count;
   }
 
-  Widget _buildListItem(int index, List<TournamentGamesGroup> tournamentGroups, bool isLoadingMore) {
+  Widget _buildListItem(
+    int index,
+    List<TournamentGamesGroup> tournamentGroups,
+    bool isLoadingMore,
+  ) {
     int currentIndex = 0;
 
     // Iterate through tournament groups
@@ -283,11 +294,7 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
     if (isLoadingMore) {
       return Padding(
         padding: EdgeInsets.symmetric(vertical: 20.sp),
-        child: Center(
-          child: CircularProgressIndicator(
-            color: kPrimaryColor,
-          ),
-        ),
+        child: Center(child: CircularProgressIndicator(color: kPrimaryColor)),
       );
     }
 
@@ -332,32 +339,33 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
       child: ListView.builder(
         padding: EdgeInsets.symmetric(horizontal: 20.sp),
         itemCount: 3,
-        itemBuilder: (context, index) => Column(
-          children: [
-            Container(
-              height: 70.h,
-              decoration: BoxDecoration(
-                color: kBlack2Color,
-                borderRadius: BorderRadius.circular(8.br),
-              ),
-            ),
-            SizedBox(height: 12.h),
-            ...List.generate(
-              2,
-              (i) => Padding(
-                padding: EdgeInsets.only(bottom: 12.sp),
-                child: Container(
-                  height: 84.h,
+        itemBuilder:
+            (context, index) => Column(
+              children: [
+                Container(
+                  height: 70.h,
                   decoration: BoxDecoration(
                     color: kBlack2Color,
-                    borderRadius: BorderRadius.circular(12.br),
+                    borderRadius: BorderRadius.circular(8.br),
                   ),
                 ),
-              ),
+                SizedBox(height: 12.h),
+                ...List.generate(
+                  2,
+                  (i) => Padding(
+                    padding: EdgeInsets.only(bottom: 12.sp),
+                    child: Container(
+                      height: 84.h,
+                      decoration: BoxDecoration(
+                        color: kBlack2Color,
+                        borderRadius: BorderRadius.circular(12.br),
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(height: 20.h),
+              ],
             ),
-            SizedBox(height: 20.h),
-          ],
-        ),
       ),
     );
   }
