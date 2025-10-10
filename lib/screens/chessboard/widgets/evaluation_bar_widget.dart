@@ -60,31 +60,27 @@ class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
     double evalValueForDisplay;
     bool shouldAnimate = true;
 
-    if (widget.evaluation != null && !widget.isEvaluating) {
-      // Calculation complete - check if we should animate to new position
+    if (widget.evaluation != null) {
       final newEval = widget.evaluation!;
       final oldEval = _lastValidEvaluation;
 
-      // Only animate if the evaluation actually changed significantly
-      if (oldEval != null && (newEval - oldEval).abs() < 0.1) {
-        // Evaluation barely changed, don't animate
+      if (!widget.isEvaluating &&
+          oldEval != null &&
+          (newEval - oldEval).abs() < 0.1) {
         evalValueForDisplay = oldEval;
         shouldAnimate = false;
       } else {
-        // Evaluation changed significantly, animate to new position
         _lastValidEvaluation = newEval;
         _globalEvaluationCache[_cacheKey] = newEval;
         evalValueForDisplay = newEval;
-        shouldAnimate = true;
+        shouldAnimate = !widget.isEvaluating;
       }
-    } else if (widget.isEvaluating && _lastValidEvaluation != null) {
-      // Currently calculating - FREEZE bar at last valid position
+    } else if (_lastValidEvaluation != null) {
       evalValueForDisplay = _lastValidEvaluation!;
-      shouldAnimate = false; // NO ANIMATION during calculation
+      shouldAnimate = false;
     } else {
-      // First time or no cached value - use what we have
-      evalValueForDisplay = widget.evaluation ?? _lastValidEvaluation ?? 0.0;
-      shouldAnimate = widget.evaluation != null;
+      evalValueForDisplay = 0.0;
+      shouldAnimate = false;
     }
 
     final whiteRatio = getWhiteRatio(evalValueForDisplay);
@@ -147,11 +143,15 @@ class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
                 borderRadius: BorderRadius.circular(2.br),
               ),
               child: Text(
-                widget.evaluation == null || widget.isEvaluating
-                    ? '...' // Show loading indicator when null or evaluating
-                    : widget.evaluation!.abs() >= 10.0
-                    ? '#${widget.mate.abs()}' // Show absolute mate value
-                    : widget.evaluation!.abs().toStringAsFixed(1),
+                (widget.evaluation == null && _lastValidEvaluation == null)
+                    ? '...'
+                    : ((widget.evaluation ?? _lastValidEvaluation)!.abs() >=
+                            10.0 &&
+                        widget.mate != 0)
+                    ? '#${widget.mate.abs()}'
+                    : (widget.evaluation ?? _lastValidEvaluation)!
+                        .abs()
+                        .toStringAsFixed(1),
                 maxLines: 1,
                 textAlign: TextAlign.center,
                 style: AppTypography.textSmRegular.copyWith(

@@ -55,7 +55,16 @@ class PersistCloudEval {
           positionId: positionId,
           knodes: cloud.knodes,
           depth: cloud.depth,
-          pvs: cloud.pvs.map((pv) => {'moves': pv.moves, 'cp': pv.cp, 'mate':pv.mate}).toList(),
+          pvs: cloud.pvs
+              .map(
+                (pv) => {
+                  'moves': pv.moves,
+                  'cp': pv.cp,
+                  'mate': pv.mate,
+                  'whitePerspective': pv.whitePerspective,
+                },
+              )
+              .toList(),
         ),
       );
 
@@ -71,6 +80,14 @@ class PersistCloudEval {
       }
 
       // 3️⃣ pvs rows - only insert if eval was created successfully
+      if (eval.id != null) {
+        try {
+          await supabase.from('pvs').delete().eq('eval_id', eval.id!);
+        } catch (e) {
+          print('Warning: Failed to clear existing PV rows for eval ${eval.id}: $e');
+        }
+      }
+
       final pvsRows =
           cloud.pvs.asMap().entries.map((e) {
             final idx = e.key;

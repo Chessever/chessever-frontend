@@ -1,9 +1,9 @@
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../../utils/app_typography.dart';
-import '../../theme/app_theme.dart';
-import '../../widgets/rounded_search_bar.dart';
+import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/widgets/rounded_search_bar.dart';
 import 'widgets/player_card.dart';
 import 'providers/player_providers.dart';
 
@@ -257,12 +257,5 @@ class _PlayerList extends ConsumerWidget {
   void _toggleFavorite(WidgetRef ref, String playerId) async {
     final viewModel = ref.read(playerViewModelProvider);
     viewModel.toggleFavorite(playerId);
-
-    // Also add to unified favorites system
-    final players = ref.read(playerPaginationProvider).value ?? [];
-    final player = players.firstWhere(
-      (p) => p['fideId'].toString() == playerId,
-      orElse: () => <String, dynamic>{},
-    );
   }
 }

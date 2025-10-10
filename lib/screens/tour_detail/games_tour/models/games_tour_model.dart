@@ -57,6 +57,8 @@ class GamesTourModel {
   final int? boardNr;
   final String roundId;
   final String? roundSlug;
+  final String tourId;
+  final String? tourSlug;
   final DateTime? lastMoveTime;
 
   GamesTourModel({
@@ -72,6 +74,8 @@ class GamesTourModel {
     required this.gameStatus,
     required this.roundId, // Make required
     this.roundSlug,
+    required this.tourId, // Make required
+    this.tourSlug,
     this.lastMove,
     this.fen,
     this.pgn,
@@ -96,6 +100,8 @@ class GamesTourModel {
     int? boardNr,
     String? roundId,
     String? roundSlug,
+    String? tourId,
+    String? tourSlug,
     DateTime? lastMoveTime,
   }) {
     return GamesTourModel(
@@ -117,6 +123,8 @@ class GamesTourModel {
       boardNr: boardNr ?? this.boardNr,
       roundId: roundId ?? this.roundId,
       roundSlug: roundSlug ?? this.roundSlug,
+      tourId: tourId ?? this.tourId,
+      tourSlug: tourSlug ?? this.tourSlug,
       lastMoveTime: lastMoveTime ?? this.lastMoveTime,
     );
   }
@@ -161,6 +169,8 @@ class GamesTourModel {
         gameStatus: GameStatus.fromString(game.status),
         roundId: game.roundId, // Include roundId in model
         roundSlug: game.roundSlug, // Include roundSlug for display
+        tourId: game.tourId, // Include tourId in model
+        tourSlug: game.tourSlug, // Include tourSlug for display
         fen: game.fen?.isNotEmpty == true ? game.fen : null,
         pgn: game.pgn?.isNotEmpty == true ? game.pgn : null,
         lastMove: game.lastMove?.isNotEmpty == true ? game.lastMove : null,
@@ -263,7 +273,8 @@ class GamesTourModel {
         other.fen == fen &&
         other.pgn == pgn &&
         other.boardNr == boardNr &&
-        other.roundId == roundId;
+        other.roundId == roundId &&
+        other.tourId == tourId;
   }
 
   @override
@@ -283,7 +294,8 @@ class GamesTourModel {
         (fen?.hashCode ?? 0) ^
         (pgn?.hashCode ?? 0) ^
         (boardNr?.hashCode ?? 0) ^
-        roundId.hashCode;
+        roundId.hashCode ^
+        tourId.hashCode;
   }
 }
 
@@ -294,6 +306,7 @@ class PlayerCard {
   final String title;
   final int rating;
   final String countryCode;
+  final String? fideId;
 
   PlayerCard({
     required this.name,
@@ -301,6 +314,7 @@ class PlayerCard {
     required this.title,
     required this.rating,
     required this.countryCode,
+    this.fideId,
   });
 
   factory PlayerCard.fromPlayer(Player player) {
@@ -315,6 +329,7 @@ class PlayerCard {
       title: player.title.trim(),
       rating: player.rating >= 0 ? player.rating : 0,
       countryCode: player.fed.trim(),
+      fideId: player.fideId > 0 ? player.fideId.toString() : null,
     );
   }
 
@@ -324,6 +339,7 @@ class PlayerCard {
     String? title,
     int? rating,
     String? countryCode,
+    String? fideId,
   }) {
     return PlayerCard(
       name: name ?? this.name,
@@ -331,6 +347,7 @@ class PlayerCard {
       title: title ?? this.title,
       rating: rating ?? this.rating,
       countryCode: countryCode ?? this.countryCode,
+      fideId: fideId ?? this.fideId,
     );
   }
 
