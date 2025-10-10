@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:chessever2/l10n/app_localizations.dart';
 import 'package:chessever2/localization/locale_provider.dart';
@@ -51,8 +52,12 @@ Future<void> main() async {
       WidgetsFlutterBinding.ensureInitialized();
 
       await NotificationService.initialize();
-      // Initialize worker manager with 75 isolates for parallel move evaluation
-      await workerManager.init(isolatesCount: 75);
+      // Initialize worker manager with 6 isolates for parallel move evaluation
+      if (Platform.isAndroid) {
+        await workerManager.init(isolatesCount: 4);
+      } else if (Platform.isIOS) {
+        await workerManager.init(isolatesCount: 6);
+      }
 
       WidgetsBinding.instance.addObserver(
         LifecycleEventHandler(
