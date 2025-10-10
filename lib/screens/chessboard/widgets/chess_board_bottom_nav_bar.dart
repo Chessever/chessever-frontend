@@ -136,13 +136,12 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
     final width = MediaQuery.of(context).size.width / 4;
     return Container(
       width: MediaQuery.of(context).size.width,
-      height: 48.h,
       decoration: const BoxDecoration(color: kBlackColor),
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.only(top: 6),
+          padding: EdgeInsets.only(top: 12.h),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               // Reset Game Button
               ChessSvgBottomNavbar(
