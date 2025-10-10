@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../../repository/supabase/players/players_repository.dart';
+import 'package:chessever2/repository/supabase/players/players_repository.dart';
 
 class PlayerViewModel {
   static const String _favoritePlayerIdsKey = 'favorite_player_ids';

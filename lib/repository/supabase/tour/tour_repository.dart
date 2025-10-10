@@ -20,4 +20,20 @@ class TourRepository extends BaseRepository {
       return (response as List).map((json) => Tour.fromJson(json)).toList();
     });
   }
+
+  // Fetch multiple tours by their IDs
+  Future<List<Tour>> getToursByIds(List<String> tourIds) async {
+    return handleApiCall(() async {
+      if (tourIds.isEmpty) {
+        return [];
+      }
+
+      final response = await supabase
+          .from('tours')
+          .select()
+          .inFilter('id', tourIds);
+
+      return (response as List).map((json) => Tour.fromJson(json)).toList();
+    });
+  }
 }
