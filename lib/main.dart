@@ -29,6 +29,7 @@ import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:worker_manager/worker_manager.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_provider.dart';
 
@@ -48,6 +49,9 @@ Future<void> main() async {
       // Load environment variables
       await dotenv.load(fileName: ".env");
       WidgetsFlutterBinding.ensureInitialized();
+
+      // Initialize worker manager with 75 isolates for parallel move evaluation
+      await workerManager.init(isolatesCount: 75);
 
       await NotificationService.initialize();
 

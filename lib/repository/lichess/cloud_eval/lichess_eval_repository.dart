@@ -38,29 +38,22 @@ class _LichessEvalRepository {
   CloudEval _convertToWhitePerspective(CloudEval cloudEval, String fen) {
     // Parse FEN to determine whose turn it is
     final fenParts = fen.split(' ');
-    final isBlackToMove = fenParts.length >= 2 && fenParts[1] == 'b';
-    final sideToMove = isBlackToMove ? 'b' : 'w';
+    final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
     final originalCp = cloudEval.pvs.isNotEmpty ? cloudEval.pvs.first.cp : 0;
 
-    if (!isBlackToMove) {
-      // White to move - evaluation is from white's perspective, no conversion needed
-      print("🔍 LICHESS CONVERSION: FEN=$fen, side=WHITE, originalCp=$originalCp, finalCp=$originalCp (no flip needed)");
-      return cloudEval;
-    }
+    print("🔍 LICHESS NORMALIZATION: FEN=$fen, side=$sideToMove, originalCp=$originalCp (Lichess already white perspective)");
 
-    // Black to move - evaluation is from BLACK's perspective, MUST flip to white's perspective
-    // Example: If black is winning, Lichess returns positive (good for black)
-    // We need to flip it to negative (bad for white)
-    final adjustedPvs = cloudEval.pvs.map((pv) {
-      final flippedCp = -pv.cp;
-      print("🔍 LICHESS CONVERSION: FEN=$fen, side=BLACK, originalCp=${pv.cp}, finalCp=$flippedCp (FLIPPED to white perspective)");
-      return Pv(
-        moves: pv.moves,
-        cp: flippedCp, // Flip to white's perspective
-        isMate: pv.isMate,
-        mate: pv.mate != null ? -pv.mate! : null,
-      );
-    }).toList();
+    final adjustedPvs = cloudEval.pvs
+        .map(
+          (pv) => Pv(
+            moves: pv.moves,
+            cp: pv.cp,
+            isMate: pv.isMate,
+            mate: pv.mate,
+            whitePerspective: true,
+          ),
+        )
+        .toList();
 
     return CloudEval(
       fen: cloudEval.fen,
