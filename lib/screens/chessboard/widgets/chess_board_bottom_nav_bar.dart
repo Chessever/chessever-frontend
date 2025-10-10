@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_navbar.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -52,11 +53,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(
-                  Icons.info_outline,
-                  color: kPrimaryColor,
-                  size: 48,
-                ),
+                const Icon(Icons.info_outline, color: kPrimaryColor, size: 48),
                 const SizedBox(height: 16),
                 const Text(
                   'Exit Analysis Mode?',
@@ -136,9 +133,10 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final width = MediaQuery.of(context).size.width / 5;
+    final width = MediaQuery.of(context).size.width / 4;
     return Container(
       width: MediaQuery.of(context).size.width,
+      height: 48.h,
       decoration: const BoxDecoration(color: kBlackColor),
       child: SafeArea(
         child: Padding(
@@ -160,7 +158,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
                   }
                 },
               ),
-          
+
               // Flip Board Button
               ChessSvgBottomNavbar(
                 width: width,
@@ -171,23 +169,18 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
                 svgPath: SvgAsset.left_arrow,
                 width: width,
                 onPressed: canMoveBackward ? onLeftMove : null,
-                onLongPressStart: canMoveBackward ? onLongPressBackwardStart : null,
+                onLongPressStart:
+                    canMoveBackward ? onLongPressBackwardStart : null,
                 onLongPressEnd: onLongPressBackwardEnd,
               ),
-          
+
               ChessSvgBottomNavbarWithLongPress(
                 svgPath: SvgAsset.right_arrow,
                 width: width,
                 onPressed: canMoveForward ? onRightMove : null,
-                onLongPressStart: canMoveForward ? onLongPressForwardStart : null,
+                onLongPressStart:
+                    canMoveForward ? onLongPressForwardStart : null,
                 onLongPressEnd: onLongPressForwardEnd,
-              ),
-          
-              // Chat Button
-              ChessSvgBottomNavbar(
-                width: width,
-                svgPath: SvgAsset.chat,
-                onPressed: () {},
               ),
             ],
           ),
