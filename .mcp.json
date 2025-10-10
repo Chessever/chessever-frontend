@@ -6,11 +6,10 @@
         "-y",
         "@supabase/mcp-server-supabase",
         "--read-only",
-        "--project-ref=oelbsuggrzyqwzmvidju"
-      ],
-      "env": {
-        "SUPABASE_ACCESS_TOKEN": "sbp_ab0f2b8b692ce18c078022e09461a8223b867960"
-      }
+        "--project-ref=oelbsuggrzyqwzmvidju",
+        "--access-token",
+        "sbp_156e097624173b3f43aacd792c64f4e719d0a4dc"
+      ]
     }
   }
 }
