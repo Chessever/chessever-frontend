@@ -7,6 +7,7 @@ class PlayerStandingModel {
   final int score;
   final int scoreChange;
   final String? matchScore;
+  final int? fideId;
 
   const PlayerStandingModel({
     required this.countryCode,
@@ -15,6 +16,7 @@ class PlayerStandingModel {
     required this.score,
     required this.scoreChange,
     required this.matchScore,
+    this.fideId,
   });
 
   factory PlayerStandingModel.fromPlayer(TournamentPlayer player) {
@@ -25,6 +27,7 @@ class PlayerStandingModel {
       score: player.rating ?? 0, // ELO rating for display
       scoreChange: player.ratingDiff ?? 0,
       matchScore: _formatTournamentScore(player.score, player.played),
+      fideId: player.fideId,
     );
   }
 
@@ -47,6 +50,7 @@ class PlayerStandingModel {
     int? score,
     int? scoreChange,
     String? matchScore,
+    int? fideId,
   }) {
     return PlayerStandingModel(
       countryCode: countryCode ?? this.countryCode,
@@ -55,6 +59,7 @@ class PlayerStandingModel {
       score: score ?? this.score,
       scoreChange: scoreChange ?? this.scoreChange,
       matchScore: matchScore ?? this.matchScore,
+      fideId: fideId ?? this.fideId,
     );
   }
 
@@ -67,6 +72,7 @@ class PlayerStandingModel {
       score: json['score'] as int,
       scoreChange: json['scoreChange'] as int,
       matchScore: json['matchScore'] as String,
+      fideId: json['fideId'] as int?,
     );
   }
 
@@ -79,6 +85,7 @@ class PlayerStandingModel {
       'score': score,
       'scoreChange': scoreChange,
       'matchScore': matchScore,
+      'fideId': fideId,
     };
   }
 
@@ -91,7 +98,8 @@ class PlayerStandingModel {
         other.name == name &&
         other.score == score &&
         other.scoreChange == scoreChange &&
-        other.matchScore == matchScore;
+        other.matchScore == matchScore &&
+        other.fideId == fideId;
   }
 
   @override
@@ -103,6 +111,7 @@ class PlayerStandingModel {
       score,
       scoreChange,
       matchScore,
+      fideId,
     );
   }
 }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:chessever2/l10n/app_localizations.dart';
 import 'package:chessever2/localization/locale_provider.dart';
@@ -29,6 +30,7 @@ import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:worker_manager/worker_manager.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_provider.dart';
 
@@ -50,6 +52,12 @@ Future<void> main() async {
       WidgetsFlutterBinding.ensureInitialized();
 
       await NotificationService.initialize();
+      // Initialize worker manager with 6 isolates for parallel move evaluation
+      if (Platform.isAndroid) {
+        await workerManager.init(isolatesCount: 4);
+      } else if (Platform.isIOS) {
+        await workerManager.init(isolatesCount: 6);
+      }
 
       WidgetsBinding.instance.addObserver(
         LifecycleEventHandler(

@@ -1,7 +1,46 @@
+import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
+import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:fast_immutable_collections/fast_immutable_collections.dart';
+
+class AnalysisLine {
+  final List<Move> moves;
+  final List<String> sanMoves;
+  final double? evaluation;
+  final int? mate;
+
+  const AnalysisLine({
+    this.moves = const [],
+    this.sanMoves = const [],
+    this.evaluation,
+    this.mate,
+  });
+
+  bool get isEmpty => moves.isEmpty;
+  bool get isMate => mate != null;
+  String get displayEval =>
+      isMate
+          ? '#$mate'
+          : evaluation != null
+          ? evaluation!.toStringAsFixed(1)
+          : '';
+
+  AnalysisLine copyWith({
+    List<Move>? moves,
+    List<String>? sanMoves,
+    double? evaluation,
+    int? mate,
+  }) {
+    return AnalysisLine(
+      moves: moves ?? this.moves,
+      sanMoves: sanMoves ?? this.sanMoves,
+      evaluation: evaluation ?? this.evaluation,
+      mate: mate ?? this.mate,
+    );
+  }
+}
 
 class AnalysisBoardState {
   final Move? lastMove;
@@ -13,16 +52,38 @@ class AnalysisBoardState {
   final Position position;
   final Position? startingPosition;
   final int currentMoveIndex;
+  final List<AnalysisLine> suggestionLines;
+  final ChessGame? game;
+  final ChessMovePointer movePointer;
 
-  bool get canMoveForward => currentMoveIndex < allMoves.length - 1;
+  // Analysis variation tracking
+  final int? branchPointMoveIndex; // The move index where analysis branch started
+  final List<String> analysisMoveSans; // SAN moves made in analysis mode
+  final List<Move> analysisMoves; // Moves made in analysis mode
+  final List<Position> analysisPositionHistory; // Position history for analysis moves
+
+  bool get canMoveForward =>
+      isInAnalysisVariation
+          ? currentMoveIndex < (branchPointMoveIndex ?? -1) + analysisMoves.length
+          : currentMoveIndex < allMoves.length - 1;
 
   bool get canMoveBackward => currentMoveIndex >= 0;
 
   bool get isAtStart => currentMoveIndex == -1;
 
-  bool get isAtEnd => currentMoveIndex == allMoves.length - 1;
+  bool get isAtEnd =>
+      isInAnalysisVariation
+          ? currentMoveIndex == (branchPointMoveIndex ?? -1) + analysisMoves.length
+          : currentMoveIndex == allMoves.length - 1;
 
-  int get totalMoves => allMoves.length;
+  int get totalMoves =>
+      isInAnalysisVariation
+          ? (branchPointMoveIndex ?? 0) + 1 + analysisMoves.length
+          : allMoves.length;
+
+  bool get isInAnalysisVariation => branchPointMoveIndex != null && analysisMoves.isNotEmpty;
+
+  bool get isAtBranchPoint => currentMoveIndex == branchPointMoveIndex;
 
   const AnalysisBoardState({
     this.lastMove,
@@ -34,6 +95,13 @@ class AnalysisBoardState {
     this.position = Chess.initial,
     this.currentMoveIndex = -1,
     this.startingPosition,
+    this.suggestionLines = const [],
+    this.game,
+    this.movePointer = const [],
+    this.branchPointMoveIndex,
+    this.analysisMoveSans = const [],
+    this.analysisMoves = const [],
+    this.analysisPositionHistory = const [],
   });
 
   AnalysisBoardState copyWith({
@@ -47,6 +115,13 @@ class AnalysisBoardState {
     Position? position,
     int? currentMoveIndex,
     Position? startingPosition,
+    List<AnalysisLine>? suggestionLines,
+    ChessGame? game,
+    ChessMovePointer? movePointer,
+    int? branchPointMoveIndex,
+    List<String>? analysisMoveSans,
+    List<Move>? analysisMoves,
+    List<Position>? analysisPositionHistory,
   }) {
     return AnalysisBoardState(
       lastMove: lastMove ?? this.lastMove,
@@ -58,7 +133,50 @@ class AnalysisBoardState {
       position: position ?? this.position,
       currentMoveIndex: currentMoveIndex ?? this.currentMoveIndex,
       startingPosition: startingPosition ?? this.startingPosition,
+      suggestionLines: suggestionLines ?? this.suggestionLines,
+      game: game ?? this.game,
+      movePointer: movePointer ?? this.movePointer,
+      branchPointMoveIndex: branchPointMoveIndex ?? this.branchPointMoveIndex,
+      analysisMoveSans: analysisMoveSans ?? this.analysisMoveSans,
+      analysisMoves: analysisMoves ?? this.analysisMoves,
+      analysisPositionHistory: analysisPositionHistory ?? this.analysisPositionHistory,
     );
+  }
+
+  /// Get combined move SAN list (mainline + analysis moves)
+  List<String> get combinedMoveSans {
+    if (!isInAnalysisVariation) {
+      return moveSans;
+    }
+    final branchIndex = branchPointMoveIndex ?? -1;
+    return [
+      ...moveSans.take(branchIndex + 1),
+      ...analysisMoveSans,
+    ];
+  }
+
+  /// Get combined move list (mainline + analysis moves)
+  List<Move> get combinedMoves {
+    if (!isInAnalysisVariation) {
+      return allMoves;
+    }
+    final branchIndex = branchPointMoveIndex ?? -1;
+    return [
+      ...allMoves.take(branchIndex + 1),
+      ...analysisMoves,
+    ];
+  }
+
+  /// Get combined position history (mainline + analysis positions)
+  List<Position> get combinedPositionHistory {
+    if (!isInAnalysisVariation) {
+      return positionHistory;
+    }
+    final branchIndex = branchPointMoveIndex ?? -1;
+    return [
+      ...positionHistory.take(branchIndex + 2), // +2 because history includes starting position
+      ...analysisPositionHistory,
+    ];
   }
 }
 
@@ -79,11 +197,18 @@ class ChessBoardStateNew {
   final String? pgnData;
   final String? fenData;
   final ISet<Shape>? shapes;
-  // New field to track if in analysis mode
   final bool isAnalysisMode;
   final AnalysisBoardState analysisState;
   final int? mate;
-  // Computed properties
+  final List<AnalysisLine> principalVariations;
+  final int? selectedVariantIndex; // Track which engine suggestion is selected
+  final List<int> variantMovePointer; // Track progress through selected variant
+  final String? variantBaseFen; // FEN position where current PVs were generated
+  final ChessMovePointer?
+  variantBaseMovePointer; // Navigator position where PVs start
+  final Move? variantBaseLastMove; // Last move before variant exploration
+  final int? variantBaseMoveIndex; // Move index before variant exploration
+
   bool get canMoveForward => currentMoveIndex < allMoves.length - 1;
 
   bool get canMoveBackward => currentMoveIndex >= 0;
@@ -114,6 +239,13 @@ class ChessBoardStateNew {
     this.analysisState = const AnalysisBoardState(),
     this.shapes = const ISet.empty(),
     this.mate,
+    this.principalVariations = const [],
+    this.selectedVariantIndex,
+    this.variantMovePointer = const [],
+    this.variantBaseFen,
+    this.variantBaseMovePointer,
+    this.variantBaseLastMove,
+    this.variantBaseMoveIndex,
   });
 
   ChessBoardStateNew copyWith({
@@ -136,6 +268,13 @@ class ChessBoardStateNew {
     bool? isAnalysisMode,
     AnalysisBoardState? analysisState,
     ISet<Shape>? shapes,
+    List<AnalysisLine>? principalVariations,
+    int? selectedVariantIndex,
+    List<int>? variantMovePointer,
+    String? variantBaseFen,
+    ChessMovePointer? variantBaseMovePointer,
+    Move? variantBaseLastMove,
+    int? variantBaseMoveIndex,
   }) {
     return ChessBoardStateNew(
       position: position ?? this.position,
@@ -156,6 +295,14 @@ class ChessBoardStateNew {
       mate: mate ?? this.mate,
       isAnalysisMode: isAnalysisMode ?? this.isAnalysisMode,
       shapes: shapes ?? this.shapes,
+      principalVariations: principalVariations ?? this.principalVariations,
+      selectedVariantIndex: selectedVariantIndex ?? this.selectedVariantIndex,
+      variantMovePointer: variantMovePointer ?? this.variantMovePointer,
+      variantBaseFen: variantBaseFen ?? this.variantBaseFen,
+      variantBaseMovePointer:
+          variantBaseMovePointer ?? this.variantBaseMovePointer,
+      variantBaseLastMove: variantBaseLastMove ?? this.variantBaseLastMove,
+      variantBaseMoveIndex: variantBaseMoveIndex ?? this.variantBaseMoveIndex,
       analysisState:
           analysisState != null
               ? analysisState.copyWith(
@@ -172,6 +319,7 @@ class ChessBoardStateNew {
                 startingPosition:
                     analysisState.startingPosition ??
                     this.analysisState.startingPosition,
+                suggestionLines: analysisState.suggestionLines,
                 fen: fenData ?? this.fenData,
               )
               : this.analysisState,
