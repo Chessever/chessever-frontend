@@ -139,9 +139,9 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
       decoration: const BoxDecoration(color: kBlackColor),
       child: SafeArea(
         child: Padding(
-          padding: EdgeInsets.only(top: 12.h),
+          padding: EdgeInsets.only(top: 8.h),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               // Reset Game Button
               ChessSvgBottomNavbar(
