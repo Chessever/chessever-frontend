@@ -4,7 +4,6 @@ import 'package:skeletonizer/skeletonizer.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:chessever2/providers/board_settings_provider.dart';
 import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
-import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/screens/chessboard/analysis/move_impact_analyzer.dart';
 import 'package:chessever2/screens/chessboard/analysis/simple_move_impact.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
