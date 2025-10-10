@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../utils/app_typography.dart';
 import '../../../theme/app_theme.dart';
@@ -23,9 +24,38 @@ class EventFavoriteCard extends ConsumerWidget {
     final maxAvgElo = eventData['maxAvgElo'] as int? ?? 0;
     final dates = eventData['dates'] as String? ?? '';
 
-    return GestureDetector(
-      onTap: () => _navigateToEvent(context, ref),
-      child: Container(
+    return Dismissible(
+      key: Key(eventData['id']?.toString() ?? title),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        decoration: BoxDecoration(
+          color: kRedColor,
+          borderRadius: BorderRadius.circular(8.br),
+        ),
+        alignment: Alignment.centerRight,
+        padding: EdgeInsets.only(right: 20.sp),
+        child: Icon(
+          Icons.delete_outline,
+          color: kWhiteColor,
+          size: 24.ic,
+        ),
+      ),
+      confirmDismiss: (direction) async {
+        HapticFeedback.mediumImpact();
+        return await _showDeleteConfirmation(context, title);
+      },
+      onDismissed: (direction) {
+        if (onRemoveFavorite != null) {
+          onRemoveFavorite!();
+        }
+      },
+      child: GestureDetector(
+        onTap: () => _navigateToEvent(context, ref),
+        onLongPressStart: (details) {
+          HapticFeedback.lightImpact();
+          _showContextMenu(context, details.globalPosition, title);
+        },
+        child: Container(
         decoration: BoxDecoration(
           color: kBlack2Color,
           borderRadius: BorderRadius.circular(8.br),
@@ -132,6 +162,7 @@ class EventFavoriteCard extends ConsumerWidget {
           ),
         ],
         ),
+        ),
       ),
     );
   }
@@ -163,6 +194,94 @@ class EventFavoriteCard extends ConsumerWidget {
     } catch (e) {
       // Handle navigation error silently
     }
+  }
+
+  void _showContextMenu(BuildContext context, Offset position, String eventTitle) {
+    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+
+    showMenu(
+      context: context,
+      position: RelativeRect.fromRect(
+        position & const Size(40, 40),
+        Offset.zero & overlay.size,
+      ),
+      color: kBlack2Color,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8.br),
+      ),
+      items: [
+        PopupMenuItem(
+          value: 'delete',
+          child: Row(
+            children: [
+              Icon(
+                Icons.delete_outline,
+                color: kRedColor,
+                size: 20.ic,
+              ),
+              SizedBox(width: 12.w),
+              Text(
+                'Remove from favorites',
+                style: AppTypography.textSmRegular.copyWith(
+                  color: kRedColor,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ).then((value) {
+      if (value == 'delete') {
+        _showDeleteConfirmation(context, eventTitle).then((confirmed) {
+          if (confirmed == true && onRemoveFavorite != null) {
+            HapticFeedback.mediumImpact();
+            onRemoveFavorite!();
+          }
+        });
+      }
+    });
+  }
+
+  Future<bool?> _showDeleteConfirmation(BuildContext context, String eventTitle) {
+    return showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: kBlack2Color,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12.br),
+          ),
+          title: Text(
+            'Remove from favorites?',
+            style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
+          ),
+          content: Text(
+            'Are you sure you want to remove $eventTitle from your favorites?',
+            style: AppTypography.textSmRegular.copyWith(
+              color: kWhiteColor.withValues(alpha: 0.7),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(
+                'Cancel',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: kWhiteColor.withValues(alpha: 0.7),
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(
+                'Remove',
+                style: AppTypography.textSmMedium.copyWith(color: kRedColor),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Widget _buildTimeControlIcon(String timeControl) {
