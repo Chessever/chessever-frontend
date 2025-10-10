@@ -9,14 +9,28 @@ final localEvalCacheProvider = AutoDisposeProvider<LocalEvalCache>(
 
 class LocalEvalCache {
   static const _prefix = 'cloud_eval_';
+  static const _versionKey = 'cloud_eval_version';
+  static const _currentVersion = 2;
 
   Future<void> save(String fen, CloudEval eval) async {
     final prefs = await SharedPreferences.getInstance();
+    final storedVersion = prefs.getInt(_versionKey) ?? 1;
+    if (storedVersion < _currentVersion) {
+      await _clearWithPrefs(prefs);
+    }
+    await prefs.setInt(_versionKey, _currentVersion);
     await prefs.setString('$_prefix$fen', jsonEncode(eval.toJson()));
   }
 
   Future<CloudEval?> fetch(String fen) async {
     final prefs = await SharedPreferences.getInstance();
+    final storedVersion = prefs.getInt(_versionKey) ?? 1;
+    if (storedVersion < _currentVersion) {
+      await _clearWithPrefs(prefs);
+      await prefs.setInt(_versionKey, _currentVersion);
+      return null;
+    }
+
     final raw = prefs.getString('$_prefix$fen');
     if (raw == null) return null;
     try {
@@ -26,8 +40,40 @@ class LocalEvalCache {
     }
   }
 
+  /// Batch fetch multiple evals at once - much faster than individual fetches
+  Future<Map<String, CloudEval>> batchFetch(List<String> fens) async {
+    final result = <String, CloudEval>{};
+    if (fens.isEmpty) return result;
+
+    final prefs = await SharedPreferences.getInstance();
+    final storedVersion = prefs.getInt(_versionKey) ?? 1;
+    if (storedVersion < _currentVersion) {
+      await _clearWithPrefs(prefs);
+      await prefs.setInt(_versionKey, _currentVersion);
+      return result;
+    }
+
+    for (final fen in fens) {
+      final raw = prefs.getString('$_prefix$fen');
+      if (raw != null) {
+        try {
+          result[fen] = CloudEval.fromJson(jsonDecode(raw));
+        } catch (_) {
+          // corrupted entry → skip it
+        }
+      }
+    }
+
+    return result;
+  }
+
   Future<void> clear() async {
     final prefs = await SharedPreferences.getInstance();
+    await _clearWithPrefs(prefs);
+    await prefs.setInt(_versionKey, _currentVersion);
+  }
+
+  Future<void> _clearWithPrefs(SharedPreferences prefs) async {
     final keys = prefs.getKeys().where((k) => k.startsWith(_prefix));
     for (final k in keys) {
       await prefs.remove(k);

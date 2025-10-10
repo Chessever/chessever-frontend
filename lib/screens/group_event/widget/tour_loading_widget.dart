@@ -18,6 +18,7 @@ class TourLoadingWidget extends StatelessWidget {
     );
     final gamesTourModel = GamesTourModel(
       roundId: 'roundId',
+      tourId: 'tourId',
       gameId: 'gameId',
       whitePlayer: mockPlayer,
       blackPlayer: mockPlayer,
