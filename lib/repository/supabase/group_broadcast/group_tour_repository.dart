@@ -88,6 +88,51 @@ class GroupBroadcastRepository extends BaseRepository {
     });
   }
 
+  Future<List<GroupBroadcast>> getCurrentMonthGroupBroadcasts({
+    required int selectedYear,
+    required int selectedMonth,
+    int limit = 50,
+    int? offset,
+    String orderBy = 'date_end',
+    bool ascending = false,
+  }) async {
+    return handleApiCall(() async {
+      final supabaseClient = supabase; // assume this is your instance
+
+      // Calculate first and last day of the selected month
+      final startOfMonth = DateTime(selectedYear, selectedMonth, 1);
+      final endOfMonth = DateTime(
+        selectedYear,
+        selectedMonth + 1,
+        0,
+        23,
+        59,
+        59,
+      );
+
+      // Build query
+      PostgrestTransformBuilder<PostgrestList> query = supabaseClient
+          .from('group_broadcasts')
+          .select()
+          .or(
+            'and(date_start.gte.${startOfMonth.toIso8601String()},date_start.lte.${endOfMonth.toIso8601String()}),'
+            'and(date_end.gte.${startOfMonth.toIso8601String()},date_end.lte.${endOfMonth.toIso8601String()})',
+          )
+          .order(orderBy, ascending: ascending)
+          .limit(limit);
+
+      if (offset != null) {
+        query = query.range(offset, offset + limit - 1);
+      }
+
+      final response = await query;
+
+      return (response as List)
+          .map((json) => GroupBroadcast.fromJson(json))
+          .toList();
+    });
+  }
+
   /// Fetch a single group broadcast by its [id]
   Future<GroupBroadcast> getGroupBroadcastById(String id) async {
     return handleApiCall(() async {

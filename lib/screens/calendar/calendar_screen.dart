@@ -41,7 +41,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final yearList = ref.watch(availableYearsProvider);
+    final yearList = ref.read(availableYearsProvider);
 
     return Scaffold(
       body: Column(
@@ -68,7 +68,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 300),
                             curve: Curves.easeInOut,
-                            padding: EdgeInsets.all(2.sp),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 2.sp,
+                              vertical: 4.sp,
+                            ),
                             decoration: BoxDecoration(
                               color: kGrey900,
                               borderRadius: BorderRadius.circular(8.br),
@@ -340,7 +343,7 @@ class YearSelectorList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final yearList = ref.watch(availableYearsProvider);
+    final yearList = ref.read(availableYearsProvider);
     final selectedYear = ref.watch(selectedYearProvider);
 
     return Container(
