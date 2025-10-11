@@ -5,7 +5,7 @@ import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-import '../../../repository/supabase/group_broadcast/group_broadcast.dart';
+import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 
 final calendarTourViewProvider = StateNotifierProvider.family<
   _CalendarTourViewController,
