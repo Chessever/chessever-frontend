@@ -14,6 +14,7 @@ class GroupEventCardModel extends Equatable {
     required this.tourEventCategory,
     required this.timeControl,
     required this.endDate,
+    required this.startDate,
   });
 
   final String id;
@@ -24,6 +25,7 @@ class GroupEventCardModel extends Equatable {
   final TourEventCategory tourEventCategory;
   final String timeControl;
   final DateTime? endDate;
+  final DateTime? startDate;
 
   factory GroupEventCardModel.fromGroupBroadcast(
     GroupBroadcast groupBroadcast,
@@ -46,6 +48,7 @@ class GroupEventCardModel extends Equatable {
       ),
       timeControl: groupBroadcast.timeControl ?? '',
       endDate: utcEnd,
+      startDate: utcStart,
     );
   }
 
