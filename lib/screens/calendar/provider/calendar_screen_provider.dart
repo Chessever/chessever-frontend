@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/calendar/calendar_screen.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/utils/month_provider.dart';
@@ -28,6 +29,7 @@ class _CalendarScreenNotifier extends StateNotifier<AsyncValue<List<String>>> {
     try {
       state = const AsyncValue.loading();
 
+      final selectedYear = ref.read(selectedYearProvider);
       final broadcasts = await ref.read(supabaseSearchProvider(query).future);
 
       final tourEventCardModel =
@@ -50,24 +52,34 @@ class _CalendarScreenNotifier extends StateNotifier<AsyncValue<List<String>>> {
         // Safety check in case dates are null
         if (start == null || end == null) continue;
 
-        // Get all months from start to end
+        // Filter: only process events that overlap with the selected year
+        if (start.year > selectedYear || end.year < selectedYear) continue;
+
+        // Get all months from start to end, but only for the selected year
         DateTime current = DateTime(start.year, start.month);
         final endMonth = DateTime(end.year, end.month);
 
         while (!current.isAfter(endMonth)) {
-          final monthName = monthConverter.monthNumberToName(current.month);
-          eventMonths.add(monthName);
+          // Only add months that are in the selected year
+          if (current.year == selectedYear) {
+            final monthName = monthConverter.monthNumberToName(current.month);
+            eventMonths.add(monthName);
+          }
           current = DateTime(current.year, current.month + 1);
         }
       }
 
       final filteredMonths = eventMonths.toList();
 
-      print('🎯 Months with events: $filteredMonths');
+      print('🎯 Months with events in $selectedYear: $filteredMonths');
 
       state = AsyncValue.data(filteredMonths);
     } catch (e, st) {
       state = AsyncValue.error(e, st);
     }
+  }
+
+  void reset() {
+    _init();
   }
 }
