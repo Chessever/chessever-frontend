@@ -32,6 +32,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:worker_manager/worker_manager.dart';
 import 'package:clarity_flutter/clarity_flutter.dart';
+import 'package:amplitude_flutter/amplitude.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_provider.dart';
 
@@ -74,7 +75,9 @@ Future<void> main() async {
 
         // Initialize Clarity
       await ClarityFlutter.initialize(projectId: "to1z6pg0bz");
-
+// Initialize Amplitude
+   final amplitude = Amplitude.getInstance();
+   await amplitude.init("c19481babdae8a9f2d4c20b9bacecfb3");
       // Initialize Supabase
       await Supabase.initialize(
         url: dotenv.env['SUPABASE_URL']!,
