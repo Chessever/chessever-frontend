@@ -4,9 +4,8 @@ import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart'
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/search/search_overlay_widget.dart';
-import 'package:chessever2/widgets/svg_widget.dart';
+import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:easy_debounce/easy_debounce.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -262,7 +261,12 @@ class _EnhancedRoundedSearchBarState
               color: Colors.grey[900],
               borderRadius: BorderRadius.circular(12.br),
             ),
-            child: _buildSearchInput(),
+            child: SimpleSearchBar(
+              controller: widget.controller,
+              focusNode: _effectiveNode,
+              onCloseTap: _clearSearchAndHide,
+              onOpenFilter: widget.onFilterTap,
+            ),
           ),
         ),
       ],
@@ -301,85 +305,6 @@ class _EnhancedRoundedSearchBarState
           ),
         );
       },
-    );
-  }
-
-  Widget _buildSearchInput() {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 4.sp),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          AnimatedRotation(
-            turns: _effectiveNode.hasFocus ? 0.25 : 0,
-            duration: const Duration(milliseconds: 300),
-            child: SvgWidget(
-              SvgAsset.searchIcon,
-              height: 20.h,
-              width: 20.w,
-              colorFilter: ColorFilter.mode(
-                _effectiveNode.hasFocus ? kPrimaryColor : Colors.grey[400]!,
-                BlendMode.srcIn,
-              ),
-            ),
-          ),
-          SizedBox(width: 12.w),
-          Expanded(
-            child: TextField(
-              controller: widget.controller,
-              focusNode: _effectiveNode,
-              autofocus: widget.autofocus,
-              style: AppTypography.textMdRegular,
-              decoration: InputDecoration(
-                hintText: widget.hintText,
-                hintStyle: AppTypography.textMdRegular,
-                border: InputBorder.none,
-                isDense: true,
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-          ),
-          // Show clear icon only when search bar has focus
-          if (_effectiveNode.hasFocus) ...[
-            GestureDetector(
-              onTap:
-                  _clearSearchAndHide, // FIXED: Use the same method for consistency
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                padding: EdgeInsets.all(4.sp),
-                decoration: BoxDecoration(
-                  color: Colors.grey[700],
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(Icons.close, size: 16.ic, color: kWhiteColor),
-              ),
-            ),
-          ],
-          if (widget.showFilter && widget.onFilterTap != null) ...[
-            SizedBox(width: 8.w),
-            GestureDetector(
-              onTap: widget.onFilterTap,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                padding: EdgeInsets.all(8.sp),
-                decoration: BoxDecoration(
-                  color: kDarkGreyColor.withOpacity(0.5),
-                  borderRadius: BorderRadius.circular(8.br),
-                ),
-                child: SvgWidget(
-                  SvgAsset.listFilterIcon,
-                  height: 20.h,
-                  width: 20.w,
-                  colorFilter: ColorFilter.mode(
-                    _effectiveNode.hasFocus ? kPrimaryColor : Colors.grey[400]!,
-                    BlendMode.srcIn,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
     );
   }
 }

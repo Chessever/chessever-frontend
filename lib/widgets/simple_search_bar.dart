@@ -6,85 +6,99 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/theme/app_theme.dart';
 
 class SimpleSearchBar extends StatelessWidget {
-  final TextEditingController controller;
-  final Function(String)? onChanged;
-  final String hintText;
-  final bool autofocus;
-  final VoidCallback? onFilterTap;
-  final VoidCallback? onMenuTap;
-
   const SimpleSearchBar({
     super.key,
     required this.controller,
-    this.onChanged,
-    this.hintText = 'Search tournaments or players',
+    required this.focusNode,
+    required this.onCloseTap,
+    required this.onOpenFilter,
+    this.hintText = '',
     this.autofocus = false,
-    this.onFilterTap,
-    this.onMenuTap,
   });
+
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final VoidCallback onCloseTap;
+  final VoidCallback? onOpenFilter;
+  final String hintText;
+  final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: Container(
-        height: 40.h,
-        decoration: BoxDecoration(
-          color: kBlack2Color,
-          borderRadius: BorderRadius.circular(4.br),
-        ),
-        padding: EdgeInsets.only(
-          left: 6.sp,
-          right: 6.sp,
-          top: 4.sp,
-          bottom: 4.sp,
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // Search icon aligned with text
-            Padding(
-              padding: EdgeInsets.only(left: 6.sp),
-              child: SvgWidget(SvgAsset.searchIcon, height: 16.h, width: 16.w),
-            ),
-            SizedBox(width: 4.w),
-
-            // Text field
-            Expanded(
-              child: TextField(
-                controller: controller,
-                onChanged: onChanged,
-                autofocus: autofocus,
-                textAlignVertical: TextAlignVertical.center,
-                style: AppTypography.textXsRegular.copyWith(color: kWhiteColor),
-                decoration: InputDecoration(
-                  hintText: hintText,
-                  hintStyle: AppTypography.textXsRegular.copyWith(
-                    color: kWhiteColor70,
-                  ),
-                  border: InputBorder.none,
-                  isDense: true,
-                  contentPadding: EdgeInsets.zero,
-                ),
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 4.sp),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          AnimatedRotation(
+            turns: focusNode.hasFocus ? 0.25 : 0,
+            duration: const Duration(milliseconds: 300),
+            child: SvgWidget(
+              SvgAsset.searchIcon,
+              height: 20.h,
+              width: 20.w,
+              colorFilter: ColorFilter.mode(
+                focusNode.hasFocus ? kPrimaryColor : Colors.grey[400]!,
+                BlendMode.srcIn,
               ),
             ),
-
-            // Filter icon
-            if (onFilterTap != null || onMenuTap != null)
-              Padding(
-                padding: EdgeInsets.only(right: 10.sp),
-                child: InkWell(
-                  onTap: onFilterTap ?? onMenuTap,
-                  borderRadius: BorderRadius.zero,
-                  child: SvgWidget(
-                    SvgAsset.listFilterIcon,
-                    height: 24.h,
-                    width: 24.w,
-                  ),
-                ),
+          ),
+          SizedBox(width: 12.w),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              focusNode: focusNode,
+              autofocus: autofocus,
+              style: AppTypography.textMdRegular,
+              decoration: InputDecoration(
+                hintText: hintText,
+                hintStyle: AppTypography.textMdRegular,
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
               ),
+            ),
+          ),
+          // Show clear icon only when search bar has focus
+          if (focusNode.hasFocus) ...[
+            GestureDetector(
+              onTap: onCloseTap,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                padding: EdgeInsets.all(4.sp),
+                decoration: BoxDecoration(
+                  color: Colors.grey[700],
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.close, size: 16.ic, color: kWhiteColor),
+              ),
+            ),
           ],
-        ),
+
+          if (onOpenFilter != null) ...[
+            SizedBox(width: 8.w),
+            GestureDetector(
+              onTap: onOpenFilter,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                padding: EdgeInsets.all(8.sp),
+                decoration: BoxDecoration(
+                  color: kDarkGreyColor.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(8.br),
+                ),
+                child: SvgWidget(
+                  SvgAsset.listFilterIcon,
+                  height: 20.h,
+                  width: 20.w,
+                  colorFilter: ColorFilter.mode(
+                    focusNode.hasFocus ? kPrimaryColor : Colors.grey[400]!,
+                    BlendMode.srcIn,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

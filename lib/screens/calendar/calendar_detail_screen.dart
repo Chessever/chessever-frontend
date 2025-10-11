@@ -22,11 +22,13 @@ class CalendarDetailsScreen extends ConsumerStatefulWidget {
 }
 
 class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
-  final TextEditingController _searchController = TextEditingController();
+  final TextEditingController searchController = TextEditingController();
+  final FocusNode focusNode = FocusNode();
 
   @override
   void dispose() {
-    _searchController.dispose();
+    searchController.dispose();
+    focusNode.dispose();
     super.dispose();
   }
 
@@ -74,24 +76,24 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
                         child: Hero(
                           tag: 'search_bar',
                           child: SimpleSearchBar(
-                            controller: _searchController,
+                            controller: searchController,
                             hintText: 'Search tournaments or players',
-                            onChanged: (value) {
-                              ref
-                                  .read(
-                                    calendarTourViewProvider(
-                                      CalendarFilterArgs(
-                                        month: selectedMonth,
-                                        year: selectedYear,
-                                      ),
-                                    ).notifier,
-                                  )
-                                  .search(value);
+                            focusNode: focusNode,
+                            onCloseTap: () {
+                              searchController.clear();
+                              focusNode.unfocus();
                             },
-                            onMenuTap: () {
-                              print('Menu tapped');
-                            },
-                            onFilterTap: () {
+                            // ref
+                            //     .read(
+                            //       calendarTourViewProvider(
+                            //         CalendarFilterArgs(
+                            //           month: selectedMonth,
+                            //           year: selectedYear,
+                            //         ),
+                            //       ).notifier,
+                            //     )
+                            //     .search(value);
+                            onOpenFilter: () {
                               showDialog(
                                 context: context,
                                 barrierColor: kLightBlack,

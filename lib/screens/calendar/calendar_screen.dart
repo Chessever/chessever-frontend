@@ -3,10 +3,10 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../../theme/app_theme.dart';
-import '../../widgets/simple_search_bar.dart';
-import '../../utils/app_typography.dart';
-import '../group_event/widget/filter_popup/filter_popup.dart';
+import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/widgets/simple_search_bar.dart';
+import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup.dart';
 
 final availableYearsProvider = Provider<List<int>>((ref) {
   final currentYear = DateTime.now().year;
@@ -29,11 +29,13 @@ class CalendarScreen extends ConsumerStatefulWidget {
 }
 
 class _CalendarScreenState extends ConsumerState<CalendarScreen> {
-  final TextEditingController _searchController = TextEditingController();
+  final TextEditingController searchController = TextEditingController();
+  final FocusNode focusNode = FocusNode();
 
   @override
   void dispose() {
-    _searchController.dispose();
+    searchController.dispose();
+    focusNode.dispose();
     super.dispose();
   }
 
@@ -59,15 +61,14 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                   child: Hero(
                     tag: 'search_bar',
                     child: SimpleSearchBar(
-                      controller: _searchController,
-                      hintText: 'Search tournaments or players',
-                      onChanged: (value) {
-                        // Handle search
+                      controller: searchController,
+                      focusNode: focusNode,
+                      hintText: 'Search Events or Players',
+                      onCloseTap: () {
+                        searchController.clear();
+                        focusNode.unfocus();
                       },
-                      onMenuTap: () {
-                        print('Menu tapped');
-                      },
-                      onFilterTap: () {
+                      onOpenFilter: () {
                         showDialog(
                           context: context,
                           barrierColor: kLightBlack,
@@ -188,8 +189,6 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
               itemBuilder: (context, index) {
                 final month = MonthConverter.getAllMonthNames()[index];
                 final monthNumber = MonthConverter.monthNameToNumber(month);
-                final isSelected =
-                    monthNumber == ref.read(selectedMonthProvider);
 
                 return GestureDetector(
                   onTap: () {
@@ -207,7 +206,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                       top: index == 0 ? 16 : 0,
                     ),
                     decoration: BoxDecoration(
-                      color: isSelected ? kActiveCalendarColor : kBlack2Color,
+                      color: kBlack2Color,
                       borderRadius: BorderRadius.only(
                         topLeft: Radius.circular(8.br),
                         topRight: Radius.circular(8.br),
@@ -225,7 +224,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                         child: Text(
                           month,
                           style: AppTypography.textLgRegular.copyWith(
-                            color: isSelected ? kBlack2Color : kWhiteColor,
+                            color: kWhiteColor,
                           ),
                         ),
                       ),
