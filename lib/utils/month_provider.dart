@@ -1,11 +1,18 @@
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
 
-class MonthConverter {
+final monthProvider = AutoDisposeProvider((ref) => _MonthConverter(ref));
+
+class _MonthConverter {
+  _MonthConverter(this.ref);
+
+  final Ref ref;
+
   /// Convert month number (1-12) to month name
   /// [monthNumber] should be between 1-12
   /// [locale] defaults to 'en_US', can be 'es_ES', 'fr_FR', etc.
   /// [isShort] if true, returns abbreviated month name (Jan, Feb, etc.)
-  static String monthNumberToName(
+  String monthNumberToName(
     int monthNumber, {
     String locale = 'en_US',
     bool isShort = false,
@@ -31,7 +38,7 @@ class MonthConverter {
   /// Convert month name to number (1-12)
   /// [monthName] can be full name or abbreviated
   /// [locale] defaults to 'en_US'
-  static int monthNameToNumber(String monthName, {String locale = 'en_US'}) {
+  int monthNameToNumber(String monthName, {String locale = 'en_US'}) {
     final cleanedName = monthName.trim().toLowerCase();
 
     // Try to find the month by comparing with all possible month names
@@ -51,7 +58,7 @@ class MonthConverter {
   /// Get all month names for a given locale
   /// [locale] defaults to 'en_US'
   /// [isShort] if true, returns abbreviated month names
-  static List<String> getAllMonthNames({
+  List<String> getAllMonthNames({
     String locale = 'en_US',
     bool isShort = false,
   }) {
@@ -65,7 +72,7 @@ class MonthConverter {
   }
 
   /// Get month names with their corresponding numbers as a Map
-  static Map<String, int> getMonthNamesMap({
+  Map<String, int> getMonthNamesMap({
     String locale = 'en_US',
     bool isShort = false,
   }) {
