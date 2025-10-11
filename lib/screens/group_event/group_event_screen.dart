@@ -270,6 +270,7 @@ class GroupEventScreen extends HookConsumerWidget {
                                   maxAvgElo: 0,
                                   timeControl: 'Standard',
                                   endDate: null,
+                                  startDate: null,
                                 ),
                               ),
                             ),
