@@ -258,7 +258,7 @@ class _EnhancedRoundedSearchBarState
         Expanded(
           child: Container(
             decoration: BoxDecoration(
-              color: Colors.grey[900],
+              color: kGrey900,
               borderRadius: BorderRadius.circular(12.br),
             ),
             child: SimpleSearchBar(

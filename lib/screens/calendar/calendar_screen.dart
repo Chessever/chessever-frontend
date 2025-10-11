@@ -1,6 +1,8 @@
-import 'package:chessever2/utils/month_converter.dart';
+import 'package:chessever2/screens/calendar/provider/calendar_screen_provider.dart';
+import 'package:chessever2/utils/month_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
+import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -8,7 +10,7 @@ import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup.dart';
 
-final availableYearsProvider = Provider<List<int>>((ref) {
+final availableYearsProvider = AutoDisposeProvider<List<int>>((ref) {
   final currentYear = DateTime.now().year;
   return [currentYear - 1, currentYear, currentYear + 1];
 });
@@ -67,6 +69,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                           duration: const Duration(milliseconds: 300),
                           curve: Curves.easeInOut,
                           decoration: BoxDecoration(
+                            color: kGrey900,
                             borderRadius: BorderRadius.circular(12.br),
                             border: Border.all(
                               color:
@@ -94,6 +97,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                               searchController.clear();
                               focusNode.unfocus();
                             },
+                            onChanged:
+                                ref
+                                    .read(calendarScreenProvider.notifier)
+                                    .onSearchTournaments,
                             onOpenFilter: () {
                               showDialog(
                                 context: context,
@@ -213,58 +220,103 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
 
           /// Month list
           Expanded(
-            child: ListView.builder(
-              itemCount: MonthConverter.getAllMonthNames().length,
-              padding: EdgeInsets.zero,
-              itemBuilder: (context, index) {
-                final month = MonthConverter.getAllMonthNames()[index];
-                final monthNumber = MonthConverter.monthNameToNumber(month);
+            child: ref
+                .watch(calendarScreenProvider)
+                .when(
+                  data: (data) {
+                    return ListView.builder(
+                      itemCount: data.length,
+                      padding: EdgeInsets.zero,
+                      itemBuilder: (context, index) {
+                        final month = data[index];
+                        final monthNumber = ref
+                            .read(monthProvider)
+                            .monthNameToNumber(month);
 
-                return GestureDetector(
-                  onTap: () {
-                    ref.read(selectedMonthProvider.notifier).state =
-                        monthNumber;
+                        return GestureDetector(
+                          onTap: () {
+                            ref.read(selectedMonthProvider.notifier).state =
+                                monthNumber;
 
-                    Navigator.pushNamed(context, '/calendar_detail_screen');
+                            Navigator.pushNamed(
+                              context,
+                              '/calendar_detail_screen',
+                            );
+                          },
+                          child: _MonthCard(title: month, index: index),
+                        );
+                      },
+                    );
                   },
-                  child: Container(
-                    height: 42.h,
-                    margin: EdgeInsets.only(
-                      left: 16.sp,
-                      right: 16.sp,
-                      bottom: 16.sp,
-                      top: index == 0 ? 16 : 0,
-                    ),
-                    decoration: BoxDecoration(
-                      color: kBlack2Color,
-                      borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(8.br),
-                        topRight: Radius.circular(8.br),
-                        bottomLeft: Radius.zero,
-                        bottomRight: Radius.zero,
-                      ),
-                    ),
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 12.sp,
-                        vertical: 8.sp,
-                      ),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          month,
-                          style: AppTypography.textLgRegular.copyWith(
-                            color: kWhiteColor,
+                  error: (e, _) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Text(
+                            'Failed To Load Months! \nPlease Try Again Later',
+                            style: AppTypography.textLgRegular.copyWith(
+                              color: kWhiteColor,
+                            ),
                           ),
-                        ),
+                        ],
                       ),
-                    ),
-                  ),
-                );
-              },
-            ),
+                    );
+                  },
+                  loading: () {
+                    return SkeletonWidget(
+                      child: ListView.builder(
+                        itemCount: 12,
+                        padding: EdgeInsets.zero,
+                        itemBuilder: (context, index) {
+                          return _MonthCard(title: 'Loading...', index: index);
+                        },
+                      ),
+                    );
+                  },
+                ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _MonthCard extends StatelessWidget {
+  const _MonthCard({required this.title, required this.index, super.key});
+
+  final String title;
+  final int index;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 42.h,
+      margin: EdgeInsets.only(
+        left: 16.sp,
+        right: 16.sp,
+        bottom: 16.sp,
+        top: index == 0 ? 16 : 0,
+      ),
+      decoration: BoxDecoration(
+        color: kBlack2Color,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(8.br),
+          topRight: Radius.circular(8.br),
+          bottomLeft: Radius.zero,
+          bottomRight: Radius.zero,
+        ),
+      ),
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            title,
+            style: AppTypography.textLgRegular.copyWith(color: kWhiteColor),
+          ),
+        ),
       ),
     );
   }
@@ -283,7 +335,7 @@ class YearSelectorList extends ConsumerWidget {
       decoration: BoxDecoration(
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(8.br),
-        border: Border.all(color: Colors.white.withOpacity(0.1), width: 1.w),
+        border: Border.all(color: kWhiteColor.withOpacity(0.1), width: 1.w),
       ),
       constraints: BoxConstraints(maxHeight: 200.h),
       child: ListView.separated(
@@ -315,7 +367,7 @@ class YearSelectorList extends ConsumerWidget {
         },
         separatorBuilder:
             (context, index) => Divider(
-              color: Colors.white.withOpacity(0.2),
+              color: kWhiteColor.withOpacity(0.2),
               height: 1,
               thickness: 0.5,
             ),

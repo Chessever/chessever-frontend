@@ -14,6 +14,7 @@ class SimpleSearchBar extends StatelessWidget {
     required this.onOpenFilter,
     this.hintText = '',
     this.autofocus = false,
+    this.onChanged,
   });
 
   final TextEditingController controller;
@@ -22,6 +23,7 @@ class SimpleSearchBar extends StatelessWidget {
   final VoidCallback? onOpenFilter;
   final String hintText;
   final bool autofocus;
+  final ValueChanged<String>? onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -49,6 +51,7 @@ class SimpleSearchBar extends StatelessWidget {
               controller: controller,
               focusNode: focusNode,
               autofocus: autofocus,
+              onChanged: onChanged,
               style: AppTypography.textMdRegular,
               decoration: InputDecoration(
                 hintText: hintText,
