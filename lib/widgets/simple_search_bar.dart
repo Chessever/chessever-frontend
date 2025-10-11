@@ -43,7 +43,7 @@ class SimpleSearchBar extends StatelessWidget {
               ),
             ),
           ),
-          SizedBox(width: 12.w),
+          SizedBox(width: 8.w),
           Expanded(
             child: TextField(
               controller: controller,
