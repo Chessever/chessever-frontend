@@ -1,14 +1,12 @@
 import 'package:chessever2/screens/calendar/provider/calendar_screen_provider.dart';
 import 'package:chessever2/utils/month_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:chessever2/utils/app_typography.dart';
-import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup.dart';
 
 final availableYearsProvider = AutoDisposeProvider<List<int>>((ref) {
   final currentYear = DateTime.now().year;
@@ -43,10 +41,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final yearList = ref.watch(availableYearsProvider);
+    final yearList = ref.read(availableYearsProvider);
 
-    return ScreenWrapper(
-      child: Column(
+    return Scaffold(
+      body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(height: 24.h + MediaQuery.of(context).viewPadding.top),
@@ -65,49 +63,56 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                       flex: 7,
                       child: Hero(
                         tag: 'search_bar',
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeInOut,
-                          decoration: BoxDecoration(
-                            color: kGrey900,
-                            borderRadius: BorderRadius.circular(12.br),
-                            border: Border.all(
-                              color:
-                                  focusNode.hasFocus
-                                      ? kPrimaryColor.withOpacity(0.5)
-                                      : Colors.transparent,
-                              width: 2.0,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 2.sp,
+                              vertical: 4.sp,
                             ),
-                            boxShadow:
-                                focusNode.hasFocus
-                                    ? [
-                                      BoxShadow(
-                                        color: kPrimaryColor.withOpacity(0.15),
-                                        blurRadius: 12,
-                                        offset: const Offset(0, 4),
-                                      ),
-                                    ]
-                                    : [],
-                          ),
-                          child: SimpleSearchBar(
-                            controller: searchController,
-                            focusNode: focusNode,
-                            hintText: 'Search Events or Players',
-                            onCloseTap: () {
-                              searchController.clear();
-                              focusNode.unfocus();
-                            },
-                            onChanged:
+                            decoration: BoxDecoration(
+                              color: kGrey900,
+                              borderRadius: BorderRadius.circular(8.br),
+
+                              border: Border.all(
+                                color:
+                                    focusNode.hasFocus
+                                        ? kPrimaryColor.withOpacity(0.5)
+                                        : Colors.transparent,
+                                width: 2.0,
+                              ),
+                              boxShadow:
+                                  focusNode.hasFocus
+                                      ? [
+                                        BoxShadow(
+                                          color: kPrimaryColor.withOpacity(
+                                            0.15,
+                                          ),
+                                          blurRadius: 12,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ]
+                                      : [],
+                            ),
+                            child: SimpleSearchBar(
+                              controller: searchController,
+                              focusNode: focusNode,
+                              hintText: 'Search Events or Players',
+                              onCloseTap: () {
+                                searchController.clear();
+                                focusNode.unfocus();
                                 ref
                                     .read(calendarScreenProvider.notifier)
-                                    .onSearchTournaments,
-                            onOpenFilter: () {
-                              showDialog(
-                                context: context,
-                                barrierColor: kLightBlack,
-                                builder: (context) => const FilterPopup(),
-                              );
-                            },
+                                    .reset();
+                              },
+                              onChanged:
+                                  ref
+                                      .read(calendarScreenProvider.notifier)
+                                      .onSearchTournaments,
+                              onOpenFilter: null,
+                            ),
                           ),
                         ),
                       ),
@@ -181,11 +186,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                                         ),
                                         child: Text(
                                           value.toString(),
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w400,
-                                          ),
+                                          style: AppTypography.textMdRegular,
                                         ),
                                       ),
                                     );
@@ -199,9 +200,8 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                                     padding: EdgeInsets.only(left: 0),
                                     child: Text(
                                       value.toString(),
-                                      style: AppTypography.textLgBold.copyWith(
-                                        color: kWhiteColor,
-                                      ),
+                                      style: AppTypography.textMdRegular
+                                          .copyWith(color: kWhiteColor),
                                     ),
                                   );
                                 }).toList();
@@ -224,29 +224,40 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 .watch(calendarScreenProvider)
                 .when(
                   data: (data) {
-                    return ListView.builder(
-                      itemCount: data.length,
-                      padding: EdgeInsets.zero,
-                      itemBuilder: (context, index) {
-                        final month = data[index];
-                        final monthNumber = ref
-                            .read(monthProvider)
-                            .monthNameToNumber(month);
+                    if (data.isNotEmpty) {
+                      return ListView.builder(
+                        itemCount: data.length,
+                        padding: EdgeInsets.zero,
+                        itemBuilder: (context, index) {
+                          final month = data[index];
+                          final monthNumber = ref
+                              .read(monthProvider)
+                              .monthNameToNumber(month);
 
-                        return GestureDetector(
-                          onTap: () {
-                            ref.read(selectedMonthProvider.notifier).state =
-                                monthNumber;
+                          return GestureDetector(
+                            onTap: () {
+                              ref.read(selectedMonthProvider.notifier).state =
+                                  monthNumber;
 
-                            Navigator.pushNamed(
-                              context,
-                              '/calendar_detail_screen',
-                            );
-                          },
-                          child: _MonthCard(title: month, index: index),
-                        );
-                      },
-                    );
+                              Navigator.pushNamed(
+                                context,
+                                '/calendar_detail_screen',
+                              );
+                            },
+                            child: _MonthCard(title: month, index: index),
+                          );
+                        },
+                      );
+                    } else {
+                      return Center(
+                        child: Text(
+                          'No Events Found',
+                          style: AppTypography.textLgRegular.copyWith(
+                            color: kWhiteColor,
+                          ),
+                        ),
+                      );
+                    }
                   },
                   error: (e, _) {
                     return Center(
@@ -327,7 +338,7 @@ class YearSelectorList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final yearList = ref.watch(availableYearsProvider);
+    final yearList = ref.read(availableYearsProvider);
     final selectedYear = ref.watch(selectedYearProvider);
 
     return Container(
