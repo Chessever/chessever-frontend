@@ -30,7 +30,7 @@ class CalendarScreen extends ConsumerStatefulWidget {
 
 class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   final TextEditingController searchController = TextEditingController();
-  final FocusNode focusNode = FocusNode();
+  final focusNode = FocusNode();
 
   @override
   void dispose() {
@@ -52,130 +52,160 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
           /// Search bar + year dropdown
           Padding(
             padding: EdgeInsets.symmetric(horizontal: 16.sp),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                /// Search bar
-                Expanded(
-                  flex: 7,
-                  child: Hero(
-                    tag: 'search_bar',
-                    child: SimpleSearchBar(
-                      controller: searchController,
-                      focusNode: focusNode,
-                      hintText: 'Search Events or Players',
-                      onCloseTap: () {
-                        searchController.clear();
-                        focusNode.unfocus();
-                      },
-                      onOpenFilter: () {
-                        showDialog(
-                          context: context,
-                          barrierColor: kLightBlack,
-                          builder: (context) => const FilterPopup(),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-
-                SizedBox(width: 8.w),
-
-                /// Year dropdown
-                Expanded(
-                  flex: 3,
-                  child: Container(
-                    height: 40.h,
-                    padding: EdgeInsets.symmetric(horizontal: 12.w),
-                    decoration: BoxDecoration(
-                      color: Colors.transparent,
-                      borderRadius: BorderRadius.circular(8.br),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.1),
-                        width: 1.w,
-                      ),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<int>(
-                        value: ref.watch(selectedYearProvider),
-                        onChanged: (int? newValue) {
-                          if (newValue != null) {
-                            ref.read(selectedYearProvider.notifier).state =
-                                newValue;
-                          }
-                        },
-                        icon: Icon(
-                          Icons.keyboard_arrow_down_outlined,
-                          color: kWhiteColor,
-                          size: 20.ic,
-                        ),
-                        style: AppTypography.textLgBold.copyWith(
-                          color: kWhiteColor,
-                        ),
-                        dropdownColor: kBlack2Color,
-                        borderRadius: BorderRadius.circular(20.br),
-                        isExpanded: true,
-
-                        /// Dropdown items
-                        items:
-                            yearList.asMap().entries.map((entry) {
-                              final index = entry.key;
-                              final value = entry.value;
-                              final isLast = index == yearList.length - 1;
-
-                              return DropdownMenuItem<int>(
-                                value: value,
-                                child: Container(
-                                  width: double.infinity,
-                                  padding: EdgeInsets.symmetric(
-                                    vertical: 12.sp,
-                                    horizontal: 20.sp,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    border:
-                                        !isLast
-                                            ? Border(
-                                              bottom: BorderSide(
-                                                color: Colors.white.withOpacity(
-                                                  0.1,
-                                                ),
-                                                width: 0.5,
-                                              ),
-                                            )
-                                            : null,
-                                  ),
-                                  child: Text(
-                                    value.toString(),
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w400,
-                                    ),
-                                  ),
-                                ),
+            child: AnimatedBuilder(
+              animation: focusNode,
+              builder: (cxt, _) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    /// Search bar
+                    Expanded(
+                      flex: 7,
+                      child: Hero(
+                        tag: 'search_bar',
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12.br),
+                            border: Border.all(
+                              color:
+                                  focusNode.hasFocus
+                                      ? kPrimaryColor.withOpacity(0.5)
+                                      : Colors.transparent,
+                              width: 2.0,
+                            ),
+                            boxShadow:
+                                focusNode.hasFocus
+                                    ? [
+                                      BoxShadow(
+                                        color: kPrimaryColor.withOpacity(0.15),
+                                        blurRadius: 12,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ]
+                                    : [],
+                          ),
+                          child: SimpleSearchBar(
+                            controller: searchController,
+                            focusNode: focusNode,
+                            hintText: 'Search Events or Players',
+                            onCloseTap: () {
+                              searchController.clear();
+                              focusNode.unfocus();
+                            },
+                            onOpenFilter: () {
+                              showDialog(
+                                context: context,
+                                barrierColor: kLightBlack,
+                                builder: (context) => const FilterPopup(),
                               );
-                            }).toList(),
-
-                        /// Selected item style
-                        selectedItemBuilder: (BuildContext context) {
-                          return yearList.map((value) {
-                            return Container(
-                              alignment: Alignment.centerLeft,
-                              padding: EdgeInsets.only(left: 0),
-                              child: Text(
-                                value.toString(),
-                                style: AppTypography.textLgBold.copyWith(
-                                  color: kWhiteColor,
-                                ),
-                              ),
-                            );
-                          }).toList();
-                        },
+                            },
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-              ],
+
+                    SizedBox(width: 8.w),
+
+                    /// Year dropdown
+                    if (!focusNode.hasFocus)
+                      Expanded(
+                        flex: 3,
+                        child: Container(
+                          height: 40.h,
+                          padding: EdgeInsets.symmetric(horizontal: 12.w),
+                          decoration: BoxDecoration(
+                            color: Colors.transparent,
+                            borderRadius: BorderRadius.circular(8.br),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.1),
+                              width: 1.w,
+                            ),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<int>(
+                              value: ref.watch(selectedYearProvider),
+                              onChanged: (int? newValue) {
+                                if (newValue != null) {
+                                  ref
+                                      .read(selectedYearProvider.notifier)
+                                      .state = newValue;
+                                }
+                              },
+                              icon: Icon(
+                                Icons.keyboard_arrow_down_outlined,
+                                color: kWhiteColor,
+                                size: 20.ic,
+                              ),
+                              style: AppTypography.textLgBold.copyWith(
+                                color: kWhiteColor,
+                              ),
+                              dropdownColor: kBlack2Color,
+                              borderRadius: BorderRadius.circular(20.br),
+                              isExpanded: true,
+
+                              /// Dropdown items
+                              items:
+                                  yearList.asMap().entries.map((entry) {
+                                    final index = entry.key;
+                                    final value = entry.value;
+                                    final isLast = index == yearList.length - 1;
+
+                                    return DropdownMenuItem<int>(
+                                      value: value,
+                                      child: Container(
+                                        width: double.infinity,
+                                        padding: EdgeInsets.symmetric(
+                                          vertical: 12.sp,
+                                          horizontal: 20.sp,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          border:
+                                              !isLast
+                                                  ? Border(
+                                                    bottom: BorderSide(
+                                                      color: Colors.white
+                                                          .withOpacity(0.1),
+                                                      width: 0.5,
+                                                    ),
+                                                  )
+                                                  : null,
+                                        ),
+                                        child: Text(
+                                          value.toString(),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w400,
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }).toList(),
+
+                              /// Selected item style
+                              selectedItemBuilder: (BuildContext context) {
+                                return yearList.map((value) {
+                                  return Container(
+                                    alignment: Alignment.centerLeft,
+                                    padding: EdgeInsets.only(left: 0),
+                                    child: Text(
+                                      value.toString(),
+                                      style: AppTypography.textLgBold.copyWith(
+                                        color: kWhiteColor,
+                                      ),
+                                    ),
+                                  );
+                                }).toList();
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
             ),
           ),
 

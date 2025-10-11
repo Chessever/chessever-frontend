@@ -262,6 +262,7 @@ class _EnhancedRoundedSearchBarState
               borderRadius: BorderRadius.circular(12.br),
             ),
             child: SimpleSearchBar(
+              hintText: 'Search Events or Players',
               controller: widget.controller,
               focusNode: _effectiveNode,
               onCloseTap: _clearSearchAndHide,
