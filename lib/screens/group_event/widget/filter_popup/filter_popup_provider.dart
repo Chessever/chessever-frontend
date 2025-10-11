@@ -1,4 +1,3 @@
-import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -33,9 +32,8 @@ class _FilterPopupController extends StateNotifier<FilterPopupState> {
     state = state.copyWith(eloRange: newRange);
   }
 
-  Future<void> resetFilters(BuildContext context) async {
+  void resetFilters(BuildContext context) {
     Navigator.of(context).pop();
-    await ref.read(groupEventScreenProvider.notifier).resetFilters();
     state = const FilterPopupState(
       formatsAndStates: <String>{},
       eloRange: RangeValues(800, 3200),

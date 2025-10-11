@@ -1,14 +1,14 @@
-import 'package:chessever2/utils/month_converter.dart';
+import 'package:chessever2/screens/calendar/provider/calendar_screen_provider.dart';
+import 'package:chessever2/utils/month_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/screen_wrapper.dart';
+import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../../theme/app_theme.dart';
-import '../../widgets/simple_search_bar.dart';
-import '../../utils/app_typography.dart';
-import '../group_event/widget/filter_popup/filter_popup.dart';
+import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/widgets/simple_search_bar.dart';
+import 'package:chessever2/utils/app_typography.dart';
 
-final availableYearsProvider = Provider<List<int>>((ref) {
+final availableYearsProvider = AutoDisposeProvider<List<int>>((ref) {
   final currentYear = DateTime.now().year;
   return [currentYear - 1, currentYear, currentYear + 1];
 });
@@ -29,20 +29,22 @@ class CalendarScreen extends ConsumerStatefulWidget {
 }
 
 class _CalendarScreenState extends ConsumerState<CalendarScreen> {
-  final TextEditingController _searchController = TextEditingController();
+  final TextEditingController searchController = TextEditingController();
+  final focusNode = FocusNode();
 
   @override
   void dispose() {
-    _searchController.dispose();
+    searchController.dispose();
+    focusNode.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final yearList = ref.watch(availableYearsProvider);
+    final yearList = ref.read(availableYearsProvider);
 
-    return ScreenWrapper(
-      child: Column(
+    return Scaffold(
+      body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(height: 24.h + MediaQuery.of(context).viewPadding.top),
@@ -50,131 +52,167 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
           /// Search bar + year dropdown
           Padding(
             padding: EdgeInsets.symmetric(horizontal: 16.sp),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                /// Search bar
-                Expanded(
-                  flex: 7,
-                  child: Hero(
-                    tag: 'search_bar',
-                    child: SimpleSearchBar(
-                      controller: _searchController,
-                      hintText: 'Search tournaments or players',
-                      onChanged: (value) {
-                        // Handle search
-                      },
-                      onMenuTap: () {
-                        print('Menu tapped');
-                      },
-                      onFilterTap: () {
-                        showDialog(
-                          context: context,
-                          barrierColor: kLightBlack,
-                          builder: (context) => const FilterPopup(),
-                        );
-                      },
-                    ),
-                  ),
-                ),
+            child: AnimatedBuilder(
+              animation: focusNode,
+              builder: (cxt, _) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    /// Search bar
+                    Expanded(
+                      flex: 7,
+                      child: Hero(
+                        tag: 'search_bar',
+                        child: Material(
+                          color: Colors.transparent,
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 2.sp,
+                              vertical: 4.sp,
+                            ),
+                            decoration: BoxDecoration(
+                              color: kGrey900,
+                              borderRadius: BorderRadius.circular(8.br),
 
-                SizedBox(width: 8.w),
-
-                /// Year dropdown
-                Expanded(
-                  flex: 3,
-                  child: Container(
-                    height: 40.h,
-                    padding: EdgeInsets.symmetric(horizontal: 12.w),
-                    decoration: BoxDecoration(
-                      color: Colors.transparent,
-                      borderRadius: BorderRadius.circular(8.br),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.1),
-                        width: 1.w,
-                      ),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<int>(
-                        value: ref.watch(selectedYearProvider),
-                        onChanged: (int? newValue) {
-                          if (newValue != null) {
-                            ref.read(selectedYearProvider.notifier).state =
-                                newValue;
-                          }
-                        },
-                        icon: Icon(
-                          Icons.keyboard_arrow_down_outlined,
-                          color: kWhiteColor,
-                          size: 20.ic,
-                        ),
-                        style: AppTypography.textLgBold.copyWith(
-                          color: kWhiteColor,
-                        ),
-                        dropdownColor: kBlack2Color,
-                        borderRadius: BorderRadius.circular(20.br),
-                        isExpanded: true,
-
-                        /// Dropdown items
-                        items:
-                            yearList.asMap().entries.map((entry) {
-                              final index = entry.key;
-                              final value = entry.value;
-                              final isLast = index == yearList.length - 1;
-
-                              return DropdownMenuItem<int>(
-                                value: value,
-                                child: Container(
-                                  width: double.infinity,
-                                  padding: EdgeInsets.symmetric(
-                                    vertical: 12.sp,
-                                    horizontal: 20.sp,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    border:
-                                        !isLast
-                                            ? Border(
-                                              bottom: BorderSide(
-                                                color: Colors.white.withOpacity(
-                                                  0.1,
-                                                ),
-                                                width: 0.5,
-                                              ),
-                                            )
-                                            : null,
-                                  ),
-                                  child: Text(
-                                    value.toString(),
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w400,
-                                    ),
-                                  ),
-                                ),
-                              );
-                            }).toList(),
-
-                        /// Selected item style
-                        selectedItemBuilder: (BuildContext context) {
-                          return yearList.map((value) {
-                            return Container(
-                              alignment: Alignment.centerLeft,
-                              padding: EdgeInsets.only(left: 0),
-                              child: Text(
-                                value.toString(),
-                                style: AppTypography.textLgBold.copyWith(
-                                  color: kWhiteColor,
-                                ),
+                              border: Border.all(
+                                color:
+                                    focusNode.hasFocus
+                                        ? kPrimaryColor.withOpacity(0.5)
+                                        : Colors.transparent,
+                                width: 2.0,
                               ),
-                            );
-                          }).toList();
-                        },
+                              boxShadow:
+                                  focusNode.hasFocus
+                                      ? [
+                                        BoxShadow(
+                                          color: kPrimaryColor.withOpacity(
+                                            0.15,
+                                          ),
+                                          blurRadius: 12,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ]
+                                      : [],
+                            ),
+                            child: SimpleSearchBar(
+                              controller: searchController,
+                              focusNode: focusNode,
+                              hintText: 'Search Events or Players',
+                              onCloseTap: () {
+                                searchController.clear();
+                                focusNode.unfocus();
+                                ref
+                                    .read(calendarScreenProvider.notifier)
+                                    .reset();
+                              },
+                              onChanged:
+                                  ref
+                                      .read(calendarScreenProvider.notifier)
+                                      .onSearchTournaments,
+                              onOpenFilter: null,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-              ],
+
+                    SizedBox(width: 8.w),
+
+                    /// Year dropdown
+                    if (!focusNode.hasFocus)
+                      Expanded(
+                        flex: 3,
+                        child: Container(
+                          height: 40.h,
+                          padding: EdgeInsets.symmetric(horizontal: 12.w),
+                          decoration: BoxDecoration(
+                            color: Colors.transparent,
+                            borderRadius: BorderRadius.circular(8.br),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.1),
+                              width: 1.w,
+                            ),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<int>(
+                              value: ref.watch(selectedYearProvider),
+                              onChanged: (int? newValue) {
+                                if (newValue != null) {
+                                  ref
+                                      .read(selectedYearProvider.notifier)
+                                      .state = newValue;
+                                }
+                              },
+                              icon: Icon(
+                                Icons.keyboard_arrow_down_outlined,
+                                color: kWhiteColor,
+                                size: 20.ic,
+                              ),
+                              style: AppTypography.textLgBold.copyWith(
+                                color: kWhiteColor,
+                              ),
+                              dropdownColor: kBlack2Color,
+                              borderRadius: BorderRadius.circular(20.br),
+                              isExpanded: true,
+
+                              /// Dropdown items
+                              items:
+                                  yearList.asMap().entries.map((entry) {
+                                    final index = entry.key;
+                                    final value = entry.value;
+                                    final isLast = index == yearList.length - 1;
+
+                                    return DropdownMenuItem<int>(
+                                      value: value,
+                                      child: Container(
+                                        width: double.infinity,
+                                        padding: EdgeInsets.symmetric(
+                                          vertical: 12.sp,
+                                          horizontal: 20.sp,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          border:
+                                              !isLast
+                                                  ? Border(
+                                                    bottom: BorderSide(
+                                                      color: Colors.white
+                                                          .withOpacity(0.1),
+                                                      width: 0.5,
+                                                    ),
+                                                  )
+                                                  : null,
+                                        ),
+                                        child: Text(
+                                          value.toString(),
+                                          style: AppTypography.textMdRegular,
+                                        ),
+                                      ),
+                                    );
+                                  }).toList(),
+
+                              /// Selected item style
+                              selectedItemBuilder: (BuildContext context) {
+                                return yearList.map((value) {
+                                  return Container(
+                                    alignment: Alignment.centerLeft,
+                                    padding: EdgeInsets.only(left: 0),
+                                    child: Text(
+                                      value.toString(),
+                                      style: AppTypography.textMdRegular
+                                          .copyWith(color: kWhiteColor),
+                                    ),
+                                  );
+                                }).toList();
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
             ),
           ),
 
@@ -182,60 +220,114 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
 
           /// Month list
           Expanded(
-            child: ListView.builder(
-              itemCount: MonthConverter.getAllMonthNames().length,
-              padding: EdgeInsets.zero,
-              itemBuilder: (context, index) {
-                final month = MonthConverter.getAllMonthNames()[index];
-                final monthNumber = MonthConverter.monthNameToNumber(month);
-                final isSelected =
-                    monthNumber == ref.read(selectedMonthProvider);
+            child: ref
+                .watch(calendarScreenProvider)
+                .when(
+                  data: (data) {
+                    if (data.isNotEmpty) {
+                      return ListView.builder(
+                        itemCount: data.length,
+                        padding: EdgeInsets.zero,
+                        itemBuilder: (context, index) {
+                          final month = data[index];
+                          final monthNumber = ref
+                              .read(monthProvider)
+                              .monthNameToNumber(month);
 
-                return GestureDetector(
-                  onTap: () {
-                    ref.read(selectedMonthProvider.notifier).state =
-                        monthNumber;
+                          return GestureDetector(
+                            onTap: () {
+                              ref.read(selectedMonthProvider.notifier).state =
+                                  monthNumber;
 
-                    Navigator.pushNamed(context, '/calendar_detail_screen');
-                  },
-                  child: Container(
-                    height: 42.h,
-                    margin: EdgeInsets.only(
-                      left: 16.sp,
-                      right: 16.sp,
-                      bottom: 16.sp,
-                      top: index == 0 ? 16 : 0,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isSelected ? kActiveCalendarColor : kBlack2Color,
-                      borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(8.br),
-                        topRight: Radius.circular(8.br),
-                        bottomLeft: Radius.zero,
-                        bottomRight: Radius.zero,
-                      ),
-                    ),
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 12.sp,
-                        vertical: 8.sp,
-                      ),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
+                              Navigator.pushNamed(
+                                context,
+                                '/calendar_detail_screen',
+                              );
+                            },
+                            child: _MonthCard(title: month, index: index),
+                          );
+                        },
+                      );
+                    } else {
+                      return Center(
                         child: Text(
-                          month,
+                          'No Events Found',
                           style: AppTypography.textLgRegular.copyWith(
-                            color: isSelected ? kBlack2Color : kWhiteColor,
+                            color: kWhiteColor,
                           ),
                         ),
+                      );
+                    }
+                  },
+                  error: (e, _) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Text(
+                            'Failed To Load Months! \nPlease Try Again Later',
+                            style: AppTypography.textLgRegular.copyWith(
+                              color: kWhiteColor,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ),
-                );
-              },
-            ),
+                    );
+                  },
+                  loading: () {
+                    return SkeletonWidget(
+                      child: ListView.builder(
+                        itemCount: 12,
+                        padding: EdgeInsets.zero,
+                        itemBuilder: (context, index) {
+                          return _MonthCard(title: 'Loading...', index: index);
+                        },
+                      ),
+                    );
+                  },
+                ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _MonthCard extends StatelessWidget {
+  const _MonthCard({required this.title, required this.index, super.key});
+
+  final String title;
+  final int index;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 42.h,
+      margin: EdgeInsets.only(
+        left: 16.sp,
+        right: 16.sp,
+        bottom: 16.sp,
+        top: index == 0 ? 16 : 0,
+      ),
+      decoration: BoxDecoration(
+        color: kBlack2Color,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(8.br),
+          topRight: Radius.circular(8.br),
+          bottomLeft: Radius.zero,
+          bottomRight: Radius.zero,
+        ),
+      ),
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            title,
+            style: AppTypography.textLgRegular.copyWith(color: kWhiteColor),
+          ),
+        ),
       ),
     );
   }
@@ -246,7 +338,7 @@ class YearSelectorList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final yearList = ref.watch(availableYearsProvider);
+    final yearList = ref.read(availableYearsProvider);
     final selectedYear = ref.watch(selectedYearProvider);
 
     return Container(
@@ -254,7 +346,7 @@ class YearSelectorList extends ConsumerWidget {
       decoration: BoxDecoration(
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(8.br),
-        border: Border.all(color: Colors.white.withOpacity(0.1), width: 1.w),
+        border: Border.all(color: kWhiteColor.withOpacity(0.1), width: 1.w),
       ),
       constraints: BoxConstraints(maxHeight: 200.h),
       child: ListView.separated(
@@ -286,7 +378,7 @@ class YearSelectorList extends ConsumerWidget {
         },
         separatorBuilder:
             (context, index) => Divider(
-              color: Colors.white.withOpacity(0.2),
+              color: kWhiteColor.withOpacity(0.2),
               height: 1,
               thickness: 0.5,
             ),
