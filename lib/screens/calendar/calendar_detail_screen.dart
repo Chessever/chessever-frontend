@@ -75,31 +75,30 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
                       Expanded(
                         child: Hero(
                           tag: 'search_bar',
-                          child: SimpleSearchBar(
-                            controller: searchController,
-                            hintText: 'Search tournaments or players',
-                            focusNode: focusNode,
-                            onCloseTap: () {
-                              searchController.clear();
-                              focusNode.unfocus();
-                            },
-                            // ref
-                            //     .read(
-                            //       calendarTourViewProvider(
-                            //         CalendarFilterArgs(
-                            //           month: selectedMonth,
-                            //           year: selectedYear,
-                            //         ),
-                            //       ).notifier,
-                            //     )
-                            //     .search(value);
-                            onOpenFilter: () {
-                              showDialog(
-                                context: context,
-                                barrierColor: kLightBlack,
-                                builder: (context) => const FilterPopup(),
-                              );
-                            },
+                          child: Material(
+                            color: Colors.transparent,
+                            child: SimpleSearchBar(
+                              controller: searchController,
+                              hintText: 'Search tournaments or players',
+                              focusNode: focusNode,
+                              onCloseTap: () {
+                                searchController.clear();
+                                focusNode.unfocus();
+                              },
+                              onChanged: (query) {},
+                              onOpenFilter: () {
+                                showDialog(
+                                  context: context,
+                                  barrierColor: kLightBlack,
+                                  builder:
+                                      (context) => FilterPopup(
+                                        onApplyFilters: (filterState) {
+                                          //todo:
+                                        },
+                                      ),
+                                );
+                              },
+                            ),
                           ),
                         ),
                       ),

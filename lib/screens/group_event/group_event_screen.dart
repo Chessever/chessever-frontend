@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:chessever2/screens/group_event/widget/all_events_tab_widget.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/group_event_filter_provider.dart';
 import 'package:chessever2/screens/home/home_screen.dart';
 import 'package:chessever2/screens/home/home_screen_provider.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
@@ -33,14 +34,6 @@ final selectedGroupCategoryProvider = StateProvider<GroupEventCategory>(
 
 class GroupEventScreen extends HookConsumerWidget {
   const GroupEventScreen({super.key});
-
-  void _showFilterPopup(BuildContext context) {
-    showDialog(
-      context: context,
-      barrierColor: kBlackColor.withOpacity(0.5),
-      builder: (context) => const FilterPopup(),
-    );
-  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -154,7 +147,28 @@ class GroupEventScreen extends HookConsumerWidget {
                           player.name;
                     }
                   },
-                  onFilterTap: () => _showFilterPopup(context),
+                  onFilterTap:
+                      () => showDialog(
+                        context: context,
+                        barrierColor: kBlackColor.withOpacity(0.5),
+                        builder:
+                            (cxt) => FilterPopup(
+                              onApplyFilters: (filterState) async {
+                                final filtered = await ref
+                                    .read(groupEventFilterProvider)
+                                    .applyAllFilters(
+                                      filters:
+                                          filterState.formatsAndStates.toList(),
+                                      eloRange: filterState.eloRange,
+                                      tournamentCategory: selectedTourEvent,
+                                    );
+
+                                ref
+                                    .read(groupEventScreenProvider.notifier)
+                                    .setFilteredModels(filtered);
+                              },
+                            ),
+                      ),
                   onProfileTap:
                       () => HomeScreen.scaffoldKey.currentState?.openDrawer(),
                   onClearSearchField: () {

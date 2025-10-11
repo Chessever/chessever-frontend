@@ -70,4 +70,8 @@ class _CalendarScreenNotifier extends StateNotifier<AsyncValue<List<String>>> {
       state = AsyncValue.error(e, st);
     }
   }
+
+  void reset() {
+    _init();
+  }
 }

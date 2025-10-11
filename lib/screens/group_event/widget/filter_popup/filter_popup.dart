@@ -1,8 +1,6 @@
-import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/group_event_filter_provider.dart';
-import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -11,28 +9,23 @@ import 'package:chessever2/widgets/back_drop_filter_widget.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class FilterPopup extends ConsumerWidget {
-  const FilterPopup({super.key});
+  const FilterPopup({required this.onApplyFilters, super.key});
+
+  final ValueChanged<FilterPopupState> onApplyFilters;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final selectedTourEvent = ref.watch(selectedGroupCategoryProvider);
     final filterState = ref.watch(filterPopupProvider);
     final dialogWidth = 280.w;
     final horizontalPadding = 20.w;
     final verticalPadding = 16.h;
 
     final readableFormat =
-        ref
-            .read(groupEventFilterProvider(selectedTourEvent))
-            .getReadableFormats();
-    final formats =
-        ref.read(groupEventFilterProvider(selectedTourEvent)).getFormats();
+        ref.read(groupEventFilterProvider).getReadableFormats();
+    final formats = ref.read(groupEventFilterProvider).getFormats();
     final readableGameState =
-        ref
-            .read(groupEventFilterProvider(selectedTourEvent))
-            .getReadableGameState();
-    final gameStates =
-        ref.read(groupEventFilterProvider(selectedTourEvent)).getGameState();
+        ref.read(groupEventFilterProvider).getReadableGameState();
+    final gameStates = ref.read(groupEventFilterProvider).getGameState();
 
     return GestureDetector(
       onTap: () => Navigator.of(context).pop(),
@@ -267,13 +260,10 @@ class FilterPopup extends ConsumerWidget {
                               width: 116.w,
                               height: 40.h,
                               child: ElevatedButton(
-                                onPressed:
-                                    () => _applyFilters(
-                                      context,
-                                      ref,
-                                      selectedTourEvent,
-                                      filterState,
-                                    ),
+                                onPressed: () async {
+                                  onApplyFilters(filterState);
+                                  Navigator.of(context).pop();
+                                },
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: kPrimaryColor,
                                   foregroundColor: kBlackColor,
@@ -303,23 +293,5 @@ class FilterPopup extends ConsumerWidget {
         ],
       ),
     );
-  }
-
-  Future<void> _applyFilters(
-    BuildContext context,
-    WidgetRef ref,
-    selectedTourEvent,
-    FilterPopupState filterState,
-  ) async {
-    final filtered = await ref
-        .read(groupEventFilterProvider(selectedTourEvent))
-        .applyAllFilters(
-          filters: filterState.formatsAndStates.toList(),
-          eloRange: filterState.eloRange,
-        );
-
-    ref.read(groupEventScreenProvider.notifier).setFilteredModels(filtered);
-
-    Navigator.of(context).pop();
   }
 }

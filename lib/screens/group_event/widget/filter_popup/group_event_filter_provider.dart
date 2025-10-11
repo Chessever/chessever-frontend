@@ -21,23 +21,14 @@ enum EventStatus {
 }
 
 final groupEventFilterProvider =
-    AutoDisposeProvider.family<_GroupEventFilterController, GroupEventCategory>(
-      (ref, tournamentCategory) {
-        return _GroupEventFilterController(
-          ref: ref,
-          tournamentCategory: tournamentCategory,
-        );
-      },
-    );
+    AutoDisposeProvider<_GroupEventFilterController>((ref) {
+      return _GroupEventFilterController(ref: ref);
+    });
 
 class _GroupEventFilterController {
-  _GroupEventFilterController({
-    required this.ref,
-    required this.tournamentCategory,
-  });
+  _GroupEventFilterController({required this.ref});
 
   final Ref ref;
-  final GroupEventCategory tournamentCategory;
 
   List<String> getReadableFormats() {
     return EventFormat.values.map((e) => e.caption).toList();
@@ -58,6 +49,7 @@ class _GroupEventFilterController {
   Future<List<GroupBroadcast>> applyAllFilters({
     List<String>? filters,
     required RangeValues eloRange,
+    required GroupEventCategory tournamentCategory,
   }) async {
     final groupBroadcast =
         await ref
