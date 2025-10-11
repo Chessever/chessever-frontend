@@ -4,7 +4,7 @@ import 'package:chessever2/screens/calendar/provider/calendar_tour_view_provider
 import 'package:chessever2/screens/group_event/widget/all_events_tab_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
-import 'package:chessever2/utils/month_converter.dart';
+import 'package:chessever2/utils/month_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
@@ -108,7 +108,7 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
                   ),
                   SizedBox(height: 32.h),
                   Text(
-                    "Tournaments in ${MonthConverter.monthNumberToName(selectedMonth)} $selectedYear",
+                    "Tournaments in ${ref.read(monthProvider).monthNumberToName(selectedMonth)} $selectedYear",
                     style: AppTypography.textLgBold,
                   ),
                   SizedBox(height: 20.h),
@@ -136,6 +136,7 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
                   tourEventCategory: TourEventCategory.live,
                   timeControl: 'Standard',
                   endDate: null,
+                  startDate: null,
                 );
                 return Expanded(
                   child: SkeletonWidget(
