@@ -1036,48 +1036,48 @@ class ChessBoardScreenNotifierNew
 
   void moveForward() {
     final currentState = state.value;
-    // Bottom nav arrows always navigate real game moves, even in analysis mode
-    // This allows switching back and forth between analysis and real game
-    if (currentState == null ||
-        !currentState.canMoveForward ||
-        _isProcessingMove) {
+    // Bottom nav arrows should navigate within the active context
+    // (analysis variation or main game) without forcing a mode change
+    if (currentState == null || _isProcessingMove) {
       return;
     }
 
-    // If in analysis mode, exit it first and navigate to next real move
-    if (currentState.isAnalysisMode) {
-      // Deselect any variant
-      state = AsyncValue.data(_clearVariantSelection(currentState));
-      // Exit analysis mode will be handled by toggleAnalysisMode
-      toggleAnalysisMode();
-      // Then navigate to next move after a small delay to let analysis mode exit
-      Future.microtask(() => goToMove(currentState.currentMoveIndex + 1));
-    } else {
-      goToMove(currentState.currentMoveIndex + 1);
+    final canAdvance = currentState.isAnalysisMode
+        ? currentState.analysisState.canMoveForward
+        : currentState.canMoveForward;
+
+    if (!canAdvance) {
+      return;
     }
+
+    if (currentState.isAnalysisMode) {
+      analysisStepForward();
+      return;
+    }
+
+    goToMove(currentState.currentMoveIndex + 1);
   }
 
   void moveBackward() {
     final currentState = state.value;
-    // Bottom nav arrows always navigate real game moves, even in analysis mode
-    // This allows switching back and forth between analysis and real game
-    if (currentState == null ||
-        !currentState.canMoveBackward ||
-        _isProcessingMove) {
+    if (currentState == null || _isProcessingMove) {
       return;
     }
 
-    // If in analysis mode, exit it first and navigate to previous real move
-    if (currentState.isAnalysisMode) {
-      // Deselect any variant
-      state = AsyncValue.data(_clearVariantSelection(currentState));
-      // Exit analysis mode
-      toggleAnalysisMode();
-      // Then navigate to previous move after a small delay
-      Future.microtask(() => goToMove(currentState.currentMoveIndex - 1));
-    } else {
-      goToMove(currentState.currentMoveIndex - 1);
+    final canRetreat = currentState.isAnalysisMode
+        ? currentState.analysisState.canMoveBackward
+        : currentState.canMoveBackward;
+
+    if (!canRetreat) {
+      return;
     }
+
+    if (currentState.isAnalysisMode) {
+      analysisStepBackward();
+      return;
+    }
+
+    goToMove(currentState.currentMoveIndex - 1);
   }
 
   Future<void> toggleAnalysisMode() async {
@@ -2605,7 +2605,11 @@ class ChessBoardScreenNotifierNew
     _longPressTimer?.cancel();
     _longPressTimer = Timer.periodic(const Duration(milliseconds: 300), (_) {
       try {
-        if (state.value?.canMoveForward == true && !_isProcessingMove) {
+        final currentState = state.value;
+        final canAdvance = currentState?.isAnalysisMode == true
+            ? currentState!.analysisState.canMoveForward
+            : currentState?.canMoveForward == true;
+        if (canAdvance && !_isProcessingMove) {
           moveForward();
         } else {
           stopLongPress();
@@ -2621,7 +2625,11 @@ class ChessBoardScreenNotifierNew
     _longPressTimer?.cancel();
     _longPressTimer = Timer.periodic(const Duration(milliseconds: 300), (_) {
       try {
-        if (state.value?.canMoveBackward == true && !_isProcessingMove) {
+        final currentState = state.value;
+        final canRetreat = currentState?.isAnalysisMode == true
+            ? currentState!.analysisState.canMoveBackward
+            : currentState?.canMoveBackward == true;
+        if (canRetreat && !_isProcessingMove) {
           moveBackward();
         } else {
           stopLongPress();
