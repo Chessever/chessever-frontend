@@ -109,37 +109,68 @@ class ChessBoardScreenNotifierNew
               '===== GAME UPDATE: Game ${game.gameId} (index $index), visible: $isCurrentlyVisible, analysisMode: ${currentState?.isAnalysisMode} =====',
             );
 
-            // CRITICAL: Don't update board state if user is actively analyzing
-            // This prevents resetting the board when viewing past positions or variants
-            if (currentState?.isAnalysisMode == true) {
-              // In analysis mode, only update the underlying game data
-              // but don't reset the board position
-              game = game.copyWith(
-                pgn: gameData['pgn'] as String? ?? game.pgn,
-                fen: gameData['fen'] as String? ?? game.fen,
-                lastMove: gameData['last_move'] as String? ?? game.lastMove,
-                lastMoveTime:
-                    gameData['last_move_time'] != null
-                        ? DateTime.tryParse(
-                          gameData['last_move_time'] as String,
-                        )
-                        : game.lastMoveTime,
-                whiteClockSeconds:
-                    (gameData['last_clock_white'] as num?)?.round(),
-                blackClockSeconds:
-                    (gameData['last_clock_black'] as num?)?.round(),
-                gameStatus: _parseGameStatus(
-                  gameData['status'] as String? ?? '*',
-                ),
-              );
+            // CRITICAL: Handle analysis mode updates properly
+            if (currentState?.isAnalysisMode == true && currentState != null) {
+              // Check if user is at the latest position
+              final isAtLatestPosition = currentState.analysisState.currentMoveIndex >=
+                  currentState.allMoves.length - 1;
 
-              // Update only the game reference in state, preserve analysis position
-              if (currentState != null) {
+              // Check if new moves were added
+              final newPgn = gameData['pgn'] as String? ?? game.pgn;
+              final hasNewMoves = newPgn != game.pgn && (newPgn?.isNotEmpty ?? false);
+
+              if (isAtLatestPosition && hasNewMoves && isCurrentlyVisible) {
+                // User is at the latest position and new moves arrived - update live
+                game = game.copyWith(
+                  pgn: newPgn,
+                  fen: gameData['fen'] as String? ?? game.fen,
+                  lastMove: gameData['last_move'] as String? ?? game.lastMove,
+                  lastMoveTime:
+                      gameData['last_move_time'] != null
+                          ? DateTime.tryParse(
+                            gameData['last_move_time'] as String,
+                          )
+                          : game.lastMoveTime,
+                  whiteClockSeconds:
+                      (gameData['last_clock_white'] as num?)?.round(),
+                  blackClockSeconds:
+                      (gameData['last_clock_black'] as num?)?.round(),
+                  gameStatus: _parseGameStatus(
+                    gameData['status'] as String? ?? '*',
+                  ),
+                );
+
+                // Reparse to include new moves
+                _hasParsedMoves = false;
+                parseMoves();
+                debugPrint("Live game updated in analysis mode - new moves added");
+                return;
+              } else {
+                // User is viewing past position or no new moves - only update game data
+                game = game.copyWith(
+                  pgn: newPgn,
+                  fen: gameData['fen'] as String? ?? game.fen,
+                  lastMove: gameData['last_move'] as String? ?? game.lastMove,
+                  lastMoveTime:
+                      gameData['last_move_time'] != null
+                          ? DateTime.tryParse(
+                            gameData['last_move_time'] as String,
+                          )
+                          : game.lastMoveTime,
+                  whiteClockSeconds:
+                      (gameData['last_clock_white'] as num?)?.round(),
+                  blackClockSeconds:
+                      (gameData['last_clock_black'] as num?)?.round(),
+                  gameStatus: _parseGameStatus(
+                    gameData['status'] as String? ?? '*',
+                  ),
+                );
+
+                // Update only the game reference in state, preserve analysis position
                 state = AsyncValue.data(currentState.copyWith(game: game));
+                debugPrint("Game data updated but preserving analysis position");
+                return;
               }
-
-              debugPrint("Game data updated but preserving analysis position");
-              return;
             }
 
             // CRITICAL: In normal mode, check if user is viewing a past position
@@ -2358,8 +2389,17 @@ class ChessBoardScreenNotifierNew
     if (cloudEval?.pvs.isNotEmpty ?? false) {
       final arrowShapes = <Arrow>[];
 
+      // CRITICAL: Validate that the PVs are for the correct position
+      // The cloudEval.fen should match the position we're displaying arrows for
+      if (cloudEval!.fen != pos.fen) {
+        debugPrint('⚠️ PV ARROWS: Skipping - PVs are for different position');
+        debugPrint('   Current FEN: ${pos.fen}');
+        debugPrint('   Eval FEN: ${cloudEval.fen}');
+        return const ISet.empty();
+      }
+
       // Get up to [_kMaxPrincipalVariations] principal variations
-      final pvsToShow = cloudEval!.pvs.take(_kMaxPrincipalVariations).toList();
+      final pvsToShow = cloudEval.pvs.take(_kMaxPrincipalVariations).toList();
 
       for (int i = 0; i < pvsToShow.length; i++) {
         final pv = pvsToShow[i];
@@ -2397,6 +2437,42 @@ class ChessBoardScreenNotifierNew
             String toStr = bestMove.substring(2, 4);
             Square from = Square.fromName(fromStr);
             Square to = Square.fromName(toStr);
+
+            // VALIDATION: Verify this move is legal for the current position
+            // This ensures we're showing moves for the correct color
+            final promotion = bestMove.length == 5 ? bestMove[4] : null;
+            NormalMove? move;
+
+            if (promotion != null) {
+              // Promotion move
+              final promRole = switch (promotion) {
+                'q' => Role.queen,
+                'r' => Role.rook,
+                'b' => Role.bishop,
+                'n' => Role.knight,
+                _ => Role.queen,
+              };
+              move = NormalMove(from: from, to: to, promotion: promRole);
+            } else {
+              move = NormalMove(from: from, to: to);
+            }
+
+            // Validate the move by trying to play it on the position
+            bool isLegal = false;
+            try {
+              // If play succeeds, the move is legal
+              pos.play(move);
+              isLegal = true;
+            } catch (e) {
+              // If play throws an exception, the move is illegal
+              isLegal = false;
+            }
+
+            if (!isLegal) {
+              debugPrint('⚠️ PV ARROWS: Move $bestMove is not legal for position (turn: ${pos.turn})');
+              continue; // Skip illegal moves
+            }
+
             arrowShapes.add(Arrow(color: arrowColor, orig: from, dest: to));
           }
         } catch (e) {
