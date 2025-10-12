@@ -235,19 +235,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
         ref.read(currentlyVisiblePageIndexProvider.notifier).state =
             _currentPageIndex;
 
-        // ENABLED BY DEFAULT: Auto-enable analysis mode on screen entry
-        final currentGame = widget.games[_currentPageIndex];
-        final params = ChessBoardProviderParams(
-          game: currentGame,
-          index: _currentPageIndex,
-        );
-        final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
-        final currentState = ref.read(chessBoardScreenProviderNew(params)).valueOrNull;
-
-        // Only toggle if not already in analysis mode
-        if (currentState != null && !currentState.isAnalysisMode) {
-          notifier.toggleAnalysisMode();
-        }
+        // Analysis mode is already enabled by default in the provider initialization
+        // No need to toggle it here
       }
     });
   }

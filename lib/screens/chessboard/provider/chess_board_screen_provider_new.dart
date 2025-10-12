@@ -74,6 +74,7 @@ class ChessBoardScreenNotifierNew
         fenData: game.fen,
         evaluation: null, // Start with null to indicate no evaluation yet
         isEvaluating: false,
+        isAnalysisMode: true, // ENABLED BY DEFAULT: Analysis mode active from start
       ),
     );
     parseMoves();
@@ -322,10 +323,10 @@ class ChessBoardScreenNotifierNew
   }
 
   Future<void> parseMoves() async {
-    if (state.value?.isAnalysisMode == true) {
+    if (state.value?.isAnalysisMode == true && _hasParsedMoves) {
       return;
     }
-    if (_hasParsedMoves) return;
+    if (_hasParsedMoves && state.value?.isAnalysisMode != true) return;
     _hasParsedMoves = true;
 
     final currentState = state.value;
@@ -386,6 +387,11 @@ class ChessBoardScreenNotifierNew
           moveTimes: moveTimes,
         ),
       );
+
+      // If analysis mode was enabled by default, initialize the analysis board
+      if (currentState.isAnalysisMode) {
+        await _initializeAnalysisBoard();
+      }
 
       _updateEvaluation();
     } catch (e, st) {
