@@ -8,19 +8,20 @@ import 'package:worker_manager/worker_manager.dart';
 
 /// Enum representing different types of impactful chess moves with their visual properties
 enum MoveImpactType {
-  // Brilliant move (!!) - Very smart move, not easy to find
-  brilliant(
-    symbol: '!!',
-    color: Color(0xFF1ABC9C), // Turquoise
-    description: 'Brilliant move - Very hard to find, gains significant advantage',
-  ),
-
-  // Great move (!) - Good move with less impact than brilliant
-  great(
-    symbol: '!',
-    color: Color(0xFF2ECC71), // Bright green
-    description: 'Great move - Good move that gains advantage',
-  ),
+  // DISABLED: Brilliant and great moves are no longer classified
+  // // Brilliant move (!!) - Very smart move, not easy to find
+  // brilliant(
+  //   symbol: '!!',
+  //   color: Color(0xFF1ABC9C), // Turquoise
+  //   description: 'Brilliant move - Very hard to find, gains significant advantage',
+  // ),
+  //
+  // // Great move (!) - Good move with less impact than brilliant
+  // great(
+  //   symbol: '!',
+  //   color: Color(0xFF2ECC71), // Bright green
+  //   description: 'Great move - Good move that gains advantage',
+  // ),
 
   // Interesting move (!?) - Missed opportunity for a much better move
   interesting(
@@ -507,17 +508,19 @@ MoveImpactAnalysis? _calculateMoveImpactFromAlternatives({
         lostMaterialForPlayer: lostMaterialForPlayer,
       );
 
-      if (highlightImpact != MoveImpactType.normal) {
-        impact = highlightImpact;
-      }
+      // DISABLED: Brilliant/great moves no longer classified
+      // if (highlightImpact != MoveImpactType.normal) {
+      //   impact = highlightImpact;
+      // }
     }
 
-    if ((decided || bothDecidedSame) && impact == MoveImpactType.great) {
-      impact = MoveImpactType.normal;
-    }
-    if ((decided || bothDecidedSame) && impact == MoveImpactType.brilliant) {
-      impact = MoveImpactType.great;
-    }
+    // DISABLED: Brilliant/great moves no longer classified
+    // if ((decided || bothDecidedSame) && impact == MoveImpactType.great) {
+    //   impact = MoveImpactType.normal;
+    // }
+    // if ((decided || bothDecidedSame) && impact == MoveImpactType.brilliant) {
+    //   impact = MoveImpactType.great;
+    // }
 
     return MoveImpactAnalysis(
       impact: impact,
@@ -601,37 +604,39 @@ MoveImpactType _classifyBrilliantOrGreat({
           (uniqueOnlyMove && (tactical || hugeWinProbGap)) ||
           (bestMateForPlayer && preservesEval && (tactical || hugeWinProbGap)));
 
-  if (qualifiesBrilliant && (preservesEval || improvedEval || actualMateForPlayer)) {
-    final reasons = {
-      'uniqueOnly': uniqueOnlyMove,
-      'tactical': tactical,
-      'mateFor': actualMateForPlayer,
-      'mateSaved': bestMateForPlayer,
-      'winProbGap': winProbGap.toStringAsFixed(3),
-    };
-    debugPrint('✨ BRILLIANT reason=$reasons move=$playerMoveSan');
-    return MoveImpactType.brilliant;
-  }
+  // DISABLED: Brilliant moves no longer classified
+  // if (qualifiesBrilliant && (preservesEval || improvedEval || actualMateForPlayer)) {
+  //   final reasons = {
+  //     'uniqueOnly': uniqueOnlyMove,
+  //     'tactical': tactical,
+  //     'mateFor': actualMateForPlayer,
+  //     'mateSaved': bestMateForPlayer,
+  //     'winProbGap': winProbGap.toStringAsFixed(3),
+  //   };
+  //   debugPrint('✨ BRILLIANT reason=$reasons move=$playerMoveSan');
+  //   return MoveImpactType.brilliant;
+  // }
 
-  final bool greatByPreserve = preservesEval && !lowConfidence && (strongGap || strongWinProbGap);
-  final bool greatByGain = improvedEval && (strongGap || strongWinProbGap || actualTier == AdvantageTier.winning);
-  final bool greatByTactics = preservesEval && tactical && !lowConfidence && clearGap;
-  final bool greatByMate = actualMateForPlayer && !lowConfidence;
-  final bool greatByRescue = preservesEval && bestTier == AdvantageTier.equal && actualTier == AdvantageTier.slight;
-
-  if ((preservesEval || improvedEval || actualMateForPlayer) &&
-      (greatByPreserve || greatByGain || greatByTactics || greatByMate || greatByRescue)) {
-    final reasons = {
-      'preserve': greatByPreserve,
-      'gain': greatByGain,
-      'tactical': greatByTactics,
-      'mate': greatByMate,
-      'rescue': greatByRescue,
-      'winProbGap': winProbGap.toStringAsFixed(3),
-    };
-    debugPrint('⭐ GREAT reason=$reasons move=$playerMoveSan');
-    return MoveImpactType.great;
-  }
+  // DISABLED: Great moves no longer classified
+  // final bool greatByPreserve = preservesEval && !lowConfidence && (strongGap || strongWinProbGap);
+  // final bool greatByGain = improvedEval && (strongGap || strongWinProbGap || actualTier == AdvantageTier.winning);
+  // final bool greatByTactics = preservesEval && tactical && !lowConfidence && clearGap;
+  // final bool greatByMate = actualMateForPlayer && !lowConfidence;
+  // final bool greatByRescue = preservesEval && bestTier == AdvantageTier.equal && actualTier == AdvantageTier.slight;
+  //
+  // if ((preservesEval || improvedEval || actualMateForPlayer) &&
+  //     (greatByPreserve || greatByGain || greatByTactics || greatByMate || greatByRescue)) {
+  //   final reasons = {
+  //     'preserve': greatByPreserve,
+  //     'gain': greatByGain,
+  //     'tactical': greatByTactics,
+  //     'mate': greatByMate,
+  //     'rescue': greatByRescue,
+  //     'winProbGap': winProbGap.toStringAsFixed(3),
+  //   };
+  //   debugPrint('⭐ GREAT reason=$reasons move=$playerMoveSan');
+  //   return MoveImpactType.great;
+  // }
 
   return MoveImpactType.normal;
 }
@@ -937,14 +942,15 @@ final allMovesImpactFromPositionsProvider = FutureProvider.family<Map<int, MoveI
 
         // Count impact types
         switch (impacts[i]!.impact) {
-          case MoveImpactType.brilliant:
-            brilliantCount++;
-            debugPrint('🎨 !! BRILLIANT move $i: ${params.moveSans[i]}');
-            break;
-          case MoveImpactType.great:
-            greatCount++;
-            debugPrint('🎨 ! GREAT move $i: ${params.moveSans[i]}');
-            break;
+          // DISABLED: Brilliant and great moves no longer classified
+          // case MoveImpactType.brilliant:
+          //   brilliantCount++;
+          //   debugPrint('🎨 !! BRILLIANT move $i: ${params.moveSans[i]}');
+          //   break;
+          // case MoveImpactType.great:
+          //   greatCount++;
+          //   debugPrint('🎨 ! GREAT move $i: ${params.moveSans[i]}');
+          //   break;
           case MoveImpactType.interesting:
             interestingCount++;
             debugPrint('🎨 !? INTERESTING move $i: ${params.moveSans[i]}');
