@@ -73,11 +73,11 @@ Future<void> main() async {
 
       await _clearEvaluationCache();
 
-        // Initialize Clarity
-      await ClarityFlutter.initialize(projectId: "to1z6pg0bz");
-// Initialize Amplitude
-   final amplitude = Amplitude.getInstance();
-   await amplitude.init("c19481babdae8a9f2d4c20b9bacecfb3");
+      // Initialize Amplitude
+      try {
+        final amplitude = Amplitude.getInstance();
+        await amplitude.init(dotenv.env['AMPLITUDE']!);
+      } catch (e, _) {}
       // Initialize Supabase
       await Supabase.initialize(
         url: dotenv.env['SUPABASE_URL']!,
@@ -161,6 +161,14 @@ class _MyAppState extends ConsumerState<MyApp> {
     super.initState();
     // Initialize settings from persistent storage
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Initialize Clarity after first frame is built
+
+      final clarityConfig = ClarityConfig(
+        projectId: dotenv.env['CLARITY_PROJECT_ID']!,
+      );
+
+      final initialized = Clarity.initialize(context, clarityConfig);
+      debugPrint("Clarity initialized: $initialized");
       // Initialize the favorites service
       _initializeFavoritesService();
     });
