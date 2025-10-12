@@ -2086,10 +2086,16 @@ class _PrincipalVariationListState
                           final evalText = _formatEvalLabel(line);
 
                           // Get variant color matching the arrow color
-                          final variantColor = notifier.getVariantColor(
-                            variantIndex,
-                            isSelected,
-                          );
+                          final activeVariantColor =
+                              notifier.getVariantColor(variantIndex, true);
+                          final borderColor =
+                              activeVariantColor.withValues(alpha: 0.7);
+                          final backgroundColor =
+                              activeVariantColor.withValues(alpha: 0.15);
+                          final badgeBackgroundColor =
+                              activeVariantColor.withValues(alpha: 0.3);
+                          final badgeBorderColor =
+                              activeVariantColor.withValues(alpha: 0.6);
 
                           return GestureDetector(
                             // DISABLED: PV cards are now read-only
@@ -2115,18 +2121,11 @@ class _PrincipalVariationListState
                                 margin: EdgeInsets.symmetric(horizontal: 2.sp),
                                 decoration: BoxDecoration(
                                   border: Border.all(
-                                    color: variantColor.withValues(
-                                      alpha: isSelected ? 0.7 : 0.4,
-                                    ),
+                                    color: borderColor,
                                     width: isSelected ? 2.0 : 1.5,
                                   ),
                                   borderRadius: BorderRadius.circular(6.sp),
-                                  color:
-                                      isSelected
-                                          ? variantColor.withValues(alpha: 0.15)
-                                          : variantColor.withValues(
-                                            alpha: 0.05,
-                                          ),
+                                  color: backgroundColor,
                                 ),
                                 padding: EdgeInsets.symmetric(
                                   horizontal: 12.sp,
@@ -2142,16 +2141,12 @@ class _PrincipalVariationListState
                                         vertical: 4.sp,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: variantColor.withValues(
-                                          alpha: 0.3,
-                                        ),
+                                        color: badgeBackgroundColor,
                                         borderRadius: BorderRadius.circular(
                                           4.sp,
                                         ),
                                         border: Border.all(
-                                          color: variantColor.withValues(
-                                            alpha: 0.6,
-                                          ),
+                                          color: badgeBorderColor,
                                           width: 1.0,
                                         ),
                                       ),
