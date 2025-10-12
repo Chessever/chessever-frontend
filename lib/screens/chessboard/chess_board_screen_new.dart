@@ -234,6 +234,20 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
       if (mounted) {
         ref.read(currentlyVisiblePageIndexProvider.notifier).state =
             _currentPageIndex;
+
+        // ENABLED BY DEFAULT: Auto-enable analysis mode on screen entry
+        final currentGame = widget.games[_currentPageIndex];
+        final params = ChessBoardProviderParams(
+          game: currentGame,
+          index: _currentPageIndex,
+        );
+        final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+        final currentState = ref.read(chessBoardScreenProviderNew(params)).valueOrNull;
+
+        // Only toggle if not already in analysis mode
+        if (currentState != null && !currentState.isAnalysisMode) {
+          notifier.toggleAnalysisMode();
+        }
       }
     });
   }
@@ -1328,7 +1342,8 @@ class _AnalysisGameBody extends ConsumerWidget {
         ),
         if (state.isAnalysisMode) ...[
           _PrincipalVariationList(index: index, state: state, game: game),
-          _AnalysisControlsRow(index: index, game: game),
+          // DISABLED: Analysis navigation arrows hidden
+          // _AnalysisControlsRow(index: index, game: game),
         ],
         Expanded(
           child: Container(
@@ -1372,69 +1387,70 @@ class _AnalysisGameBody extends ConsumerWidget {
   }
 }
 
-class _AnalysisControlsRow extends ConsumerWidget {
-  final int index;
-  final GamesTourModel game;
-
-  const _AnalysisControlsRow({required this.index, required this.game});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final params = ChessBoardProviderParams(game: game, index: index);
-    final state = ref.watch(chessBoardScreenProviderNew(params)).valueOrNull;
-    final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
-
-    // Use variants when available; default to first PV if none explicitly selected
-    final hasVariant = state?.principalVariations.isNotEmpty ?? false;
-
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 4.sp),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          IconButton(
-            icon: const Icon(Icons.fast_rewind, color: kWhiteColor),
-            onPressed: notifier.jumpToStart,
-          ),
-          IconButton(
-            icon: Icon(
-              Icons.arrow_back,
-              color:
-                  hasVariant ? kWhiteColor.withValues(alpha: 0.7) : kWhiteColor,
-            ),
-            onPressed: () {
-              debugPrint('🎯 NAV BACK: hasVariant=$hasVariant');
-              if (hasVariant) {
-                notifier.playVariantMoveBackward();
-              } else {
-                notifier.analysisStepBackward();
-              }
-            },
-          ),
-          IconButton(
-            icon: Icon(
-              Icons.arrow_forward,
-              color:
-                  hasVariant ? kWhiteColor.withValues(alpha: 0.7) : kWhiteColor,
-            ),
-            onPressed: () {
-              debugPrint('🎯 NAV FORWARD: hasVariant=$hasVariant');
-              if (hasVariant) {
-                notifier.playVariantMoveForward();
-              } else {
-                notifier.analysisStepForward();
-              }
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.fast_forward, color: kWhiteColor),
-            onPressed: notifier.jumpToEnd,
-          ),
-        ],
-      ),
-    );
-  }
-}
+// DISABLED: Analysis navigation arrows widget completely hidden
+// class _AnalysisControlsRow extends ConsumerWidget {
+//   final int index;
+//   final GamesTourModel game;
+//
+//   const _AnalysisControlsRow({required this.index, required this.game});
+//
+//   @override
+//   Widget build(BuildContext context, WidgetRef ref) {
+//     final params = ChessBoardProviderParams(game: game, index: index);
+//     final state = ref.watch(chessBoardScreenProviderNew(params)).valueOrNull;
+//     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+//
+//     // Use variants when available; default to first PV if none explicitly selected
+//     final hasVariant = state?.principalVariations.isNotEmpty ?? false;
+//
+//     return Padding(
+//       padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 4.sp),
+//       child: Row(
+//         mainAxisAlignment: MainAxisAlignment.center,
+//         children: [
+//           IconButton(
+//             icon: const Icon(Icons.fast_rewind, color: kWhiteColor),
+//             onPressed: notifier.jumpToStart,
+//           ),
+//           IconButton(
+//             icon: Icon(
+//               Icons.arrow_back,
+//               color:
+//                   hasVariant ? kWhiteColor.withValues(alpha: 0.7) : kWhiteColor,
+//             ),
+//             onPressed: () {
+//               debugPrint('🎯 NAV BACK: hasVariant=$hasVariant');
+//               if (hasVariant) {
+//                 notifier.playVariantMoveBackward();
+//               } else {
+//                 notifier.analysisStepBackward();
+//               }
+//             },
+//           ),
+//           IconButton(
+//             icon: Icon(
+//               Icons.arrow_forward,
+//               color:
+//                   hasVariant ? kWhiteColor.withValues(alpha: 0.7) : kWhiteColor,
+//             ),
+//             onPressed: () {
+//               debugPrint('🎯 NAV FORWARD: hasVariant=$hasVariant');
+//               if (hasVariant) {
+//                 notifier.playVariantMoveForward();
+//               } else {
+//                 notifier.analysisStepForward();
+//               }
+//             },
+//           ),
+//           IconButton(
+//             icon: const Icon(Icons.fast_forward, color: kWhiteColor),
+//             onPressed: notifier.jumpToEnd,
+//           ),
+//         ],
+//       ),
+//     );
+//   }
+// }
 
 class _PlayerWidget extends StatelessWidget {
   final GamesTourModel game;
@@ -1661,39 +1677,41 @@ class _ChessBoardNew extends ConsumerWidget {
               : chessBoardState.position!.fen,
       lastMove:
           chessBoardState.isLoadingMoves ? null : chessBoardState.lastMove,
-      game:
-          chessBoardState.position != null && !chessBoardState.isLoadingMoves
-              ? GameData(
-                playerSide:
-                    chessBoardState.position!.turn == Side.white
-                        ? PlayerSide.white
-                        : PlayerSide.black,
-                validMoves: makeLegalMoves(chessBoardState.position!),
-                sideToMove: chessBoardState.position!.turn,
-                isCheck: chessBoardState.position!.isCheck,
-                promotionMove: null,
-                onMove: (move, {isDrop, isPremove}) async {
-                  // Auto-enter analysis mode on first move attempt
-                  if (!chessBoardState.isAnalysisMode) {
-                    await notifier.toggleAnalysisMode();
-                    // Wait a frame for state to update
-                    await Future.delayed(const Duration(milliseconds: 50));
-                  }
-                  notifier.onAnalysisMove(
-                    move,
-                    isDrop: isDrop,
-                    isPremove: isPremove,
-                  );
-                },
-                onPromotionSelection: (role) async {
-                  if (!chessBoardState.isAnalysisMode) {
-                    await notifier.toggleAnalysisMode();
-                    await Future.delayed(const Duration(milliseconds: 50));
-                  }
-                  notifier.onAnalysisPromotionSelection(role);
-                },
-              )
-              : null,
+      // DISABLED: Manual piece movement disabled
+      // game:
+      //     chessBoardState.position != null && !chessBoardState.isLoadingMoves
+      //         ? GameData(
+      //           playerSide:
+      //               chessBoardState.position!.turn == Side.white
+      //                   ? PlayerSide.white
+      //                   : PlayerSide.black,
+      //           validMoves: makeLegalMoves(chessBoardState.position!),
+      //           sideToMove: chessBoardState.position!.turn,
+      //           isCheck: chessBoardState.position!.isCheck,
+      //           promotionMove: null,
+      //           onMove: (move, {isDrop, isPremove}) async {
+      //             // Auto-enter analysis mode on first move attempt
+      //             if (!chessBoardState.isAnalysisMode) {
+      //               await notifier.toggleAnalysisMode();
+      //               // Wait a frame for state to update
+      //               await Future.delayed(const Duration(milliseconds: 50));
+      //             }
+      //             notifier.onAnalysisMove(
+      //               move,
+      //               isDrop: isDrop,
+      //               isPremove: isPremove,
+      //             );
+      //           },
+      //           onPromotionSelection: (role) async {
+      //             if (!chessBoardState.isAnalysisMode) {
+      //               await notifier.toggleAnalysisMode();
+      //               await Future.delayed(const Duration(milliseconds: 50));
+      //             }
+      //             notifier.onAnalysisPromotionSelection(role);
+      //           },
+      //         )
+      //         : null,
+      game: null, // Board is now read-only
     );
   }
 }
@@ -2176,19 +2194,20 @@ class _PrincipalVariationListState
                           );
 
                           return GestureDetector(
-                            onTap:
-                                isEvaluating
-                                    ? null
-                                    : () {
-                                      HapticFeedback.selectionClick();
-                                      if (isSelected) {
-                                        notifier.playVariantMoveForward();
-                                      } else {
-                                        notifier.playPrincipalVariationMove(
-                                          line,
-                                        );
-                                      }
-                                    },
+                            // DISABLED: PV cards are now read-only
+                            // onTap:
+                            //     isEvaluating
+                            //         ? null
+                            //         : () {
+                            //           HapticFeedback.selectionClick();
+                            //           if (isSelected) {
+                            //             notifier.playVariantMoveForward();
+                            //           } else {
+                            //             notifier.playPrincipalVariationMove(
+                            //               line,
+                            //             );
+                            //           }
+                            //         },
                             child: AnimatedOpacity(
                               opacity: isEvaluating ? 0.4 : 1.0,
                               duration: const Duration(milliseconds: 200),
