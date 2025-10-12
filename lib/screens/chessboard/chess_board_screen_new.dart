@@ -234,6 +234,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
       if (mounted) {
         ref.read(currentlyVisiblePageIndexProvider.notifier).state =
             _currentPageIndex;
+
+        // Analysis mode is already enabled by default in the provider initialization
+        // No need to toggle it here
       }
     });
   }
@@ -1059,142 +1062,44 @@ class _BottomNavBar extends ConsumerWidget {
     required this.game,
   });
 
-  void _showExitAnalysisConfirmation(
-    BuildContext context,
-    VoidCallback onConfirm,
-  ) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext dialogContext) {
-        return Dialog(
-          backgroundColor: const Color(0xFF1E1E1E),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.info_outline, color: kPrimaryColor, size: 48),
-                const SizedBox(height: 16),
-                const Text(
-                  'Exit Analysis Mode?',
-                  style: TextStyle(
-                    color: kWhiteColor,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'This will reset the position to the actual game and clear variant exploration.',
-                  style: TextStyle(
-                    color: Color(0xFFB0B0B0),
-                    fontSize: 14,
-                    height: 1.5,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextButton(
-                        onPressed: () => Navigator.of(dialogContext).pop(),
-                        style: TextButton.styleFrom(
-                          backgroundColor: const Color(0xFF2A2A2A),
-                          foregroundColor: kWhiteColor,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: const Text(
-                          'Dismiss',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextButton(
-                        onPressed: () {
-                          Navigator.of(dialogContext).pop();
-                          onConfirm();
-                        },
-                        style: TextButton.styleFrom(
-                          backgroundColor: kPrimaryColor,
-                          foregroundColor: kWhiteColor,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: const Text(
-                          'Confirm',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final params = ChessBoardProviderParams(game: game, index: index);
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+    final canMoveForward = state.isAnalysisMode
+        ? state.analysisState.canMoveForward
+        : state.canMoveForward;
+    final canMoveBackward = state.isAnalysisMode
+        ? state.analysisState.canMoveBackward
+        : state.canMoveBackward;
 
     return ChessBoardBottomNavBar(
       gameIndex: index,
       onFlip: () => notifier.flipBoard(),
-      onRightMove:
-          state.canMoveForward
-              ? () {
-                if (state.isAnalysisMode) {
-                  _showExitAnalysisConfirmation(
-                    context,
-                    () => notifier.moveForward(),
-                  );
-                } else {
-                  notifier.moveForward();
-                }
+      onRightMove: canMoveForward
+          ? () {
+              if (state.isAnalysisMode) {
+                notifier.analysisStepForward();
+              } else {
+                notifier.moveForward();
               }
-              : null,
-      onLeftMove:
-          state.canMoveBackward
-              ? () {
-                if (state.isAnalysisMode) {
-                  _showExitAnalysisConfirmation(
-                    context,
-                    () => notifier.moveBackward(),
-                  );
-                } else {
-                  notifier.moveBackward();
-                }
+            }
+          : null,
+      onLeftMove: canMoveBackward
+          ? () {
+              if (state.isAnalysisMode) {
+                notifier.analysisStepBackward();
+              } else {
+                notifier.moveBackward();
               }
-              : null,
+            }
+          : null,
       onLongPressBackwardStart: () => notifier.startLongPressBackward(),
       onLongPressBackwardEnd: () => notifier.stopLongPress(),
       onLongPressForwardStart: () => notifier.startLongPressForward(),
       onLongPressForwardEnd: () => notifier.stopLongPress(),
-      canMoveForward: state.canMoveForward,
-      canMoveBackward: state.canMoveBackward,
+      canMoveForward: canMoveForward,
+      canMoveBackward: canMoveBackward,
       isAnalysisMode: state.isAnalysisMode,
       toggleAnalysisMode: () => notifier.toggleAnalysisMode(),
     );
@@ -1328,7 +1233,8 @@ class _AnalysisGameBody extends ConsumerWidget {
         ),
         if (state.isAnalysisMode) ...[
           _PrincipalVariationList(index: index, state: state, game: game),
-          _AnalysisControlsRow(index: index, game: game),
+          // DISABLED: Analysis navigation arrows hidden
+          // _AnalysisControlsRow(index: index, game: game),
         ],
         Expanded(
           child: Container(
@@ -1372,69 +1278,70 @@ class _AnalysisGameBody extends ConsumerWidget {
   }
 }
 
-class _AnalysisControlsRow extends ConsumerWidget {
-  final int index;
-  final GamesTourModel game;
-
-  const _AnalysisControlsRow({required this.index, required this.game});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final params = ChessBoardProviderParams(game: game, index: index);
-    final state = ref.watch(chessBoardScreenProviderNew(params)).valueOrNull;
-    final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
-
-    // Use variants when available; default to first PV if none explicitly selected
-    final hasVariant = state?.principalVariations.isNotEmpty ?? false;
-
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 4.sp),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          IconButton(
-            icon: const Icon(Icons.fast_rewind, color: kWhiteColor),
-            onPressed: notifier.jumpToStart,
-          ),
-          IconButton(
-            icon: Icon(
-              Icons.arrow_back,
-              color:
-                  hasVariant ? kWhiteColor.withValues(alpha: 0.7) : kWhiteColor,
-            ),
-            onPressed: () {
-              debugPrint('🎯 NAV BACK: hasVariant=$hasVariant');
-              if (hasVariant) {
-                notifier.playVariantMoveBackward();
-              } else {
-                notifier.analysisStepBackward();
-              }
-            },
-          ),
-          IconButton(
-            icon: Icon(
-              Icons.arrow_forward,
-              color:
-                  hasVariant ? kWhiteColor.withValues(alpha: 0.7) : kWhiteColor,
-            ),
-            onPressed: () {
-              debugPrint('🎯 NAV FORWARD: hasVariant=$hasVariant');
-              if (hasVariant) {
-                notifier.playVariantMoveForward();
-              } else {
-                notifier.analysisStepForward();
-              }
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.fast_forward, color: kWhiteColor),
-            onPressed: notifier.jumpToEnd,
-          ),
-        ],
-      ),
-    );
-  }
-}
+// DISABLED: Analysis navigation arrows widget completely hidden
+// class _AnalysisControlsRow extends ConsumerWidget {
+//   final int index;
+//   final GamesTourModel game;
+//
+//   const _AnalysisControlsRow({required this.index, required this.game});
+//
+//   @override
+//   Widget build(BuildContext context, WidgetRef ref) {
+//     final params = ChessBoardProviderParams(game: game, index: index);
+//     final state = ref.watch(chessBoardScreenProviderNew(params)).valueOrNull;
+//     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+//
+//     // Use variants when available; default to first PV if none explicitly selected
+//     final hasVariant = state?.principalVariations.isNotEmpty ?? false;
+//
+//     return Padding(
+//       padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 4.sp),
+//       child: Row(
+//         mainAxisAlignment: MainAxisAlignment.center,
+//         children: [
+//           IconButton(
+//             icon: const Icon(Icons.fast_rewind, color: kWhiteColor),
+//             onPressed: notifier.jumpToStart,
+//           ),
+//           IconButton(
+//             icon: Icon(
+//               Icons.arrow_back,
+//               color:
+//                   hasVariant ? kWhiteColor.withValues(alpha: 0.7) : kWhiteColor,
+//             ),
+//             onPressed: () {
+//               debugPrint('🎯 NAV BACK: hasVariant=$hasVariant');
+//               if (hasVariant) {
+//                 notifier.playVariantMoveBackward();
+//               } else {
+//                 notifier.analysisStepBackward();
+//               }
+//             },
+//           ),
+//           IconButton(
+//             icon: Icon(
+//               Icons.arrow_forward,
+//               color:
+//                   hasVariant ? kWhiteColor.withValues(alpha: 0.7) : kWhiteColor,
+//             ),
+//             onPressed: () {
+//               debugPrint('🎯 NAV FORWARD: hasVariant=$hasVariant');
+//               if (hasVariant) {
+//                 notifier.playVariantMoveForward();
+//               } else {
+//                 notifier.analysisStepForward();
+//               }
+//             },
+//           ),
+//           IconButton(
+//             icon: const Icon(Icons.fast_forward, color: kWhiteColor),
+//             onPressed: notifier.jumpToEnd,
+//           ),
+//         ],
+//       ),
+//     );
+//   }
+// }
 
 class _PlayerWidget extends StatelessWidget {
   final GamesTourModel game;
@@ -1616,84 +1523,90 @@ class _ChessBoardNew extends ConsumerWidget {
 
     // CRITICAL: Auto-enable analysis mode for move interaction
     // This ensures single source of truth through ChessGameNavigator
-    return Chessboard(
-      size: size,
-      settings: ChessboardSettings(
-        enableCoordinates: true,
-        animationDuration: const Duration(milliseconds: 200),
-        dragFeedbackScale: 1,
-        dragTargetKind: DragTargetKind.none,
-        pieceShiftMethod: PieceShiftMethod.either,
-        autoQueenPromotionOnPremove: false,
-        pieceOrientationBehavior: PieceOrientationBehavior.facingUser,
-        colorScheme: ChessboardColorScheme(
-          lightSquare: boardTheme.lightSquareColor,
-          darkSquare: boardTheme.darkSquareColor,
-          background: SolidColorChessboardBackground(
+    return AbsorbPointer(
+      // Absorb pointer events to fully disable tap/drag interactions on the
+      // live board while keeping the visual board intact.
+      child: Chessboard(
+        size: size,
+        settings: ChessboardSettings(
+          enableCoordinates: true,
+          animationDuration: const Duration(milliseconds: 200),
+          dragFeedbackScale: 1,
+          dragTargetKind: DragTargetKind.none,
+          pieceShiftMethod: PieceShiftMethod.either,
+          autoQueenPromotionOnPremove: false,
+          pieceOrientationBehavior: PieceOrientationBehavior.facingUser,
+          colorScheme: ChessboardColorScheme(
             lightSquare: boardTheme.lightSquareColor,
             darkSquare: boardTheme.darkSquareColor,
+            background: SolidColorChessboardBackground(
+              lightSquare: boardTheme.lightSquareColor,
+              darkSquare: boardTheme.darkSquareColor,
+            ),
+            whiteCoordBackground: SolidColorChessboardBackground(
+              lightSquare: boardTheme.lightSquareColor,
+              darkSquare: boardTheme.darkSquareColor,
+              coordinates: true,
+              orientation: Side.white,
+            ),
+            blackCoordBackground: SolidColorChessboardBackground(
+              lightSquare: boardTheme.lightSquareColor,
+              darkSquare: boardTheme.darkSquareColor,
+              coordinates: true,
+              orientation: Side.black,
+            ),
+            lastMove: HighlightDetails(
+              solidColor: getLastMoveHighlightColor(chessBoardState),
+            ),
+            selected: const HighlightDetails(solidColor: kPrimaryColor),
+            validMoves: kPrimaryColor,
+            validPremoves: kPrimaryColor,
           ),
-          whiteCoordBackground: SolidColorChessboardBackground(
-            lightSquare: boardTheme.lightSquareColor,
-            darkSquare: boardTheme.darkSquareColor,
-            coordinates: true,
-            orientation: Side.white,
-          ),
-          blackCoordBackground: SolidColorChessboardBackground(
-            lightSquare: boardTheme.lightSquareColor,
-            darkSquare: boardTheme.darkSquareColor,
-            coordinates: true,
-            orientation: Side.black,
-          ),
-          lastMove: HighlightDetails(
-            solidColor: getLastMoveHighlightColor(chessBoardState),
-          ),
-          selected: const HighlightDetails(solidColor: kPrimaryColor),
-          validMoves: kPrimaryColor,
-          validPremoves: kPrimaryColor,
         ),
+        orientation: isFlipped ? Side.black : Side.white,
+        shapes: chessBoardState.shapes,
+        fen: chessBoardState.isLoadingMoves
+            ? (chessBoardState.fenData ?? "")
+            : chessBoardState.position!.fen,
+        lastMove: chessBoardState.isLoadingMoves
+            ? null
+            : chessBoardState.lastMove,
+        // DISABLED: Manual piece movement disabled
+        // game:
+        //     chessBoardState.position != null && !chessBoardState.isLoadingMoves
+        //         ? GameData(
+        //           playerSide:
+        //               chessBoardState.position!.turn == Side.white
+        //                   ? PlayerSide.white
+        //                   : PlayerSide.black,
+        //           validMoves: makeLegalMoves(chessBoardState.position!),
+        //           sideToMove: chessBoardState.position!.turn,
+        //           isCheck: chessBoardState.position!.isCheck,
+        //           promotionMove: null,
+        //           onMove: (move, {isDrop, isPremove}) async {
+        //             // Auto-enter analysis mode on first move attempt
+        //             if (!chessBoardState.isAnalysisMode) {
+        //               await notifier.toggleAnalysisMode();
+        //               // Wait a frame for state to update
+        //               await Future.delayed(const Duration(milliseconds: 50));
+        //             }
+        //             notifier.onAnalysisMove(
+        //               move,
+        //               isDrop: isDrop,
+        //               isPremove: isPremove,
+        //             );
+        //           },
+        //           onPromotionSelection: (role) async {
+        //             if (!chessBoardState.isAnalysisMode) {
+        //               await notifier.toggleAnalysisMode();
+        //               await Future.delayed(const Duration(milliseconds: 50));
+        //             }
+        //             notifier.onAnalysisPromotionSelection(role);
+        //           },
+        //         )
+        //         : null,
+        game: null, // Board is now read-only
       ),
-      orientation: isFlipped ? Side.black : Side.white,
-      shapes: chessBoardState.shapes,
-      fen:
-          chessBoardState.isLoadingMoves
-              ? (chessBoardState.fenData ?? "")
-              : chessBoardState.position!.fen,
-      lastMove:
-          chessBoardState.isLoadingMoves ? null : chessBoardState.lastMove,
-      game:
-          chessBoardState.position != null && !chessBoardState.isLoadingMoves
-              ? GameData(
-                playerSide:
-                    chessBoardState.position!.turn == Side.white
-                        ? PlayerSide.white
-                        : PlayerSide.black,
-                validMoves: makeLegalMoves(chessBoardState.position!),
-                sideToMove: chessBoardState.position!.turn,
-                isCheck: chessBoardState.position!.isCheck,
-                promotionMove: null,
-                onMove: (move, {isDrop, isPremove}) async {
-                  // Auto-enter analysis mode on first move attempt
-                  if (!chessBoardState.isAnalysisMode) {
-                    await notifier.toggleAnalysisMode();
-                    // Wait a frame for state to update
-                    await Future.delayed(const Duration(milliseconds: 50));
-                  }
-                  notifier.onAnalysisMove(
-                    move,
-                    isDrop: isDrop,
-                    isPremove: isPremove,
-                  );
-                },
-                onPromotionSelection: (role) async {
-                  if (!chessBoardState.isAnalysisMode) {
-                    await notifier.toggleAnalysisMode();
-                    await Future.delayed(const Duration(milliseconds: 50));
-                  }
-                  notifier.onAnalysisPromotionSelection(role);
-                },
-              )
-              : null,
     );
   }
 }
@@ -1854,16 +1767,10 @@ class _MovesDisplay extends ConsumerWidget {
               // Get impact from the map
               final impact = allMovesImpact?[moveIndex];
 
-              // Check if this is a variant-explored move (user made manual analysis moves)
-              final isVariantMove =
-                  state.isAnalysisMode &&
-                  moveIndex >=
-                      (state.variantBaseMoveIndex ?? state.allMoves.length);
-
               final displayText = isWhiteMove ? '$fullMoveNumber. $move' : move;
               final impactSymbol = impact?.impact.symbol ?? '';
 
-              // Determine text color - PRIORITY: impact color > variant > current move > default
+              // Determine text color - PRIORITY: impact color > current move > default
               final params = ChessBoardProviderParams(game: game, index: index);
               Color textColor;
               Color? backgroundColor;
@@ -1871,10 +1778,6 @@ class _MovesDisplay extends ConsumerWidget {
               if (impact != null && impact.impact != MoveImpactType.normal) {
                 // Impact color has highest priority (even when selected)
                 textColor = impact.impact.color;
-              } else if (isVariantMove) {
-                // Variant moves get special coloring - use underline instead of background
-                textColor = kPrimaryColor;
-                // backgroundColor removed - will use underline instead
               } else if (isCurrentMove) {
                 textColor = kWhiteColor;
               } else {
@@ -1916,11 +1819,13 @@ class _MovesDisplay extends ConsumerWidget {
                                 isCurrentMove
                                     ? FontWeight.bold
                                     : FontWeight.normal,
-                            decoration:
-                                isVariantMove ? TextDecoration.underline : null,
-                            decorationColor:
-                                isVariantMove ? kPrimaryColor : null,
-                            decorationThickness: isVariantMove ? 1.5 : null,
+                            // Underline styling removed to fully disable
+                            // variant-move underline presentation.
+                            // decoration:
+                            //     isVariantMove ? TextDecoration.underline : null,
+                            // decorationColor:
+                            //     isVariantMove ? kPrimaryColor : null,
+                            // decorationThickness: isVariantMove ? 1.5 : null,
                           ),
                         ),
                         if (impactSymbol.isNotEmpty)
@@ -2170,25 +2075,32 @@ class _PrincipalVariationListState
                           final evalText = _formatEvalLabel(line);
 
                           // Get variant color matching the arrow color
-                          final variantColor = notifier.getVariantColor(
-                            variantIndex,
-                            isSelected,
-                          );
+                          final activeVariantColor =
+                              notifier.getVariantColor(variantIndex, true);
+                          final borderColor =
+                              activeVariantColor.withValues(alpha: 0.7);
+                          final backgroundColor =
+                              activeVariantColor.withValues(alpha: 0.15);
+                          final badgeBackgroundColor =
+                              activeVariantColor.withValues(alpha: 0.3);
+                          final badgeBorderColor =
+                              activeVariantColor.withValues(alpha: 0.6);
 
                           return GestureDetector(
-                            onTap:
-                                isEvaluating
-                                    ? null
-                                    : () {
-                                      HapticFeedback.selectionClick();
-                                      if (isSelected) {
-                                        notifier.playVariantMoveForward();
-                                      } else {
-                                        notifier.playPrincipalVariationMove(
-                                          line,
-                                        );
-                                      }
-                                    },
+                            // DISABLED: PV cards are now read-only
+                            // onTap:
+                            //     isEvaluating
+                            //         ? null
+                            //         : () {
+                            //           HapticFeedback.selectionClick();
+                            //           if (isSelected) {
+                            //             notifier.playVariantMoveForward();
+                            //           } else {
+                            //             notifier.playPrincipalVariationMove(
+                            //               line,
+                            //             );
+                            //           }
+                            //         },
                             child: AnimatedOpacity(
                               opacity: isEvaluating ? 0.4 : 1.0,
                               duration: const Duration(milliseconds: 200),
@@ -2198,18 +2110,11 @@ class _PrincipalVariationListState
                                 margin: EdgeInsets.symmetric(horizontal: 2.sp),
                                 decoration: BoxDecoration(
                                   border: Border.all(
-                                    color: variantColor.withValues(
-                                      alpha: isSelected ? 0.7 : 0.4,
-                                    ),
+                                    color: borderColor,
                                     width: isSelected ? 2.0 : 1.5,
                                   ),
                                   borderRadius: BorderRadius.circular(6.sp),
-                                  color:
-                                      isSelected
-                                          ? variantColor.withValues(alpha: 0.15)
-                                          : variantColor.withValues(
-                                            alpha: 0.05,
-                                          ),
+                                  color: backgroundColor,
                                 ),
                                 padding: EdgeInsets.symmetric(
                                   horizontal: 12.sp,
@@ -2225,16 +2130,12 @@ class _PrincipalVariationListState
                                         vertical: 4.sp,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: variantColor.withValues(
-                                          alpha: 0.3,
-                                        ),
+                                        color: badgeBackgroundColor,
                                         borderRadius: BorderRadius.circular(
                                           4.sp,
                                         ),
                                         border: Border.all(
-                                          color: variantColor.withValues(
-                                            alpha: 0.6,
-                                          ),
+                                          color: badgeBorderColor,
                                           width: 1.0,
                                         ),
                                       ),
