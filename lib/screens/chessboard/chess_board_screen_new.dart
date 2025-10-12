@@ -1767,16 +1767,10 @@ class _MovesDisplay extends ConsumerWidget {
               // Get impact from the map
               final impact = allMovesImpact?[moveIndex];
 
-              // Check if this is a variant-explored move (user made manual analysis moves)
-              final isVariantMove =
-                  state.isAnalysisMode &&
-                  moveIndex >=
-                      (state.variantBaseMoveIndex ?? state.allMoves.length);
-
               final displayText = isWhiteMove ? '$fullMoveNumber. $move' : move;
               final impactSymbol = impact?.impact.symbol ?? '';
 
-              // Determine text color - PRIORITY: impact color > variant > current move > default
+              // Determine text color - PRIORITY: impact color > current move > default
               final params = ChessBoardProviderParams(game: game, index: index);
               Color textColor;
               Color? backgroundColor;
@@ -1784,11 +1778,6 @@ class _MovesDisplay extends ConsumerWidget {
               if (impact != null && impact.impact != MoveImpactType.normal) {
                 // Impact color has highest priority (even when selected)
                 textColor = impact.impact.color;
-              } else if (isVariantMove) {
-                // Variant moves retain the primary color highlight without underline
-                // or background emphasis.
-                textColor = kPrimaryColor;
-                // Background color stays transparent.
               } else if (isCurrentMove) {
                 textColor = kWhiteColor;
               } else {
