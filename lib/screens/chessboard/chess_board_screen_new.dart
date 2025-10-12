@@ -1523,86 +1523,90 @@ class _ChessBoardNew extends ConsumerWidget {
 
     // CRITICAL: Auto-enable analysis mode for move interaction
     // This ensures single source of truth through ChessGameNavigator
-    return Chessboard(
-      size: size,
-      settings: ChessboardSettings(
-        enableCoordinates: true,
-        animationDuration: const Duration(milliseconds: 200),
-        dragFeedbackScale: 1,
-        dragTargetKind: DragTargetKind.none,
-        pieceShiftMethod: PieceShiftMethod.either,
-        autoQueenPromotionOnPremove: false,
-        pieceOrientationBehavior: PieceOrientationBehavior.facingUser,
-        colorScheme: ChessboardColorScheme(
-          lightSquare: boardTheme.lightSquareColor,
-          darkSquare: boardTheme.darkSquareColor,
-          background: SolidColorChessboardBackground(
+    return AbsorbPointer(
+      // Absorb pointer events to fully disable tap/drag interactions on the
+      // live board while keeping the visual board intact.
+      child: Chessboard(
+        size: size,
+        settings: ChessboardSettings(
+          enableCoordinates: true,
+          animationDuration: const Duration(milliseconds: 200),
+          dragFeedbackScale: 1,
+          dragTargetKind: DragTargetKind.none,
+          pieceShiftMethod: PieceShiftMethod.either,
+          autoQueenPromotionOnPremove: false,
+          pieceOrientationBehavior: PieceOrientationBehavior.facingUser,
+          colorScheme: ChessboardColorScheme(
             lightSquare: boardTheme.lightSquareColor,
             darkSquare: boardTheme.darkSquareColor,
+            background: SolidColorChessboardBackground(
+              lightSquare: boardTheme.lightSquareColor,
+              darkSquare: boardTheme.darkSquareColor,
+            ),
+            whiteCoordBackground: SolidColorChessboardBackground(
+              lightSquare: boardTheme.lightSquareColor,
+              darkSquare: boardTheme.darkSquareColor,
+              coordinates: true,
+              orientation: Side.white,
+            ),
+            blackCoordBackground: SolidColorChessboardBackground(
+              lightSquare: boardTheme.lightSquareColor,
+              darkSquare: boardTheme.darkSquareColor,
+              coordinates: true,
+              orientation: Side.black,
+            ),
+            lastMove: HighlightDetails(
+              solidColor: getLastMoveHighlightColor(chessBoardState),
+            ),
+            selected: const HighlightDetails(solidColor: kPrimaryColor),
+            validMoves: kPrimaryColor,
+            validPremoves: kPrimaryColor,
           ),
-          whiteCoordBackground: SolidColorChessboardBackground(
-            lightSquare: boardTheme.lightSquareColor,
-            darkSquare: boardTheme.darkSquareColor,
-            coordinates: true,
-            orientation: Side.white,
-          ),
-          blackCoordBackground: SolidColorChessboardBackground(
-            lightSquare: boardTheme.lightSquareColor,
-            darkSquare: boardTheme.darkSquareColor,
-            coordinates: true,
-            orientation: Side.black,
-          ),
-          lastMove: HighlightDetails(
-            solidColor: getLastMoveHighlightColor(chessBoardState),
-          ),
-          selected: const HighlightDetails(solidColor: kPrimaryColor),
-          validMoves: kPrimaryColor,
-          validPremoves: kPrimaryColor,
         ),
+        orientation: isFlipped ? Side.black : Side.white,
+        shapes: chessBoardState.shapes,
+        fen: chessBoardState.isLoadingMoves
+            ? (chessBoardState.fenData ?? "")
+            : chessBoardState.position!.fen,
+        lastMove: chessBoardState.isLoadingMoves
+            ? null
+            : chessBoardState.lastMove,
+        // DISABLED: Manual piece movement disabled
+        // game:
+        //     chessBoardState.position != null && !chessBoardState.isLoadingMoves
+        //         ? GameData(
+        //           playerSide:
+        //               chessBoardState.position!.turn == Side.white
+        //                   ? PlayerSide.white
+        //                   : PlayerSide.black,
+        //           validMoves: makeLegalMoves(chessBoardState.position!),
+        //           sideToMove: chessBoardState.position!.turn,
+        //           isCheck: chessBoardState.position!.isCheck,
+        //           promotionMove: null,
+        //           onMove: (move, {isDrop, isPremove}) async {
+        //             // Auto-enter analysis mode on first move attempt
+        //             if (!chessBoardState.isAnalysisMode) {
+        //               await notifier.toggleAnalysisMode();
+        //               // Wait a frame for state to update
+        //               await Future.delayed(const Duration(milliseconds: 50));
+        //             }
+        //             notifier.onAnalysisMove(
+        //               move,
+        //               isDrop: isDrop,
+        //               isPremove: isPremove,
+        //             );
+        //           },
+        //           onPromotionSelection: (role) async {
+        //             if (!chessBoardState.isAnalysisMode) {
+        //               await notifier.toggleAnalysisMode();
+        //               await Future.delayed(const Duration(milliseconds: 50));
+        //             }
+        //             notifier.onAnalysisPromotionSelection(role);
+        //           },
+        //         )
+        //         : null,
+        game: null, // Board is now read-only
       ),
-      orientation: isFlipped ? Side.black : Side.white,
-      shapes: chessBoardState.shapes,
-      fen:
-          chessBoardState.isLoadingMoves
-              ? (chessBoardState.fenData ?? "")
-              : chessBoardState.position!.fen,
-      lastMove:
-          chessBoardState.isLoadingMoves ? null : chessBoardState.lastMove,
-      // DISABLED: Manual piece movement disabled
-      // game:
-      //     chessBoardState.position != null && !chessBoardState.isLoadingMoves
-      //         ? GameData(
-      //           playerSide:
-      //               chessBoardState.position!.turn == Side.white
-      //                   ? PlayerSide.white
-      //                   : PlayerSide.black,
-      //           validMoves: makeLegalMoves(chessBoardState.position!),
-      //           sideToMove: chessBoardState.position!.turn,
-      //           isCheck: chessBoardState.position!.isCheck,
-      //           promotionMove: null,
-      //           onMove: (move, {isDrop, isPremove}) async {
-      //             // Auto-enter analysis mode on first move attempt
-      //             if (!chessBoardState.isAnalysisMode) {
-      //               await notifier.toggleAnalysisMode();
-      //               // Wait a frame for state to update
-      //               await Future.delayed(const Duration(milliseconds: 50));
-      //             }
-      //             notifier.onAnalysisMove(
-      //               move,
-      //               isDrop: isDrop,
-      //               isPremove: isPremove,
-      //             );
-      //           },
-      //           onPromotionSelection: (role) async {
-      //             if (!chessBoardState.isAnalysisMode) {
-      //               await notifier.toggleAnalysisMode();
-      //               await Future.delayed(const Duration(milliseconds: 50));
-      //             }
-      //             notifier.onAnalysisPromotionSelection(role);
-      //           },
-      //         )
-      //         : null,
-      game: null, // Board is now read-only
     );
   }
 }
@@ -1781,9 +1785,10 @@ class _MovesDisplay extends ConsumerWidget {
                 // Impact color has highest priority (even when selected)
                 textColor = impact.impact.color;
               } else if (isVariantMove) {
-                // Variant moves get special coloring - use underline instead of background
+                // Variant moves retain the primary color highlight without underline
+                // or background emphasis.
                 textColor = kPrimaryColor;
-                // backgroundColor removed - will use underline instead
+                // Background color stays transparent.
               } else if (isCurrentMove) {
                 textColor = kWhiteColor;
               } else {
@@ -1825,11 +1830,13 @@ class _MovesDisplay extends ConsumerWidget {
                                 isCurrentMove
                                     ? FontWeight.bold
                                     : FontWeight.normal,
-                            decoration:
-                                isVariantMove ? TextDecoration.underline : null,
-                            decorationColor:
-                                isVariantMove ? kPrimaryColor : null,
-                            decorationThickness: isVariantMove ? 1.5 : null,
+                            // Underline styling removed to fully disable
+                            // variant-move underline presentation.
+                            // decoration:
+                            //     isVariantMove ? TextDecoration.underline : null,
+                            // decorationColor:
+                            //     isVariantMove ? kPrimaryColor : null,
+                            // decorationThickness: isVariantMove ? 1.5 : null,
                           ),
                         ),
                         if (impactSymbol.isNotEmpty)
