@@ -560,9 +560,11 @@ MoveImpactType _classifyBrilliantOrGreat({
   required bool actualMateAgainstPlayer,
   required bool lostMaterialForPlayer,
 }) {
-  if (playerMoveRank != 0 || decided || bothDecidedSame || pvs.length < 3) {
-    return MoveImpactType.normal;
-  }
+  // TEMPORARILY DISABLED: Brilliant and great move classification disabled
+  return MoveImpactType.normal;
+  // if (playerMoveRank != 0 || decided || bothDecidedSame || pvs.length < 3) {
+  //   return MoveImpactType.normal;
+  // }
   if (!playerMoveFoundInPv) {
     return MoveImpactType.normal;
   }

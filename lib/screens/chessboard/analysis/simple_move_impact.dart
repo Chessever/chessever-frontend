@@ -90,27 +90,44 @@ final simpleMoveImpactProvider = FutureProvider.family<Map<int, MoveImpactAnalys
     }
   }
 
-  const maxBrilliantPerGame = 2;
-  int brilliantCount = 0;
+  // TEMPORARILY DISABLED: Filter out brilliant (!!) and great (!) annotations
   final sortedKeys = impactResults.keys.toList()..sort();
   for (final key in sortedKeys) {
     final analysis = impactResults[key]!;
-    if (analysis.impact == MoveImpactType.brilliant) {
-      if (brilliantCount >= maxBrilliantPerGame) {
-        impactResults[key] = MoveImpactAnalysis(
-          impact: MoveImpactType.great,
-          evalChange: analysis.evalChange,
-          bestMoveEval: analysis.bestMoveEval,
-          actualMoveEval: analysis.actualMoveEval,
-          bestMoveSan: analysis.bestMoveSan,
-          actualMoveSan: analysis.actualMoveSan,
-          moveIndex: analysis.moveIndex,
-        );
-      } else {
-        brilliantCount++;
-      }
+    if (analysis.impact == MoveImpactType.brilliant || analysis.impact == MoveImpactType.great) {
+      // Downgrade to normal
+      impactResults[key] = MoveImpactAnalysis(
+        impact: MoveImpactType.normal,
+        evalChange: analysis.evalChange,
+        bestMoveEval: analysis.bestMoveEval,
+        actualMoveEval: analysis.actualMoveEval,
+        bestMoveSan: analysis.bestMoveSan,
+        actualMoveSan: analysis.actualMoveSan,
+        moveIndex: analysis.moveIndex,
+      );
     }
   }
+  // const maxBrilliantPerGame = 2;
+  // int brilliantCount = 0;
+  // final sortedKeys = impactResults.keys.toList()..sort();
+  // for (final key in sortedKeys) {
+  //   final analysis = impactResults[key]!;
+  //   if (analysis.impact == MoveImpactType.brilliant) {
+  //     if (brilliantCount >= maxBrilliantPerGame) {
+  //       impactResults[key] = MoveImpactAnalysis(
+  //         impact: MoveImpactType.great,
+  //         evalChange: analysis.evalChange,
+  //         bestMoveEval: analysis.bestMoveEval,
+  //         actualMoveEval: analysis.actualMoveEval,
+  //         bestMoveSan: analysis.bestMoveSan,
+  //         actualMoveSan: analysis.actualMoveSan,
+  //         moveIndex: analysis.moveIndex,
+  //       );
+  //     } else {
+  //       brilliantCount++;
+  //     }
+  //   }
+  // }
 
   final typeCounts = <MoveImpactType, int>{};
   for (final analysis in impactResults.values) {
