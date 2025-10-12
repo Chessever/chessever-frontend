@@ -40,17 +40,7 @@
             }
         }
 
-        buildTypes {
-            getByName("release") {
-                isMinifyEnabled = true
-                isShrinkResources = true
-                proguardFiles(
-                    getDefaultProguardFile("proguard-android-optimize.txt"),
-                    "proguard-rules.pro"
-                )
-                signingConfig = signingConfigs.getByName("release")
-            }
-        }
+
 
         defaultConfig {
             // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
@@ -59,19 +49,23 @@
             // For more information, see: https://flutter.dev/to/review-gradle-config.
             minSdk = flutter.minSdkVersion
             targetSdk = 36
-            versionCode = 61
-            versionName = "2.0.61"
+            versionCode = 66
+            versionName = "2.0.66"
         }
 
         buildTypes {
             release {
-                    isMinifyEnabled = true
+                isMinifyEnabled = true
                 isShrinkResources = true
                 proguardFiles(
                     getDefaultProguardFile("proguard-android-optimize.txt"),
                     "proguard-rules.pro"
                 )
                 signingConfig = signingConfigs.getByName("release")
+            }
+            debug {
+                isMinifyEnabled = false
+                isShrinkResources = false
             }
         }
 
