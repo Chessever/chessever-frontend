@@ -63,15 +63,14 @@ class PlayerStandingModel {
     );
   }
 
-  // Factory method to create a PlayerStanding object from JSON
   factory PlayerStandingModel.fromJson(Map<String, dynamic> json) {
     return PlayerStandingModel(
-      countryCode: json['countryCode'] as String,
+      countryCode: (json['countryCode'] as String?) ?? '',
       title: json['title'] as String?,
-      name: json['name'] as String,
-      score: json['score'] as int,
-      scoreChange: json['scoreChange'] as int,
-      matchScore: json['matchScore'] as String,
+      name: (json['name'] as String?) ?? 'Unknown',
+      score: (json['score'] as int?) ?? 0,
+      scoreChange: (json['scoreChange'] as int?) ?? 0,
+      matchScore: json['matchScore'] as String?,
       fideId: json['fideId'] as int?,
     );
   }
