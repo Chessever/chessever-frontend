@@ -504,28 +504,12 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
         }
       },
       child: Scaffold(
-        body: RawGestureDetector(
-          gestures: <Type, GestureRecognizerFactory>{
-            HorizontalDragGestureRecognizer:
-                GestureRecognizerFactoryWithHandlers<
-                  HorizontalDragGestureRecognizer
-                >(() => HorizontalDragGestureRecognizer(), (
-                  HorizontalDragGestureRecognizer instance,
-                ) {
-                  instance.onStart = (_) {};
-                  instance.onUpdate = (_) {};
-                  instance.onEnd = (_) {};
-                }),
-          },
-          behavior: HitTestBehavior.translucent,
-          child: PageView.builder(
+        // REMOVED: RawGestureDetector was blocking PageView swipes
+        body: PageView.builder(
             padEnds: true,
             allowImplicitScrolling: true,
-            // helps the framework build ahead
-            physics:
-                analysisMode
-                    ? NeverScrollableScrollPhysics()
-                    : const PageScrollPhysics(),
+            // PageView swiping enabled in all modes
+            physics: const PageScrollPhysics(),
             controller: _pageController,
             onPageChanged: _onPageChanged,
             itemCount: liveGames.length,
@@ -587,8 +571,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
             },
           ),
         ),
-      ),
-    );
+      );
   }
 }
 
@@ -1523,9 +1506,9 @@ class _ChessBoardNew extends ConsumerWidget {
 
     // CRITICAL: Auto-enable analysis mode for move interaction
     // This ensures single source of truth through ChessGameNavigator
+    // AbsorbPointer is sufficient to disable all interactions
+    // and allows the PageView to handle horizontal swipes
     return AbsorbPointer(
-      // Absorb pointer events to fully disable tap/drag interactions on the
-      // live board while keeping the visual board intact.
       child: Chessboard(
         size: size,
         settings: ChessboardSettings(
@@ -1632,8 +1615,8 @@ class _AnalysisBoard extends ConsumerWidget {
     final boardTheme = ref
         .read(boardSettingsRepository)
         .getBoardTheme(boardSettingsValue.boardColor);
-    final params = ChessBoardProviderParams(game: game, index: index);
-    final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+    // final params = ChessBoardProviderParams(game: game, index: index);
+    // final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
 
     return Chessboard(
       size: size,
@@ -1677,18 +1660,20 @@ class _AnalysisBoard extends ConsumerWidget {
       fen: chessBoardState.analysisState.position.fen,
       lastMove: chessBoardState.analysisState.lastMove,
       shapes: chessBoardState.shapes,
-      game: GameData(
-        playerSide:
-            chessBoardState.analysisState.position.turn == Side.white
-                ? PlayerSide.white
-                : PlayerSide.black,
-        validMoves: chessBoardState.analysisState.validMoves,
-        sideToMove: chessBoardState.analysisState.position.turn,
-        isCheck: chessBoardState.analysisState.position.isCheck,
-        promotionMove: chessBoardState.analysisState.promotionMove,
-        onMove: notifier.onAnalysisMove,
-        onPromotionSelection: notifier.onAnalysisPromotionSelection,
-      ),
+      // DISABLED: Manual piece movement disabled in analysis mode
+      // game: GameData(
+      //   playerSide:
+      //       chessBoardState.analysisState.position.turn == Side.white
+      //           ? PlayerSide.white
+      //           : PlayerSide.black,
+      //   validMoves: chessBoardState.analysisState.validMoves,
+      //   sideToMove: chessBoardState.analysisState.position.turn,
+      //   isCheck: chessBoardState.analysisState.position.isCheck,
+      //   promotionMove: chessBoardState.analysisState.promotionMove,
+      //   onMove: notifier.onAnalysisMove,
+      //   onPromotionSelection: notifier.onAnalysisPromotionSelection,
+      // ),
+      game: null, // Board is now read-only in analysis mode
     );
   }
 }
