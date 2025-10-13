@@ -9,10 +9,84 @@ import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:worker_manager/worker_manager.dart';
 
-/// COMPREHENSIVE MOVE IMPACT CALCULATION
-/// Gets eval before each move, analyzes engine alternatives, compares with actual move
-/// Like Lichess/Chess.com - showing brilliant, great, interesting, inaccuracy, blunder
+/// LAZY PER-MOVE IMPACT CALCULATION
+/// Calculates move impact individually for each move only when needed
+/// This prevents blocking the eval bar by flooding the Stockfish queue
+/// Uses .family providers for atomicity and caching
 
+/// Parameters for calculating impact of a SINGLE move (lazy, atomic)
+class SingleMoveImpactParams {
+  final String fenBefore; // FEN before the move
+  final String fenAfter; // FEN after the move
+  final String moveSan; // The move in SAN notation
+  final int moveIndex; // Index of the move in the game
+  final String gameId; // For debugging/logging
+
+  const SingleMoveImpactParams({
+    required this.fenBefore,
+    required this.fenAfter,
+    required this.moveSan,
+    required this.moveIndex,
+    required this.gameId,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SingleMoveImpactParams &&
+          fenBefore == other.fenBefore &&
+          fenAfter == other.fenAfter &&
+          moveSan == other.moveSan &&
+          moveIndex == other.moveIndex &&
+          gameId == other.gameId;
+
+  @override
+  int get hashCode =>
+      fenBefore.hashCode ^
+      fenAfter.hashCode ^
+      moveSan.hashCode ^
+      moveIndex.hashCode ^
+      gameId.hashCode;
+}
+
+/// LAZY PER-MOVE IMPACT PROVIDER
+/// Calculates impact for ONE move at a time, only when UI needs it
+/// Uses .family for automatic caching and atomicity
+/// Does NOT block eval bar by flooding Stockfish queue
+final singleMoveImpactProvider = FutureProvider.family<MoveImpactAnalysis?, SingleMoveImpactParams>(
+  (ref, params) async {
+    debugPrint('🎨 LAZY IMPACT: Calculating for move ${params.moveIndex} in ${params.gameId}');
+
+    try {
+      // Get evaluations for the two positions
+      // OPTIMIZATION: Query both positions in parallel
+      final evalBefore = await ref.read(cascadeEvalProvider(params.fenBefore).future);
+      final evalAfter = await ref.read(cascadeEvalProvider(params.fenAfter).future);
+
+      // Use worker_manager with LOW priority to not block eval bar
+      final analysis = await workerManager.execute<MoveImpactAnalysis?>(
+        () => calculateMoveImpact(
+          positionEvalBeforeMove: evalBefore,
+          positionEvalAfterMove: evalAfter,
+          positionFenBeforeMove: params.fenBefore,
+          positionFenAfterMove: params.fenAfter,
+          playerMoveSan: params.moveSan,
+          moveNumber: params.moveIndex,
+        ),
+        priority: WorkPriority.low, // LOW priority - don't block eval bar!
+      );
+
+      debugPrint('🎨 LAZY IMPACT: Move ${params.moveIndex} classified as ${analysis?.impact.symbol}');
+      return analysis;
+    } catch (e) {
+      debugPrint('⚠️ LAZY IMPACT: Error calculating move ${params.moveIndex}: $e');
+      return null;
+    }
+  },
+);
+
+// DEPRECATED: Old bulk evaluation approach that blocks eval bar
+// Kept for backward compatibility but should not be used for new code
 class SimpleMoveImpactParams {
   final List<String> positionFens; // FENs for each position (length = moves + 1)
   final List<bool> isWhiteMoves; // Whether each move is white's (length = moves)
@@ -76,7 +150,7 @@ final simpleMoveImpactProvider = FutureProvider.family<Map<int, MoveImpactAnalys
     tasks.add(
       workerManager.execute<List<_BatchClassificationResult>>(
         () => _runBatchClassification(batchParams),
-        priority: WorkPriority.high,
+        priority: WorkPriority.low, // LOW priority - don't block eval bar!
       ),
     );
   }

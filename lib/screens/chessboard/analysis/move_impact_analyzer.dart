@@ -923,7 +923,7 @@ final allMovesImpactFromPositionsProvider = FutureProvider.family<Map<int, MoveI
             playerMoveSan: playerMoveSan,
             moveNumber: moveNumber,
           ),
-          priority: WorkPriority.high,
+          priority: WorkPriority.low, // LOW priority - don't block eval bar!
         ),
       );
     }
@@ -1052,7 +1052,7 @@ final allMovesImpactFromPgnProvider = FutureProvider.family<Map<int, MoveImpactA
             moveIndex: i,
             isWhiteMove: isWhiteMove,
           ),
-          priority: WorkPriority.high,
+          priority: WorkPriority.low, // LOW priority - don't block eval bar!
         ),
       );
     }
