@@ -74,40 +74,10 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen>
               ),
             ),
 
-            // Tab bar
-            Container(
-              margin: EdgeInsets.symmetric(horizontal: 16.sp),
-              decoration: BoxDecoration(
-                color: kBlack2Color,
-                borderRadius: BorderRadius.circular(8.br),
-              ),
-              child: TabBar(
-                controller: _tabController,
-                onTap: (index) {
-                  //todo: Fix the tab change
-                },
-                indicator: BoxDecoration(
-                  color: kPrimaryColor,
-                  borderRadius: BorderRadius.circular(6.br),
-                ),
-                indicatorSize: TabBarIndicatorSize.tab,
-                labelColor: kWhiteColor,
-                unselectedLabelColor: kWhiteColor.withOpacity(0.6),
-                labelStyle: AppTypography.textSmMedium,
-                unselectedLabelStyle: AppTypography.textSmRegular,
-                tabs: [Tab(text: 'Events'), Tab(text: 'Players')],
-              ),
-            ),
-
             SizedBox(height: 16.h),
 
             // Tab content
-            Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [_buildPlayersTab()],
-              ),
-            ),
+            Expanded(child: _buildPlayersTab()),
           ],
         ),
       ),
