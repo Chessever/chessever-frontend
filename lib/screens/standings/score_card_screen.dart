@@ -3,41 +3,73 @@ import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/providers/player_ratings_provider.dart';
 import 'package:chessever2/screens/standings/widget/scoreboard_appbar.dart';
 import 'package:chessever2/screens/standings/widget/scoreboard_card_widget.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../../theme/app_theme.dart';
-import '../tour_detail/games_tour/models/games_tour_model.dart';
-import '../tour_detail/games_tour/providers/games_tour_screen_provider.dart';
-import '../chessboard/chess_board_screen_new.dart';
-import '../chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/repository/supabase/game/game_repository.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 
 final selectedPlayerProvider = StateProvider<PlayerStandingModel?>(
   (ref) => null,
 );
 
-class ScoreCardScreen extends ConsumerWidget {
-  final String name;
-  const ScoreCardScreen({super.key, required this.name});
+final playerGamesProvider =
+    FutureProvider.family<List<GamesTourModel>, PlayerStandingModel>((
+      ref,
+      player,
+    ) async {
+      try {
+        final gameRepo = ref.read(gameRepositoryProvider);
 
-  // Helper function to extract rating from PGN with multiple fallbacks
+        List<dynamic> games = [];
+
+        if (player.fideId != null) {
+          try {
+            games = await gameRepo.getGamesByFideId(
+              player.fideId.toString(),
+              limit: 50,
+            );
+          } catch (e) {
+            debugPrint('Error fetching by fideId: $e');
+          }
+        }
+
+        if (games.isEmpty) {
+          games = await gameRepo.getGamesByPlayerName(player.name, limit: 50);
+        }
+
+        return games.map((game) => GamesTourModel.fromGame(game)).toList();
+      } catch (e, stack) {
+        debugPrint('Error: $e');
+        return [];
+      }
+    });
+
+class ScoreCardScreen extends ConsumerWidget {
+  const ScoreCardScreen({super.key});
+
   double? _extractRatingFromPGN(String? pgn, bool isWhite) {
     if (pgn == null || pgn.isEmpty) return null;
 
-    // Try multiple PGN formats for rating extraction (supporting decimal ratings)
-    final patterns = isWhite
-        ? [
-            RegExp(r'\[WhiteElo "(\d+(?:\.\d+)?)"\]'),        // Standard format [WhiteElo "2738.5"]
-            RegExp(r'\[WhiteElo (\d+(?:\.\d+)?)\]'),          // Without quotes [WhiteElo 2738.5]
-            RegExp(r'WhiteElo\s+(\d+(?:\.\d+)?)'),            // Simplified format
-          ]
-        : [
-            RegExp(r'\[BlackElo "(\d+(?:\.\d+)?)"\]'),        // Standard format [BlackElo "2688.5"]
-            RegExp(r'\[BlackElo (\d+(?:\.\d+)?)\]'),          // Without quotes [BlackElo 2688.5]
-            RegExp(r'BlackElo\s+(\d+(?:\.\d+)?)'),            // Simplified format
-          ];
+    final patterns =
+        isWhite
+            ? [
+              RegExp(r'\[WhiteElo "(\d+(?:\.\d+)?)"\]'),
+              RegExp(r'\[WhiteElo (\d+(?:\.\d+)?)\]'),
+              RegExp(r'WhiteElo\s+(\d+(?:\.\d+)?)'),
+            ]
+            : [
+              RegExp(r'\[BlackElo "(\d+(?:\.\d+)?)"\]'),
+              RegExp(r'\[BlackElo (\d+(?:\.\d+)?)\]'),
+              RegExp(r'BlackElo\s+(\d+(?:\.\d+)?)'),
+            ];
 
     for (final pattern in patterns) {
       final match = pattern.firstMatch(pgn);
@@ -51,45 +83,28 @@ class ScoreCardScreen extends ConsumerWidget {
     return null;
   }
 
-  // Get player rating from game, with robust PGN fallback
+  // Get player rating from game
   double _getPlayerRating(GamesTourModel game, String playerName) {
     final isWhite = game.whitePlayer.name == playerName;
     final playerCard = isWhite ? game.whitePlayer : game.blackPlayer;
 
-    // First try to get rating from player card
     if (playerCard.rating > 0) {
       return playerCard.rating.toDouble();
     }
 
-    // Fallback to PGN
     final pgnRating = _extractRatingFromPGN(game.pgn, isWhite);
     if (pgnRating != null && pgnRating > 0) {
       return pgnRating;
     }
 
-    // If both fail, use a default rating to ensure we don't skip the game
-    // Using 1500 as a reasonable default for unrated players
     return 1500.0;
   }
 
-  // Calculate K-factor based on FIDE official rules
-  // Note: This is a simplified implementation. Full FIDE rules require:
-  // - Player age (for under 18 rule)
-  // - Number of games played (for new player rule)
-  // - Historical peak rating (for "ever reached 2400" rule)
+  // Calculate K-factor
   int _getKFactor(double rating) {
-    // FIDE Rules:
-    // K = 40: For new players until 30 games completed, OR under 18 with rating < 2300
-    // K = 20: For players with rating under 2400 (and not in above categories)
-    // K = 10: Once published rating reached 2400 (stays 10 even if drops below)
-
-    // Simplified implementation based on current rating only:
-    // Since we don't have player age or games played data, we use conservative values
     if (rating >= 2400) {
-      return 10; // Once published rating reached 2400
+      return 10;
     } else {
-      // For all players under 2400 (most common case)
-      // We use K=20 as the standard value for established players
       return 20;
     }
   }
@@ -102,7 +117,6 @@ class ScoreCardScreen extends ConsumerWidget {
     String playerName,
     GamesTourModel game,
   ) {
-    // Determine actual score based on game result
     double actualScore;
     final isWhite = game.whitePlayer.name == playerName;
 
@@ -117,19 +131,12 @@ class ScoreCardScreen extends ConsumerWidget {
         actualScore = 0.5;
         break;
       default:
-        return 0; // Ongoing or unknown games don't have rating changes
+        return 0;
     }
 
-    // Calculate rating difference (capped at 400 per FIDE rules)
     double ratingDiff = (opponentRating - playerRating).clamp(-400.0, 400.0);
-
-    // Calculate expected score using FIDE formula
     double expectedScore = 1 / (1 + math.pow(10, ratingDiff / 400.0));
-
-    // Get K-factor
     int kFactor = _getKFactor(playerRating);
-
-    // Calculate rating change
     double ratingChange = kFactor * (actualScore - expectedScore);
 
     return ratingChange;
@@ -143,8 +150,36 @@ class ScoreCardScreen extends ConsumerWidget {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final allGames =
-        ref.watch(gamesTourScreenProvider).value?.gamesTourModels ?? [];
+    final selectedBroadcast = ref.watch(selectedBroadcastModelProvider);
+
+    List<GamesTourModel> allGames = [];
+    bool isLoadingGames = false;
+    bool hasTournamentContext = false;
+
+    if (selectedBroadcast != null) {
+      hasTournamentContext = true;
+      final gamesTourAsync = ref.watch(gamesTourScreenProvider);
+      allGames = gamesTourAsync.when(
+        data: (data) => data.gamesTourModels,
+        loading: () {
+          isLoadingGames = true;
+          return [];
+        },
+        error: (_, __) => [],
+      );
+    } else {
+      hasTournamentContext = false;
+      final playerGamesAsync = ref.watch(playerGamesProvider(player));
+      allGames = playerGamesAsync.when(
+        data: (games) => games,
+        loading: () {
+          isLoadingGames = true;
+          return [];
+        },
+        error: (_, __) => [],
+      );
+    }
+
     final playerGames =
         allGames
             .where(
@@ -171,10 +206,13 @@ class ScoreCardScreen extends ConsumerWidget {
             ? '${nameParts[0].trim().isNotEmpty ? nameParts[0].trim()[0] : ''}'
                 '${nameParts[1].trim().isNotEmpty ? nameParts[1].trim()[0] : ''}'
             : player.name.trim().isNotEmpty
-            ? player.name.trim().substring(0, math.min(2, player.name.trim().length))
+            ? player.name.trim().substring(
+              0,
+              math.min(2, player.name.trim().length),
+            )
             : '';
 
-    // Calculate total performance as sum of all individual game rating changes
+    // Calculate total performance
     double totalPerformance = 0.0;
     for (final game in playerGames) {
       final playerRating = _getPlayerRating(game, player.name);
@@ -194,11 +232,17 @@ class ScoreCardScreen extends ConsumerWidget {
       }
     }
 
+    final displayPerformance =
+        playerGames.isEmpty
+            ? (player.scoreChange.toDouble())
+            : totalPerformance;
+    final displayScore = player.matchScore ?? "0 / 0";
+
     return Scaffold(
       body: Column(
         children: [
           SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
-          ScoreboardAppbar(playerName: name),
+          ScoreboardAppbar(),
           SizedBox(height: 24.h),
           Padding(
             padding: EdgeInsets.symmetric(horizontal: 20.0.sp),
@@ -207,10 +251,12 @@ class ScoreCardScreen extends ConsumerWidget {
               children: [
                 Column(
                   children: [
-                    // Title badge/chip
                     if (player.title != null && player.title!.isNotEmpty)
                       Container(
-                        padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 8.w,
+                          vertical: 2.h,
+                        ),
                         margin: EdgeInsets.only(bottom: 4.h),
                         decoration: BoxDecoration(
                           color: kGreenColor,
@@ -225,7 +271,6 @@ class ScoreCardScreen extends ConsumerWidget {
                           ),
                         ),
                       ),
-                    // Player initials container
                     Container(
                       height: 65.h,
                       width: 64.w,
@@ -251,7 +296,6 @@ class ScoreCardScreen extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // First row: Performance and Score
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
@@ -266,13 +310,14 @@ class ScoreCardScreen extends ConsumerWidget {
                               ),
                               SizedBox(height: 5),
                               Text(
-                                totalPerformance >= 0
-                                    ? '+${totalPerformance.toStringAsFixed(1)}'
-                                    : totalPerformance.toStringAsFixed(1),
+                                displayPerformance >= 0
+                                    ? '+${displayPerformance.toStringAsFixed(1)}'
+                                    : displayPerformance.toStringAsFixed(1),
                                 style: AppTypography.textSmMedium.copyWith(
-                                  color: totalPerformance > 0
-                                      ? kGreenColor
-                                      : totalPerformance < 0
+                                  color:
+                                      displayPerformance > 0
+                                          ? kGreenColor
+                                          : displayPerformance < 0
                                           ? kRedColor
                                           : kWhiteColor,
                                 ),
@@ -290,7 +335,7 @@ class ScoreCardScreen extends ConsumerWidget {
                               ),
                               SizedBox(height: 5),
                               Text(
-                                player.matchScore ?? "",
+                                displayScore,
                                 style: AppTypography.textSmMedium.copyWith(
                                   color: kWhiteColor,
                                 ),
@@ -300,25 +345,21 @@ class ScoreCardScreen extends ConsumerWidget {
                         ],
                       ),
                       SizedBox(height: 12.h),
-                      // Second row: Ratings displayed horizontally
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          // Classical Rating
                           _RatingDisplay(
                             playerName: player.name,
                             timeControlType: "standard",
                             icon: Icons.access_time,
                             iconColor: kWhiteColor,
                           ),
-                          // Rapid Rating
                           _RatingDisplay(
                             playerName: player.name,
                             timeControlType: "rapid",
                             icon: Icons.flash_on,
                             iconColor: Colors.orange,
                           ),
-                          // Blitz Rating
                           _RatingDisplay(
                             playerName: player.name,
                             timeControlType: "blitz",
@@ -335,69 +376,110 @@ class ScoreCardScreen extends ConsumerWidget {
           ),
           SizedBox(height: 24.h),
           Expanded(
-            child: ListView.builder(
-              padding: EdgeInsets.zero,
-              itemCount: playerGames.length,
-              itemBuilder: (context, index) {
-                final game = playerGames[index];
-                final isWhite = game.whitePlayer.name == player.name;
-                final opponent = isWhite ? game.blackPlayer : game.whitePlayer;
-                final result = _getGameResult(game, player.name);
+            child:
+                isLoadingGames
+                    ? const Center(child: CircularProgressIndicator())
+                    : playerGames.isEmpty
+                    ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            size: 48.ic,
+                            color: kWhiteColor.withOpacity(0.5),
+                          ),
+                          SizedBox(height: 16.h),
+                          Text(
+                            hasTournamentContext
+                                ? 'No games in this tournament'
+                                : 'No games available',
+                            style: AppTypography.textMdMedium.copyWith(
+                              color: kWhiteColor.withOpacity(0.7),
+                            ),
+                          ),
+                          SizedBox(height: 8.h),
+                          Text(
+                            hasTournamentContext
+                                ? 'This player has not played in this tournament yet'
+                                : 'Games will appear once they are played',
+                            textAlign: TextAlign.center,
+                            style: AppTypography.textSmRegular.copyWith(
+                              color: kWhiteColor.withOpacity(0.5),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                    : ListView.builder(
+                      padding: EdgeInsets.zero,
+                      itemCount: playerGames.length,
+                      itemBuilder: (context, index) {
+                        final game = playerGames[index];
+                        final isWhite = game.whitePlayer.name == player.name;
+                        final opponent =
+                            isWhite ? game.blackPlayer : game.whitePlayer;
+                        final result = _getGameResult(game, player.name);
 
-                // Get player and opponent ratings
-                final playerRating = _getPlayerRating(game, player.name);
-                final opponentRating = _getPlayerRating(game, opponent.name);
+                        final playerRating = _getPlayerRating(
+                          game,
+                          player.name,
+                        );
+                        final opponentRating = _getPlayerRating(
+                          game,
+                          opponent.name,
+                        );
 
-                // Calculate FIDE Elo rating change for this game
-                double ratingChange = 0.0;
-                if (playerRating > 0 && opponentRating > 0) {
-                  ratingChange = _calculateFideRatingChange(
-                    playerRating,
-                    opponentRating,
-                    game.gameStatus,
-                    player.name,
-                    game,
-                  );
-                }
+                        double ratingChange = 0.0;
+                        if (playerRating > 0 && opponentRating > 0) {
+                          ratingChange = _calculateFideRatingChange(
+                            playerRating,
+                            opponentRating,
+                            game.gameStatus,
+                            player.name,
+                            game,
+                          );
+                        }
 
-                return Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20.0.sp),
-                  child: ScoreboardCardWidget(
-                    countryCode: opponent.countryCode,
-                    title: opponent.title,
-                    name: opponent.name,
-                    score: opponent.rating,  // Show opponent's rating
-                    scoreChange: ratingChange != 0.0 ? ratingChange : null,  // Show precise decimal value
-                    matchScore: result,  // Show result without rating change (it's now in scoreChange)
-                    index: index,
-                    isFirst: index == 0,
-                    isLast: index == playerGames.length - 1,
-                    onTap: () {
-                      // Navigate to ChessBoardScreenNew
-                      ref.read(chessboardViewFromProviderNew.notifier).state =
-                          ChessboardView.tour;
+                        return Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 20.0.sp),
+                          child: ScoreboardCardWidget(
+                            countryCode: opponent.countryCode,
+                            title: opponent.title,
+                            name: opponent.name,
+                            score: opponent.rating,
+                            scoreChange:
+                                ratingChange != 0.0 ? ratingChange : null,
+                            matchScore: result,
+                            index: index,
+                            isFirst: index == 0,
+                            isLast: index == playerGames.length - 1,
+                            onTap: () {
+                              ref
+                                  .read(chessboardViewFromProviderNew.notifier)
+                                  .state = ChessboardView.tour;
 
-                      // Use the same games list that was used to filter playerGames
-                      // to ensure consistency in gameId matching
-                      final gameIndex = allGames.indexWhere((g) => g.gameId == game.gameId);
+                              final gameIndex = allGames.indexWhere(
+                                (g) => g.gameId == game.gameId,
+                              );
 
-                      if (gameIndex != -1) {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder:
-                                (_) => ChessBoardScreenNew(
-                                  games: allGames,
-                                  currentIndex: gameIndex,
-                                ),
+                              if (gameIndex != -1) {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder:
+                                        (_) => ChessBoardScreenNew(
+                                          games: allGames,
+                                          currentIndex: gameIndex,
+                                        ),
+                                  ),
+                                );
+                              }
+                            },
                           ),
                         );
-                      }
-                    },
-                  ),
-                );
-              },
-            ),
+                      },
+                    ),
           ),
         ],
       ),
@@ -445,42 +527,41 @@ class _RatingDisplay extends ConsumerWidget {
 
     return Row(
       children: [
-        Icon(
-          icon,
-          size: 16.sp,
-          color: iconColor,
-        ),
+        Icon(icon, size: 16.sp, color: iconColor),
         SizedBox(width: 4.w),
         ratingAsync.when(
-          data: (rating) => Text(
-            rating?.toString() ?? '-',
-            style: AppTypography.textSmMedium.copyWith(
-              color: kWhiteColor,
-              fontSize: 14.sp,
-            ),
-          ),
-          loading: () => Skeletonizer(
-            enabled: true,
-            ignoreContainers: true,
-            effect: ShimmerEffect(
-              baseColor: Color(0xFF2A2A2A),
-              highlightColor: Color(0xFF3A3A3A),
-            ),
-            child: Text(
-              '2400', // 4-digit placeholder
-              style: AppTypography.textSmMedium.copyWith(
-                color: kWhiteColor,
-                fontSize: 14.sp,
+          data:
+              (rating) => Text(
+                rating?.toString() ?? '-',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: kWhiteColor,
+                  fontSize: 14.sp,
+                ),
               ),
-            ),
-          ),
-          error: (_, __) => Text(
-            '-',
-            style: AppTypography.textSmMedium.copyWith(
-              color: kWhiteColor,
-              fontSize: 14.sp,
-            ),
-          ),
+          loading:
+              () => Skeletonizer(
+                enabled: true,
+                ignoreContainers: true,
+                effect: ShimmerEffect(
+                  baseColor: Color(0xFF2A2A2A),
+                  highlightColor: Color(0xFF3A3A3A),
+                ),
+                child: Text(
+                  '2400',
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: kWhiteColor,
+                    fontSize: 14.sp,
+                  ),
+                ),
+              ),
+          error:
+              (_, __) => Text(
+                '-',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: kWhiteColor,
+                  fontSize: 14.sp,
+                ),
+              ),
         ),
       ],
     );

@@ -228,12 +228,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
 
           ref.read(selectedPlayerProvider.notifier).state = playerStanding;
 
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => ScoreCardScreen(name: playerCard.displayName),
-            ),
-          );
+          Navigator.pushNamed(context, '/scorecard_screen');
         });
       },
       child: Row(
