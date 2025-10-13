@@ -105,8 +105,12 @@ final filteredFavoritePlayersProvider = Provider.family
       if (query.isEmpty) {
         return players;
       }
-      final lowerQuery = query.toLowerCase();
-      return players
-          .where((player) => player.name.toLowerCase().contains(lowerQuery))
-          .toList();
+      String normalize(String s) =>
+          s.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
+      return players.where((player) {
+        final name = normalize(player.name);
+        final q = normalize(query);
+        return name.contains(q);
+      }).toList();
     });

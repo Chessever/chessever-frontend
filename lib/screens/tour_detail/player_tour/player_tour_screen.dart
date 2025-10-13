@@ -106,12 +106,9 @@ class PlayerTourScreen extends ConsumerWidget {
                             onTap: () {
                               ref.read(selectedPlayerProvider.notifier).state =
                                   player;
-                              Navigator.push(
+                              Navigator.of(
                                 context,
-                                MaterialPageRoute(
-                                  builder: (_) => ScoreCardScreen(),
-                                ),
-                              );
+                              ).pushNamed('/scorecard_screen');
                             },
                           ),
                         );
