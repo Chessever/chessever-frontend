@@ -1,169 +1,129 @@
+import 'package:chessever2/screens/standings/player_standing_model.dart';
+import 'package:chessever2/screens/standings/score_card_screen.dart';
+import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:country_flags/country_flags.dart';
-import '../../../utils/app_typography.dart';
-import '../../../theme/app_theme.dart';
-import '../../../utils/responsive_helper.dart';
-import '../../../utils/svg_asset.dart';
-import '../../../utils/png_asset.dart';
-import '../../../widgets/svg_widget.dart';
-import '../player_games/player_games_screen.dart';
+import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/png_asset.dart';
 
 class PlayerFavoriteCard extends ConsumerWidget {
-  final Map<String, dynamic> playerData;
+  final PlayerStandingModel playerData;
   final int rank;
+  final bool isEven;
   final VoidCallback? onRemoveFavorite;
 
   const PlayerFavoriteCard({
     super.key,
     required this.playerData,
     required this.rank,
+    required this.isEven,
     this.onRemoveFavorite,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final name = playerData['name'] as String? ?? 'Unknown Player';
-    final title = playerData['title'] as String? ?? '';
-    final countryCode = playerData['countryCode'] as String? ?? '';
-    final rating = playerData['rating'] as int? ?? 0;
+    final validCountryCode = ref
+        .read(locationServiceProvider)
+        .getValidCountryCode(playerData.countryCode);
 
-    return Dismissible(
-      key: Key(playerData['fideId']?.toString() ?? name),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        decoration: BoxDecoration(
-          color: kRedColor,
-          borderRadius: BorderRadius.circular(8.br),
-        ),
-        alignment: Alignment.centerRight,
-        padding: EdgeInsets.only(right: 20.sp),
-        child: Icon(
-          Icons.delete_outline,
-          color: kWhiteColor,
-          size: 24.ic,
-        ),
-      ),
-      confirmDismiss: (direction) async {
-        HapticFeedback.mediumImpact();
-        return await _showDeleteConfirmation(context, name);
+    return GestureDetector(
+      onTap: () => _navigateToPlayerScoreCard(context, ref),
+      onLongPressStart: (details) {
+        HapticFeedback.lightImpact();
+        _showContextMenu(context, details.globalPosition, playerData.name);
       },
-      onDismissed: (direction) {
-        if (onRemoveFavorite != null) {
-          onRemoveFavorite!();
-        }
-      },
-      child: GestureDetector(
-        onTap: () => _navigateToPlayerScoreCard(context, ref),
-        onLongPressStart: (details) {
-          HapticFeedback.lightImpact();
-          _showContextMenu(context, details.globalPosition, name);
-        },
-        child: Container(
+      child: Container(
         decoration: BoxDecoration(
-          color: kBlack2Color,
-          borderRadius: BorderRadius.circular(8.br),
+          color: isEven ? kBlack2Color : kBackgroundColor.withOpacity(0.5),
         ),
-        padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 12.sp),
+        padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 8.sp),
         child: Row(
-        children: [
-          // Rank
-          SizedBox(
-            width: 32.w,
-            child: Text(
-              '$rank.',
-              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
-              textAlign: TextAlign.center,
-            ),
-          ),
-
-          SizedBox(width: 12.w),
-
-          // Country flag
-          if (countryCode.isNotEmpty)
-            Container(
-              margin: EdgeInsets.only(right: 12.w),
-              child: countryCode.toUpperCase() == 'FID'
-                  ? Image.asset(
-                      PngAsset.fideLogo,
-                      height: 16.h,
-                      width: 24.w,
-                      fit: BoxFit.cover,
-                    )
-                  : CountryFlag.fromCountryCode(
-                      countryCode,
-                      height: 16.h,
-                      width: 24.w,
-                    ),
-            ),
-
-          // Player info
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Player name with title
-                RichText(
-                  text: TextSpan(
-                    children: [
-                      if (title.isNotEmpty) ...[
-                        TextSpan(
-                          text: '$title ',
-                          style: AppTypography.textSmMedium.copyWith(
-                            color: kPrimaryColor,
-                          ),
-                        ),
-                      ],
-                      TextSpan(
-                        text: name,
-                        style: AppTypography.textSmMedium.copyWith(
-                          color: kWhiteColor,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Rating
-                if (rating > 0) ...[
-                  SizedBox(height: 4.h),
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.trending_up,
-                        size: 12.ic,
-                        color: kWhiteColor.withValues(alpha: 0.7),
-                      ),
-                      SizedBox(width: 4.w),
-                      Text(
-                        'Rating: $rating',
-                        style: AppTypography.textXsRegular.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.7),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ],
-            ),
-          ),
-
-          // Remove favorite button
-          GestureDetector(
-            onTap: onRemoveFavorite,
-            child: Container(
-              padding: EdgeInsets.all(8.sp),
-              child: SvgWidget(
-                SvgAsset.favouriteRedIcon,
-                semanticsLabel: 'Remove from favorites',
-                height: 18.h,
-                width: 18.w,
+          children: [
+            // Rank
+            SizedBox(
+              width: 24.w,
+              child: Text(
+                '$rank.',
+                style: AppTypography.textXsMedium.copyWith(fontSize: 16.sp),
               ),
             ),
-          ),
-        ],
-        ),
+            SizedBox(width: 16.w),
+            // Country flag
+            if (playerData.countryCode.toUpperCase() == 'FID') ...[
+              Container(
+                margin: EdgeInsets.only(right: 12.w),
+                child: Image.asset(
+                  PngAsset.fideLogo,
+                  height: 12.h,
+                  width: 16.w,
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ] else if (validCountryCode.isNotEmpty) ...[
+              Container(
+                margin: EdgeInsets.only(right: 12.w),
+                child: CountryFlag.fromCountryCode(
+                  validCountryCode,
+                  height: 12.h,
+                  width: 16.w,
+                ),
+              ),
+            ],
+
+            Expanded(
+              child: RichText(
+                text: TextSpan(
+                  children: [
+                    if (playerData.title?.isNotEmpty ?? false) ...[
+                      TextSpan(
+                        text: '${playerData.title} ',
+                        style: AppTypography.textXsMedium.copyWith(
+                          color: kLightYellowColor,
+                        ),
+                      ),
+                    ],
+                    TextSpan(
+                      text: playerData.name,
+                      style: AppTypography.textXsMedium.copyWith(
+                        color: kWhiteColor,
+                      ),
+                    ),
+                  ],
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+
+            SizedBox(width: 16.w),
+
+            // Rating
+            if (playerData.score > 0)
+              SizedBox(
+                width: 60.w,
+                child: Text(
+                  '${playerData.score}',
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: kWhiteColor,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+
+            SizedBox(width: 16.w),
+
+            // Remove favorite button (heart icon)
+            GestureDetector(
+              onTap: onRemoveFavorite,
+              child: Container(
+                padding: EdgeInsets.all(8.sp),
+                child: Icon(Icons.favorite, color: kRedColor, size: 20.ic),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -171,35 +131,19 @@ class PlayerFavoriteCard extends ConsumerWidget {
 
   void _navigateToPlayerScoreCard(BuildContext context, WidgetRef ref) {
     try {
-      debugPrint('===== PlayerFavoriteCard: playerData keys: ${playerData.keys.toList()} =====');
-      debugPrint('===== PlayerFavoriteCard: fideId value: ${playerData['fideId']} (type: ${playerData['fideId'].runtimeType}) =====');
-
-      final fideId = playerData['fideId']?.toString();
-      final name = playerData['name'] as String? ?? 'Unknown Player';
-      final title = playerData['title'] as String?;
-      final countryCode = playerData['countryCode'] as String? ?? '';
-
-      debugPrint('===== Navigating with fideId: $fideId, name: $name =====');
-
-      // Navigate to player games screen (works with or without fideId)
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => PlayerGamesScreen(
-            fideId: (fideId != null && fideId.isNotEmpty) ? fideId : null,
-            playerName: name,
-            playerTitle: title,
-            countryCode: countryCode,
-          ),
-        ),
-      );
-    } catch (e) {
-      debugPrint('===== ERROR navigating to player games: $e =====');
-    }
+      FocusScope.of(context).unfocus();
+      ref.read(selectedPlayerProvider.notifier).state = playerData;
+      Navigator.pushNamed(context, '/scorecard_screen');
+    } catch (e) {}
   }
 
-  void _showContextMenu(BuildContext context, Offset position, String playerName) {
-    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+  void _showContextMenu(
+    BuildContext context,
+    Offset position,
+    String playerName,
+  ) {
+    final RenderBox overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox;
 
     showMenu(
       context: context,
@@ -208,25 +152,17 @@ class PlayerFavoriteCard extends ConsumerWidget {
         Offset.zero & overlay.size,
       ),
       color: kBlack2Color,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8.br),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.br)),
       items: [
         PopupMenuItem(
           value: 'delete',
           child: Row(
             children: [
-              Icon(
-                Icons.delete_outline,
-                color: kRedColor,
-                size: 20.ic,
-              ),
+              Icon(Icons.delete_outline, color: kRedColor, size: 20.ic),
               SizedBox(width: 12.w),
               Text(
                 'Remove from favorites',
-                style: AppTypography.textSmRegular.copyWith(
-                  color: kRedColor,
-                ),
+                style: AppTypography.textSmRegular.copyWith(color: kRedColor),
               ),
             ],
           ),
@@ -244,7 +180,10 @@ class PlayerFavoriteCard extends ConsumerWidget {
     });
   }
 
-  Future<bool?> _showDeleteConfirmation(BuildContext context, String playerName) {
+  Future<bool?> _showDeleteConfirmation(
+    BuildContext context,
+    String playerName,
+  ) {
     return showDialog<bool>(
       context: context,
       builder: (BuildContext context) {
@@ -274,7 +213,12 @@ class PlayerFavoriteCard extends ConsumerWidget {
               ),
             ),
             TextButton(
-              onPressed: () => Navigator.of(context).pop(true),
+              onPressed: () {
+                Navigator.of(context).pop(true);
+                if (onRemoveFavorite != null) {
+                  onRemoveFavorite!();
+                }
+              },
               child: Text(
                 'Remove',
                 style: AppTypography.textSmMedium.copyWith(color: kRedColor),

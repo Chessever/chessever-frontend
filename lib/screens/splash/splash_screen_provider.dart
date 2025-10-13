@@ -42,13 +42,15 @@ class _SplashScreenProvider {
     final isLoggedIn = await sessionManager.isLoggedIn();
     print('Is user logged in: $isLoggedIn');
 
-    if (isLoggedIn || kDebugMode) {
-      await Future.microtask(() async {
-        ref.read(countryDropdownProvider);
-      });
-      Navigator.pushNamedAndRemoveUntil(context, '/home_screen', (_) => false);
-    } else {
-      Navigator.pushNamedAndRemoveUntil(context, '/auth_screen', (_) => false);
-    }
+    // if (isLoggedIn || kDebugMode) {
+    //   await Future.microtask(() async {
+    //     ref.read(countryDropdownProvider);
+    //   });
+    //   Navigator.pushNamedAndRemoveUntil(context, '/home_screen', (_) => false);
+    // } else {
+    //   Navigator.pushNamedAndRemoveUntil(context, '/auth_screen', (_) => false);
+    // }
+
+    Navigator.pushNamedAndRemoveUntil(context, '/home_screen', (_) => false);
   }
 }
