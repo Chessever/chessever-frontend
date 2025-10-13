@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
+import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -25,6 +26,10 @@ class PlayerFavoriteCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final validCountryCode = ref
+        .read(locationServiceProvider)
+        .getValidCountryCode(playerData.countryCode);
+
     return GestureDetector(
       onTap: () => _navigateToPlayerScoreCard(context, ref),
       onLongPressStart: (details) {
@@ -48,23 +53,26 @@ class PlayerFavoriteCard extends ConsumerWidget {
             ),
             SizedBox(width: 16.w),
             // Country flag
-            if (playerData.countryCode.isNotEmpty)
+            if (playerData.countryCode.toUpperCase() == 'FID') ...[
               Container(
                 margin: EdgeInsets.only(right: 12.w),
-                child:
-                    playerData.countryCode.toUpperCase() == 'FID'
-                        ? Image.asset(
-                          PngAsset.fideLogo,
-                          height: 12.h,
-                          width: 16.w,
-                          fit: BoxFit.cover,
-                        )
-                        : CountryFlag.fromCountryCode(
-                          playerData.countryCode,
-                          height: 12.h,
-                          width: 16.w,
-                        ),
+                child: Image.asset(
+                  PngAsset.fideLogo,
+                  height: 12.h,
+                  width: 16.w,
+                  fit: BoxFit.cover,
+                ),
               ),
+            ] else if (validCountryCode.isNotEmpty) ...[
+              Container(
+                margin: EdgeInsets.only(right: 12.w),
+                child: CountryFlag.fromCountryCode(
+                  validCountryCode,
+                  height: 12.h,
+                  width: 16.w,
+                ),
+              ),
+            ],
 
             Expanded(
               child: RichText(
@@ -123,6 +131,7 @@ class PlayerFavoriteCard extends ConsumerWidget {
 
   void _navigateToPlayerScoreCard(BuildContext context, WidgetRef ref) {
     try {
+      FocusScope.of(context).unfocus();
       ref.read(selectedPlayerProvider.notifier).state = playerData;
       Navigator.pushNamed(context, '/scorecard_screen');
     } catch (e) {}
