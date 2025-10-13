@@ -157,7 +157,14 @@ class _EnhancedGamesSearchBarState extends ConsumerState<EnhancedGamesSearchBar>
               builder: (context, child) {
                 return Transform.scale(
                   scale: _searchBarScaleAnimation.value,
-                  child: _buildSearchBar(),
+                  child: SearchBarWidget(
+                    hintText: widget.hintText,
+                    autoFocus: widget.autofocus,
+                    controller: widget.controller,
+                    focusNode: _focusNode,
+                    onClose: widget.onClose ?? _hideOverlay,
+                    onChanged: _handleTextChange,
+                  ),
                 );
               },
             ),
@@ -193,8 +200,28 @@ class _EnhancedGamesSearchBarState extends ConsumerState<EnhancedGamesSearchBar>
       ],
     );
   }
+}
 
-  Widget _buildSearchBar() {
+class SearchBarWidget extends StatelessWidget {
+  const SearchBarWidget({
+    required this.hintText,
+    required this.autoFocus,
+    required this.controller,
+    required this.focusNode,
+    required this.onClose,
+    this.onChanged,
+    super.key,
+  });
+
+  final String hintText;
+  final bool autoFocus;
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final ValueChanged<String>? onChanged;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
@@ -205,13 +232,13 @@ class _EnhancedGamesSearchBarState extends ConsumerState<EnhancedGamesSearchBar>
         borderRadius: BorderRadius.circular(8.br),
         border: Border.all(
           color:
-              _focusNode.hasFocus
+              focusNode.hasFocus
                   ? kDarkBlue.withOpacity(0.5)
                   : Colors.transparent,
           width: 2.w,
         ),
         boxShadow:
-            _focusNode.hasFocus
+            focusNode.hasFocus
                 ? [
                   BoxShadow(
                     color: kDarkBlue.withOpacity(0.15),
@@ -224,11 +251,11 @@ class _EnhancedGamesSearchBarState extends ConsumerState<EnhancedGamesSearchBar>
       child: Row(
         children: [
           AnimatedRotation(
-            turns: _focusNode.hasFocus ? 0.25 : 0,
+            turns: focusNode.hasFocus ? 0.25 : 0,
             duration: const Duration(milliseconds: 200),
             child: Icon(
               Icons.search,
-              color: _focusNode.hasFocus ? Colors.blue : Colors.white70,
+              color: focusNode.hasFocus ? Colors.blue : Colors.white70,
               size: 20.ic,
             ),
           ),
@@ -236,13 +263,13 @@ class _EnhancedGamesSearchBarState extends ConsumerState<EnhancedGamesSearchBar>
 
           Expanded(
             child: TextField(
-              controller: widget.controller,
-              focusNode: _focusNode,
-              autofocus: widget.autofocus,
+              controller: controller,
+              focusNode: focusNode,
+              autofocus: autoFocus,
               style: TextStyle(color: kWhiteColor70, fontSize: 16.f),
-              onChanged: _handleTextChange, // Single handler
+              onChanged: onChanged,
               decoration: InputDecoration(
-                hintText: widget.hintText,
+                hintText: hintText,
                 hintStyle: const TextStyle(color: kWhiteColor70),
                 border: InputBorder.none,
                 isDense: true,
@@ -250,18 +277,18 @@ class _EnhancedGamesSearchBarState extends ConsumerState<EnhancedGamesSearchBar>
               ),
             ),
           ),
-
-          GestureDetector(
-            onTap: widget.onClose ?? _hideOverlay,
-            child: Container(
-              padding: EdgeInsets.all(4.sp),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.1),
-                shape: BoxShape.circle,
+          if (controller.text.isNotEmpty)
+            GestureDetector(
+              onTap: onClose,
+              child: Container(
+                padding: EdgeInsets.all(4.sp),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.close, color: kWhiteColor70, size: 16.ic),
               ),
-              child: Icon(Icons.close, color: kWhiteColor70, size: 16.ic),
             ),
-          ),
         ],
       ),
     );
