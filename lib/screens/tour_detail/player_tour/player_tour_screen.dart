@@ -6,9 +6,9 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../../../theme/app_theme.dart';
-import '../../../widgets/standing_score_card.dart';
-import '../../../utils/app_typography.dart';
+import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/widgets/standing_score_card.dart';
+import 'package:chessever2/utils/app_typography.dart';
 
 class PlayerTourScreen extends ConsumerWidget {
   const PlayerTourScreen({super.key});
@@ -106,15 +106,9 @@ class PlayerTourScreen extends ConsumerWidget {
                             onTap: () {
                               ref.read(selectedPlayerProvider.notifier).state =
                                   player;
-                              Navigator.push(
+                              Navigator.of(
                                 context,
-                                MaterialPageRoute(
-                                  builder:
-                                      (_) => ScoreCardScreen(
-                                        name: player.name,
-                                      ),
-                                ),
-                              );
+                              ).pushNamed('/scorecard_screen');
                             },
                           ),
                         );

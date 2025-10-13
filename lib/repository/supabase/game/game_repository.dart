@@ -280,7 +280,7 @@ class GameRepository extends BaseRepository {
           last_clock_white,
           last_clock_black
         ''')
-          .or('player_white.eq.$playerName,player_black.eq.$playerName')
+          .or('player_white.eq."$playerName",player_black.eq."$playerName"')
           .order('date_start', ascending: false)
           .order('time_start', ascending: false);
 

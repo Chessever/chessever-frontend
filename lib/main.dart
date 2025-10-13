@@ -5,6 +5,7 @@ import 'package:chessever2/l10n/app_localizations.dart';
 import 'package:chessever2/localization/locale_provider.dart';
 import 'package:chessever2/screens/authentication/auth_screen.dart';
 import 'package:chessever2/screens/calendar/calendar_detail_screen.dart';
+import 'package:chessever2/screens/favorites/favorite_screen.dart';
 import 'package:chessever2/screens/home/home_screen.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/countryman_games_screen.dart';
@@ -12,6 +13,7 @@ import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/players/player_screen.dart';
 import 'package:chessever2/screens/players/providers/player_providers.dart';
 import 'package:chessever2/screens/splash/splash_screen.dart';
+import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen.dart';
 import 'package:chessever2/screens/tour_detail/tournament_detail_screen.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
@@ -56,7 +58,7 @@ Future<void> main() async {
       await NotificationService.initialize();
       // Initialize worker manager with 6 isolates for parallel move evaluation
       if (Platform.isAndroid) {
-        await workerManager.init(isolatesCount: 4);
+        await workerManager.init(isolatesCount: 3);
       } else if (Platform.isIOS) {
         await workerManager.init(isolatesCount: 6);
       }
@@ -210,8 +212,9 @@ class _MyAppState extends ConsumerState<MyApp> {
             (context) => const TournamentDetailScreen(),
         '/calendar_screen': (context) => const CalendarScreen(),
         '/library_screen': (context) => const LibraryScreen(),
+        '/favorites_screen': (context) => const FavoriteScreen(),
+        '/scorecard_screen': (context) => const ScoreCardScreen(),
         // '/chess_screen': (context) => const ChessScreen(),
-
         // New Screen
         '/player_list_screen': (context) => const PlayerListScreen(),
         // Updated to use the new FavoriteScreen
