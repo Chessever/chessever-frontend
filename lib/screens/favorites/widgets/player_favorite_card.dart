@@ -183,7 +183,7 @@ class PlayerFavoriteCard extends ConsumerWidget {
 
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => ScoreCardScreen(name: name)),
+        MaterialPageRoute(builder: (_) => ScoreCardScreen()),
       );
     } catch (e) {
       debugPrint('===== ERROR navigating to player games: $e =====');
