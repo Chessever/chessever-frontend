@@ -2135,54 +2135,57 @@ class ChessBoardScreenNotifierNew
 
       debugPrint('🎯 EVAL START: Evaluating position $fen');
 
-      // CRITICAL: Use Stockfish as PRIMARY source to guarantee 3 PVs
+      // OPTIMIZED: Try cascade (cloud sources) FIRST for speed
+      // Cascade queries local DB, Supabase, and Lichess in parallel
       try {
-        debugPrint('🎯 EVAL: Requesting Stockfish evaluation...');
-        final localEval = await StockfishSingleton().evaluatePosition(
-          fen,
-          depth: _resumeVariantAutoPlay ? 12 : 15,
-        );
-        debugPrint('🎯 EVAL: Stockfish completed, isCancelled=${localEval.isCancelled}, pvs.length=${localEval.pvs.length}');
-
-        if (!localEval.isCancelled && localEval.pvs.isNotEmpty) {
-          primaryEval = CloudEval(
-            fen: fen,
-            knodes: localEval.knodes,
-            depth: localEval.depth,
-            pvs: localEval.pvs,
-          );
+        debugPrint('🎯 EVAL: Requesting cascade evaluation (parallel cloud sources)...');
+        final cascadeEval = await ref.read(cascadeEvalProviderForBoard(fen).future);
+        if (cascadeEval.pvs.isNotEmpty) {
+          primaryEval = cascadeEval;
           evaluation = _getConsistentEvaluation(
-            localEval.pvs.first.cp / 100.0,
+            cascadeEval.pvs.first.cp / 100.0,
             fen,
           );
-          debugPrint('🎯 EVAL: Building principal variations...');
-          pvLines = await _buildPrincipalVariations(fen, localEval.pvs);
-          debugPrint('🎯 EVAL: Stockfish SUCCESS - returned ${pvLines.length} variants, eval=$evaluation');
+          debugPrint('🎯 EVAL: Building principal variations from cloud source...');
+          pvLines = await _buildPrincipalVariations(fen, cascadeEval.pvs);
+          debugPrint('🎯 EVAL: CASCADE SUCCESS - returned ${pvLines.length} variants, eval=$evaluation');
         } else {
-          debugPrint('🎯 EVAL: Stockfish returned cancelled or empty result');
+          debugPrint('🎯 EVAL: Cascade returned empty PVs');
         }
-      } catch (e, stack) {
-        debugPrint('🎯 EVAL ERROR: Stockfish failed for $fen: $e');
-        debugPrint('Stack: $stack');
+      } catch (e) {
+        debugPrint('🎯 EVAL ERROR: Cascade failed for $fen: $e');
       }
 
-      // Try cascade/cloud as fallback only if Stockfish failed
+      // FALLBACK: Use Stockfish local engine only if cloud sources failed
       if (evaluation == null || pvLines.isEmpty) {
         try {
-          final cascadeEval = await ref.read(cascadeEvalProviderForBoard(fen).future);
-          if (cascadeEval.pvs.isNotEmpty) {
-            primaryEval = cascadeEval;
+          debugPrint('🎯 EVAL: Cloud sources unavailable, falling back to Stockfish...');
+          final localEval = await StockfishSingleton().evaluatePosition(
+            fen,
+            depth: _resumeVariantAutoPlay ? 12 : 15,
+          );
+          debugPrint('🎯 EVAL: Stockfish completed, isCancelled=${localEval.isCancelled}, pvs.length=${localEval.pvs.length}');
+
+          if (!localEval.isCancelled && localEval.pvs.isNotEmpty) {
+            primaryEval = CloudEval(
+              fen: fen,
+              knodes: localEval.knodes,
+              depth: localEval.depth,
+              pvs: localEval.pvs,
+            );
             evaluation = _getConsistentEvaluation(
-              cascadeEval.pvs.first.cp / 100.0,
+              localEval.pvs.first.cp / 100.0,
               fen,
             );
-            pvLines = await _buildPrincipalVariations(fen, cascadeEval.pvs);
-            debugPrint('🎯 EVAL: Cascade returned ${pvLines.length} variants');
+            debugPrint('🎯 EVAL: Building principal variations from Stockfish...');
+            pvLines = await _buildPrincipalVariations(fen, localEval.pvs);
+            debugPrint('🎯 EVAL: STOCKFISH FALLBACK SUCCESS - returned ${pvLines.length} variants, eval=$evaluation');
           } else {
-            debugPrint('🎯 EVAL: Cascade returned empty PVs');
+            debugPrint('🎯 EVAL: Stockfish returned cancelled or empty result');
           }
-        } catch (e) {
-          debugPrint('🎯 EVAL ERROR: Cascade failed for $fen: $e');
+        } catch (e, stack) {
+          debugPrint('🎯 EVAL ERROR: Stockfish fallback failed for $fen: $e');
+          debugPrint('Stack: $stack');
         }
       }
 
@@ -2203,16 +2206,17 @@ class ChessBoardScreenNotifierNew
         return;
       }
 
-      try {
-        final cache = ref.read(localEvalCacheProvider);
-        final persist = ref.read(persistCloudEvalProvider);
-        await Future.wait([
-          persist.call(fen, primaryEval),
-          cache.save(fen, primaryEval),
-        ]);
-      } catch (e) {
-        debugPrint('Failed to persist evaluation for $fen: $e');
-      }
+      // OPTIMIZATION: Don't await cache persistence - run in background for speed
+      // User sees evaluation immediately while caching happens asynchronously
+      final cache = ref.read(localEvalCacheProvider);
+      final persist = ref.read(persistCloudEvalProvider);
+      Future.wait([
+        persist.call(fen, primaryEval),
+        cache.save(fen, primaryEval),
+      ]).catchError((e) {
+        debugPrint('Background persist failed for $fen: $e');
+        return <void>[];
+      });
 
       if (_cancelEvaluation || state.value == null || !mounted) return;
       var currentSnapshot = state.value;
@@ -2563,6 +2567,10 @@ class ChessBoardScreenNotifierNew
 
   void _updateEvaluation() {
     if (_isLongPressing) return;
+
+    // CRITICAL: Cancel any pending debounced evaluation first
+    EasyDebounce.cancel('evaluation-$index');
+
     _cancelEvaluation = false;
 
     // CRITICAL: Clear stale PVs immediately when position changes
@@ -2590,14 +2598,12 @@ class ChessBoardScreenNotifierNew
       }
     }
 
-    EasyDebounce.debounce(
-      'evaluation-$index',
-      const Duration(milliseconds: 50),  // Reduced from 100ms for faster response
-      () {
-        if (_cancelEvaluation || state.value == null || !mounted) return;
-        _evaluatePosition();
-      },
-    );
+    // CRITICAL FIX: Start evaluation immediately without debounce
+    // The debounce was causing evaluations to be cancelled during rapid navigation
+    if (!_cancelEvaluation && state.value != null && mounted) {
+      debugPrint('🎯 EVAL: Starting evaluation immediately for current position');
+      _evaluatePosition();
+    }
   }
 
   void startLongPressForward() {
