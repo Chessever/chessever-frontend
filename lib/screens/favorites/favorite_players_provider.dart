@@ -67,6 +67,26 @@ class FavoritePlayersNotifier
     }
   }
 
+  void onSearchFavorite(String query) {
+    final currentState = state.valueOrNull;
+    if (currentState == null) return;
+
+    if (query.isEmpty) {
+      state = AsyncValue.data(
+        currentState.copyWith(players: currentState.players),
+      );
+    } else {
+      final filteredPlayers =
+          currentState.players
+              .where(
+                (player) =>
+                    player.name.toLowerCase().contains(query.toLowerCase()),
+              )
+              .toList();
+      state = AsyncValue.data(currentState.copyWith(players: filteredPlayers));
+    }
+  }
+
   Future<void> refreshFavorites() async {
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() => _loadFavorites());
@@ -78,26 +98,15 @@ final favoritePlayersNotifierProvider = AsyncNotifierProvider.autoDispose<
   FavoritePlayersState
 >(() => FavoritePlayersNotifier());
 
-final filteredFavoritePlayersProvider =
-    Provider.autoDispose<List<PlayerStandingModel>>((ref) {
-      final searchQuery = ref.watch(favoriteSearchQueryProvider);
-      final favoritesState = ref.watch(favoritePlayersNotifierProvider);
+final filteredFavoritePlayersProvider = Provider.family
+    .autoDispose<List<PlayerStandingModel>, String>((ref, query) {
+      final players = ref.watch(favoritePlayersNotifierProvider).value!.players;
 
-      return favoritesState.when(
-        data: (state) {
-          if (searchQuery.isEmpty) {
-            return state.players;
-          }
-          final lowerQuery = searchQuery.toLowerCase();
-          return state.players
-              .where((player) => player.name.toLowerCase().contains(lowerQuery))
-              .toList();
-        },
-        loading: () => [],
-        error: (_, __) => [],
-      );
+      if (query.isEmpty) {
+        return players;
+      }
+      final lowerQuery = query.toLowerCase();
+      return players
+          .where((player) => player.name.toLowerCase().contains(lowerQuery))
+          .toList();
     });
-
-final favoriteSearchQueryProvider = StateProvider.autoDispose<String>(
-  (ref) => '',
-);
