@@ -7,6 +7,7 @@ import 'package:chessever2/repository/local_storage/board_settings_repository/bo
 import 'package:chessever2/screens/chessboard/analysis/move_impact_analyzer.dart';
 import 'package:chessever2/screens/chessboard/analysis/simple_move_impact.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
@@ -281,6 +282,34 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   int? _lastViewedIndex;
   int _currentPageIndex = 0;
 
+  GamesTourModel _resolveGameForIndex(int index) {
+    if (widget.games.isEmpty) {
+      throw StateError('No games available to resolve');
+    }
+
+    final safeIndex = index.clamp(0, widget.games.length - 1);
+    final fallbackGame = widget.games[safeIndex];
+    final view = ref.read(chessboardViewFromProviderNew);
+
+    final AsyncValue<GamesScreenModel> gamesAsync =
+        view == ChessboardView.tour
+            ? ref.read(gamesTourScreenProvider)
+            : ref.read(countrymanGamesTourScreenProvider);
+
+    final liveGames = gamesAsync.valueOrNull?.gamesTourModels;
+    if (liveGames == null || liveGames.isEmpty) {
+      return fallbackGame;
+    }
+
+    for (final game in liveGames) {
+      if (game.gameId == fallbackGame.gameId) {
+        return game;
+      }
+    }
+
+    return fallbackGame;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -331,7 +360,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
     // Only pause if the previous provider should still be alive (within ±1 range)
     if ((newIndex - previousIndex).abs() <= 1) {
       try {
-        final prevGame = widget.games[previousIndex];
+        final prevGame = _resolveGameForIndex(previousIndex);
         ref
             .read(
               chessBoardScreenProviderNew(
@@ -347,7 +376,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         try {
-          final newGame = widget.games[newIndex];
+          final newGame = _resolveGameForIndex(newIndex);
           ref
               .read(
                 chessBoardScreenProviderNew(
@@ -373,7 +402,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
 
     // OPTIMIZED: Don't read provider during navigation - just pause the current game
     try {
-      final currentGame = widget.games[_currentPageIndex];
+      final currentGame = _resolveGameForIndex(_currentPageIndex);
       ref
           .read(
             chessBoardScreenProviderNew(
@@ -397,7 +426,90 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
 
   @override
   Widget build(BuildContext context) {
-    final currentGame = widget.games[_currentPageIndex];
+    final view = ref.watch(chessboardViewFromProviderNew);
+    final gamesAsync =
+        view == ChessboardView.tour
+            ? ref.watch(
+                gamesTourScreenProvider.select((value) {
+                  if (!value.hasValue) return value;
+
+                  final allGames = value.value!.gamesTourModels;
+                  final gameIds = widget.games.map((g) => g.gameId).toSet();
+
+                  final relevantGames =
+                      allGames.where((g) => gameIds.contains(g.gameId)).toList();
+                  return AsyncValue.data(
+                    value.value!.copyWith(gamesTourModels: relevantGames),
+                  );
+                }),
+              )
+            : ref.watch(countrymanGamesTourScreenProvider);
+
+    if (!gamesAsync.hasValue || gamesAsync.value?.gamesTourModels == null) {
+      return _LoadingScreen(
+        games: widget.games.isNotEmpty ? widget.games : [widget.games.first],
+        currentGameIndex: _currentPageIndex.clamp(0, widget.games.length - 1),
+        onGameChanged: (index) {},
+        lastViewedIndex: _lastViewedIndex,
+      );
+    }
+
+    final liveGamesMap = Map.fromEntries(
+      gamesAsync.value!.gamesTourModels.map((g) => MapEntry(g.gameId, g)),
+    );
+    final liveGames = widget.games
+        .map((originalGame) => liveGamesMap[originalGame.gameId] ?? originalGame)
+        .toList();
+
+    final syncedGames = List<GamesTourModel>.from(liveGames);
+    if (syncedGames.isEmpty) {
+      return _LoadingScreen(
+        games: widget.games.isNotEmpty ? widget.games : [widget.games.first],
+        currentGameIndex: _currentPageIndex.clamp(0, widget.games.length - 1),
+        onGameChanged: (index) {},
+        lastViewedIndex: _lastViewedIndex,
+      );
+    }
+
+    final visibleStart = (_currentPageIndex - 1).clamp(0, syncedGames.length - 1);
+    final visibleEnd = (_currentPageIndex + 1).clamp(0, syncedGames.length - 1);
+    final Map<int, AsyncValue<ChessBoardStateNew>> visibleStates = {};
+    for (int i = visibleStart; i <= visibleEnd; i++) {
+      // Watch PGN stream for this game using STABLE gameId from widget.games
+      // This is critical - using syncedGames[i].gameId would cause provider recreation on every update
+      final originalGameId = widget.games[i].gameId;
+      final gameUpdatesAsync = ref.watch(gameUpdatesStreamProvider(originalGameId));
+
+      // Merge streamed PGN data with game from liveGames
+      final gameWithStreamedData = gameUpdatesAsync.whenOrNull(
+        data: (updateData) {
+          if (updateData != null && syncedGames[i].gameStatus.isOngoing) {
+            debugPrint('🔥 ChessBoard: Merging PGN stream data for game $originalGameId');
+            return syncedGames[i].copyWith(
+              pgn: updateData['pgn'] as String?,
+              fen: updateData['fen'] as String?,
+              lastMove: updateData['last_move'] as String?,
+              lastMoveTime: updateData['last_move_time'] != null
+                  ? DateTime.tryParse(updateData['last_move_time'] as String)
+                  : null,
+              whiteClockSeconds: (updateData['last_clock_white'] as num?)?.toInt(),
+              blackClockSeconds: (updateData['last_clock_black'] as num?)?.toInt(),
+            );
+          }
+          return syncedGames[i];
+        },
+      ) ?? syncedGames[i];
+
+      final params = ChessBoardProviderParams(game: gameWithStreamedData, index: i);
+      visibleStates[i] = ref.watch(chessBoardScreenProviderNew(params));
+      final state = visibleStates[i]?.valueOrNull;
+      if (state != null) {
+        syncedGames[i] = state.game;
+      }
+    }
+
+    final currentGame = syncedGames[_currentPageIndex];
+
     ref.listen(
       chessBoardScreenProviderNew(
         ChessBoardProviderParams(game: currentGame, index: _currentPageIndex),
@@ -524,47 +636,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
     );
     // OPTIMIZED: Only watch for updates to games that are currently visible in the PageView
     // This prevents rebuilds when other games in the tournament get updated
-    final view = ref.watch(chessboardViewFromProviderNew);
-    final gamesAsync =
-        view == ChessboardView.tour
-            ? ref.watch(
-              gamesTourScreenProvider.select((value) {
-                // Only trigger rebuild if the games we care about have changed
-                if (!value.hasValue) return value;
-
-                final allGames = value.value!.gamesTourModels;
-                final gameIds = widget.games.map((g) => g.gameId).toSet();
-
-                // Return only the games relevant to this chess board screen
-                final relevantGames =
-                    allGames.where((g) => gameIds.contains(g.gameId)).toList();
-                return AsyncValue.data(
-                  value.value!.copyWith(gamesTourModels: relevantGames),
-                );
-              }),
-            )
-            : ref.watch(countrymanGamesTourScreenProvider);
-
-    // Show loading screen if data isn't ready
-    if (!gamesAsync.hasValue || gamesAsync.value?.gamesTourModels == null) {
-      return _LoadingScreen(
-        games: widget.games.isNotEmpty ? widget.games : [widget.games.first],
-        currentGameIndex: _currentPageIndex.clamp(0, widget.games.length - 1),
-        onGameChanged: (index) {}, // Disabled during loading
-        lastViewedIndex: _lastViewedIndex,
-      );
-    }
-
-    // Map only the games relevant to this chess board screen
-    final liveGamesMap = Map.fromEntries(
-      gamesAsync.value!.gamesTourModels.map((g) => MapEntry(g.gameId, g)),
-    );
-    final liveGames =
-        widget.games.map((originalGame) {
-          // Get the updated game data from the live stream, or fallback to original if not found
-          return liveGamesMap[originalGame.gameId] ?? originalGame;
-        }).toList();
-
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -581,21 +652,19 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
             physics: const PageScrollPhysics(),
             controller: _pageController,
             onPageChanged: _onPageChanged,
-            itemCount: liveGames.length,
+            itemCount: syncedGames.length,
             itemBuilder: (context, index) {
               // Build current page and adjacent pages
               if (index == _currentPageIndex - 1 ||
                   index == _currentPageIndex ||
                   index == _currentPageIndex + 1) {
                 try {
-                  final game = liveGames[index];
-                  return ref
-                      .watch(
-                        chessBoardScreenProviderNew(
-                          ChessBoardProviderParams(game: game, index: index),
-                        ),
-                      )
-                      .when(
+                  final game = syncedGames[index];
+                  final params =
+                      ChessBoardProviderParams(game: game, index: index);
+                  final stateAsync = visibleStates[index] ??
+                      ref.watch(chessBoardScreenProviderNew(params));
+                  return stateAsync?.when(
                         data: (chessBoardState) {
                           if (chessBoardState.isAnalysisMode != analysisMode) {
                             WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -609,7 +678,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
                           return _GamePage(
                             game: chessBoardState.game, // Use game from state which gets updated by streaming
                             state: chessBoardState,
-                            games: liveGames,
+                            games: syncedGames,
                             currentGameIndex: index,
                             currentPageIndex: _currentPageIndex,
                             onGameChanged: _navigateToGame,
