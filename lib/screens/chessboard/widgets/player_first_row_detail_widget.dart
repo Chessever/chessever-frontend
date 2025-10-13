@@ -352,15 +352,15 @@ class _PlayerClock extends StatelessWidget {
   Widget build(BuildContext context) {
     // Determine if this player's clock should be counting down
     // Only countdown for live games when at the latest move and it's this player's turn
-    // NEVER countdown in analysis mode - always show static clock time
+    // NEVER countdown when exploring analysis variations - always show static clock time
     final isClockRunning =
         gamesTourModel.gameStatus.isOngoing &&
         gamesTourModel.lastMoveTime != null &&
         isCurrentPlayer && // Use the isCurrentPlayer prop from parent which uses state.position.turn
         (chessBoardState?.isAtEnd ??
             true) && // Only countdown when at latest move
-        (chessBoardState?.isAnalysisMode !=
-            true); // Never countdown in analysis mode
+        !(chessBoardState?.analysisState.isInAnalysisVariation ??
+            false); // Never countdown when exploring analysis variations
 
     // Use atomic countdown text widget for optimized rebuilds
     // Get the clock values for this player
