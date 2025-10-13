@@ -29,6 +29,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
   void _clearSearch() {
     searchController.clear();
     focusNode.unfocus();
+    setState(() {});
   }
 
   @override
@@ -38,12 +39,12 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16.sp),
-              child: AnimatedBuilder(
-                animation: searchController,
-                builder: (cxt, _) {
-                  return Row(
+            AnimatedBuilder(
+              animation: searchController,
+              builder: (cxt, _) {
+                return Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16.sp),
+                  child: Row(
                     children: [
                       IconButton(
                         iconSize: 24.ic,
@@ -59,17 +60,21 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
                           padding: EdgeInsets.symmetric(vertical: 8.sp),
                           child: SearchBarWidget(
                             hintText: 'Search Favorite Player',
+                            margin: 0.sp,
                             autoFocus: false,
                             controller: searchController,
                             focusNode: focusNode,
+                            onChanged: (_) {
+                              setState(() {});
+                            },
                             onClose: _clearSearch,
                           ),
                         ),
                       ),
                     ],
-                  );
-                },
-              ),
+                  ),
+                );
+              },
             ),
             SizedBox(height: 16.h),
             Expanded(

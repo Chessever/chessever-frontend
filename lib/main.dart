@@ -58,9 +58,9 @@ Future<void> main() async {
       await NotificationService.initialize();
       // Initialize worker manager with 6 isolates for parallel move evaluation
       if (Platform.isAndroid) {
-        await workerManager.init(isolatesCount: 1);
+        await workerManager.init(isolatesCount: 3);
       } else if (Platform.isIOS) {
-        await workerManager.init(isolatesCount: 1);
+        await workerManager.init(isolatesCount: 6);
       }
 
       WidgetsBinding.instance.addObserver(
@@ -70,7 +70,7 @@ Future<void> main() async {
           },
         ),
       );
-      // unawaited(AudioPlayerService.instance.initializeAndLoadAllAssets());
+      unawaited(AudioPlayerService.instance.initializeAndLoadAllAssets());
       // await _initRevenueCat();
 
       await _clearEvaluationCache();

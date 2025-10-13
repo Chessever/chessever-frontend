@@ -209,6 +209,7 @@ class SearchBarWidget extends StatelessWidget {
     required this.controller,
     required this.focusNode,
     required this.onClose,
+    this.margin,
     this.onChanged,
     super.key,
   });
@@ -219,13 +220,14 @@ class SearchBarWidget extends StatelessWidget {
   final FocusNode focusNode;
   final ValueChanged<String>? onChanged;
   final VoidCallback onClose;
+  final double? margin;
 
   @override
   Widget build(BuildContext context) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
-      margin: EdgeInsets.symmetric(horizontal: 20.sp),
+      margin: EdgeInsets.symmetric(horizontal: margin ?? 20.sp),
       padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
       decoration: BoxDecoration(
         color: Colors.grey[900],
@@ -277,7 +279,7 @@ class SearchBarWidget extends StatelessWidget {
               ),
             ),
           ),
-          if (controller.text.isNotEmpty)
+          if (controller.text.isNotEmpty || focusNode.hasFocus)
             GestureDetector(
               onTap: onClose,
               child: Container(

@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../repository/local_storage/sesions_manager/session_manager.dart'; // Import for gradient and colors
+import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart'; // Import for gradient and colors
 
 class RoundedSearchBar extends ConsumerStatefulWidget {
   final TextEditingController controller;
