@@ -56,11 +56,11 @@ Future<void> main() async {
 
       await NotificationService.initialize();
       // Initialize worker manager with 6 isolates for parallel move evaluation
-      // if (Platform.isAndroid) {
-      //   await workerManager.init(isolatesCount: 4);
-      // } else if (Platform.isIOS) {
-      //   await workerManager.init(isolatesCount: 6);
-      // }
+      if (Platform.isAndroid) {
+        await workerManager.init(isolatesCount: 1);
+      } else if (Platform.isIOS) {
+        await workerManager.init(isolatesCount: 1);
+      }
 
       WidgetsBinding.instance.addObserver(
         LifecycleEventHandler(
