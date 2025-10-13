@@ -1427,6 +1427,9 @@ class ChessBoardScreenNotifierNew
       state = AsyncValue.data(_clearVariantSelection(currentState));
     }
 
+    // CRITICAL: Reset cancellation flag before navigation to ensure evaluation happens
+    _cancelEvaluation = false;
+
     final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
     debugPrint(
       '🎯 ANALYSIS STEP FORWARD: Current movePointer=${navigatorState.movePointer}',
@@ -1462,6 +1465,9 @@ class ChessBoardScreenNotifierNew
         currentState.variantMovePointer.isNotEmpty) {
       state = AsyncValue.data(_clearVariantSelection(currentState));
     }
+
+    // CRITICAL: Reset cancellation flag before navigation to ensure evaluation happens
+    _cancelEvaluation = false;
 
     final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
     debugPrint(
@@ -2367,6 +2373,7 @@ class ChessBoardScreenNotifierNew
           allMoves: movesFromNavigator, // Sync allMoves from navigator
           movePointer: navigatorState.movePointer,
           currentMoveIndex: currentMoveIndex,
+          suggestionLines: const [], // Clear stale PV arrows until new evaluation completes
         ),
         evaluation: null,
         isEvaluating: true,
