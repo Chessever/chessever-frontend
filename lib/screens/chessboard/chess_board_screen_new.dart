@@ -1812,12 +1812,10 @@ class _MovesDisplay extends ConsumerWidget {
               final fullMoveNumber = (moveIndex / 2).floor() + 1;
               final isWhiteMove = moveIndex % 2 == 0;
 
-              // LAZY: Load impact ONLY for the currently viewed move to prevent queue flooding
-              // This ensures we only calculate 1 move at a time, not all 100+ moves in the notation
+              // LAZY: Load impact for ALL moves in notation to show colors
+              // Only for current game to prevent evaluating off-screen games
               MoveImpactAnalysis? impact;
-              if (index == currentPageIndex &&
-                  state.allMoves.isNotEmpty &&
-                  moveIndex == modeAwareCurrentIndex) {  // CRITICAL: Only current move!
+              if (index == currentPageIndex && state.allMoves.isNotEmpty) {
                 final lazyParams = LazyMoveImpactParams(
                   boardParams: boardParams,
                   moveIndex: moveIndex,
