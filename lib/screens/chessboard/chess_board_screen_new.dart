@@ -61,8 +61,77 @@ final moveImpactCacheProvider = StateNotifierProvider<
   Map<String, CachedMoveImpact>
 >((ref) => MoveImpactCacheNotifier());
 
-/// Provider that calculates move impacts - COMPREHENSIVE ANALYSIS
-/// Analyzes engine alternatives, finds player move rank, classifies impact
+/// LAZY move impact provider - calculates impact for a SINGLE move only when needed
+/// This is the NEW approach that doesn't block the eval bar
+/// Returns the impact analysis for a specific move index in a game
+class LazyMoveImpactParams {
+  final ChessBoardProviderParams boardParams;
+  final int moveIndex; // Which move to calculate impact for
+
+  const LazyMoveImpactParams({
+    required this.boardParams,
+    required this.moveIndex,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LazyMoveImpactParams &&
+          boardParams == other.boardParams &&
+          moveIndex == other.moveIndex;
+
+  @override
+  int get hashCode => boardParams.hashCode ^ moveIndex.hashCode;
+}
+
+final lazyMoveImpactProvider = FutureProvider.family.autoDispose<
+  MoveImpactAnalysis?,
+  LazyMoveImpactParams
+>((ref, params) async {
+  // Get the board state to access position FENs
+  final boardStateAsync = ref.watch(chessBoardScreenProviderNew(params.boardParams));
+
+  final boardState = boardStateAsync.valueOrNull;
+  if (boardState == null) {
+    return null;
+  }
+
+  final allMoves = boardState.allMoves;
+  final moveSans = boardState.moveSans;
+  final startingPosition = boardState.startingPosition;
+
+  if (allMoves.isEmpty || moveSans.isEmpty || params.moveIndex >= moveSans.length) {
+    return null;
+  }
+
+  // Generate position FENs for this specific move only
+  final fensParams = PositionFensParams(
+    allMoves: allMoves,
+    startingPosition: startingPosition,
+    gameId: params.boardParams.game.gameId,
+  );
+  final positionFens = ref.watch(positionFensProvider(fensParams));
+
+  if (params.moveIndex >= positionFens.length - 1) {
+    return null; // Invalid move index
+  }
+
+  // Create single move params
+  final singleParams = SingleMoveImpactParams(
+    fenBefore: positionFens[params.moveIndex],
+    fenAfter: positionFens[params.moveIndex + 1],
+    moveSan: moveSans[params.moveIndex],
+    moveIndex: params.moveIndex,
+    gameId: params.boardParams.game.gameId,
+  );
+
+  // Use the new lazy provider that doesn't block eval bar
+  return ref.watch(singleMoveImpactProvider(singleParams).future);
+});
+
+/// DEPRECATED: Provider that calculates move impacts - BULK ANALYSIS
+/// This approach blocks the eval bar and should not be used
+/// Use lazyMoveImpactProvider instead for individual moves
 final gameMovesImpactProvider = FutureProvider.family.autoDispose<
   Map<int, MoveImpactAnalysis>?,
   ChessBoardProviderParams
@@ -1414,19 +1483,17 @@ class _BoardWithSidebar extends ConsumerWidget {
                 ? state.analysisState.currentMoveIndex
                 : state.currentMoveIndex;
 
-        // Evaluate ALL moves from PGN and get current move impact from the map - ONLY if this page is visible
-        Map<int, MoveImpactAnalysis>? allMovesImpact;
+        // LAZY IMPACT: Only calculate impact for the CURRENT move, not all moves
+        // This prevents blocking the eval bar by not flooding Stockfish queue
         MoveImpactAnalysis? currentMoveImpact;
-
-        // Watch impacts using provider params to avoid analysis mode rebuild loops
-        if (index == currentPageIndex && state.allMoves.isNotEmpty) {
-          final params = ChessBoardProviderParams(game: game, index: index);
-          final impactsAsync = ref.watch(gameMovesImpactProvider(params));
-          allMovesImpact = impactsAsync.whenOrNull(data: (data) => data);
-
-          if (allMovesImpact != null && currentIndex >= 0) {
-            currentMoveImpact = allMovesImpact[currentIndex];
-          }
+        if (index == currentPageIndex && state.allMoves.isNotEmpty && currentIndex >= 0) {
+          final boardParams = ChessBoardProviderParams(game: game, index: index);
+          final lazyParams = LazyMoveImpactParams(
+            boardParams: boardParams,
+            moveIndex: currentIndex,
+          );
+          final impactAsync = ref.watch(lazyMoveImpactProvider(lazyParams));
+          currentMoveImpact = impactAsync.whenOrNull(data: (data) => data);
         }
 
         return Container(
@@ -1721,13 +1788,9 @@ class _MovesDisplay extends ConsumerWidget {
       );
     }
 
-    // Watch impacts using provider params to avoid analysis mode rebuild loops
-    Map<int, MoveImpactAnalysis>? allMovesImpact;
-    if (index == currentPageIndex && state.allMoves.isNotEmpty) {
-      final params = ChessBoardProviderParams(game: game, index: index);
-      final impactsAsync = ref.watch(gameMovesImpactProvider(params));
-      allMovesImpact = impactsAsync.whenOrNull(data: (data) => data);
-    }
+    // LAZY IMPACT: Each move in the notation list lazily loads its own impact
+    // This prevents flooding the Stockfish queue with 100+ positions at once
+    final boardParams = ChessBoardProviderParams(game: game, index: index);
 
     return Container(
       alignment: Alignment.centerLeft,
@@ -1749,8 +1812,16 @@ class _MovesDisplay extends ConsumerWidget {
               final fullMoveNumber = (moveIndex / 2).floor() + 1;
               final isWhiteMove = moveIndex % 2 == 0;
 
-              // Get impact from the map
-              final impact = allMovesImpact?[moveIndex];
+              // LAZY: Load impact for THIS move only when visible/needed
+              MoveImpactAnalysis? impact;
+              if (index == currentPageIndex && state.allMoves.isNotEmpty) {
+                final lazyParams = LazyMoveImpactParams(
+                  boardParams: boardParams,
+                  moveIndex: moveIndex,
+                );
+                final impactAsync = ref.watch(lazyMoveImpactProvider(lazyParams));
+                impact = impactAsync.whenOrNull(data: (data) => data);
+              }
 
               final displayText = isWhiteMove ? '$fullMoveNumber. $move' : move;
               final impactSymbol = impact?.impact.symbol ?? '';
