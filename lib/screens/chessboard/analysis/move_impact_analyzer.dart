@@ -710,7 +710,9 @@ String? _uciToSan(String uci, Position position) {
     final result = position.makeSan(move);
     return result.$2; // Return just the SAN string
   } catch (e) {
-    debugPrint('❌ ERROR converting UCI "$uci" to SAN: $e');
+    // Log conversion failures - helps identify issues with PV processing
+    // Keep it concise to avoid log spam during navigation
+    debugPrint('⚠️ UCI->SAN failed: "$uci" on ${position.fen.split(' ').take(2).join(' ')}');
     return null;
   }
 }

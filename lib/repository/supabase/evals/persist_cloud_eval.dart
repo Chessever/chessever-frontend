@@ -45,10 +45,6 @@ class PersistCloudEval {
       final position = await _posRepo.create(fen);
       final positionId = position.id;
 
-      if (positionId == null) {
-        throw StateError('Failed to create position record for FEN: $fen');
-      }
-
       // 2️⃣ evals row - use upsert which handles existing records
       final eval = await _evalRepo.upsert(
         Evals(

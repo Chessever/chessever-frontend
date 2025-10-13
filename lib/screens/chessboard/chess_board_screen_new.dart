@@ -1466,18 +1466,6 @@ class _BoardWithSidebar extends ConsumerWidget {
         final boardSize = screenWidth - sideBarWidth - 32.w;
 
         // Select correct state fields based on mode
-        final moves =
-            state.isAnalysisMode
-                ? state.analysisState.allMoves
-                : state.allMoves;
-        final sans =
-            state.isAnalysisMode
-                ? state.analysisState.moveSans
-                : state.moveSans;
-        final startPos =
-            state.isAnalysisMode
-                ? state.analysisState.startingPosition
-                : state.startingPosition;
         final currentIndex =
             state.isAnalysisMode
                 ? state.analysisState.currentMoveIndex
@@ -1564,8 +1552,6 @@ class _ChessBoardNew extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final params = ChessBoardProviderParams(game: game, index: index);
-    final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
     final boardSettingsValue = ref.watch(boardSettingsProvider);
     final boardTheme = ref
         .read(boardSettingsRepository)
@@ -1765,14 +1751,8 @@ class _MovesDisplay extends ConsumerWidget {
     }
 
     // Select correct state fields based on mode
-    final moves =
-        state.isAnalysisMode ? state.analysisState.allMoves : state.allMoves;
     final sans =
         state.isAnalysisMode ? state.analysisState.moveSans : state.moveSans;
-    final startPos =
-        state.isAnalysisMode
-            ? state.analysisState.startingPosition
-            : state.startingPosition;
 
     if (sans.isEmpty && !state.isLoadingMoves) {
       return Container(
@@ -1792,6 +1772,12 @@ class _MovesDisplay extends ConsumerWidget {
     // This prevents flooding the Stockfish queue with 100+ positions at once
     final boardParams = ChessBoardProviderParams(game: game, index: index);
 
+    // Use mode-aware current index for highlighting
+    final modeAwareCurrentIndex =
+        state.isAnalysisMode
+            ? state.analysisState.currentMoveIndex
+            : state.currentMoveIndex;
+
     return Container(
       alignment: Alignment.centerLeft,
       padding: EdgeInsets.all(20.sp),
@@ -1803,100 +1789,16 @@ class _MovesDisplay extends ConsumerWidget {
               final moveIndex = entry.key;
               final move = entry.value;
 
-              // Use mode-aware current index for highlighting
-              final modeAwareCurrentIndex =
-                  state.isAnalysisMode
-                      ? state.analysisState.currentMoveIndex
-                      : state.currentMoveIndex;
-              final isCurrentMove = moveIndex == modeAwareCurrentIndex;
-              final fullMoveNumber = (moveIndex / 2).floor() + 1;
-              final isWhiteMove = moveIndex % 2 == 0;
-
-              // LAZY: Load impact for ALL moves in notation to show colors
-              // Only for current game to prevent evaluating off-screen games
-              MoveImpactAnalysis? impact;
-              if (index == currentPageIndex && state.allMoves.isNotEmpty) {
-                final lazyParams = LazyMoveImpactParams(
-                  boardParams: boardParams,
-                  moveIndex: moveIndex,
-                );
-                final impactAsync = ref.watch(lazyMoveImpactProvider(lazyParams));
-                impact = impactAsync.whenOrNull(data: (data) => data);
-              }
-
-              final displayText = isWhiteMove ? '$fullMoveNumber. $move' : move;
-              final impactSymbol = impact?.impact.symbol ?? '';
-
-              // Determine text color - PRIORITY: impact color > current move > default
-              final params = ChessBoardProviderParams(game: game, index: index);
-              Color textColor;
-              Color? backgroundColor;
-
-              if (impact != null && impact.impact != MoveImpactType.normal) {
-                // Impact color has highest priority (even when selected)
-                textColor = impact.impact.color;
-              } else if (isCurrentMove) {
-                textColor = kWhiteColor;
-              } else {
-                textColor = ref
-                    .read(chessBoardScreenProviderNew(params).notifier)
-                    .getMoveColor(move, moveIndex);
-              }
-
-              return GestureDetector(
-                onTap:
-                    () => ref
-                        .read(chessBoardScreenProviderNew(params).notifier)
-                        .goToMove(moveIndex),
-                child: Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 6.sp,
-                    vertical: 2.sp,
-                  ),
-                  decoration: BoxDecoration(
-                    color:
-                        backgroundColor ??
-                        (isCurrentMove
-                            ? kWhiteColor70.withValues(alpha: 0.4)
-                            : Colors.transparent),
-                    borderRadius: BorderRadius.circular(4.sp),
-                    border: Border.all(
-                      color: isCurrentMove ? kWhiteColor : Colors.transparent,
-                      width: 0.5,
-                    ),
-                  ),
-                  child: RichText(
-                    text: TextSpan(
-                      children: [
-                        TextSpan(
-                          text: displayText,
-                          style: AppTypography.textXsMedium.copyWith(
-                            color: textColor,
-                            fontWeight:
-                                isCurrentMove
-                                    ? FontWeight.bold
-                                    : FontWeight.normal,
-                            // Underline styling removed to fully disable
-                            // variant-move underline presentation.
-                            // decoration:
-                            //     isVariantMove ? TextDecoration.underline : null,
-                            // decorationColor:
-                            //     isVariantMove ? kPrimaryColor : null,
-                            // decorationThickness: isVariantMove ? 1.5 : null,
-                          ),
-                        ),
-                        if (impactSymbol.isNotEmpty)
-                          TextSpan(
-                            text: impactSymbol,
-                            style: AppTypography.textXsMedium.copyWith(
-                              color: impact!.impact.color,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
+              // Extract to separate widget with key to prevent layout shift
+              return _MoveNotationWidget(
+                key: ValueKey('move_${game.gameId}_$moveIndex'),
+                game: game,
+                index: index,
+                currentPageIndex: currentPageIndex,
+                moveIndex: moveIndex,
+                move: move,
+                modeAwareCurrentIndex: modeAwareCurrentIndex,
+                boardParams: boardParams,
               );
             }).toList(),
       ),
@@ -2362,6 +2264,105 @@ class _SkeletonContainerState extends State<_SkeletonContainer>
           ),
         );
       },
+    );
+  }
+}
+
+/// Isolated widget for each move notation to prevent layout shifts
+/// Only this widget rebuilds when its impact calculation completes
+class _MoveNotationWidget extends ConsumerWidget {
+  final GamesTourModel game;
+  final int index;
+  final int currentPageIndex;
+  final int moveIndex;
+  final String move;
+  final int modeAwareCurrentIndex;
+  final ChessBoardProviderParams boardParams;
+
+  const _MoveNotationWidget({
+    super.key,
+    required this.game,
+    required this.index,
+    required this.currentPageIndex,
+    required this.moveIndex,
+    required this.move,
+    required this.modeAwareCurrentIndex,
+    required this.boardParams,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isCurrentMove = moveIndex == modeAwareCurrentIndex;
+    final fullMoveNumber = (moveIndex / 2).floor() + 1;
+    final isWhiteMove = moveIndex % 2 == 0;
+
+    // DISABLED: Move impact calculation in notation list
+    // This was causing eval bar to get stuck because it creates 100+ provider watchers
+    // that all rebuild on every navigation, keeping isEvaluating = true
+    // Move impacts are ONLY shown on the board overlay for the current move
+    MoveImpactAnalysis? impact;
+
+    final displayText = isWhiteMove ? '$fullMoveNumber. $move' : move;
+    final impactSymbol = ''; // No impact symbols in notation list
+
+    // Determine text color - PRIORITY: current move > default
+    final params = ChessBoardProviderParams(game: game, index: index);
+    Color textColor;
+
+    if (isCurrentMove) {
+      textColor = kWhiteColor;
+    } else {
+      textColor = ref
+          .read(chessBoardScreenProviderNew(params).notifier)
+          .getMoveColor(move, moveIndex);
+    }
+
+    return GestureDetector(
+      onTap:
+          () => ref
+              .read(chessBoardScreenProviderNew(params).notifier)
+              .goToMove(moveIndex),
+      child: Container(
+        padding: EdgeInsets.symmetric(
+          horizontal: 6.sp,
+          vertical: 2.sp,
+        ),
+        decoration: BoxDecoration(
+          color:
+              isCurrentMove
+                  ? kWhiteColor70.withValues(alpha: 0.4)
+                  : Colors.transparent,
+          borderRadius: BorderRadius.circular(4.sp),
+          border: Border.all(
+            color: isCurrentMove ? kWhiteColor : Colors.transparent,
+            width: 0.5,
+          ),
+        ),
+        child: RichText(
+          text: TextSpan(
+            children: [
+              TextSpan(
+                text: displayText,
+                style: AppTypography.textXsMedium.copyWith(
+                  color: textColor,
+                  fontWeight:
+                      isCurrentMove
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                ),
+              ),
+              if (impactSymbol.isNotEmpty)
+                TextSpan(
+                  text: impactSymbol,
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: impact!.impact.color,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
