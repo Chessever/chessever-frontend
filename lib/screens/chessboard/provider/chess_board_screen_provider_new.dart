@@ -13,7 +13,6 @@ import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart'
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/utils/evals.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
