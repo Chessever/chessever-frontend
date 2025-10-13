@@ -1812,9 +1812,12 @@ class _MovesDisplay extends ConsumerWidget {
               final fullMoveNumber = (moveIndex / 2).floor() + 1;
               final isWhiteMove = moveIndex % 2 == 0;
 
-              // LAZY: Load impact for THIS move only when visible/needed
+              // LAZY: Load impact ONLY for the currently viewed move to prevent queue flooding
+              // This ensures we only calculate 1 move at a time, not all 100+ moves in the notation
               MoveImpactAnalysis? impact;
-              if (index == currentPageIndex && state.allMoves.isNotEmpty) {
+              if (index == currentPageIndex &&
+                  state.allMoves.isNotEmpty &&
+                  moveIndex == modeAwareCurrentIndex) {  // CRITICAL: Only current move!
                 final lazyParams = LazyMoveImpactParams(
                   boardParams: boardParams,
                   moveIndex: moveIndex,
