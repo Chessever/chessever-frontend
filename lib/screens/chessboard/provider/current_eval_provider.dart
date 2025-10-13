@@ -10,7 +10,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart' show FutureProvider;
 import 'stockfish_singleton.dart';
 
 /// 1. local → 2. Supabase → 3. lichess
-final cascadeEvalProvider = FutureProvider.family<CloudEval, String>((
+/// Uses autoDispose to cancel evaluations when switching games
+final cascadeEvalProvider = FutureProvider.family.autoDispose<CloudEval, String>((
   ref,
   fen,
 ) async {
@@ -103,7 +104,8 @@ bool _isValidEvaluation(CloudEval cloud) {
 
 /// OPTIMIZED: Parallel queries to local → Supabase → Lichess, then Stockfish fallback
 /// Uses Future.any to return the first valid result for maximum speed
-final cascadeEvalProviderForBoard = FutureProvider.family<CloudEval, String>((
+/// Uses autoDispose to cancel evaluations when switching games
+final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval, String>((
   ref,
   fen,
 ) async {
