@@ -93,9 +93,9 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
         SizedBox(width: 16.w),
         GestureDetector(
           onTap: _toggleFavorite,
-          behavior: HitTestBehavior.opaque,
           child: SizedBox(
-            width: 32.w,
+            width: 36.w,
+            height: 36.h,
             child: ScaleTransition(
               scale: _scaleAnimation,
               child: SvgWidget(
@@ -103,8 +103,8 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
                     ? SvgAsset.favouriteRedIcon
                     : SvgAsset.favouriteIcon2,
                 semanticsLabel: 'Favorite Icon',
-                height: 14.h,
-                width: 14.w,
+                height: 20.h,
+                width: 20.w,
               ),
             ),
           ),
