@@ -46,7 +46,8 @@ final cascadeEvalProvider = FutureProvider.family<CloudEval, String>((
       print(
         "🟡 EVAL SOURCE (cascadeEval): SUPABASE - fen=$fen, side=$sideToMove, cp=$cp",
       );
-      await local.save(fen, cloud); // keep local in sync
+      // OPTIMIZATION: Save to local cache in background (unawaited)
+      local.save(fen, cloud).catchError((e) => null);
       return cloud;
     }
 
@@ -59,7 +60,9 @@ final cascadeEvalProvider = FutureProvider.family<CloudEval, String>((
     print(
       "🟢 EVAL SOURCE (cascadeEval): LICHESS - fen=$fen, side=$sideToMove, cp=$cp (after conversion)",
     );
-    Future.wait<void>([persist.call(fen, cloud), local.save(fen, cloud)]);
+    // OPTIMIZATION: Save to caches in background (unawaited)
+    Future.wait<void>([persist.call(fen, cloud), local.save(fen, cloud)])
+        .catchError((e) => <void>[]);
     return cloud;
   } catch (_) {
     final sfEval = await StockfishSingleton().evaluatePosition(fen, depth: 15);
@@ -69,10 +72,11 @@ final cascadeEvalProvider = FutureProvider.family<CloudEval, String>((
       depth: sfEval.depth,
       pvs: sfEval.pvs,
     );
+    // OPTIMIZATION: Save to caches in background (unawaited)
     Future.wait<void>([
       persist.call(fen, cloudFromSF),
       local.save(fen, cloudFromSF),
-    ]);
+    ]).catchError((e) => <void>[]);
     return cloudFromSF;
   }
 });
