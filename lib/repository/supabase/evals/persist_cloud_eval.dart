@@ -79,13 +79,17 @@ class PersistCloudEval {
         throw StateError('Failed to create eval record for position: $positionId');
       }
 
-      // 3️⃣ pvs rows - only insert if eval was created successfully
-      if (eval.id != null) {
-        try {
-          await supabase.from('pvs').delete().eq('eval_id', eval.id!);
-        } catch (e) {
-          print('Warning: Failed to clear existing PV rows for eval ${eval.id}: $e');
-        }
+      // 3️⃣ pvs rows - only insert if eval was created successfully and doesn't have PVs yet
+      // Check if PVs already exist to prevent duplicate key violations
+      final existingPvs = await supabase
+          .from('pvs')
+          .select()
+          .eq('eval_id', eval.id!)
+          .limit(1);
+
+      if (existingPvs.isNotEmpty) {
+        // PVs already exist, don't try to insert again
+        return eval;
       }
 
       final pvsRows =
