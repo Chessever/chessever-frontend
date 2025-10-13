@@ -53,8 +53,7 @@ final playerGamesProvider =
     });
 
 class ScoreCardScreen extends ConsumerWidget {
-  final String name;
-  const ScoreCardScreen({super.key, required this.name});
+  const ScoreCardScreen({super.key});
 
   double? _extractRatingFromPGN(String? pgn, bool isWhite) {
     if (pgn == null || pgn.isEmpty) return null;
@@ -243,7 +242,7 @@ class ScoreCardScreen extends ConsumerWidget {
       body: Column(
         children: [
           SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
-          ScoreboardAppbar(playerName: name),
+          ScoreboardAppbar(),
           SizedBox(height: 24.h),
           Padding(
             padding: EdgeInsets.symmetric(horizontal: 20.0.sp),

@@ -9,9 +9,7 @@ import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 
 class ScoreboardAppbar extends ConsumerStatefulWidget {
-  final String playerName;
-
-  const ScoreboardAppbar({required this.playerName, super.key});
+  const ScoreboardAppbar({super.key});
 
   @override
   ConsumerState<ScoreboardAppbar> createState() => _ScoreboardAppbarState();
@@ -44,6 +42,7 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
   }
 
   Future<void> _toggleFavorite() async {
+    print('toggle pressed');
     final favoritesService = ref.read(favoriteStandingsPlayerService);
     final player = ref.read(selectedPlayerProvider);
 
@@ -91,11 +90,12 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
         SizedBox(width: 16.w),
         Expanded(child: const PlayerDropDown()),
         SizedBox(width: 16.w),
-        GestureDetector(
+        InkWell(
           onTap: _toggleFavorite,
-          child: SizedBox(
-            width: 36.w,
+          child: Container(
+            width: 48.w,
             height: 36.h,
+            padding: EdgeInsets.all(8.sp),
             child: ScaleTransition(
               scale: _scaleAnimation,
               child: SvgWidget(
