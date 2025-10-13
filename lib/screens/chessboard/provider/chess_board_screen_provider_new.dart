@@ -1627,9 +1627,11 @@ class ChessBoardScreenNotifierNew
     List<Pv> pvs,
   ) async {
     if (pvs.isEmpty) {
+      debugPrint('⚠️ BUILD PV: Empty PVs list provided');
       return const [];
     }
 
+    debugPrint('🎯 BUILD PV: Starting with ${pvs.length} PVs for $fen');
     final limitedPvs = pvs.take(_kMaxPrincipalVariations).toList();
     final payload = {
       'fen': fen,
@@ -1652,13 +1654,19 @@ class ChessBoardScreenNotifierNew
         () => _analysisLinesWorker(payload),
         priority: WorkPriority.high,
       );
+      debugPrint('🎯 BUILD PV: Worker returned ${workerResult.length} results');
     } catch (e) {
-      debugPrint('⚠️ Failed to build PV lines on worker: $e');
+      debugPrint('⚠️ BUILD PV: Worker failed: $e, falling back to main thread');
     }
 
     if (workerResult.isEmpty) {
+      debugPrint('🎯 BUILD PV: Worker result empty, running on main thread');
       workerResult = _analysisLinesWorker(payload);
-      if (workerResult.isEmpty) return const [];
+      if (workerResult.isEmpty) {
+        debugPrint('❌ BUILD PV: Main thread also returned empty result');
+        return const [];
+      }
+      debugPrint('🎯 BUILD PV: Main thread returned ${workerResult.length} results');
     }
 
     final basePosition = Position.setupPosition(
@@ -1724,6 +1732,10 @@ class ChessBoardScreenNotifierNew
       );
     }
 
+    debugPrint('🎯 BUILD PV: Successfully built ${lines.length} analysis lines');
+    if (lines.isEmpty) {
+      debugPrint('❌ BUILD PV: No valid lines could be built from ${workerResult.length} worker results');
+    }
     return lines;
   }
 
@@ -2195,8 +2207,13 @@ class ChessBoardScreenNotifierNew
       }
 
       if (evaluation == null || pvLines.isEmpty || primaryEval == null) {
-        debugPrint('🎯 EVAL FAILED: No valid evaluation available for $fen');
+        debugPrint('❌ EVAL FAILED: No valid evaluation available for $fen');
         debugPrint('   evaluation=$evaluation, pvLines.length=${pvLines.length}, primaryEval=$primaryEval');
+        debugPrint('   primaryEval?.pvs.length=${primaryEval?.pvs.length}');
+        if (primaryEval != null && primaryEval.pvs.isNotEmpty) {
+          debugPrint('   ⚠️ PRIMARY EVAL HAS PVS BUT pvLines IS EMPTY - check _buildPrincipalVariations');
+          debugPrint('   First PV: moves=${primaryEval.pvs.first.moves}, cp=${primaryEval.pvs.first.cp}');
+        }
         final fallbackState = state.value;
         if (fallbackState != null) {
           // Set a default evaluation to prevent stuck loading state
