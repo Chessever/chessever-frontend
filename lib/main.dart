@@ -5,6 +5,7 @@ import 'package:chessever2/l10n/app_localizations.dart';
 import 'package:chessever2/localization/locale_provider.dart';
 import 'package:chessever2/screens/authentication/auth_screen.dart';
 import 'package:chessever2/screens/calendar/calendar_detail_screen.dart';
+import 'package:chessever2/screens/favorites/favorite_screen.dart';
 import 'package:chessever2/screens/home/home_screen.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/countryman_games_screen.dart';
@@ -55,11 +56,11 @@ Future<void> main() async {
 
       await NotificationService.initialize();
       // Initialize worker manager with 6 isolates for parallel move evaluation
-      if (Platform.isAndroid) {
-        await workerManager.init(isolatesCount: 4);
-      } else if (Platform.isIOS) {
-        await workerManager.init(isolatesCount: 6);
-      }
+      // if (Platform.isAndroid) {
+      //   await workerManager.init(isolatesCount: 4);
+      // } else if (Platform.isIOS) {
+      //   await workerManager.init(isolatesCount: 6);
+      // }
 
       WidgetsBinding.instance.addObserver(
         LifecycleEventHandler(
@@ -68,7 +69,7 @@ Future<void> main() async {
           },
         ),
       );
-      unawaited(AudioPlayerService.instance.initializeAndLoadAllAssets());
+      // unawaited(AudioPlayerService.instance.initializeAndLoadAllAssets());
       // await _initRevenueCat();
 
       await _clearEvaluationCache();
@@ -210,8 +211,8 @@ class _MyAppState extends ConsumerState<MyApp> {
             (context) => const TournamentDetailScreen(),
         '/calendar_screen': (context) => const CalendarScreen(),
         '/library_screen': (context) => const LibraryScreen(),
+        '/favorites_screen': (context) => const FavoriteScreen(),
         // '/chess_screen': (context) => const ChessScreen(),
-
         // New Screen
         '/player_list_screen': (context) => const PlayerListScreen(),
         // Updated to use the new FavoriteScreen
