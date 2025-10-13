@@ -607,7 +607,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
                             });
                           }
                           return _GamePage(
-                            game: liveGames[index],
+                            game: chessBoardState.game, // Use game from state which gets updated by streaming
                             state: chessBoardState,
                             games: liveGames,
                             currentGameIndex: index,
