@@ -53,7 +53,8 @@ class SingleMoveImpactParams {
 /// Calculates impact for ONE move at a time, only when UI needs it
 /// Uses .family for automatic caching and atomicity
 /// Does NOT block eval bar by flooding Stockfish queue
-final singleMoveImpactProvider = FutureProvider.family<MoveImpactAnalysis?, SingleMoveImpactParams>(
+/// Uses autoDispose to cancel when switching games
+final singleMoveImpactProvider = FutureProvider.family.autoDispose<MoveImpactAnalysis?, SingleMoveImpactParams>(
   (ref, params) async {
     debugPrint('🎨 LAZY IMPACT: Calculating for move ${params.moveIndex} in ${params.gameId}');
 
