@@ -1,4 +1,4 @@
-import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
+import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/standings/widget/player_dropdown.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -6,7 +6,6 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
-import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 
 class ScoreboardAppbar extends ConsumerStatefulWidget {
   const ScoreboardAppbar({super.key});
@@ -43,19 +42,12 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
 
   Future<void> _toggleFavorite() async {
     print('toggle pressed');
-    final favoritesService = ref.read(favoriteStandingsPlayerService);
+    final favoritesService = ref.read(favoritePlayersNotifierProvider.notifier);
     final player = ref.read(selectedPlayerProvider);
 
     if (player != null) {
       // Toggle in the tournament players favorites system
-      await favoritesService.toggleFavorite(player);
-      ref.invalidate(tournamentFavoritePlayersProvider);
-      final favorites = await favoritesService.getFavoritePlayers();
-      final isNowFavorite = favorites.any((fav) => fav.name == player.name);
-
-      // NOTE: We don't sync with unified favorites system here because
-      // PlayerStandingModel doesn't have fideId. Users should favorite
-      // players from the Players tab to add them to unified favorites.
+      final isNowFavorite = await favoritesService.toggleFavorite(player);
 
       if (isNowFavorite) {
         _animationController.forward().then(
@@ -68,11 +60,12 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
   @override
   Widget build(BuildContext context) {
     final player = ref.watch(selectedPlayerProvider);
-    final favoritesAsync = ref.watch(tournamentFavoritePlayersProvider);
+    final favoritesAsync = ref.watch(favoritePlayersNotifierProvider);
     final isFavorite = favoritesAsync.maybeWhen(
       data:
           (favorites) =>
-              player != null && favorites.any((fav) => fav.name == player.name),
+              player != null &&
+              favorites.players.any((fav) => fav.fideId == player.fideId),
       orElse: () => false,
     );
 

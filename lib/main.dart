@@ -23,6 +23,7 @@ import 'package:chessever2/utils/notification_service.dart';
 import 'package:chessever2/utils/lifecycle_event_handler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/board_color_dialog.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -41,6 +42,22 @@ import 'theme/theme_provider.dart';
 final RouteObserver<ModalRoute<void>> routeObserver =
     RouteObserver<ModalRoute<void>>();
 
+/// Helper function to get environment variables
+/// In debug mode: reads from .env file via dotenv
+/// In production: reads from CodeMagic environment variables using $ prefix
+String _getEnv(String key) {
+  if (kDebugMode) {
+    final value = dotenv.env[key];
+    if (value == null || value.isEmpty) {
+      throw Exception('Missing env variable in .env file: $key');
+    }
+    return value;
+  } else {
+    // In production, CodeMagic injects environment variables with $ prefix
+    return String.fromEnvironment(key);
+  }
+}
+
 Future<void> main() async {
   await runZonedGuarded(
     () async {
@@ -51,8 +68,10 @@ Future<void> main() async {
         DeviceOrientation.portraitDown,
       ]);
 
-      // Load environment variables
-      await dotenv.load(fileName: ".env");
+      // Load environment variables (only in debug mode)
+      if (kDebugMode) {
+        await dotenv.load(fileName: ".env");
+      }
       WidgetsFlutterBinding.ensureInitialized();
 
       await NotificationService.initialize();
@@ -78,17 +97,17 @@ Future<void> main() async {
       // Initialize Amplitude
       try {
         final amplitude = Amplitude.getInstance();
-        await amplitude.init(dotenv.env['AMPLITUDE']!);
+        await amplitude.init(_getEnv('AMPLITUDE'));
       } catch (e, _) {}
       // Initialize Supabase
       await Supabase.initialize(
-        url: dotenv.env['SUPABASE_URL']!,
-        anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
+        url: _getEnv('SUPABASE_URL'),
+        anonKey: _getEnv('SUPABASE_ANON_KEY'),
       );
 
       await SentryFlutter.init(
         (options) {
-          options.dsn = dotenv.env['SENTRY_FLUTTER'];
+          options.dsn = _getEnv('SENTRY_FLUTTER');
           options.sendDefaultPii = true;
         },
         appRunner:
@@ -107,8 +126,7 @@ Future<void> _initRevenueCat() async {
   // final user = SupabaseClient.auth.currentUser;
   // await Purchases.setDebugLogsEnabled(true);
   await Purchases.configure(
-    PurchasesConfiguration(dotenv.env['RevenueCatAPIKey'] ?? ''),
-    // dotenv.env['RevenueCatAPIKey'] ?? '',
+    PurchasesConfiguration(_getEnv('RevenueCatAPIKey')),
     // appUserId: '',
   );
 }
@@ -166,7 +184,7 @@ class _MyAppState extends ConsumerState<MyApp> {
       // Initialize Clarity after first frame is built
 
       final clarityConfig = ClarityConfig(
-        projectId: dotenv.env['CLARITY_PROJECT_ID']!,
+        projectId: _getEnv('CLARITY_PROJECT_ID'),
       );
 
       final initialized = Clarity.initialize(context, clarityConfig);
