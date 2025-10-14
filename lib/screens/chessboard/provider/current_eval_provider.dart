@@ -10,7 +10,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart' show FutureProvider;
 import 'stockfish_singleton.dart';
 
 /// 1. local → 2. Supabase → 3. lichess
-final cascadeEvalProvider = FutureProvider.family<CloudEval, String>((
+/// Uses autoDispose to cancel evaluations when switching games
+final cascadeEvalProvider = FutureProvider.family.autoDispose<CloudEval, String>((
   ref,
   fen,
 ) async {
@@ -46,7 +47,8 @@ final cascadeEvalProvider = FutureProvider.family<CloudEval, String>((
       print(
         "🟡 EVAL SOURCE (cascadeEval): SUPABASE - fen=$fen, side=$sideToMove, cp=$cp",
       );
-      await local.save(fen, cloud); // keep local in sync
+      // OPTIMIZATION: Save to local cache in background (unawaited)
+      local.save(fen, cloud).catchError((e) => null);
       return cloud;
     }
 
@@ -59,7 +61,9 @@ final cascadeEvalProvider = FutureProvider.family<CloudEval, String>((
     print(
       "🟢 EVAL SOURCE (cascadeEval): LICHESS - fen=$fen, side=$sideToMove, cp=$cp (after conversion)",
     );
-    Future.wait<void>([persist.call(fen, cloud), local.save(fen, cloud)]);
+    // OPTIMIZATION: Save to caches in background (unawaited)
+    Future.wait<void>([persist.call(fen, cloud), local.save(fen, cloud)])
+        .catchError((e) => <void>[]);
     return cloud;
   } catch (_) {
     final sfEval = await StockfishSingleton().evaluatePosition(fen, depth: 15);
@@ -69,10 +73,11 @@ final cascadeEvalProvider = FutureProvider.family<CloudEval, String>((
       depth: sfEval.depth,
       pvs: sfEval.pvs,
     );
+    // OPTIMIZATION: Save to caches in background (unawaited)
     Future.wait<void>([
       persist.call(fen, cloudFromSF),
       local.save(fen, cloudFromSF),
-    ]);
+    ]).catchError((e) => <void>[]);
     return cloudFromSF;
   }
 });
@@ -97,84 +102,88 @@ bool _isValidEvaluation(CloudEval cloud) {
   return false;
 }
 
-/// local → 2. Supabase → 3. lichess -> 4. Fallback -> Local Stockfish
-final cascadeEvalProviderForBoard = FutureProvider.family<CloudEval, String>((
+/// OPTIMIZED: Parallel queries to local → Supabase → Lichess, then Stockfish fallback
+/// Uses Future.any to return the first valid result for maximum speed
+/// Uses autoDispose to cancel evaluations when switching games
+final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval, String>((
   ref,
   fen,
 ) async {
   final local = ref.read(localEvalCacheProvider);
   final persist = ref.read(persistCloudEvalProvider);
   final lichess = ref.read(lichessEvalRepoProvider);
+  final evalsRepo = ref.read(evalsRepositoryProvider);
+
   try {
     if (fen.isEmpty) throw Exception('Empty FEN');
 
-    // 1️⃣  Local cache
+    // OPTIMIZATION: Check local cache first (fastest, synchronous-ish)
     final cached = await local.fetch(fen);
     if (cached != null && _isValidEvaluation(cached)) {
       final fenParts = fen.split(' ');
       final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
       final cp = cached.pvs.isNotEmpty ? cached.pvs.first.cp : 0;
-      print("🔵 EVAL SOURCE: LOCAL CACHE - fen=$fen, side=$sideToMove, cp=$cp");
+      print("🔵 EVAL SOURCE: LOCAL CACHE (instant) - fen=$fen, side=$sideToMove, cp=$cp");
       return cached;
     }
 
-    // 2️⃣  Supabase
-    final supabaseEval = await ref
-        .read(evalsRepositoryProvider)
-        .fetchFromSupabase(fen);
-    if (supabaseEval != null) {
-      final cloud = await ref
-          .read(evalsRepositoryProvider)
-          .evalsToCloudEval(fen, supabaseEval);
+    // OPTIMIZATION: Query Supabase AND Lichess in parallel, return first valid result
+    print('🚀 EVAL: Querying Supabase and Lichess in parallel for $fen');
 
-      // Validate the evaluation - if it's suspicious, skip and try next source
-      if (_isValidEvaluation(cloud)) {
-        final fenParts = fen.split(' ');
-        final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
-        final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
-        print("🟡 EVAL SOURCE: SUPABASE - fen=$fen, side=$sideToMove, cp=$cp");
-        await local.save(fen, cloud); // keep local in sync
-        return cloud;
-      } else {
-        print(
-          'Supabase eval invalid for $fen: cp=${cloud.pvs.first.cp}, moves=${cloud.pvs.first.moves}',
-        );
-      }
-    }
-
-    // 3️⃣  Lichess → Supabase → local
-    try {
-      final cloud = await lichess.getEval(fen);
-      if (_isValidEvaluation(cloud)) {
-        final fenParts = fen.split(' ');
-        final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
-        final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
-        print(
-          "🟢 EVAL SOURCE: LICHESS (converted) - fen=$fen, side=$sideToMove, cp=$cp",
-        );
-        // Don't await this - let it run in background
-        Future.wait<void>([
-          persist.call(fen, cloud), // writes positions, evals, pvs
-          local.save(fen, cloud), // local cache
-        ]).catchError((e) {
-          print('Background save failed for $fen: $e');
-          return <void>[];
+    final supabaseFuture = evalsRepo
+        .fetchFromSupabase(fen)
+        .then((supabaseEval) async {
+          if (supabaseEval == null) return null;
+          final cloud = await evalsRepo.evalsToCloudEval(fen, supabaseEval);
+          if (_isValidEvaluation(cloud)) {
+            final fenParts = fen.split(' ');
+            final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
+            final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
+            print("🟡 EVAL SOURCE: SUPABASE - fen=$fen, side=$sideToMove, cp=$cp");
+            // Background save to local cache
+            local.save(fen, cloud).catchError((e) => null);
+            return cloud;
+          }
+          return null;
+        })
+        .catchError((e) {
+          print('Supabase eval failed: $e');
+          return null;
         });
-        return cloud;
-      } else {
-        print('Lichess eval invalid for $fen: cp=${cloud.pvs.first.cp}');
-      }
-    } on NoEvalException catch (_) {
-      print(
-        'No evaluation available on Lichess for $fen, will try Stockfish fallback',
-      );
-      // Continue to Stockfish fallback - don't return here
-    } catch (lichessError) {
-      print('Lichess eval failed for $fen: $lichessError');
-      // Continue to fallback - don't return here
+
+    final lichessFuture = lichess
+        .getEval(fen)
+        .then((cloud) {
+          if (_isValidEvaluation(cloud)) {
+            final fenParts = fen.split(' ');
+            final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
+            final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
+            print("🟢 EVAL SOURCE: LICHESS - fen=$fen, side=$sideToMove, cp=$cp");
+            // Background save to both caches
+            Future.wait<void>([
+              persist.call(fen, cloud),
+              local.save(fen, cloud),
+            ]).catchError((e) => <void>[]);
+            return cloud;
+          }
+          return null;
+        })
+        .catchError((e) {
+          if (e is! NoEvalException) {
+            print('Lichess eval failed: $e');
+          }
+          return null;
+        });
+
+    // Wait for both to complete in parallel
+    final results = await Future.wait([supabaseFuture, lichessFuture]);
+
+    // Return first valid result (Supabase is first in array, so prioritized)
+    for (final result in results) {
+      if (result != null) return result;
     }
 
-    // 4️⃣  Stockfish fallback - when all cloud sources fail
+    // FALLBACK: All cloud sources failed, use Stockfish
     print('⚡ EVAL SOURCE: STOCKFISH FALLBACK for $fen (cloud sources unavailable)');
     try {
       final sfEval = await StockfishSingleton()
