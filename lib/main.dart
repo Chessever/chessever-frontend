@@ -42,9 +42,12 @@ import 'theme/theme_provider.dart';
 final RouteObserver<ModalRoute<void>> routeObserver =
     RouteObserver<ModalRoute<void>>();
 
-/// Helper function to get environment variables
-/// In debug mode: reads from .env file via dotenv
-/// In production: reads from CodeMagic environment variables using $ prefix
+/// Helper function to get environment variables.
+///
+/// * In debug mode we load the `.env` file using `flutter_dotenv`.
+/// * In CI/production we expect the values to be provided via `--dart-define`
+///   flags (e.g. Codemagic build arguments).
+///   See [_releaseEnvValues] for the list of required keys.
 String _getEnv(String key) {
   if (kDebugMode) {
     final value = dotenv.env[key];
@@ -52,11 +55,38 @@ String _getEnv(String key) {
       throw Exception('Missing env variable in .env file: $key');
     }
     return value;
-  } else {
-    // In production, CodeMagic injects environment variables with $ prefix
-    return String.fromEnvironment(key);
   }
+
+  final value = _releaseEnvValues[key];
+  if (value == null || value.isEmpty) {
+    throw Exception(
+      'Missing env variable "$key". '
+      'Ensure you pass --dart-define=$key=... when building the app.',
+    );
+  }
+  return value;
 }
+
+/// Compile-time environment values injected via `--dart-define`.
+/// Codemagic example:
+/// `flutter build apk --dart-define=SUPABASE_URL=$SUPABASE_URL --dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY ...`
+const Map<String, String> _releaseEnvValues = {
+  'AMPLITUDE': String.fromEnvironment('AMPLITUDE', defaultValue: ''),
+  'SUPABASE_URL': String.fromEnvironment('SUPABASE_URL', defaultValue: ''),
+  'SUPABASE_ANON_KEY': String.fromEnvironment(
+    'SUPABASE_ANON_KEY',
+    defaultValue: '',
+  ),
+  'SENTRY_FLUTTER': String.fromEnvironment('SENTRY_FLUTTER', defaultValue: ''),
+  'CLARITY_PROJECT_ID': String.fromEnvironment(
+    'CLARITY_PROJECT_ID',
+    defaultValue: '',
+  ),
+  'RevenueCatAPIKey': String.fromEnvironment(
+    'RevenueCatAPIKey',
+    defaultValue: '',
+  ),
+};
 
 Future<void> main() async {
   await runZonedGuarded(
