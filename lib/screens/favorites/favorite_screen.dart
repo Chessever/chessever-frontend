@@ -115,6 +115,9 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
       );
     }
 
+    final sortedPlayers = [...players]
+      ..sort((a, b) => b.score.compareTo(a.score));
+
     return RefreshIndicator(
       onRefresh: () async {
         await ref
@@ -162,18 +165,6 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
                   ),
                 ),
 
-                // Score column (fixed width 60.w)
-                SizedBox(
-                  width: 60.w,
-                  child: Text(
-                    'Score',
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: kWhiteColor,
-                    ),
-                    textAlign: TextAlign.end,
-                  ),
-                ),
-
                 // Favorite icon column (fixed width 60.w)
                 SizedBox(width: 60.w),
               ],
@@ -192,9 +183,9 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
                     padding: EdgeInsets.only(
                       bottom: MediaQuery.of(context).viewInsets.bottom + 16.sp,
                     ),
-                    itemCount: players.length,
+                    itemCount: sortedPlayers.length,
                     itemBuilder: (context, index) {
-                      final player = players[index];
+                      final player = sortedPlayers[index];
                       return StandingScoreCard(
                         countryCode: player.countryCode,
                         title: player.title,
@@ -204,7 +195,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
                         matchScore: player.matchScore,
                         index: index,
                         isFirst: index == 0,
-                        isLast: index == players.length - 1,
+                        isLast: index == sortedPlayers.length - 1,
                         onTap: () {
                           FocusScope.of(context).unfocus();
                           ref.read(selectedPlayerProvider.notifier).state =
@@ -220,6 +211,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
                           );
                         },
                         isFav: true,
+                        hideScore: true,
                       );
                     },
                   ),

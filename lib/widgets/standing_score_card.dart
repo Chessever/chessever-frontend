@@ -17,12 +17,13 @@ class StandingScoreCard extends ConsumerWidget {
   final int? scoreChange; // Score change (can be positive or negative)
   final String? matchScore; // Match score (e.g., "2.5/3")
   final int index;
-  final isFav;
+  final bool isFav;
   final bool isFirst;
   final bool isLast;
   final VoidCallback onTap;
   final ValueChanged<LongPressStartDetails>? onLongPress;
   final VoidCallback onToggleFavorite;
+  final bool hideScore;
 
   const StandingScoreCard({
     super.key,
@@ -38,7 +39,7 @@ class StandingScoreCard extends ConsumerWidget {
     required this.index,
     required this.isFirst,
     required this.isLast,
-
+    this.hideScore = false,
     required this.onTap,
   });
 
@@ -119,7 +120,7 @@ class StandingScoreCard extends ConsumerWidget {
                               TextSpan(
                                 text: '$title ',
                                 style: AppTypography.textXsMedium.copyWith(
-                                  color: kWhiteColor,
+                                  color: kLightYellowColor,
                                 ),
                               ),
                             TextSpan(
@@ -163,14 +164,17 @@ class StandingScoreCard extends ConsumerWidget {
             ),
 
             // Match Score column (fixed width to match header)
-            SizedBox(
-              width: 60.w,
-              child: Text(
-                matchScore == null ? '' : matchScore!,
-                textAlign: TextAlign.end,
-                style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+            if (!hideScore)
+              SizedBox(
+                width: 60.w,
+                child: Text(
+                  matchScore == null ? '' : matchScore!,
+                  textAlign: TextAlign.end,
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: kWhiteColor,
+                  ),
+                ),
               ),
-            ),
             SizedBox(
               width: 60.w,
               child: GestureDetector(
