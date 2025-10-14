@@ -7,7 +7,6 @@ import 'package:chessever2/repository/local_storage/board_settings_repository/bo
 import 'package:chessever2/screens/chessboard/analysis/move_impact_analyzer.dart';
 import 'package:chessever2/screens/chessboard/analysis/simple_move_impact.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
-import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
@@ -475,33 +474,16 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
     final visibleEnd = (_currentPageIndex + 1).clamp(0, syncedGames.length - 1);
     final Map<int, AsyncValue<ChessBoardStateNew>> visibleStates = {};
     for (int i = visibleStart; i <= visibleEnd; i++) {
-      // Watch PGN stream for this game using STABLE gameId from widget.games
-      // This is critical - using syncedGames[i].gameId would cause provider recreation on every update
-      final originalGameId = widget.games[i].gameId;
-      final gameUpdatesAsync = ref.watch(gameUpdatesStreamProvider(originalGameId));
+      // CRITICAL: Provider handles ALL streaming internally via _setupPgnStreamListener()
+      // It watches gameUpdatesStreamProvider, updates game reference, reparses moves, triggers evaluation
+      // Widget should NOT also watch the stream - this causes race conditions and inconsistency
+      // Single source of truth: provider's state.game
 
-      // Merge streamed PGN data with game from liveGames
-      final gameWithStreamedData = gameUpdatesAsync.whenOrNull(
-        data: (updateData) {
-          if (updateData != null && syncedGames[i].gameStatus.isOngoing) {
-            debugPrint('🔥 ChessBoard: Merging PGN stream data for game $originalGameId');
-            return syncedGames[i].copyWith(
-              pgn: updateData['pgn'] as String?,
-              fen: updateData['fen'] as String?,
-              lastMove: updateData['last_move'] as String?,
-              lastMoveTime: updateData['last_move_time'] != null
-                  ? DateTime.tryParse(updateData['last_move_time'] as String)
-                  : null,
-              whiteClockSeconds: (updateData['last_clock_white'] as num?)?.toInt(),
-              blackClockSeconds: (updateData['last_clock_black'] as num?)?.toInt(),
-            );
-          }
-          return syncedGames[i];
-        },
-      ) ?? syncedGames[i];
-
-      final params = ChessBoardProviderParams(game: gameWithStreamedData, index: i);
+      final game = syncedGames[i];
+      final params = ChessBoardProviderParams(game: game, index: i);
       visibleStates[i] = ref.watch(chessBoardScreenProviderNew(params));
+
+      // Use state.game as source of truth - provider keeps it updated via streaming
       final state = visibleStates[i]?.valueOrNull;
       if (state != null) {
         syncedGames[i] = state.game;
