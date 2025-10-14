@@ -23,11 +23,16 @@ class AuthRepository {
 
   // Read and trim env safely to avoid trailing spaces causing Apple failures.
   String _env(String key) {
-    final v = dotenv.env[key]?.trim();
-    if (v == null || v.isEmpty) {
-      throw Exception('Missing env: $key');
+    if (kDebugMode) {
+      final v = dotenv.env[key]?.trim();
+      if (v == null || v.isEmpty) {
+        throw Exception('Missing env: $key');
+      }
+      return v;
+    } else {
+      // In production, CodeMagic injects environment variables
+      return String.fromEnvironment(key);
     }
-    return v;
   }
 
   AuthRepository(this.ref) {
