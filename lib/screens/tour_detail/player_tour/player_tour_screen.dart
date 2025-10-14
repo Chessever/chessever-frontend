@@ -16,8 +16,6 @@ class PlayerTourScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final playerStandings = ref.watch(playerTourScreenProvider);
-
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 20.0.sp),
       child: Column(
@@ -82,79 +80,101 @@ class PlayerTourScreen extends ConsumerWidget {
             ),
           ),
           SizedBox(height: 4.h),
-          playerStandings.when(
-            data: (data) {
-              return data.isEmpty
-                  ? Center(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        SizedBox(height: 64.h),
-                        EmptyWidget(title: "No data available"),
-                      ],
-                    ),
-                  )
-                  : ref
-                      .watch(favoritePlayersNotifierProvider)
-                      .when(
-                        data: (favData) {
-                          return Expanded(
-                            child: ListView.builder(
-                              shrinkWrap: true,
-                              padding: EdgeInsets.only(
-                                bottom:
-                                    MediaQuery.of(context).viewInsets.bottom +
-                                    16.sp,
-                              ),
-                              itemCount: data.length,
-                              itemBuilder: (context, index) {
-                                final player = data[index];
-                                final isFav = favData.players
-                                    .map((e) => e.fideId)
-                                    .contains(player.fideId);
-                                return StandingScoreCard(
-                                  countryCode: player.countryCode,
-                                  title: player.title,
-                                  name: player.name,
-                                  score: player.score,
-                                  scoreChange: player.scoreChange,
-                                  matchScore: player.matchScore,
-                                  index: index,
-                                  isFirst: index == 0,
-                                  isLast: index == data.length - 1,
-                                  onTap: () {
-                                    ref
-                                        .read(selectedPlayerProvider.notifier)
-                                        .state = player;
-                                    Navigator.of(
-                                      context,
-                                    ).pushNamed('/scorecard_screen');
-                                  },
-                                  onToggleFavorite: () {},
-                                  isFav: isFav,
-                                );
-                              },
-                            ),
-                          );
-                        },
-                        loading: () {
-                          return _StandingScreenLoading();
-                        },
-                        error: (error, stackTrace) {
-                          return _StandingScreenLoading();
-                        },
-                      );
+          ref
+              .watch(playerTourScreenProvider)
+              .when(
+                data: (data) {
+                  return data.isEmpty
+                      ? Center(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SizedBox(height: 64.h),
+                            EmptyWidget(title: "No data available"),
+                          ],
+                        ),
+                      )
+                      : ref
+                          .watch(favoritePlayersNotifierProvider)
+                          .when(
+                            data: (favData) {
+                              final favIds =
+                                  favData.players.map((e) => e.fideId).toSet();
 
-              ;
-            },
-            error: (e, _) {
-              return _StandingScreenLoading();
-            },
-            loading: () {
-              return _StandingScreenLoading();
-            },
-          ),
+                              // Sort players so that favorites appear at the top
+                              final sortedData = [...data]..sort((a, b) {
+                                final aFav = favIds.contains(a.fideId);
+                                final bFav = favIds.contains(b.fideId);
+                                if (aFav == bFav) return 0;
+                                return aFav ? -1 : 1; // favorites first
+                              });
+
+                              return Expanded(
+                                child: ListView.builder(
+                                  shrinkWrap: true,
+                                  padding: EdgeInsets.only(
+                                    bottom:
+                                        MediaQuery.of(
+                                          context,
+                                        ).viewInsets.bottom +
+                                        16.sp,
+                                  ),
+                                  itemCount: sortedData.length,
+                                  itemBuilder: (context, index) {
+                                    final player = sortedData[index];
+                                    final isFav = favData.players
+                                        .map((e) => e.fideId)
+                                        .contains(player.fideId);
+                                    return StandingScoreCard(
+                                      countryCode: player.countryCode,
+                                      title: player.title,
+                                      name: player.name,
+                                      score: player.score,
+                                      scoreChange: player.scoreChange,
+                                      matchScore: player.matchScore,
+                                      index: index,
+                                      isFirst: index == 0,
+                                      isLast: index == sortedData.length - 1,
+                                      onTap: () {
+                                        ref
+                                            .read(
+                                              selectedPlayerProvider.notifier,
+                                            )
+                                            .state = player;
+                                        Navigator.of(
+                                          context,
+                                        ).pushNamed('/scorecard_screen');
+                                      },
+                                      onToggleFavorite: () async {
+                                        ref
+                                            .read(
+                                              favoritePlayersNotifierProvider
+                                                  .notifier,
+                                            )
+                                            .toggleFavorite(player);
+                                      },
+                                      isFav: isFav,
+                                    );
+                                  },
+                                ),
+                              );
+                            },
+                            loading: () {
+                              return _StandingScreenLoading();
+                            },
+                            error: (error, stackTrace) {
+                              return _StandingScreenLoading();
+                            },
+                          );
+                },
+                error: (e, _) {
+                  return _StandingScreenLoading();
+                },
+                loading: () {
+                  return _StandingScreenLoading();
+                },
+              ),
         ],
       ),
     );
@@ -185,6 +205,30 @@ class _StandingScreenLoading extends StatelessWidget {
       ),
       PlayerStandingModel(
         countryCode: 'USA',
+        title: 'GM',
+        name: 'Nakamura, Hikaru',
+        score: 2698,
+        scoreChange: -5,
+        matchScore: '4.5 / 9',
+      ),
+      PlayerStandingModel(
+        countryCode: 'ARM',
+        title: 'GM',
+        name: 'Nakamura, Hikaru',
+        score: 2698,
+        scoreChange: -5,
+        matchScore: '4.5 / 9',
+      ),
+      PlayerStandingModel(
+        countryCode: 'ARM',
+        title: 'GM',
+        name: 'Nakamura, Hikaru',
+        score: 2698,
+        scoreChange: -5,
+        matchScore: '4.5 / 9',
+      ),
+      PlayerStandingModel(
+        countryCode: 'ARM',
         title: 'GM',
         name: 'Nakamura, Hikaru',
         score: 2698,
