@@ -143,7 +143,10 @@ class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
                 borderRadius: BorderRadius.circular(2.br),
               ),
               child: Text(
-                (widget.evaluation == null && _lastValidEvaluation == null)
+                // Show "..." when evaluating, otherwise show the evaluation
+                widget.isEvaluating
+                    ? '...'
+                    : (widget.evaluation == null && _lastValidEvaluation == null)
                     ? '...'
                     : ((widget.evaluation ?? _lastValidEvaluation)!.abs() >=
                             10.0 &&
