@@ -1,11 +1,13 @@
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../theme/app_theme.dart';
-import '../utils/app_typography.dart';
+import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/app_typography.dart';
 
 class StandingScoreCard extends ConsumerWidget {
   final String countryCode;
@@ -15,21 +17,28 @@ class StandingScoreCard extends ConsumerWidget {
   final int? scoreChange; // Score change (can be positive or negative)
   final String? matchScore; // Match score (e.g., "2.5/3")
   final int index;
+  final isFav;
   final bool isFirst;
   final bool isLast;
   final VoidCallback onTap;
+  final ValueChanged<LongPressStartDetails>? onLongPress;
+  final VoidCallback onToggleFavorite;
 
   const StandingScoreCard({
     super.key,
     required this.countryCode,
     required this.name,
     required this.score,
+    required this.onToggleFavorite,
+    required this.isFav,
+    this.onLongPress,
     this.title, // Changed to optional parameter
     this.scoreChange,
     this.matchScore,
     required this.index,
     required this.isFirst,
     required this.isLast,
+
     required this.onTap,
   });
 
@@ -55,6 +64,7 @@ class StandingScoreCard extends ConsumerWidget {
     }
     return GestureDetector(
       onTap: onTap,
+      onLongPressStart: onLongPress,
       child: Container(
         alignment: Alignment.center,
         height: 49.h,
@@ -159,6 +169,24 @@ class StandingScoreCard extends ConsumerWidget {
                 matchScore == null ? '' : matchScore!,
                 textAlign: TextAlign.end,
                 style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+              ),
+            ),
+            SizedBox(
+              width: 60.w,
+              child: GestureDetector(
+                onTap: onToggleFavorite,
+                child: Container(
+                  alignment: Alignment.center,
+                  width: 32.w,
+                  height: 49.h,
+                  padding: EdgeInsets.all(8.sp),
+                  child: SvgWidget(
+                    isFav ? SvgAsset.favouriteRedIcon : SvgAsset.favouriteIcon2,
+                    semanticsLabel: 'Favorite Icon',
+                    height: 20.h,
+                    width: 20.w,
+                  ),
+                ),
               ),
             ),
           ],

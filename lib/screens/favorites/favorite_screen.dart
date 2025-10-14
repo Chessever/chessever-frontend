@@ -1,12 +1,14 @@
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
+import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search_widget.dart';
+import 'package:chessever2/widgets/standing_score_card.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
-import 'widgets/player_favorite_card.dart';
 
 class FavoriteScreen extends ConsumerStatefulWidget {
   const FavoriteScreen({super.key});
@@ -122,32 +124,58 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
       child: Column(
         children: [
           Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16.sp),
+            padding: EdgeInsets.symmetric(
+              horizontal: 8.0.sp,
+            ), // Matches StandingScoreCard padding
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                SizedBox(width: 24.w),
+                // Player column (Expanded — same as in ScoreCard)
                 Expanded(
-                  child: Text(
-                    'Player',
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: kWhiteColor,
-                      fontSize: 14.sp,
-                    ),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 20.w,
+                      ), // Space for flag area (16.w + 4.w spacing)
+                      Flexible(
+                        child: Text(
+                          'Player',
+                          style: AppTypography.textSmMedium.copyWith(
+                            color: kWhiteColor,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                SizedBox(width: 16.w),
+
+                // Elo column (fixed width 100.w)
                 SizedBox(
-                  width: 60.w,
+                  width: 100.w,
                   child: Text(
                     'Elo',
                     style: AppTypography.textSmMedium.copyWith(
                       color: kWhiteColor,
-                      fontSize: 14.sp,
                     ),
                     textAlign: TextAlign.center,
                   ),
                 ),
-                SizedBox(width: 72.w),
+
+                // Score column (fixed width 60.w)
+                SizedBox(
+                  width: 60.w,
+                  child: Text(
+                    'Score',
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: kWhiteColor,
+                    ),
+                    textAlign: TextAlign.end,
+                  ),
+                ),
+
+                // Favorite icon column (fixed width 60.w)
+                SizedBox(width: 60.w),
               ],
             ),
           ),
@@ -155,24 +183,46 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
           SizedBox(height: 8.h),
           Expanded(
             child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16.sp),
+              padding: EdgeInsets.symmetric(horizontal: 8.sp),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(4.br),
-                child: ListView.builder(
-                  padding: EdgeInsets.zero,
-                  itemCount: players.length,
-                  itemBuilder: (context, index) {
-                    final player = players[index];
-
-                    final isEven = index % 2 == 0;
-
-                    return PlayerFavoriteCard(
-                      playerData: player,
-                      rank: index + 1,
-                      isEven: isEven,
-                      onRemoveFavorite: () => _removeFavoritePlayer(player),
-                    );
-                  },
+                child: Expanded(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    padding: EdgeInsets.only(
+                      bottom: MediaQuery.of(context).viewInsets.bottom + 16.sp,
+                    ),
+                    itemCount: players.length,
+                    itemBuilder: (context, index) {
+                      final player = players[index];
+                      return StandingScoreCard(
+                        countryCode: player.countryCode,
+                        title: player.title,
+                        name: player.name,
+                        score: player.score,
+                        scoreChange: player.scoreChange,
+                        matchScore: player.matchScore,
+                        index: index,
+                        isFirst: index == 0,
+                        isLast: index == players.length - 1,
+                        onTap: () {
+                          FocusScope.of(context).unfocus();
+                          ref.read(selectedPlayerProvider.notifier).state =
+                              player;
+                          Navigator.pushNamed(context, '/scorecard_screen');
+                        },
+                        onToggleFavorite: () => _removeFavoritePlayer(player),
+                        onLongPress: (details) {
+                          _showContextMenu(
+                            context,
+                            details.globalPosition,
+                            player,
+                          );
+                        },
+                        isFav: true,
+                      );
+                    },
+                  ),
                 ),
               ),
             ),
@@ -263,5 +313,95 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
     await ref
         .read(favoritePlayersNotifierProvider.notifier)
         .removeFavorite(player);
+  }
+
+  void _showContextMenu(
+    BuildContext context,
+    Offset position,
+    PlayerStandingModel player,
+  ) {
+    final RenderBox overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox;
+
+    showMenu(
+      context: context,
+      position: RelativeRect.fromRect(
+        position & const Size(40, 40),
+        Offset.zero & overlay.size,
+      ),
+      color: kBlack2Color,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.br)),
+      items: [
+        PopupMenuItem(
+          value: 'delete',
+          child: Row(
+            children: [
+              Icon(Icons.delete_outline, color: kRedColor, size: 20.ic),
+              SizedBox(width: 12.w),
+              Text(
+                'Remove from favorites',
+                style: AppTypography.textSmRegular.copyWith(color: kRedColor),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ).then((value) {
+      if (value == 'delete') {
+        _showDeleteConfirmation(context, player).then((confirmed) {
+          if (confirmed == true) {
+            HapticFeedback.mediumImpact();
+          }
+        });
+      }
+    });
+  }
+
+  Future<bool?> _showDeleteConfirmation(
+    BuildContext context,
+    PlayerStandingModel player,
+  ) {
+    return showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: kBlack2Color,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12.br),
+          ),
+          title: Text(
+            'Remove from favorites?',
+            style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
+          ),
+          content: Text(
+            'Are you sure you want to remove ${player.name} from your favorites?',
+            style: AppTypography.textSmRegular.copyWith(
+              color: kWhiteColor.withValues(alpha: 0.7),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(
+                'Cancel',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: kWhiteColor.withValues(alpha: 0.7),
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(true);
+                _removeFavoritePlayer(player);
+              },
+              child: Text(
+                'Remove',
+                style: AppTypography.textSmMedium.copyWith(color: kRedColor),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 }
