@@ -23,9 +23,6 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:worker_manager/worker_manager.dart';
 
-int get _maxPrincipalVariations =>
-    EngineConfiguration.instance.principalVariationCount;
-
 class _PvSupplementResult {
   final List<AnalysisLine> lines;
   final CloudEval? overrideEval;
@@ -54,6 +51,7 @@ class ChessBoardScreenNotifierNew
   }) : super(const AsyncValue.loading()) {
     _initializeState();
     _setupPgnStreamListener();
+    _listenToSettings();
   }
 
   final Ref ref;
@@ -72,6 +70,7 @@ class ChessBoardScreenNotifierNew
   ChessGame? _analysisGame;
   ChessGameNavigatorStateManager? _analysisStateManager;
   ProviderSubscription<ChessGameNavigatorState>? _navigatorSubscription;
+  ProviderSubscription<StockfishSettings>? _settingsSubscription;
 
   void _initializeState() {
     state = AsyncValue.data(
@@ -352,6 +351,62 @@ class ChessBoardScreenNotifierNew
       });
     }
   }
+
+  void _listenToSettings() {
+    _settingsSubscription = ref.listen<StockfishSettings>(
+      stockfishSettingsProvider,
+      (previous, next) {
+        if (previous == null) return;
+        final gaugeChanged =
+            previous.isEvaluationGaugeEnabled != next.isEvaluationGaugeEnabled;
+        final pvChanged =
+            previous.principalVariationCount != next.principalVariationCount;
+        final depthChanged =
+            previous.stockfishDepth != next.stockfishDepth;
+
+        if (gaugeChanged || pvChanged) {
+          _synchronizeStateWithSettings(next);
+        }
+
+        if (pvChanged || depthChanged) {
+          _updateEvaluation();
+        }
+      },
+      fireImmediately: false,
+    );
+  }
+
+  void _synchronizeStateWithSettings(StockfishSettings settings) {
+    final currentState = state.value;
+    if (currentState == null) return;
+
+    final trimmedPvs = currentState.principalVariations
+        .take(settings.principalVariationCount)
+        .toList(growable: false);
+
+    int? adjustedSelectedIndex = currentState.selectedVariantIndex;
+    if (adjustedSelectedIndex != null &&
+        adjustedSelectedIndex >= trimmedPvs.length) {
+      adjustedSelectedIndex = trimmedPvs.isEmpty ? null : trimmedPvs.length - 1;
+    }
+
+    final updatedState = currentState.copyWith(
+      principalVariations: trimmedPvs,
+      selectedVariantIndex: adjustedSelectedIndex,
+      isEnginePanelVisible:
+          settings.isEvaluationGaugeEnabled
+              ? currentState.isEnginePanelVisible
+              : false,
+    );
+
+    state = AsyncValue.data(updatedState);
+  }
+
+  StockfishSettings _currentSettings() =>
+      ref.read(stockfishSettingsProvider);
+
+  int _principalVariationCap() =>
+      _currentSettings().principalVariationCount;
 
   GameStatus _parseGameStatus(String status) {
     switch (status) {
@@ -1710,7 +1765,8 @@ class ChessBoardScreenNotifierNew
     }
 
     debugPrint('🎯 BUILD PV: Starting with ${pvs.length} PVs for $fen');
-    final limitedPvs = pvs.take(_maxPrincipalVariations).toList();
+    final maxPvs = _principalVariationCap();
+    final limitedPvs = pvs.take(maxPvs).toList();
     final payload = {
       'fen': fen,
       'pvs':
@@ -2219,7 +2275,7 @@ class ChessBoardScreenNotifierNew
   }
 
   List<AnalysisLine> _padPrincipalVariations(List<AnalysisLine> lines) {
-    final maxPvs = _maxPrincipalVariations;
+    final maxPvs = _principalVariationCap();
     if (lines.isEmpty) {
       return List<AnalysisLine>.generate(
         maxPvs,
@@ -2238,14 +2294,17 @@ class ChessBoardScreenNotifierNew
     required String fen,
     required List<AnalysisLine> currentLines,
   }) async {
-    if (currentLines.length >= _maxPrincipalVariations) {
+    final settings = _currentSettings();
+    final maxPvs = settings.principalVariationCount;
+    if (currentLines.length >= maxPvs) {
       return _PvSupplementResult(lines: currentLines);
     }
 
     try {
       final localEval = await StockfishSingleton().evaluatePosition(
         fen,
-        depth: EngineConfiguration.instance.stockfishDepth,
+        depth: settings.stockfishDepth,
+        principalVariationCount: settings.principalVariationCount,
       );
       final localLines = await _buildPrincipalVariations(fen, localEval.pvs);
       final merged = _mergePrincipalVariationLines(currentLines, localLines);
@@ -2286,6 +2345,7 @@ class ChessBoardScreenNotifierNew
     try {
       final initialState = state.value;
       if (initialState == null || initialState.isLoadingMoves) return;
+      final settings = _currentSettings();
 
       final fen =
           initialState.isAnalysisMode
@@ -2370,7 +2430,8 @@ class ChessBoardScreenNotifierNew
           );
           final localEval = await StockfishSingleton().evaluatePosition(
             fen,
-            depth: EngineConfiguration.instance.stockfishDepth,
+            depth: settings.stockfishDepth,
+            principalVariationCount: settings.principalVariationCount,
           );
           debugPrint(
             '🎯 EVAL: Stockfish completed, isCancelled=${localEval.isCancelled}, pvs.length=${localEval.pvs.length}',
@@ -2403,7 +2464,7 @@ class ChessBoardScreenNotifierNew
         }
       }
 
-      if (pvLines.length < _maxPrincipalVariations) {
+      if (pvLines.length < settings.principalVariationCount) {
         final supplement = await _supplementPrincipalVariationsIfNeeded(
           fen: fen,
           currentLines: pvLines,
@@ -2930,6 +2991,8 @@ class ChessBoardScreenNotifierNew
     unawaited(_persistAnalysisState());
     _navigatorSubscription?.close();
     _navigatorSubscription = null;
+    _settingsSubscription?.close();
+    _settingsSubscription = null;
     super.dispose();
   }
 }

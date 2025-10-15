@@ -38,9 +38,12 @@ class StockfishSingleton {
   Future<EnhancedCloudEval> evaluatePosition(
     String fen, {
     int? depth,
+    int? principalVariationCount,
   }) async {
-    final effectiveDepth =
-        depth ?? EngineConfiguration.instance.stockfishDepth;
+    const defaultSettings = StockfishSettings();
+    final effectiveDepth = depth ?? defaultSettings.stockfishDepth;
+    final effectiveMultiPv =
+        principalVariationCount ?? defaultSettings.principalVariationCount;
     // Validate depth range
     if (effectiveDepth < 1 || effectiveDepth > 25) {
       throw ArgumentError(
@@ -56,7 +59,7 @@ class StockfishSingleton {
     // Create cache key including side to move for perspective-aware caching
     final fenParts = fen.split(' ');
     final sideToMove = fenParts.length > 1 ? fenParts[1] : 'w';
-    final cacheKey = '${fen}_${effectiveDepth}_$sideToMove';
+    final cacheKey = '${fen}_${effectiveDepth}_$effectiveMultiPv_$sideToMove';
 
     if (_evaluationCache.containsKey(cacheKey)) {
       debugPrint('📦 CACHE HIT for $fen');
@@ -65,7 +68,12 @@ class StockfishSingleton {
 
     // Create job and add to queue
     final completer = Completer<EnhancedCloudEval>();
-    final job = _EvalJob(fen, effectiveDepth, completer);
+    final job = _EvalJob(
+      fen,
+      effectiveDepth,
+      effectiveMultiPv,
+      completer,
+    );
 
     _jobQueue.add(job);
     debugPrint(
@@ -147,7 +155,7 @@ class StockfishSingleton {
     final job = _currentJob!;
     final fen = job.fen;
     final depth = job.depth;
-    final multiPv = EngineConfiguration.instance.principalVariationCount;
+    final multiPv = job.multiPv;
     final completer = job.completer;
 
     // Ensure engine is ready
@@ -366,6 +374,7 @@ class StockfishSingleton {
 class _EvalJob {
   final String fen;
   final int depth;
+  final int multiPv;
   final Completer<EnhancedCloudEval> completer;
-  _EvalJob(this.fen, this.depth, this.completer);
+  _EvalJob(this.fen, this.depth, this.multiPv, this.completer);
 }

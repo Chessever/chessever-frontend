@@ -19,6 +19,7 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<CloudEval, String>
   final local = ref.read(localEvalCacheProvider);
   final persist = ref.read(persistCloudEvalProvider);
   final lichess = ref.read(lichessEvalRepoProvider);
+  final settings = ref.watch(stockfishSettingsProvider);
   try {
     if (fen.isEmpty) throw Exception('Empty FEN');
 
@@ -69,7 +70,8 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<CloudEval, String>
   } catch (_) {
     final sfEval = await StockfishSingleton().evaluatePosition(
       fen,
-      depth: EngineConfiguration.instance.stockfishDepth,
+      depth: settings.stockfishDepth,
+      principalVariationCount: settings.principalVariationCount,
     );
     final cloudFromSF = CloudEval(
       fen: fen,
@@ -117,6 +119,7 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval,
   final persist = ref.read(persistCloudEvalProvider);
   final lichess = ref.read(lichessEvalRepoProvider);
   final evalsRepo = ref.read(evalsRepositoryProvider);
+  final settings = ref.watch(stockfishSettingsProvider);
 
   try {
     if (fen.isEmpty) throw Exception('Empty FEN');
@@ -193,7 +196,8 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval,
       final sfEval = await StockfishSingleton()
           .evaluatePosition(
         fen,
-        depth: EngineConfiguration.instance.stockfishDepth,
+        depth: settings.stockfishDepth,
+        principalVariationCount: settings.principalVariationCount,
       )
           .timeout(
             const Duration(seconds: 20),
