@@ -24,6 +24,13 @@ import 'package:worker_manager/worker_manager.dart';
 
 const int _kMaxPrincipalVariations = 3;
 
+class _PvSupplementResult {
+  final List<AnalysisLine> lines;
+  final CloudEval? overrideEval;
+
+  const _PvSupplementResult({required this.lines, this.overrideEval});
+}
+
 enum ChessboardView { tour, countryman }
 
 final chessboardViewFromProviderNew = StateProvider<ChessboardView>((ref) {
@@ -2160,6 +2167,93 @@ class ChessBoardScreenNotifierNew
     return -1;
   }
 
+  List<AnalysisLine> _mergePrincipalVariationLines(
+    List<AnalysisLine> primary,
+    List<AnalysisLine> supplemental,
+  ) {
+    String keyFor(AnalysisLine line) {
+      if (line.sanMoves.isNotEmpty) {
+        return line.sanMoves.join(' ').trim();
+      }
+      if (line.moves.isNotEmpty) {
+        return line.moves.map((move) => move.uci).join(' ');
+      }
+      return '';
+    }
+
+    final merged = <AnalysisLine>[];
+    final seen = <String>{};
+
+    void addLine(AnalysisLine line) {
+      final key = keyFor(line);
+      if (key.isEmpty) return;
+      if (seen.add(key)) {
+        merged.add(line);
+      }
+    }
+
+    for (final line in primary) {
+      addLine(line);
+    }
+    for (final line in supplemental) {
+      addLine(line);
+    }
+
+    if (merged.isEmpty) {
+      return primary;
+    }
+
+    return merged;
+  }
+
+  List<AnalysisLine> _padPrincipalVariations(List<AnalysisLine> lines) {
+    if (lines.isEmpty) {
+      return List<AnalysisLine>.generate(
+        _kMaxPrincipalVariations,
+        (_) => const AnalysisLine(sanMoves: ['…']),
+        growable: false,
+      );
+    }
+    final padded = List<AnalysisLine>.from(lines);
+    while (padded.length < _kMaxPrincipalVariations) {
+      padded.add(padded.last);
+    }
+    return padded.take(_kMaxPrincipalVariations).toList(growable: false);
+  }
+
+  Future<_PvSupplementResult> _supplementPrincipalVariationsIfNeeded({
+    required String fen,
+    required List<AnalysisLine> currentLines,
+  }) async {
+    if (currentLines.length >= _kMaxPrincipalVariations) {
+      return _PvSupplementResult(lines: currentLines);
+    }
+
+    try {
+      final localEval = await StockfishSingleton().evaluatePosition(
+        fen,
+        depth: _resumeVariantAutoPlay ? 12 : 15,
+      );
+      final localLines = await _buildPrincipalVariations(fen, localEval.pvs);
+      final merged = _mergePrincipalVariationLines(currentLines, localLines);
+      final normalized = _padPrincipalVariations(merged);
+
+      return _PvSupplementResult(
+        lines: normalized,
+        overrideEval: CloudEval(
+          fen: fen,
+          knodes: localEval.knodes,
+          depth: localEval.depth,
+          pvs: localEval.pvs,
+        ),
+      );
+    } catch (e, stack) {
+      debugPrint('🎯 PV SUPPLEMENT: Failed for $fen: $e');
+      debugPrint('Stack: $stack');
+      return _PvSupplementResult(lines: _padPrincipalVariations(currentLines));
+    }
+  }
+
   Position _variantPositionFromBase(
     ChessBoardStateNew state,
     AnalysisLine variant,
@@ -2293,6 +2387,23 @@ class ChessBoardScreenNotifierNew
         } catch (e, stack) {
           debugPrint('🎯 EVAL ERROR: Stockfish fallback failed for $fen: $e');
           debugPrint('Stack: $stack');
+        }
+      }
+
+      if (pvLines.length < _kMaxPrincipalVariations) {
+        final supplement = await _supplementPrincipalVariationsIfNeeded(
+          fen: fen,
+          currentLines: pvLines,
+        );
+        pvLines = supplement.lines;
+        if (supplement.overrideEval != null) {
+          primaryEval = supplement.overrideEval;
+          if (evaluation == null && supplement.overrideEval!.pvs.isNotEmpty) {
+            evaluation = _getConsistentEvaluation(
+              supplement.overrideEval!.pvs.first.cp / 100.0,
+              fen,
+            );
+          }
         }
       }
 
