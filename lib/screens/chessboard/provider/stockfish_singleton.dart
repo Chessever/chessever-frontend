@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:chessever2/utils/engine_configuration.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:flutter/foundation.dart';
 import 'package:stockfish/stockfish.dart';
@@ -36,11 +37,15 @@ class StockfishSingleton {
 
   Future<EnhancedCloudEval> evaluatePosition(
     String fen, {
-    int depth = 15,
+    int? depth,
   }) async {
+    final effectiveDepth =
+        depth ?? EngineConfiguration.instance.stockfishDepth;
     // Validate depth range
-    if (depth < 1 || depth > 25) {
-      throw ArgumentError('Depth must be between 1 and 25, got: $depth');
+    if (effectiveDepth < 1 || effectiveDepth > 25) {
+      throw ArgumentError(
+        'Depth must be between 1 and 25, got: $effectiveDepth',
+      );
     }
 
     // Validate FEN string
@@ -51,7 +56,7 @@ class StockfishSingleton {
     // Create cache key including side to move for perspective-aware caching
     final fenParts = fen.split(' ');
     final sideToMove = fenParts.length > 1 ? fenParts[1] : 'w';
-    final cacheKey = '${fen}_${depth}_$sideToMove';
+    final cacheKey = '${fen}_${effectiveDepth}_$sideToMove';
 
     if (_evaluationCache.containsKey(cacheKey)) {
       debugPrint('📦 CACHE HIT for $fen');
@@ -60,7 +65,7 @@ class StockfishSingleton {
 
     // Create job and add to queue
     final completer = Completer<EnhancedCloudEval>();
-    final job = _EvalJob(fen, depth, completer);
+    final job = _EvalJob(fen, effectiveDepth, completer);
 
     _jobQueue.add(job);
     debugPrint(
@@ -142,6 +147,7 @@ class StockfishSingleton {
     final job = _currentJob!;
     final fen = job.fen;
     final depth = job.depth;
+    final multiPv = EngineConfiguration.instance.principalVariationCount;
     final completer = job.completer;
 
     // Ensure engine is ready
@@ -243,8 +249,8 @@ class StockfishSingleton {
     });
 
     try {
-      debugPrint('   → Sending: MultiPV 3, depth $depth');
-      _engine!.stdin = 'setoption name MultiPV value 3';
+      debugPrint('   → Sending: MultiPV $multiPv, depth $depth');
+      _engine!.stdin = 'setoption name MultiPV value $multiPv';
       _engine!.stdin = 'position fen $fen';
       _engine!.stdin = 'go depth $depth';
     } catch (e) {

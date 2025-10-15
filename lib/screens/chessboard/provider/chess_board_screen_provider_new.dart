@@ -14,6 +14,7 @@ import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.d
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
+import 'package:chessever2/utils/engine_configuration.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:easy_debounce/easy_debounce.dart';
@@ -22,7 +23,8 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:worker_manager/worker_manager.dart';
 
-const int _kMaxPrincipalVariations = 3;
+int get _maxPrincipalVariations =>
+    EngineConfiguration.instance.principalVariationCount;
 
 class _PvSupplementResult {
   final List<AnalysisLine> lines;
@@ -1698,7 +1700,7 @@ class ChessBoardScreenNotifierNew
     }
 
     debugPrint('🎯 BUILD PV: Starting with ${pvs.length} PVs for $fen');
-    final limitedPvs = pvs.take(_kMaxPrincipalVariations).toList();
+    final limitedPvs = pvs.take(_maxPrincipalVariations).toList();
     final payload = {
       'fen': fen,
       'pvs':
@@ -2207,32 +2209,33 @@ class ChessBoardScreenNotifierNew
   }
 
   List<AnalysisLine> _padPrincipalVariations(List<AnalysisLine> lines) {
+    final maxPvs = _maxPrincipalVariations;
     if (lines.isEmpty) {
       return List<AnalysisLine>.generate(
-        _kMaxPrincipalVariations,
+        maxPvs,
         (_) => const AnalysisLine(sanMoves: ['…']),
         growable: false,
       );
     }
     final padded = List<AnalysisLine>.from(lines);
-    while (padded.length < _kMaxPrincipalVariations) {
+    while (padded.length < maxPvs) {
       padded.add(padded.last);
     }
-    return padded.take(_kMaxPrincipalVariations).toList(growable: false);
+    return padded.take(maxPvs).toList(growable: false);
   }
 
   Future<_PvSupplementResult> _supplementPrincipalVariationsIfNeeded({
     required String fen,
     required List<AnalysisLine> currentLines,
   }) async {
-    if (currentLines.length >= _kMaxPrincipalVariations) {
+    if (currentLines.length >= _maxPrincipalVariations) {
       return _PvSupplementResult(lines: currentLines);
     }
 
     try {
       final localEval = await StockfishSingleton().evaluatePosition(
         fen,
-        depth: _resumeVariantAutoPlay ? 12 : 15,
+        depth: EngineConfiguration.instance.stockfishDepth,
       );
       final localLines = await _buildPrincipalVariations(fen, localEval.pvs);
       final merged = _mergePrincipalVariationLines(currentLines, localLines);
@@ -2357,7 +2360,7 @@ class ChessBoardScreenNotifierNew
           );
           final localEval = await StockfishSingleton().evaluatePosition(
             fen,
-            depth: _resumeVariantAutoPlay ? 12 : 15,
+            depth: EngineConfiguration.instance.stockfishDepth,
           );
           debugPrint(
             '🎯 EVAL: Stockfish completed, isCancelled=${localEval.isCancelled}, pvs.length=${localEval.pvs.length}',
@@ -2390,7 +2393,7 @@ class ChessBoardScreenNotifierNew
         }
       }
 
-      if (pvLines.length < _kMaxPrincipalVariations) {
+      if (pvLines.length < _maxPrincipalVariations) {
         final supplement = await _supplementPrincipalVariationsIfNeeded(
           fen: fen,
           currentLines: pvLines,
@@ -2533,7 +2536,7 @@ class ChessBoardScreenNotifierNew
         pvLines: pvLines,
       );
 
-      // Note: Removed supplemental eval since Stockfish is now primary with MultiPV=3
+      // Note: Removed supplemental eval since Stockfish is now primary with the configured MultiPV setting
     } catch (e) {
       if (!_cancelEvaluation) {
         debugPrint('Evaluation error: $e');
@@ -2639,8 +2642,8 @@ class ChessBoardScreenNotifierNew
         return const ISet.empty();
       }
 
-      // Get up to [_kMaxPrincipalVariations] principal variations
-      final pvsToShow = cloudEval.pvs.take(_kMaxPrincipalVariations).toList();
+      // Get up to the configured number of principal variations
+      final pvsToShow = cloudEval.pvs.take(_maxPrincipalVariations).toList();
 
       for (int i = 0; i < pvsToShow.length; i++) {
         final pv = pvsToShow[i];

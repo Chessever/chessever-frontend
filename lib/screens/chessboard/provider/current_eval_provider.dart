@@ -5,6 +5,7 @@ import 'package:chessever2/repository/lichess/cloud_eval/lichess_eval_repository
 import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.dart';
 import 'package:chessever2/repository/supabase/evals/evals_repository.dart';
 import 'package:chessever2/repository/supabase/evals/persist_cloud_eval.dart';
+import 'package:chessever2/utils/engine_configuration.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart' show FutureProvider;
 import 'stockfish_singleton.dart';
@@ -66,7 +67,10 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<CloudEval, String>
         .catchError((e) => <void>[]);
     return cloud;
   } catch (_) {
-    final sfEval = await StockfishSingleton().evaluatePosition(fen, depth: 15);
+    final sfEval = await StockfishSingleton().evaluatePosition(
+      fen,
+      depth: EngineConfiguration.instance.stockfishDepth,
+    );
     final cloudFromSF = CloudEval(
       fen: fen,
       knodes: sfEval.knodes,
@@ -187,7 +191,10 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval,
     print('⚡ EVAL SOURCE: STOCKFISH FALLBACK for $fen (cloud sources unavailable)');
     try {
       final sfEval = await StockfishSingleton()
-          .evaluatePosition(fen, depth: 15)
+          .evaluatePosition(
+        fen,
+        depth: EngineConfiguration.instance.stockfishDepth,
+      )
           .timeout(
             const Duration(seconds: 20),
             onTimeout: () {
