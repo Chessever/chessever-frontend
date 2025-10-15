@@ -19,6 +19,7 @@ import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_wi
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
+import 'package:chessever2/utils/engine_configuration.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
@@ -1969,7 +1970,8 @@ class _PrincipalVariationListState
     final isWhiteToMove = (position?.turn ?? Side.white) == Side.white;
 
     final isEvaluating = widget.state.isEvaluating;
-    final lines = widget.state.principalVariations.take(3).toList();
+    final maxPvs = EngineConfiguration.instance.principalVariationCount;
+    final lines = widget.state.principalVariations.take(maxPvs).toList();
 
     // Check if position is terminal (game over)
     final isGameOver = position?.isGameOver ?? false;
