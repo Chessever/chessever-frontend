@@ -196,6 +196,7 @@ class ChessBoardStateNew {
   final double? evaluation; // Made nullable to indicate loading state
   final bool isEvaluating; // Flag to show evaluation is in progress
   final GamesTourModel game;
+  final bool isEnginePanelVisible;
   final String? pgnData;
   final String? fenData;
   final ISet<Shape>? shapes;
@@ -241,6 +242,7 @@ class ChessBoardStateNew {
     this.evaluation = 0,
     this.isEvaluating = false,
     required this.game,
+    this.isEnginePanelVisible = true,
     this.pgnData,
     this.fenData,
     this.isAnalysisMode = false,
@@ -272,6 +274,7 @@ class ChessBoardStateNew {
     Object? evaluation = _noChange,
     bool? isEvaluating,
     Object? mate = _noChange,
+    bool? isEnginePanelVisible,
     GamesTourModel? game,
     Object? pgnData = _noChange,
     Object? fenData = _noChange,
@@ -311,6 +314,7 @@ class ChessBoardStateNew {
               ? this.evaluation
               : evaluation as double?,
       isEvaluating: isEvaluating ?? this.isEvaluating,
+      isEnginePanelVisible: isEnginePanelVisible ?? this.isEnginePanelVisible,
       game: game ?? this.game,
       pgnData:
           identical(pgnData, _noChange) ? this.pgnData : pgnData as String?,

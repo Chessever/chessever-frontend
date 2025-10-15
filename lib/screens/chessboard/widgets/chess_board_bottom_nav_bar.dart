@@ -18,6 +18,8 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
   final bool canMoveForward;
   final bool canMoveBackward;
   final bool isAnalysisMode;
+  final VoidCallback onToggleEnginePanel;
+  final bool isEnginePanelVisible;
 
   const ChessBoardBottomNavBar({
     super.key,
@@ -29,6 +31,8 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
     required this.canMoveBackward,
     required this.toggleAnalysisMode,
     required this.isAnalysisMode,
+    required this.onToggleEnginePanel,
+    required this.isEnginePanelVisible,
     this.onLongPressBackwardStart,
     this.onLongPressBackwardEnd,
     this.onLongPressForwardStart,
@@ -37,7 +41,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final width = MediaQuery.of(context).size.width / 3; // Changed from /4 to /3 since we removed one button
+    final width = MediaQuery.of(context).size.width / 4;
     return Container(
       width: MediaQuery.of(context).size.width,
       decoration: const BoxDecoration(color: kBlackColor),
@@ -47,8 +51,12 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              // REMOVED: Computer analysis toggle button - analysis mode is now always enabled
-
+              ChessSvgBottomNavbar(
+                width: width,
+                svgPath: SvgAsset.laptop,
+                onPressed: onToggleEnginePanel,
+                isActive: isEnginePanelVisible,
+              ),
               // Flip Board Button
               ChessSvgBottomNavbar(
                 width: width,

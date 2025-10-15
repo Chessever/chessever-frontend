@@ -84,6 +84,7 @@ class ChessBoardScreenNotifierNew
         isEvaluating: false,
         isAnalysisMode:
             true, // ENABLED BY DEFAULT: Analysis mode active from start
+        isEnginePanelVisible: true,
       ),
     );
     parseMoves();
@@ -1640,6 +1641,16 @@ class ChessBoardScreenNotifierNew
     );
   }
 
+  void toggleEnginePanelVisibility() {
+    final currentState = state.value;
+    if (currentState == null) return;
+    state = AsyncValue.data(
+      currentState.copyWith(
+        isEnginePanelVisible: !currentState.isEnginePanelVisible,
+      ),
+    );
+  }
+
   void togglePlayPause() {
     final currentState = state.value;
     if (currentState == null) return;
@@ -1662,7 +1673,6 @@ class ChessBoardScreenNotifierNew
     if (moveIndex == st.currentMoveIndex - 1) {
       return kWhiteColor;
     }
-    if (move.contains('x')) return kLightPink;
     if (moveIndex < st.currentMoveIndex - 1) {
       return kWhiteColor;
     }

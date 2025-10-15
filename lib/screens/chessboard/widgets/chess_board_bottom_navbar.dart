@@ -7,16 +7,22 @@ class ChessSvgBottomNavbar extends StatelessWidget {
   final String svgPath;
   final double width;
   final VoidCallback? onPressed;
+  final bool isActive;
 
   const ChessSvgBottomNavbar({
     super.key,
     required this.svgPath,
     required this.width,
     required this.onPressed,
+    this.isActive = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final color =
+        onPressed != null
+            ? (isActive ? kPrimaryColor : kWhiteColor)
+            : kWhiteColor70;
     return InkWell(
       onTap: onPressed,
       child: Container(
@@ -28,10 +34,7 @@ class ChessSvgBottomNavbar extends StatelessWidget {
           svgPath,
           height: 24.h,
           width: 24.w,
-          colorFilter: ColorFilter.mode(
-            onPressed != null ? kWhiteColor : kWhiteColor70,
-            BlendMode.srcIn,
-          ),
+          colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
         ),
       ),
     );
