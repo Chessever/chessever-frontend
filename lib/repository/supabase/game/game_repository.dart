@@ -62,7 +62,12 @@ class GameRepository extends BaseRepository {
 
       final response = await query;
 
-      return (response as List).map((json) => Games.fromJson(json)).toList();
+      final jsonList =
+          (response as List).map((item) => json.encode(item)).toList();
+
+      final games = await compute(_decodeGamesInIsolate, jsonList);
+
+      return games;
     });
   }
 
@@ -83,78 +88,6 @@ class GameRepository extends BaseRepository {
           await supabase.from('games').select().eq('id', id).single();
 
       return Games.fromJson(response);
-    });
-  }
-
-  // Fetch games by round and tour slug
-  Future<List<Games>> getGamesBySlug(String roundSlug, String tourSlug) async {
-    return handleApiCall(() async {
-      final response = await supabase
-          .from('games')
-          .select()
-          .eq('round_slug', roundSlug)
-          .eq('tour_slug', tourSlug)
-          .order('id', ascending: true);
-
-      return (response as List).map((json) => Games.fromJson(json)).toList();
-    });
-  }
-
-  // Fetch ongoing games
-  Future<List<Games>> getOngoingGames({String? tourId, String? roundId}) async {
-    return handleApiCall(() async {
-      var query = supabase
-          .from('games')
-          .select()
-          .eq('status', '*'); // Assuming '*' means ongoing
-
-      if (tourId != null) {
-        query = query.eq('tour_id', tourId);
-      }
-
-      if (roundId != null) {
-        query = query.eq('round_id', roundId);
-      }
-
-      final response = await query.order('id', ascending: true);
-
-      return (response as List).map((json) => Games.fromJson(json)).toList();
-    });
-  }
-
-  // Fetch games by status
-  Future<List<Games>> getGamesByStatus(
-    String status, {
-    String? tourId,
-    int? limit,
-  }) async {
-    return handleApiCall(() async {
-      var query = supabase.from('games').select().eq('status', status);
-
-      if (tourId != null) {
-        query = query.eq('tour_id', tourId);
-      }
-
-      if (limit != null) {
-        final response = await query.limit(limit).order('id', ascending: true);
-        return (response as List).map((json) => Games.fromJson(json)).toList();
-      } else {
-        final response = await query.order('id', ascending: true);
-        return (response as List).map((json) => Games.fromJson(json)).toList();
-      }
-    });
-  }
-
-  // Search games by player name (requires full-text search setup)
-  Future<List<Games>> searchGamesByPlayer(String playerQuery) async {
-    return handleApiCall(() async {
-      final response = await supabase
-          .from('games')
-          .select()
-          .like('name', '%$playerQuery%')
-          .order('id', ascending: false);
-
-      return (response as List).map((json) => Games.fromJson(json)).toList();
     });
   }
 
@@ -190,7 +123,9 @@ class GameRepository extends BaseRepository {
           last_clock_white,
           last_clock_black
         ''')
-          .contains('players', [{'fideId': int.parse(fideId)}])
+          .contains('players', [
+            {'fideId': int.parse(fideId)},
+          ])
           .order('date_start', ascending: false)
           .order('time_start', ascending: false);
 
@@ -201,8 +136,12 @@ class GameRepository extends BaseRepository {
       print('===== GameRepository: Executing query with limit: $limit =====');
       final response = await query;
 
-      print('===== GameRepository: Received ${(response as List).length} games =====');
-      return (response as List).map((json) => Games.fromJson(json)).toList();
+      final jsonList =
+          (response as List).map((item) => json.encode(item)).toList();
+
+      final games = await compute(_decodeGamesInIsolate, jsonList);
+
+      return games;
     });
   }
 
@@ -239,19 +178,31 @@ class GameRepository extends BaseRepository {
           last_clock_white,
           last_clock_black
         ''')
-          .contains('players', [{'fideId': int.parse(fideId)}])
+          .contains('players', [
+            {'fideId': int.parse(fideId)},
+          ])
           .order('date_start', ascending: false)
           .order('time_start', ascending: false)
           .range(offset, offset + limit - 1);
 
-      return (response as List).map((json) => Games.fromJson(json)).toList();
+      final jsonList =
+          (response as List).map((item) => json.encode(item)).toList();
+
+      final games = await compute(_decodeGamesInIsolate, jsonList);
+
+      return games;
     });
   }
 
   // Get all games for a specific player by player name (for players without fideId)
-  Future<List<Games>> getGamesByPlayerName(String playerName, {int? limit}) async {
+  Future<List<Games>> getGamesByPlayerName(
+    String playerName, {
+    int? limit,
+  }) async {
     return handleApiCall(() async {
-      debugPrint('===== GameRepository: Fetching games for player name: $playerName =====');
+      debugPrint(
+        '===== GameRepository: Fetching games for player name: $playerName =====',
+      );
 
       // Query games where player_white or player_black matches the name
       var query = supabase
@@ -288,10 +239,14 @@ class GameRepository extends BaseRepository {
         query = query.limit(limit);
       }
 
-      debugPrint('===== GameRepository: Executing name query with limit: $limit =====');
+      debugPrint(
+        '===== GameRepository: Executing name query with limit: $limit =====',
+      );
       final response = await query;
 
-      debugPrint('===== GameRepository: Received ${(response as List).length} games =====');
+      debugPrint(
+        '===== GameRepository: Received ${(response as List).length} games =====',
+      );
       return (response as List).map((json) => Games.fromJson(json)).toList();
     });
   }
@@ -334,69 +289,12 @@ class GameRepository extends BaseRepository {
           .order('time_start', ascending: false)
           .range(offset, offset + limit - 1);
 
-      return (response as List).map((json) => Games.fromJson(json)).toList();
-    });
-  }
+      final jsonList =
+          (response as List).map((item) => json.encode(item)).toList();
 
-  // Get recent games across all tournaments
-  Future<List<Games>> getRecentGames({int limit = 20}) async {
-    return handleApiCall(() async {
-      final response = await supabase
-          .from('games')
-          .select()
-          .order('id', ascending: false)
-          .limit(limit);
+      final games = await compute(_decodeGamesInIsolate, jsonList);
 
-      return (response as List).map((json) => Games.fromJson(json)).toList();
-    });
-  }
-
-  // Get game with full context (tournament and round info)
-  Future<Map<String, dynamic>> getGameWithContext(String gameId) async {
-    return handleApiCall(() async {
-      final response =
-          await supabase
-              .from('games')
-              .select('''
-            *,
-            rounds!inner(
-              id,
-              name,
-              slug,
-              ongoing,
-              starts_at,
-              tours!inner(
-                id,
-                name,
-                slug,
-                tier,
-                image
-              )
-            )
-          ''')
-              .eq('id', gameId)
-              .single();
-
-      return response;
-    });
-  }
-
-  // Get games with moves (non-null last_move)
-  Future<List<Games>> getGamesWithMoves({String? tourId, int? limit}) async {
-    return handleApiCall(() async {
-      var query = supabase.from('games').select().not('last_move', 'is', null);
-
-      if (tourId != null) {
-        query = query.eq('tour_id', tourId);
-      }
-
-      if (limit != null) {
-        final response = await query.limit(limit).order('id', ascending: false);
-        return (response as List).map((json) => Games.fromJson(json)).toList();
-      } else {
-        final response = await query.order('id', ascending: false);
-        return (response as List).map((json) => Games.fromJson(json)).toList();
-      }
+      return games;
     });
   }
 
@@ -409,12 +307,17 @@ class GameRepository extends BaseRepository {
           .contains('players', '[{"fed": "$countryCode"}]')
           .order('id', ascending: true);
 
-      return (response as List).map((json) => Games.fromJson(json)).toList();
+      final jsonList =
+          (response as List).map((item) => json.encode(item)).toList();
+
+      final games = await compute(_decodeGamesInIsolate, jsonList);
+
+      return games;
     });
   }
 }
 
-List<Games> decodeGamesInIsolate(List<String> gameJsonList) {
+List<Games> _decodeGamesInIsolate(List<String> gameJsonList) {
   return gameJsonList.map((e) {
     final decoded = json.decode(e) as Map<String, dynamic>;
     return Games.fromJson(decoded);
