@@ -1631,6 +1631,14 @@ class ChessBoardScreenNotifierNew
     );
   }
 
+  void toggleEngineVisibility() {
+    final currentState = state.value;
+    if (currentState == null) return;
+    state = AsyncValue.data(
+      currentState.copyWith(showEngineAnalysis: !currentState.showEngineAnalysis),
+    );
+  }
+
   void togglePlayPause() {
     final currentState = state.value;
     if (currentState == null) return;
@@ -1653,7 +1661,6 @@ class ChessBoardScreenNotifierNew
     if (moveIndex == st.currentMoveIndex - 1) {
       return kWhiteColor;
     }
-    if (move.contains('x')) return kLightPink;
     if (moveIndex < st.currentMoveIndex - 1) {
       return kWhiteColor;
     }
@@ -1801,6 +1808,24 @@ class ChessBoardScreenNotifierNew
         '❌ BUILD PV: No valid lines could be built from ${workerResult.length} worker results',
       );
     }
+
+    // Always ensure we have exactly 3 lines for consistent UI display
+    while (lines.length < 3 && lines.isNotEmpty) {
+      // Add placeholder lines that will display as "No alternative found"
+      lines.add(
+        AnalysisLine(
+          moves: const [],
+          sanMoves: const ['No alternative'],
+          evaluation: lines.first.evaluation, // Use same eval as first line
+          mate: lines.first.mate,
+        ),
+      );
+    }
+
+    debugPrint(
+      '🎯 BUILD PV: Padded to ${lines.length} lines for consistent display',
+    );
+
     return lines;
   }
 

@@ -205,6 +205,7 @@ class ChessBoardStateNew {
   final List<AnalysisLine> principalVariations;
   final int? selectedVariantIndex; // Track which engine suggestion is selected
   final List<int> variantMovePointer; // Track progress through selected variant
+  final bool showEngineAnalysis; // Toggle visibility of engine gauge and principal variations
   /// FEN position where current PVs were generated
   final String? variantBaseFen;
 
@@ -250,6 +251,7 @@ class ChessBoardStateNew {
     this.principalVariations = const [],
     this.selectedVariantIndex,
     this.variantMovePointer = const [],
+    this.showEngineAnalysis = true, // Active by default
     this.variantBaseFen,
     this.variantBaseMovePointer,
     this.variantBaseLastMove,
@@ -281,6 +283,7 @@ class ChessBoardStateNew {
     List<AnalysisLine>? principalVariations,
     Object? selectedVariantIndex = _noChange,
     List<int>? variantMovePointer,
+    bool? showEngineAnalysis,
     Object? variantBaseFen = _noChange,
     Object? variantBaseMovePointer = _noChange,
     Object? variantBaseLastMove = _noChange,
@@ -325,6 +328,7 @@ class ChessBoardStateNew {
               ? this.selectedVariantIndex
               : selectedVariantIndex as int?,
       variantMovePointer: variantMovePointer ?? this.variantMovePointer,
+      showEngineAnalysis: showEngineAnalysis ?? this.showEngineAnalysis,
       variantBaseFen:
           identical(variantBaseFen, _noChange)
               ? this.variantBaseFen
