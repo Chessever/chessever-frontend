@@ -177,44 +177,42 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
               padding: EdgeInsets.symmetric(horizontal: 8.sp),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(4.br),
-                child: Expanded(
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    padding: EdgeInsets.only(
-                      bottom: MediaQuery.of(context).viewInsets.bottom + 16.sp,
-                    ),
-                    itemCount: sortedPlayers.length,
-                    itemBuilder: (context, index) {
-                      final player = sortedPlayers[index];
-                      return StandingScoreCard(
-                        countryCode: player.countryCode,
-                        title: player.title,
-                        name: player.name,
-                        score: player.score,
-                        scoreChange: player.scoreChange,
-                        matchScore: player.matchScore,
-                        index: index,
-                        isFirst: index == 0,
-                        isLast: index == sortedPlayers.length - 1,
-                        onTap: () {
-                          FocusScope.of(context).unfocus();
-                          ref.read(selectedPlayerProvider.notifier).state =
-                              player;
-                          Navigator.pushNamed(context, '/scorecard_screen');
-                        },
-                        onToggleFavorite: () => _removeFavoritePlayer(player),
-                        onLongPress: (details) {
-                          _showContextMenu(
-                            context,
-                            details.globalPosition,
-                            player,
-                          );
-                        },
-                        isFav: true,
-                        hideScore: true,
-                      );
-                    },
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  padding: EdgeInsets.only(
+                    bottom: MediaQuery.of(context).viewInsets.bottom + 16.sp,
                   ),
+                  itemCount: sortedPlayers.length,
+                  itemBuilder: (context, index) {
+                    final player = sortedPlayers[index];
+                    return StandingScoreCard(
+                      countryCode: player.countryCode,
+                      title: player.title,
+                      name: player.name,
+                      score: player.score,
+                      scoreChange: player.scoreChange,
+                      matchScore: player.matchScore,
+                      index: index,
+                      isFirst: index == 0,
+                      isLast: index == sortedPlayers.length - 1,
+                      onTap: () {
+                        FocusScope.of(context).unfocus();
+                        ref.read(selectedPlayerProvider.notifier).state =
+                            player;
+                        Navigator.pushNamed(context, '/scorecard_screen');
+                      },
+                      onToggleFavorite: () => _removeFavoritePlayer(player),
+                      onLongPress: (details) {
+                        _showContextMenu(
+                          context,
+                          details.globalPosition,
+                          player,
+                        );
+                      },
+                      isFav: true,
+                      hideScore: true,
+                    );
+                  },
                 ),
               ),
             ),
