@@ -1,6 +1,7 @@
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/chess_progress_bar.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
@@ -11,6 +12,8 @@ import 'package:country_flags/country_flags.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 
 class GroupEventMatchCard extends ConsumerStatefulWidget {
   final GamesAppBarModel round;
@@ -71,7 +74,6 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
   }
 
   @override
-  @override
   Widget build(BuildContext context) {
     final firstGame = widget.games.isNotEmpty ? widget.games.first : null;
     final country1Code = firstGame?.whitePlayer.countryCode ?? '';
@@ -93,7 +95,7 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
     return Container(
       margin: EdgeInsets.only(bottom: 12.sp),
       decoration: BoxDecoration(
-        color: kWhiteColor70,
+        color: Color(0xff1A1A1C).withValues(alpha: 0.7),
         borderRadius:
             _isExpanded
                 ? BorderRadius.circular(4.0)
@@ -118,7 +120,7 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
                     child: Text(
                       team1Name,
                       style: AppTypography.textXsMedium.copyWith(
-                        color: Colors.black,
+                        color: kWhiteColor,
                       ),
                     ),
                   ),
@@ -128,7 +130,7 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
                     child: Text(
                       'VS',
                       style: AppTypography.textXsMedium.copyWith(
-                        color: Colors.black,
+                        color: kWhiteColor,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -138,7 +140,7 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
                     child: Text(
                       team2Name,
                       style: AppTypography.textXsMedium.copyWith(
-                        color: Colors.black,
+                        color: kWhiteColor,
                       ),
                       textAlign: TextAlign.right,
                     ),
@@ -154,7 +156,7 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
                     turns: _rotationAnimation,
                     child: Icon(
                       Icons.keyboard_arrow_down,
-                      color: Colors.black,
+                      color: kWhiteColor,
                       size: 20.sp,
                     ),
                   ),
@@ -169,33 +171,7 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
               children: [
                 Container(height: 10, color: Colors.black),
                 SizedBox(height: 12.sp),
-                Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 12.sp,
-                  ).copyWith(bottom: 12.sp),
-                  child: Column(
-                    children:
-                        widget.games.asMap().entries.map((entry) {
-                          final index = entry.key;
-                          final game = entry.value;
-                          final gameIndex =
-                              widget.gameIndexMap[game.gameId] ?? 0;
-
-                          return Column(
-                            children: [
-                              if (index > 0) SizedBox(height: 8.sp),
-                              GroupEventGameRow(
-                                game: game,
-                                gamesData: widget.gamesData,
-                                gameIndex: gameIndex,
-                                onReturnFromChessboard:
-                                    widget.onReturnFromChessboard,
-                              ),
-                            ],
-                          );
-                        }).toList(),
-                  ),
-                ),
+                _buildGamesList(),
               ],
             ),
             crossFadeState:
@@ -206,6 +182,147 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildGamesList() {
+    switch (widget.gamesListViewMode) {
+      case GamesListViewMode.gamesCard:
+        return _buildGamesCardView();
+      case GamesListViewMode.chessBoardGrid:
+        return _buildChessBoardGridView();
+      case GamesListViewMode.chessBoard:
+        return _buildChessBoardView();
+    }
+  }
+
+  Widget _buildGamesCardView() {
+    return Column(
+      children:
+          widget.games.asMap().entries.map((entry) {
+            final index = entry.key;
+            final game = entry.value;
+
+            return Column(
+              children: [
+                if (index > 0) SizedBox(height: 8.sp),
+                _buildGameRow(game),
+                Divider(height: 0.5, color: kDarkGreyColor),
+              ],
+            );
+          }).toList(),
+    );
+  }
+
+  Widget _buildChessBoardGridView() {
+    final games = widget.games;
+    final rows = <Widget>[];
+
+    for (int i = 0; i < games.length; i += 2) {
+      final game1 = games[i];
+      final game2 = i + 1 < games.length ? games[i + 1] : null;
+
+      rows.add(
+        Padding(
+          padding: EdgeInsets.only(bottom: 5.sp),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(child: _buildGridChessBoard(game1)),
+              if (game2 != null) ...[
+                SizedBox(width: 8.sp),
+                Expanded(child: _buildGridChessBoard(game2)),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Column(children: rows);
+  }
+
+  Widget _buildChessBoardView() {
+    return Column(
+      children:
+          widget.games.asMap().entries.map((entry) {
+            final game = entry.value;
+            final gameIndex = widget.gameIndexMap[game.gameId] ?? 0;
+
+            return GameCardWrapperWidget(
+              game: game,
+              gamesData: widget.gamesData,
+              gameIndex: gameIndex,
+              isChessBoardVisible: true,
+              onReturnFromChessboard: widget.onReturnFromChessboard,
+            );
+          }).toList(),
+    );
+  }
+
+  Widget _buildGameRow(GamesTourModel game) {
+    final gameIndex = widget.gameIndexMap[game.gameId] ?? 0;
+
+    return InkWell(
+      onTap:
+          () => ref
+              .read(gameCardWrapperProvider)
+              .navigateToChessBoard(
+                context: context,
+                orderedGames: widget.gamesData.gamesTourModels,
+                gameIndex: gameIndex,
+                onReturnFromChessboard: widget.onReturnFromChessboard,
+              ),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 12.sp),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                game.whitePlayer.name,
+                style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            SizedBox(width: 12.sp),
+            ChessProgressBar(gamesTourModel: game),
+            SizedBox(width: 12.sp),
+            Expanded(
+              child: Text(
+                game.blackPlayer.name,
+                style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.right,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGridChessBoard(GamesTourModel game) {
+    final gameIndex = widget.gameIndexMap[game.gameId] ?? 0;
+
+    return GridChessBoardFromFENNew(
+      key: ValueKey('game_${game.gameId}'),
+      gamesTourModel: game,
+      onChanged:
+          () => ref
+              .read(gameCardWrapperProvider)
+              .navigateToChessBoard(
+                context: context,
+                orderedGames: widget.gamesData.gamesTourModels,
+                gameIndex: gameIndex,
+                onReturnFromChessboard: widget.onReturnFromChessboard,
+              ),
+      pinnedIds: widget.gamesData.pinnedGamedIs,
+      onPinToggle:
+          (_) async => await ref
+              .read(gamesTourScreenProvider.notifier)
+              .togglePinGame(game.gameId),
     );
   }
 
@@ -230,62 +347,5 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
         width: 16.w,
       );
     }
-  }
-}
-
-class GroupEventGameRow extends ConsumerWidget {
-  final GamesTourModel game;
-  final GamesScreenModel gamesData;
-  final int gameIndex;
-  final void Function(int)? onReturnFromChessboard;
-
-  const GroupEventGameRow({
-    super.key,
-    required this.game,
-    required this.gamesData,
-    required this.gameIndex,
-    this.onReturnFromChessboard,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return InkWell(
-      onTap:
-          () => ref
-              .read(gameCardWrapperProvider)
-              .navigateToChessBoard(
-                context: context,
-                orderedGames: gamesData.gamesTourModels,
-                gameIndex: gameIndex,
-                onReturnFromChessboard: onReturnFromChessboard,
-              ),
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 12.sp),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                game.whitePlayer.name,
-                style: AppTypography.textXsMedium.copyWith(color: kBlackColor),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            SizedBox(width: 12.sp),
-            ChessProgressBar(gamesTourModel: game),
-            SizedBox(width: 12.sp),
-            Expanded(
-              child: Text(
-                game.blackPlayer.name,
-                style: AppTypography.textXsMedium.copyWith(color: kBlackColor),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.right,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
