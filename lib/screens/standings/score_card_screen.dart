@@ -20,37 +20,45 @@ final selectedPlayerProvider = StateProvider<PlayerStandingModel?>(
   (ref) => null,
 );
 
-final playerGamesProvider =
-    FutureProvider.family<List<GamesTourModel>, PlayerStandingModel>((
-      ref,
-      player,
-    ) async {
+final playerGamesProvider = FutureProvider.family<
+  List<GamesTourModel>,
+  PlayerStandingModel
+>((ref, player) async {
+  try {
+    final gameRepo = ref.read(gameRepositoryProvider);
+
+    List<dynamic> games = [];
+
+    if (player.fideId != null) {
       try {
-        final gameRepo = ref.read(gameRepositoryProvider);
-
-        List<dynamic> games = [];
-
-        if (player.fideId != null) {
-          try {
-            games = await gameRepo.getGamesByFideId(
-              player.fideId.toString(),
-              limit: 50,
-            );
-          } catch (e) {
-            debugPrint('Error fetching by fideId: $e');
-          }
-        }
-
-        if (games.isEmpty) {
-          games = await gameRepo.getGamesByPlayerName(player.name, limit: 50);
-        }
-
-        return games.map((game) => GamesTourModel.fromGame(game)).toList();
-      } catch (e, stack) {
-        debugPrint('Error: $e');
-        return [];
+        games = await gameRepo.getGamesByFideId(
+          player.fideId.toString(),
+          limit: 50,
+        );
+      } catch (e) {
+        debugPrint('Error fetching by fideId: $e');
       }
+    }
+
+    if (games.isEmpty) {
+      games = await gameRepo.getGamesByPlayerName(player.name, limit: 50);
+    }
+    var allGames = games.map((game) => GamesTourModel.fromGame(game)).toList();
+
+    allGames.sort((a, b) {
+      final aOpponent =
+          a.whitePlayer.name == player.name ? a.blackPlayer : a.whitePlayer;
+      final bOpponent =
+          b.whitePlayer.name == player.name ? b.blackPlayer : b.whitePlayer;
+      return bOpponent.rating.compareTo(aOpponent.rating);
     });
+
+    return allGames;
+  } catch (e, _) {
+    debugPrint('Error: $e');
+    return [];
+  }
+});
 
 class ScoreCardScreen extends ConsumerWidget {
   const ScoreCardScreen({super.key});
@@ -187,18 +195,7 @@ class ScoreCardScreen extends ConsumerWidget {
                   game.whitePlayer.name == player.name ||
                   game.blackPlayer.name == player.name,
             )
-            .toList()
-          ..sort((a, b) {
-            final aOpponent =
-                a.whitePlayer.name == player.name
-                    ? a.blackPlayer
-                    : a.whitePlayer;
-            final bOpponent =
-                b.whitePlayer.name == player.name
-                    ? b.blackPlayer
-                    : b.whitePlayer;
-            return bOpponent.rating.compareTo(aOpponent.rating);
-          });
+            .toList();
 
     final nameParts = player.name.split(',');
     final initials =
@@ -455,9 +452,20 @@ class ScoreCardScreen extends ConsumerWidget {
                             isFirst: index == 0,
                             isLast: index == playerGames.length - 1,
                             onTap: () {
-                              ref
-                                  .read(chessboardViewFromProviderNew.notifier)
-                                  .state = ChessboardView.tour;
+                              if (ref.read(selectedBroadcastModelProvider) ==
+                                  null) {
+                                ref
+                                    .read(
+                                      chessboardViewFromProviderNew.notifier,
+                                    )
+                                    .state = ChessboardView.favScorecard;
+                              } else {
+                                ref
+                                    .read(
+                                      chessboardViewFromProviderNew.notifier,
+                                    )
+                                    .state = ChessboardView.tour;
+                              }
 
                               final gameIndex = allGames.indexWhere(
                                 (g) => g.gameId == game.gameId,

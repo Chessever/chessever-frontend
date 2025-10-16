@@ -268,10 +268,20 @@ class GamesTourScreenProvider
     var games = ref.read(gamesTourProvider(aboutTourModel!.id)).value ?? [];
     var pinnedIds = ref.read(gamesPinprovider(aboutTourModel!.id)).allPins;
     var finishedGames = games.where((g) => g.status != '*').toList();
+
+    final sortedGames = List<Games>.from(finishedGames);
+    sortedGames.sort((a, b) {
+      final aPinned = pinnedIds.contains(a.id);
+      final bPinned = pinnedIds.contains(b.id);
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
+      return 0;
+    });
+
     state = AsyncValue.data(
       GamesScreenModel(
         gamesTourModels:
-            finishedGames.map((g) => GamesTourModel.fromGame(g)).toList(),
+            sortedGames.map((g) => GamesTourModel.fromGame(g)).toList(),
         pinnedGamedIs: pinnedIds,
         isSearchMode: true,
         gameDisplayMode: GameDisplayMode.showfinishedGame,
@@ -283,10 +293,19 @@ class GamesTourScreenProvider
     var games = ref.read(gamesTourProvider(aboutTourModel!.id)).value ?? [];
     var unfinishedGames = games.where((g) => g.status == '*').toList();
     final pinnedIds = ref.read(gamesPinprovider(aboutTourModel!.id)).allPins;
+
+    final sortedGames = List<Games>.from(unfinishedGames);
+    sortedGames.sort((a, b) {
+      final aPinned = pinnedIds.contains(a.id);
+      final bPinned = pinnedIds.contains(b.id);
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
+      return 0;
+    });
     state = AsyncValue.data(
       GamesScreenModel(
         gamesTourModels:
-            unfinishedGames.map((g) => GamesTourModel.fromGame(g)).toList(),
+            sortedGames.map((g) => GamesTourModel.fromGame(g)).toList(),
         pinnedGamedIs: pinnedIds,
         isSearchMode: true,
         gameDisplayMode: GameDisplayMode.hideFinishedGames,
@@ -297,9 +316,19 @@ class GamesTourScreenProvider
   Future<void> showAllGames() async {
     var games = ref.read(gamesTourProvider(aboutTourModel!.id)).value ?? [];
     final pinnedIds = ref.read(gamesPinprovider(aboutTourModel!.id)).allPins;
+
+    final sortedGames = List<Games>.from(games);
+    sortedGames.sort((a, b) {
+      final aPinned = pinnedIds.contains(a.id);
+      final bPinned = pinnedIds.contains(b.id);
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
+      return 0;
+    });
     state = AsyncValue.data(
       GamesScreenModel(
-        gamesTourModels: games.map((g) => GamesTourModel.fromGame(g)).toList(),
+        gamesTourModels:
+            sortedGames.map((g) => GamesTourModel.fromGame(g)).toList(),
         pinnedGamedIs: pinnedIds,
         isSearchMode: true,
         gameDisplayMode: GameDisplayMode.hideFinishedGames,
