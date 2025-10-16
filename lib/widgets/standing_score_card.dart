@@ -175,12 +175,12 @@ class StandingScoreCard extends ConsumerWidget {
                   ),
                 ),
               ),
-            SizedBox(
+            Container(
+              alignment: Alignment.centerRight,
               width: 60.w,
               child: GestureDetector(
                 onTap: onToggleFavorite,
                 child: Container(
-                  alignment: Alignment.center,
                   width: 32.w,
                   height: 49.h,
                   padding: EdgeInsets.all(8.sp),

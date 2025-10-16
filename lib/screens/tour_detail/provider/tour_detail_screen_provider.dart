@@ -14,9 +14,9 @@ final tourDetailScreenProvider = StateNotifierProvider<
   _TourDetailScreenNotifier,
   AsyncValue<TourDetailViewModel>
 >((ref) {
-  final groupBroadcast = ref.watch(selectedBroadcastModelProvider)!;
+  final groupBroadcast = ref.watch(selectedBroadcastModelProvider);
 
-  return _TourDetailScreenNotifier(ref: ref, groupBroadcast: groupBroadcast);
+  return _TourDetailScreenNotifier(ref: ref, groupBroadcast: groupBroadcast!);
 });
 
 class _TourDetailScreenNotifier
