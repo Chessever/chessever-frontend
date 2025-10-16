@@ -5,15 +5,25 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 class GamesPinState {
   final List<String> manualPins;
   final List<String> autoPins;
+  final bool autoPinDisabled;
 
-  const GamesPinState({this.manualPins = const [], this.autoPins = const []});
+  const GamesPinState({
+    this.manualPins = const [],
+    this.autoPins = const [],
+    this.autoPinDisabled = false,
+  });
 
   List<String> get allPins => {...manualPins, ...autoPins}.toList();
 
-  GamesPinState copyWith({List<String>? manualPins, List<String>? autoPins}) {
+  GamesPinState copyWith({
+    List<String>? manualPins,
+    List<String>? autoPins,
+    bool? autoPinDisabled,
+  }) {
     return GamesPinState(
       manualPins: manualPins ?? this.manualPins,
       autoPins: autoPins ?? this.autoPins,
+      autoPinDisabled: autoPinDisabled ?? this.autoPinDisabled,
     );
   }
 }
@@ -39,10 +49,15 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
     final manualPins = await ref
         .read(pinGameLocalStorage)
         .getPinnedGameIds(tourId);
-    final autoPinnedGames =
-        await ref.read(autoPinLogicProvider).getAutoPinnedGames();
+    final autoPinnedGames = await ref
+        .read(autoPinLogicProvider)
+        .getAutoPinnedGames(tourId);
 
-    state = state.copyWith(manualPins: manualPins, autoPins: autoPinnedGames);
+    state = state.copyWith(
+      manualPins: manualPins,
+      autoPins: autoPinnedGames.$2,
+      autoPinDisabled: autoPinnedGames.$1,
+    );
   }
 
   Future<void> togglePin(String gameId) async {
@@ -71,9 +86,23 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
     } catch (e, _) {}
   }
 
+  Future<void> enableAutoPin() async {
+    await ref.read(autoPinLogicProvider).enableAutoPin(tourId);
+    await computeAutoPins();
+  }
+
+  Future<void> disableAutoPin() async {
+    await ref.read(autoPinLogicProvider).disableAutoPin(tourId);
+    await computeAutoPins();
+  }
+
   Future<void> computeAutoPins() async {
-    final autoPinnedGames =
-        await ref.read(autoPinLogicProvider).getAutoPinnedGames();
-    state = state.copyWith(autoPins: autoPinnedGames);
+    final autoPinnedGames = await ref
+        .read(autoPinLogicProvider)
+        .getAutoPinnedGames(tourId);
+    state = state.copyWith(
+      autoPins: autoPinnedGames.$2,
+      autoPinDisabled: autoPinnedGames.$1,
+    );
   }
 }
