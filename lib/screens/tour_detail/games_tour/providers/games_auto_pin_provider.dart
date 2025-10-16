@@ -5,61 +5,94 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:country_code/country_code.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 final autoPinLogicProvider = AutoDisposeProvider<_AutoPinLogController>(
   (ref) => _AutoPinLogController(ref),
 );
+
+const _autoPinFavKey = 'autoPinFavGames';
 
 class _AutoPinLogController {
   _AutoPinLogController(this.ref);
 
   final Ref ref;
 
-  Future<List<String>> getAutoPinnedGames() async {
-    final countryCode = ref.read(countryDropdownProvider).value!.countryCode;
-    final players = await ref.read(tournamentFavoritePlayersProvider.future);
+  String _getTournamentKey(String tourId) => '${_autoPinFavKey}_$tourId';
 
-    final gamesList =
-        ref.watch(gamesTourScreenProvider).value?.gamesTourModels ?? [];
+  Future<(bool, List<String>)> getAutoPinnedGames(String tourId) async {
+    final shouldHidePin = await _getHidePin(tourId);
+    if (shouldHidePin) {
+      return (true, <String>[]);
+    } else {
+      final countryCode = ref.read(countryDropdownProvider).value!.countryCode;
+      final players = await ref.read(tournamentFavoritePlayersProvider.future);
 
-    final filteredGames =
-        gamesList
-            .where((game) {
-              // Use the matcher to compare regardless of ISO format
-              return CountryCodeMatcher.matches(
-                    game.whitePlayer.countryCode,
-                    countryCode,
-                  ) ||
-                  CountryCodeMatcher.matches(
-                    game.blackPlayer.countryCode,
-                    countryCode,
-                  );
-            })
-            .map((e) => e.gameId)
-            .toList();
+      final gamesList =
+          ref.watch(gamesTourScreenProvider).value?.gamesTourModels ?? [];
 
-    final favPlayers =
-        gamesList
-            .where((games) {
-              return players.any(
-                    (player) =>
-                        player.name == games.whitePlayer.name &&
-                        games.whitePlayer.federation == player.countryCode,
-                  ) ||
-                  players.any(
-                    (player) =>
-                        player.name == games.blackPlayer.name &&
-                        games.blackPlayer.federation == player.countryCode,
-                  );
-            })
-            .map((e) => e.gameId)
-            .toList();
+      final filteredGames =
+          gamesList
+              .where((game) {
+                // Use the matcher to compare regardless of ISO format
+                return CountryCodeMatcher.matches(
+                      game.whitePlayer.countryCode,
+                      countryCode,
+                    ) ||
+                    CountryCodeMatcher.matches(
+                      game.blackPlayer.countryCode,
+                      countryCode,
+                    );
+              })
+              .map((e) => e.gameId)
+              .toList();
 
-    if (filteredGames.length == gamesList.length) {
-      return [...favPlayers];
+      final favPlayers =
+          gamesList
+              .where((games) {
+                return players.any(
+                      (player) =>
+                          player.name == games.whitePlayer.name &&
+                          games.whitePlayer.federation == player.countryCode,
+                    ) ||
+                    players.any(
+                      (player) =>
+                          player.name == games.blackPlayer.name &&
+                          games.blackPlayer.federation == player.countryCode,
+                    );
+              })
+              .map((e) => e.gameId)
+              .toList();
+
+      if (filteredGames.length == gamesList.length) {
+        return (false, [...favPlayers]);
+      }
+
+      return (false, [...favPlayers, ...filteredGames]);
     }
+  }
 
-    return [...favPlayers, ...filteredGames];
+  Future<void> enableAutoPin(String tourId) async {
+    await _shouldHidePin(tourId: tourId, shouldHide: false);
+  }
+
+  Future<void> disableAutoPin(String tourId) async {
+    await _shouldHidePin(tourId: tourId, shouldHide: true);
+  }
+
+  Future<void> _shouldHidePin({
+    required String tourId,
+    required bool shouldHide,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = _getTournamentKey(tourId);
+    await prefs.setBool(key, shouldHide);
+  }
+
+  Future<bool> _getHidePin(String tourId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = _getTournamentKey(tourId);
+    return prefs.getBool(key) ?? false;
   }
 }
 

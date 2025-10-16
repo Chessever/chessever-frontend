@@ -191,6 +191,7 @@ class GamesTourScreenProvider
             pinnedGamedIs: pinnedIds,
             isSearchMode: isSearchMode,
             searchQuery: searchQuery,
+            gameDisplayMode: current?.gameDisplayMode ?? GameDisplayMode.all,
           ),
         );
       }
@@ -217,41 +218,63 @@ class GamesTourScreenProvider
 
   Future<void> unpinAllGames() async {
     try {
-      await ref.read(pinGameLocalStorage).clearAllPinnedGames();
-
+      await Future.wait([
+        ref.read(pinGameLocalStorage).clearAllPinnedGames(),
+        ref
+            .read(gamesPinprovider(aboutTourModel!.id).notifier)
+            .disableAutoPin(),
+      ]);
       // Immediate UI update
       await _recompute(pinnedIdsOverride: const <String>[]);
-
-      // Keep providers in sync
-      ref.invalidate(gamesPinprovider);
     } catch (e, st) {
       if (mounted) state = AsyncValue.error(e, st);
     }
   }
 
-  Future<void> toggleFinishedGames(bool showFinishedGame) async {
-    //  final currentValue = ref.read(showFinishedGamesProvider);
-    // ref.read(showFinishedGamesProvider.notifier).state = !currentValue;
+  Future<void> toggleFinishedGames() async {
+    final currentMode = state.valueOrNull?.gameDisplayMode;
 
-    if (showFinishedGame) {
-      // Will be true after toggle
-      print("Showing finished games");
-      await showFinishedGames();
-    } else {
-      // Will be false after toggle
-      print("Hiding finished games");
-      await hideFinishedGames();
+    if (currentMode != null) {
+      if (currentMode == GameDisplayMode.all) {
+        await hideFinishedGames();
+      } else if (currentMode == GameDisplayMode.hideFinishedGames) {
+        await showFinishedGames();
+      } else if (currentMode == GameDisplayMode.showfinishedGame) {
+        await showAllGames();
+      } else {
+        await showAllGames();
+      }
     }
+  }
+
+  String getTitle() {
+    final currentMode = state.valueOrNull?.gameDisplayMode;
+
+    if (currentMode != null) {
+      if (currentMode == GameDisplayMode.all) {
+        return 'Hide Finished Games';
+      } else if (currentMode == GameDisplayMode.hideFinishedGames) {
+        return 'Show Finished Games';
+      } else if (currentMode == GameDisplayMode.showfinishedGame) {
+        return 'Show All Games';
+      } else {
+        return 'Show All Games';
+      }
+    }
+    return 'Show All Games';
   }
 
   Future<void> showFinishedGames() async {
     var games = ref.read(gamesTourProvider(aboutTourModel!.id)).value ?? [];
     var pinnedIds = ref.read(gamesPinprovider(aboutTourModel!.id)).allPins;
+    var finishedGames = games.where((g) => g.status != '*').toList();
     state = AsyncValue.data(
       GamesScreenModel(
-        gamesTourModels: games.map((g) => GamesTourModel.fromGame(g)).toList(),
+        gamesTourModels:
+            finishedGames.map((g) => GamesTourModel.fromGame(g)).toList(),
         pinnedGamedIs: pinnedIds,
         isSearchMode: true,
+        gameDisplayMode: GameDisplayMode.showfinishedGame,
       ),
     );
   }
@@ -266,6 +289,20 @@ class GamesTourScreenProvider
             unfinishedGames.map((g) => GamesTourModel.fromGame(g)).toList(),
         pinnedGamedIs: pinnedIds,
         isSearchMode: true,
+        gameDisplayMode: GameDisplayMode.hideFinishedGames,
+      ),
+    );
+  }
+
+  Future<void> showAllGames() async {
+    var games = ref.read(gamesTourProvider(aboutTourModel!.id)).value ?? [];
+    final pinnedIds = ref.read(gamesPinprovider(aboutTourModel!.id)).allPins;
+    state = AsyncValue.data(
+      GamesScreenModel(
+        gamesTourModels: games.map((g) => GamesTourModel.fromGame(g)).toList(),
+        pinnedGamedIs: pinnedIds,
+        isSearchMode: true,
+        gameDisplayMode: GameDisplayMode.hideFinishedGames,
       ),
     );
   }
@@ -303,6 +340,8 @@ class GamesTourScreenProvider
             pinnedGamedIs: pinnedIds, // show accurate pins in search
             isSearchMode: true,
             searchQuery: query,
+            gameDisplayMode:
+                state.valueOrNull?.gameDisplayMode ?? GameDisplayMode.all,
           ),
         );
       }
