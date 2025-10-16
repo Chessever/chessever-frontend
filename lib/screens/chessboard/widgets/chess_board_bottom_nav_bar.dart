@@ -11,6 +11,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
   final VoidCallback? onRightMove;
   final VoidCallback onFlip;
   final VoidCallback? toggleAnalysisMode;
+  final VoidCallback? toggleEngineVisibility;
   final VoidCallback? onLongPressBackwardStart;
   final VoidCallback? onLongPressBackwardEnd;
   final VoidCallback? onLongPressForwardStart;
@@ -18,6 +19,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
   final bool canMoveForward;
   final bool canMoveBackward;
   final bool isAnalysisMode;
+  final bool showEngineAnalysis;
 
   const ChessBoardBottomNavBar({
     super.key,
@@ -29,6 +31,8 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
     required this.canMoveBackward,
     required this.toggleAnalysisMode,
     required this.isAnalysisMode,
+    required this.showEngineAnalysis,
+    this.toggleEngineVisibility,
     this.onLongPressBackwardStart,
     this.onLongPressBackwardEnd,
     this.onLongPressForwardStart,
@@ -37,7 +41,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final width = MediaQuery.of(context).size.width / 3; // Changed from /4 to /3 since we removed one button
+    final width = MediaQuery.of(context).size.width / 4; // 4 buttons now
     return Container(
       width: MediaQuery.of(context).size.width,
       decoration: const BoxDecoration(color: kBlackColor),
@@ -47,7 +51,13 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              // REMOVED: Computer analysis toggle button - analysis mode is now always enabled
+              // Computer/Engine Analysis Toggle Button
+              ChessSvgBottomNavbar(
+                width: width,
+                svgPath: SvgAsset.laptop,
+                onPressed: toggleEngineVisibility,
+                isActive: showEngineAnalysis,
+              ),
 
               // Flip Board Button
               ChessSvgBottomNavbar(

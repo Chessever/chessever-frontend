@@ -1179,6 +1179,7 @@ class _BottomNavBar extends ConsumerWidget {
     return ChessBoardBottomNavBar(
       gameIndex: index,
       onFlip: () => notifier.flipBoard(),
+      toggleEngineVisibility: () => notifier.toggleEngineVisibility(),
       onRightMove: canMoveForward
           ? () {
               if (state.isAnalysisMode) {
@@ -1204,6 +1205,7 @@ class _BottomNavBar extends ConsumerWidget {
       canMoveForward: canMoveForward,
       canMoveBackward: canMoveBackward,
       isAnalysisMode: state.isAnalysisMode,
+      showEngineAnalysis: state.showEngineAnalysis,
       toggleAnalysisMode: () => notifier.toggleAnalysisMode(),
     );
   }
@@ -1334,7 +1336,7 @@ class _AnalysisGameBody extends ConsumerWidget {
           blackPlayer: true,
           state: state,
         ),
-        if (state.isAnalysisMode) ...[
+        if (state.isAnalysisMode && state.showEngineAnalysis) ...[
           _PrincipalVariationList(index: index, state: state, game: game),
           // DISABLED: Analysis navigation arrows hidden
           // _AnalysisControlsRow(index: index, game: game),
@@ -1539,14 +1541,21 @@ class _BoardWithSidebar extends ConsumerWidget {
           margin: EdgeInsets.symmetric(horizontal: 16.sp),
           child: Row(
             children: [
-              EvaluationBarWidget(
+              SizedBox(
                 width: sideBarWidth,
                 height: boardSize,
-                index: index,
-                isFlipped: state.isBoardFlipped,
-                evaluation: state.evaluation,
-                mate: state.mate ?? 0,
-                isEvaluating: state.isEvaluating,
+                child:
+                    state.showEngineAnalysis
+                        ? EvaluationBarWidget(
+                          width: sideBarWidth,
+                          height: boardSize,
+                          index: index,
+                          isFlipped: state.isBoardFlipped,
+                          evaluation: state.evaluation,
+                          mate: state.mate ?? 0,
+                          isEvaluating: state.isEvaluating,
+                        )
+                        : const SizedBox.shrink(),
               ),
               Stack(
                 children: [
@@ -1782,7 +1791,7 @@ class _AnalysisBoard extends ConsumerWidget {
   }
 }
 
-class _MovesDisplay extends ConsumerWidget {
+class _MovesDisplay extends ConsumerStatefulWidget {
   final int index;
   final ChessBoardStateNew state;
   final GamesTourModel game;
@@ -1796,16 +1805,203 @@ class _MovesDisplay extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    if (state.isLoadingMoves) {
+  ConsumerState<_MovesDisplay> createState() => _MovesDisplayState();
+}
+
+class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
+  final ScrollController _scrollController = ScrollController();
+  final Map<int, GlobalKey> _moveKeys = {};
+  bool _hasInitiallyScrolled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeMoveKeys();
+    _scheduleEnsureInitialScroll();
+  }
+
+  @override
+  void didUpdateWidget(_MovesDisplay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // Reinitialize keys if the number of moves changed
+    final oldSans = oldWidget.state.isAnalysisMode
+        ? oldWidget.state.analysisState.moveSans
+        : oldWidget.state.moveSans;
+    final newSans = widget.state.isAnalysisMode
+        ? widget.state.analysisState.moveSans
+        : widget.state.moveSans;
+
+    if (oldSans.length != newSans.length) {
+      _initializeMoveKeys();
+      _hasInitiallyScrolled = false; // Reset on move list change
+      _scheduleEnsureInitialScroll();
+    }
+
+    // Auto-scroll when current move changes
+    final oldCurrentIndex = oldWidget.state.isAnalysisMode
+        ? oldWidget.state.analysisState.currentMoveIndex
+        : oldWidget.state.currentMoveIndex;
+
+    final newCurrentIndex = widget.state.isAnalysisMode
+        ? widget.state.analysisState.currentMoveIndex
+        : widget.state.currentMoveIndex;
+
+    // Only trigger scroll if on current page and index changed
+    if (widget.index == widget.currentPageIndex && oldCurrentIndex != newCurrentIndex) {
+      // For the very first scroll, use initial scroll logic
+      final isFirstScroll = !_hasInitiallyScrolled;
+
+      debugPrint('🔄 Move index changed: $oldCurrentIndex -> $newCurrentIndex (isFirstScroll: $isFirstScroll, page: ${widget.index}/${widget.currentPageIndex})');
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+
+        if (isFirstScroll) {
+          // First scroll: jump to position without animation, aligned to bottom
+          debugPrint('📍 Initial scroll to move $newCurrentIndex');
+          _scrollToMove(newCurrentIndex, isInitialScroll: true, alignment: 1.0);
+        } else {
+          // Subsequent scrolls: check if out of sight and scroll smoothly if needed
+          debugPrint('🎯 Checking visibility for move $newCurrentIndex');
+          _scrollToMove(newCurrentIndex, isInitialScroll: false, alignment: 0.5);
+        }
+      });
+    } else {
+      debugPrint('⛔ Scroll conditions not met: pageMatch=${widget.index == widget.currentPageIndex}, indexChanged=${oldCurrentIndex != newCurrentIndex} ($oldCurrentIndex vs $newCurrentIndex)');
+    }
+
+    final becameActive =
+        widget.index == widget.currentPageIndex &&
+        oldWidget.currentPageIndex != widget.currentPageIndex;
+    if (becameActive) {
+      _scheduleEnsureInitialScroll();
+    }
+  }
+
+  void _initializeMoveKeys() {
+    final sans = _getSans();
+
+    _moveKeys.clear();
+    for (int i = 0; i < sans.length; i++) {
+      _moveKeys[i] = GlobalKey();
+    }
+  }
+
+  List<String> _getSans() {
+    if (widget.state.isAnalysisMode) {
+      return widget.state.analysisState.moveSans;
+    }
+    return widget.state.moveSans;
+  }
+
+  int? _resolveTargetMoveIndex(int moveCount) {
+    if (moveCount == 0) return null;
+
+    final rawIndex = widget.state.isAnalysisMode
+        ? widget.state.analysisState.currentMoveIndex
+        : widget.state.currentMoveIndex;
+
+    if (rawIndex >= 0 && rawIndex < moveCount) {
+      return rawIndex;
+    }
+
+    if (rawIndex >= moveCount) {
+      return moveCount - 1;
+    }
+
+    // When pointer is before the start, fall back to the last move (latest position)
+    return moveCount - 1;
+  }
+
+  void _scheduleEnsureInitialScroll() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _ensureInitialScroll();
+    });
+  }
+
+  void _ensureInitialScroll() {
+    if (_hasInitiallyScrolled) return;
+    if (widget.index != widget.currentPageIndex) return;
+
+    final sans = _getSans();
+    final targetIndex = _resolveTargetMoveIndex(sans.length);
+    if (targetIndex == null) return;
+
+    _scrollToMove(targetIndex, isInitialScroll: true, alignment: 1.0);
+  }
+
+  bool _scrollToMove(int moveIndex, {bool isInitialScroll = false, double alignment = 0.5}) {
+    if (!_scrollController.hasClients) {
+      if (isInitialScroll) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _scrollToMove(moveIndex, isInitialScroll: true, alignment: alignment);
+        });
+      }
+      return false;
+    }
+    if (moveIndex < 0 || moveIndex >= _moveKeys.length) return false;
+
+    final key = _moveKeys[moveIndex];
+    final context = key?.currentContext;
+    if (context == null) {
+      // Retry after a short delay if context isn't ready
+      if (isInitialScroll) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _scrollToMove(moveIndex, isInitialScroll: true, alignment: alignment);
+        });
+      }
+      return false;
+    }
+
+    try {
+      // For initial scroll, jump without animation so the latest move is visible immediately
+      if (isInitialScroll) {
+        Scrollable.ensureVisible(
+          context,
+          duration: Duration.zero,
+          alignment: alignment,
+        );
+        _hasInitiallyScrolled = true;
+        return true;
+      }
+
+      // For subsequent scrolls, always animate to keep the focused move centered.
+      Scrollable.ensureVisible(
+        context,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeInOut,
+        alignment: alignment,
+      );
+      _hasInitiallyScrolled = true;
+      return true;
+    } catch (e) {
+      debugPrint('Scroll error for move $moveIndex: $e');
+    }
+
+    return false;
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.state.isLoadingMoves) {
       return _buildMovesLoadingSkeleton();
     }
 
     // Select correct state fields based on mode
     final sans =
-        state.isAnalysisMode ? state.analysisState.moveSans : state.moveSans;
+        widget.state.isAnalysisMode ? widget.state.analysisState.moveSans : widget.state.moveSans;
 
-    if (sans.isEmpty && !state.isLoadingMoves) {
+    if (sans.isEmpty && !widget.state.isLoadingMoves) {
       return Container(
         alignment: Alignment.center,
         padding: EdgeInsets.all(20.sp),
@@ -1821,37 +2017,40 @@ class _MovesDisplay extends ConsumerWidget {
 
     // LAZY IMPACT: Each move in the notation list lazily loads its own impact
     // This prevents flooding the Stockfish queue with 100+ positions at once
-    final boardParams = ChessBoardProviderParams(game: game, index: index);
+    final boardParams = ChessBoardProviderParams(game: widget.game, index: widget.index);
 
     // Use mode-aware current index for highlighting
     final modeAwareCurrentIndex =
-        state.isAnalysisMode
-            ? state.analysisState.currentMoveIndex
-            : state.currentMoveIndex;
+        widget.state.isAnalysisMode
+            ? widget.state.analysisState.currentMoveIndex
+            : widget.state.currentMoveIndex;
 
-    return Container(
-      alignment: Alignment.centerLeft,
-      padding: EdgeInsets.all(20.sp),
-      child: Wrap(
-        spacing: 2.sp,
-        runSpacing: 2.sp,
-        children:
-            sans.asMap().entries.map((entry) {
-              final moveIndex = entry.key;
-              final move = entry.value;
+    return SingleChildScrollView(
+      controller: _scrollController,
+      child: Container(
+        alignment: Alignment.centerLeft,
+        padding: EdgeInsets.all(20.sp),
+        child: Wrap(
+          spacing: 2.sp,
+          runSpacing: 2.sp,
+          children:
+              sans.asMap().entries.map((entry) {
+                final moveIndex = entry.key;
+                final move = entry.value;
 
-              // Extract to separate widget with key to prevent layout shift
-              return _MoveNotationWidget(
-                key: ValueKey('move_${game.gameId}_$moveIndex'),
-                game: game,
-                index: index,
-                currentPageIndex: currentPageIndex,
-                moveIndex: moveIndex,
-                move: move,
-                modeAwareCurrentIndex: modeAwareCurrentIndex,
-                boardParams: boardParams,
-              );
-            }).toList(),
+                // Extract to separate widget with key to prevent layout shift
+                return _MoveNotationWidget(
+                  key: _moveKeys[moveIndex] ?? ValueKey('move_${widget.game.gameId}_$moveIndex'),
+                  game: widget.game,
+                  index: widget.index,
+                  currentPageIndex: widget.currentPageIndex,
+                  moveIndex: moveIndex,
+                  move: move,
+                  modeAwareCurrentIndex: modeAwareCurrentIndex,
+                  boardParams: boardParams,
+                );
+              }).toList(),
+        ),
       ),
     );
   }
