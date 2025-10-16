@@ -5,6 +5,7 @@ import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provid
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/round_drop_down.dart';
@@ -151,30 +152,18 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
     }
   }
 
-  void _handleMenuAction(MenuAction action) {
-    switch (action) {
-      case MenuAction.unpinAll:
-        ref.read(gamesTourScreenProvider.notifier).unpinAllGames();
-        break;
-      case MenuAction.showHideFinishedGames:
-        ref
-            .read(gamesTourScreenProvider.notifier)
-            .toggleFinishedGames(!showFinishedGames);
-        setState(() {
-          showFinishedGames = !showFinishedGames;
-        });
-        break;
-    }
-  }
-
-  bool showFinishedGames = true;
   @override
   Widget build(BuildContext context) {
     final tourDetailAsync = ref.watch(tourDetailScreenProvider);
-    //final showFinishedGames = ref.watch(showFinishedGamesProvider);
     return tourDetailAsync.when(
       data: (tourData) {
         final hasTours = tourData.tours.isNotEmpty;
+        final disableAutoPin =
+            ref
+                .watch(gamesPinprovider(tourData.aboutTourModel.id))
+                .autoPinDisabled;
+
+        final gamesTourScreen = ref.watch(gamesTourScreenProvider.notifier);
 
         return GestureDetector(
           behavior: HitTestBehavior.translucent,
@@ -287,9 +276,12 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
                                         child: InkWell(
                                           onTap: () {
                                             Navigator.pop(context);
-                                            _handleMenuAction(
-                                              MenuAction.unpinAll,
-                                            );
+                                            ref
+                                                .read(
+                                                  gamesTourScreenProvider
+                                                      .notifier,
+                                                )
+                                                .unpinAllGames();
                                           },
                                           child: SizedBox(
                                             width: 200,
@@ -321,14 +313,65 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
                                         thickness: 0.5.w,
                                         color: kDividerColor,
                                       ),
+                                      if (disableAutoPin) ...[
+                                        PopupMenuItem<MenuAction>(
+                                          value: MenuAction.unpinAll,
+                                          child: InkWell(
+                                            onTap: () async {
+                                              Navigator.pop(context);
+                                              await ref
+                                                  .read(
+                                                    gamesPinprovider(
+                                                      tourData
+                                                          .aboutTourModel
+                                                          .id,
+                                                    ).notifier,
+                                                  )
+                                                  .enableAutoPin();
+                                            },
+                                            child: SizedBox(
+                                              width: 200,
+                                              child: Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment
+                                                        .spaceBetween,
+                                                children: [
+                                                  Text(
+                                                    "Enable Auto Pin",
+                                                    style: AppTypography
+                                                        .textXsMedium
+                                                        .copyWith(
+                                                          color: kWhiteColor,
+                                                        ),
+                                                  ),
+                                                  SvgPicture.asset(
+                                                    SvgAsset.pin,
+                                                    height: 13.h,
+                                                    width: 13.w,
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        PopupMenuDivider(
+                                          height: 1.h,
+                                          thickness: 0.5.w,
+                                          color: kDividerColor,
+                                        ),
+                                      ],
+
                                       PopupMenuItem<MenuAction>(
                                         value: MenuAction.showHideFinishedGames,
                                         child: InkWell(
-                                          onTap: () {
+                                          onTap: () async {
                                             Navigator.pop(context);
-                                            _handleMenuAction(
-                                              MenuAction.showHideFinishedGames,
-                                            );
+                                            await ref
+                                                .read(
+                                                  gamesTourScreenProvider
+                                                      .notifier,
+                                                )
+                                                .toggleFinishedGames();
                                           },
                                           child: SizedBox(
                                             width: 200,
@@ -338,9 +381,7 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
                                                       .spaceBetween,
                                               children: [
                                                 Text(
-                                                  showFinishedGames
-                                                      ? "Hide finished games"
-                                                      : "Show finished games",
+                                                  gamesTourScreen.getTitle(),
                                                   style: AppTypography
                                                       .textXsMedium
                                                       .copyWith(

@@ -1,10 +1,13 @@
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:dartchess/dartchess.dart';
 
+enum GameDisplayMode { all, hideFinishedGames, showfinishedGame }
+
 class GamesScreenModel {
   GamesScreenModel({
     required this.gamesTourModels,
     required this.pinnedGamedIs,
+    this.gameDisplayMode = GameDisplayMode.all,
     this.isSearchMode = false,
     this.searchQuery,
   });
@@ -13,18 +16,21 @@ class GamesScreenModel {
   final List<String> pinnedGamedIs;
   final bool isSearchMode;
   final String? searchQuery;
+  final GameDisplayMode gameDisplayMode;
 
   GamesScreenModel copyWith({
     List<GamesTourModel>? gamesTourModels,
     List<String>? pinnedGamedIs,
     bool? isSearchMode,
     String? searchQuery,
+    final GameDisplayMode? gameDisplayMode,
   }) {
     return GamesScreenModel(
       gamesTourModels: gamesTourModels ?? this.gamesTourModels,
       pinnedGamedIs: pinnedGamedIs ?? this.pinnedGamedIs,
       isSearchMode: isSearchMode ?? this.isSearchMode,
       searchQuery: searchQuery ?? this.searchQuery,
+      gameDisplayMode: gameDisplayMode ?? this.gameDisplayMode,
     );
   }
 
