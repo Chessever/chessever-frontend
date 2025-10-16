@@ -383,6 +383,9 @@ class _PlayerClock extends StatelessWidget {
             : gamesTourModel.blackClockCentiseconds;
 
     return AtomicCountdownText(
+      // CRITICAL FIX: Add key to force widget rebuild when lastMoveTime changes
+      // This ensures the dateTimeProvider selector captures the NEW lastMoveTime
+      key: ValueKey(gamesTourModel.lastMoveTime?.millisecondsSinceEpoch ?? 0),
       moveTime:
           moveTime, // Primary for past moves: PGN-parsed move times (more accurate for historical display)
       clockSeconds:

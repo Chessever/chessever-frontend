@@ -92,251 +92,34 @@ class ChessBoardScreenNotifierNew
 
   void _setupPgnStreamListener() {
     // Only listen to game updates stream if the game is ongoing
+    debugPrint('🔧 STREAM SETUP: game ${game.gameId}, index: $index, status: ${game.gameStatus}');
+
     if (game.gameStatus == GameStatus.ongoing) {
+      debugPrint('✅ LISTENER ACTIVE for game ${game.gameId}');
       ref.listen(gameUpdatesStreamProvider(game.gameId), (previous, next) {
+        debugPrint('📡 STREAM EVENT for game ${game.gameId}');
+
         next.whenData((gameData) {
+          debugPrint('📦 DATA: game ${game.gameId}, pgn_len=${gameData?['pgn']?.toString().length}, white_clock=${gameData?['last_clock_white']}, black_clock=${gameData?['last_clock_black']}');
+
           if (gameData != null) {
-            final currentState = state.value;
-
-            // CRITICAL: Check if this game board is currently visible
-            // This prevents off-screen games from playing audio or resetting positions
-            final currentVisibleIndex = ref.read(
-              currentlyVisiblePageIndexProvider,
-            );
-            final isCurrentlyVisible = currentVisibleIndex == index;
-
-            debugPrint(
-              '===== GAME UPDATE: Game ${game.gameId} (index $index), visible: $isCurrentlyVisible, analysisMode: ${currentState?.isAnalysisMode} =====',
-            );
-
-            // CRITICAL: Handle analysis mode updates properly
-            if (currentState?.isAnalysisMode == true && currentState != null) {
-              // Check if user is at the latest position
-              final isAtLatestPosition =
-                  currentState.analysisState.currentMoveIndex >=
-                  currentState.allMoves.length - 1;
-
-              // Check if new moves were added
-              final newPgn = gameData['pgn'] as String? ?? game.pgn;
-              final hasNewMoves =
-                  newPgn != game.pgn && (newPgn?.isNotEmpty ?? false);
-
-              if (isAtLatestPosition && hasNewMoves && isCurrentlyVisible) {
-                // User is at the latest position and new moves arrived - update live
-                game = game.copyWith(
-                  pgn: newPgn,
-                  fen: gameData['fen'] as String? ?? game.fen,
-                  lastMove: gameData['last_move'] as String? ?? game.lastMove,
-                  lastMoveTime:
-                      gameData['last_move_time'] != null
-                          ? DateTime.tryParse(
-                            gameData['last_move_time'] as String,
-                          )
-                          : game.lastMoveTime,
-                  whiteClockSeconds:
-                      (gameData['last_clock_white'] as num?)?.round(),
-                  blackClockSeconds:
-                      (gameData['last_clock_black'] as num?)?.round(),
-                  gameStatus: _parseGameStatus(
-                    gameData['status'] as String? ?? '*',
-                  ),
-                );
-
-                // Reparse to include new moves
-                _hasParsedMoves = false;
-                parseMoves();
-                debugPrint(
-                  "Live game updated in analysis mode - new moves added",
-                );
-                return;
-              } else {
-                // User is viewing past position or no new moves - only update game data
-                game = game.copyWith(
-                  pgn: newPgn,
-                  fen: gameData['fen'] as String? ?? game.fen,
-                  lastMove: gameData['last_move'] as String? ?? game.lastMove,
-                  lastMoveTime:
-                      gameData['last_move_time'] != null
-                          ? DateTime.tryParse(
-                            gameData['last_move_time'] as String,
-                          )
-                          : game.lastMoveTime,
-                  whiteClockSeconds:
-                      (gameData['last_clock_white'] as num?)?.round(),
-                  blackClockSeconds:
-                      (gameData['last_clock_black'] as num?)?.round(),
-                  gameStatus: _parseGameStatus(
-                    gameData['status'] as String? ?? '*',
-                  ),
-                );
-
-                // Update only the game reference in state, preserve analysis position
-                state = AsyncValue.data(currentState.copyWith(game: game));
-                debugPrint(
-                  "Game data updated but preserving analysis position",
-                );
-                return;
-              }
-            }
-
-            // CRITICAL: In normal mode, check if user is viewing a past position
-            // Don't auto-update if they've navigated away from the latest move
-            if (currentState != null &&
-                !currentState.isLoadingMoves &&
-                currentState.currentMoveIndex <
-                    currentState.allMoves.length - 1) {
-              // User is viewing a past position, only update game data
-              game = game.copyWith(
-                pgn: gameData['pgn'] as String? ?? game.pgn,
-                fen: gameData['fen'] as String? ?? game.fen,
-                lastMove: gameData['last_move'] as String? ?? game.lastMove,
-                lastMoveTime:
-                    gameData['last_move_time'] != null
-                        ? DateTime.tryParse(
-                          gameData['last_move_time'] as String,
-                        )
-                        : game.lastMoveTime,
-                whiteClockSeconds:
-                    (gameData['last_clock_white'] as num?)?.round(),
-                blackClockSeconds:
-                    (gameData['last_clock_black'] as num?)?.round(),
-                gameStatus: _parseGameStatus(
-                  gameData['status'] as String? ?? '*',
-                ),
-              );
-
-              state = AsyncValue.data(currentState.copyWith(game: game));
-              debugPrint(
-                "Game data updated but preserving user's current position",
-              );
-              return;
-            }
-
-            // CRITICAL: If this game is not currently visible, update game data silently
-            // without triggering position changes that would cause audio to play
-            if (!isCurrentlyVisible) {
-              game = game.copyWith(
-                pgn: gameData['pgn'] as String? ?? game.pgn,
-                fen: gameData['fen'] as String? ?? game.fen,
-                lastMove: gameData['last_move'] as String? ?? game.lastMove,
-                lastMoveTime:
-                    gameData['last_move_time'] != null
-                        ? DateTime.tryParse(
-                          gameData['last_move_time'] as String,
-                        )
-                        : game.lastMoveTime,
-                whiteClockSeconds:
-                    (gameData['last_clock_white'] as num?)?.round(),
-                blackClockSeconds:
-                    (gameData['last_clock_black'] as num?)?.round(),
-                gameStatus: _parseGameStatus(
-                  gameData['status'] as String? ?? '*',
-                ),
-              );
-
-              // Mark that moves need to be re-parsed when user switches to this game
-              _hasParsedMoves = false;
-
-              // Update only game data, don't trigger position updates
-              if (currentState != null) {
-                state = AsyncValue.data(currentState.copyWith(game: game));
-              }
-
-              debugPrint(
-                "Off-screen game ${game.gameId} updated silently (index: $index, visible: $currentVisibleIndex)",
-              );
-              return;
-            }
-
-            bool needsReparse = false;
-            bool needsEvaluation = false;
-
-            // Check if PGN changed
-            final newPgn = gameData['pgn'] as String?;
-            if (newPgn != null && newPgn != game.pgn) {
-              needsReparse = true;
-            }
-
-            // Check if position changed (FEN or last_move) for evaluation updates
-            final newFen = gameData['fen'] as String? ?? game.fen;
-            final newLastMove =
-                gameData['last_move'] as String? ?? game.lastMove;
-            if (newFen != game.fen || newLastMove != game.lastMove) {
-              needsEvaluation = true;
-            }
-
-            // Create updated game model with all live data
+            // Update game data with stream values
             game = game.copyWith(
-              pgn: newPgn ?? game.pgn,
-              fen: newFen,
-              lastMove: newLastMove,
+              pgn: gameData['pgn'] as String? ?? game.pgn,
+              fen: gameData['fen'] as String? ?? game.fen,
+              lastMove: gameData['last_move'] as String? ?? game.lastMove,
               lastMoveTime:
                   gameData['last_move_time'] != null
                       ? DateTime.tryParse(gameData['last_move_time'] as String)
                       : game.lastMoveTime,
-              whiteClockSeconds:
-                  (gameData['last_clock_white'] as num?)?.round(),
-              blackClockSeconds:
-                  (gameData['last_clock_black'] as num?)?.round(),
-              gameStatus: _parseGameStatus(
-                gameData['status'] as String? ?? '*',
-              ),
+              whiteClockSeconds: (gameData['last_clock_white'] as num?)?.round(),
+              blackClockSeconds: (gameData['last_clock_black'] as num?)?.round(),
+              gameStatus: _parseGameStatus(gameData['status'] as String? ?? '*'),
             );
 
-            // CRITICAL: Only reparse if this is the currently visible game
-            // This prevents off-screen games from triggering full position updates
-            if (needsReparse && isCurrentlyVisible) {
-              _hasParsedMoves = false;
-              parseMoves();
-              debugPrint("-----Game updated with new PGN and clock data");
-            } else if (needsReparse && !isCurrentlyVisible) {
-              // Off-screen game with new PGN - mark for reparse but don't execute yet
-              _hasParsedMoves = false;
-              game = game.copyWith(pgn: newPgn ?? game.pgn);
-              if (currentState != null) {
-                state = AsyncValue.data(currentState.copyWith(game: game));
-              }
-              debugPrint(
-                "Off-screen game ${game.gameId} PGN updated, will reparse when visible",
-              );
-            } else {
-              // Update the current state with new clock/position data
-              if (currentState != null) {
-                // Parse the last move for proper board highlighting
-                Move? parsedLastMove;
-                if (newLastMove != null &&
-                    newLastMove.isNotEmpty &&
-                    newLastMove.length >= 4) {
-                  try {
-                    // Convert UCI move to Move object
-                    final from = Square.fromName(newLastMove.substring(0, 2));
-                    final to = Square.fromName(newLastMove.substring(2, 4));
-                    parsedLastMove = NormalMove(from: from, to: to);
-                  } catch (e) {
-                    debugPrint(
-                      'Failed to parse last move: $newLastMove, error: $e',
-                    );
-                  }
-                }
-
-                state = AsyncValue.data(
-                  currentState.copyWith(
-                    game: game, // Updated game with new clock/position data
-                    fenData: newFen, // Update FEN data for board display
-                    lastMove:
-                        parsedLastMove, // Update last move for highlighting
-                  ),
-                );
-
-                // CRITICAL: Only trigger evaluation if this game is visible
-                if (needsEvaluation && isCurrentlyVisible) {
-                  debugPrint(
-                    "-----Position changed, triggering evaluation update for FEN: $newFen",
-                  );
-                  _updateEvaluation();
-                }
-              }
-            }
+            // Reparse moves to show updated position
+            _hasParsedMoves = false;
+            parseMoves();
           }
         });
       });
@@ -360,10 +143,8 @@ class ChessBoardScreenNotifierNew
   }
 
   Future<void> parseMoves() async {
-    if (state.value?.isAnalysisMode == true && _hasParsedMoves) {
-      return;
-    }
-    if (_hasParsedMoves && state.value?.isAnalysisMode != true) return;
+    // Don't reparse if already parsing or already parsed
+    if (_hasParsedMoves) return;
     _hasParsedMoves = true;
 
     final currentState = state.value;
