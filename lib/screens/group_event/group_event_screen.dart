@@ -215,20 +215,19 @@ class GroupEventScreen extends HookConsumerWidget {
 
                 // Only load data for the currently selected tab
                 if (currentCategory != selectedTourEvent) {
-                  return const Center(
-                    child:
-                        SizedBox.shrink(), // Return empty widget for non-active tabs
-                  );
+                  return const SizedBox.shrink();
                 }
-
-                final isLoadingMore =
-                    isPast &&
-                    ref.read(groupEventScreenProvider.notifier).isFetchingMore;
 
                 return ref
                     .watch(groupEventScreenProvider)
                     .when(
                       data: (filteredEvents) {
+                        final isLoadingMore =
+                            isPast &&
+                            ref
+                                .read(groupEventScreenProvider.notifier)
+                                .isFetchingMore;
+
                         // Combine old starred favorites with new unified favorites
                         final starredFavorites = ref.watch(
                           starredProvider(selectedTourEvent.name),

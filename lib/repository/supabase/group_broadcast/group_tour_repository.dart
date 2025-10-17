@@ -147,6 +147,19 @@ class GroupBroadcastRepository extends BaseRepository {
     });
   }
 
+  Future<GroupBroadcast> getPastGroupBroadcastById(String id) async {
+    return handleApiCall(() async {
+      final response =
+          await supabase
+              .from('group_broadcasts_past')
+              .select()
+              .eq('id', id)
+              .single();
+
+      return GroupBroadcast.fromJson(response);
+    });
+  }
+
   Future<List<GroupBroadcast>> searchGroupBroadcastsFromSupabase(
     String query,
   ) async {

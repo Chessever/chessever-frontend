@@ -4,6 +4,7 @@ import 'package:chessever2/repository/local_storage/local_storage_repository.dar
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
+import 'package:chessever2/widgets/event_card/starred_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final groupBroadcastLocalStorage = Provider.family<
@@ -58,9 +59,10 @@ class GroupBroadcastLocalStorage {
                   .getCurrentGroupBroadcasts();
           break;
         case GroupEventCategory.past:
-          broadcasts = await ref
+          final events = await ref
               .read(groupBroadcastRepositoryProvider)
               .getPastGroupBroadcasts(limit: 50);
+          broadcasts = await _ensureStarredEventsIncluded(events);
           break;
       }
 
@@ -97,6 +99,43 @@ class GroupBroadcastLocalStorage {
       await fetchAndSaveGroupBroadcasts();
       return getGroupBroadcasts();
     }
+  }
+
+  Future<List<GroupBroadcast>> _ensureStarredEventsIncluded(
+    List<GroupBroadcast> tours,
+  ) async {
+    // Get starred event IDs
+    final starredIds = ref.read(starredProvider(localStorageName));
+
+    final allStarredIds = <String>{...starredIds};
+
+    if (allStarredIds.isEmpty) return tours;
+
+    // Find starred events that might not be in current tour list
+    final currentIds = tours.map((t) => t.id).toSet();
+    final missingStarredIds = allStarredIds.where(
+      (id) => !currentIds.contains(id),
+    );
+
+    if (missingStarredIds.isEmpty) return tours;
+
+    // Fetch missing starred events
+    final missingStarredEvents = <GroupBroadcast>[];
+    for (final id in missingStarredIds) {
+      try {
+        final event = await ref
+            .read(groupBroadcastRepositoryProvider)
+            .getPastGroupBroadcastById(id);
+        missingStarredEvents.add(event);
+      } catch (e) {
+        continue;
+      }
+    }
+
+    return [
+      ...missingStarredEvents.where((e) => !currentIds.contains(e.id)),
+      ...tours,
+    ];
   }
 
   Future<List<GroupBroadcast>> getGroupBroadcasts() async {
