@@ -1541,21 +1541,10 @@ class ChessBoardScreenNotifierNew
       );
     }
 
-    // Always ensure we have exactly 3 lines for consistent UI display
-    while (lines.length < 3 && lines.isNotEmpty) {
-      // Add placeholder lines that will display as "No alternative found"
-      lines.add(
-        AnalysisLine(
-          moves: const [],
-          sanMoves: const ['No alternative'],
-          evaluation: lines.first.evaluation, // Use same eval as first line
-          mate: lines.first.mate,
-        ),
-      );
-    }
-
+    // Return actual variations without padding
+    // UI will handle displaying 1-3 PV cards dynamically
     debugPrint(
-      '🎯 BUILD PV: Padded to ${lines.length} lines for consistent display',
+      '✅ BUILD PV: Returning ${lines.length} principal variations (no padding)',
     );
 
     return lines;
@@ -2003,7 +1992,7 @@ class ChessBoardScreenNotifierNew
           );
           pvLines = await _buildPrincipalVariations(fen, cascadeEval.pvs);
           debugPrint(
-            '🎯 EVAL: CASCADE SUCCESS - returned ${pvLines.length} variants, eval=$evaluation',
+            '🎯 EVAL: CASCADE SUCCESS - returned ${pvLines.length} variants from ${cascadeEval.pvs.length} cloud PVs, eval=$evaluation',
           );
         } else {
           debugPrint('🎯 EVAL: Cascade returned empty PVs');
@@ -2012,11 +2001,18 @@ class ChessBoardScreenNotifierNew
         debugPrint('🎯 EVAL ERROR: Cascade failed for $fen: $e');
       }
 
-      // FALLBACK: Use Stockfish local engine only if cloud sources failed
-      if (evaluation == null || pvLines.isEmpty) {
+      // SUPPLEMENT/FALLBACK: Use Stockfish if cloud sources returned < 3 PVs
+      // Cloud sources (Lichess multiPv=3) should usually return 3 PVs, but might return fewer for:
+      // - Uncommon positions not yet fully analyzed
+      // - Positions with forced mates (only one line matters)
+      // - API rate limiting or temporary unavailability
+      if (evaluation == null || pvLines.length < 3) {
+        final needsEval = evaluation == null;
+        final needsMorePvs = pvLines.length < 3;
+
         try {
           debugPrint(
-            '🎯 EVAL: Cloud sources unavailable, falling back to Stockfish...',
+            '🎯 EVAL: Need ${needsEval ? "eval + " : ""}${needsMorePvs ? "more PVs (have ${pvLines.length}/3)" : ""}, running Stockfish...',
           );
           final localEval = await StockfishSingleton().evaluatePosition(
             fen,
@@ -2027,28 +2023,58 @@ class ChessBoardScreenNotifierNew
           );
 
           if (!localEval.isCancelled && localEval.pvs.isNotEmpty) {
-            primaryEval = CloudEval(
-              fen: fen,
-              knodes: localEval.knodes,
-              depth: localEval.depth,
-              pvs: localEval.pvs,
-            );
-            evaluation = _getConsistentEvaluation(
-              localEval.pvs.first.cp / 100.0,
-              fen,
-            );
+            // Use Stockfish eval if we don't have one from cloud
+            if (needsEval) {
+              primaryEval = CloudEval(
+                fen: fen,
+                knodes: localEval.knodes,
+                depth: localEval.depth,
+                pvs: localEval.pvs,
+              );
+              evaluation = _getConsistentEvaluation(
+                localEval.pvs.first.cp / 100.0,
+                fen,
+              );
+            }
+
+            // Build PVs from Stockfish
             debugPrint(
-              '🎯 EVAL: Building principal variations from Stockfish...',
+              '🎯 EVAL: Building principal variations from Stockfish MultiPV...',
             );
-            pvLines = await _buildPrincipalVariations(fen, localEval.pvs);
-            debugPrint(
-              '🎯 EVAL: STOCKFISH FALLBACK SUCCESS - returned ${pvLines.length} variants, eval=$evaluation',
-            );
+            final stockfishPvLines = await _buildPrincipalVariations(fen, localEval.pvs);
+
+            // Merge: Keep cloud PVs first, then add unique Stockfish PVs
+            if (needsMorePvs && pvLines.isNotEmpty) {
+              final merged = <AnalysisLine>[...pvLines];
+              final existingFirstMoves = pvLines.map((line) =>
+                line.sanMoves.isNotEmpty ? line.sanMoves.first : ''
+              ).toSet();
+
+              for (final sfLine in stockfishPvLines) {
+                if (merged.length >= 3) break;
+                final firstMove = sfLine.sanMoves.isNotEmpty ? sfLine.sanMoves.first : '';
+                // Add if it's a different first move (different principal variation)
+                if (!existingFirstMoves.contains(firstMove)) {
+                  merged.add(sfLine);
+                  existingFirstMoves.add(firstMove);
+                }
+              }
+              pvLines = merged;
+              debugPrint(
+                '🎯 EVAL: MERGED - ${pvLines.length} variants (cloud + Stockfish)',
+              );
+            } else {
+              // No cloud PVs, use all Stockfish PVs
+              pvLines = stockfishPvLines;
+              debugPrint(
+                '🎯 EVAL: STOCKFISH ONLY - returned ${pvLines.length} variants, eval=$evaluation',
+              );
+            }
           } else {
             debugPrint('🎯 EVAL: Stockfish returned cancelled or empty result');
           }
         } catch (e, stack) {
-          debugPrint('🎯 EVAL ERROR: Stockfish fallback failed for $fen: $e');
+          debugPrint('🎯 EVAL ERROR: Stockfish supplement failed for $fen: $e');
           debugPrint('Stack: $stack');
         }
       }
