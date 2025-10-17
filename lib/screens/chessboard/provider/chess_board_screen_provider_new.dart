@@ -92,251 +92,40 @@ class ChessBoardScreenNotifierNew
 
   void _setupPgnStreamListener() {
     // Only listen to game updates stream if the game is ongoing
+    debugPrint('🔧 STREAM SETUP: game ${game.gameId}, index: $index, status: ${game.gameStatus}');
+
     if (game.gameStatus == GameStatus.ongoing) {
+      debugPrint('✅ LISTENER ACTIVE for game ${game.gameId}');
       ref.listen(gameUpdatesStreamProvider(game.gameId), (previous, next) {
+        debugPrint('📡 STREAM EVENT for game ${game.gameId}');
+
         next.whenData((gameData) {
+          debugPrint('📦 DATA: game ${game.gameId}, pgn_len=${gameData?['pgn']?.toString().length}, white_clock=${gameData?['last_clock_white']}, black_clock=${gameData?['last_clock_black']}');
+
           if (gameData != null) {
             final currentState = state.value;
+            if (currentState == null) return;
 
-            // CRITICAL: Check if this game board is currently visible
-            // This prevents off-screen games from playing audio or resetting positions
-            final currentVisibleIndex = ref.read(
-              currentlyVisiblePageIndexProvider,
-            );
-            final isCurrentlyVisible = currentVisibleIndex == index;
-
-            debugPrint(
-              '===== GAME UPDATE: Game ${game.gameId} (index $index), visible: $isCurrentlyVisible, analysisMode: ${currentState?.isAnalysisMode} =====',
-            );
-
-            // CRITICAL: Handle analysis mode updates properly
-            if (currentState?.isAnalysisMode == true && currentState != null) {
-              // Check if user is at the latest position
-              final isAtLatestPosition =
-                  currentState.analysisState.currentMoveIndex >=
-                  currentState.allMoves.length - 1;
-
-              // Check if new moves were added
-              final newPgn = gameData['pgn'] as String? ?? game.pgn;
-              final hasNewMoves =
-                  newPgn != game.pgn && (newPgn?.isNotEmpty ?? false);
-
-              if (isAtLatestPosition && hasNewMoves && isCurrentlyVisible) {
-                // User is at the latest position and new moves arrived - update live
-                game = game.copyWith(
-                  pgn: newPgn,
-                  fen: gameData['fen'] as String? ?? game.fen,
-                  lastMove: gameData['last_move'] as String? ?? game.lastMove,
-                  lastMoveTime:
-                      gameData['last_move_time'] != null
-                          ? DateTime.tryParse(
-                            gameData['last_move_time'] as String,
-                          )
-                          : game.lastMoveTime,
-                  whiteClockSeconds:
-                      (gameData['last_clock_white'] as num?)?.round(),
-                  blackClockSeconds:
-                      (gameData['last_clock_black'] as num?)?.round(),
-                  gameStatus: _parseGameStatus(
-                    gameData['status'] as String? ?? '*',
-                  ),
-                );
-
-                // Reparse to include new moves
-                _hasParsedMoves = false;
-                parseMoves();
-                debugPrint(
-                  "Live game updated in analysis mode - new moves added",
-                );
-                return;
-              } else {
-                // User is viewing past position or no new moves - only update game data
-                game = game.copyWith(
-                  pgn: newPgn,
-                  fen: gameData['fen'] as String? ?? game.fen,
-                  lastMove: gameData['last_move'] as String? ?? game.lastMove,
-                  lastMoveTime:
-                      gameData['last_move_time'] != null
-                          ? DateTime.tryParse(
-                            gameData['last_move_time'] as String,
-                          )
-                          : game.lastMoveTime,
-                  whiteClockSeconds:
-                      (gameData['last_clock_white'] as num?)?.round(),
-                  blackClockSeconds:
-                      (gameData['last_clock_black'] as num?)?.round(),
-                  gameStatus: _parseGameStatus(
-                    gameData['status'] as String? ?? '*',
-                  ),
-                );
-
-                // Update only the game reference in state, preserve analysis position
-                state = AsyncValue.data(currentState.copyWith(game: game));
-                debugPrint(
-                  "Game data updated but preserving analysis position",
-                );
-                return;
-              }
-            }
-
-            // CRITICAL: In normal mode, check if user is viewing a past position
-            // Don't auto-update if they've navigated away from the latest move
-            if (currentState != null &&
-                !currentState.isLoadingMoves &&
-                currentState.currentMoveIndex <
-                    currentState.allMoves.length - 1) {
-              // User is viewing a past position, only update game data
-              game = game.copyWith(
-                pgn: gameData['pgn'] as String? ?? game.pgn,
-                fen: gameData['fen'] as String? ?? game.fen,
-                lastMove: gameData['last_move'] as String? ?? game.lastMove,
-                lastMoveTime:
-                    gameData['last_move_time'] != null
-                        ? DateTime.tryParse(
-                          gameData['last_move_time'] as String,
-                        )
-                        : game.lastMoveTime,
-                whiteClockSeconds:
-                    (gameData['last_clock_white'] as num?)?.round(),
-                blackClockSeconds:
-                    (gameData['last_clock_black'] as num?)?.round(),
-                gameStatus: _parseGameStatus(
-                  gameData['status'] as String? ?? '*',
-                ),
-              );
-
-              state = AsyncValue.data(currentState.copyWith(game: game));
-              debugPrint(
-                "Game data updated but preserving user's current position",
-              );
-              return;
-            }
-
-            // CRITICAL: If this game is not currently visible, update game data silently
-            // without triggering position changes that would cause audio to play
-            if (!isCurrentlyVisible) {
-              game = game.copyWith(
-                pgn: gameData['pgn'] as String? ?? game.pgn,
-                fen: gameData['fen'] as String? ?? game.fen,
-                lastMove: gameData['last_move'] as String? ?? game.lastMove,
-                lastMoveTime:
-                    gameData['last_move_time'] != null
-                        ? DateTime.tryParse(
-                          gameData['last_move_time'] as String,
-                        )
-                        : game.lastMoveTime,
-                whiteClockSeconds:
-                    (gameData['last_clock_white'] as num?)?.round(),
-                blackClockSeconds:
-                    (gameData['last_clock_black'] as num?)?.round(),
-                gameStatus: _parseGameStatus(
-                  gameData['status'] as String? ?? '*',
-                ),
-              );
-
-              // Mark that moves need to be re-parsed when user switches to this game
-              _hasParsedMoves = false;
-
-              // Update only game data, don't trigger position updates
-              if (currentState != null) {
-                state = AsyncValue.data(currentState.copyWith(game: game));
-              }
-
-              debugPrint(
-                "Off-screen game ${game.gameId} updated silently (index: $index, visible: $currentVisibleIndex)",
-              );
-              return;
-            }
-
-            bool needsReparse = false;
-            bool needsEvaluation = false;
-
-            // Check if PGN changed
-            final newPgn = gameData['pgn'] as String?;
-            if (newPgn != null && newPgn != game.pgn) {
-              needsReparse = true;
-            }
-
-            // Check if position changed (FEN or last_move) for evaluation updates
-            final newFen = gameData['fen'] as String? ?? game.fen;
-            final newLastMove =
-                gameData['last_move'] as String? ?? game.lastMove;
-            if (newFen != game.fen || newLastMove != game.lastMove) {
-              needsEvaluation = true;
-            }
-
-            // Create updated game model with all live data
+            // Update game data with stream values
             game = game.copyWith(
-              pgn: newPgn ?? game.pgn,
-              fen: newFen,
-              lastMove: newLastMove,
+              pgn: gameData['pgn'] as String? ?? game.pgn,
+              fen: gameData['fen'] as String? ?? game.fen,
+              lastMove: gameData['last_move'] as String? ?? game.lastMove,
               lastMoveTime:
                   gameData['last_move_time'] != null
                       ? DateTime.tryParse(gameData['last_move_time'] as String)
                       : game.lastMoveTime,
-              whiteClockSeconds:
-                  (gameData['last_clock_white'] as num?)?.round(),
-              blackClockSeconds:
-                  (gameData['last_clock_black'] as num?)?.round(),
-              gameStatus: _parseGameStatus(
-                gameData['status'] as String? ?? '*',
-              ),
+              whiteClockSeconds: (gameData['last_clock_white'] as num?)?.round(),
+              blackClockSeconds: (gameData['last_clock_black'] as num?)?.round(),
+              gameStatus: _parseGameStatus(gameData['status'] as String? ?? '*'),
             );
 
-            // CRITICAL: Only reparse if this is the currently visible game
-            // This prevents off-screen games from triggering full position updates
-            if (needsReparse && isCurrentlyVisible) {
-              _hasParsedMoves = false;
-              parseMoves();
-              debugPrint("-----Game updated with new PGN and clock data");
-            } else if (needsReparse && !isCurrentlyVisible) {
-              // Off-screen game with new PGN - mark for reparse but don't execute yet
-              _hasParsedMoves = false;
-              game = game.copyWith(pgn: newPgn ?? game.pgn);
-              if (currentState != null) {
-                state = AsyncValue.data(currentState.copyWith(game: game));
-              }
-              debugPrint(
-                "Off-screen game ${game.gameId} PGN updated, will reparse when visible",
-              );
-            } else {
-              // Update the current state with new clock/position data
-              if (currentState != null) {
-                // Parse the last move for proper board highlighting
-                Move? parsedLastMove;
-                if (newLastMove != null &&
-                    newLastMove.isNotEmpty &&
-                    newLastMove.length >= 4) {
-                  try {
-                    // Convert UCI move to Move object
-                    final from = Square.fromName(newLastMove.substring(0, 2));
-                    final to = Square.fromName(newLastMove.substring(2, 4));
-                    parsedLastMove = NormalMove(from: from, to: to);
-                  } catch (e) {
-                    debugPrint(
-                      'Failed to parse last move: $newLastMove, error: $e',
-                    );
-                  }
-                }
+            // CRITICAL: Update state immediately with new game object to show clock changes
+            state = AsyncValue.data(currentState.copyWith(game: game));
 
-                state = AsyncValue.data(
-                  currentState.copyWith(
-                    game: game, // Updated game with new clock/position data
-                    fenData: newFen, // Update FEN data for board display
-                    lastMove:
-                        parsedLastMove, // Update last move for highlighting
-                  ),
-                );
-
-                // CRITICAL: Only trigger evaluation if this game is visible
-                if (needsEvaluation && isCurrentlyVisible) {
-                  debugPrint(
-                    "-----Position changed, triggering evaluation update for FEN: $newFen",
-                  );
-                  _updateEvaluation();
-                }
-              }
-            }
+            // Reparse moves to show updated position
+            _hasParsedMoves = false;
+            parseMoves();
           }
         });
       });
@@ -360,10 +149,8 @@ class ChessBoardScreenNotifierNew
   }
 
   Future<void> parseMoves() async {
-    if (state.value?.isAnalysisMode == true && _hasParsedMoves) {
-      return;
-    }
-    if (_hasParsedMoves && state.value?.isAnalysisMode != true) return;
+    // Don't reparse if already parsing or already parsed
+    if (_hasParsedMoves) return;
     _hasParsedMoves = true;
 
     final currentState = state.value;
@@ -425,10 +212,8 @@ class ChessBoardScreenNotifierNew
         ),
       );
 
-      // If analysis mode was enabled by default, initialize the analysis board
-      if (currentState.isAnalysisMode) {
-        await _initializeAnalysisBoard();
-      }
+      // Analysis board is always initialized since analysis mode is always active
+      await _initializeAnalysisBoard();
 
       _updateEvaluation();
     } catch (e, st) {
@@ -511,11 +296,8 @@ class ChessBoardScreenNotifierNew
   }
 
   void goToMove(int moveIndex) {
-    if (state.value?.isAnalysisMode == true) {
-      analysisModeGoToMove(moveIndex);
-    } else {
-      normalModeGoToMove(moveIndex);
-    }
+    // Analysis mode is always active, use analysis navigation
+    analysisModeGoToMove(moveIndex);
   }
 
   void analysisModeGoToMove(int moveIndex) {
@@ -653,7 +435,7 @@ class ChessBoardScreenNotifierNew
 
   void playPrincipalVariationMove(AnalysisLine line) {
     final currentState = state.value;
-    if (currentState == null || !currentState.isAnalysisMode) return;
+    if (currentState == null) return;
 
     final index = currentState.principalVariations.indexOf(line);
     if (index == -1) return;
@@ -685,10 +467,8 @@ class ChessBoardScreenNotifierNew
   void selectVariant(int variantIndex) {
     debugPrint('🎯 SELECT VARIANT: index=$variantIndex');
     final currentState = state.value;
-    if (currentState == null || !currentState.isAnalysisMode) {
-      debugPrint(
-        '🎯 SELECT VARIANT: FAILED - state null or not in analysis mode',
-      );
+    if (currentState == null) {
+      debugPrint('🎯 SELECT VARIANT: FAILED - state null');
       return;
     }
     if (variantIndex < 0 ||
@@ -749,8 +529,8 @@ class ChessBoardScreenNotifierNew
 
     try {
       var currentState = state.value;
-      if (currentState == null || !currentState.isAnalysisMode) {
-        debugPrint('🎯 PLAY VARIANT FORWARD: Not in analysis mode');
+      if (currentState == null) {
+        debugPrint('🎯 PLAY VARIANT FORWARD: State is null');
         return;
       }
       if (!_ensureVariantSelection()) {
@@ -936,8 +716,8 @@ class ChessBoardScreenNotifierNew
     debugPrint('🎯 PLAY VARIANT BACKWARD called');
     _resumeVariantAutoPlay = false;
     var currentState = state.value;
-    if (currentState == null || !currentState.isAnalysisMode) {
-      debugPrint('🎯 PLAY VARIANT BACKWARD: Not in analysis mode');
+    if (currentState == null) {
+      debugPrint('🎯 PLAY VARIANT BACKWARD: State is null');
       return;
     }
 
@@ -1116,55 +896,7 @@ class ChessBoardScreenNotifierNew
     goToMove(currentState.currentMoveIndex - 1);
   }
 
-  Future<void> toggleAnalysisMode() async {
-    final currentState = state.value;
-    if (currentState == null) {
-      debugPrint('🎯 TOGGLE ANALYSIS: state is null, returning');
-      return;
-    }
-
-    if (!currentState.isAnalysisMode) {
-      debugPrint(
-        '🎯 TOGGLE ANALYSIS: Entering analysis mode from move index ${currentState.currentMoveIndex}',
-      );
-      // Set loading state first
-      state = AsyncValue.data(
-        currentState.copyWith(isAnalysisMode: true, isLoadingMoves: true),
-      );
-
-      await _initializeAnalysisBoard();
-
-      // Clear loading state
-      final updatedState = state.value;
-      if (updatedState != null) {
-        debugPrint(
-          '🎯 TOGGLE ANALYSIS: Analysis mode initialized, clearing loading state',
-        );
-        state = AsyncValue.data(updatedState.copyWith(isLoadingMoves: false));
-      }
-      debugPrint(
-        '🎯 TOGGLE ANALYSIS: Analysis mode active, _analysisGame=${_analysisGame != null}',
-      );
-    } else {
-      debugPrint('🎯 TOGGLE ANALYSIS: Exiting analysis mode');
-      unawaited(_persistAnalysisState());
-      _analysisGame = null;
-      _navigatorSubscription?.close();
-      _navigatorSubscription = null;
-
-      final clearedState = _clearVariantSelection(currentState);
-      state = AsyncValue.data(
-        clearedState.copyWith(
-          isAnalysisMode: false,
-          shapes: const ISet.empty(), // Clear all arrows when exiting analysis
-          principalVariations: const [], // Clear PVs
-        ),
-      );
-      debugPrint('🎯 TOGGLE ANALYSIS: Analysis mode deactivated');
-    }
-
-    togglePlayPause();
-  }
+  // REMOVED: toggleAnalysisMode - analysis mode is always active and cannot be toggled
 
   Future<void> _initializeAnalysisBoard() async {
     final currentState = state.value;
@@ -1631,6 +1363,14 @@ class ChessBoardScreenNotifierNew
     );
   }
 
+  void toggleEngineVisibility() {
+    final currentState = state.value;
+    if (currentState == null) return;
+    state = AsyncValue.data(
+      currentState.copyWith(showEngineAnalysis: !currentState.showEngineAnalysis),
+    );
+  }
+
   void togglePlayPause() {
     final currentState = state.value;
     if (currentState == null) return;
@@ -1653,7 +1393,6 @@ class ChessBoardScreenNotifierNew
     if (moveIndex == st.currentMoveIndex - 1) {
       return kWhiteColor;
     }
-    if (move.contains('x')) return kLightPink;
     if (moveIndex < st.currentMoveIndex - 1) {
       return kWhiteColor;
     }
@@ -1801,6 +1540,24 @@ class ChessBoardScreenNotifierNew
         '❌ BUILD PV: No valid lines could be built from ${workerResult.length} worker results',
       );
     }
+
+    // Always ensure we have exactly 3 lines for consistent UI display
+    while (lines.length < 3 && lines.isNotEmpty) {
+      // Add placeholder lines that will display as "No alternative found"
+      lines.add(
+        AnalysisLine(
+          moves: const [],
+          sanMoves: const ['No alternative'],
+          evaluation: lines.first.evaluation, // Use same eval as first line
+          mate: lines.first.mate,
+        ),
+      );
+    }
+
+    debugPrint(
+      '🎯 BUILD PV: Padded to ${lines.length} lines for consistent display',
+    );
+
     return lines;
   }
 
