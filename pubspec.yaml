@@ -119,6 +119,7 @@ dependencies:
   share_plus: ^10.1.4
   path_provider: ^2.1.5
   flutter_animate: ^4.5.0
+  image_gallery_saver: ^2.0.3
 
 dev_dependencies:
   flutter_test:

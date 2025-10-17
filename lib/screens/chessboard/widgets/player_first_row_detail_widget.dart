@@ -104,20 +104,20 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               fontSize: 8.5.f,
               fontWeight: FontWeight.w600,
               color: kLightYellowColor,
-              height: 1.0,
+              height: 1.2,
             )
             : playerView == PlayerView.gridView
             ? AppTypography.textXsMedium.copyWith(
               color: kLightYellowColor,
               fontWeight: FontWeight.w400,
               fontSize: 4.f,
-              height: 1.0,
+              height: 1.2,
             )
             : AppTypography.textXsMedium.copyWith(
               color: kLightYellowColor,
               fontWeight: FontWeight.w600,
               fontSize: 14.f,
-              height: 1.0,
+              height: 1.2,
             );
 
     final nameStyle =
@@ -126,42 +126,42 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               fontSize: 8.5.f,
               fontWeight: FontWeight.w500,
               color: kWhiteColor,
-              height: 1.0,
+              height: 1.2,
             )
             : playerView == PlayerView.gridView
             ? AppTypography.textXsMedium.copyWith(
               color: kWhiteColor,
               fontWeight: FontWeight.w400,
               fontSize: 4.f,
-              height: 1.0,
+              height: 1.2,
             )
             : AppTypography.textXsMedium.copyWith(
               color: kWhiteColor,
               fontWeight: FontWeight.w600,
               fontSize: 14.f,
-              height: 1.0,
+              height: 1.2,
             );
 
     final ratingStyle =
         playerView == PlayerView.listView
             ? TextStyle(
               fontSize: 8.5.f,
-              fontWeight: FontWeight.w500,
+              fontWeight: FontWeight.w500, // Match name font weight
               color: kWhiteColor70,
-              height: 1.0,
+              height: 1.2,
             )
             : playerView == PlayerView.gridView
             ? AppTypography.textXsMedium.copyWith(
               color: kWhiteColor70,
               fontWeight: FontWeight.w400,
               fontSize: 4.f,
-              height: 1.0,
+              height: 1.2,
             )
             : AppTypography.textXsMedium.copyWith(
               color: kWhiteColor70,
-              fontWeight: FontWeight.w500,
+              fontWeight: FontWeight.w600, // Match name font weight
               fontSize: 14.f,
-              height: 1.0,
+              height: 1.2,
             );
 
     final flagHeight =
@@ -205,24 +205,29 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               color: kWhiteColor,
               fontSize: 8.5.f,
               fontWeight: FontWeight.w600,
-              height: 1.0,
+              height: 1.2,
             )
             : playerView == PlayerView.gridView
             ? AppTypography.textXsMedium.copyWith(
               color: kWhiteColor,
               fontSize: 4.f,
               fontWeight: FontWeight.w600,
-              height: 1.0,
+              height: 1.2,
             )
             : AppTypography.textXsMedium.copyWith(
               color: kWhiteColor,
               fontSize: 14.f,
               fontWeight: FontWeight.w600,
-              height: 1.0,
+              height: 1.2,
             );
 
-    final initialPadding = playerView == PlayerView.gridView ? 8.w : 16.w;
     final spacing = playerView == PlayerView.gridView ? 4.w : 8.w;
+    final endPadding = playerView == PlayerView.gridView ? 8.w : 16.w; // Align with board edge
+
+    // Board has 16.sp horizontal margin, engine gauge is 20.w wide
+    // So flags should start at 16.sp + 20.w to align with board's left edge
+    final boardMargin = 16.sp;
+    final engineGaugeWidth = 20.w;
 
     return GestureDetector(
       onTap: () {
@@ -252,19 +257,23 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
         mainAxisAlignment: MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          SizedBox(width: initialPadding),
-          // Show score on the very left for finished games
+          SizedBox(width: boardMargin),
+          // Show score on the very left for finished games (aligned with engine gauge)
           if (isGameFinished) ...[
-            Text(
-              gamesTourModel.gameStatus == GameStatus.whiteWins
-                  ? (isWhitePlayer ? '1' : '0')
-                  : gamesTourModel.gameStatus == GameStatus.blackWins
-                  ? (isWhitePlayer ? '0' : '1')
-                  : '½',
-              style: scoreStyle,
+            SizedBox(
+              width: engineGaugeWidth,
+              child: Text(
+                gamesTourModel.gameStatus == GameStatus.whiteWins
+                    ? (isWhitePlayer ? '1' : '0')
+                    : gamesTourModel.gameStatus == GameStatus.blackWins
+                    ? (isWhitePlayer ? '0' : '1')
+                    : '½',
+                style: scoreStyle,
+                textAlign: TextAlign.center,
+              ),
             ),
-            SizedBox(width: spacing),
-          ],
+          ] else
+            SizedBox(width: engineGaugeWidth),
           if (playerCard.countryCode.toUpperCase() == 'FID') ...[
             Image.asset(
               PngAsset.fideLogo,
@@ -285,30 +294,72 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
           ] else
             SizedBox(width: spacing),
           Expanded(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Flexible(
-                  child: RichText(
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                    text: TextSpan(
-                      children: [
-                        TextSpan(
-                          text: '${playerCard.title} ',
-                          style: rankStyle,
-                        ),
-                        TextSpan(text: '${playerCard.name} ', style: nameStyle),
-                      ],
-                    ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                // Parse name parts - format is "Surname, Given Names"
+                final fullName = playerCard.name;
+                final nameParts = fullName.split(',').map((e) => e.trim()).toList();
+                final surname = nameParts.isNotEmpty ? nameParts[0] : ''; // Part before comma
+                final firstName = nameParts.length > 1 ? nameParts[1] : ''; // Part after comma
+
+                // Build static parts that must always be visible
+                final title = playerCard.title.isNotEmpty ? '${playerCard.title} ' : '';
+                final firstNameWithComma = firstName.isNotEmpty ? ', $firstName' : '';
+                final rating = ' ${playerCard.rating}';
+
+                // Create text painter to measure text width
+                final textPainter = TextPainter(
+                  textDirection: TextDirection.ltr,
+                  maxLines: 1,
+                );
+
+                // Measure static parts (title + firstName + rating)
+                textPainter.text = TextSpan(
+                  children: [
+                    TextSpan(text: title, style: rankStyle),
+                    TextSpan(text: firstNameWithComma, style: nameStyle),
+                    TextSpan(text: rating, style: ratingStyle),
+                  ],
+                );
+                textPainter.layout();
+                final staticWidth = textPainter.width;
+
+                // Calculate available space for surname
+                final availableForSurname = constraints.maxWidth - staticWidth;
+
+                // Try to fit full surname
+                String displaySurname = surname;
+                if (surname.isNotEmpty) {
+                  textPainter.text = TextSpan(text: surname, style: nameStyle);
+                  textPainter.layout();
+
+                  if (textPainter.width > availableForSurname) {
+                    // Surname doesn't fit, use initials
+                    final surnameParts = surname.split(' ');
+                    displaySurname = surnameParts
+                        .where((part) => part.isNotEmpty)
+                        .map((part) => '${part[0]}.')
+                        .join(' ');
+                  }
+                }
+
+                return RichText(
+                  overflow: TextOverflow.visible,
+                  maxLines: 1,
+                  textAlign: TextAlign.left,
+                  text: TextSpan(
+                    children: [
+                      if (title.isNotEmpty)
+                        TextSpan(text: title, style: rankStyle),
+                      if (displaySurname.isNotEmpty)
+                        TextSpan(text: displaySurname, style: nameStyle),
+                      if (firstNameWithComma.isNotEmpty)
+                        TextSpan(text: firstNameWithComma, style: nameStyle),
+                      TextSpan(text: rating, style: ratingStyle),
+                    ],
                   ),
-                ),
-                Text(
-                  '${playerCard.rating}',
-                  style: ratingStyle,
-                ),
-              ],
+                );
+              },
             ),
           ),
           if (isPinned) ...[
@@ -335,7 +386,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               moveTime: moveTime,
             ),
           ),
-          SizedBox(width: spacing),
+          SizedBox(width: endPadding),
         ],
       ),
     );
