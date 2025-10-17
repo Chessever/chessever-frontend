@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/providers/player_ratings_provider.dart';
+import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
 import 'package:chessever2/screens/standings/widget/scoreboard_appbar.dart';
 import 'package:chessever2/screens/standings/widget/scoreboard_card_widget.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
@@ -189,13 +190,14 @@ class ScoreCardScreen extends ConsumerWidget {
     }
 
     final playerGames =
-        allGames
-            .where(
-              (game) =>
-                  game.whitePlayer.name == player.name ||
-                  game.blackPlayer.name == player.name,
-            )
-            .toList();
+        allGames.where((game) {
+          return ref
+                  .read(playerUtilsProvider)
+                  .isSamePlayer(game.whitePlayer.name, player.name) ||
+              ref
+                  .read(playerUtilsProvider)
+                  .isSamePlayer(game.blackPlayer.name, player.name);
+        }).toList();
 
     final nameParts = player.name.split(',');
     final initials =
