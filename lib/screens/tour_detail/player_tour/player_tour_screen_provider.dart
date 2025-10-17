@@ -51,10 +51,9 @@ class _PlayerTourScreenController
   final Ref ref;
   final String tourId;
   final String groupBroadcastId;
-
   Future<void> loadPlayers() async {
     try {
-      // 🧩 Step 1: Get tournament players from local storage
+      // 🧩 Step 1: Load tournament players from local storage
       final allTours = await ref
           .read(tourLocalStorageProvider)
           .getTours(groupBroadcastId);
@@ -66,12 +65,21 @@ class _PlayerTourScreenController
         tournamentPlayers.addAll(tour.players);
       }
 
-      // Remove duplicates safely
-      tournamentPlayers = tournamentPlayers.toSet().toList();
+      // Remove duplicates by name + fideId (safe deduplication)
+      final seen = <String>{};
+      tournamentPlayers =
+          tournamentPlayers.where((p) {
+            final key = '${p.name.trim().toLowerCase()}-${p.fideId ?? 0}';
+            if (seen.contains(key)) return false;
+            seen.add(key);
+            return true;
+          }).toList();
 
+      // 🧩 Step 2: Load all games for this tournament
       final gamesScreenData = ref.read(gamesTourScreenProvider);
       final allGames = gamesScreenData.value?.gamesTourModels ?? [];
 
+      // 🧩 Step 3: Enrich player info (federation, title, rating, fideId)
       for (int i = 0; i < tournamentPlayers.length; i++) {
         final player = tournamentPlayers[i];
 
@@ -79,35 +87,33 @@ class _PlayerTourScreenController
         try {
           relatedGame = allGames.firstWhere((g) {
             final playerName = player.name.trim().toLowerCase();
-            final whiteGamePlayerName = g.whitePlayer.name.toLowerCase();
-            final blackGamePlayerName = g.blackPlayer.name.toLowerCase();
-            return isSamePlayer(playerName, whiteGamePlayerName) ||
-                isSamePlayer(playerName, blackGamePlayerName);
+            final whiteName = g.whitePlayer.name.toLowerCase();
+            final blackName = g.blackPlayer.name.toLowerCase();
+            return isSamePlayer(playerName, whiteName) ||
+                isSamePlayer(playerName, blackName);
           });
-        } catch (e, _) {
+        } catch (_) {
           relatedGame = null;
         }
 
         if (relatedGame == null) continue;
 
-        // Find the correct player card (white or black)
+        final isWhite = isSamePlayer(
+          player.name.trim().toLowerCase(),
+          relatedGame.whitePlayer.name.toLowerCase(),
+        );
         final card =
-            relatedGame.whitePlayer.name.trim().toLowerCase() ==
-                    player.name.trim().toLowerCase()
-                ? relatedGame.whitePlayer
-                : relatedGame.blackPlayer;
+            isWhite ? relatedGame.whitePlayer : relatedGame.blackPlayer;
 
-        // Update only missing/null fields
         tournamentPlayers[i] = player.copyWith(
           federation:
-              (player.federation != null &&
-                      player.federation!.trim().isNotEmpty)
+              (player.federation?.trim().isNotEmpty ?? false)
                   ? player.federation
                   : (card.federation.trim().isNotEmpty
                       ? card.federation
                       : player.federation),
           title:
-              (player.title != null && player.title!.trim().isNotEmpty)
+              (player.title?.trim().isNotEmpty ?? false)
                   ? player.title
                   : (card.title.trim().isNotEmpty ? card.title : player.title),
           rating:
@@ -117,38 +123,39 @@ class _PlayerTourScreenController
           fideId:
               (player.fideId != null && player.fideId! > 0)
                   ? player.fideId
-                  : card.fideId ?? player.fideId,
+                  : (card.fideId ?? player.fideId),
         );
       }
 
-      // 🧩 Step 4: Calculate scores and games played
+      // 🧩 Step 4: Calculate score and games played
       for (int i = 0; i < tournamentPlayers.length; i++) {
         final player = tournamentPlayers[i];
 
         final playerGames =
-            allGames
-                .where(
-                  (game) =>
-                      game.whitePlayer.name.trim().toLowerCase() ==
-                          player.name.trim().toLowerCase() ||
-                      game.blackPlayer.name.trim().toLowerCase() ==
-                          player.name.trim().toLowerCase(),
-                )
-                .toList();
+            allGames.where((game) {
+              final playerName = player.name.trim().toLowerCase();
+              return isSamePlayer(
+                    playerName,
+                    game.whitePlayer.name.toLowerCase(),
+                  ) ||
+                  isSamePlayer(playerName, game.blackPlayer.name.toLowerCase());
+            }).toList();
 
         double calculatedScore = 0.0;
         int gamesPlayed = 0;
 
         for (final game in playerGames) {
-          // Skip ongoing/unknown games
+          // Skip ongoing or unknown games
           if (game.gameStatus == GameStatus.ongoing ||
-              game.gameStatus == GameStatus.unknown)
+              game.gameStatus == GameStatus.unknown) {
             continue;
+          }
 
           gamesPlayed++;
-          final isWhite =
-              game.whitePlayer.name.trim().toLowerCase() ==
-              player.name.trim().toLowerCase();
+          final isWhite = isSamePlayer(
+            player.name.trim().toLowerCase(),
+            game.whitePlayer.name.toLowerCase(),
+          );
 
           switch (game.gameStatus) {
             case GameStatus.whiteWins:
@@ -165,17 +172,16 @@ class _PlayerTourScreenController
           }
         }
 
-        // Update player with new score and games played
         tournamentPlayers[i] = player.copyWith(
           score: calculatedScore,
           played: gamesPlayed,
         );
       }
 
-      // 🧩 Step 5: Sort players by score (desc) and games played (desc)
+      // 🧩 Step 5: Sort by score (desc), then by games played (desc)
       tournamentPlayers.sort((a, b) {
-        final aScore = double.tryParse(a.scoreString) ?? a.score ?? 0.0;
-        final bScore = double.tryParse(b.scoreString) ?? b.score ?? 0.0;
+        final aScore = a.score ?? double.tryParse(a.scoreString) ?? 0.0;
+        final bScore = b.score ?? double.tryParse(b.scoreString) ?? 0.0;
 
         if (bScore != aScore) return bScore.compareTo(aScore);
         return b.played.compareTo(a.played);
@@ -214,7 +220,7 @@ class _PlayerTourScreenController
     final parts2 = n2.split(' ');
 
     if (parts1.length == 2 && parts2.length == 2) {
-      return (parts1[0] == parts2[1] && parts1[1] == parts2[0]);
+      return parts1[0] == parts2[1] && parts1[1] == parts2[0];
     }
 
     return false;
