@@ -1,6 +1,7 @@
 import 'package:chessever2/repository/local_storage/tournament/tour_local_storage.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
+import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
@@ -89,8 +90,12 @@ class _PlayerTourScreenController
             final playerName = player.name.trim().toLowerCase();
             final whiteName = g.whitePlayer.name.toLowerCase();
             final blackName = g.blackPlayer.name.toLowerCase();
-            return isSamePlayer(playerName, whiteName) ||
-                isSamePlayer(playerName, blackName);
+            return ref
+                    .read(playerUtilsProvider)
+                    .isSamePlayer(playerName, whiteName) ||
+                ref
+                    .read(playerUtilsProvider)
+                    .isSamePlayer(playerName, blackName);
           });
         } catch (_) {
           relatedGame = null;
@@ -98,10 +103,12 @@ class _PlayerTourScreenController
 
         if (relatedGame == null) continue;
 
-        final isWhite = isSamePlayer(
-          player.name.trim().toLowerCase(),
-          relatedGame.whitePlayer.name.toLowerCase(),
-        );
+        final isWhite = ref
+            .read(playerUtilsProvider)
+            .isSamePlayer(
+              player.name.trim().toLowerCase(),
+              relatedGame.whitePlayer.name.toLowerCase(),
+            );
         final card =
             isWhite ? relatedGame.whitePlayer : relatedGame.blackPlayer;
 
@@ -134,11 +141,18 @@ class _PlayerTourScreenController
         final playerGames =
             allGames.where((game) {
               final playerName = player.name.trim().toLowerCase();
-              return isSamePlayer(
-                    playerName,
-                    game.whitePlayer.name.toLowerCase(),
-                  ) ||
-                  isSamePlayer(playerName, game.blackPlayer.name.toLowerCase());
+              return ref
+                      .read(playerUtilsProvider)
+                      .isSamePlayer(
+                        playerName,
+                        game.whitePlayer.name.toLowerCase(),
+                      ) ||
+                  ref
+                      .read(playerUtilsProvider)
+                      .isSamePlayer(
+                        playerName,
+                        game.blackPlayer.name.toLowerCase(),
+                      );
             }).toList();
 
         double calculatedScore = 0.0;
@@ -152,10 +166,12 @@ class _PlayerTourScreenController
           }
 
           gamesPlayed++;
-          final isWhite = isSamePlayer(
-            player.name.trim().toLowerCase(),
-            game.whitePlayer.name.toLowerCase(),
-          );
+          final isWhite = ref
+              .read(playerUtilsProvider)
+              .isSamePlayer(
+                player.name.trim().toLowerCase(),
+                game.whitePlayer.name.toLowerCase(),
+              );
 
           switch (game.gameStatus) {
             case GameStatus.whiteWins:
@@ -197,33 +213,6 @@ class _PlayerTourScreenController
     } catch (e, _) {
       state = const AsyncValue.data([]);
     }
-  }
-
-  bool isSamePlayer(String? name1, String? name2) {
-    if (name1 == null || name2 == null) return false;
-
-    String normalize(String name) => name
-        .toLowerCase()
-        .replaceAll(',', '')
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((part) => part.isNotEmpty)
-        .join(' ');
-
-    final n1 = normalize(name1);
-    final n2 = normalize(name2);
-
-    if (n1 == n2) return true;
-
-    // Handle "First Last" vs "Last First"
-    final parts1 = n1.split(' ');
-    final parts2 = n2.split(' ');
-
-    if (parts1.length == 2 && parts2.length == 2) {
-      return parts1[0] == parts2[1] && parts1[1] == parts2[0];
-    }
-
-    return false;
   }
 }
 
