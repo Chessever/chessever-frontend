@@ -1169,34 +1169,19 @@ class _BottomNavBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final params = ChessBoardProviderParams(game: game, index: index);
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
-    final canMoveForward = state.isAnalysisMode
-        ? state.analysisState.canMoveForward
-        : state.canMoveForward;
-    final canMoveBackward = state.isAnalysisMode
-        ? state.analysisState.canMoveBackward
-        : state.canMoveBackward;
+    // Analysis mode is always active, always use analysis state
+    final canMoveForward = state.analysisState.canMoveForward;
+    final canMoveBackward = state.analysisState.canMoveBackward;
 
     return ChessBoardBottomNavBar(
       gameIndex: index,
       onFlip: () => notifier.flipBoard(),
       toggleEngineVisibility: () => notifier.toggleEngineVisibility(),
       onRightMove: canMoveForward
-          ? () {
-              if (state.isAnalysisMode) {
-                notifier.analysisStepForward();
-              } else {
-                notifier.moveForward();
-              }
-            }
+          ? () => notifier.analysisStepForward()
           : null,
       onLeftMove: canMoveBackward
-          ? () {
-              if (state.isAnalysisMode) {
-                notifier.analysisStepBackward();
-              } else {
-                notifier.moveBackward();
-              }
-            }
+          ? () => notifier.analysisStepBackward()
           : null,
       onLongPressBackwardStart: () => notifier.startLongPressBackward(),
       onLongPressBackwardEnd: () => notifier.stopLongPress(),
@@ -1204,9 +1189,7 @@ class _BottomNavBar extends ConsumerWidget {
       onLongPressForwardEnd: () => notifier.stopLongPress(),
       canMoveForward: canMoveForward,
       canMoveBackward: canMoveBackward,
-      isAnalysisMode: state.isAnalysisMode,
       showEngineAnalysis: state.showEngineAnalysis,
-      toggleAnalysisMode: () => notifier.toggleAnalysisMode(),
     );
   }
 }
@@ -1226,75 +1209,12 @@ class _GameBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (state.isAnalysisMode) {
-      return _AnalysisGameBody(
-        index: index,
-        currentPageIndex: currentPageIndex,
-        game: game,
-        state: state,
-      );
-    }
-
-    return Column(
-      children: [
-        _PlayerWidget(
-          game: game,
-          isFlipped: state.isBoardFlipped,
-          blackPlayer: false,
-          state: state,
-        ),
-        SizedBox(height: 2.h),
-        _BoardWithSidebar(
-          index: index,
-          currentPageIndex: currentPageIndex,
-          state: state,
-          game: game,
-        ),
-        SizedBox(height: 2.h),
-        _PlayerWidget(
-          game: game,
-          isFlipped: state.isBoardFlipped,
-          blackPlayer: true,
-          state: state,
-        ),
-        Expanded(
-          child: Container(
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: kDarkGreyColor.withValues(alpha: 0.3),
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(12.sp),
-                topRight: Radius.circular(12.sp),
-              ),
-            ),
-            child: NotificationListener<ScrollNotification>(
-              onNotification: (notification) {
-                if (notification is ScrollStartNotification) {
-                  // additional logic hook
-                }
-                return false;
-              },
-              child: SingleChildScrollView(
-                scrollDirection: Axis.vertical,
-                physics: const ClampingScrollPhysics(),
-                dragStartBehavior: DragStartBehavior.down,
-                child: GestureDetector(
-                  onHorizontalDragStart: (_) {},
-                  onHorizontalDragUpdate: (_) {},
-                  onHorizontalDragEnd: (_) {},
-                  behavior: HitTestBehavior.translucent,
-                  child: _MovesDisplay(
-                    index: index,
-                    currentPageIndex: currentPageIndex,
-                    state: state,
-                    game: game,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
+    // Analysis mode is always active, use analysis game body
+    return _AnalysisGameBody(
+      index: index,
+      currentPageIndex: currentPageIndex,
+      game: game,
+      state: state,
     );
   }
 }
@@ -1500,9 +1420,8 @@ class _BoardWithSidebar extends ConsumerWidget {
   });
 
   String? _getLastMoveSquare() {
-    // Use analysis state when in analysis mode, otherwise use live state
-    final lastMove =
-        state.isAnalysisMode ? state.analysisState.lastMove : state.lastMove;
+    // Analysis mode is always active, always use analysis state
+    final lastMove = state.analysisState.lastMove;
     if (lastMove == null) return null;
     if (lastMove is NormalMove) {
       return lastMove.to.name;
@@ -1518,11 +1437,8 @@ class _BoardWithSidebar extends ConsumerWidget {
         final screenWidth = MediaQuery.of(context).size.width;
         final boardSize = screenWidth - sideBarWidth - 32.w;
 
-        // Select correct state fields based on mode
-        final currentIndex =
-            state.isAnalysisMode
-                ? state.analysisState.currentMoveIndex
-                : state.currentMoveIndex;
+        // Analysis mode is always active, always use analysis state
+        final currentIndex = state.analysisState.currentMoveIndex;
 
         // LAZY IMPACT: Only calculate impact for the CURRENT move, not all moves
         // This prevents blocking the eval bar by not flooding Stockfish queue
@@ -1559,26 +1475,18 @@ class _BoardWithSidebar extends ConsumerWidget {
               ),
               Stack(
                 children: [
-                  state.isAnalysisMode
-                      ? _AnalysisBoard(
-                        size: boardSize,
-                        chessBoardState: state,
-                        isFlipped: state.isBoardFlipped,
-                        index: index,
-                        game: state.game,
-                      )
-                      : _ChessBoardNew(
-                        size: boardSize,
-                        chessBoardState: state,
-                        isFlipped: state.isBoardFlipped,
-                        index: index,
-                        game: state.game,
-                      ),
-                  // Add move annotation overlay - only show if impact is not normal
+                  // Analysis mode is always active, always use analysis board
+                  _AnalysisBoard(
+                    size: boardSize,
+                    chessBoardState: state,
+                    isFlipped: state.isBoardFlipped,
+                    index: index,
+                    game: state.game,
+                  ),
+                  // Add move annotation overlay - only show if impact is not normal and not exploring a variant
                   if (currentMoveImpact != null &&
                       currentMoveImpact.impact != MoveImpactType.normal &&
-                      !(state.isAnalysisMode &&
-                          state.selectedVariantIndex != null))
+                      state.selectedVariantIndex == null)
                     BoardMoveAnnotation(
                       moveImpact: currentMoveImpact,
                       boardSize: boardSize,
@@ -1595,117 +1503,7 @@ class _BoardWithSidebar extends ConsumerWidget {
   }
 }
 
-class _ChessBoardNew extends ConsumerWidget {
-  final double size;
-  final ChessBoardStateNew chessBoardState;
-  final bool isFlipped;
-  final int index;
-  final GamesTourModel game;
-
-  const _ChessBoardNew({
-    required this.size,
-    required this.chessBoardState,
-    this.isFlipped = false,
-    required this.index,
-    required this.game,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final boardSettingsValue = ref.watch(boardSettingsProvider);
-    final boardTheme = ref
-        .read(boardSettingsRepository)
-        .getBoardTheme(boardSettingsValue.boardColor);
-
-    // CRITICAL: Auto-enable analysis mode for move interaction
-    // This ensures single source of truth through ChessGameNavigator
-    // AbsorbPointer is sufficient to disable all interactions
-    // and allows the PageView to handle horizontal swipes
-    return AbsorbPointer(
-      child: Chessboard(
-        size: size,
-        settings: ChessboardSettings(
-          enableCoordinates: true,
-          animationDuration: const Duration(milliseconds: 200),
-          dragFeedbackScale: 1,
-          dragTargetKind: DragTargetKind.none,
-          pieceShiftMethod: PieceShiftMethod.either,
-          autoQueenPromotionOnPremove: false,
-          pieceOrientationBehavior: PieceOrientationBehavior.facingUser,
-          colorScheme: ChessboardColorScheme(
-            lightSquare: boardTheme.lightSquareColor,
-            darkSquare: boardTheme.darkSquareColor,
-            background: SolidColorChessboardBackground(
-              lightSquare: boardTheme.lightSquareColor,
-              darkSquare: boardTheme.darkSquareColor,
-            ),
-            whiteCoordBackground: SolidColorChessboardBackground(
-              lightSquare: boardTheme.lightSquareColor,
-              darkSquare: boardTheme.darkSquareColor,
-              coordinates: true,
-              orientation: Side.white,
-            ),
-            blackCoordBackground: SolidColorChessboardBackground(
-              lightSquare: boardTheme.lightSquareColor,
-              darkSquare: boardTheme.darkSquareColor,
-              coordinates: true,
-              orientation: Side.black,
-            ),
-            lastMove: HighlightDetails(
-              solidColor: getLastMoveHighlightColor(chessBoardState),
-            ),
-            selected: const HighlightDetails(solidColor: kPrimaryColor),
-            validMoves: kPrimaryColor,
-            validPremoves: kPrimaryColor,
-          ),
-        ),
-        orientation: isFlipped ? Side.black : Side.white,
-        shapes: chessBoardState.shapes,
-        fen: chessBoardState.isLoadingMoves
-            ? (chessBoardState.fenData ?? "")
-            : chessBoardState.position!.fen,
-        lastMove: chessBoardState.isLoadingMoves
-            ? null
-            : chessBoardState.lastMove,
-        // DISABLED: Manual piece movement disabled
-        // game:
-        //     chessBoardState.position != null && !chessBoardState.isLoadingMoves
-        //         ? GameData(
-        //           playerSide:
-        //               chessBoardState.position!.turn == Side.white
-        //                   ? PlayerSide.white
-        //                   : PlayerSide.black,
-        //           validMoves: makeLegalMoves(chessBoardState.position!),
-        //           sideToMove: chessBoardState.position!.turn,
-        //           isCheck: chessBoardState.position!.isCheck,
-        //           promotionMove: null,
-        //           onMove: (move, {isDrop, isPremove}) async {
-        //             // Auto-enter analysis mode on first move attempt
-        //             if (!chessBoardState.isAnalysisMode) {
-        //               await notifier.toggleAnalysisMode();
-        //               // Wait a frame for state to update
-        //               await Future.delayed(const Duration(milliseconds: 50));
-        //             }
-        //             notifier.onAnalysisMove(
-        //               move,
-        //               isDrop: isDrop,
-        //               isPremove: isPremove,
-        //             );
-        //           },
-        //           onPromotionSelection: (role) async {
-        //             if (!chessBoardState.isAnalysisMode) {
-        //               await notifier.toggleAnalysisMode();
-        //               await Future.delayed(const Duration(milliseconds: 50));
-        //             }
-        //             notifier.onAnalysisPromotionSelection(role);
-        //           },
-        //         )
-        //         : null,
-        game: null, // Board is now read-only
-      ),
-    );
-  }
-}
+// REMOVED: _ChessBoardNew widget - analysis mode is always active, only _AnalysisBoard is used
 
 class _AnalysisBoard extends ConsumerWidget {
   final double size;
@@ -1825,12 +1623,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     super.didUpdateWidget(oldWidget);
 
     // Reinitialize keys if the number of moves changed
-    final oldSans = oldWidget.state.isAnalysisMode
-        ? oldWidget.state.analysisState.moveSans
-        : oldWidget.state.moveSans;
-    final newSans = widget.state.isAnalysisMode
-        ? widget.state.analysisState.moveSans
-        : widget.state.moveSans;
+    // Analysis mode is always active, use analysis state
+    final oldSans = oldWidget.state.analysisState.moveSans;
+    final newSans = widget.state.analysisState.moveSans;
 
     if (oldSans.length != newSans.length) {
       _initializeMoveKeys();
@@ -1839,13 +1634,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     }
 
     // Auto-scroll when current move changes
-    final oldCurrentIndex = oldWidget.state.isAnalysisMode
-        ? oldWidget.state.analysisState.currentMoveIndex
-        : oldWidget.state.currentMoveIndex;
-
-    final newCurrentIndex = widget.state.isAnalysisMode
-        ? widget.state.analysisState.currentMoveIndex
-        : widget.state.currentMoveIndex;
+    // Analysis mode is always active, use analysis state
+    final oldCurrentIndex = oldWidget.state.analysisState.currentMoveIndex;
+    final newCurrentIndex = widget.state.analysisState.currentMoveIndex;
 
     // Only trigger scroll if on current page and index changed
     if (widget.index == widget.currentPageIndex && oldCurrentIndex != newCurrentIndex) {
@@ -1889,18 +1680,15 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   }
 
   List<String> _getSans() {
-    if (widget.state.isAnalysisMode) {
-      return widget.state.analysisState.moveSans;
-    }
-    return widget.state.moveSans;
+    // Analysis mode is always active, use analysis state
+    return widget.state.analysisState.moveSans;
   }
 
   int? _resolveTargetMoveIndex(int moveCount) {
     if (moveCount == 0) return null;
 
-    final rawIndex = widget.state.isAnalysisMode
-        ? widget.state.analysisState.currentMoveIndex
-        : widget.state.currentMoveIndex;
+    // Analysis mode is always active, use analysis state
+    final rawIndex = widget.state.analysisState.currentMoveIndex;
 
     if (rawIndex >= 0 && rawIndex < moveCount) {
       return rawIndex;
@@ -1997,9 +1785,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       return _buildMovesLoadingSkeleton();
     }
 
-    // Select correct state fields based on mode
-    final sans =
-        widget.state.isAnalysisMode ? widget.state.analysisState.moveSans : widget.state.moveSans;
+    // Analysis mode is always active, use analysis state
+    final sans = widget.state.analysisState.moveSans;
 
     if (sans.isEmpty && !widget.state.isLoadingMoves) {
       return Container(
@@ -2019,11 +1806,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     // This prevents flooding the Stockfish queue with 100+ positions at once
     final boardParams = ChessBoardProviderParams(game: widget.game, index: widget.index);
 
-    // Use mode-aware current index for highlighting
-    final modeAwareCurrentIndex =
-        widget.state.isAnalysisMode
-            ? widget.state.analysisState.currentMoveIndex
-            : widget.state.currentMoveIndex;
+    // Analysis mode is always active, use analysis state for current index
+    final modeAwareCurrentIndex = widget.state.analysisState.currentMoveIndex;
 
     return SingleChildScrollView(
       controller: _scrollController,

@@ -40,6 +40,22 @@ class AnalysisLine {
       mate: mate ?? this.mate,
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is AnalysisLine &&
+        other.evaluation == evaluation &&
+        other.mate == mate &&
+        other.sanMoves.length == sanMoves.length;
+  }
+
+  @override
+  int get hashCode {
+    return (evaluation?.hashCode ?? 0) ^
+        (mate?.hashCode ?? 0) ^
+        sanMoves.length.hashCode;
+  }
 }
 
 class AnalysisBoardState {
@@ -179,6 +195,26 @@ class AnalysisBoardState {
       ), // +2 because history includes starting position
       ...analysisPositionHistory,
     ];
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is AnalysisBoardState &&
+        other.currentMoveIndex == currentMoveIndex &&
+        other.position.fen == position.fen &&
+        other.moveSans.length == moveSans.length &&
+        other.branchPointMoveIndex == branchPointMoveIndex &&
+        other.analysisMoves.length == analysisMoves.length;
+  }
+
+  @override
+  int get hashCode {
+    return currentMoveIndex.hashCode ^
+        position.fen.hashCode ^
+        moveSans.length.hashCode ^
+        (branchPointMoveIndex?.hashCode ?? 0) ^
+        analysisMoves.length.hashCode;
   }
 }
 
@@ -347,5 +383,43 @@ class ChessBoardStateNew {
               : variantBaseMoveIndex as int?,
       analysisState: newAnalysisState,
     );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is ChessBoardStateNew &&
+        other.game == game &&
+        other.currentMoveIndex == currentMoveIndex &&
+        other.isPlaying == isPlaying &&
+        other.isBoardFlipped == isBoardFlipped &&
+        other.isLoadingMoves == isLoadingMoves &&
+        other.evaluation == evaluation &&
+        other.isEvaluating == isEvaluating &&
+        other.pgnData == pgnData &&
+        other.fenData == fenData &&
+        other.isAnalysisMode == isAnalysisMode &&
+        other.mate == mate &&
+        other.selectedVariantIndex == selectedVariantIndex &&
+        other.showEngineAnalysis == showEngineAnalysis &&
+        other.variantBaseFen == variantBaseFen;
+  }
+
+  @override
+  int get hashCode {
+    return game.hashCode ^
+        currentMoveIndex.hashCode ^
+        isPlaying.hashCode ^
+        isBoardFlipped.hashCode ^
+        isLoadingMoves.hashCode ^
+        (evaluation?.hashCode ?? 0) ^
+        isEvaluating.hashCode ^
+        (pgnData?.hashCode ?? 0) ^
+        (fenData?.hashCode ?? 0) ^
+        isAnalysisMode.hashCode ^
+        (mate?.hashCode ?? 0) ^
+        (selectedVariantIndex?.hashCode ?? 0) ^
+        showEngineAnalysis.hashCode ^
+        (variantBaseFen?.hashCode ?? 0);
   }
 }

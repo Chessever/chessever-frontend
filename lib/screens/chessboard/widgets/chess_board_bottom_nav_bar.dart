@@ -10,7 +10,6 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
   final VoidCallback? onLeftMove;
   final VoidCallback? onRightMove;
   final VoidCallback onFlip;
-  final VoidCallback? toggleAnalysisMode;
   final VoidCallback? toggleEngineVisibility;
   final VoidCallback? onLongPressBackwardStart;
   final VoidCallback? onLongPressBackwardEnd;
@@ -18,7 +17,6 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
   final VoidCallback? onLongPressForwardEnd;
   final bool canMoveForward;
   final bool canMoveBackward;
-  final bool isAnalysisMode;
   final bool showEngineAnalysis;
 
   const ChessBoardBottomNavBar({
@@ -29,8 +27,6 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
     required this.onFlip,
     required this.canMoveForward,
     required this.canMoveBackward,
-    required this.toggleAnalysisMode,
-    required this.isAnalysisMode,
     required this.showEngineAnalysis,
     this.toggleEngineVisibility,
     this.onLongPressBackwardStart,

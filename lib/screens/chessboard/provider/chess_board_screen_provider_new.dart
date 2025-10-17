@@ -103,6 +103,9 @@ class ChessBoardScreenNotifierNew
           debugPrint('📦 DATA: game ${game.gameId}, pgn_len=${gameData?['pgn']?.toString().length}, white_clock=${gameData?['last_clock_white']}, black_clock=${gameData?['last_clock_black']}');
 
           if (gameData != null) {
+            final currentState = state.value;
+            if (currentState == null) return;
+
             // Update game data with stream values
             game = game.copyWith(
               pgn: gameData['pgn'] as String? ?? game.pgn,
@@ -116,6 +119,9 @@ class ChessBoardScreenNotifierNew
               blackClockSeconds: (gameData['last_clock_black'] as num?)?.round(),
               gameStatus: _parseGameStatus(gameData['status'] as String? ?? '*'),
             );
+
+            // CRITICAL: Update state immediately with new game object to show clock changes
+            state = AsyncValue.data(currentState.copyWith(game: game));
 
             // Reparse moves to show updated position
             _hasParsedMoves = false;
@@ -206,10 +212,8 @@ class ChessBoardScreenNotifierNew
         ),
       );
 
-      // If analysis mode was enabled by default, initialize the analysis board
-      if (currentState.isAnalysisMode) {
-        await _initializeAnalysisBoard();
-      }
+      // Analysis board is always initialized since analysis mode is always active
+      await _initializeAnalysisBoard();
 
       _updateEvaluation();
     } catch (e, st) {
@@ -292,11 +296,8 @@ class ChessBoardScreenNotifierNew
   }
 
   void goToMove(int moveIndex) {
-    if (state.value?.isAnalysisMode == true) {
-      analysisModeGoToMove(moveIndex);
-    } else {
-      normalModeGoToMove(moveIndex);
-    }
+    // Analysis mode is always active, use analysis navigation
+    analysisModeGoToMove(moveIndex);
   }
 
   void analysisModeGoToMove(int moveIndex) {
@@ -434,7 +435,7 @@ class ChessBoardScreenNotifierNew
 
   void playPrincipalVariationMove(AnalysisLine line) {
     final currentState = state.value;
-    if (currentState == null || !currentState.isAnalysisMode) return;
+    if (currentState == null) return;
 
     final index = currentState.principalVariations.indexOf(line);
     if (index == -1) return;
@@ -466,10 +467,8 @@ class ChessBoardScreenNotifierNew
   void selectVariant(int variantIndex) {
     debugPrint('🎯 SELECT VARIANT: index=$variantIndex');
     final currentState = state.value;
-    if (currentState == null || !currentState.isAnalysisMode) {
-      debugPrint(
-        '🎯 SELECT VARIANT: FAILED - state null or not in analysis mode',
-      );
+    if (currentState == null) {
+      debugPrint('🎯 SELECT VARIANT: FAILED - state null');
       return;
     }
     if (variantIndex < 0 ||
@@ -530,8 +529,8 @@ class ChessBoardScreenNotifierNew
 
     try {
       var currentState = state.value;
-      if (currentState == null || !currentState.isAnalysisMode) {
-        debugPrint('🎯 PLAY VARIANT FORWARD: Not in analysis mode');
+      if (currentState == null) {
+        debugPrint('🎯 PLAY VARIANT FORWARD: State is null');
         return;
       }
       if (!_ensureVariantSelection()) {
@@ -717,8 +716,8 @@ class ChessBoardScreenNotifierNew
     debugPrint('🎯 PLAY VARIANT BACKWARD called');
     _resumeVariantAutoPlay = false;
     var currentState = state.value;
-    if (currentState == null || !currentState.isAnalysisMode) {
-      debugPrint('🎯 PLAY VARIANT BACKWARD: Not in analysis mode');
+    if (currentState == null) {
+      debugPrint('🎯 PLAY VARIANT BACKWARD: State is null');
       return;
     }
 
@@ -897,55 +896,7 @@ class ChessBoardScreenNotifierNew
     goToMove(currentState.currentMoveIndex - 1);
   }
 
-  Future<void> toggleAnalysisMode() async {
-    final currentState = state.value;
-    if (currentState == null) {
-      debugPrint('🎯 TOGGLE ANALYSIS: state is null, returning');
-      return;
-    }
-
-    if (!currentState.isAnalysisMode) {
-      debugPrint(
-        '🎯 TOGGLE ANALYSIS: Entering analysis mode from move index ${currentState.currentMoveIndex}',
-      );
-      // Set loading state first
-      state = AsyncValue.data(
-        currentState.copyWith(isAnalysisMode: true, isLoadingMoves: true),
-      );
-
-      await _initializeAnalysisBoard();
-
-      // Clear loading state
-      final updatedState = state.value;
-      if (updatedState != null) {
-        debugPrint(
-          '🎯 TOGGLE ANALYSIS: Analysis mode initialized, clearing loading state',
-        );
-        state = AsyncValue.data(updatedState.copyWith(isLoadingMoves: false));
-      }
-      debugPrint(
-        '🎯 TOGGLE ANALYSIS: Analysis mode active, _analysisGame=${_analysisGame != null}',
-      );
-    } else {
-      debugPrint('🎯 TOGGLE ANALYSIS: Exiting analysis mode');
-      unawaited(_persistAnalysisState());
-      _analysisGame = null;
-      _navigatorSubscription?.close();
-      _navigatorSubscription = null;
-
-      final clearedState = _clearVariantSelection(currentState);
-      state = AsyncValue.data(
-        clearedState.copyWith(
-          isAnalysisMode: false,
-          shapes: const ISet.empty(), // Clear all arrows when exiting analysis
-          principalVariations: const [], // Clear PVs
-        ),
-      );
-      debugPrint('🎯 TOGGLE ANALYSIS: Analysis mode deactivated');
-    }
-
-    togglePlayPause();
-  }
+  // REMOVED: toggleAnalysisMode - analysis mode is always active and cannot be toggled
 
   Future<void> _initializeAnalysisBoard() async {
     final currentState = state.value;
