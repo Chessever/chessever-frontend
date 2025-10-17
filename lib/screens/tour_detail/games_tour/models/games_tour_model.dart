@@ -312,7 +312,7 @@ class PlayerCard {
   final String title;
   final int rating;
   final String countryCode;
-  final String? fideId;
+  final int? fideId;
 
   PlayerCard({
     required this.name,
@@ -335,7 +335,7 @@ class PlayerCard {
       title: player.title.trim(),
       rating: player.rating >= 0 ? player.rating : 0,
       countryCode: player.fed.trim(),
-      fideId: player.fideId > 0 ? player.fideId.toString() : null,
+      fideId: player.fideId > 0 ? player.fideId : null,
     );
   }
 
@@ -345,7 +345,7 @@ class PlayerCard {
     String? title,
     int? rating,
     String? countryCode,
-    String? fideId,
+    int? fideId,
   }) {
     return PlayerCard(
       name: name ?? this.name,
