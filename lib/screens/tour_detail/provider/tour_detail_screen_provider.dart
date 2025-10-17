@@ -276,6 +276,7 @@ class _TourDetailScreenNotifier
     final savedTourId = await ref
         .read(tourDetailRepoProvider)
         .getSelectedTourId(groupBroadcast.id);
+
     if (savedTourId != null) {
       final savedModel = findTourModel(tourModels, savedTourId);
       if (savedModel != null) {
@@ -283,14 +284,26 @@ class _TourDetailScreenNotifier
       }
     }
 
-    // 2️⃣ If live tour exists, prefer it
-    final liveModel =
+    // 2️⃣ Handle live tours
+    final liveModels =
         tourModels
             .where((model) => liveTourIds.contains(model.tour.id))
-            .firstOrNull;
-    if (liveModel != null) return liveModel.tour;
+            .toList();
 
-    // 3️⃣ Otherwise, pick most recently completed tour
+    if (liveModels.isNotEmpty) {
+      // If *all* are live, pick the one that started most recently
+      if (liveModels.length == tourModels.length) {
+        liveModels.sort(
+          (a, b) => a.tour.dates.first.compareTo(b.tour.dates.first),
+        );
+        return liveModels.first.tour;
+      }
+
+      // Otherwise, just pick the first live one (or apply other logic if needed)
+      return liveModels.first.tour;
+    }
+
+    // 3️⃣ If no live tours, pick most recently completed tour
     final now = DateTime.now();
     final completedTours =
         tourModels
@@ -298,7 +311,9 @@ class _TourDetailScreenNotifier
             .toList()
           ..sort((a, b) => b.tour.dates.last.compareTo(a.tour.dates.last));
 
-    if (completedTours.isNotEmpty) return completedTours.first.tour;
+    if (completedTours.isNotEmpty) {
+      return completedTours.first.tour;
+    }
 
     // 4️⃣ Fallback: first tour
     return tourModels.first.tour;
