@@ -1250,7 +1250,7 @@ class _BottomNavBar extends ConsumerWidget {
       onLongPressForwardEnd: () => notifier.stopLongPress(),
       canMoveForward: canMoveForward,
       canMoveBackward: canMoveBackward,
-      showEngineAnalysis: state.showEngineAnalysis,
+      showEngineAnalysis: state.showPrincipalVariations,
     );
   }
 }
@@ -1317,7 +1317,7 @@ class _AnalysisGameBody extends ConsumerWidget {
           blackPlayer: true,
           state: state,
         ),
-        if (state.isAnalysisMode && state.showEngineAnalysis) ...[
+        if (state.isAnalysisMode && state.showPrincipalVariations) ...[
           _PrincipalVariationList(index: index, state: state, game: game),
           // DISABLED: Analysis navigation arrows hidden
           // _AnalysisControlsRow(index: index, game: game),
@@ -1526,18 +1526,15 @@ class _BoardWithSidebar extends ConsumerWidget {
               SizedBox(
                 width: sideBarWidth,
                 height: boardSize,
-                child:
-                    state.showEngineAnalysis
-                        ? EvaluationBarWidget(
-                          width: sideBarWidth,
-                          height: boardSize,
-                          index: index,
-                          isFlipped: state.isBoardFlipped,
-                          evaluation: state.evaluation,
-                          mate: state.mate ?? 0,
-                          isEvaluating: state.isEvaluating,
-                        )
-                        : const SizedBox.shrink(),
+                child: EvaluationBarWidget(
+                  width: sideBarWidth,
+                  height: boardSize,
+                  index: index,
+                  isFlipped: state.isBoardFlipped,
+                  evaluation: state.evaluation,
+                  mate: state.mate ?? 0,
+                  isEvaluating: state.isEvaluating,
+                ),
               ),
               Stack(
                 children: [
