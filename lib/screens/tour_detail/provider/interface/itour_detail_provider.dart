@@ -4,7 +4,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_v
 
 abstract class ITourDetailProvider {
   Future<void> loadTourDetails();
-  void updateSelection(String tourId);
+  Future<void> updateSelection(String tourId);
   Future<void> refreshTourDetails();
 }
 
@@ -28,7 +28,7 @@ abstract class ITourProcessor {
 }
 
 abstract class ITourSelector {
-  Tour determineSelectedTour(
+  Future<Tour> determineSelectedTour(
     List<TourModel> tourModels,
     TourDetailViewModel? currentState,
     List<String> liveTourIds,
