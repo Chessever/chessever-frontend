@@ -19,14 +19,14 @@ class ChessSvgBottomNavbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Determine icon color based on active state
+    // Determine icon color - white when active/enabled, transparent white when inactive
     final Color iconColor;
     if (onPressed == null) {
       iconColor = kWhiteColor70;
     } else if (isActive) {
-      iconColor = kPrimaryColor; // Use primary color when active
+      iconColor = kWhiteColor; // Use white when active, like arrow buttons
     } else {
-      iconColor = kWhiteColor;
+      iconColor = kWhiteColor70; // Use transparent white when inactive
     }
 
     return InkWell(
