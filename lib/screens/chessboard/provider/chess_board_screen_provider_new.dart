@@ -1367,7 +1367,7 @@ class ChessBoardScreenNotifierNew
     final currentState = state.value;
     if (currentState == null) return;
     state = AsyncValue.data(
-      currentState.copyWith(showEngineAnalysis: !currentState.showEngineAnalysis),
+      currentState.copyWith(showPrincipalVariations: !currentState.showPrincipalVariations),
     );
   }
 
