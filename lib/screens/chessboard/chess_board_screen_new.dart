@@ -1934,7 +1934,10 @@ class _PrincipalVariationListState
   @override
   void initState() {
     super.initState();
-    _currentPage = widget.state.selectedVariantIndex ?? 0;
+    final lines = widget.state.principalVariations.take(3).toList();
+    final initialIndex = widget.state.selectedVariantIndex ?? 0;
+    // Ensure initial page is within bounds
+    _currentPage = lines.isEmpty ? 0 : initialIndex.clamp(0, lines.length - 1);
     _pageController = PageController(initialPage: _currentPage);
   }
 
@@ -1942,8 +1945,10 @@ class _PrincipalVariationListState
   void didUpdateWidget(_PrincipalVariationList oldWidget) {
     super.didUpdateWidget(oldWidget);
     // Update page when variant selection changes externally
+    final lines = widget.state.principalVariations.take(3).toList();
     final newIndex = widget.state.selectedVariantIndex ?? 0;
-    if (newIndex != _currentPage && newIndex < 3) {
+    // Check bounds against actual number of lines
+    if (newIndex != _currentPage && newIndex < lines.length) {
       _currentPage = newIndex;
       if (_pageController.hasClients) {
         _pageController.animateToPage(
