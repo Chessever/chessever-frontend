@@ -91,7 +91,8 @@ class CustomUpgradeAlert extends StatelessWidget {
         navigatorKey: navigatorKey,
         showIgnore: false,
         showLater: false,
-        barrierDismissible: kDebugMode,
+        shouldPopScope: () => kDebugMode, // Block back button in release, allow in debug
+        barrierDismissible: kDebugMode, // Allow tap outside in debug only
         dialogStyle: Platform.isIOS
             ? UpgradeDialogStyle.cupertino
             : UpgradeDialogStyle.material,
