@@ -25,7 +25,7 @@ class PlayerTourScreen extends ConsumerWidget {
           SizedBox(height: 16.h),
           Padding(
             padding: EdgeInsets.symmetric(
-              horizontal: 8.0.sp,
+              horizontal: 8.sp,
             ), // Matches StandingScoreCard padding
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
