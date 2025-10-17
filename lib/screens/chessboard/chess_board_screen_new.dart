@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:chessever2/screens/standings/score_card_screen.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:chessever2/providers/board_settings_provider.dart';
@@ -84,50 +86,55 @@ class LazyMoveImpactParams {
   int get hashCode => boardParams.hashCode ^ moveIndex.hashCode;
 }
 
-final lazyMoveImpactProvider = FutureProvider.family.autoDispose<
-  MoveImpactAnalysis?,
-  LazyMoveImpactParams
->((ref, params) async {
-  // Get the board state to access position FENs
-  final boardStateAsync = ref.watch(chessBoardScreenProviderNew(params.boardParams));
+final lazyMoveImpactProvider = FutureProvider.family
+    .autoDispose<MoveImpactAnalysis?, LazyMoveImpactParams>((
+      ref,
+      params,
+    ) async {
+      // Get the board state to access position FENs
+      final boardStateAsync = ref.watch(
+        chessBoardScreenProviderNew(params.boardParams),
+      );
 
-  final boardState = boardStateAsync.valueOrNull;
-  if (boardState == null) {
-    return null;
-  }
+      final boardState = boardStateAsync.valueOrNull;
+      if (boardState == null) {
+        return null;
+      }
 
-  final allMoves = boardState.allMoves;
-  final moveSans = boardState.moveSans;
-  final startingPosition = boardState.startingPosition;
+      final allMoves = boardState.allMoves;
+      final moveSans = boardState.moveSans;
+      final startingPosition = boardState.startingPosition;
 
-  if (allMoves.isEmpty || moveSans.isEmpty || params.moveIndex >= moveSans.length) {
-    return null;
-  }
+      if (allMoves.isEmpty ||
+          moveSans.isEmpty ||
+          params.moveIndex >= moveSans.length) {
+        return null;
+      }
 
-  // Generate position FENs for this specific move only
-  final fensParams = PositionFensParams(
-    allMoves: allMoves,
-    startingPosition: startingPosition,
-    gameId: params.boardParams.game.gameId,
-  );
-  final positionFens = ref.watch(positionFensProvider(fensParams));
+      // Generate position FENs for this specific move only
+      final fensParams = PositionFensParams(
+        allMoves: allMoves,
+        startingPosition: startingPosition,
+        gameId: params.boardParams.game.gameId,
+      );
+      final positionFens = ref.watch(positionFensProvider(fensParams));
 
-  if (params.moveIndex >= positionFens.length - 1) {
-    return null; // Invalid move index
-  }
+      if (params.moveIndex >= positionFens.length - 1) {
+        return null; // Invalid move index
+      }
 
-  // Create single move params
-  final singleParams = SingleMoveImpactParams(
-    fenBefore: positionFens[params.moveIndex],
-    fenAfter: positionFens[params.moveIndex + 1],
-    moveSan: moveSans[params.moveIndex],
-    moveIndex: params.moveIndex,
-    gameId: params.boardParams.game.gameId,
-  );
+      // Create single move params
+      final singleParams = SingleMoveImpactParams(
+        fenBefore: positionFens[params.moveIndex],
+        fenAfter: positionFens[params.moveIndex + 1],
+        moveSan: moveSans[params.moveIndex],
+        moveIndex: params.moveIndex,
+        gameId: params.boardParams.game.gameId,
+      );
 
-  // Use the new lazy provider that doesn't block eval bar
-  return ref.watch(singleMoveImpactProvider(singleParams).future);
-});
+      // Use the new lazy provider that doesn't block eval bar
+      return ref.watch(singleMoveImpactProvider(singleParams).future);
+    });
 
 /// DEPRECATED: Provider that calculates move impacts - BULK ANALYSIS
 /// This approach blocks the eval bar and should not be used
@@ -426,23 +433,23 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   @override
   Widget build(BuildContext context) {
     final view = ref.watch(chessboardViewFromProviderNew);
-    final gamesAsync =
-        view == ChessboardView.tour
-            ? ref.watch(
-                gamesTourScreenProvider.select((value) {
-                  if (!value.hasValue) return value;
+    AsyncValue<GamesScreenModel> gamesAsync;
 
-                  final allGames = value.value!.gamesTourModels;
-                  final gameIds = widget.games.map((g) => g.gameId).toSet();
-
-                  final relevantGames =
-                      allGames.where((g) => gameIds.contains(g.gameId)).toList();
-                  return AsyncValue.data(
-                    value.value!.copyWith(gamesTourModels: relevantGames),
-                  );
-                }),
-              )
-            : ref.watch(countrymanGamesTourScreenProvider);
+    switch (view) {
+      case ChessboardView.favScorecard:
+        final selectedPlayer = ref.watch(selectedPlayerProvider);
+        final games = ref.watch(playerGamesProvider(selectedPlayer!)).value!;
+        gamesAsync = AsyncValue.data(
+          GamesScreenModel(gamesTourModels: games, pinnedGamedIs: []),
+        );
+        break;
+      case ChessboardView.tour:
+        gamesAsync = ref.watch(gamesTourScreenProvider);
+        break;
+      case ChessboardView.countryman:
+        gamesAsync = ref.watch(countrymanGamesTourScreenProvider);
+        break;
+    }
 
     if (!gamesAsync.hasValue || gamesAsync.value?.gamesTourModels == null) {
       return _LoadingScreen(
@@ -456,9 +463,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
     final liveGamesMap = Map.fromEntries(
       gamesAsync.value!.gamesTourModels.map((g) => MapEntry(g.gameId, g)),
     );
-    final liveGames = widget.games
-        .map((originalGame) => liveGamesMap[originalGame.gameId] ?? originalGame)
-        .toList();
+    final liveGames =
+        widget.games
+            .map(
+              (originalGame) =>
+                  liveGamesMap[originalGame.gameId] ?? originalGame,
+            )
+            .toList();
 
     final syncedGames = List<GamesTourModel>.from(liveGames);
     if (syncedGames.isEmpty) {
@@ -470,7 +481,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
       );
     }
 
-    final visibleStart = (_currentPageIndex - 1).clamp(0, syncedGames.length - 1);
+    final visibleStart = (_currentPageIndex - 1).clamp(
+      0,
+      syncedGames.length - 1,
+    );
     final visibleEnd = (_currentPageIndex + 1).clamp(0, syncedGames.length - 1);
     final Map<int, AsyncValue<ChessBoardStateNew>> visibleStates = {};
     for (int i = visibleStart; i <= visibleEnd; i++) {
@@ -628,70 +642,75 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
       child: Scaffold(
         // REMOVED: RawGestureDetector was blocking PageView swipes
         body: PageView.builder(
-            padEnds: true,
-            allowImplicitScrolling: true,
-            // PageView swiping enabled in all modes
-            physics: const PageScrollPhysics(),
-            controller: _pageController,
-            onPageChanged: _onPageChanged,
-            itemCount: syncedGames.length,
-            itemBuilder: (context, index) {
-              // Build current page and adjacent pages
-              if (index == _currentPageIndex - 1 ||
-                  index == _currentPageIndex ||
-                  index == _currentPageIndex + 1) {
-                try {
-                  final game = syncedGames[index];
-                  final params =
-                      ChessBoardProviderParams(game: game, index: index);
-                  final stateAsync = visibleStates[index] ??
-                      ref.watch(chessBoardScreenProviderNew(params));
-                  return stateAsync?.when(
-                        data: (chessBoardState) {
-                          if (chessBoardState.isAnalysisMode != analysisMode) {
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                              if (_pageController.hasClients) {
-                                setState(() {
-                                  analysisMode = chessBoardState.isAnalysisMode;
-                                });
-                              }
-                            });
-                          }
-                          return _GamePage(
-                            game: chessBoardState.game, // Use game from state which gets updated by streaming
-                            state: chessBoardState,
-                            games: syncedGames,
-                            currentGameIndex: index,
-                            currentPageIndex: _currentPageIndex,
-                            onGameChanged: _navigateToGame,
-                            lastViewedIndex: _lastViewedIndex,
-                          );
-                        },
-                        error: (e, _) => ErrorWidget(e),
-                        loading:
-                            () => _LoadingScreen(
-                              games: liveGames,
-                              currentGameIndex: index,
-                              onGameChanged: _navigateToGame,
-                              lastViewedIndex: _lastViewedIndex,
-                            ),
-                      );
-                } catch (e) {
-                  // Fallback for when provider isn't ready
-                  return _LoadingScreen(
-                    games: liveGames,
-                    currentGameIndex: index,
-                    onGameChanged: _navigateToGame,
-                    lastViewedIndex: _lastViewedIndex,
-                  );
-                }
-              } else {
-                return SizedBox.shrink();
+          padEnds: true,
+          allowImplicitScrolling: true,
+          // PageView swiping enabled in all modes
+          physics: const PageScrollPhysics(),
+          controller: _pageController,
+          onPageChanged: _onPageChanged,
+          itemCount: syncedGames.length,
+          itemBuilder: (context, index) {
+            // Build current page and adjacent pages
+            if (index == _currentPageIndex - 1 ||
+                index == _currentPageIndex ||
+                index == _currentPageIndex + 1) {
+              try {
+                final game = syncedGames[index];
+                final params = ChessBoardProviderParams(
+                  game: game,
+                  index: index,
+                );
+                final stateAsync =
+                    visibleStates[index] ??
+                    ref.watch(chessBoardScreenProviderNew(params));
+                return stateAsync?.when(
+                  data: (chessBoardState) {
+                    if (chessBoardState.isAnalysisMode != analysisMode) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (_pageController.hasClients) {
+                          setState(() {
+                            analysisMode = chessBoardState.isAnalysisMode;
+                          });
+                        }
+                      });
+                    }
+                    return _GamePage(
+                      game:
+                          chessBoardState
+                              .game, // Use game from state which gets updated by streaming
+                      state: chessBoardState,
+                      games: syncedGames,
+                      currentGameIndex: index,
+                      currentPageIndex: _currentPageIndex,
+                      onGameChanged: _navigateToGame,
+                      lastViewedIndex: _lastViewedIndex,
+                    );
+                  },
+                  error: (e, _) => ErrorWidget(e),
+                  loading:
+                      () => _LoadingScreen(
+                        games: liveGames,
+                        currentGameIndex: index,
+                        onGameChanged: _navigateToGame,
+                        lastViewedIndex: _lastViewedIndex,
+                      ),
+                );
+              } catch (e) {
+                // Fallback for when provider isn't ready
+                return _LoadingScreen(
+                  games: liveGames,
+                  currentGameIndex: index,
+                  onGameChanged: _navigateToGame,
+                  lastViewedIndex: _lastViewedIndex,
+                );
               }
-            },
-          ),
+            } else {
+              return SizedBox.shrink();
+            }
+          },
         ),
-      );
+      ),
+    );
   }
 }
 
@@ -1443,8 +1462,13 @@ class _BoardWithSidebar extends ConsumerWidget {
         // LAZY IMPACT: Only calculate impact for the CURRENT move, not all moves
         // This prevents blocking the eval bar by not flooding Stockfish queue
         MoveImpactAnalysis? currentMoveImpact;
-        if (index == currentPageIndex && state.allMoves.isNotEmpty && currentIndex >= 0) {
-          final boardParams = ChessBoardProviderParams(game: game, index: index);
+        if (index == currentPageIndex &&
+            state.allMoves.isNotEmpty &&
+            currentIndex >= 0) {
+          final boardParams = ChessBoardProviderParams(
+            game: game,
+            index: index,
+          );
           final lazyParams = LazyMoveImpactParams(
             boardParams: boardParams,
             moveIndex: currentIndex,
@@ -2068,16 +2092,20 @@ class _PrincipalVariationListState
                           final evalText = _formatEvalLabel(line);
 
                           // Get variant color matching the arrow color
-                          final activeVariantColor =
-                              notifier.getVariantColor(variantIndex, true);
-                          final borderColor =
-                              activeVariantColor.withValues(alpha: 0.7);
-                          final backgroundColor =
-                              activeVariantColor.withValues(alpha: 0.15);
-                          final badgeBackgroundColor =
-                              activeVariantColor.withValues(alpha: 0.3);
-                          final badgeBorderColor =
-                              activeVariantColor.withValues(alpha: 0.6);
+                          final activeVariantColor = notifier.getVariantColor(
+                            variantIndex,
+                            true,
+                          );
+                          final borderColor = activeVariantColor.withValues(
+                            alpha: 0.7,
+                          );
+                          final backgroundColor = activeVariantColor.withValues(
+                            alpha: 0.15,
+                          );
+                          final badgeBackgroundColor = activeVariantColor
+                              .withValues(alpha: 0.3);
+                          final badgeBorderColor = activeVariantColor
+                              .withValues(alpha: 0.6);
 
                           return GestureDetector(
                             // DISABLED: PV cards are now read-only
@@ -2357,10 +2385,7 @@ class _MoveNotationWidget extends ConsumerWidget {
               .read(chessBoardScreenProviderNew(params).notifier)
               .goToMove(moveIndex),
       child: Container(
-        padding: EdgeInsets.symmetric(
-          horizontal: 6.sp,
-          vertical: 2.sp,
-        ),
+        padding: EdgeInsets.symmetric(horizontal: 6.sp, vertical: 2.sp),
         decoration: BoxDecoration(
           color:
               isCurrentMove
@@ -2380,9 +2405,7 @@ class _MoveNotationWidget extends ConsumerWidget {
                 style: AppTypography.textXsMedium.copyWith(
                   color: textColor,
                   fontWeight:
-                      isCurrentMove
-                          ? FontWeight.bold
-                          : FontWeight.normal,
+                      isCurrentMove ? FontWeight.bold : FontWeight.normal,
                 ),
               ),
               if (impactSymbol.isNotEmpty)

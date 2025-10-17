@@ -24,7 +24,7 @@ import 'package:worker_manager/worker_manager.dart';
 
 const int _kMaxPrincipalVariations = 3;
 
-enum ChessboardView { tour, countryman }
+enum ChessboardView { favScorecard, tour, countryman }
 
 final chessboardViewFromProviderNew = StateProvider<ChessboardView>((ref) {
   return ChessboardView.tour;
