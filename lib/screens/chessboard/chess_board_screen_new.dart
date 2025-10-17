@@ -13,6 +13,7 @@ import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.d
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/move_annotation_overlay.dart';
+import 'package:chessever2/screens/chessboard/widgets/share_game_card_overlay.dart';
 import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
@@ -820,6 +821,43 @@ class _AppBar extends ConsumerWidget implements PreferredSizeWidget {
     Clipboard.setData(ClipboardData(text: pgn));
   }
 
+  void shareGameBtnClicked(BuildContext context, WidgetRef ref) async {
+    // Get the board provider to access the current state
+    final params = ChessBoardProviderParams(game: game, index: currentGameIndex);
+    final boardState = ref.read(chessBoardScreenProviderNew(params));
+
+    // Only proceed if we have a valid state
+    if (!boardState.hasValue || boardState.value == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please wait for the game to load'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final state = boardState.value!;
+    final gameWithPgn = await ref
+        .read(gameRepositoryProvider)
+        .getGameById(game.gameId);
+    final pgn = gameWithPgn.pgn ?? "";
+
+    // Show share overlay - we'll navigate to a full screen overlay
+    if (context.mounted) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (context) => _ShareGameScreen(
+            game: game,
+            state: state,
+            pgn: pgn,
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return AppBar(
@@ -838,7 +876,11 @@ class _AppBar extends ConsumerWidget implements PreferredSizeWidget {
         PopupMenuButton<String>(
           icon: const Icon(Icons.more_vert, color: kWhiteColor),
           enabled: !isLoading,
-          onSelected: (_) {},
+          onSelected: (value) {
+            if (value == 'share') {
+              shareGameBtnClicked(context, ref);
+            }
+          },
           itemBuilder:
               (context) => [
                 PopupMenuItem(
@@ -2425,6 +2467,79 @@ class _MoveNotationWidget extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+// Share Game Screen Widget
+class _ShareGameScreen extends ConsumerWidget {
+  final GamesTourModel game;
+  final ChessBoardStateNew state;
+  final String pgn;
+
+  const _ShareGameScreen({
+    required this.game,
+    required this.state,
+    required this.pgn,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Get board settings for creating the board widget
+    final boardSettingsValue = ref.watch(boardSettingsProvider);
+    final boardTheme = ref
+        .read(boardSettingsRepository)
+        .getBoardTheme(boardSettingsValue.boardColor);
+
+    // Create a read-only board widget showing the current position
+    final boardWidget = Chessboard(
+      size: 340.0,
+      fen: state.position?.fen ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      orientation: state.isBoardFlipped ? Side.black : Side.white,
+      game: null,
+      settings: ChessboardSettings(
+        enableCoordinates: false,
+        colorScheme: ChessboardColorScheme(
+          lightSquare: boardTheme.lightSquareColor,
+          darkSquare: boardTheme.darkSquareColor,
+          background: SolidColorChessboardBackground(
+            lightSquare: boardTheme.lightSquareColor,
+            darkSquare: boardTheme.darkSquareColor,
+          ),
+          whiteCoordBackground: SolidColorChessboardBackground(
+            lightSquare: boardTheme.lightSquareColor,
+            darkSquare: boardTheme.darkSquareColor,
+            coordinates: false,
+            orientation: Side.white,
+          ),
+          blackCoordBackground: SolidColorChessboardBackground(
+            lightSquare: boardTheme.lightSquareColor,
+            darkSquare: boardTheme.darkSquareColor,
+            coordinates: false,
+            orientation: Side.black,
+          ),
+          lastMove: HighlightDetails(
+            solidColor: boardTheme.lightSquareColor.withValues(alpha: 0),
+          ),
+          selected: HighlightDetails(
+            solidColor: boardTheme.lightSquareColor.withValues(alpha: 0),
+          ),
+          validMoves: boardTheme.lightSquareColor.withValues(alpha: 0),
+          validPremoves: boardTheme.lightSquareColor.withValues(alpha: 0),
+        ),
+        borderRadius: const BorderRadius.all(Radius.circular(0)),
+        boxShadow: const [],
+      ),
+    );
+
+    return ShareGameCardOverlay(
+      boardWidget: boardWidget,
+      pgn: pgn,
+      whitePlayerName: game.whitePlayer.name,
+      blackPlayerName: game.blackPlayer.name,
+      whitePlayerCountry: game.whitePlayer.federation,
+      blackPlayerCountry: game.blackPlayer.federation,
+      onClose: () => Navigator.of(context).pop(),
     );
   }
 }
