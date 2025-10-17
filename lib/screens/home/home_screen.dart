@@ -5,22 +5,40 @@ import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/premium/premium_screen.dart'; // Import premium screen
 import 'package:chessever2/screens/premium/provider/premium_screen_provider.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
+import 'package:chessever2/widgets/custom_upgrade_alert.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:upgrader/upgrader.dart';
 import '../group_event/group_event_screen.dart';
 import 'widget/bottom_nav_bar.dart';
 
-class HomeScreen extends ConsumerWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   static final GlobalKey<ScaffoldState> scaffoldKey =
       GlobalKey<ScaffoldState>();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Scaffold(
-      key: scaffoldKey,
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends ConsumerState<HomeScreen> {
+  // Define upgrader at widget level (not in build)
+  static final _upgrader = Upgrader(
+    messages: CustomUpgraderMessages(),
+    durationUntilAlertAgain: const Duration(days: 1),
+    debugDisplayAlways: kDebugMode,
+    debugLogging: kDebugMode,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomUpgradeAlert(
+      upgrader: _upgrader,
+      child: Scaffold(
+      key: HomeScreen.scaffoldKey,
       drawer: HamburgerMenu(
         callbacks: HamburgerMenuCallbacks(
           onPlayersPressed: () {
@@ -100,6 +118,7 @@ class HomeScreen extends ConsumerWidget {
       ),
       bottomNavigationBar: BottomNavBar(),
       body: BottomNavBarView(),
+      ),
     );
   }
 }

@@ -2640,6 +2640,10 @@ List<Map<String, dynamic>> _analysisLinesWorker(Map<String, dynamic> payload) {
       Setup.parseFen(fen),
     );
 
+    // PV DISPLAY POLICY: Simple and flexible
+    // - Display whatever PV moves are available from the source
+    // - No caps, no minimums, no restrictions
+
     final results = <Map<String, dynamic>>[];
 
     for (final pvData in pvsData) {
