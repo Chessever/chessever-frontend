@@ -2034,6 +2034,8 @@ class _PrincipalVariationListState
     extends ConsumerState<_PrincipalVariationList> {
   late PageController _pageController;
   int _currentPage = 0;
+  Timer? _evaluationTimeoutTimer;
+  bool _forceHideSkeleton = false;
 
   @override
   void initState() {
@@ -2043,11 +2045,41 @@ class _PrincipalVariationListState
     // Ensure initial page is within bounds
     _currentPage = lines.isEmpty ? 0 : initialIndex.clamp(0, lines.length - 1);
     _pageController = PageController(initialPage: _currentPage);
+
+    // Start timeout timer if currently evaluating
+    if (widget.state.isEvaluating) {
+      _startEvaluationTimeout();
+    }
+  }
+
+  void _startEvaluationTimeout() {
+    _evaluationTimeoutTimer?.cancel();
+    _forceHideSkeleton = false;
+    // After 5 seconds, force hide skeleton to prevent stuck loading state
+    _evaluationTimeoutTimer = Timer(const Duration(seconds: 5), () {
+      if (mounted && widget.state.isEvaluating) {
+        setState(() {
+          _forceHideSkeleton = true;
+        });
+        debugPrint('⏰ PV TIMEOUT: Forced hiding skeleton after 5s timeout');
+      }
+    });
   }
 
   @override
   void didUpdateWidget(_PrincipalVariationList oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    // Reset timeout when evaluation state changes
+    if (widget.state.isEvaluating != oldWidget.state.isEvaluating) {
+      if (widget.state.isEvaluating) {
+        _startEvaluationTimeout();
+      } else {
+        _evaluationTimeoutTimer?.cancel();
+        _forceHideSkeleton = false;
+      }
+    }
+
     // Update page when variant selection changes externally
     final lines = widget.state.principalVariations.take(3).toList();
     final newIndex = widget.state.selectedVariantIndex ?? 0;
@@ -2066,6 +2098,7 @@ class _PrincipalVariationListState
 
   @override
   void dispose() {
+    _evaluationTimeoutTimer?.cancel();
     _pageController.dispose();
     super.dispose();
   }
@@ -2090,8 +2123,10 @@ class _PrincipalVariationListState
     // Check if position is terminal (game over)
     final isGameOver = position?.isGameOver ?? false;
 
-    // Show skeleton ONLY when first loading (no lines yet) AND not game over
-    final showSkeleton = !isGameOver && lines.isEmpty;
+    // Show skeleton when evaluating (to prevent stale data display) OR when first loading (no lines yet)
+    // But not when game is over OR when forced hidden by timeout
+    // CRITICAL: Force hide skeleton after timeout to prevent stuck loading state in live games
+    final showSkeleton = !isGameOver && !_forceHideSkeleton && (isEvaluating || lines.isEmpty);
 
     // Show end of game message when position is terminal
     final showEndOfGame = isGameOver && widget.state.isAnalysisMode;
