@@ -17,16 +17,14 @@ class PlayerTourScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 20.0.sp),
+      padding: EdgeInsets.symmetric(horizontal: 20.sp),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           SizedBox(height: 16.h),
           Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: 8.sp,
-            ), // Matches StandingScoreCard padding
+            padding: EdgeInsets.symmetric(horizontal: 8.sp),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
