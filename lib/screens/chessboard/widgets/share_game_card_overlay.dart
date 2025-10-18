@@ -1,5 +1,6 @@
-import 'dart:io';
+import 'dart:io' as io;
 import 'dart:typed_data';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -15,9 +16,13 @@ import 'package:country_flags/country_flags.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessground/chessground.dart';
+import 'package:dartchess/dartchess.dart';
 
 class ShareGameCardOverlay extends StatefulWidget {
-  final Widget boardWidget;
+  final ChessboardSettings boardSettings;
+  final String positionFen;
+  final Move? lastMove;
   final String pgn;
   final List<String> moveSans; // The actual move list from analysis state
   final String whitePlayerName;
@@ -41,7 +46,9 @@ class ShareGameCardOverlay extends StatefulWidget {
 
   const ShareGameCardOverlay({
     super.key,
-    required this.boardWidget,
+    required this.boardSettings,
+    required this.positionFen,
+    required this.lastMove,
     required this.pgn,
     required this.moveSans,
     required this.whitePlayerName,
@@ -108,7 +115,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
 
     try {
       final tempDir = await getTemporaryDirectory();
-      final file = File('${tempDir.path}/chessever_share.png');
+      final file = io.File('${tempDir.path}/chessever_share.png');
       await file.writeAsBytes(imageBytes);
 
       // Fix for iOS 16+ share dialog bug
@@ -130,7 +137,10 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     if (!hasAccess) {
       final granted = await Gal.requestAccess();
       if (!granted) {
-        _showMessage('Storage permission is required to save images', isError: true);
+        _showMessage(
+          'Storage permission is required to save images',
+          isError: true,
+        );
         return;
       }
     }
@@ -199,137 +209,170 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
               ),
             ),
             Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Visible preview card with 3D effect
-                GestureDetector(
-                  onPanUpdate: (details) {
-                    setState(() {
-                      _rotationY = (details.localPosition.dx / 350.w - 0.5) * 0.15;
-                      _rotationX = -(details.localPosition.dy / 600.h - 0.5) * 0.15;
-                    });
-                  },
-                  onPanEnd: (details) {
-                    setState(() {
-                      _rotationX = 0.0;
-                      _rotationY = 0.0;
-                    });
-                  },
-                  child: AnimatedContainer(
-                    duration: Duration(milliseconds: 200),
-                    curve: Curves.easeOut,
-                    transform: Matrix4.identity()
-                      ..setEntry(3, 2, 0.001)
-                      ..rotateX(_rotationX)
-                      ..rotateY(_rotationY),
-                    transformAlignment: Alignment.center,
-                    child: _ShareCard(
-                      boardWidget: widget.boardWidget,
-                      pgn: widget.pgn,
-                      moveSans: widget.moveSans,
-                      whitePlayerName: widget.whitePlayerName,
-                      blackPlayerName: widget.blackPlayerName,
-                      whitePlayerCountry: widget.whitePlayerCountry,
-                      blackPlayerCountry: widget.blackPlayerCountry,
-                      whitePlayerElo: widget.whitePlayerElo,
-                      blackPlayerElo: widget.blackPlayerElo,
-                      whitePlayerTitle: widget.whitePlayerTitle,
-                      blackPlayerTitle: widget.blackPlayerTitle,
-                      whitePlayerClock: widget.whitePlayerClock,
-                      blackPlayerClock: widget.blackPlayerClock,
-                      tournamentName: widget.tournamentName,
-                      roundInfo: widget.roundInfo,
-                      currentMoveIndex: widget.currentMoveIndex,
-                      evaluation: widget.evaluation,
-                      mate: widget.mate,
-                      isFlipped: widget.isFlipped,
-                      gameStatus: widget.gameStatus,
-                      isPreview: true,
-                    ),
-                  ),
-                ).animate().fadeIn(duration: 300.ms).scale(begin: Offset(0.95, 0.95), duration: 300.ms),
-                SizedBox(height: 20.h),
-                if (_isGenerating)
-                  CircularProgressIndicator(color: kPrimaryColor, strokeWidth: 2)
-                else
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Expanded(
-                        child: Padding(
-                          padding: EdgeInsets.only(left: 40.w),
-                          child: ElevatedButton.icon(
-                            onPressed: _downloadImage,
-                            icon: Icon(Icons.download, size: 20.sp),
-                            label: Text('Download', style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600)),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: kBlack2Color,
-                              foregroundColor: kWhiteColor,
-                              padding: EdgeInsets.symmetric(vertical: 12.h),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10.br),
-                                side: BorderSide(color: kWhiteColor70, width: 1),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Visible preview card with 3D effect
+                  GestureDetector(
+                        onPanUpdate: (details) {
+                          setState(() {
+                            _rotationY =
+                                (details.localPosition.dx / 350.w - 0.5) * 0.15;
+                            _rotationX =
+                                -(details.localPosition.dy / 600.h - 0.5) *
+                                0.15;
+                          });
+                        },
+                        onPanEnd: (details) {
+                          setState(() {
+                            _rotationX = 0.0;
+                            _rotationY = 0.0;
+                          });
+                        },
+                        child: AnimatedContainer(
+                          duration: Duration(milliseconds: 200),
+                          curve: Curves.easeOut,
+                          transform:
+                              Matrix4.identity()
+                                ..setEntry(3, 2, 0.001)
+                                ..rotateX(_rotationX)
+                                ..rotateY(_rotationY),
+                          transformAlignment: Alignment.center,
+                          child: _ShareCard(
+                            boardSettings: widget.boardSettings,
+                            positionFen: widget.positionFen,
+                            lastMove: widget.lastMove,
+                            onClose: widget.onClose,
+                            pgn: widget.pgn,
+                            moveSans: widget.moveSans,
+                            whitePlayerName: widget.whitePlayerName,
+                            blackPlayerName: widget.blackPlayerName,
+                            whitePlayerCountry: widget.whitePlayerCountry,
+                            blackPlayerCountry: widget.blackPlayerCountry,
+                            whitePlayerElo: widget.whitePlayerElo,
+                            blackPlayerElo: widget.blackPlayerElo,
+                            whitePlayerTitle: widget.whitePlayerTitle,
+                            blackPlayerTitle: widget.blackPlayerTitle,
+                            whitePlayerClock: widget.whitePlayerClock,
+                            blackPlayerClock: widget.blackPlayerClock,
+                            tournamentName: widget.tournamentName,
+                            roundInfo: widget.roundInfo,
+                            currentMoveIndex: widget.currentMoveIndex,
+                            evaluation: widget.evaluation,
+                            mate: widget.mate,
+                            isFlipped: widget.isFlipped,
+                            gameStatus: widget.gameStatus,
+                            isPreview: true,
+                          ),
+                        ),
+                      )
+                      .animate()
+                      .fadeIn(duration: 300.ms)
+                      .scale(begin: Offset(0.95, 0.95), duration: 300.ms),
+                  SizedBox(height: 20.h),
+                  if (_isGenerating)
+                    CircularProgressIndicator(
+                      color: kPrimaryColor,
+                      strokeWidth: 2,
+                    )
+                  else
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: Padding(
+                            padding: EdgeInsets.only(left: 40.w),
+                            child: ElevatedButton.icon(
+                              onPressed: _downloadImage,
+                              icon: Icon(Icons.download, size: 20.sp),
+                              label: Text(
+                                'Download',
+                                style: TextStyle(
+                                  fontSize: 14.sp,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: kBlack2Color,
+                                foregroundColor: kWhiteColor,
+                                padding: EdgeInsets.symmetric(vertical: 12.h),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10.br),
+                                  side: BorderSide(
+                                    color: kWhiteColor70,
+                                    width: 1,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                      SizedBox(width: 16.w),
-                      Expanded(
-                        child: Padding(
-                          padding: EdgeInsets.only(right: 40.w),
-                          child: ElevatedButton.icon(
-                            onPressed: _shareImage,
-                            icon: Icon(Icons.share, size: 20.sp),
-                            label: Text('Share', style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600)),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: kPrimaryColor,
-                              foregroundColor: kWhiteColor,
-                              padding: EdgeInsets.symmetric(vertical: 12.h),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.br)),
+                        SizedBox(width: 16.w),
+                        Expanded(
+                          child: Padding(
+                            padding: EdgeInsets.only(right: 40.w),
+                            child: ElevatedButton.icon(
+                              onPressed: _shareImage,
+                              icon: Icon(Icons.share, size: 20.sp),
+                              label: Text(
+                                'Share',
+                                style: TextStyle(
+                                  fontSize: 14.sp,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: kPrimaryColor,
+                                foregroundColor: kWhiteColor,
+                                padding: EdgeInsets.symmetric(vertical: 12.h),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10.br),
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
-                  ).animate().fadeIn(delay: 200.ms, duration: 300.ms),
-              ],
-            ),
-          ),
-          // Offscreen full card for screenshot (with all moves)
-          // Position off-screen instead of using Offstage to ensure proper rendering
-          Positioned(
-            left: -10000,
-            top: -10000,
-            child: Screenshot(
-              controller: _fullScreenshotController,
-              child: _ShareCard(
-                boardWidget: widget.boardWidget,
-                pgn: widget.pgn,
-                moveSans: widget.moveSans,
-                whitePlayerName: widget.whitePlayerName,
-                blackPlayerName: widget.blackPlayerName,
-                whitePlayerCountry: widget.whitePlayerCountry,
-                blackPlayerCountry: widget.blackPlayerCountry,
-                whitePlayerElo: widget.whitePlayerElo,
-                blackPlayerElo: widget.blackPlayerElo,
-                whitePlayerTitle: widget.whitePlayerTitle,
-                blackPlayerTitle: widget.blackPlayerTitle,
-                whitePlayerClock: widget.whitePlayerClock,
-                blackPlayerClock: widget.blackPlayerClock,
-                tournamentName: widget.tournamentName,
-                roundInfo: widget.roundInfo,
-                currentMoveIndex: widget.currentMoveIndex,
-                evaluation: widget.evaluation,
-                mate: widget.mate,
-                isFlipped: widget.isFlipped,
-                gameStatus: widget.gameStatus,
-                isPreview: false,
+                      ],
+                    ).animate().fadeIn(delay: 200.ms, duration: 300.ms),
+                ],
               ),
             ),
-          ),
-        ],
+            // Offscreen full card for screenshot (with all moves)
+            // Position off-screen instead of using Offstage to ensure proper rendering
+            Positioned(
+              left: -10000,
+              top: -10000,
+              child: Screenshot(
+                controller: _fullScreenshotController,
+                child: _ShareCard(
+                  boardSettings: widget.boardSettings,
+                  positionFen: widget.positionFen,
+                  lastMove: widget.lastMove,
+                  onClose: null,
+                  pgn: widget.pgn,
+                  moveSans: widget.moveSans,
+                  whitePlayerName: widget.whitePlayerName,
+                  blackPlayerName: widget.blackPlayerName,
+                  whitePlayerCountry: widget.whitePlayerCountry,
+                  blackPlayerCountry: widget.blackPlayerCountry,
+                  whitePlayerElo: widget.whitePlayerElo,
+                  blackPlayerElo: widget.blackPlayerElo,
+                  whitePlayerTitle: widget.whitePlayerTitle,
+                  blackPlayerTitle: widget.blackPlayerTitle,
+                  whitePlayerClock: widget.whitePlayerClock,
+                  blackPlayerClock: widget.blackPlayerClock,
+                  tournamentName: widget.tournamentName,
+                  roundInfo: widget.roundInfo,
+                  currentMoveIndex: widget.currentMoveIndex,
+                  evaluation: widget.evaluation,
+                  mate: widget.mate,
+                  isFlipped: widget.isFlipped,
+                  gameStatus: widget.gameStatus,
+                  isPreview: false,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -337,7 +380,10 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
 }
 
 class _ShareCard extends ConsumerWidget {
-  final Widget boardWidget;
+  final ChessboardSettings boardSettings;
+  final String positionFen;
+  final Move? lastMove;
+  final VoidCallback? onClose;
   final String pgn;
   final List<String> moveSans; // The actual move list from analysis state
   final String whitePlayerName;
@@ -360,7 +406,10 @@ class _ShareCard extends ConsumerWidget {
   final bool isPreview;
 
   const _ShareCard({
-    required this.boardWidget,
+    required this.boardSettings,
+    required this.positionFen,
+    required this.lastMove,
+    this.onClose,
     required this.pgn,
     required this.moveSans,
     required this.whitePlayerName,
@@ -424,14 +473,21 @@ class _ShareCard extends ConsumerWidget {
     // Use the actual moveSans from analysis state instead of parsing PGN
     final moves = moveSans;
 
-    final whiteCountry = whitePlayerCountry != null
-        ? ref.read(locationServiceProvider).getValidCountryCode(whitePlayerCountry!)
-        : '';
-    final blackCountry = blackPlayerCountry != null
-        ? ref.read(locationServiceProvider).getValidCountryCode(blackPlayerCountry!)
-        : '';
+    final whiteCountry =
+        whitePlayerCountry != null
+            ? ref
+                .read(locationServiceProvider)
+                .getValidCountryCode(whitePlayerCountry!)
+            : '';
+    final blackCountry =
+        blackPlayerCountry != null
+            ? ref
+                .read(locationServiceProvider)
+                .getValidCountryCode(blackPlayerCountry!)
+            : '';
+    final boardOrientation = isFlipped ? Side.black : Side.white;
 
-    return Container(
+    final cardContent = Container(
       width: 370.w,
       decoration: BoxDecoration(
         color: kBackgroundColor,
@@ -479,10 +535,7 @@ class _ShareCard extends ConsumerWidget {
           if (roundInfo != null)
             Text(
               roundInfo!,
-              style: TextStyle(
-                color: kWhiteColor70,
-                fontSize: 9.sp,
-              ),
+              style: TextStyle(color: kWhiteColor70, fontSize: 9.sp),
             ),
           SizedBox(height: 12.h),
           Padding(
@@ -496,20 +549,32 @@ class _ShareCard extends ConsumerWidget {
                 ),
                 SizedBox(width: 8.w),
                 if (blackCountry.isNotEmpty) ...[
-                  CountryFlag.fromCountryCode(blackCountry, height: 12.h, width: 16.w),
+                  CountryFlag.fromCountryCode(
+                    blackCountry,
+                    height: 12.h,
+                    width: 16.w,
+                  ),
                   SizedBox(width: 8.w),
                 ],
                 if (blackPlayerTitle != null) ...[
                   Text(
                     blackPlayerTitle!,
-                    style: TextStyle(color: kPrimaryColor, fontSize: 10.sp, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      color: kPrimaryColor,
+                      fontSize: 10.sp,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   SizedBox(width: 6.w),
                 ],
                 Expanded(
                   child: Text(
                     blackPlayerName,
-                    style: TextStyle(color: kWhiteColor, fontSize: 11.sp, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: kWhiteColor,
+                      fontSize: 11.sp,
+                      fontWeight: FontWeight.w600,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -517,19 +582,30 @@ class _ShareCard extends ConsumerWidget {
                 if (blackPlayerElo != null)
                   Text(
                     blackPlayerElo!,
-                    style: TextStyle(color: kLightYellowColor, fontSize: 10.sp, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: kLightYellowColor,
+                      fontSize: 10.sp,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 if (blackPlayerClock != null) ...[
                   SizedBox(width: 8.w),
                   Container(
-                    padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 6.w,
+                      vertical: 2.h,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.black.withValues(alpha: 0.4),
                       borderRadius: BorderRadius.circular(4.br),
                     ),
                     child: Text(
                       blackPlayerClock!,
-                      style: TextStyle(color: kWhiteColor, fontSize: 9.sp, fontFamily: 'monospace'),
+                      style: TextStyle(
+                        color: kWhiteColor,
+                        fontSize: 9.sp,
+                        fontFamily: 'monospace',
+                      ),
                     ),
                   ),
                 ],
@@ -544,19 +620,17 @@ class _ShareCard extends ConsumerWidget {
               builder: (context, constraints) {
                 final sideBarWidth = 20.w;
                 final availableWidth = constraints.maxWidth;
-                final boardSize = availableWidth - sideBarWidth;
-                final evalBarHeight = boardSize - 20; // Reduce height to prevent bottom overflow
+                final boardSize = math.max(1.0, availableWidth - sideBarWidth);
 
                 return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
                       width: sideBarWidth,
-                      height: evalBarHeight,
-                      clipBehavior: Clip.hardEdge,
-                      decoration: BoxDecoration(),
+                      height: boardSize,
                       child: EvaluationBarWidget(
                         width: sideBarWidth,
-                        height: evalBarHeight,
+                        height: boardSize,
                         index: currentMoveIndex,
                         isFlipped: isFlipped,
                         evaluation: evaluation,
@@ -567,7 +641,14 @@ class _ShareCard extends ConsumerWidget {
                     SizedBox(
                       width: boardSize,
                       height: boardSize,
-                      child: boardWidget,
+                      child: Chessboard(
+                        size: boardSize,
+                        fen: positionFen,
+                        orientation: boardOrientation,
+                        lastMove: lastMove,
+                        game: null,
+                        settings: boardSettings,
+                      ),
                     ),
                   ],
                 );
@@ -586,20 +667,32 @@ class _ShareCard extends ConsumerWidget {
                 ),
                 SizedBox(width: 8.w),
                 if (whiteCountry.isNotEmpty) ...[
-                  CountryFlag.fromCountryCode(whiteCountry, height: 12.h, width: 16.w),
+                  CountryFlag.fromCountryCode(
+                    whiteCountry,
+                    height: 12.h,
+                    width: 16.w,
+                  ),
                   SizedBox(width: 8.w),
                 ],
                 if (whitePlayerTitle != null) ...[
                   Text(
                     whitePlayerTitle!,
-                    style: TextStyle(color: kPrimaryColor, fontSize: 10.sp, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      color: kPrimaryColor,
+                      fontSize: 10.sp,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   SizedBox(width: 6.w),
                 ],
                 Expanded(
                   child: Text(
                     whitePlayerName,
-                    style: TextStyle(color: kWhiteColor, fontSize: 11.sp, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: kWhiteColor,
+                      fontSize: 11.sp,
+                      fontWeight: FontWeight.w600,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -607,19 +700,30 @@ class _ShareCard extends ConsumerWidget {
                 if (whitePlayerElo != null)
                   Text(
                     whitePlayerElo!,
-                    style: TextStyle(color: kLightYellowColor, fontSize: 10.sp, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: kLightYellowColor,
+                      fontSize: 10.sp,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 if (whitePlayerClock != null) ...[
                   SizedBox(width: 8.w),
                   Container(
-                    padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 6.w,
+                      vertical: 2.h,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.black.withValues(alpha: 0.4),
                       borderRadius: BorderRadius.circular(4.br),
                     ),
                     child: Text(
                       whitePlayerClock!,
-                      style: TextStyle(color: kWhiteColor, fontSize: 9.sp, fontFamily: 'monospace'),
+                      style: TextStyle(
+                        color: kWhiteColor,
+                        fontSize: 9.sp,
+                        fontFamily: 'monospace',
+                      ),
                     ),
                   ),
                 ],
@@ -634,8 +738,10 @@ class _ShareCard extends ConsumerWidget {
               builder: (context) {
                 // Show 20 full moves BEFORE the current position + the current position
                 // So if current position is move 50, show moves 11-50 (40 moves total)
-                const fullMovesToShowBefore = 20; // 20 full moves = 40 individual half-moves
-                const totalIndividualMoves = fullMovesToShowBefore * 2; // 40 individual half-moves
+                const fullMovesToShowBefore =
+                    20; // 20 full moves = 40 individual half-moves
+                const totalIndividualMoves =
+                    fullMovesToShowBefore * 2; // 40 individual half-moves
 
                 int startIndex;
                 int endIndex;
@@ -647,7 +753,10 @@ class _ShareCard extends ConsumerWidget {
                 } else {
                   // Show current move as the LAST one + 39 moves before it (total 40)
                   endIndex = currentMoveIndex + 1; // Include current move
-                  startIndex = (endIndex - totalIndividualMoves).clamp(0, moves.length);
+                  startIndex = (endIndex - totalIndividualMoves).clamp(
+                    0,
+                    moves.length,
+                  );
 
                   // If we can't get 40 moves before current (because current is near start),
                   // extend to include more moves after current
@@ -657,8 +766,6 @@ class _ShareCard extends ConsumerWidget {
                 }
 
                 final displayMoves = moves.sublist(startIndex, endIndex);
-                final showStartEllipsis = startIndex > 0;
-                final showEndEllipsis = endIndex < moves.length;
 
                 return Padding(
                   padding: EdgeInsets.symmetric(horizontal: 16.w),
@@ -666,15 +773,6 @@ class _ShareCard extends ConsumerWidget {
                     spacing: 2.sp,
                     runSpacing: 2.sp,
                     children: [
-                      if (showStartEllipsis)
-                        Text(
-                          '...',
-                          style: TextStyle(
-                            color: kWhiteColor70,
-                            fontSize: 8.5.sp,
-                            fontFamily: 'monospace',
-                          ),
-                        ),
                       ...displayMoves.asMap().entries.map((entry) {
                         final moveIndex = startIndex + entry.key;
                         final move = entry.value;
@@ -685,38 +783,43 @@ class _ShareCard extends ConsumerWidget {
                         final isWhiteMove = moveIndex % 2 == 0;
 
                         // EXACT same formatting as chess board screen
-                        final displayText = isWhiteMove ? '$fullMoveNumber. $move' : move;
+                        final displayText =
+                            isWhiteMove ? '$fullMoveNumber. $move' : move;
 
                         return Container(
-                          padding: EdgeInsets.symmetric(horizontal: 6.sp, vertical: 2.sp),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 6.sp,
+                            vertical: 2.sp,
+                          ),
                           decoration: BoxDecoration(
-                            color: isCurrentMove ? kWhiteColor70.withValues(alpha: 0.4) : Colors.transparent,
+                            color:
+                                isCurrentMove
+                                    ? kWhiteColor70.withValues(alpha: 0.4)
+                                    : Colors.transparent,
                             borderRadius: BorderRadius.circular(4.sp),
                             border: Border.all(
-                              color: isCurrentMove ? kWhiteColor : Colors.transparent,
+                              color:
+                                  isCurrentMove
+                                      ? kWhiteColor
+                                      : Colors.transparent,
                               width: 0.5,
                             ),
                           ),
                           child: Text(
                             displayText,
                             style: TextStyle(
-                              color: isCurrentMove ? kWhiteColor : kWhiteColor70,
+                              color:
+                                  isCurrentMove ? kWhiteColor : kWhiteColor70,
                               fontSize: 8.5.sp,
                               fontFamily: 'monospace',
-                              fontWeight: isCurrentMove ? FontWeight.bold : FontWeight.normal,
+                              fontWeight:
+                                  isCurrentMove
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
                             ),
                           ),
                         );
                       }),
-                      if (showEndEllipsis)
-                        Text(
-                          '...',
-                          style: TextStyle(
-                            color: kWhiteColor70,
-                            fontSize: 8.5.sp,
-                            fontFamily: 'monospace',
-                          ),
-                        ),
                     ],
                   ),
                 );
@@ -726,6 +829,32 @@ class _ShareCard extends ConsumerWidget {
           SizedBox(height: 16.h),
         ],
       ),
+    );
+
+    if (!isPreview || onClose == null) {
+      return cardContent;
+    }
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        cardContent,
+        Positioned(
+          top: 8.w,
+          right: 8.w,
+          child: GestureDetector(
+            onTap: onClose,
+            child: Container(
+              padding: EdgeInsets.all(6.w),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.4),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.close, size: 16.sp, color: kWhiteColor),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

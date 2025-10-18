@@ -292,6 +292,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   int? _lastViewedIndex;
   int _currentPageIndex = 0;
   final ScreenCaptureEvent _screenCaptureEvent = ScreenCaptureEvent();
+  bool _isShareOverlayVisible = false;
 
   GamesTourModel _resolveGameForIndex(int index) {
     if (widget.games.isEmpty) {
@@ -338,6 +339,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
         _showShareOverlay();
       }
     });
+
+    _screenCaptureEvent.watch();
 
     // Note: We'll enable streaming in didChangeDependencies when ref is available
   }
@@ -416,6 +419,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
 
   @override
   void dispose() {
+    _screenCaptureEvent.dispose();
     _pageController.dispose();
     super.dispose();
   }
@@ -448,14 +452,16 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   }
 
   Future<void> _showShareOverlay() async {
+    if (_isShareOverlayVisible) {
+      return;
+    }
+
+    _isShareOverlayVisible = true;
     try {
       final game = _resolveGameForIndex(_currentPageIndex);
       final stateAsync = ref.read(
         chessBoardScreenProviderNew(
-          ChessBoardProviderParams(
-            game: game,
-            index: _currentPageIndex,
-          ),
+          ChessBoardProviderParams(game: game, index: _currentPageIndex),
         ),
       );
 
@@ -470,28 +476,25 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
       final pgn = gameWithPgn.pgn ?? "";
 
       // Show share overlay
-      if (mounted) {
-        Navigator.of(context).push(
-          PageRouteBuilder(
-            opaque: false,
-            barrierDismissible: true,
-            barrierColor: Colors.transparent,
-            pageBuilder: (context, animation, secondaryAnimation) => _ShareGameScreen(
-              game: game,
-              state: state,
-              pgn: pgn,
-            ),
-            transitionsBuilder: (context, animation, secondaryAnimation, child) {
-              return FadeTransition(
-                opacity: animation,
-                child: child,
-              );
-            },
-          ),
-        );
-      }
+      if (!mounted) return;
+
+      await Navigator.of(context).push(
+        PageRouteBuilder(
+          opaque: false,
+          barrierDismissible: true,
+          barrierColor: Colors.transparent,
+          pageBuilder:
+              (context, animation, secondaryAnimation) =>
+                  _ShareGameScreen(game: game, state: state, pgn: pgn),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+        ),
+      );
     } catch (e) {
       debugPrint('Error showing share overlay: $e');
+    } finally {
+      _isShareOverlayVisible = false;
     }
   }
 
@@ -887,7 +890,10 @@ class _AppBar extends ConsumerWidget implements PreferredSizeWidget {
 
   void shareGameBtnClicked(BuildContext context, WidgetRef ref) async {
     // Get the board provider to access the current state
-    final params = ChessBoardProviderParams(game: game, index: currentGameIndex);
+    final params = ChessBoardProviderParams(
+      game: game,
+      index: currentGameIndex,
+    );
     final boardState = ref.read(chessBoardScreenProviderNew(params));
 
     // Only proceed if we have a valid state
@@ -914,16 +920,11 @@ class _AppBar extends ConsumerWidget implements PreferredSizeWidget {
           opaque: false,
           barrierDismissible: true,
           barrierColor: Colors.transparent,
-          pageBuilder: (context, animation, secondaryAnimation) => _ShareGameScreen(
-            game: game,
-            state: state,
-            pgn: pgn,
-          ),
+          pageBuilder:
+              (context, animation, secondaryAnimation) =>
+                  _ShareGameScreen(game: game, state: state, pgn: pgn),
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            return FadeTransition(
-              opacity: animation,
-              child: child,
-            );
+            return FadeTransition(opacity: animation, child: child);
           },
         ),
       );
@@ -1300,12 +1301,9 @@ class _BottomNavBar extends ConsumerWidget {
       gameIndex: index,
       onFlip: () => notifier.flipBoard(),
       toggleEngineVisibility: () => notifier.toggleEngineVisibility(),
-      onRightMove: canMoveForward
-          ? () => notifier.analysisStepForward()
-          : null,
-      onLeftMove: canMoveBackward
-          ? () => notifier.analysisStepBackward()
-          : null,
+      onRightMove: canMoveForward ? () => notifier.analysisStepForward() : null,
+      onLeftMove:
+          canMoveBackward ? () => notifier.analysisStepBackward() : null,
       onLongPressBackwardStart: () => notifier.startLongPressBackward(),
       onLongPressBackwardEnd: () => notifier.stopLongPress(),
       onLongPressForwardStart: () => notifier.startLongPressForward(),
@@ -1696,9 +1694,10 @@ class _AnalysisBoard extends ConsumerWidget {
       fen: chessBoardState.analysisState.position.fen,
       lastMove: chessBoardState.analysisState.lastMove,
       // Only show shapes (arrows) when principal variations are enabled
-      shapes: chessBoardState.showPrincipalVariations
-          ? chessBoardState.shapes
-          : const ISet.empty(),
+      shapes:
+          chessBoardState.showPrincipalVariations
+              ? chessBoardState.shapes
+              : const ISet.empty(),
       // DISABLED: Manual piece movement disabled in analysis mode
       // game: GameData(
       //   playerSide:
@@ -1767,11 +1766,14 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     final newCurrentIndex = widget.state.analysisState.currentMoveIndex;
 
     // Only trigger scroll if on current page and index changed
-    if (widget.index == widget.currentPageIndex && oldCurrentIndex != newCurrentIndex) {
+    if (widget.index == widget.currentPageIndex &&
+        oldCurrentIndex != newCurrentIndex) {
       // For the very first scroll, use initial scroll logic
       final isFirstScroll = !_hasInitiallyScrolled;
 
-      debugPrint('🔄 Move index changed: $oldCurrentIndex -> $newCurrentIndex (isFirstScroll: $isFirstScroll, page: ${widget.index}/${widget.currentPageIndex})');
+      debugPrint(
+        '🔄 Move index changed: $oldCurrentIndex -> $newCurrentIndex (isFirstScroll: $isFirstScroll, page: ${widget.index}/${widget.currentPageIndex})',
+      );
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -1783,11 +1785,17 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         } else {
           // Subsequent scrolls: check if out of sight and scroll smoothly if needed
           debugPrint('🎯 Checking visibility for move $newCurrentIndex');
-          _scrollToMove(newCurrentIndex, isInitialScroll: false, alignment: 0.5);
+          _scrollToMove(
+            newCurrentIndex,
+            isInitialScroll: false,
+            alignment: 0.5,
+          );
         }
       });
     } else {
-      debugPrint('⛔ Scroll conditions not met: pageMatch=${widget.index == widget.currentPageIndex}, indexChanged=${oldCurrentIndex != newCurrentIndex} ($oldCurrentIndex vs $newCurrentIndex)');
+      debugPrint(
+        '⛔ Scroll conditions not met: pageMatch=${widget.index == widget.currentPageIndex}, indexChanged=${oldCurrentIndex != newCurrentIndex} ($oldCurrentIndex vs $newCurrentIndex)',
+      );
     }
 
     final becameActive =
@@ -1848,7 +1856,11 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     _scrollToMove(targetIndex, isInitialScroll: true, alignment: 1.0);
   }
 
-  bool _scrollToMove(int moveIndex, {bool isInitialScroll = false, double alignment = 0.5}) {
+  bool _scrollToMove(
+    int moveIndex, {
+    bool isInitialScroll = false,
+    double alignment = 0.5,
+  }) {
     if (!_scrollController.hasClients) {
       if (isInitialScroll) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1932,7 +1944,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
     // LAZY IMPACT: Each move in the notation list lazily loads its own impact
     // This prevents flooding the Stockfish queue with 100+ positions at once
-    final boardParams = ChessBoardProviderParams(game: widget.game, index: widget.index);
+    final boardParams = ChessBoardProviderParams(
+      game: widget.game,
+      index: widget.index,
+    );
 
     // Analysis mode is always active, use analysis state for current index
     final modeAwareCurrentIndex = widget.state.analysisState.currentMoveIndex;
@@ -1952,7 +1967,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
                 // Extract to separate widget with key to prevent layout shift
                 return _MoveNotationWidget(
-                  key: _moveKeys[moveIndex] ?? ValueKey('move_${widget.game.gameId}_$moveIndex'),
+                  key:
+                      _moveKeys[moveIndex] ??
+                      ValueKey('move_${widget.game.gameId}_$moveIndex'),
                   game: widget.game,
                   index: widget.index,
                   currentPageIndex: widget.currentPageIndex,
@@ -2126,7 +2143,8 @@ class _PrincipalVariationListState
     // Show skeleton when evaluating (to prevent stale data display) OR when first loading (no lines yet)
     // But not when game is over OR when forced hidden by timeout
     // CRITICAL: Force hide skeleton after timeout to prevent stuck loading state in live games
-    final showSkeleton = !isGameOver && !_forceHideSkeleton && (isEvaluating || lines.isEmpty);
+    final showSkeleton =
+        !isGameOver && !_forceHideSkeleton && (isEvaluating || lines.isEmpty);
 
     // Show end of game message when position is terminal
     final showEndOfGame = isGameOver && widget.state.isAnalysisMode;
@@ -2396,9 +2414,12 @@ class _PrincipalVariationListState
       // Calculate the full move number
       // When it's white to move, move i=0 is at baseMoveNumber, i=2 is at baseMoveNumber+1, etc.
       // When it's black to move, move i=0 is black's move at baseMoveNumber, i=1 is white's move at baseMoveNumber+1
-      final moveNumber = whiteToMove
-          ? baseMoveNumber + (i ~/ 2)  // White starts: 0,1 -> base, 2,3 -> base+1
-          : baseMoveNumber + ((i + 1) ~/ 2);  // Black starts: 0 -> base, 1,2 -> base+1
+      final moveNumber =
+          whiteToMove
+              ? baseMoveNumber +
+                  (i ~/ 2) // White starts: 0,1 -> base, 2,3 -> base+1
+              : baseMoveNumber +
+                  ((i + 1) ~/ 2); // Black starts: 0 -> base, 1,2 -> base+1
 
       // Add move number prefix only for white moves
       if (isWhiteMove) {
@@ -2600,46 +2621,39 @@ class _ShareGameScreen extends ConsumerWidget {
         .read(boardSettingsRepository)
         .getBoardTheme(boardSettingsValue.boardColor);
 
-    // Create a read-only board widget showing the current analysis position
-    final boardWidget = Chessboard(
-      size: 340.0,
-      fen: state.analysisState.position.fen,
-      orientation: state.isBoardFlipped ? Side.black : Side.white,
-      lastMove: state.analysisState.lastMove,
-      game: null,
-      settings: ChessboardSettings(
-        enableCoordinates: false,
-        colorScheme: ChessboardColorScheme(
+    // Build board settings for the share overlay board (sized responsively inside the overlay)
+    final boardSettings = ChessboardSettings(
+      enableCoordinates: false,
+      colorScheme: ChessboardColorScheme(
+        lightSquare: boardTheme.lightSquareColor,
+        darkSquare: boardTheme.darkSquareColor,
+        background: SolidColorChessboardBackground(
           lightSquare: boardTheme.lightSquareColor,
           darkSquare: boardTheme.darkSquareColor,
-          background: SolidColorChessboardBackground(
-            lightSquare: boardTheme.lightSquareColor,
-            darkSquare: boardTheme.darkSquareColor,
-          ),
-          whiteCoordBackground: SolidColorChessboardBackground(
-            lightSquare: boardTheme.lightSquareColor,
-            darkSquare: boardTheme.darkSquareColor,
-            coordinates: false,
-            orientation: Side.white,
-          ),
-          blackCoordBackground: SolidColorChessboardBackground(
-            lightSquare: boardTheme.lightSquareColor,
-            darkSquare: boardTheme.darkSquareColor,
-            coordinates: false,
-            orientation: Side.black,
-          ),
-          lastMove: HighlightDetails(
-            solidColor: boardTheme.lightSquareColor.withValues(alpha: 0),
-          ),
-          selected: HighlightDetails(
-            solidColor: boardTheme.lightSquareColor.withValues(alpha: 0),
-          ),
-          validMoves: boardTheme.lightSquareColor.withValues(alpha: 0),
-          validPremoves: boardTheme.lightSquareColor.withValues(alpha: 0),
         ),
-        borderRadius: const BorderRadius.all(Radius.circular(0)),
-        boxShadow: const [],
+        whiteCoordBackground: SolidColorChessboardBackground(
+          lightSquare: boardTheme.lightSquareColor,
+          darkSquare: boardTheme.darkSquareColor,
+          coordinates: false,
+          orientation: Side.white,
+        ),
+        blackCoordBackground: SolidColorChessboardBackground(
+          lightSquare: boardTheme.lightSquareColor,
+          darkSquare: boardTheme.darkSquareColor,
+          coordinates: false,
+          orientation: Side.black,
+        ),
+        lastMove: HighlightDetails(
+          solidColor: boardTheme.lightSquareColor.withValues(alpha: 0),
+        ),
+        selected: HighlightDetails(
+          solidColor: boardTheme.lightSquareColor.withValues(alpha: 0),
+        ),
+        validMoves: boardTheme.lightSquareColor.withValues(alpha: 0),
+        validPremoves: boardTheme.lightSquareColor.withValues(alpha: 0),
       ),
+      borderRadius: const BorderRadius.all(Radius.circular(0)),
+      boxShadow: const [],
     );
 
     // Calculate clock times at current position (same logic as PlayerFirstRowDetailWidget)
@@ -2673,17 +2687,22 @@ class _ShareGameScreen extends ConsumerWidget {
     blackTime ??= game.blackTimeDisplay;
 
     // Format tournament and round names for better display
-    final tournamentName = game.tourSlug != null
-        ? StringUtils.slugToTitle(game.tourSlug!)
-        : null;
-    final roundInfo = game.roundSlug != null
-        ? StringUtils.formatRoundLabel(game.roundSlug)
-        : null;
+    final tournamentName =
+        game.tourSlug != null ? StringUtils.slugToTitle(game.tourSlug!) : null;
+    final roundInfo =
+        game.roundSlug != null
+            ? StringUtils.formatRoundLabel(game.roundSlug)
+            : null;
 
     return ShareGameCardOverlay(
-      boardWidget: boardWidget,
+      boardSettings: boardSettings,
+      positionFen: state.analysisState.position.fen,
+      lastMove: state.analysisState.lastMove,
       pgn: pgn,
-      moveSans: state.analysisState.moveSans, // Pass the actual move list from analysis state
+      moveSans:
+          state
+              .analysisState
+              .moveSans, // Pass the actual move list from analysis state
       whitePlayerName: game.whitePlayer.name,
       blackPlayerName: game.blackPlayer.name,
       whitePlayerCountry: game.whitePlayer.federation,
