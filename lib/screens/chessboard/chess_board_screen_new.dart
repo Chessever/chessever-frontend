@@ -26,6 +26,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/string_utils.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
+import 'package:fast_immutable_collections/fast_immutable_collections.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -1694,7 +1695,10 @@ class _AnalysisBoard extends ConsumerWidget {
       orientation: isFlipped ? Side.black : Side.white,
       fen: chessBoardState.analysisState.position.fen,
       lastMove: chessBoardState.analysisState.lastMove,
-      shapes: chessBoardState.shapes,
+      // Only show shapes (arrows) when principal variations are enabled
+      shapes: chessBoardState.showPrincipalVariations
+          ? chessBoardState.shapes
+          : const ISet.empty(),
       // DISABLED: Manual piece movement disabled in analysis mode
       // game: GameData(
       //   playerSide:
