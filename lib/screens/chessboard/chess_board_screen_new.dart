@@ -846,13 +846,21 @@ class _AppBar extends ConsumerWidget implements PreferredSizeWidget {
     // Show share overlay - we'll navigate to a full screen overlay
     if (context.mounted) {
       Navigator.of(context).push(
-        MaterialPageRoute(
-          fullscreenDialog: true,
-          builder: (context) => _ShareGameScreen(
+        PageRouteBuilder(
+          opaque: false,
+          barrierDismissible: true,
+          barrierColor: Colors.transparent,
+          pageBuilder: (context, animation, secondaryAnimation) => _ShareGameScreen(
             game: game,
             state: state,
             pgn: pgn,
           ),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(
+              opacity: animation,
+              child: child,
+            );
+          },
         ),
       );
     }
@@ -2488,11 +2496,12 @@ class _ShareGameScreen extends ConsumerWidget {
         .read(boardSettingsRepository)
         .getBoardTheme(boardSettingsValue.boardColor);
 
-    // Create a read-only board widget showing the current position
+    // Create a read-only board widget showing the current analysis position
     final boardWidget = Chessboard(
       size: 340.0,
-      fen: state.position?.fen ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      fen: state.analysisState.position.fen,
       orientation: state.isBoardFlipped ? Side.black : Side.white,
+      lastMove: state.analysisState.lastMove,
       game: null,
       settings: ChessboardSettings(
         enableCoordinates: false,
@@ -2529,13 +2538,53 @@ class _ShareGameScreen extends ConsumerWidget {
       ),
     );
 
+    // Calculate clock times at current position (same logic as PlayerFirstRowDetailWidget)
+    final effectiveMoveIndex = state.analysisState.currentMoveIndex;
+
+    String? whiteTime;
+    String? blackTime;
+
+    if (state.moveTimes.isNotEmpty) {
+      // Find white player's most recent move up to current position
+      for (int i = effectiveMoveIndex; i >= 0; i--) {
+        final isWhiteMove = i % 2 == 0;
+        if (isWhiteMove && i < state.moveTimes.length) {
+          whiteTime = state.moveTimes[i];
+          break;
+        }
+      }
+
+      // Find black player's most recent move up to current position
+      for (int i = effectiveMoveIndex; i >= 0; i--) {
+        final isBlackMove = i % 2 == 1;
+        if (isBlackMove && i < state.moveTimes.length) {
+          blackTime = state.moveTimes[i];
+          break;
+        }
+      }
+    }
+
+    // Fallback to game model's time display
+    whiteTime ??= game.whiteTimeDisplay;
+    blackTime ??= game.blackTimeDisplay;
+
     return ShareGameCardOverlay(
       boardWidget: boardWidget,
       pgn: pgn,
+      moveSans: state.analysisState.moveSans, // Pass the actual move list from analysis state
       whitePlayerName: game.whitePlayer.name,
       blackPlayerName: game.blackPlayer.name,
       whitePlayerCountry: game.whitePlayer.federation,
       blackPlayerCountry: game.blackPlayer.federation,
+      whitePlayerElo: game.whitePlayer.rating.toString(),
+      blackPlayerElo: game.blackPlayer.rating.toString(),
+      whitePlayerTitle: game.whitePlayer.title,
+      blackPlayerTitle: game.blackPlayer.title,
+      whitePlayerClock: whiteTime,
+      blackPlayerClock: blackTime,
+      tournamentName: game.tourSlug,
+      roundInfo: game.roundSlug,
+      currentMoveIndex: state.analysisState.currentMoveIndex,
       onClose: () => Navigator.of(context).pop(),
     );
   }
