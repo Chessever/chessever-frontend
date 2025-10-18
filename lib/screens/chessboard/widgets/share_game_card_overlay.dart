@@ -6,8 +6,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:image_gallery_saver/image_gallery_saver.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:gal/gal.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -126,19 +125,11 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
   }
 
   Future<void> _downloadImage() async {
-    // Request permission
-    if (Platform.isAndroid) {
-      final androidVersion = await _getAndroidVersion();
-      Permission permission;
-
-      if (androidVersion >= 33) {
-        permission = Permission.photos;
-      } else {
-        permission = Permission.storage;
-      }
-
-      final status = await permission.request();
-      if (!status.isGranted) {
+    // Check and request permission using Gal's built-in permission handling
+    final hasAccess = await Gal.hasAccess();
+    if (!hasAccess) {
+      final granted = await Gal.requestAccess();
+      if (!granted) {
         _showMessage('Storage permission is required to save images', isError: true);
         return;
       }
@@ -151,30 +142,32 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     }
 
     try {
-      final result = await ImageGallerySaver.saveImage(
-        imageBytes,
-        quality: 100,
-        name: 'chessever_${DateTime.now().millisecondsSinceEpoch}',
-      );
+      // Use Gal's putImageBytes method to save the image
+      await Gal.putImageBytes(imageBytes);
+      _showMessage('Image saved to gallery!', isError: false);
+    } on GalException catch (e) {
+      debugPrint('Gal error: ${e.type}');
+      String errorMessage = 'Failed to save image';
 
-      if (result != null && result['isSuccess'] == true) {
-        _showMessage('Image saved to gallery!', isError: false);
-      } else {
-        _showMessage('Failed to save image', isError: true);
+      switch (e.type) {
+        case GalExceptionType.accessDenied:
+          errorMessage = 'Permission denied to save images';
+          break;
+        case GalExceptionType.notEnoughSpace:
+          errorMessage = 'Not enough storage space';
+          break;
+        case GalExceptionType.notSupportedFormat:
+          errorMessage = 'Image format not supported';
+          break;
+        case GalExceptionType.unexpected:
+          errorMessage = 'Unexpected error occurred';
+          break;
       }
+
+      _showMessage(errorMessage, isError: true);
     } catch (e) {
       debugPrint('Error saving: $e');
       _showMessage('Failed to save image', isError: true);
-    }
-  }
-
-  Future<int> _getAndroidVersion() async {
-    if (!Platform.isAndroid) return 0;
-    try {
-      final androidInfo = await Future.value(33); // Default to 33 for safety
-      return androidInfo;
-    } catch (e) {
-      return 33;
     }
   }
 
