@@ -23,6 +23,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/string_utils.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/gestures.dart';
@@ -2568,6 +2569,14 @@ class _ShareGameScreen extends ConsumerWidget {
     whiteTime ??= game.whiteTimeDisplay;
     blackTime ??= game.blackTimeDisplay;
 
+    // Format tournament and round names for better display
+    final tournamentName = game.tourSlug != null
+        ? StringUtils.slugToTitle(game.tourSlug!)
+        : null;
+    final roundInfo = game.roundSlug != null
+        ? StringUtils.formatRoundLabel(game.roundSlug)
+        : null;
+
     return ShareGameCardOverlay(
       boardWidget: boardWidget,
       pgn: pgn,
@@ -2582,8 +2591,8 @@ class _ShareGameScreen extends ConsumerWidget {
       blackPlayerTitle: game.blackPlayer.title,
       whitePlayerClock: whiteTime,
       blackPlayerClock: blackTime,
-      tournamentName: game.tourSlug,
-      roundInfo: game.roundSlug,
+      tournamentName: tournamentName,
+      roundInfo: roundInfo,
       currentMoveIndex: state.analysisState.currentMoveIndex,
       onClose: () => Navigator.of(context).pop(),
     );
