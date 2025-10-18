@@ -9,10 +9,13 @@ import 'package:share_plus/share_plus.dart';
 import 'package:image_gallery_saver/image_gallery_saver.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 
 class ShareGameCardOverlay extends StatefulWidget {
   final Widget boardWidget;
@@ -31,6 +34,10 @@ class ShareGameCardOverlay extends StatefulWidget {
   final String? tournamentName;
   final String? roundInfo;
   final int currentMoveIndex;
+  final double? evaluation;
+  final int mate;
+  final bool isFlipped;
+  final GameStatus gameStatus;
   final VoidCallback onClose;
 
   const ShareGameCardOverlay({
@@ -51,6 +58,10 @@ class ShareGameCardOverlay extends StatefulWidget {
     this.tournamentName,
     this.roundInfo,
     required this.currentMoveIndex,
+    required this.evaluation,
+    required this.mate,
+    required this.isFlipped,
+    required this.gameStatus,
     required this.onClose,
   });
 
@@ -237,6 +248,10 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                       tournamentName: widget.tournamentName,
                       roundInfo: widget.roundInfo,
                       currentMoveIndex: widget.currentMoveIndex,
+                      evaluation: widget.evaluation,
+                      mate: widget.mate,
+                      isFlipped: widget.isFlipped,
+                      gameStatus: widget.gameStatus,
                       isPreview: true,
                     ),
                   ),
@@ -313,6 +328,10 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                 tournamentName: widget.tournamentName,
                 roundInfo: widget.roundInfo,
                 currentMoveIndex: widget.currentMoveIndex,
+                evaluation: widget.evaluation,
+                mate: widget.mate,
+                isFlipped: widget.isFlipped,
+                gameStatus: widget.gameStatus,
                 isPreview: false,
               ),
             ),
@@ -341,6 +360,10 @@ class _ShareCard extends ConsumerWidget {
   final String? tournamentName;
   final String? roundInfo;
   final int currentMoveIndex;
+  final double? evaluation;
+  final int mate;
+  final bool isFlipped;
+  final GameStatus gameStatus;
   final bool isPreview;
 
   const _ShareCard({
@@ -360,8 +383,48 @@ class _ShareCard extends ConsumerWidget {
     this.tournamentName,
     this.roundInfo,
     required this.currentMoveIndex,
+    required this.evaluation,
+    required this.mate,
+    required this.isFlipped,
+    required this.gameStatus,
     this.isPreview = false,
   });
+
+  Widget _buildEndScoreWidget({required bool isWhitePlayer}) {
+    // For finished games, display end scores similar to main chess board screen
+    switch (gameStatus) {
+      case GameStatus.whiteWins:
+        return Text(
+          isWhitePlayer ? '1' : '0',
+          style: AppTypography.textXsBold.copyWith(
+            color: kWhiteColor,
+            fontSize: 12.sp,
+          ),
+          textAlign: TextAlign.center,
+        );
+      case GameStatus.blackWins:
+        return Text(
+          isWhitePlayer ? '0' : '1',
+          style: AppTypography.textXsBold.copyWith(
+            color: kWhiteColor,
+            fontSize: 12.sp,
+          ),
+          textAlign: TextAlign.center,
+        );
+      case GameStatus.draw:
+        return Text(
+          '½',
+          style: AppTypography.textXsBold.copyWith(
+            color: kWhiteColor,
+            fontSize: 12.sp,
+          ),
+          textAlign: TextAlign.center,
+        );
+      case GameStatus.ongoing:
+      case GameStatus.unknown:
+        return SizedBox.shrink();
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -376,7 +439,7 @@ class _ShareCard extends ConsumerWidget {
         : '';
 
     return Container(
-      width: 350.w,
+      width: 370.w,
       decoration: BoxDecoration(
         color: kBackgroundColor,
         borderRadius: BorderRadius.circular(16.br),
@@ -433,14 +496,10 @@ class _ShareCard extends ConsumerWidget {
             padding: EdgeInsets.symmetric(horizontal: 16.w),
             child: Row(
               children: [
-                Container(
-                  width: 10.w,
-                  height: 10.w,
-                  decoration: BoxDecoration(
-                    color: kDarkGreyColor,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: kWhiteColor70, width: 1),
-                  ),
+                // Display end score for finished games (aligned with eval bar position)
+                SizedBox(
+                  width: 20.w,
+                  child: _buildEndScoreWidget(isWhitePlayer: false),
                 ),
                 SizedBox(width: 8.w),
                 if (blackCountry.isNotEmpty) ...[
@@ -485,11 +544,41 @@ class _ShareCard extends ConsumerWidget {
             ),
           ),
           SizedBox(height: 12.h),
+          // Board with evaluation bar - EXACT same structure as main chess board screen
           Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16.w),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8.br),
-              child: AspectRatio(aspectRatio: 1, child: boardWidget),
+            padding: EdgeInsets.symmetric(horizontal: 16.sp),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final sideBarWidth = 20.w;
+                final availableWidth = constraints.maxWidth;
+                final boardSize = availableWidth - sideBarWidth;
+                final evalBarHeight = boardSize - 20; // Reduce height to prevent bottom overflow
+
+                return Row(
+                  children: [
+                    Container(
+                      width: sideBarWidth,
+                      height: evalBarHeight,
+                      clipBehavior: Clip.hardEdge,
+                      decoration: BoxDecoration(),
+                      child: EvaluationBarWidget(
+                        width: sideBarWidth,
+                        height: evalBarHeight,
+                        index: currentMoveIndex,
+                        isFlipped: isFlipped,
+                        evaluation: evaluation,
+                        mate: mate,
+                        isEvaluating: false,
+                      ),
+                    ),
+                    SizedBox(
+                      width: boardSize,
+                      height: boardSize,
+                      child: boardWidget,
+                    ),
+                  ],
+                );
+              },
             ),
           ),
           SizedBox(height: 12.h),
@@ -497,14 +586,10 @@ class _ShareCard extends ConsumerWidget {
             padding: EdgeInsets.symmetric(horizontal: 16.w),
             child: Row(
               children: [
-                Container(
-                  width: 10.w,
-                  height: 10.w,
-                  decoration: BoxDecoration(
-                    color: kWhiteColor,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: kWhiteColor70, width: 1),
-                  ),
+                // Display end score for finished games (aligned with eval bar position)
+                SizedBox(
+                  width: 20.w,
+                  child: _buildEndScoreWidget(isWhitePlayer: true),
                 ),
                 SizedBox(width: 8.w),
                 if (whiteCountry.isNotEmpty) ...[
