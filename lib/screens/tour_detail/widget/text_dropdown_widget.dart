@@ -83,16 +83,17 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Expanded(
-          flex: 8,
+          flex: 9,
           child: Text(
             text,
+            maxLines: 2,
             style: AppTypography.textXsRegular.copyWith(color: kWhiteColor),
             softWrap: true,
           ),
         ),
-        const SizedBox(width: 8),
+        SizedBox(width: 8.w),
         Expanded(
-          flex: 2,
+          flex: 1,
           child: Align(alignment: Alignment.centerRight, child: trailingIcon),
         ),
       ],
