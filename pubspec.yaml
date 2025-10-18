@@ -115,6 +115,12 @@ dependencies:
   clarity_flutter: ^1.1.0
   amplitude_flutter: ^3.16.2
   upgrader: ^12.1.0
+  screenshot: ^3.0.0
+  share_plus: ^10.1.4
+  path_provider: ^2.1.5
+  flutter_animate: ^4.5.0
+  image_gallery_saver: ^2.0.3
+  screen_capture_event: ^1.2.0
 
 dev_dependencies:
   flutter_test:
@@ -155,8 +161,8 @@ flutter:
     - assets/sfx/
     - assets/launch.jpg
     - assets/app_icon.png
-    # - .env
-    # - .env.dev
+    - .env
+    - .env.dev
     - shorebird.yaml
 
   # An image asset can refer to one or more resolution-specific "variants", see

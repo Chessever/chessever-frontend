@@ -13,6 +13,7 @@ import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.d
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/move_annotation_overlay.dart';
+import 'package:chessever2/screens/chessboard/widgets/share_game_card_overlay.dart';
 import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
@@ -22,8 +23,10 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/string_utils.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
+import 'package:fast_immutable_collections/fast_immutable_collections.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -31,6 +34,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:screen_capture_event/screen_capture_event.dart';
 
 /// Cached move impact results keyed by game id/signature to avoid recomputation
 class CachedMoveImpact {
@@ -287,6 +291,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   bool analysisMode = false;
   int? _lastViewedIndex;
   int _currentPageIndex = 0;
+  final ScreenCaptureEvent _screenCaptureEvent = ScreenCaptureEvent();
 
   GamesTourModel _resolveGameForIndex(int index) {
     if (widget.games.isEmpty) {
@@ -321,6 +326,18 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
     super.initState();
     _pageController = PageController(initialPage: widget.currentIndex);
     _currentPageIndex = widget.currentIndex;
+
+    // Set up screenshot detection listener
+    _screenCaptureEvent.addScreenRecordListener((isRecording) {
+      // Don't show overlay during screen recording
+    });
+
+    _screenCaptureEvent.addScreenShotListener((filePath) {
+      // When user takes a native screenshot, show the share overlay
+      if (mounted) {
+        _showShareOverlay();
+      }
+    });
 
     // Note: We'll enable streaming in didChangeDependencies when ref is available
   }
@@ -428,6 +445,54 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
     );
+  }
+
+  Future<void> _showShareOverlay() async {
+    try {
+      final game = _resolveGameForIndex(_currentPageIndex);
+      final stateAsync = ref.read(
+        chessBoardScreenProviderNew(
+          ChessBoardProviderParams(
+            game: game,
+            index: _currentPageIndex,
+          ),
+        ),
+      );
+
+      // Only show overlay if state is loaded
+      final state = stateAsync.valueOrNull;
+      if (state == null) return;
+
+      // Fetch PGN from database
+      final gameWithPgn = await ref
+          .read(gameRepositoryProvider)
+          .getGameById(game.gameId);
+      final pgn = gameWithPgn.pgn ?? "";
+
+      // Show share overlay
+      if (mounted) {
+        Navigator.of(context).push(
+          PageRouteBuilder(
+            opaque: false,
+            barrierDismissible: true,
+            barrierColor: Colors.transparent,
+            pageBuilder: (context, animation, secondaryAnimation) => _ShareGameScreen(
+              game: game,
+              state: state,
+              pgn: pgn,
+            ),
+            transitionsBuilder: (context, animation, secondaryAnimation, child) {
+              return FadeTransition(
+                opacity: animation,
+                child: child,
+              );
+            },
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error showing share overlay: $e');
+    }
   }
 
   @override
@@ -820,6 +885,51 @@ class _AppBar extends ConsumerWidget implements PreferredSizeWidget {
     Clipboard.setData(ClipboardData(text: pgn));
   }
 
+  void shareGameBtnClicked(BuildContext context, WidgetRef ref) async {
+    // Get the board provider to access the current state
+    final params = ChessBoardProviderParams(game: game, index: currentGameIndex);
+    final boardState = ref.read(chessBoardScreenProviderNew(params));
+
+    // Only proceed if we have a valid state
+    if (!boardState.hasValue || boardState.value == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please wait for the game to load'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final state = boardState.value!;
+    final gameWithPgn = await ref
+        .read(gameRepositoryProvider)
+        .getGameById(game.gameId);
+    final pgn = gameWithPgn.pgn ?? "";
+
+    // Show share overlay - we'll navigate to a full screen overlay
+    if (context.mounted) {
+      Navigator.of(context).push(
+        PageRouteBuilder(
+          opaque: false,
+          barrierDismissible: true,
+          barrierColor: Colors.transparent,
+          pageBuilder: (context, animation, secondaryAnimation) => _ShareGameScreen(
+            game: game,
+            state: state,
+            pgn: pgn,
+          ),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(
+              opacity: animation,
+              child: child,
+            );
+          },
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return AppBar(
@@ -838,7 +948,11 @@ class _AppBar extends ConsumerWidget implements PreferredSizeWidget {
         PopupMenuButton<String>(
           icon: const Icon(Icons.more_vert, color: kWhiteColor),
           enabled: !isLoading,
-          onSelected: (_) {},
+          onSelected: (value) {
+            if (value == 'share') {
+              shareGameBtnClicked(context, ref);
+            }
+          },
           itemBuilder:
               (context) => [
                 PopupMenuItem(
@@ -848,16 +962,6 @@ class _AppBar extends ConsumerWidget implements PreferredSizeWidget {
                       Icon(Icons.share, color: kWhiteColor),
                       SizedBox(width: 8.w),
                       const Text('Share Game'),
-                    ],
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'analyze',
-                  child: Row(
-                    children: [
-                      Icon(Icons.analytics, color: kWhiteColor),
-                      SizedBox(width: 8.w),
-                      const Text('Analyze'),
                     ],
                   ),
                 ),
@@ -1208,7 +1312,7 @@ class _BottomNavBar extends ConsumerWidget {
       onLongPressForwardEnd: () => notifier.stopLongPress(),
       canMoveForward: canMoveForward,
       canMoveBackward: canMoveBackward,
-      showEngineAnalysis: state.showEngineAnalysis,
+      showEngineAnalysis: state.showPrincipalVariations,
     );
   }
 }
@@ -1275,7 +1379,7 @@ class _AnalysisGameBody extends ConsumerWidget {
           blackPlayer: true,
           state: state,
         ),
-        if (state.isAnalysisMode && state.showEngineAnalysis) ...[
+        if (state.isAnalysisMode && state.showPrincipalVariations) ...[
           _PrincipalVariationList(index: index, state: state, game: game),
           // DISABLED: Analysis navigation arrows hidden
           // _AnalysisControlsRow(index: index, game: game),
@@ -1484,18 +1588,15 @@ class _BoardWithSidebar extends ConsumerWidget {
               SizedBox(
                 width: sideBarWidth,
                 height: boardSize,
-                child:
-                    state.showEngineAnalysis
-                        ? EvaluationBarWidget(
-                          width: sideBarWidth,
-                          height: boardSize,
-                          index: index,
-                          isFlipped: state.isBoardFlipped,
-                          evaluation: state.evaluation,
-                          mate: state.mate ?? 0,
-                          isEvaluating: state.isEvaluating,
-                        )
-                        : const SizedBox.shrink(),
+                child: EvaluationBarWidget(
+                  width: sideBarWidth,
+                  height: boardSize,
+                  index: index,
+                  isFlipped: state.isBoardFlipped,
+                  evaluation: state.evaluation,
+                  mate: state.mate ?? 0,
+                  isEvaluating: state.isEvaluating,
+                ),
               ),
               Stack(
                 children: [
@@ -1594,7 +1695,10 @@ class _AnalysisBoard extends ConsumerWidget {
       orientation: isFlipped ? Side.black : Side.white,
       fen: chessBoardState.analysisState.position.fen,
       lastMove: chessBoardState.analysisState.lastMove,
-      shapes: chessBoardState.shapes,
+      // Only show shapes (arrows) when principal variations are enabled
+      shapes: chessBoardState.showPrincipalVariations
+          ? chessBoardState.shapes
+          : const ISet.empty(),
       // DISABLED: Manual piece movement disabled in analysis mode
       // game: GameData(
       //   playerSide:
@@ -1930,20 +2034,57 @@ class _PrincipalVariationListState
     extends ConsumerState<_PrincipalVariationList> {
   late PageController _pageController;
   int _currentPage = 0;
+  Timer? _evaluationTimeoutTimer;
+  bool _forceHideSkeleton = false;
 
   @override
   void initState() {
     super.initState();
-    _currentPage = widget.state.selectedVariantIndex ?? 0;
+    final lines = widget.state.principalVariations.take(3).toList();
+    final initialIndex = widget.state.selectedVariantIndex ?? 0;
+    // Ensure initial page is within bounds
+    _currentPage = lines.isEmpty ? 0 : initialIndex.clamp(0, lines.length - 1);
     _pageController = PageController(initialPage: _currentPage);
+
+    // Start timeout timer if currently evaluating
+    if (widget.state.isEvaluating) {
+      _startEvaluationTimeout();
+    }
+  }
+
+  void _startEvaluationTimeout() {
+    _evaluationTimeoutTimer?.cancel();
+    _forceHideSkeleton = false;
+    // After 5 seconds, force hide skeleton to prevent stuck loading state
+    _evaluationTimeoutTimer = Timer(const Duration(seconds: 5), () {
+      if (mounted && widget.state.isEvaluating) {
+        setState(() {
+          _forceHideSkeleton = true;
+        });
+        debugPrint('⏰ PV TIMEOUT: Forced hiding skeleton after 5s timeout');
+      }
+    });
   }
 
   @override
   void didUpdateWidget(_PrincipalVariationList oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    // Reset timeout when evaluation state changes
+    if (widget.state.isEvaluating != oldWidget.state.isEvaluating) {
+      if (widget.state.isEvaluating) {
+        _startEvaluationTimeout();
+      } else {
+        _evaluationTimeoutTimer?.cancel();
+        _forceHideSkeleton = false;
+      }
+    }
+
     // Update page when variant selection changes externally
+    final lines = widget.state.principalVariations.take(3).toList();
     final newIndex = widget.state.selectedVariantIndex ?? 0;
-    if (newIndex != _currentPage && newIndex < 3) {
+    // Check bounds against actual number of lines
+    if (newIndex != _currentPage && newIndex < lines.length) {
       _currentPage = newIndex;
       if (_pageController.hasClients) {
         _pageController.animateToPage(
@@ -1957,6 +2098,7 @@ class _PrincipalVariationListState
 
   @override
   void dispose() {
+    _evaluationTimeoutTimer?.cancel();
     _pageController.dispose();
     super.dispose();
   }
@@ -1981,8 +2123,10 @@ class _PrincipalVariationListState
     // Check if position is terminal (game over)
     final isGameOver = position?.isGameOver ?? false;
 
-    // Show skeleton ONLY when first loading (no lines yet) AND not game over
-    final showSkeleton = !isGameOver && lines.isEmpty;
+    // Show skeleton when evaluating (to prevent stale data display) OR when first loading (no lines yet)
+    // But not when game is over OR when forced hidden by timeout
+    // CRITICAL: Force hide skeleton after timeout to prevent stuck loading state in live games
+    final showSkeleton = !isGameOver && !_forceHideSkeleton && (isEvaluating || lines.isEmpty);
 
     // Show end of game message when position is terminal
     final showEndOfGame = isGameOver && widget.state.isAnalysisMode;
@@ -2107,6 +2251,10 @@ class _PrincipalVariationListState
                           final badgeBorderColor = activeVariantColor
                               .withValues(alpha: 0.6);
 
+                          // CRITICAL FIX: Only consider evaluating if we don't have valid data yet
+                          // This prevents the card from staying darkened when data arrives
+                          final shouldDarken = isEvaluating && lines.isEmpty;
+
                           return GestureDetector(
                             // DISABLED: PV cards are now read-only
                             // onTap:
@@ -2123,7 +2271,7 @@ class _PrincipalVariationListState
                             //           }
                             //         },
                             child: AnimatedOpacity(
-                              opacity: isEvaluating ? 0.4 : 1.0,
+                              opacity: shouldDarken ? 0.4 : 1.0,
                               duration: const Duration(milliseconds: 200),
                               child: Container(
                                 width:
@@ -2240,9 +2388,17 @@ class _PrincipalVariationListState
   ) {
     final formatted = <String>[];
     for (var i = 0; i < sanMoves.length; i++) {
-      final moveOffset = i ~/ 2;
-      final moveNumber = baseMoveNumber + moveOffset;
+      // Determine if the current move in the PV is a white move
+      // If whiteToMove is true, then even indices (0, 2, 4...) are white moves
+      // If whiteToMove is false, then odd indices (1, 3, 5...) are white moves
       final isWhiteMove = whiteToMove ? i.isEven : i.isOdd;
+
+      // Calculate the full move number
+      // When it's white to move, move i=0 is at baseMoveNumber, i=2 is at baseMoveNumber+1, etc.
+      // When it's black to move, move i=0 is black's move at baseMoveNumber, i=1 is white's move at baseMoveNumber+1
+      final moveNumber = whiteToMove
+          ? baseMoveNumber + (i ~/ 2)  // White starts: 0,1 -> base, 2,3 -> base+1
+          : baseMoveNumber + ((i + 1) ~/ 2);  // Black starts: 0 -> base, 1,2 -> base+1
 
       // Add move number prefix only for white moves
       if (isWhiteMove) {
@@ -2420,6 +2576,132 @@ class _MoveNotationWidget extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+// Share Game Screen Widget
+class _ShareGameScreen extends ConsumerWidget {
+  final GamesTourModel game;
+  final ChessBoardStateNew state;
+  final String pgn;
+
+  const _ShareGameScreen({
+    required this.game,
+    required this.state,
+    required this.pgn,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Get board settings for creating the board widget
+    final boardSettingsValue = ref.watch(boardSettingsProvider);
+    final boardTheme = ref
+        .read(boardSettingsRepository)
+        .getBoardTheme(boardSettingsValue.boardColor);
+
+    // Create a read-only board widget showing the current analysis position
+    final boardWidget = Chessboard(
+      size: 340.0,
+      fen: state.analysisState.position.fen,
+      orientation: state.isBoardFlipped ? Side.black : Side.white,
+      lastMove: state.analysisState.lastMove,
+      game: null,
+      settings: ChessboardSettings(
+        enableCoordinates: false,
+        colorScheme: ChessboardColorScheme(
+          lightSquare: boardTheme.lightSquareColor,
+          darkSquare: boardTheme.darkSquareColor,
+          background: SolidColorChessboardBackground(
+            lightSquare: boardTheme.lightSquareColor,
+            darkSquare: boardTheme.darkSquareColor,
+          ),
+          whiteCoordBackground: SolidColorChessboardBackground(
+            lightSquare: boardTheme.lightSquareColor,
+            darkSquare: boardTheme.darkSquareColor,
+            coordinates: false,
+            orientation: Side.white,
+          ),
+          blackCoordBackground: SolidColorChessboardBackground(
+            lightSquare: boardTheme.lightSquareColor,
+            darkSquare: boardTheme.darkSquareColor,
+            coordinates: false,
+            orientation: Side.black,
+          ),
+          lastMove: HighlightDetails(
+            solidColor: boardTheme.lightSquareColor.withValues(alpha: 0),
+          ),
+          selected: HighlightDetails(
+            solidColor: boardTheme.lightSquareColor.withValues(alpha: 0),
+          ),
+          validMoves: boardTheme.lightSquareColor.withValues(alpha: 0),
+          validPremoves: boardTheme.lightSquareColor.withValues(alpha: 0),
+        ),
+        borderRadius: const BorderRadius.all(Radius.circular(0)),
+        boxShadow: const [],
+      ),
+    );
+
+    // Calculate clock times at current position (same logic as PlayerFirstRowDetailWidget)
+    final effectiveMoveIndex = state.analysisState.currentMoveIndex;
+
+    String? whiteTime;
+    String? blackTime;
+
+    if (state.moveTimes.isNotEmpty) {
+      // Find white player's most recent move up to current position
+      for (int i = effectiveMoveIndex; i >= 0; i--) {
+        final isWhiteMove = i % 2 == 0;
+        if (isWhiteMove && i < state.moveTimes.length) {
+          whiteTime = state.moveTimes[i];
+          break;
+        }
+      }
+
+      // Find black player's most recent move up to current position
+      for (int i = effectiveMoveIndex; i >= 0; i--) {
+        final isBlackMove = i % 2 == 1;
+        if (isBlackMove && i < state.moveTimes.length) {
+          blackTime = state.moveTimes[i];
+          break;
+        }
+      }
+    }
+
+    // Fallback to game model's time display
+    whiteTime ??= game.whiteTimeDisplay;
+    blackTime ??= game.blackTimeDisplay;
+
+    // Format tournament and round names for better display
+    final tournamentName = game.tourSlug != null
+        ? StringUtils.slugToTitle(game.tourSlug!)
+        : null;
+    final roundInfo = game.roundSlug != null
+        ? StringUtils.formatRoundLabel(game.roundSlug)
+        : null;
+
+    return ShareGameCardOverlay(
+      boardWidget: boardWidget,
+      pgn: pgn,
+      moveSans: state.analysisState.moveSans, // Pass the actual move list from analysis state
+      whitePlayerName: game.whitePlayer.name,
+      blackPlayerName: game.blackPlayer.name,
+      whitePlayerCountry: game.whitePlayer.federation,
+      blackPlayerCountry: game.blackPlayer.federation,
+      whitePlayerElo: game.whitePlayer.rating.toString(),
+      blackPlayerElo: game.blackPlayer.rating.toString(),
+      whitePlayerTitle: game.whitePlayer.title,
+      blackPlayerTitle: game.blackPlayer.title,
+      whitePlayerClock: whiteTime,
+      blackPlayerClock: blackTime,
+      tournamentName: tournamentName,
+      roundInfo: roundInfo,
+      currentMoveIndex: state.analysisState.currentMoveIndex,
+      evaluation: state.evaluation,
+      mate: state.mate ?? 0,
+      isFlipped: state.isBoardFlipped,
+      gameStatus: game.gameStatus,
+      onClose: () => Navigator.of(context).pop(),
     );
   }
 }

@@ -1367,7 +1367,7 @@ class ChessBoardScreenNotifierNew
     final currentState = state.value;
     if (currentState == null) return;
     state = AsyncValue.data(
-      currentState.copyWith(showEngineAnalysis: !currentState.showEngineAnalysis),
+      currentState.copyWith(showPrincipalVariations: !currentState.showPrincipalVariations),
     );
   }
 
@@ -1430,6 +1430,38 @@ class ChessBoardScreenNotifierNew
     }
 
     debugPrint('🎯 BUILD PV: Starting with ${pvs.length} PVs for $fen');
+
+    // Validate that at least one PV can be played from this position
+    // This catches cases where cached PVs from a different position are being used
+    try {
+      final testPosition = Position.setupPosition(
+        Rule.chess,
+        Setup.parseFen(fen),
+      );
+      bool anyPvValid = false;
+      for (final pv in pvs) {
+        if (pv.moves.isEmpty) continue;
+        final firstMove = pv.moves.split(' ').first;
+        final parsed = Move.parse(firstMove);
+        if (parsed != null) {
+          try {
+            testPosition.makeSan(parsed);
+            anyPvValid = true;
+            break;
+          } catch (_) {
+            // This PV doesn't work for this position
+            continue;
+          }
+        }
+      }
+      if (!anyPvValid) {
+        debugPrint('⚠️ BUILD PV: No PVs are valid for this FEN - possible cache mismatch');
+        return const [];
+      }
+    } catch (e) {
+      debugPrint('⚠️ BUILD PV: FEN validation failed: $e');
+      return const [];
+    }
     final limitedPvs = pvs.take(_kMaxPrincipalVariations).toList();
     final payload = {
       'fen': fen,
@@ -1541,21 +1573,10 @@ class ChessBoardScreenNotifierNew
       );
     }
 
-    // Always ensure we have exactly 3 lines for consistent UI display
-    while (lines.length < 3 && lines.isNotEmpty) {
-      // Add placeholder lines that will display as "No alternative found"
-      lines.add(
-        AnalysisLine(
-          moves: const [],
-          sanMoves: const ['No alternative'],
-          evaluation: lines.first.evaluation, // Use same eval as first line
-          mate: lines.first.mate,
-        ),
-      );
-    }
-
+    // Return actual variations without padding
+    // UI will handle displaying 1-3 PV cards dynamically
     debugPrint(
-      '🎯 BUILD PV: Padded to ${lines.length} lines for consistent display',
+      '✅ BUILD PV: Returning ${lines.length} principal variations (no padding)',
     );
 
     return lines;
@@ -2002,8 +2023,21 @@ class ChessBoardScreenNotifierNew
             '🎯 EVAL: Building principal variations from cloud source...',
           );
           pvLines = await _buildPrincipalVariations(fen, cascadeEval.pvs);
+
+          // RETRY: If cloud PV building failed but we have PVs, try once more
+          if (pvLines.isEmpty && cascadeEval.pvs.isNotEmpty) {
+            debugPrint('🔄 RETRY: Cloud PV building failed, retrying after 200ms...');
+            await Future.delayed(const Duration(milliseconds: 200));
+            pvLines = await _buildPrincipalVariations(fen, cascadeEval.pvs);
+            if (pvLines.isNotEmpty) {
+              debugPrint('✅ RETRY: Cloud PV building succeeded on retry');
+            } else {
+              debugPrint('❌ RETRY: Cloud PV building failed again, will try Stockfish');
+            }
+          }
+
           debugPrint(
-            '🎯 EVAL: CASCADE SUCCESS - returned ${pvLines.length} variants, eval=$evaluation',
+            '🎯 EVAL: CASCADE SUCCESS - returned ${pvLines.length} variants from ${cascadeEval.pvs.length} cloud PVs, eval=$evaluation',
           );
         } else {
           debugPrint('🎯 EVAL: Cascade returned empty PVs');
@@ -2012,11 +2046,18 @@ class ChessBoardScreenNotifierNew
         debugPrint('🎯 EVAL ERROR: Cascade failed for $fen: $e');
       }
 
-      // FALLBACK: Use Stockfish local engine only if cloud sources failed
-      if (evaluation == null || pvLines.isEmpty) {
+      // SUPPLEMENT/FALLBACK: Use Stockfish if cloud sources returned < 3 PVs
+      // Cloud sources (Lichess multiPv=3) should usually return 3 PVs, but might return fewer for:
+      // - Uncommon positions not yet fully analyzed
+      // - Positions with forced mates (only one line matters)
+      // - API rate limiting or temporary unavailability
+      if (evaluation == null || pvLines.length < 3) {
+        final needsEval = evaluation == null;
+        final needsMorePvs = pvLines.length < 3;
+
         try {
           debugPrint(
-            '🎯 EVAL: Cloud sources unavailable, falling back to Stockfish...',
+            '🎯 EVAL: Need ${needsEval ? "eval + " : ""}${needsMorePvs ? "more PVs (have ${pvLines.length}/3)" : ""}, running Stockfish...',
           );
           final localEval = await StockfishSingleton().evaluatePosition(
             fen,
@@ -2027,46 +2068,82 @@ class ChessBoardScreenNotifierNew
           );
 
           if (!localEval.isCancelled && localEval.pvs.isNotEmpty) {
-            primaryEval = CloudEval(
-              fen: fen,
-              knodes: localEval.knodes,
-              depth: localEval.depth,
-              pvs: localEval.pvs,
-            );
-            evaluation = _getConsistentEvaluation(
-              localEval.pvs.first.cp / 100.0,
-              fen,
-            );
+            // Use Stockfish eval if we don't have one from cloud
+            if (needsEval) {
+              primaryEval = CloudEval(
+                fen: fen,
+                knodes: localEval.knodes,
+                depth: localEval.depth,
+                pvs: localEval.pvs,
+              );
+              evaluation = _getConsistentEvaluation(
+                localEval.pvs.first.cp / 100.0,
+                fen,
+              );
+            }
+
+            // Build PVs from Stockfish with retry on failure
             debugPrint(
-              '🎯 EVAL: Building principal variations from Stockfish...',
+              '🎯 EVAL: Building principal variations from Stockfish MultiPV...',
             );
-            pvLines = await _buildPrincipalVariations(fen, localEval.pvs);
-            debugPrint(
-              '🎯 EVAL: STOCKFISH FALLBACK SUCCESS - returned ${pvLines.length} variants, eval=$evaluation',
-            );
+            var stockfishPvLines = await _buildPrincipalVariations(fen, localEval.pvs);
+
+            // RETRY: If Stockfish PV building failed, try once more after a small delay
+            if (stockfishPvLines.isEmpty && localEval.pvs.isNotEmpty) {
+              debugPrint('🔄 RETRY: Stockfish PV building failed, retrying after 200ms...');
+              await Future.delayed(const Duration(milliseconds: 200));
+              stockfishPvLines = await _buildPrincipalVariations(fen, localEval.pvs);
+              if (stockfishPvLines.isNotEmpty) {
+                debugPrint('✅ RETRY: Stockfish PV building succeeded on retry');
+              } else {
+                debugPrint('❌ RETRY: Stockfish PV building failed again');
+              }
+            }
+
+            // Merge: Keep cloud PVs first, then add unique Stockfish PVs
+            if (needsMorePvs && pvLines.isNotEmpty) {
+              final merged = <AnalysisLine>[...pvLines];
+              final existingFirstMoves = pvLines.map((line) =>
+                line.sanMoves.isNotEmpty ? line.sanMoves.first : ''
+              ).toSet();
+
+              for (final sfLine in stockfishPvLines) {
+                if (merged.length >= 3) break;
+                final firstMove = sfLine.sanMoves.isNotEmpty ? sfLine.sanMoves.first : '';
+                // Add if it's a different first move (different principal variation)
+                if (!existingFirstMoves.contains(firstMove)) {
+                  merged.add(sfLine);
+                  existingFirstMoves.add(firstMove);
+                }
+              }
+              pvLines = merged;
+              debugPrint(
+                '🎯 EVAL: MERGED - ${pvLines.length} variants (cloud + Stockfish)',
+              );
+            } else {
+              // No cloud PVs, use all Stockfish PVs
+              pvLines = stockfishPvLines;
+              debugPrint(
+                '🎯 EVAL: STOCKFISH ONLY - returned ${pvLines.length} variants, eval=$evaluation',
+              );
+            }
           } else {
             debugPrint('🎯 EVAL: Stockfish returned cancelled or empty result');
           }
         } catch (e, stack) {
-          debugPrint('🎯 EVAL ERROR: Stockfish fallback failed for $fen: $e');
+          debugPrint('🎯 EVAL ERROR: Stockfish supplement failed for $fen: $e');
           debugPrint('Stack: $stack');
         }
       }
 
-      if (evaluation == null || pvLines.isEmpty || primaryEval == null) {
+      // CRITICAL FIX: Show evaluation even if PVs fail to convert
+      // During live games with rapid moves, PV conversion might fail due to race conditions,
+      // but we still want to show the evaluation bar and prevent stuck loading state
+      if (evaluation == null || primaryEval == null) {
         debugPrint('❌ EVAL FAILED: No valid evaluation available for $fen');
         debugPrint(
           '   evaluation=$evaluation, pvLines.length=${pvLines.length}, primaryEval=$primaryEval',
         );
-        debugPrint('   primaryEval?.pvs.length=${primaryEval?.pvs.length}');
-        if (primaryEval != null && primaryEval.pvs.isNotEmpty) {
-          debugPrint(
-            '   ⚠️ PRIMARY EVAL HAS PVS BUT pvLines IS EMPTY - check _buildPrincipalVariations',
-          );
-          debugPrint(
-            '   First PV: moves=${primaryEval.pvs.first.moves}, cp=${primaryEval.pvs.first.cp}',
-          );
-        }
         final fallbackState = state.value;
         if (fallbackState != null) {
           // Set a default evaluation to prevent stuck loading state
@@ -2079,6 +2156,47 @@ class ChessBoardScreenNotifierNew
           );
         }
         return;
+      }
+
+      // If we have evaluation but no PVs, still proceed - show eval bar without PV cards
+      // BUT: Schedule a retry for the current visible position to get PVs
+      if (pvLines.isEmpty && primaryEval.pvs.isNotEmpty) {
+        debugPrint('⚠️ EVAL: Have evaluation ($evaluation) but PV conversion failed - will retry');
+        debugPrint('   primaryEval?.pvs.length=${primaryEval.pvs.length}');
+        debugPrint(
+          '   ⚠️ PRIMARY EVAL HAS PVS BUT pvLines IS EMPTY - possible FEN mismatch, scheduling retry',
+        );
+        debugPrint(
+          '   First PV: moves=${primaryEval.pvs.first.moves}, cp=${primaryEval.pvs.first.cp}',
+        );
+
+        // Schedule retry after a short delay to let position stabilize
+        // This handles race conditions during rapid live game moves
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (!mounted || _cancelEvaluation) return;
+          final currentState = state.value;
+          if (currentState == null) return;
+
+          // Check if we're still on the same position
+          final currentPos = currentState.isAnalysisMode
+              ? currentState.analysisState.position
+              : currentState.position;
+          if (currentPos == null) return;
+
+          final currentFenBase = currentPos.fen.split(' ').take(3).join(' ');
+          final targetFenBase = fen.split(' ').take(3).join(' ');
+
+          // Only retry if still on same position and still no PVs
+          if (currentFenBase == targetFenBase &&
+              currentState.principalVariations.isEmpty &&
+              !currentState.isEvaluating) {
+            debugPrint('🔄 RETRY: Re-evaluating position to get PVs (target: $targetFenBase)');
+            _evaluatePosition();
+          }
+        });
+        // Continue with empty PVs - we still want to show the evaluation
+      } else if (pvLines.isEmpty) {
+        debugPrint('⚠️ EVAL: No PVs available and primaryEval has no PVs either');
       }
 
       // OPTIMIZATION: Don't await cache persistence - run in background for speed
@@ -2121,8 +2239,73 @@ class ChessBoardScreenNotifierNew
         _mateCache[fen] = primaryEval.pvs.first.mate ?? currentSnapshot.mate;
         _pvCache[fen] = pvLines;
 
-        // Don't apply to current state since position changed, but keep evaluating flag off
-        state = AsyncValue.data(currentSnapshot.copyWith(isEvaluating: false));
+        // EDGE CASE FIX: Check if we have cached evaluation for the CURRENT position
+        // This handles race conditions where evaluation completes after position changed
+        // but the new position already has a cached result available
+        final currentPositionFen = position.fen;
+        final cachedCurrentEval = _evaluationCache[currentPositionFen];
+        final cachedCurrentPv = _pvCache[currentPositionFen];
+        final cachedCurrentMate = _mateCache[currentPositionFen];
+
+        if (cachedCurrentEval != null && cachedCurrentPv != null && cachedCurrentPv.isNotEmpty) {
+          // Apply cached evaluation for current position to prevent stuck loading state
+          debugPrint(
+            '🎯 EVAL: Applying cached result for current position to prevent loading state',
+          );
+          final basePointer = inAnalysis ? currentSnapshot.analysisState.movePointer : null;
+
+          final inVariantExploration =
+              currentSnapshot.selectedVariantIndex != null &&
+              currentSnapshot.variantMovePointer.isNotEmpty &&
+              currentSnapshot.variantBaseFen != null;
+
+          final ISet<Shape> shapes;
+          if (currentSnapshot.selectedVariantIndex != null && cachedCurrentPv.isNotEmpty) {
+            shapes = _getAllVariantArrowShapes(
+              cachedCurrentPv,
+              currentSnapshot.selectedVariantIndex!,
+            );
+          } else {
+            final evalForShapes = CloudEval(
+              fen: currentPositionFen,
+              knodes: 0,
+              depth: 0,
+              pvs: cachedCurrentPv.map((line) => Pv(
+                moves: line.moves.map((m) => m.uci).join(' '),
+                cp: ((line.evaluation ?? 0) * 100).toInt(),
+                isMate: line.isMate,
+                mate: line.mate,
+                whitePerspective: true,
+              )).toList(),
+            );
+            shapes = getBestMoveShape(position, evalForShapes);
+          }
+
+          final updatedState = currentSnapshot.copyWith(
+            evaluation: cachedCurrentEval,
+            mate: cachedCurrentMate ?? currentSnapshot.mate,
+            isEvaluating: false,
+            shapes: shapes,
+            principalVariations: cachedCurrentPv,
+            variantBaseFen: inVariantExploration ? currentSnapshot.variantBaseFen : currentPositionFen,
+            variantBaseMovePointer: inVariantExploration ? currentSnapshot.variantBaseMovePointer : basePointer,
+            analysisState: currentSnapshot.analysisState.copyWith(
+              suggestionLines: cachedCurrentPv,
+            ),
+          );
+          state = AsyncValue.data(updatedState);
+
+          _applyPrincipalVariationResults(
+            currentState: updatedState,
+            currentPosition: position,
+            baseFen: currentPositionFen,
+            baseMovePointer: basePointer,
+            pvLines: cachedCurrentPv,
+          );
+        } else {
+          // No cached result for current position - just turn off evaluating flag
+          state = AsyncValue.data(currentSnapshot.copyWith(isEvaluating: false));
+        }
         return;
       }
 
@@ -2614,6 +2797,10 @@ List<Map<String, dynamic>> _analysisLinesWorker(Map<String, dynamic> payload) {
       Setup.parseFen(fen),
     );
 
+    // PV DISPLAY POLICY: Simple and flexible
+    // - Display whatever PV moves are available from the source
+    // - No caps, no minimums, no restrictions
+
     final results = <Map<String, dynamic>>[];
 
     for (final pvData in pvsData) {
@@ -2631,6 +2818,7 @@ List<Map<String, dynamic>> _analysisLinesWorker(Map<String, dynamic> payload) {
       for (final token in tokens) {
         final parsedMove = Move.parse(token);
         if (parsedMove == null) {
+          debugPrint('⚠️ UCI->SAN failed: "$token" could not be parsed as a valid move');
           valid = false;
           break;
         }
@@ -2639,7 +2827,8 @@ List<Map<String, dynamic>> _analysisLinesWorker(Map<String, dynamic> payload) {
           position = nextPosition;
           uciMoves.add(token);
           sanMoves.add(san);
-        } catch (_) {
+        } catch (e) {
+          debugPrint('⚠️ UCI->SAN failed: "$token" on ${position.fen}');
           valid = false;
           break;
         }

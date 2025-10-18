@@ -52,6 +52,10 @@
 		<string>This app needs location access to determine your country.</string>
 		<key>NSLocationWhenInUseUsageDescription</key>
 		<string>This app needs location access to determine your country.</string>
+		<key>NSPhotoLibraryAddUsageDescription</key>
+		<string>This app needs permission to save chess game images to your photo library.</string>
+		<key>NSPhotoLibraryUsageDescription</key>
+		<string>This app needs permission to access your photo library to save chess game images.</string>
 		<key>UIApplicationSupportsIndirectInputEvents</key>
 		<true />
 		<key>UIBackgroundModes</key>
