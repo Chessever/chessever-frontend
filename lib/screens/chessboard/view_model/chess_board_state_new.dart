@@ -242,6 +242,7 @@ class ChessBoardStateNew {
   final int? selectedVariantIndex; // Track which engine suggestion is selected
   final List<int> variantMovePointer; // Track progress through selected variant
   final bool showEngineAnalysis; // Toggle visibility of engine gauge and principal variations
+  final bool showPrincipalVariations; // Toggle visibility of principal variation cards only
   /// FEN position where current PVs were generated
   final String? variantBaseFen;
 
@@ -288,6 +289,7 @@ class ChessBoardStateNew {
     this.selectedVariantIndex,
     this.variantMovePointer = const [],
     this.showEngineAnalysis = true, // Active by default
+    this.showPrincipalVariations = true, // Active by default
     this.variantBaseFen,
     this.variantBaseMovePointer,
     this.variantBaseLastMove,
@@ -320,6 +322,7 @@ class ChessBoardStateNew {
     Object? selectedVariantIndex = _noChange,
     List<int>? variantMovePointer,
     bool? showEngineAnalysis,
+    bool? showPrincipalVariations,
     Object? variantBaseFen = _noChange,
     Object? variantBaseMovePointer = _noChange,
     Object? variantBaseLastMove = _noChange,
@@ -365,6 +368,7 @@ class ChessBoardStateNew {
               : selectedVariantIndex as int?,
       variantMovePointer: variantMovePointer ?? this.variantMovePointer,
       showEngineAnalysis: showEngineAnalysis ?? this.showEngineAnalysis,
+      showPrincipalVariations: showPrincipalVariations ?? this.showPrincipalVariations,
       variantBaseFen:
           identical(variantBaseFen, _noChange)
               ? this.variantBaseFen
@@ -402,6 +406,7 @@ class ChessBoardStateNew {
         other.mate == mate &&
         other.selectedVariantIndex == selectedVariantIndex &&
         other.showEngineAnalysis == showEngineAnalysis &&
+        other.showPrincipalVariations == showPrincipalVariations &&
         other.variantBaseFen == variantBaseFen;
   }
 
@@ -420,6 +425,7 @@ class ChessBoardStateNew {
         (mate?.hashCode ?? 0) ^
         (selectedVariantIndex?.hashCode ?? 0) ^
         showEngineAnalysis.hashCode ^
+        showPrincipalVariations.hashCode ^
         (variantBaseFen?.hashCode ?? 0);
   }
 }
