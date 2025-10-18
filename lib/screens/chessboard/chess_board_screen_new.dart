@@ -965,16 +965,6 @@ class _AppBar extends ConsumerWidget implements PreferredSizeWidget {
                   ),
                 ),
                 PopupMenuItem(
-                  value: 'analyze',
-                  child: Row(
-                    children: [
-                      Icon(Icons.analytics, color: kWhiteColor),
-                      SizedBox(width: 8.w),
-                      const Text('Analyze'),
-                    ],
-                  ),
-                ),
-                PopupMenuItem(
                   onTap: () {
                     copyPgnBtnClicked(ref);
                   },
@@ -2222,6 +2212,10 @@ class _PrincipalVariationListState
                           final badgeBorderColor = activeVariantColor
                               .withValues(alpha: 0.6);
 
+                          // CRITICAL FIX: Only consider evaluating if we don't have valid data yet
+                          // This prevents the card from staying darkened when data arrives
+                          final shouldDarken = isEvaluating && lines.isEmpty;
+
                           return GestureDetector(
                             // DISABLED: PV cards are now read-only
                             // onTap:
@@ -2238,7 +2232,7 @@ class _PrincipalVariationListState
                             //           }
                             //         },
                             child: AnimatedOpacity(
-                              opacity: isEvaluating ? 0.4 : 1.0,
+                              opacity: shouldDarken ? 0.4 : 1.0,
                               duration: const Duration(milliseconds: 200),
                               child: Container(
                                 width:
