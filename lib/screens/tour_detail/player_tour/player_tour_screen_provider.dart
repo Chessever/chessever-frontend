@@ -1,4 +1,3 @@
-import 'package:chessever2/repository/local_storage/tournament/tour_local_storage.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
@@ -55,15 +54,13 @@ class _PlayerTourScreenController
   Future<void> loadPlayers() async {
     try {
       // 🧩 Step 1: Load tournament players from local storage
-      final allTours = await ref
-          .read(tourLocalStorageProvider)
-          .getTours(groupBroadcastId);
+      final allTours = ref.read(tourDetailScreenProvider).value!.tours;
 
-      final selectedTours = allTours.where((e) => e.id == tourId).toList();
+      final selectedTours = allTours.where((e) => e.tour.id == tourId).toList();
       var tournamentPlayers = <TournamentPlayer>[];
 
       for (final tour in selectedTours) {
-        tournamentPlayers.addAll(tour.players);
+        tournamentPlayers.addAll(tour.tour.players);
       }
 
       // Remove duplicates by name + fideId (safe deduplication)
