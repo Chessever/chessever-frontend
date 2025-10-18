@@ -1,5 +1,4 @@
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
-import 'package:chessever2/widgets/round_selector.dart';
 import 'package:intl/intl.dart';
 
 class TournamentPlayer {
@@ -51,10 +50,7 @@ class TournamentPlayer {
 
   /// Converts TournamentPlayer to JSON map
   Map<String, dynamic> toJson() {
-    final Map<String, dynamic> data = {
-      'name': name,
-      'played': played,
-    };
+    final Map<String, dynamic> data = {'name': name, 'played': played};
 
     if (federation != null) data['fed'] = federation;
     if (title != null) data['title'] = title;
@@ -69,10 +65,7 @@ class TournamentPlayer {
 
   /// Creates an empty TournamentPlayer with default values
   factory TournamentPlayer.empty() {
-    return TournamentPlayer(
-      name: '',
-      played: 0,
-    );
+    return TournamentPlayer(name: '', played: 0);
   }
 
   /// Checks if this is an empty/default player
@@ -347,10 +340,7 @@ class TourModel {
   final Tour tour;
   final RoundStatus roundStatus;
 
-  TourModel({
-    required this.tour,
-    required this.roundStatus,
-  });
+  TourModel({required this.tour, required this.roundStatus});
 }
 
 class Tour {
