@@ -33,6 +33,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:screen_capture_event/screen_capture_event.dart';
 
 /// Cached move impact results keyed by game id/signature to avoid recomputation
 class CachedMoveImpact {
@@ -289,6 +290,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   bool analysisMode = false;
   int? _lastViewedIndex;
   int _currentPageIndex = 0;
+  final ScreenCaptureEvent _screenCaptureEvent = ScreenCaptureEvent();
 
   GamesTourModel _resolveGameForIndex(int index) {
     if (widget.games.isEmpty) {
@@ -323,6 +325,18 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
     super.initState();
     _pageController = PageController(initialPage: widget.currentIndex);
     _currentPageIndex = widget.currentIndex;
+
+    // Set up screenshot detection listener
+    _screenCaptureEvent.addScreenRecordListener((isRecording) {
+      // Don't show overlay during screen recording
+    });
+
+    _screenCaptureEvent.addScreenShotListener((filePath) {
+      // When user takes a native screenshot, show the share overlay
+      if (mounted) {
+        _showShareOverlay();
+      }
+    });
 
     // Note: We'll enable streaming in didChangeDependencies when ref is available
   }
@@ -430,6 +444,54 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
     );
+  }
+
+  Future<void> _showShareOverlay() async {
+    try {
+      final game = _resolveGameForIndex(_currentPageIndex);
+      final stateAsync = ref.read(
+        chessBoardScreenProviderNew(
+          ChessBoardProviderParams(
+            game: game,
+            index: _currentPageIndex,
+          ),
+        ),
+      );
+
+      // Only show overlay if state is loaded
+      final state = stateAsync.valueOrNull;
+      if (state == null) return;
+
+      // Fetch PGN from database
+      final gameWithPgn = await ref
+          .read(gameRepositoryProvider)
+          .getGameById(game.gameId);
+      final pgn = gameWithPgn.pgn ?? "";
+
+      // Show share overlay
+      if (mounted) {
+        Navigator.of(context).push(
+          PageRouteBuilder(
+            opaque: false,
+            barrierDismissible: true,
+            barrierColor: Colors.transparent,
+            pageBuilder: (context, animation, secondaryAnimation) => _ShareGameScreen(
+              game: game,
+              state: state,
+              pgn: pgn,
+            ),
+            transitionsBuilder: (context, animation, secondaryAnimation, child) {
+              return FadeTransition(
+                opacity: animation,
+                child: child,
+              );
+            },
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error showing share overlay: $e');
+    }
   }
 
   @override
@@ -2293,9 +2355,17 @@ class _PrincipalVariationListState
   ) {
     final formatted = <String>[];
     for (var i = 0; i < sanMoves.length; i++) {
-      final moveOffset = i ~/ 2;
-      final moveNumber = baseMoveNumber + moveOffset;
+      // Determine if the current move in the PV is a white move
+      // If whiteToMove is true, then even indices (0, 2, 4...) are white moves
+      // If whiteToMove is false, then odd indices (1, 3, 5...) are white moves
       final isWhiteMove = whiteToMove ? i.isEven : i.isOdd;
+
+      // Calculate the full move number
+      // When it's white to move, move i=0 is at baseMoveNumber, i=2 is at baseMoveNumber+1, etc.
+      // When it's black to move, move i=0 is black's move at baseMoveNumber, i=1 is white's move at baseMoveNumber+1
+      final moveNumber = whiteToMove
+          ? baseMoveNumber + (i ~/ 2)  // White starts: 0,1 -> base, 2,3 -> base+1
+          : baseMoveNumber + ((i + 1) ~/ 2);  // Black starts: 0 -> base, 1,2 -> base+1
 
       // Add move number prefix only for white moves
       if (isWhiteMove) {
@@ -2594,6 +2664,10 @@ class _ShareGameScreen extends ConsumerWidget {
       tournamentName: tournamentName,
       roundInfo: roundInfo,
       currentMoveIndex: state.analysisState.currentMoveIndex,
+      evaluation: state.evaluation,
+      mate: state.mate ?? 0,
+      isFlipped: state.isBoardFlipped,
+      gameStatus: game.gameStatus,
       onClose: () => Navigator.of(context).pop(),
     );
   }

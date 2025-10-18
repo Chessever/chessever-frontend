@@ -2147,8 +2147,73 @@ class ChessBoardScreenNotifierNew
         _mateCache[fen] = primaryEval.pvs.first.mate ?? currentSnapshot.mate;
         _pvCache[fen] = pvLines;
 
-        // Don't apply to current state since position changed, but keep evaluating flag off
-        state = AsyncValue.data(currentSnapshot.copyWith(isEvaluating: false));
+        // EDGE CASE FIX: Check if we have cached evaluation for the CURRENT position
+        // This handles race conditions where evaluation completes after position changed
+        // but the new position already has a cached result available
+        final currentPositionFen = position.fen;
+        final cachedCurrentEval = _evaluationCache[currentPositionFen];
+        final cachedCurrentPv = _pvCache[currentPositionFen];
+        final cachedCurrentMate = _mateCache[currentPositionFen];
+
+        if (cachedCurrentEval != null && cachedCurrentPv != null && cachedCurrentPv.isNotEmpty) {
+          // Apply cached evaluation for current position to prevent stuck loading state
+          debugPrint(
+            '🎯 EVAL: Applying cached result for current position to prevent loading state',
+          );
+          final basePointer = inAnalysis ? currentSnapshot.analysisState.movePointer : null;
+
+          final inVariantExploration =
+              currentSnapshot.selectedVariantIndex != null &&
+              currentSnapshot.variantMovePointer.isNotEmpty &&
+              currentSnapshot.variantBaseFen != null;
+
+          final ISet<Shape> shapes;
+          if (currentSnapshot.selectedVariantIndex != null && cachedCurrentPv.isNotEmpty) {
+            shapes = _getAllVariantArrowShapes(
+              cachedCurrentPv,
+              currentSnapshot.selectedVariantIndex!,
+            );
+          } else {
+            final evalForShapes = CloudEval(
+              fen: currentPositionFen,
+              knodes: 0,
+              depth: 0,
+              pvs: cachedCurrentPv.map((line) => Pv(
+                moves: line.moves.map((m) => m.uci).join(' '),
+                cp: ((line.evaluation ?? 0) * 100).toInt(),
+                isMate: line.isMate,
+                mate: line.mate,
+                whitePerspective: true,
+              )).toList(),
+            );
+            shapes = getBestMoveShape(position, evalForShapes);
+          }
+
+          final updatedState = currentSnapshot.copyWith(
+            evaluation: cachedCurrentEval,
+            mate: cachedCurrentMate ?? currentSnapshot.mate,
+            isEvaluating: false,
+            shapes: shapes,
+            principalVariations: cachedCurrentPv,
+            variantBaseFen: inVariantExploration ? currentSnapshot.variantBaseFen : currentPositionFen,
+            variantBaseMovePointer: inVariantExploration ? currentSnapshot.variantBaseMovePointer : basePointer,
+            analysisState: currentSnapshot.analysisState.copyWith(
+              suggestionLines: cachedCurrentPv,
+            ),
+          );
+          state = AsyncValue.data(updatedState);
+
+          _applyPrincipalVariationResults(
+            currentState: updatedState,
+            currentPosition: position,
+            baseFen: currentPositionFen,
+            baseMovePointer: basePointer,
+            pvLines: cachedCurrentPv,
+          );
+        } else {
+          // No cached result for current position - just turn off evaluating flag
+          state = AsyncValue.data(currentSnapshot.copyWith(isEvaluating: false));
+        }
         return;
       }
 
