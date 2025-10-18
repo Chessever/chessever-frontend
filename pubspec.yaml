@@ -120,6 +120,7 @@ dependencies:
   path_provider: ^2.1.5
   flutter_animate: ^4.5.0
   image_gallery_saver: ^2.0.3
+  screen_capture_event: ^1.2.0
 
 dev_dependencies:
   flutter_test:
