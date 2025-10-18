@@ -59,7 +59,6 @@ class ShareGameCardOverlay extends StatefulWidget {
 }
 
 class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
-  final ScreenshotController _screenshotController = ScreenshotController();
   final ScreenshotController _fullScreenshotController = ScreenshotController();
   bool _isGenerating = false;
   double _rotationX = 0.0;
@@ -69,8 +68,15 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     try {
       setState(() => _isGenerating = true);
 
-      // Wait for next frame after setState to ensure widget is fully painted
+      // Wait for the widget tree to stabilize and complete painting
+      // This ensures the offscreen widget is fully rendered before capture
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      // Wait for the current frame to finish
       await WidgetsBinding.instance.endOfFrame;
+
+      // Wait one more frame to be absolutely sure painting is complete
+      await Future.delayed(const Duration(milliseconds: 50));
 
       // Capture the full card (offscreen) with all moves
       final image = await _fullScreenshotController.capture(pixelRatio: 3.0);
@@ -284,7 +290,10 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
             ),
           ),
           // Offscreen full card for screenshot (with all moves)
-          Offstage(
+          // Position off-screen instead of using Offstage to ensure proper rendering
+          Positioned(
+            left: -10000,
+            top: -10000,
             child: Screenshot(
               controller: _fullScreenshotController,
               child: _ShareCard(
