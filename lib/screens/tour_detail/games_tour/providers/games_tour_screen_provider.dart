@@ -161,6 +161,9 @@ class GamesTourScreenProvider
 
     try {
       final gamesAsync = ref.read(gamesTourProvider(aboutTourModel!.id));
+       if (gamesAsync.isLoading) {
+      return; 
+    }
       final pins = ref.read(gamesPinprovider(aboutTourModel!.id));
 
       final allGames = gamesAsync.value ?? <Games>[];

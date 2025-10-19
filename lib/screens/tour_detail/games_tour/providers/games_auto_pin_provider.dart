@@ -29,7 +29,7 @@ class _AutoPinLogController {
       final players = await ref.read(tournamentFavoritePlayersProvider.future);
 
       final gamesList =
-          ref.watch(gamesTourScreenProvider).value?.gamesTourModels ?? [];
+          ref.read(gamesTourScreenProvider).value?.gamesTourModels ?? [];
 
       final filteredGames =
           gamesList
