@@ -98,10 +98,10 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
         color: Color(0xff1A1A1C).withValues(alpha: 0.7),
         borderRadius:
             _isExpanded
-                ? BorderRadius.circular(4.0)
-                : const BorderRadius.only(
-                  topLeft: Radius.circular(4.0),
-                  topRight: Radius.circular(4.0),
+                ? BorderRadius.circular(4.br)
+                : BorderRadius.only(
+                  topLeft: Radius.circular(4.br),
+                  topRight: Radius.circular(4.br),
                 ),
       ),
       clipBehavior: Clip.antiAlias,

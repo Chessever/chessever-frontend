@@ -49,7 +49,9 @@ class _GroupEventGamesTourContentBodyState
     }
     final rounds = gamesAppBar.value!.gamesAppBarModels;
     final gamesByRound = <String, List<GamesTourModel>>{};
-    for (final r in rounds) gamesByRound[r.id] = [];
+    for (final r in rounds) {
+      gamesByRound[r.id] = [];
+    }
 
     for (final g in widget.gamesScreenModel.gamesTourModels) {
       if (gamesByRound.containsKey(g.roundId)) {
