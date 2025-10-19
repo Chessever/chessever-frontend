@@ -37,10 +37,19 @@ class StockfishSingleton {
   Future<EnhancedCloudEval> evaluatePosition(
     String fen, {
     int depth = 15,
+    Duration? searchTime,
+    int multiPv = 3,
+    void Function(int depth, int kiloNodes)? onDepthUpdate,
   }) async {
-    // Validate depth range
-    if (depth < 1 || depth > 25) {
-      throw ArgumentError('Depth must be between 1 and 25, got: $depth');
+    final normalizedMultiPv = multiPv.clamp(1, 5).toInt();
+
+    if (searchTime == null) {
+      // Validate depth range only when using depth-based search
+      if (depth < 1 || depth > 30) {
+        throw ArgumentError('Depth must be between 1 and 30, got: $depth');
+      }
+    } else if (searchTime.inMilliseconds <= 0) {
+      throw ArgumentError('Search time must be positive when provided');
     }
 
     // Validate FEN string
@@ -51,16 +60,34 @@ class StockfishSingleton {
     // Create cache key including side to move for perspective-aware caching
     final fenParts = fen.split(' ');
     final sideToMove = fenParts.length > 1 ? fenParts[1] : 'w';
-    final cacheKey = '${fen}_${depth}_$sideToMove';
+    final cacheKey = [
+      fen,
+      normalizedMultiPv,
+      searchTime?.inMilliseconds ?? depth,
+      sideToMove,
+    ].join('_');
 
     if (_evaluationCache.containsKey(cacheKey)) {
       debugPrint('📦 CACHE HIT for $fen');
-      return _evaluationCache[cacheKey]!;
+      final cached = _evaluationCache[cacheKey]!;
+      if (onDepthUpdate != null) {
+        try {
+          onDepthUpdate(cached.depth, cached.knodes);
+        } catch (_) {}
+      }
+      return cached;
     }
 
     // Create job and add to queue
     final completer = Completer<EnhancedCloudEval>();
-    final job = _EvalJob(fen, depth, completer);
+    final job = _EvalJob(
+      fen: fen,
+      depth: depth,
+      searchTime: searchTime,
+      multiPv: normalizedMultiPv,
+      onDepthUpdate: onDepthUpdate,
+      completer: completer,
+    );
 
     _jobQueue.add(job);
     debugPrint(
@@ -143,6 +170,8 @@ class StockfishSingleton {
     final fen = job.fen;
     final depth = job.depth;
     final completer = job.completer;
+    final searchTime = job.searchTime;
+    final multiPv = job.multiPv;
 
     // Ensure engine is ready
     if (_engine == null || _engine!.state.value != StockfishState.ready) {
@@ -174,6 +203,14 @@ class StockfishSingleton {
         final knodesMatch = RegExp(r'nodes (\d+)').firstMatch(line);
         if (knodesMatch != null) {
           knodes = (int.parse(knodesMatch.group(1)!) / 1000).round();
+        }
+
+        if (job.onDepthUpdate != null && finalDepth > 0) {
+          try {
+            job.onDepthUpdate!(finalDepth, knodes);
+          } catch (e) {
+            debugPrint('⚠️ Depth update callback error: $e');
+          }
         }
 
         // Parse score and moves for the principal variation
@@ -235,6 +272,11 @@ class StockfishSingleton {
           pvs: normalizedPvs.isEmpty ? [Pv(moves: '', cp: 0)] : normalizedPvs,
           isCancelled: false,
         );
+        if (job.onDepthUpdate != null && finalDepth > 0) {
+          try {
+            job.onDepthUpdate!(finalDepth, knodes);
+          } catch (_) {}
+        }
         if (!completer.isCompleted) {
           completer.complete(result);
           _currentSubscription = null;
@@ -243,10 +285,16 @@ class StockfishSingleton {
     });
 
     try {
-      debugPrint('   → Sending: MultiPV 3, depth $depth');
-      _engine!.stdin = 'setoption name MultiPV value 3';
+      final commandDescription =
+          searchTime != null ? 'movetime ${searchTime.inMilliseconds}ms' : 'depth $depth';
+      debugPrint('   → Sending: MultiPV $multiPv, $commandDescription');
+      _engine!.stdin = 'setoption name MultiPV value $multiPv';
       _engine!.stdin = 'position fen $fen';
-      _engine!.stdin = 'go depth $depth';
+      if (searchTime != null) {
+        _engine!.stdin = 'go movetime ${searchTime.inMilliseconds}';
+      } else {
+        _engine!.stdin = 'go depth $depth';
+      }
     } catch (e) {
       debugPrint('❌ ERROR sending commands to Stockfish: $e');
       if (!completer.isCompleted) {
@@ -265,7 +313,9 @@ class StockfishSingleton {
     }
 
     // Set up timeout
-    Timer(const Duration(seconds: 10), () {
+    final fallbackTimeout =
+        searchTime != null ? searchTime + const Duration(seconds: 2) : const Duration(seconds: 10);
+    Timer(fallbackTimeout, () {
       if (_currentJob == job && !completer.isCompleted && !evaluationComplete) {
         final filteredPvs = pvs
             .where((pv) => pv.moves.isNotEmpty)
@@ -278,6 +328,11 @@ class StockfishSingleton {
           pvs: normalizedPvs.isEmpty ? [Pv(moves: '', cp: 0)] : normalizedPvs,
           isCancelled: false,
         );
+        if (job.onDepthUpdate != null && finalDepth > 0) {
+          try {
+            job.onDepthUpdate!(finalDepth, knodes);
+          } catch (_) {}
+        }
         completer.complete(fallbackResult);
         _currentJob = null;
         _currentSubscription?.cancel();
@@ -358,8 +413,19 @@ class StockfishSingleton {
 }
 
 class _EvalJob {
+  _EvalJob({
+    required this.fen,
+    required this.depth,
+    required this.multiPv,
+    required this.completer,
+    this.searchTime,
+    this.onDepthUpdate,
+  });
+
   final String fen;
   final int depth;
+  final int multiPv;
+  final Duration? searchTime;
   final Completer<EnhancedCloudEval> completer;
-  _EvalJob(this.fen, this.depth, this.completer);
+  final void Function(int depth, int kiloNodes)? onDepthUpdate;
 }

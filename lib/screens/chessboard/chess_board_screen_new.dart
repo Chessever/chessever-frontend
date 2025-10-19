@@ -1,13 +1,14 @@
 import 'dart:async';
 
 import 'package:chessever2/screens/standings/score_card_screen.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:chessever2/providers/board_settings_provider.dart';
 import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/move_impact_analyzer.dart';
 import 'package:chessever2/screens/chessboard/analysis/simple_move_impact.dart';
+import 'package:chessever2/screens/chessboard/chess_board_settings_page.dart';
+import 'package:chessever2/screens/chessboard/provider/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
@@ -952,10 +953,22 @@ class _AppBar extends ConsumerWidget implements PreferredSizeWidget {
           onSelected: (value) {
             if (value == 'share') {
               shareGameBtnClicked(context, ref);
+            } else if (value == 'settings') {
+              Navigator.of(context).push(ChessBoardSettingsPage.route());
             }
           },
           itemBuilder:
               (context) => [
+                PopupMenuItem(
+                  value: 'settings',
+                  child: Row(
+                    children: [
+                      Icon(Icons.settings_outlined, color: kWhiteColor),
+                      SizedBox(width: 8.w),
+                      const Text('Engine Settings'),
+                    ],
+                  ),
+                ),
                 PopupMenuItem(
                   value: 'share',
                   child: Row(
@@ -1556,7 +1569,10 @@ class _BoardWithSidebar extends ConsumerWidget {
       builder: (context, constraints) {
         final sideBarWidth = 20.w;
         final screenWidth = MediaQuery.of(context).size.width;
-        final boardSize = screenWidth - sideBarWidth - 32.w;
+        final engineSettings = ref.watch(engineSettingsProvider);
+        final showGauge = engineSettings.showEngineGauge;
+        final gaugeWidth = showGauge ? sideBarWidth : 0.0;
+        final boardSize = (screenWidth - gaugeWidth - 32.w).clamp(0.0, screenWidth);
 
         // Analysis mode is always active, always use analysis state
         final currentIndex = state.analysisState.currentMoveIndex;
@@ -1583,30 +1599,34 @@ class _BoardWithSidebar extends ConsumerWidget {
           margin: EdgeInsets.symmetric(horizontal: 16.sp),
           child: Row(
             children: [
-              SizedBox(
-                width: sideBarWidth,
-                height: boardSize,
-                child: EvaluationBarWidget(
+              if (showGauge)
+                SizedBox(
                   width: sideBarWidth,
                   height: boardSize,
-                  index: index,
-                  isFlipped: state.isBoardFlipped,
-                  evaluation: state.evaluation,
-                  mate: state.mate ?? 0,
-                  isEvaluating: state.isEvaluating,
-                ),
-              ),
-              Stack(
-                children: [
-                  // Analysis mode is always active, always use analysis board
-                  _AnalysisBoard(
-                    size: boardSize,
-                    chessBoardState: state,
-                    isFlipped: state.isBoardFlipped,
+                  child: EvaluationBarWidget(
+                    width: sideBarWidth,
+                    height: boardSize,
                     index: index,
-                    game: state.game,
+                    isFlipped: state.isBoardFlipped,
+                    evaluation: state.evaluation,
+                    mate: state.mate ?? 0,
+                    isEvaluating: state.isEvaluating,
                   ),
-                  // Add move annotation overlay - only show if impact is not normal and not exploring a variant
+                ),
+              SizedBox(
+                width: boardSize,
+                height: boardSize,
+                child: Stack(
+                  children: [
+                    // Analysis mode is always active, always use analysis board
+                    _AnalysisBoard(
+                      size: boardSize,
+                      chessBoardState: state,
+                      isFlipped: state.isBoardFlipped,
+                      index: index,
+                      game: state.game,
+                    ),
+                    // Add move annotation overlay - only show if impact is not normal and not exploring a variant
                   if (currentMoveImpact != null &&
                       currentMoveImpact.impact != MoveImpactType.normal &&
                       state.selectedVariantIndex == null)
@@ -1616,7 +1636,34 @@ class _BoardWithSidebar extends ConsumerWidget {
                       isFlipped: state.isBoardFlipped,
                       lastMoveSquare: _getLastMoveSquare(),
                     ),
-                ],
+                    if ((state.engineDepth ?? 0) > 0)
+                      Positioned(
+                        right: 8.w,
+                        bottom: 8.h,
+                        child: Opacity(
+                          opacity: 0.55,
+                          child: Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 6.sp,
+                              vertical: 3.sp,
+                            ),
+                            decoration: BoxDecoration(
+                              color: kBlackColor.withValues(alpha: 0.45),
+                              borderRadius: BorderRadius.circular(8.br),
+                            ),
+                            child: Text(
+                              'Depth ${state.engineDepth}',
+                              style: AppTypography.textXsMedium.copyWith(
+                                color: kWhiteColor,
+                                fontSize: 9.f,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -2057,7 +2104,8 @@ class _PrincipalVariationListState
   @override
   void initState() {
     super.initState();
-    final lines = widget.state.principalVariations.take(3).toList();
+    final pvLimit = ref.read(engineSettingsProvider).principalVariationCount;
+    final lines = widget.state.principalVariations.take(pvLimit).toList();
     final initialIndex = widget.state.selectedVariantIndex ?? 0;
     // Ensure initial page is within bounds
     _currentPage = lines.isEmpty ? 0 : initialIndex.clamp(0, lines.length - 1);
@@ -2098,7 +2146,8 @@ class _PrincipalVariationListState
     }
 
     // Update page when variant selection changes externally
-    final lines = widget.state.principalVariations.take(3).toList();
+    final pvLimit = ref.read(engineSettingsProvider).principalVariationCount;
+    final lines = widget.state.principalVariations.take(pvLimit).toList();
     final newIndex = widget.state.selectedVariantIndex ?? 0;
     // Check bounds against actual number of lines
     if (newIndex != _currentPage && newIndex < lines.length) {
@@ -2135,7 +2184,8 @@ class _PrincipalVariationListState
     final isWhiteToMove = (position?.turn ?? Side.white) == Side.white;
 
     final isEvaluating = widget.state.isEvaluating;
-    final lines = widget.state.principalVariations.take(3).toList();
+    final pvLimit = ref.watch(engineSettingsProvider).principalVariationCount;
+    final lines = widget.state.principalVariations.take(pvLimit).toList();
 
     // Check if position is terminal (game over)
     final isGameOver = position?.isGameOver ?? false;

@@ -94,45 +94,18 @@ const Map<String, String> _releaseEnvValues = {
 Future<void> main() async {
   await runZonedGuarded(
     () async {
-      WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+      final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
       FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
-      SystemChrome.setPreferredOrientations([
+      await SystemChrome.setPreferredOrientations([
         DeviceOrientation.portraitUp,
         DeviceOrientation.portraitDown,
       ]);
-
 
       // Load environment variables (only in debug mode)
       if (kDebugMode) {
         await dotenv.load(fileName: ".env");
       }
-      WidgetsFlutterBinding.ensureInitialized();
 
-      await NotificationService.initialize();
-      // Initialize worker manager with 6 isolates for parallel move evaluation
-      if (Platform.isAndroid) {
-        await workerManager.init(isolatesCount: 3);
-      } else if (Platform.isIOS) {
-        await workerManager.init(isolatesCount: 6);
-      }
-
-      WidgetsBinding.instance.addObserver(
-        LifecycleEventHandler(
-          onAppExit: () async {
-            StockfishSingleton().dispose();
-          },
-        ),
-      );
-      unawaited(AudioPlayerService.instance.initializeAndLoadAllAssets());
-      // await _initRevenueCat();
-
-      await _clearEvaluationCache();
-
-      // Initialize Amplitude
-      try {
-        final amplitude = Amplitude.getInstance();
-        await amplitude.init(_getEnv('AMPLITUDE'));
-      } catch (e, _) {}
       // Initialize Supabase
       await Supabase.initialize(
         url: _getEnv('SUPABASE_URL'),
@@ -144,14 +117,53 @@ Future<void> main() async {
           options.dsn = _getEnv('SENTRY_FLUTTER');
           options.sendDefaultPii = true;
         },
-        appRunner:
-            () => runApp(SentryWidget(child: ProviderScope(child: MyApp()))),
+        appRunner: () {
+          runApp(SentryWidget(child: ProviderScope(child: MyApp())));
+          unawaited(_initializeAppServices());
+        },
       );
     },
     (error, stackTrace) {
       Sentry.captureException(error, stackTrace: stackTrace);
     },
   );
+}
+
+Future<void> _initializeAppServices() async {
+  WidgetsBinding.instance.addObserver(
+    LifecycleEventHandler(
+      onAppExit: () async {
+        StockfishSingleton().dispose();
+      },
+    ),
+  );
+
+  unawaited(AudioPlayerService.instance.initializeAndLoadAllAssets());
+
+  await Future.wait<void>([
+    NotificationService.initialize(),
+    _initializeWorkerManager(),
+    _clearEvaluationCache(),
+    _initializeAmplitude(),
+  ]);
+  // await _initRevenueCat();
+}
+
+Future<void> _initializeWorkerManager() async {
+  try {
+    if (Platform.isAndroid) {
+      await workerManager.init(isolatesCount: 3);
+    } else if (Platform.isIOS) {
+      await workerManager.init(isolatesCount: 6);
+    }
+  } catch (e, _) {}
+}
+
+Future<void> _initializeAmplitude() async {
+  try {
+    final amplitude = Amplitude.getInstance();
+    await amplitude.init(_getEnv('AMPLITUDE'));
+  } catch (e, _) {}
 }
 
 Future<void> _initRevenueCat() async {

@@ -231,6 +231,7 @@ class ChessBoardStateNew {
   final bool isLoadingMoves;
   final double? evaluation; // Made nullable to indicate loading state
   final bool isEvaluating; // Flag to show evaluation is in progress
+  final int? engineDepth;
   final GamesTourModel game;
   final String? pgnData;
   final String? fenData;
@@ -278,6 +279,7 @@ class ChessBoardStateNew {
     this.isLoadingMoves = false,
     this.evaluation = 0,
     this.isEvaluating = false,
+    this.engineDepth,
     required this.game,
     this.pgnData,
     this.fenData,
@@ -310,6 +312,7 @@ class ChessBoardStateNew {
     bool? isBoardFlipped,
     bool? isLoadingMoves,
     Object? evaluation = _noChange,
+    Object? engineDepth = _noChange,
     bool? isEvaluating,
     Object? mate = _noChange,
     GamesTourModel? game,
@@ -352,6 +355,10 @@ class ChessBoardStateNew {
           identical(evaluation, _noChange)
               ? this.evaluation
               : evaluation as double?,
+      engineDepth:
+          identical(engineDepth, _noChange)
+              ? this.engineDepth
+              : engineDepth as int?,
       isEvaluating: isEvaluating ?? this.isEvaluating,
       game: game ?? this.game,
       pgnData:
@@ -399,6 +406,7 @@ class ChessBoardStateNew {
         other.isBoardFlipped == isBoardFlipped &&
         other.isLoadingMoves == isLoadingMoves &&
         other.evaluation == evaluation &&
+        other.engineDepth == engineDepth &&
         other.isEvaluating == isEvaluating &&
         other.pgnData == pgnData &&
         other.fenData == fenData &&
@@ -418,6 +426,7 @@ class ChessBoardStateNew {
         isBoardFlipped.hashCode ^
         isLoadingMoves.hashCode ^
         (evaluation?.hashCode ?? 0) ^
+        (engineDepth?.hashCode ?? 0) ^
         isEvaluating.hashCode ^
         (pgnData?.hashCode ?? 0) ^
         (fenData?.hashCode ?? 0) ^

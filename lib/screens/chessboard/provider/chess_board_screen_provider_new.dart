@@ -8,6 +8,7 @@ import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator_state_manager.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
+import 'package:chessever2/screens/chessboard/provider/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
@@ -21,8 +22,6 @@ import 'package:fast_immutable_collections/fast_immutable_collections.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:worker_manager/worker_manager.dart';
-
-const int _kMaxPrincipalVariations = 3;
 
 enum ChessboardView { favScorecard, tour, countryman }
 
@@ -45,6 +44,7 @@ class ChessBoardScreenNotifierNew
   }) : super(const AsyncValue.loading()) {
     _initializeState();
     _setupPgnStreamListener();
+    _setupEngineSettingsListener();
   }
 
   final Ref ref;
@@ -63,6 +63,22 @@ class ChessBoardScreenNotifierNew
   ChessGame? _analysisGame;
   ChessGameNavigatorStateManager? _analysisStateManager;
   ProviderSubscription<ChessGameNavigatorState>? _navigatorSubscription;
+  int _latestDepthNotified = 0;
+
+  int _currentPvLimit() =>
+      ref.read(engineSettingsProvider).principalVariationCount.clamp(
+        EngineSettings.minPrincipalVariation,
+        EngineSettings.maxPrincipalVariation,
+      );
+
+  void _handleDepthProgress(int depth, int knodes) {
+    if (_cancelEvaluation) return;
+    if (depth <= _latestDepthNotified) return;
+    final currentState = state.value;
+    if (currentState == null) return;
+    _latestDepthNotified = depth;
+    state = AsyncValue.data(currentState.copyWith(engineDepth: depth));
+  }
 
   void _initializeState() {
     state = AsyncValue.data(
@@ -130,6 +146,18 @@ class ChessBoardScreenNotifierNew
         });
       });
     }
+  }
+
+  void _setupEngineSettingsListener() {
+    ref.listen<EngineSettings>(engineSettingsProvider, (previous, next) {
+      if (previous == null) return;
+      final pvChanged = previous.principalVariationCount != next.principalVariationCount;
+      final searchChanged = previous.searchTimeIndex != next.searchTimeIndex;
+      if ((pvChanged || searchChanged) && !_cancelEvaluation) {
+        debugPrint('⚙️ ENGINE SETTINGS UPDATED: pv=$pvChanged search=$searchChanged → triggering re-evaluation');
+        _evaluatePosition();
+      }
+    });
   }
 
   GameStatus _parseGameStatus(String status) {
@@ -1462,7 +1490,7 @@ class ChessBoardScreenNotifierNew
       debugPrint('⚠️ BUILD PV: FEN validation failed: $e');
       return const [];
     }
-    final limitedPvs = pvs.take(_kMaxPrincipalVariations).toList();
+    final limitedPvs = pvs.take(_currentPvLimit()).toList();
     final payload = {
       'fen': fen,
       'pvs':
@@ -1965,7 +1993,20 @@ class ChessBoardScreenNotifierNew
       if (fen == null) return;
 
       state = AsyncValue.data(
-        initialState.copyWith(shapes: const ISet.empty(), isEvaluating: true),
+        initialState.copyWith(
+          shapes: const ISet.empty(),
+          isEvaluating: true,
+          engineDepth: 0,
+        ),
+      );
+      _latestDepthNotified = 0;
+      final engineSettings = ref.read(engineSettingsProvider);
+      final pvLimit = engineSettings.principalVariationCount.clamp(
+        EngineSettings.minPrincipalVariation,
+        EngineSettings.maxPrincipalVariation,
+      );
+      final searchDuration = engineSettings.searchDurationFor(
+        EngineComponent.evaluationGauge,
       );
 
       final cachedEval = _evaluationCache[fen];
@@ -2046,22 +2087,25 @@ class ChessBoardScreenNotifierNew
         debugPrint('🎯 EVAL ERROR: Cascade failed for $fen: $e');
       }
 
-      // SUPPLEMENT/FALLBACK: Use Stockfish if cloud sources returned < 3 PVs
-      // Cloud sources (Lichess multiPv=3) should usually return 3 PVs, but might return fewer for:
+      // SUPPLEMENT/FALLBACK: Use Stockfish if cloud sources returned fewer PVs than desired
+      // Cloud sources should usually return enough PVs, but might return fewer for:
       // - Uncommon positions not yet fully analyzed
       // - Positions with forced mates (only one line matters)
       // - API rate limiting or temporary unavailability
-      if (evaluation == null || pvLines.length < 3) {
+      if (evaluation == null || pvLines.length < pvLimit) {
         final needsEval = evaluation == null;
-        final needsMorePvs = pvLines.length < 3;
+        final needsMorePvs = pvLines.length < pvLimit;
 
         try {
           debugPrint(
-            '🎯 EVAL: Need ${needsEval ? "eval + " : ""}${needsMorePvs ? "more PVs (have ${pvLines.length}/3)" : ""}, running Stockfish...',
+            '🎯 EVAL: Need ${needsEval ? "eval + " : ""}${needsMorePvs ? "more PVs (have ${pvLines.length}/$pvLimit)" : ""}, running Stockfish...',
           );
           final localEval = await StockfishSingleton().evaluatePosition(
             fen,
             depth: _resumeVariantAutoPlay ? 12 : 15,
+            multiPv: pvLimit,
+            searchTime: searchDuration,
+            onDepthUpdate: _handleDepthProgress,
           );
           debugPrint(
             '🎯 EVAL: Stockfish completed, isCancelled=${localEval.isCancelled}, pvs.length=${localEval.pvs.length}',
@@ -2069,15 +2113,21 @@ class ChessBoardScreenNotifierNew
 
           if (!localEval.isCancelled && localEval.pvs.isNotEmpty) {
             // Use Stockfish eval if we don't have one from cloud
-            if (needsEval) {
-              primaryEval = CloudEval(
-                fen: fen,
-                knodes: localEval.knodes,
-                depth: localEval.depth,
-                pvs: localEval.pvs,
-              );
+            final localCloud = CloudEval(
+              fen: fen,
+              knodes: localEval.knodes,
+              depth: localEval.depth,
+              pvs: localEval.pvs.take(pvLimit).toList(growable: false),
+            );
+
+            final existingDepth = primaryEval?.depth ?? 0;
+            final shouldAdoptLocal =
+                needsEval || primaryEval == null || localCloud.depth >= existingDepth;
+
+            if (shouldAdoptLocal) {
+              primaryEval = localCloud;
               evaluation = _getConsistentEvaluation(
-                localEval.pvs.first.cp / 100.0,
+                localCloud.pvs.first.cp / 100.0,
                 fen,
               );
             }
@@ -2087,6 +2137,9 @@ class ChessBoardScreenNotifierNew
               '🎯 EVAL: Building principal variations from Stockfish MultiPV...',
             );
             var stockfishPvLines = await _buildPrincipalVariations(fen, localEval.pvs);
+            if (stockfishPvLines.length > pvLimit) {
+              stockfishPvLines = stockfishPvLines.take(pvLimit).toList();
+            }
 
             // RETRY: If Stockfish PV building failed, try once more after a small delay
             if (stockfishPvLines.isEmpty && localEval.pvs.isNotEmpty) {
@@ -2108,7 +2161,7 @@ class ChessBoardScreenNotifierNew
               ).toSet();
 
               for (final sfLine in stockfishPvLines) {
-                if (merged.length >= 3) break;
+                if (merged.length >= pvLimit) break;
                 final firstMove = sfLine.sanMoves.isNotEmpty ? sfLine.sanMoves.first : '';
                 // Add if it's a different first move (different principal variation)
                 if (!existingFirstMoves.contains(firstMove)) {
@@ -2117,12 +2170,18 @@ class ChessBoardScreenNotifierNew
                 }
               }
               pvLines = merged;
+              if (pvLines.length > pvLimit) {
+                pvLines = pvLines.take(pvLimit).toList();
+              }
               debugPrint(
                 '🎯 EVAL: MERGED - ${pvLines.length} variants (cloud + Stockfish)',
               );
             } else {
               // No cloud PVs, use all Stockfish PVs
               pvLines = stockfishPvLines;
+              if (pvLines.length > pvLimit) {
+                pvLines = pvLines.take(pvLimit).toList();
+              }
               debugPrint(
                 '🎯 EVAL: STOCKFISH ONLY - returned ${pvLines.length} variants, eval=$evaluation',
               );
@@ -2197,6 +2256,19 @@ class ChessBoardScreenNotifierNew
         // Continue with empty PVs - we still want to show the evaluation
       } else if (pvLines.isEmpty) {
         debugPrint('⚠️ EVAL: No PVs available and primaryEval has no PVs either');
+      }
+
+      if (pvLines.length > pvLimit) {
+        pvLines = pvLines.take(pvLimit).toList();
+      }
+
+      if (primaryEval.pvs.length > pvLimit) {
+        primaryEval = CloudEval(
+          fen: primaryEval.fen,
+          knodes: primaryEval.knodes,
+          depth: primaryEval.depth,
+          pvs: primaryEval.pvs.take(pvLimit).toList(growable: false),
+        );
       }
 
       // OPTIMIZATION: Don't await cache persistence - run in background for speed
@@ -2316,6 +2388,7 @@ class ChessBoardScreenNotifierNew
       _evaluationCache[fen] = evaluation;
       _mateCache[fen] = mateScore;
       _pvCache[fen] = pvLines;
+      _latestDepthNotified = primaryEval.depth;
 
       // CRITICAL: Don't overwrite variant base if we're exploring a variant
       final inVariantExploration =
@@ -2340,6 +2413,7 @@ class ChessBoardScreenNotifierNew
         isEvaluating: false,
         shapes: shapes,
         principalVariations: pvLines,
+        engineDepth: primaryEval.depth,
         // Only update variantBaseFen if NOT in variant exploration
         variantBaseFen:
             inVariantExploration ? currentSnapshot.variantBaseFen : fen,
@@ -2468,8 +2542,8 @@ class ChessBoardScreenNotifierNew
         return const ISet.empty();
       }
 
-      // Get up to [_kMaxPrincipalVariations] principal variations
-      final pvsToShow = cloudEval.pvs.take(_kMaxPrincipalVariations).toList();
+      final pvLimit = _currentPvLimit();
+      final pvsToShow = cloudEval.pvs.take(pvLimit).toList();
 
       for (int i = 0; i < pvsToShow.length; i++) {
         final pv = pvsToShow[i];
@@ -2610,7 +2684,8 @@ class ChessBoardScreenNotifierNew
   ) {
     final arrows = <Arrow>[];
 
-    for (int i = 0; i < variants.length && i < 3; i++) {
+    final pvLimit = _currentPvLimit();
+    for (int i = 0; i < variants.length && i < pvLimit; i++) {
       final variant = variants[i];
       if (variant.moves.isEmpty) continue;
 
