@@ -13,8 +13,8 @@ final lichessEvalRepoProvider = AutoDisposeProvider<_LichessEvalRepository>(
 class _LichessEvalRepository {
   final String baseUrl = 'https://lichess.org/api/cloud-eval';
 
-  Future<CloudEval> getEval(String fen) async {
-    final uri = Uri.parse('$baseUrl?fen=${Uri.encodeComponent(fen)}');
+  Future<CloudEval> getEval(String fen, {int multiPv = 3}) async {
+    final uri = Uri.parse('$baseUrl?fen=${Uri.encodeComponent(fen)}&multiPv=$multiPv');
     final resp = await http.get(uri).timeout(const Duration(seconds: 8));
 
     if (resp.statusCode == 200) {
@@ -22,7 +22,7 @@ class _LichessEvalRepository {
       final cloudEval = CloudEval.fromJson(decoded);
 
       // Convert Lichess evaluations to white's perspective for consistency
-      return _convertToWhitePerspective(cloudEval, fen);
+      return _convertToWhitePerspective(cloudEval, fen, multiPv);
     }
 
     if (resp.statusCode == 404) {
@@ -35,13 +35,13 @@ class _LichessEvalRepository {
   /// Converts Lichess evaluation from current player's perspective to white's perspective
   /// CRITICAL: Based on testing, when evaluations are wrong, it means they're NOT being flipped
   /// when they should be. This indicates evaluations ARE from current player's perspective.
-  CloudEval _convertToWhitePerspective(CloudEval cloudEval, String fen) {
+  CloudEval _convertToWhitePerspective(CloudEval cloudEval, String fen, int multiPv) {
     // Parse FEN to determine whose turn it is
     final fenParts = fen.split(' ');
     final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
     final originalCp = cloudEval.pvs.isNotEmpty ? cloudEval.pvs.first.cp : 0;
 
-    print("🔍 LICHESS NORMALIZATION: FEN=$fen, side=$sideToMove, originalCp=$originalCp (Lichess already white perspective)");
+    print("🔍 LICHESS: Received ${cloudEval.pvs.length} PVs (multiPv=$multiPv), side=$sideToMove, firstCp=$originalCp");
 
     final adjustedPvs = cloudEval.pvs
         .map(

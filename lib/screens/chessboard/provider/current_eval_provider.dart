@@ -52,14 +52,14 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<CloudEval, String>
       return cloud;
     }
 
-    // 3️⃣  Lichess → Supabase → local
+    // 3️⃣  Lichess → Supabase → local (request 3 PVs for analysis)
 
-    final cloud = await lichess.getEval(fen);
+    final cloud = await lichess.getEval(fen, multiPv: 3);
     final fenParts = fen.split(' ');
     final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
     final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
     print(
-      "🟢 EVAL SOURCE (cascadeEval): LICHESS - fen=$fen, side=$sideToMove, cp=$cp (after conversion)",
+      "🟢 EVAL SOURCE (cascadeEval): LICHESS (${cloud.pvs.length} PVs) - fen=$fen, side=$sideToMove, cp=$cp",
     );
     // OPTIMIZATION: Save to caches in background (unawaited)
     Future.wait<void>([persist.call(fen, cloud), local.save(fen, cloud)])
@@ -152,13 +152,13 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval,
         });
 
     final lichessFuture = lichess
-        .getEval(fen)
+        .getEval(fen, multiPv: 3)
         .then((cloud) {
           if (_isValidEvaluation(cloud)) {
             final fenParts = fen.split(' ');
             final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
             final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
-            print("🟢 EVAL SOURCE: LICHESS - fen=$fen, side=$sideToMove, cp=$cp");
+            print("🟢 EVAL SOURCE: LICHESS (${cloud.pvs.length} PVs) - fen=$fen, side=$sideToMove, cp=$cp");
             // Background save to both caches
             Future.wait<void>([
               persist.call(fen, cloud),
