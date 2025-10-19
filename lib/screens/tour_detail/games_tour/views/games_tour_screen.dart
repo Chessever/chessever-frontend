@@ -31,73 +31,68 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
     final gamesTourMode = ref.watch(gamesTourScreenModeProvider);
 
     return gamesTourMode.when(
-      data: (data) {
-        if (data == GamesTourScreenMode.normal) {
-          final gamesTourAsync = ref.watch(gamesTourScreenProvider);
+      data: (mode) {
+        final gamesTourAsync = ref.watch(gamesTourScreenProvider);
 
-          return gamesTourAsync.when(
-            data: (data) {
-              if (data.gamesTourModels.isEmpty) {
-                if (data.isSearchMode && data.searchQuery != null) {
-                  return EmptySearchWidget(query: data.searchQuery!);
-                } else {
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        SvgPicture.asset(
-                          SvgAsset.tournamentIcon,
-                          height: 35,
-                          width: 35,
+        return gamesTourAsync.when(
+          data: (data) {
+            if (data.gamesTourModels.isEmpty) {
+              if (data.isSearchMode && data.searchQuery != null) {
+                return EmptySearchWidget(query: data.searchQuery!);
+              } else {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SvgPicture.asset(
+                        SvgAsset.tournamentIcon,
+                        height: 35,
+                        width: 35,
+                      ),
+                      SizedBox(height: 10),
+                      Text(
+                        'No games going on',
+                        style: AppTypography.textMdRegular.copyWith(
+                          color: kWhiteColor,
                         ),
-                        SizedBox(height: 10),
-                        Text(
-                          'No games going on',
-                          style: AppTypography.textMdRegular.copyWith(
-                            color: kWhiteColor,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
-                  );
-                }
-              }
-
-              return RefreshIndicator(
-                onRefresh: _handleRefresh,
-                color: kWhiteColor70,
-                backgroundColor: kDarkGreyColor,
-                displacement: 60.h,
-                strokeWidth: 3.w,
-                child: GamesTourContentBody(
-                  gamesScreenModel: data,
-                  gamesListViewMode: gamesListViewMode,
-                ),
-              );
-            },
-            error: (e, _) {
-              return Center(
-                child: Text(
-                  'Error: $e',
-                  style: AppTypography.textMdRegular.copyWith(
-                    color: kWhiteColor,
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
                   ),
-                  textAlign: TextAlign.center,
-                ),
-              );
-            },
-            loading: () => const TourLoadingWidget(),
-          );
-        } else {
-          final gamesTourAsync = ref.watch(gamesTourScreenProvider);
-          return GroupEventGamesTourContentBody(
-            gamesScreenModel: gamesTourAsync.value!,
-            gamesListViewMode: gamesListViewMode,
-            onReturnFromChessboard: (index) {},
-          );
-        }
+                );
+              }
+            }
+            return RefreshIndicator(
+              onRefresh: _handleRefresh,
+              color: kWhiteColor70,
+              backgroundColor: kDarkGreyColor,
+              displacement: 60.h,
+              strokeWidth: 3.w,
+              child:
+                  mode == GamesTourScreenMode.normal
+                      ? GamesTourContentBody(
+                        gamesScreenModel: data,
+                        gamesListViewMode: gamesListViewMode,
+                      )
+                      : GroupEventGamesTourContentBody(
+                        gamesScreenModel: data,
+                        gamesListViewMode: gamesListViewMode,
+                        onReturnFromChessboard: (index) {},
+                      ),
+            );
+          },
+          error: (e, _) {
+            return Center(
+              child: Text(
+                'Error: $e',
+                style: AppTypography.textMdRegular.copyWith(color: kWhiteColor),
+                textAlign: TextAlign.center,
+              ),
+            );
+          },
+          loading: () => const TourLoadingWidget(),
+        );
       },
       error: (e, _) {
         return Center(
@@ -108,9 +103,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
           ),
         );
       },
-      loading: () {
-        return TourLoadingWidget();
-      },
+      loading: () => const TourLoadingWidget(),
     );
   }
 
