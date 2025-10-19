@@ -42,6 +42,9 @@ import 'theme/theme_provider.dart';
 final RouteObserver<ModalRoute<void>> routeObserver =
     RouteObserver<ModalRoute<void>>();
 
+// Global navigator key for upgrader dialog
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
 /// Helper function to get environment variables.
 ///
 /// * In debug mode we load the `.env` file using `flutter_dotenv`.
@@ -97,6 +100,7 @@ Future<void> main() async {
         DeviceOrientation.portraitUp,
         DeviceOrientation.portraitDown,
       ]);
+
 
       // Load environment variables (only in debug mode)
       if (kDebugMode) {
@@ -249,6 +253,7 @@ class _MyAppState extends ConsumerState<MyApp> {
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeMode,
+      navigatorKey: navigatorKey,
       navigatorObservers: [routeObserver],
       initialRoute: '/',
       routes: {

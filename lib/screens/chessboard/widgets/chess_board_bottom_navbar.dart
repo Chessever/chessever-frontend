@@ -7,16 +7,28 @@ class ChessSvgBottomNavbar extends StatelessWidget {
   final String svgPath;
   final double width;
   final VoidCallback? onPressed;
+  final bool isActive;
 
   const ChessSvgBottomNavbar({
     super.key,
     required this.svgPath,
     required this.width,
     required this.onPressed,
+    this.isActive = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    // Determine icon color - white when active/enabled, transparent white when inactive
+    final Color iconColor;
+    if (onPressed == null) {
+      iconColor = kWhiteColor70;
+    } else if (isActive) {
+      iconColor = kWhiteColor; // Use white when active, like arrow buttons
+    } else {
+      iconColor = kWhiteColor70; // Use transparent white when inactive
+    }
+
     return InkWell(
       onTap: onPressed,
       child: Container(
@@ -29,7 +41,7 @@ class ChessSvgBottomNavbar extends StatelessWidget {
           height: 24.h,
           width: 24.w,
           colorFilter: ColorFilter.mode(
-            onPressed != null ? kWhiteColor : kWhiteColor70,
+            iconColor,
             BlendMode.srcIn,
           ),
         ),

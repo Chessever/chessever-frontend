@@ -1,6 +1,7 @@
 import 'package:chessever2/repository/local_storage/tournament/tour_local_storage.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
+import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
@@ -15,7 +16,16 @@ final playerTourScreenProvider = StateNotifierProvider<
 >((ref) {
   final groupBroadcastId = ref.watch(selectedBroadcastModelProvider)!.id;
   final aboutTourModel =
-      ref.watch(tourDetailScreenProvider).value!.aboutTourModel;
+      ref.watch(tourDetailScreenProvider).value?.aboutTourModel;
+
+  final gamesTourScreen = ref.watch(gamesTourScreenProvider);
+
+  if (gamesTourScreen.isLoading ||
+      gamesTourScreen.hasError ||
+      aboutTourModel == null) {
+    return _PlayerTourScreenController.loading(ref, '', '');
+  }
+
   return _PlayerTourScreenController(
     ref: ref,
     tourId: aboutTourModel.id,
@@ -30,62 +40,139 @@ class _PlayerTourScreenController
     required this.tourId,
     required this.groupBroadcastId,
   }) : super(AsyncValue.loading()) {
-    // Initialize with test data
     loadPlayers();
   }
+
+  _PlayerTourScreenController.loading(
+    this.ref,
+    this.tourId,
+    this.groupBroadcastId,
+  ) : super(AsyncValue.loading());
 
   final Ref ref;
   final String tourId;
   final String groupBroadcastId;
-
   Future<void> loadPlayers() async {
     try {
-      // Get tournament players from local storage
+      // 🧩 Step 1: Load tournament players from local storage
       final allTours = await ref
           .read(tourLocalStorageProvider)
           .getTours(groupBroadcastId);
-      final selectedTour = allTours.where((e) => e.id == tourId).toList();
 
-      var tournamentPlayer = <TournamentPlayer>[];
+      final selectedTours = allTours.where((e) => e.id == tourId).toList();
+      var tournamentPlayers = <TournamentPlayer>[];
 
-      for (var a = 0; a < selectedTour.length; a++) {
-        for (var b = 0; b < selectedTour[a].players.length; b++) {
-          tournamentPlayer.add(selectedTour[a].players[b]);
-        }
+      for (final tour in selectedTours) {
+        tournamentPlayers.addAll(tour.players);
       }
 
-      tournamentPlayer = tournamentPlayer.toSet().toList();
+      // Remove duplicates by name + fideId (safe deduplication)
+      final seen = <String>{};
+      tournamentPlayers =
+          tournamentPlayers.where((p) {
+            final key = '${p.name.trim().toLowerCase()}-${p.fideId ?? 0}';
+            if (seen.contains(key)) return false;
+            seen.add(key);
+            return true;
+          }).toList();
 
-      // Get all games for this tournament from Supabase (same as score card screen)
+      // 🧩 Step 2: Load all games for this tournament
       final gamesScreenData = ref.read(gamesTourScreenProvider);
       final allGames = gamesScreenData.value?.gamesTourModels ?? [];
 
-      // Calculate scores from actual games for each player
-      for (int i = 0; i < tournamentPlayer.length; i++) {
-        final player = tournamentPlayer[i];
+      // 🧩 Step 3: Enrich player info (federation, title, rating, fideId)
+      for (int i = 0; i < tournamentPlayers.length; i++) {
+        final player = tournamentPlayers[i];
+
+        GamesTourModel? relatedGame;
+        try {
+          relatedGame = allGames.firstWhere((g) {
+            final playerName = player.name.trim().toLowerCase();
+            final whiteName = g.whitePlayer.name.toLowerCase();
+            final blackName = g.blackPlayer.name.toLowerCase();
+            return ref
+                    .read(playerUtilsProvider)
+                    .isSamePlayer(playerName, whiteName) ||
+                ref
+                    .read(playerUtilsProvider)
+                    .isSamePlayer(playerName, blackName);
+          });
+        } catch (_) {
+          relatedGame = null;
+        }
+
+        if (relatedGame == null) continue;
+
+        final isWhite = ref
+            .read(playerUtilsProvider)
+            .isSamePlayer(
+              player.name.trim().toLowerCase(),
+              relatedGame.whitePlayer.name.toLowerCase(),
+            );
+        final card =
+            isWhite ? relatedGame.whitePlayer : relatedGame.blackPlayer;
+
+        tournamentPlayers[i] = player.copyWith(
+          federation:
+              (player.federation?.trim().isNotEmpty ?? false)
+                  ? player.federation
+                  : (card.federation.trim().isNotEmpty
+                      ? card.federation
+                      : player.federation),
+          title:
+              (player.title?.trim().isNotEmpty ?? false)
+                  ? player.title
+                  : (card.title.trim().isNotEmpty ? card.title : player.title),
+          rating:
+              (player.rating != null && player.rating! > 0)
+                  ? player.rating
+                  : (card.rating > 0 ? card.rating : player.rating),
+          fideId:
+              (player.fideId != null && player.fideId! > 0)
+                  ? player.fideId
+                  : (card.fideId ?? player.fideId),
+        );
+      }
+
+      // 🧩 Step 4: Calculate score and games played
+      for (int i = 0; i < tournamentPlayers.length; i++) {
+        final player = tournamentPlayers[i];
+
         final playerGames =
-            allGames
-                .where(
-                  (game) =>
-                      game.whitePlayer.name == player.name ||
-                      game.blackPlayer.name == player.name,
-                )
-                .toList();
+            allGames.where((game) {
+              final playerName = player.name.trim().toLowerCase();
+              return ref
+                      .read(playerUtilsProvider)
+                      .isSamePlayer(
+                        playerName,
+                        game.whitePlayer.name.toLowerCase(),
+                      ) ||
+                  ref
+                      .read(playerUtilsProvider)
+                      .isSamePlayer(
+                        playerName,
+                        game.blackPlayer.name.toLowerCase(),
+                      );
+            }).toList();
 
         double calculatedScore = 0.0;
         int gamesPlayed = 0;
 
         for (final game in playerGames) {
-          // Skip ongoing games
+          // Skip ongoing or unknown games
           if (game.gameStatus == GameStatus.ongoing ||
               game.gameStatus == GameStatus.unknown) {
             continue;
           }
 
           gamesPlayed++;
-          final isWhite = game.whitePlayer.name == player.name;
+          final isWhite = ref
+              .read(playerUtilsProvider)
+              .isSamePlayer(
+                player.name.trim().toLowerCase(),
+                game.whitePlayer.name.toLowerCase(),
+              );
 
-          // Calculate score using w:1, d:0.5, l:0 system
           switch (game.gameStatus) {
             case GameStatus.whiteWins:
               if (isWhite) calculatedScore += 1.0;
@@ -101,32 +188,30 @@ class _PlayerTourScreenController
           }
         }
 
-        // Update player with calculated score
-        tournamentPlayer[i] = player.copyWith(
+        tournamentPlayers[i] = player.copyWith(
           score: calculatedScore,
           played: gamesPlayed,
         );
       }
 
-      // Sort by total score (highest first), then by number of games played
-      tournamentPlayer.sort((a, b) {
-        final aScore = a.score ?? 0.0;
-        final bScore = b.score ?? 0.0;
+      // 🧩 Step 5: Sort by score (desc), then by games played (desc)
+      tournamentPlayers.sort((a, b) {
+        final aScore = a.score ?? double.tryParse(a.scoreString) ?? 0.0;
+        final bScore = b.score ?? double.tryParse(b.scoreString) ?? 0.0;
 
-        // Primary sort: total score (highest first)
-        if (bScore != aScore) {
-          return bScore.compareTo(aScore);
-        }
-
-        // Secondary sort: number of games played if scores are equal
+        if (bScore != aScore) return bScore.compareTo(aScore);
         return b.played.compareTo(a.played);
       });
 
-      state = AsyncValue.data(
-        tournamentPlayer.map((e) => PlayerStandingModel.fromPlayer(e)).toList(),
-      );
+      // 🧩 Step 6: Update provider state
+      final standings =
+          tournamentPlayers
+              .map((e) => PlayerStandingModel.fromPlayer(e))
+              .toList();
+
+      state = AsyncValue.data(standings);
     } catch (e, _) {
-      state = AsyncValue.data([]);
+      state = const AsyncValue.data([]);
     }
   }
 }

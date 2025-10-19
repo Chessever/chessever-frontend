@@ -65,7 +65,9 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   @override
   void didPushNext() {
     Future.microtask(() {
-      print('🔥 TournamentDetail: didPushNext - NOT disabling streaming (keeping it enabled)');
+      print(
+        '🔥 TournamentDetail: didPushNext - NOT disabling streaming (keeping it enabled)',
+      );
       // Keep streaming enabled even when navigating to sub-screens
       // This ensures clocks continue updating when viewing chessboard
       // ref.read(shouldStreamProvider.notifier).state = false;
@@ -273,7 +275,7 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
         ),
         const Spacer(),
         SizedBox(
-          height: 32.h,
+          height: 40.h,
           width: 230.w,
           child: TextDropDownWidget(
             items: _buildDropdownItems(data.tours),
