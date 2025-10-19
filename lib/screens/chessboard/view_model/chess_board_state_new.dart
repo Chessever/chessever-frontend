@@ -40,6 +40,22 @@ class AnalysisLine {
       mate: mate ?? this.mate,
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is AnalysisLine &&
+        other.evaluation == evaluation &&
+        other.mate == mate &&
+        other.sanMoves.length == sanMoves.length;
+  }
+
+  @override
+  int get hashCode {
+    return (evaluation?.hashCode ?? 0) ^
+        (mate?.hashCode ?? 0) ^
+        sanMoves.length.hashCode;
+  }
 }
 
 class AnalysisBoardState {
@@ -180,6 +196,26 @@ class AnalysisBoardState {
       ...analysisPositionHistory,
     ];
   }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is AnalysisBoardState &&
+        other.currentMoveIndex == currentMoveIndex &&
+        other.position.fen == position.fen &&
+        other.moveSans.length == moveSans.length &&
+        other.branchPointMoveIndex == branchPointMoveIndex &&
+        other.analysisMoves.length == analysisMoves.length;
+  }
+
+  @override
+  int get hashCode {
+    return currentMoveIndex.hashCode ^
+        position.fen.hashCode ^
+        moveSans.length.hashCode ^
+        (branchPointMoveIndex?.hashCode ?? 0) ^
+        analysisMoves.length.hashCode;
+  }
 }
 
 class ChessBoardStateNew {
@@ -205,6 +241,8 @@ class ChessBoardStateNew {
   final List<AnalysisLine> principalVariations;
   final int? selectedVariantIndex; // Track which engine suggestion is selected
   final List<int> variantMovePointer; // Track progress through selected variant
+  final bool showEngineAnalysis; // Toggle visibility of engine gauge and principal variations
+  final bool showPrincipalVariations; // Toggle visibility of principal variation cards only
   /// FEN position where current PVs were generated
   final String? variantBaseFen;
 
@@ -250,6 +288,8 @@ class ChessBoardStateNew {
     this.principalVariations = const [],
     this.selectedVariantIndex,
     this.variantMovePointer = const [],
+    this.showEngineAnalysis = true, // Active by default
+    this.showPrincipalVariations = true, // Active by default
     this.variantBaseFen,
     this.variantBaseMovePointer,
     this.variantBaseLastMove,
@@ -281,6 +321,8 @@ class ChessBoardStateNew {
     List<AnalysisLine>? principalVariations,
     Object? selectedVariantIndex = _noChange,
     List<int>? variantMovePointer,
+    bool? showEngineAnalysis,
+    bool? showPrincipalVariations,
     Object? variantBaseFen = _noChange,
     Object? variantBaseMovePointer = _noChange,
     Object? variantBaseLastMove = _noChange,
@@ -325,6 +367,8 @@ class ChessBoardStateNew {
               ? this.selectedVariantIndex
               : selectedVariantIndex as int?,
       variantMovePointer: variantMovePointer ?? this.variantMovePointer,
+      showEngineAnalysis: showEngineAnalysis ?? this.showEngineAnalysis,
+      showPrincipalVariations: showPrincipalVariations ?? this.showPrincipalVariations,
       variantBaseFen:
           identical(variantBaseFen, _noChange)
               ? this.variantBaseFen
@@ -343,5 +387,45 @@ class ChessBoardStateNew {
               : variantBaseMoveIndex as int?,
       analysisState: newAnalysisState,
     );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is ChessBoardStateNew &&
+        other.game == game &&
+        other.currentMoveIndex == currentMoveIndex &&
+        other.isPlaying == isPlaying &&
+        other.isBoardFlipped == isBoardFlipped &&
+        other.isLoadingMoves == isLoadingMoves &&
+        other.evaluation == evaluation &&
+        other.isEvaluating == isEvaluating &&
+        other.pgnData == pgnData &&
+        other.fenData == fenData &&
+        other.isAnalysisMode == isAnalysisMode &&
+        other.mate == mate &&
+        other.selectedVariantIndex == selectedVariantIndex &&
+        other.showEngineAnalysis == showEngineAnalysis &&
+        other.showPrincipalVariations == showPrincipalVariations &&
+        other.variantBaseFen == variantBaseFen;
+  }
+
+  @override
+  int get hashCode {
+    return game.hashCode ^
+        currentMoveIndex.hashCode ^
+        isPlaying.hashCode ^
+        isBoardFlipped.hashCode ^
+        isLoadingMoves.hashCode ^
+        (evaluation?.hashCode ?? 0) ^
+        isEvaluating.hashCode ^
+        (pgnData?.hashCode ?? 0) ^
+        (fenData?.hashCode ?? 0) ^
+        isAnalysisMode.hashCode ^
+        (mate?.hashCode ?? 0) ^
+        (selectedVariantIndex?.hashCode ?? 0) ^
+        showEngineAnalysis.hashCode ^
+        showPrincipalVariations.hashCode ^
+        (variantBaseFen?.hashCode ?? 0);
   }
 }

@@ -68,22 +68,25 @@ class FavoritePlayersNotifier
   }
 
   Future<bool> toggleFavorite(PlayerStandingModel player) async {
-    final currentState = state.valueOrNull;
-    if (currentState == null) {
-      return (await _favoritesService.getFavoritePlayers()).any(
-        (p) => p.fideId == player.fideId,
-      );
-    }
+    if (player.fideId != null) {
+      final currentState = state.valueOrNull;
+      if (currentState == null) {
+        return (await _favoritesService.getFavoritePlayers()).any(
+          (p) => p.fideId == player.fideId,
+        );
+      }
 
-    final isFav = currentState.players.any((p) => p.fideId == player.fideId);
+      final isFav = currentState.players.any((p) => p.fideId == player.fideId);
 
-    if (isFav) {
-      await removeFavorite(player);
-      return false;
-    } else {
-      await addFavorite(player);
-      return true;
+      if (isFav) {
+        await removeFavorite(player);
+        return false;
+      } else {
+        await addFavorite(player);
+        return true;
+      }
     }
+    return false;
   }
 
   Future<void> addFavorite(PlayerStandingModel player) async {

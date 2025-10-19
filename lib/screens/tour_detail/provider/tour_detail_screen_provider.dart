@@ -7,6 +7,7 @@ import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_tour_id_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/interface/itour_detail_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_repo_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -147,7 +148,7 @@ class _TourDetailScreenNotifier
         return;
       }
 
-      final selectedTour = determineSelectedTour(
+      final selectedTour = await determineSelectedTour(
         tourModels,
         state.valueOrNull,
         liveTourIds,
@@ -165,7 +166,7 @@ class _TourDetailScreenNotifier
   }
 
   @override
-  void updateSelection(String tourId) {
+  Future<void> updateSelection(String tourId) async {
     final currentState = state.valueOrNull;
     if (currentState == null) {
       logWarning('Cannot update selection: current state is null');
@@ -178,6 +179,12 @@ class _TourDetailScreenNotifier
         logWarning('Cannot find tour with ID: $tourId');
         return;
       }
+
+      // ✅ Save the user's selection for future sessions
+      await ref
+          .read(tourDetailRepoProvider)
+          .saveSelectedTourId(groupEventId: groupBroadcast.id, tourId: tourId);
+
       final updatedViewModel = createViewModelFromExisting(
         currentState,
         selectedTourModel.tour,
@@ -260,23 +267,56 @@ class _TourDetailScreenNotifier
   }
 
   @override
-  Tour determineSelectedTour(
+  Future<Tour> determineSelectedTour(
     List<TourModel> tourModels,
     TourDetailViewModel? currentState,
     List<String> liveTourIds,
-  ) {
-    if (currentState?.aboutTourModel != null) {
-      final validSelectedTour = findTourModel(
-        tourModels,
-        currentState!.aboutTourModel.id,
-      );
-      if (validSelectedTour != null) {
-        return validSelectedTour.tour;
+  ) async {
+    // 1️⃣ If user previously selected a tour (stored locally)
+    final savedTourId = await ref
+        .read(tourDetailRepoProvider)
+        .getSelectedTourId(groupBroadcast.id);
+
+    if (savedTourId != null) {
+      final savedModel = findTourModel(tourModels, savedTourId);
+      if (savedModel != null) {
+        return savedModel.tour;
       }
     }
 
-    final selectedModel = findBestTour(tourModels, liveTourIds);
-    return selectedModel.tour;
+    // 2️⃣ Handle live tours
+    final liveModels =
+        tourModels
+            .where((model) => liveTourIds.contains(model.tour.id))
+            .toList();
+
+    if (liveModels.isNotEmpty) {
+      // If *all* are live, pick the one that started most recently
+      if (liveModels.length == tourModels.length) {
+        liveModels.sort(
+          (a, b) => a.tour.dates.first.compareTo(b.tour.dates.first),
+        );
+        return liveModels.first.tour;
+      }
+
+      // Otherwise, just pick the first live one (or apply other logic if needed)
+      return liveModels.first.tour;
+    }
+
+    // 3️⃣ If no live tours, pick most recently completed tour
+    final now = DateTime.now();
+    final completedTours =
+        tourModels
+            .where((model) => model.roundStatus == RoundStatus.completed)
+            .toList()
+          ..sort((a, b) => b.tour.dates.last.compareTo(a.tour.dates.last));
+
+    if (completedTours.isNotEmpty) {
+      return completedTours.first.tour;
+    }
+
+    // 4️⃣ Fallback: first tour
+    return tourModels.first.tour;
   }
 
   @override
