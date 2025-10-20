@@ -9,8 +9,8 @@ class TournamentPlayer {
   final int played;
   final int? rating;
   final int? ratingDiff;
-  final double? score; // Added: Tournament score (e.g., 2.0, 1.5)
-  final int? performance; // Added: Performance rating
+  final double? score;
+  final int? performance;
   final String? team;
 
   TournamentPlayer({
@@ -360,7 +360,7 @@ class Tour {
   final int tier;
   final List<DateTime> dates;
   final String? image;
-  final List<TournamentPlayer> players; // Updated to use TournamentPlayer
+  final List<TournamentPlayer> players;
   final List<String>? search;
   final String? groupBroadcastId;
   final int? avgElo;
