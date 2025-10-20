@@ -54,30 +54,40 @@ class GamesAppBarModel extends Equatable {
 
     if (startsAt == null) return RoundStatus.upcoming;
 
-    // Check if this round is currently live
     if (liveRound.isNotEmpty && liveRound.contains(currentId)) {
       return RoundStatus.live;
     }
 
-    // Check if round has started
     if (startsAt.isBefore(now) || startsAt.isAtSameMomentAs(now)) {
-      // If it's the same day as start, consider it ongoing
       if (startsAt.day == now.day &&
           startsAt.month == now.month &&
           startsAt.year == now.year) {
         return RoundStatus.ongoing;
       } else {
-        // Started on a previous day, so completed
         return RoundStatus.completed;
       }
     } else {
-      // Round hasn't started yet
       return RoundStatus.upcoming;
     }
+  }
+
+  /// ✅ Added copyWith method
+  GamesAppBarModel copyWith({
+    String? id,
+    String? name,
+    DateTime? startsAt,
+    RoundStatus? roundStatus,
+  }) {
+    return GamesAppBarModel(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      startsAt: startsAt ?? this.startsAt,
+      roundStatus: roundStatus ?? this.roundStatus,
+    );
   }
 
   String get formattedStartDate => TimeUtils.formatSingleDate(startsAt);
 
   @override
-  List<Object?> get props => [id, name, startsAt];
+  List<Object?> get props => [id, name, startsAt, roundStatus];
 }

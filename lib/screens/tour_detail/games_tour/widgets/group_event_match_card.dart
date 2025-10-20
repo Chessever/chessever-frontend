@@ -4,11 +4,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/utils/location_service_provider.dart';
-import 'package:chessever2/utils/png_asset.dart';
-import 'package:country_flags/country_flags.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -16,19 +12,17 @@ import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.d
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 
 class GroupEventMatchCard extends ConsumerStatefulWidget {
-  final GamesAppBarModel round;
+  final String roundTitle;
   final List<GamesTourModel> games;
   final GamesScreenModel gamesData;
-  final Map<String, int> gameIndexMap;
   final GamesListViewMode gamesListViewMode;
   final void Function(int)? onReturnFromChessboard;
 
   const GroupEventMatchCard({
     super.key,
-    required this.round,
+    required this.roundTitle,
     required this.games,
     required this.gamesData,
-    required this.gameIndexMap,
     required this.gamesListViewMode,
     this.onReturnFromChessboard,
   });
@@ -40,7 +34,7 @@ class GroupEventMatchCard extends ConsumerStatefulWidget {
 
 class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
     with SingleTickerProviderStateMixin {
-  bool _isExpanded = false;
+  bool _isExpanded = true;
   late AnimationController _animationController;
   late Animation<double> _rotationAnimation;
 
@@ -75,23 +69,8 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
 
   @override
   Widget build(BuildContext context) {
-    final firstGame = widget.games.isNotEmpty ? widget.games.first : null;
-    final country1Code = firstGame?.whitePlayer.countryCode ?? '';
-    final country2Code = firstGame?.blackPlayer.countryCode ?? '';
-
-    final country1Name = firstGame?.whitePlayer.countryCode ?? '';
-    final country2Name = firstGame?.blackPlayer.countryCode ?? '';
-
-    final teams = widget.round.name.split(' vs ');
-    final team1Name =
-        country1Name.isNotEmpty
-            ? country1Name
-            : (teams.isNotEmpty ? teams[0].trim() : '');
-    final team2Name =
-        country2Name.isNotEmpty
-            ? country2Name
-            : (teams.length > 1 ? teams[1].trim() : '');
-
+    final team1Name = widget.roundTitle.split(' vs ').first;
+    final team2Name = widget.roundTitle.split(' vs ').last;
     return Container(
       margin: EdgeInsets.only(bottom: 12.sp),
       decoration: BoxDecoration(
@@ -113,9 +92,6 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
               padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 16.sp),
               child: Row(
                 children: [
-                  _buildCountryFlag(country1Code, team1Name),
-                  SizedBox(width: 4.w),
-
                   Expanded(
                     child: Text(
                       team1Name,
@@ -146,10 +122,6 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
                     ),
                   ),
 
-                  SizedBox(width: 4.w),
-
-                  _buildCountryFlag(country2Code, team2Name),
-
                   SizedBox(width: 12.sp),
 
                   RotationTransition(
@@ -166,18 +138,18 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
           ),
 
           AnimatedCrossFade(
-            firstChild: const SizedBox.shrink(),
-            secondChild: Column(
+            firstChild: Column(
               children: [
-                Container(height: 10, color: Colors.black),
+                Container(height: 10.h, color: kBlackColor),
                 SizedBox(height: 12.sp),
                 _buildGamesList(),
               ],
             ),
+            secondChild: const SizedBox.shrink(),
             crossFadeState:
                 _isExpanded
-                    ? CrossFadeState.showSecond
-                    : CrossFadeState.showFirst,
+                    ? CrossFadeState.showFirst
+                    : CrossFadeState.showSecond,
             duration: const Duration(milliseconds: 300),
           ),
         ],
@@ -197,33 +169,39 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
   }
 
   Widget _buildGamesCardView() {
-    return Column(
-      children:
-          widget.games.asMap().entries.map((entry) {
-            final index = entry.key;
-            final game = entry.value;
+    final games = widget.games;
 
-            return Column(
-              children: [
-                if (index > 0) SizedBox(height: 8.sp),
-                _buildGameRow(game),
-                Divider(height: 0.5, color: kDarkGreyColor),
-              ],
-            );
-          }).toList(),
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: games.length,
+      itemBuilder: (context, index) {
+        final game = games[index];
+
+        return Column(
+          children: [
+            if (index > 0) SizedBox(height: 8.sp),
+            _buildGameRow(game),
+            Divider(height: 0.5.h, color: kDarkGreyColor),
+          ],
+        );
+      },
     );
   }
 
   Widget _buildChessBoardGridView() {
     final games = widget.games;
-    final rows = <Widget>[];
 
-    for (int i = 0; i < games.length; i += 2) {
-      final game1 = games[i];
-      final game2 = i + 1 < games.length ? games[i + 1] : null;
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: (games.length / 2).ceil(), // Each row contains up to 2 games
+      itemBuilder: (context, index) {
+        final game1 = games[index * 2];
+        final game2 =
+            (index * 2 + 1) < games.length ? games[index * 2 + 1] : null;
 
-      rows.add(
-        Padding(
+        return Padding(
           padding: EdgeInsets.only(bottom: 5.sp),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -235,33 +213,42 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
               ],
             ],
           ),
-        ),
-      );
-    }
-
-    return Column(children: rows);
+        );
+      },
+    );
   }
 
   Widget _buildChessBoardView() {
-    return Column(
-      children:
-          widget.games.asMap().entries.map((entry) {
-            final game = entry.value;
-            final gameIndex = widget.gameIndexMap[game.gameId] ?? 0;
+    final games = widget.games;
 
-            return GameCardWrapperWidget(
-              game: game,
-              gamesData: widget.gamesData,
-              gameIndex: gameIndex,
-              isChessBoardVisible: true,
-              onReturnFromChessboard: widget.onReturnFromChessboard,
-            );
-          }).toList(),
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: games.length,
+      itemBuilder: (context, index) {
+        final game = games[index];
+        final gameIndex = widget.gamesData.gamesTourModels.indexOf(game);
+
+        return GameCardWrapperWidget(
+          game: game,
+          gamesData: widget.gamesData,
+          gameIndex: gameIndex,
+          isChessBoardVisible: true,
+          onReturnFromChessboard: widget.onReturnFromChessboard,
+        );
+      },
     );
   }
 
   Widget _buildGameRow(GamesTourModel game) {
-    final gameIndex = widget.gameIndexMap[game.gameId] ?? 0;
+    final gameIndex = widget.gamesData.gamesTourModels.indexOf(game);
+
+    // Combine title + name + rating
+    String formatPlayer(PlayerCard player) {
+      final title = player.title.isNotEmpty == true ? '${player.title} ' : '';
+      final rating = player.rating > 0 ? ' (${player.rating})' : '';
+      return '$title${player.name}$rating';
+    }
 
     return InkWell(
       onTap:
@@ -273,28 +260,46 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
                 gameIndex: gameIndex,
                 onReturnFromChessboard: widget.onReturnFromChessboard,
               ),
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 12.sp),
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 10.sp),
         child: Row(
           children: [
+            // Left player
             Expanded(
-              child: Text(
-                game.whitePlayer.name,
-                style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              flex: 4,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  formatPlayer(game.whitePlayer),
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: kWhiteColor,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ),
-            SizedBox(width: 12.sp),
-            ChessProgressBar(gamesTourModel: game),
-            SizedBox(width: 12.sp),
+
+            // Middle progress bar
             Expanded(
-              child: Text(
-                game.blackPlayer.name,
-                style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.right,
+              flex: 2,
+              child: Center(child: ChessProgressBar(gamesTourModel: game)),
+            ),
+
+            // Right player
+            Expanded(
+              flex: 4,
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  formatPlayer(game.blackPlayer),
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: kWhiteColor,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                ),
               ),
             ),
           ],
@@ -304,7 +309,7 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
   }
 
   Widget _buildGridChessBoard(GamesTourModel game) {
-    final gameIndex = widget.gameIndexMap[game.gameId] ?? 0;
+    final gameIndex = widget.gamesData.gamesTourModels.indexOf(game);
 
     return GridChessBoardFromFENNew(
       key: ValueKey('game_${game.gameId}'),
@@ -324,28 +329,5 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
               .read(gamesTourScreenProvider.notifier)
               .togglePinGame(game.gameId),
     );
-  }
-
-  Widget _buildCountryFlag(String countryCode, String teamName) {
-    final validCountryCode = ref
-        .read(locationServiceProvider)
-        .getValidCountryCode(countryCode);
-
-    if (countryCode.toUpperCase() == 'FID') {
-      return Image.asset(
-        PngAsset.fideLogo,
-        height: 12.h,
-        width: 16.w,
-        fit: BoxFit.cover,
-        cacheWidth: 48,
-        cacheHeight: 36,
-      );
-    } else {
-      return CountryFlag.fromCountryCode(
-        validCountryCode,
-        height: 12.h,
-        width: 16.w,
-      );
-    }
   }
 }
