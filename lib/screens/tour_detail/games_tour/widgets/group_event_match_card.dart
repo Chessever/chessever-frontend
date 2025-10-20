@@ -209,7 +209,6 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
             children: [
               Expanded(child: _buildGridChessBoard(matchWithComparison)),
               if (game2 != null) ...[
-                SizedBox(width: 8.sp),
                 Expanded(child: _buildGridChessBoard(game2)),
               ],
             ],
