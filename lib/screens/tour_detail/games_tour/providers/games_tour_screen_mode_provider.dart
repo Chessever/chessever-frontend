@@ -41,8 +41,10 @@ class _GamesTourScreenModeNotifier
 
   Future<void> _init() async {
     final tourDetail = ref.read(tourDetailScreenProvider).value;
-    if (tourDetail?.aboutTourModel.name.toLowerCase().contains("team") ??
-        false) {
+    if ((tourDetail?.aboutTourModel.name.toLowerCase().contains("team") ??
+            false) ||
+        (tourDetail?.aboutTourModel.name.toLowerCase().contains("club") ??
+            false)) {
       state = AsyncValue.data(GamesTourScreenMode.groupEvent);
     } else {
       state = AsyncValue.data(GamesTourScreenMode.normal);

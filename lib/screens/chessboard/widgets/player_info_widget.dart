@@ -1,7 +1,6 @@
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:flutter/material.dart';
-
-import '../../../theme/app_theme.dart';
+import 'package:chessever2/theme/app_theme.dart';
 
 class PlayerInfoWidget extends StatelessWidget {
   const PlayerInfoWidget({

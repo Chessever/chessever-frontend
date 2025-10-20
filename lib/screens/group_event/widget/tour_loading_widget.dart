@@ -15,6 +15,7 @@ class TourLoadingWidget extends StatelessWidget {
       title: 'title',
       rating: 0,
       countryCode: 'USA',
+      team: 'team',
     );
     final gamesTourModel = GamesTourModel(
       roundId: 'roundId',

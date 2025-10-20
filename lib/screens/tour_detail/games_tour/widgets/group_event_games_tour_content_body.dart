@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_match_card.dart';
@@ -48,37 +49,16 @@ class _GroupEventGamesTourContentBodyState
       return const TourLoadingWidget();
     }
     final rounds = gamesAppBar.value!.gamesAppBarModels;
-    final gamesByRound = <String, List<GamesTourModel>>{};
-    for (final r in rounds) {
-      gamesByRound[r.id] = [];
-    }
-
-    for (final g in widget.gamesScreenModel.gamesTourModels) {
-      if (gamesByRound.containsKey(g.roundId)) {
-        gamesByRound[g.roundId]!.add(g);
-      }
-    }
-
-    final visibleRounds =
-        rounds.where((r) => (gamesByRound[r.id]?.isNotEmpty ?? false)).toList();
-    final selectedIndex = visibleRounds.indexWhere(
-      (r) => r.id == selectedRoundId,
-    );
-    final safeIndex = selectedIndex < 0 ? 0 : selectedIndex;
-    final selectedRound =
-        visibleRounds.isNotEmpty ? visibleRounds[safeIndex] : null;
 
     final orderedGamesForChessBoard = <GamesTourModel>[];
-    final gameIndexMap = <String, int>{};
-
-    int currentIndex = 0;
-    for (final r in visibleRounds) {
-      for (final g in gamesByRound[r.id] ?? []) {
-        gameIndexMap[g.gameId] = currentIndex;
-        orderedGamesForChessBoard.add(g);
-        currentIndex++;
-      }
+    for (var a = 0; a < rounds.length; a++) {
+      final allGamesForRound =
+          widget.gamesScreenModel.gamesTourModels
+              .where((game) => game.roundId == rounds[a].id)
+              .toList();
+      orderedGamesForChessBoard.addAll(allGamesForRound);
     }
+
     final orderedGamesData = GamesScreenModel(
       gamesTourModels: orderedGamesForChessBoard,
       pinnedGamedIs: widget.gamesScreenModel.pinnedGamedIs,
@@ -88,27 +68,21 @@ class _GroupEventGamesTourContentBodyState
       children: [
         Expanded(
           child:
-              selectedRound != null
-                  ? ListView(
+              selectedRoundId != null
+                  ? Padding(
                     padding: EdgeInsets.symmetric(
                       horizontal: 16.sp,
                       vertical: 12.sp,
                     ),
-                    children: [
-                      GroupEventMatchCard(
-                        // key: ValueKey('round_${selectedRound.id}'),
-                        round: selectedRound,
-                        games: gamesByRound[selectedRound.id]!,
-                        gamesData: orderedGamesData,
-                        gameIndexMap: gameIndexMap,
-                        gamesListViewMode: widget.gamesListViewMode,
-                        onReturnFromChessboard: widget.onReturnFromChessboard,
-                      ),
-                    ],
+                    child: _buildGroupedGameCardsBuilder(
+                      rounds,
+                      rounds.firstWhere((r) => r.id == selectedRoundId),
+                      orderedGamesData,
+                    ),
                   )
                   : const SizedBox.shrink(),
         ),
-        if (visibleRounds.isNotEmpty)
+        if (rounds.isNotEmpty)
           Align(
             alignment: Alignment.bottomRight,
             child: Padding(
@@ -122,8 +96,8 @@ class _GroupEventGamesTourContentBodyState
                   scrollDirection: Axis.horizontal,
                   physics: const BouncingScrollPhysics(),
                   child: Row(
-                    children: List.generate(visibleRounds.length, (index) {
-                      final round = visibleRounds[index];
+                    children: List.generate(rounds.length, (index) {
+                      final round = rounds[index];
                       final isSelected = round.id == selectedRoundId;
 
                       String roundNumber = '${index + 1}';
@@ -172,5 +146,90 @@ class _GroupEventGamesTourContentBodyState
           ),
       ],
     );
+  }
+
+  Widget _buildGroupedGameCardsBuilder(
+    List<GamesAppBarModel> gamesAppBarModels,
+    GamesAppBarModel selectedRound,
+    GamesScreenModel orderedGamesData,
+  ) {
+    final grouped = <String, List<GamesTourModel>>{};
+
+    final gamesPerRound =
+        widget.gamesScreenModel.gamesTourModels
+            .where((game) => game.roundId == selectedRound.id)
+            .toList();
+
+    for (var game in gamesPerRound) {
+      final whiteTeam = game.whitePlayer.team ?? game.whitePlayer.countryCode;
+      final blackTeam = game.blackPlayer.team ?? game.blackPlayer.countryCode;
+      final header = '$whiteTeam vs $blackTeam';
+
+      // Check existing headers
+      final comparison = _compareAllWithOne(grouped.keys.toList(), header);
+
+      if (comparison == _MatchComparison.sameOrder) {
+        // Same header, add to same list
+        grouped[header]!.add(game);
+      } else if (comparison == _MatchComparison.oppositeOrder) {
+        // Opposite header exists, find it and add there
+        final existingHeader = grouped.keys.firstWhere(
+          (h) =>
+              _compareMatchHeaders(h, header) == _MatchComparison.oppositeOrder,
+        );
+        grouped[existingHeader]!.add(game);
+      } else {
+        // No matching header, create a new one
+        grouped[header] = [game];
+      }
+    }
+
+    // Build grouped cards
+    return ListView.builder(
+      itemCount: grouped.length,
+      itemBuilder: (context, index) {
+        final header = grouped.keys.elementAt(index);
+        final gamesForTeam = grouped[header]!;
+
+        return GroupEventMatchCard(
+          roundTitle: header,
+          games: gamesForTeam,
+          gamesData: orderedGamesData,
+          gamesListViewMode: widget.gamesListViewMode,
+          onReturnFromChessboard: widget.onReturnFromChessboard,
+        );
+      },
+    );
+  }
+}
+
+enum _MatchComparison { sameOrder, oppositeOrder, different }
+
+_MatchComparison _compareAllWithOne(List<String> headers, String compare) {
+  var allHeaders = <_MatchComparison>[];
+
+  for (final header in headers) {
+    final comparison = _compareMatchHeaders(header, compare);
+    allHeaders.add(comparison);
+  }
+  if (allHeaders.contains(_MatchComparison.sameOrder)) {
+    return _MatchComparison.sameOrder;
+  } else if (allHeaders.contains(_MatchComparison.oppositeOrder)) {
+    return _MatchComparison.oppositeOrder;
+  } else {
+    return _MatchComparison.different;
+  }
+}
+
+_MatchComparison _compareMatchHeaders(String h1, String h2) {
+  final split1 = h1.split(' vs ').map((e) => e.trim()).toList();
+  final split2 = h2.split(' vs ').map((e) => e.trim()).toList();
+
+  if (split1[0] == split2[0] && split1[1] == split2[1]) {
+    return _MatchComparison.sameOrder;
+  } else if (split1[0] == split2[1] && split1[1] == split2[0]) {
+    return _MatchComparison.oppositeOrder;
+  } else {
+    return _MatchComparison.different;
   }
 }

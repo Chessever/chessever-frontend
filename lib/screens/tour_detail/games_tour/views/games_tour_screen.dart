@@ -41,16 +41,16 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
                 return EmptySearchWidget(query: data.searchQuery!);
               } else {
                 return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  padding: EdgeInsets.symmetric(horizontal: 12.sp),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       SvgPicture.asset(
                         SvgAsset.tournamentIcon,
-                        height: 35,
-                        width: 35,
+                        height: 35.h,
+                        width: 35.w,
                       ),
-                      SizedBox(height: 10),
+                      SizedBox(height: 10.h),
                       Text(
                         'No games going on',
                         style: AppTypography.textMdRegular.copyWith(
