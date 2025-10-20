@@ -154,7 +154,7 @@ class _GroupEventGamesTourContentBodyState
     GamesAppBarModel selectedRound,
     GamesScreenModel orderedGamesData,
   ) {
-    final grouped = <String, List<GamesTourModel>>{};
+    final grouped = <String, List<MatchWithComparison>>{};
 
     final gamesPerRound =
         widget.gamesScreenModel.gamesTourModels
@@ -169,19 +169,28 @@ class _GroupEventGamesTourContentBodyState
       // Check existing headers
       final comparison = _compareAllWithOne(grouped.keys.toList(), header);
 
-      if (comparison == _MatchComparison.sameOrder) {
+      if (comparison == MatchComparison.sameOrder) {
         // Same header, add to same list
-        grouped[header]!.add(game);
-      } else if (comparison == _MatchComparison.oppositeOrder) {
+        grouped[header]!.add(
+          MatchWithComparison(game: game, comparison: comparison),
+        );
+      } else if (comparison == MatchComparison.oppositeOrder) {
         // Opposite header exists, find it and add there
         final existingHeader = grouped.keys.firstWhere(
           (h) =>
-              _compareMatchHeaders(h, header) == _MatchComparison.oppositeOrder,
+              _compareMatchHeaders(h, header) == MatchComparison.oppositeOrder,
         );
-        grouped[existingHeader]!.add(game);
+        grouped[existingHeader]!.add(
+          MatchWithComparison(game: game, comparison: comparison),
+        );
       } else {
         // No matching header, create a new one
-        grouped[header] = [game];
+        grouped[header] = [
+          MatchWithComparison(
+            game: game,
+            comparison: MatchComparison.sameOrder,
+          ),
+        ];
       }
     }
 
@@ -204,33 +213,40 @@ class _GroupEventGamesTourContentBodyState
   }
 }
 
-enum _MatchComparison { sameOrder, oppositeOrder, different }
+class MatchWithComparison {
+  final GamesTourModel game;
+  final MatchComparison comparison;
 
-_MatchComparison _compareAllWithOne(List<String> headers, String compare) {
-  var allHeaders = <_MatchComparison>[];
+  MatchWithComparison({required this.game, required this.comparison});
+}
+
+enum MatchComparison { sameOrder, oppositeOrder, different }
+
+MatchComparison _compareAllWithOne(List<String> headers, String compare) {
+  var allHeaders = <MatchComparison>[];
 
   for (final header in headers) {
     final comparison = _compareMatchHeaders(header, compare);
     allHeaders.add(comparison);
   }
-  if (allHeaders.contains(_MatchComparison.sameOrder)) {
-    return _MatchComparison.sameOrder;
-  } else if (allHeaders.contains(_MatchComparison.oppositeOrder)) {
-    return _MatchComparison.oppositeOrder;
+  if (allHeaders.contains(MatchComparison.sameOrder)) {
+    return MatchComparison.sameOrder;
+  } else if (allHeaders.contains(MatchComparison.oppositeOrder)) {
+    return MatchComparison.oppositeOrder;
   } else {
-    return _MatchComparison.different;
+    return MatchComparison.different;
   }
 }
 
-_MatchComparison _compareMatchHeaders(String h1, String h2) {
+MatchComparison _compareMatchHeaders(String h1, String h2) {
   final split1 = h1.split(' vs ').map((e) => e.trim()).toList();
   final split2 = h2.split(' vs ').map((e) => e.trim()).toList();
 
   if (split1[0] == split2[0] && split1[1] == split2[1]) {
-    return _MatchComparison.sameOrder;
+    return MatchComparison.sameOrder;
   } else if (split1[0] == split2[1] && split1[1] == split2[0]) {
-    return _MatchComparison.oppositeOrder;
+    return MatchComparison.oppositeOrder;
   } else {
-    return _MatchComparison.different;
+    return MatchComparison.different;
   }
 }

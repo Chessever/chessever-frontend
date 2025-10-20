@@ -2,6 +2,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_v
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/chess_progress_bar.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_games_tour_content_body.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -13,7 +14,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 
 class GroupEventMatchCard extends ConsumerStatefulWidget {
   final String roundTitle;
-  final List<GamesTourModel> games;
+  final List<MatchWithComparison> games;
   final GamesScreenModel gamesData;
   final GamesListViewMode gamesListViewMode;
   final void Function(int)? onReturnFromChessboard;
@@ -197,7 +198,7 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
       physics: const NeverScrollableScrollPhysics(),
       itemCount: (games.length / 2).ceil(), // Each row contains up to 2 games
       itemBuilder: (context, index) {
-        final game1 = games[index * 2];
+        final matchWithComparison = games[index * 2];
         final game2 =
             (index * 2 + 1) < games.length ? games[index * 2 + 1] : null;
 
@@ -206,7 +207,7 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(child: _buildGridChessBoard(game1)),
+              Expanded(child: _buildGridChessBoard(matchWithComparison)),
               if (game2 != null) ...[
                 SizedBox(width: 8.sp),
                 Expanded(child: _buildGridChessBoard(game2)),
@@ -226,11 +227,13 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
       physics: const NeverScrollableScrollPhysics(),
       itemCount: games.length,
       itemBuilder: (context, index) {
-        final game = games[index];
-        final gameIndex = widget.gamesData.gamesTourModels.indexOf(game);
+        final matchWithComparison = games[index];
+        final gameIndex = widget.gamesData.gamesTourModels.indexOf(
+          matchWithComparison.game,
+        );
 
         return GameCardWrapperWidget(
-          game: game,
+          game: matchWithComparison.game,
           gamesData: widget.gamesData,
           gameIndex: gameIndex,
           isChessBoardVisible: true,
@@ -240,8 +243,8 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
     );
   }
 
-  Widget _buildGameRow(GamesTourModel game) {
-    final gameIndex = widget.gamesData.gamesTourModels.indexOf(game);
+  Widget _buildGameRow(MatchWithComparison game) {
+    final gameIndex = widget.gamesData.gamesTourModels.indexOf(game.game);
 
     // Combine title + name + rating
     String formatPlayer(PlayerCard player) {
@@ -249,6 +252,16 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
       final rating = player.rating > 0 ? ' (${player.rating})' : '';
       return '$title${player.name}$rating';
     }
+
+    final player1 =
+        game.comparison == MatchComparison.sameOrder
+            ? game.game.whitePlayer
+            : game.game.blackPlayer;
+
+    final player2 =
+        game.comparison == MatchComparison.sameOrder
+            ? game.game.blackPlayer
+            : game.game.whitePlayer;
 
     return InkWell(
       onTap:
@@ -270,7 +283,7 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  formatPlayer(game.whitePlayer),
+                  formatPlayer(player1),
                   style: AppTypography.textXsMedium.copyWith(
                     color: kWhiteColor,
                   ),
@@ -283,7 +296,14 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
             // Middle progress bar
             Expanded(
               flex: 2,
-              child: Center(child: ChessProgressBar(gamesTourModel: game)),
+              child: Center(
+                child:
+                    game.comparison == MatchComparison.sameOrder
+                        ? ChessProgressBar(gamesTourModel: game.game)
+                        : ChessProgressBar.reversedMode(
+                          gamesTourModel: game.game,
+                        ),
+              ),
             ),
 
             // Right player
@@ -292,7 +312,7 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
               child: Align(
                 alignment: Alignment.centerRight,
                 child: Text(
-                  formatPlayer(game.blackPlayer),
+                  formatPlayer(player2),
                   style: AppTypography.textXsMedium.copyWith(
                     color: kWhiteColor,
                   ),
@@ -308,12 +328,14 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
     );
   }
 
-  Widget _buildGridChessBoard(GamesTourModel game) {
-    final gameIndex = widget.gamesData.gamesTourModels.indexOf(game);
+  Widget _buildGridChessBoard(MatchWithComparison matchWithComparison) {
+    final gameIndex = widget.gamesData.gamesTourModels.indexOf(
+      matchWithComparison.game,
+    );
 
     return GridChessBoardFromFENNew(
-      key: ValueKey('game_${game.gameId}'),
-      gamesTourModel: game,
+      key: ValueKey('game_${matchWithComparison.game.gameId}'),
+      gamesTourModel: matchWithComparison.game,
       onChanged:
           () => ref
               .read(gameCardWrapperProvider)
@@ -327,7 +349,7 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
       onPinToggle:
           (_) async => await ref
               .read(gamesTourScreenProvider.notifier)
-              .togglePinGame(game.gameId),
+              .togglePinGame(matchWithComparison.game.gameId),
     );
   }
 }
