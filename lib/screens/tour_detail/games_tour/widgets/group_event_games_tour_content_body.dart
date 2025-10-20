@@ -70,9 +70,10 @@ class _GroupEventGamesTourContentBodyState
           child:
               selectedRoundId != null
                   ? Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 16.sp,
-                      vertical: 12.sp,
+                    padding: EdgeInsets.only(
+                      left: 16.sp,
+                      right: 16.sp,
+                      bottom: 12.sp,
                     ),
                     child: _buildGroupedGameCardsBuilder(
                       rounds,
@@ -86,10 +87,10 @@ class _GroupEventGamesTourContentBodyState
           Align(
             alignment: Alignment.bottomRight,
             child: Padding(
-              padding: const EdgeInsets.only(bottom: 15),
+              padding: EdgeInsets.only(bottom: 15.sp),
               child: Container(
                 width: MediaQuery.of(context).size.width * 0.5,
-                height: 48,
+                height: 48.h,
                 margin: EdgeInsets.only(right: 16.sp, bottom: 16.sp),
                 child: SingleChildScrollView(
                   controller: _scrollController,
@@ -122,7 +123,7 @@ class _GroupEventGamesTourContentBodyState
                                 isSelected
                                     ? Border.all(
                                       color: const Color(0xFF404040),
-                                      width: 1,
+                                      width: 1.w,
                                     )
                                     : null,
                           ),

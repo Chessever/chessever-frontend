@@ -36,6 +36,7 @@ class _SplashScreenProvider {
           .init(),
       ref.read(starredProvider(GroupEventCategory.past.name).notifier).init(),
     ]);
+    ref.read(countryDropdownProvider);
 
     /// check if user   is already logged in
     final sessionManager = ref.read(sessionManagerProvider);
