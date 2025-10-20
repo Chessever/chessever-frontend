@@ -74,7 +74,7 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
     return Container(
       margin: EdgeInsets.only(bottom: 12.sp),
       decoration: BoxDecoration(
-        color: Color(0xff1A1A1C).withValues(alpha: 0.7),
+        color: kBlackColor.withValues(alpha: 0.7),
         borderRadius:
             _isExpanded
                 ? BorderRadius.circular(4.br)
