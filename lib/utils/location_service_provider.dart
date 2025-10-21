@@ -97,7 +97,7 @@ class LocationService {
     'NGR': 'NG',
     'SEN': 'SN',
     'CIV': 'CI',
-    'CMR': 'CM',  // Cameroon
+    'CMR': 'CM', // Cameroon
     'GAB': 'GA',
     'CGO': 'CG',
     'CAF': 'CF',
@@ -115,8 +115,8 @@ class LocationService {
     'GAM': 'GM',
     'MTN': 'MR',
     'IRQ': 'IQ',
-    'IRI': 'IR',  // Iran (Islamic Republic of Iran)
-    'IRN': 'IR',  // Iran (alternative code)
+    'IRI': 'IR', // Iran (Islamic Republic of Iran)
+    'IRN': 'IR', // Iran (alternative code)
     'KSA': 'SA',
     'UAE': 'AE',
     'QAT': 'QA',
@@ -147,7 +147,7 @@ class LocationService {
     'PHI': 'PH',
     'INA': 'ID',
     'BRU': 'BN',
-    'KHM': 'KH',  // Cambodia
+    'KHM': 'KH', // Cambodia
     'LAO': 'LA',
     'MYA': 'MM',
     'HKG': 'HK',
@@ -213,7 +213,7 @@ class LocationService {
 
   String getValidCountryCode(String countryCode) {
     if (countryCode.isEmpty) return '';
-    
+
     // First try direct ISO country code parsing
     try {
       var code = CountryCode.tryParse(countryCode);
@@ -223,13 +223,13 @@ class LocationService {
     } catch (_) {
       // Continue to federation mapping
     }
-    
+
     // Try federation code mapping
     String? mappedCode = _federationToCountryCodeMap[countryCode.toUpperCase()];
     if (mappedCode != null) {
       return mappedCode;
     }
-    
+
     // Last fallback: try 3-letter to 2-letter conversion for common cases
     if (countryCode.length == 3) {
       try {
@@ -241,7 +241,42 @@ class LocationService {
         // If still fails, return empty
       }
     }
-    
+
+    return '';
+  }
+
+  String getValidCountryCodeFromName(String name) {
+    if (name.trim().isEmpty) return '';
+
+    try {
+      // Normalize input
+      final normalizedName = name.trim().toLowerCase();
+
+      // Try using the `country_picker` package
+      final allCountries = CountryService().getAll();
+      final match = allCountries.firstWhere(
+        (c) =>
+            c.name.toLowerCase() == normalizedName ||
+            c.displayNameNoCountryCode.toLowerCase() == normalizedName,
+        orElse: () => Country.parse(''), // Invalid fallback
+      );
+
+      if (match.countryCode.isNotEmpty) {
+        return match.countryCode;
+      }
+    } catch (_) {
+      // ignore and fallback
+    }
+
+    try {
+      // Try using the `country_code` package as a fallback
+      final code = CountryCode.tryParse(name);
+      if (code != null) return code.alpha2;
+    } catch (_) {
+      // ignore
+    }
+
+    // If all lookups fail, return empty
     return '';
   }
 }

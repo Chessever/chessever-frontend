@@ -9,8 +9,9 @@ class TournamentPlayer {
   final int played;
   final int? rating;
   final int? ratingDiff;
-  final double? score; // Added: Tournament score (e.g., 2.0, 1.5)
-  final int? performance; // Added: Performance rating
+  final double? score;
+  final int? performance;
+  final String? team;
 
   TournamentPlayer({
     this.federation,
@@ -22,6 +23,7 @@ class TournamentPlayer {
     this.ratingDiff,
     this.score,
     this.performance,
+    this.team,
   });
 
   /// Creates a TournamentPlayer from JSON map
@@ -36,6 +38,7 @@ class TournamentPlayer {
       ratingDiff: json['ratingDiff'] as int?,
       score: _parseScore(json['score']), // Handle both int and double
       performance: json['performance'] as int?,
+      team: json['team'] as String?,
     );
   }
 
@@ -59,6 +62,7 @@ class TournamentPlayer {
     if (ratingDiff != null) data['ratingDiff'] = ratingDiff;
     if (score != null) data['score'] = score;
     if (performance != null) data['performance'] = performance;
+    if (team != null) data['team'] = team;
 
     return data;
   }
@@ -166,7 +170,8 @@ class TournamentPlayer {
         rating.hashCode ^
         ratingDiff.hashCode ^
         score.hashCode ^
-        performance.hashCode;
+        performance.hashCode ^
+        team.hashCode;
   }
 
   /// Creates a copy of this player with updated fields
@@ -180,6 +185,7 @@ class TournamentPlayer {
     int? ratingDiff,
     double? score,
     int? performance,
+    String? team,
   }) {
     return TournamentPlayer(
       federation: federation ?? this.federation,
@@ -191,6 +197,7 @@ class TournamentPlayer {
       ratingDiff: ratingDiff ?? this.ratingDiff,
       score: score ?? this.score,
       performance: performance ?? this.performance,
+      team: team ?? this.team,
     );
   }
 }
@@ -353,7 +360,7 @@ class Tour {
   final int tier;
   final List<DateTime> dates;
   final String? image;
-  final List<TournamentPlayer> players; // Updated to use TournamentPlayer
+  final List<TournamentPlayer> players;
   final List<String>? search;
   final String? groupBroadcastId;
   final int? avgElo;
