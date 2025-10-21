@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/repository/local_storage/group_broadcast/group_broadcast_local_storage.dart';
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
@@ -17,41 +19,71 @@ class _SplashScreenProvider {
   _SplashScreenProvider(this.ref);
 
   Future<void> runAuthenticationPreProcessor(BuildContext context) async {
-    //Fetch all tournament
-    await Future.wait([
-      ref
-          .read(groupBroadcastLocalStorage(GroupEventCategory.current))
-          .fetchAndSaveGroupBroadcasts(),
-      ref
-          .read(groupBroadcastLocalStorage(GroupEventCategory.upcoming))
-          .fetchAndSaveGroupBroadcasts(),
-      ref
-          .read(groupBroadcastLocalStorage(GroupEventCategory.past))
-          .fetchAndSaveGroupBroadcasts(),
-      ref
-          .read(starredProvider(GroupEventCategory.current.name).notifier)
-          .init(),
-      ref
-          .read(starredProvider(GroupEventCategory.upcoming.name).notifier)
-          .init(),
-      ref.read(starredProvider(GroupEventCategory.past.name).notifier).init(),
-    ]);
-    ref.read(countryDropdownProvider);
+    // Fetch only critical tournament data with timeout to prevent indefinite blocking
+    try {
+      await Future.wait([
+        // Critical: Current and upcoming tournaments (user needs these immediately)
+        ref
+            .read(groupBroadcastLocalStorage(GroupEventCategory.current))
+            .fetchAndSaveGroupBroadcasts(),
+        ref
+            .read(groupBroadcastLocalStorage(GroupEventCategory.upcoming))
+            .fetchAndSaveGroupBroadcasts(),
+        ref
+            .read(starredProvider(GroupEventCategory.current.name).notifier)
+            .init(),
+        ref
+            .read(starredProvider(GroupEventCategory.upcoming.name).notifier)
+            .init(),
+      ]).timeout(const Duration(seconds: 5));
+      ref.read(countryDropdownProvider);
+    } catch (e) {
+      // If network is slow or fails, proceed anyway to avoid indefinite blocking
+      if (kDebugMode) {
+        print('⚠️ Tournament data fetch failed or timed out: $e');
+      }
+    }
 
-    /// check if user   is already logged in
+    // Non-critical: Load past tournaments in background (defer to improve perceived speed)
+    unawaited(
+      Future(() async {
+        try {
+          await Future.wait([
+            ref
+                .read(groupBroadcastLocalStorage(GroupEventCategory.past))
+                .fetchAndSaveGroupBroadcasts(),
+            ref
+                .read(starredProvider(GroupEventCategory.past.name).notifier)
+                .init(),
+          ]);
+        } catch (e) {
+          if (kDebugMode) {
+            print('⚠️ Failed to load past tournaments: $e');
+          }
+        }
+      }),
+    );
+
+    // Check authentication state - session manager will recover session if exists
+    // This also triggers Supabase auth state change which the listener will pick up
     final sessionManager = ref.read(sessionManagerProvider);
     final isLoggedIn = await sessionManager.isLoggedIn();
-    print('Is user logged in: $isLoggedIn');
 
-    // if (isLoggedIn || kDebugMode) {
-    //   await Future.microtask(() async {
-    //     ref.read(countryDropdownProvider);
-    //   });
-    //   Navigator.pushNamedAndRemoveUntil(context, '/home_screen', (_) => false);
-    // } else {
-    //   Navigator.pushNamedAndRemoveUntil(context, '/auth_screen', (_) => false);
-    // }
+    if (kDebugMode) {
+      print('🔐 User logged in: $isLoggedIn');
+    }
 
-    Navigator.pushNamedAndRemoveUntil(context, '/home_screen', (_) => false);
+    // Check if context is still valid before navigation
+    if (!context.mounted) return;
+
+    // Initial navigation - the AuthStateListener will handle subsequent auth changes
+    if (isLoggedIn) {
+      // User is logged in - initialize country dropdown and go to home
+      ref.read(countryDropdownProvider);
+      Navigator.pushNamedAndRemoveUntil(context, '/home_screen', (_) => false);
+    } else {
+      // User is not logged in - go to auth screen
+      Navigator.pushNamedAndRemoveUntil(context, '/auth_screen', (_) => false);
+    }
   }
 }
