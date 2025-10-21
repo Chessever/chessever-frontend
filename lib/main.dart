@@ -96,26 +96,21 @@ Future<void> main() async {
     () async {
       WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
       FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
-      SystemChrome.setPreferredOrientations([
-        DeviceOrientation.portraitUp,
-        DeviceOrientation.portraitDown,
-      ]);
 
+      // Set orientation (non-blocking - not critical to wait for)
+      unawaited(
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.portraitDown,
+        ]),
+      );
 
-      // Load environment variables (only in debug mode)
+      // Load environment variables first (only in debug mode)
       if (kDebugMode) {
         await dotenv.load(fileName: ".env");
       }
-      WidgetsFlutterBinding.ensureInitialized();
 
-      await NotificationService.initialize();
-      // Initialize worker manager with 6 isolates for parallel move evaluation
-      if (Platform.isAndroid) {
-        await workerManager.init(isolatesCount: 3);
-      } else if (Platform.isIOS) {
-        await workerManager.init(isolatesCount: 6);
-      }
-
+      // Add lifecycle observer
       WidgetsBinding.instance.addObserver(
         LifecycleEventHandler(
           onAppExit: () async {
@@ -123,21 +118,39 @@ Future<void> main() async {
           },
         ),
       );
+
+      // Parallelize all critical initialization tasks
+      await Future.wait([
+        // Critical: Required before app starts
+        Supabase.initialize(
+          url: _getEnv('SUPABASE_URL'),
+          anonKey: _getEnv('SUPABASE_ANON_KEY'),
+        ),
+        // Platform-specific worker manager initialization
+        if (Platform.isAndroid)
+          workerManager.init(isolatesCount: 3)
+        else if (Platform.isIOS)
+          workerManager.init(isolatesCount: 6)
+        else
+          Future.value(),
+        // Notification service
+        NotificationService.initialize(),
+        // Clear evaluation cache
+        _clearEvaluationCache(),
+        // Initialize Amplitude (with error handling)
+        Future(() async {
+          try {
+            final amplitude = Amplitude.getInstance();
+            await amplitude.init(_getEnv('AMPLITUDE'));
+          } catch (e, _) {
+            // Silently fail for amplitude
+          }
+        }),
+      ]);
+
+      // Non-critical: Load audio assets in background (don't block app startup)
       unawaited(AudioPlayerService.instance.initializeAndLoadAllAssets());
       // await _initRevenueCat();
-
-      await _clearEvaluationCache();
-
-      // Initialize Amplitude
-      try {
-        final amplitude = Amplitude.getInstance();
-        await amplitude.init(_getEnv('AMPLITUDE'));
-      } catch (e, _) {}
-      // Initialize Supabase
-      await Supabase.initialize(
-        url: _getEnv('SUPABASE_URL'),
-        anonKey: _getEnv('SUPABASE_ANON_KEY'),
-      );
 
       await SentryFlutter.init(
         (options) {
