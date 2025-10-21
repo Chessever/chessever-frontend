@@ -294,7 +294,7 @@ class _TourDetailScreenNotifier
       // If *all* are live, pick the one that started most recently
       if (liveModels.length == tourModels.length) {
         liveModels.sort(
-          (a, b) => a.tour.dates.first.compareTo(b.tour.dates.first),
+          (a, b) => b.tour.dates.first.compareTo(a.tour.dates.first),
         );
         return liveModels.first.tour;
       }
