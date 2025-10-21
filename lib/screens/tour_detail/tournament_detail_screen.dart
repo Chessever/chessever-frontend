@@ -275,8 +275,8 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
         ),
         const Spacer(),
         SizedBox(
-          height: 40.h,
-          width: 230.w,
+          height: 44.h,
+          width: 280.w,
           child: TextDropDownWidget(
             items: _buildDropdownItems(data.tours),
             selectedId: selectedTourId,
@@ -284,7 +284,7 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
           ),
         ),
         const Spacer(),
-        SizedBox(width: 44.w),
+        SizedBox(width: 16.w),
       ],
     );
   }

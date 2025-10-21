@@ -39,12 +39,32 @@ class _SessionManager {
     await ref.read(countryDropdownProvider.notifier).clearSelection();
   }
 
-  /// Check current login state
+  /// Clear only local storage without calling signOut
+  /// Used when responding to auth state changes to avoid infinite loops
+  Future<void> clearLocalStorage() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_keyPersistSession);
+    await prefs.remove(_keyPersistUser);
+    ref.invalidate(authScreenProvider);
+    await ref.read(countryDropdownProvider.notifier).clearSelection();
+  }
+
+  /// Check current login state and recover session if valid
+  /// Note: The auth state stream (authStateProvider) is the primary source of truth
+  /// This method is only used for initial checks in splash screen
   Future<bool> isLoggedIn() async {
+    // First check if Supabase already has an active session
+    final currentSession = Supabase.instance.client.auth.currentSession;
+    if (currentSession != null) {
+      return true;
+    }
+
+    // If no current session, try to recover from local storage
     final prefs = await SharedPreferences.getInstance();
     final sessionStr = prefs.getString(_keyPersistSession);
 
     if (sessionStr == null) return false;
+
     try {
       final response = await Supabase.instance.client.auth.recoverSession(
         sessionStr,
@@ -52,11 +72,17 @@ class _SessionManager {
 
       final user = response.user;
       if (user != null && response.session != null) {
+        // Session recovered successfully - save updated session
         await saveSession(response.session!, user);
+        return true;
       }
 
-      return user != null && response.session != null;
-    } catch (_) {
+      // Session invalid - clear local storage
+      await clearSession();
+      return false;
+    } catch (e) {
+      // Session recovery failed - clear local storage
+      await clearSession();
       return false;
     }
   }
