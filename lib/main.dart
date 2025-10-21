@@ -81,6 +81,10 @@ const Map<String, String> _releaseEnvValues = {
     'SUPABASE_ANON_KEY',
     defaultValue: '',
   ),
+  'GOOGLE_ANDROID_CLIENT_ID': String.fromEnvironment(
+    'GOOGLE_ANDROID_CLIENT_ID',
+    defaultValue: '',
+  ),
   'GOOGLE_WEB_CLIENT_ID': String.fromEnvironment(
     'GOOGLE_WEB_CLIENT_ID',
     defaultValue: '',
@@ -302,7 +306,8 @@ class _MyAppState extends ConsumerState<MyApp> {
           // New Screen
           '/player_list_screen': (context) => const PlayerListScreen(),
           // Updated to use the new FavoriteScreen
-          '/countryman_games_screen': (context) => const CountrymanGamesScreen(),
+          '/countryman_games_screen':
+              (context) => const CountrymanGamesScreen(),
           '/standings': (context) => const PlayerTourScreen(),
           '/calendar_detail_screen': (context) => CalendarDetailsScreen(),
           '/Board_sheet': (context) => BoardColorDialog(),
