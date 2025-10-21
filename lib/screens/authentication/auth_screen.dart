@@ -103,29 +103,90 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   }
 
   void _showErrorDialog(String errorMessage) {
-    showDialog(
+    showAlertModal(
       context: context,
-      builder:
-          (cxt) => AlertDialog(
-            backgroundColor: kBackgroundColor,
-            title: Text(
-              'Sign In Failed!',
-              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
-            ),
-            content: Text(
-              errorMessage,
-              style: AppTypography.textXsMedium.copyWith(color: kRedColor),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  ref.read(authScreenProvider.notifier).clearError();
-                },
-                child: const Text('OK'),
+      horizontalPadding: 40.sp,
+      verticalPadding: 0,
+      barrierDismissible: true,
+      child: Center(
+        child: Container(
+          constraints: BoxConstraints(maxWidth: 340.w),
+          decoration: BoxDecoration(
+            color: kPopUpColor,
+            borderRadius: BorderRadius.circular(20.br),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
               ),
             ],
           ),
+          padding: EdgeInsets.all(24.sp),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Error Icon
+              Container(
+                width: 56.w,
+                height: 56.h,
+                decoration: BoxDecoration(
+                  color: kRedColor.withOpacity(0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.error_outline_rounded,
+                  color: kRedColor,
+                  size: 32.sp,
+                ),
+              ),
+              SizedBox(height: 16.h),
+
+              // Title
+              Text(
+                'Sign In Failed',
+                style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: 8.h),
+
+              // Error Message
+              Text(
+                errorMessage,
+                style: AppTypography.textSmRegular.copyWith(
+                  color: kWhiteColor.withOpacity(0.7),
+                ),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: 24.h),
+
+              // Try Again Button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    ref.read(authScreenProvider.notifier).clearError();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: kWhiteColor,
+                    foregroundColor: kBlackColor,
+                    padding: EdgeInsets.symmetric(vertical: 14.h),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12.br),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: Text(
+                    'Try Again',
+                    style: AppTypography.textSmBold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -138,22 +199,35 @@ class _AuthButtonWidget extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isIos = Platform.isIOS;
+
     return Container(
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewPadding.bottom + 28.sp,
         left: 28.sp,
         right: 28.sp,
       ),
-      child: AuthButton(
-        signInTitle: isIos ? 'Continue with Apple' : 'Continue with Google',
-        svgIconPath: isIos ? SvgAsset.appleIcon : SvgAsset.googleIcon,
-        onPressed: () async {
-          if (isIos) {
-            await ref.read(authScreenProvider.notifier).signInWithApple();
-          } else {
-            await ref.read(authScreenProvider.notifier).signInWithGoogle();
-          }
-        },
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Show both buttons on iOS, only Google on Android
+          if (isIos) ...[
+            AuthButton(
+              signInTitle: 'Continue with Apple',
+              svgIconPath: SvgAsset.appleIcon,
+              onPressed: () async {
+                await ref.read(authScreenProvider.notifier).signInWithApple();
+              },
+            ),
+            SizedBox(height: 12.h),
+          ],
+          AuthButton(
+            signInTitle: 'Continue with Google',
+            svgIconPath: SvgAsset.googleIcon,
+            onPressed: () async {
+              await ref.read(authScreenProvider.notifier).signInWithGoogle();
+            },
+          ),
+        ],
       ),
     );
   }
