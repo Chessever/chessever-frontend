@@ -6,6 +6,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/string_utils_provider.dart';
 import 'package:chessever2/widgets/atomic_countdown_text.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:dartchess/dartchess.dart';
@@ -299,7 +300,7 @@ class _GamesRound extends ConsumerWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Text(
-          _getString(playerName),
+          ref.read(stringUtilsProvider).getTrimmedString(playerName),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: AppTypography.textXsMedium.copyWith(color: kBlackColor),
@@ -335,40 +336,6 @@ class _GamesRound extends ConsumerWidget {
         ),
       ],
     );
-  }
-}
-
-String _getString(String name) {
-  if (name.length > 18) {
-    final firstAndLastName = name.split(',');
-    if (firstAndLastName.length == 2) {
-      final lastName = firstAndLastName[0].trim();
-      final firstName = firstAndLastName[1].trim();
-
-      if (firstName.isNotEmpty) {
-        final firstInitial = firstName[0].toUpperCase();
-        final targetFormat = '$lastName, $firstInitial.';
-
-        if (targetFormat.length <= 18) {
-          return targetFormat;
-        } else {
-          final maxLastNameLength = 18 - 4; // 18 - ", I.".length
-          final truncatedLastName =
-              '${lastName.substring(0, maxLastNameLength)}…';
-          return '$truncatedLastName, $firstInitial.';
-        }
-      } else {
-        // No first name, just return truncated last name
-        return lastName.length > 18
-            ? '${lastName.substring(0, 15)}…'
-            : lastName;
-      }
-    } else {
-      // Not in "LastName, FirstName" format, just truncate
-      return '${name.substring(0, 15)}…';
-    }
-  } else {
-    return name;
   }
 }
 
