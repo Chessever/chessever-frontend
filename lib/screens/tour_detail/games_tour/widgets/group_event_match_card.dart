@@ -1,8 +1,11 @@
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/chess_progress_bar.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
+import 'package:chessever2/utils/location_service_provider.dart';
+import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -71,7 +74,13 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
   @override
   Widget build(BuildContext context) {
     final team1Name = widget.roundTitle.split(' vs ').first;
+    final country1 = ref
+        .read(locationServiceProvider)
+        .getValidCountryCode(team1Name);
     final team2Name = widget.roundTitle.split(' vs ').last;
+    final country2 = ref
+        .read(locationServiceProvider)
+        .getValidCountryCode(team2Name);
     return Container(
       margin: EdgeInsets.symmetric(vertical: 12.sp),
       decoration: BoxDecoration(
@@ -89,10 +98,16 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
         children: [
           InkWell(
             onTap: _toggleExpand,
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 8.h),
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 16.sp),
               child: Row(
                 children: [
+                  if (country1.isNotEmpty)
+                    CountryFlag.fromCountryCode(
+                      country1,
+                      height: 16.h,
+                      width: 16.w,
+                    ),
                   Expanded(
                     child: Text(
                       team1Name,
@@ -102,6 +117,7 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
                       ),
                     ),
                   ),
+                  SizedBox(width: 20.ic),
 
                   Padding(
                     padding: EdgeInsets.symmetric(horizontal: 12.sp),
@@ -113,6 +129,13 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
                       ),
                     ),
                   ),
+
+                  if (country2.isNotEmpty)
+                    CountryFlag.fromCountryCode(
+                      country2,
+                      height: 16.h,
+                      width: 16.w,
+                    ),
 
                   Expanded(
                     child: Text(
@@ -140,19 +163,18 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
             ),
           ),
 
-          AnimatedCrossFade(
-            firstChild: Column(
-              children: [
-                Container(height: 10.h, color: kBlackColor),
-                _buildGamesList(),
-              ],
-            ),
-            secondChild: const SizedBox.shrink(),
-            crossFadeState:
-                _isExpanded
-                    ? CrossFadeState.showFirst
-                    : CrossFadeState.showSecond,
+          AnimatedSwitcher(
             duration: const Duration(milliseconds: 300),
+            child:
+                _isExpanded
+                    ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(height: 10.h, color: kBlackColor),
+                        _buildGamesList(),
+                      ],
+                    )
+                    : const SizedBox.shrink(),
           ),
         ],
       ),
@@ -181,13 +203,17 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
       itemBuilder: (context, index) {
         final game = games[index];
 
-        return Column(
-          children: [
-            if (index > 0) SizedBox(height: 8.sp),
-            _buildGameRow(game),
-            if (index != (games.length - 1))
-              Divider(height: 0.5.h, color: kDarkGreyColor),
-          ],
+        return Container(
+          padding: EdgeInsets.symmetric(vertical: 8.sp),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: kDarkGreyColor,
+                width: index == (games.length - 1) ? 0 : 0.5.h,
+              ),
+            ),
+          ),
+          child: _buildGameRow(game),
         );
       },
     );
@@ -197,6 +223,7 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
     final games = widget.games;
 
     return ListView.builder(
+      padding: EdgeInsets.zero,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: (games.length / 2).ceil(), // Each row contains up to 2 games
@@ -225,6 +252,7 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
     final games = widget.games;
 
     return ListView.builder(
+      padding: EdgeInsets.zero,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: games.length,
@@ -300,10 +328,15 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
               flex: 2,
               child: Center(
                 child:
-                    game.comparison == MatchComparison.sameOrder
-                        ? ChessProgressBar(gamesTourModel: game.game)
-                        : ChessProgressBar.reversedMode(
-                          gamesTourModel: game.game,
+                    game.game.gameStatus == GameStatus.ongoing
+                        ? game.comparison == MatchComparison.sameOrder
+                            ? ChessProgressBar(gamesTourModel: game.game)
+                            : ChessProgressBar.reversedMode(
+                              gamesTourModel: game.game,
+                            )
+                        : StatusText(
+                          status: _displayTextSupporter(game),
+                          color: kWhiteColor,
                         ),
               ),
             ),
@@ -353,5 +386,35 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
               .read(gamesTourScreenProvider.notifier)
               .togglePinGame(matchWithComparison.game.gameId),
     );
+  }
+}
+
+String _displayTextSupporter(MatchWithComparison game) {
+  if (game.comparison == MatchComparison.sameOrder) {
+    switch (game.game.gameStatus) {
+      case GameStatus.whiteWins:
+        return '1-0';
+      case GameStatus.blackWins:
+        return '0-1';
+      case GameStatus.draw:
+        return '½-½';
+      case GameStatus.ongoing:
+        return '*';
+      case GameStatus.unknown:
+        return '';
+    }
+  } else {
+    switch (game.game.gameStatus) {
+      case GameStatus.whiteWins:
+        return '0-1';
+      case GameStatus.blackWins:
+        return '1-0';
+      case GameStatus.draw:
+        return '½-½';
+      case GameStatus.ongoing:
+        return '*';
+      case GameStatus.unknown:
+        return '';
+    }
   }
 }
