@@ -8,6 +8,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/game_fen_str
 import 'package:chessever2/screens/group_event/widget/empty_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart';
 import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
@@ -127,7 +128,10 @@ class CountrymanGamesList extends ConsumerWidget {
                                 ),
                               );
                             },
-                            gamesTourModel: game,
+                            matchComparison: MatchWithComparison(
+                              game: game,
+                              comparison: MatchComparison.sameOrder,
+                            ),
                             pinnedIds: data.pinnedGamedIs,
                             onPinToggle: (gamesTourModel) async {
                               await ref
