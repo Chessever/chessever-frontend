@@ -40,7 +40,6 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
     with SingleTickerProviderStateMixin {
   bool _isExpanded = true;
   late AnimationController _animationController;
-  late Animation<double> _rotationAnimation;
 
   @override
   void initState() {
@@ -48,9 +47,6 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 300),
       vsync: this,
-    );
-    _rotationAnimation = Tween<double>(begin: 0, end: 0.5).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
   }
 
