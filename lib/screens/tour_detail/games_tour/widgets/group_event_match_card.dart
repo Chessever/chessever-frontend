@@ -76,11 +76,11 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
     final team1Name = widget.roundTitle.split(' vs ').first;
     final country1 = ref
         .read(locationServiceProvider)
-        .getValidCountryCode(team1Name);
+        .getValidCountryCodeFromName(team1Name);
     final team2Name = widget.roundTitle.split(' vs ').last;
     final country2 = ref
         .read(locationServiceProvider)
-        .getValidCountryCode(team2Name);
+        .getValidCountryCodeFromName(team2Name);
     return Container(
       margin: EdgeInsets.symmetric(vertical: 12.sp),
       decoration: BoxDecoration(
@@ -100,65 +100,79 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
             onTap: _toggleExpand,
             child: Container(
               padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 16.sp),
-              child: Row(
-                children: [
-                  if (country1.isNotEmpty)
-                    CountryFlag.fromCountryCode(
-                      country1,
-                      height: 16.h,
-                      width: 16.w,
-                    ),
-                  Expanded(
-                    child: Text(
-                      team1Name,
-                      maxLines: 1,
-                      style: AppTypography.textXsMedium.copyWith(
-                        color: kWhiteColor,
+              child: LayoutBuilder(
+                builder: (context, constrains) {
+                  final titleWidth = ((40 / 100) * constrains.maxWidth);
+                  final vsWidth = ((20 / 100) * constrains.maxWidth);
+                  return Row(
+                    children: [
+                      SizedBox(
+                        width: titleWidth,
+                        child: Row(
+                          children: [
+                            if (country1.isNotEmpty) ...[
+                              CountryFlag.fromCountryCode(
+                                country1,
+                                height: 12.h,
+                                width: 16.w,
+                              ),
+                              SizedBox(width: 4.w),
+                            ],
+                            Expanded(
+                              child: Text(
+                                team1Name,
+                                maxLines: 1,
+                                style: AppTypography.textXsMedium.copyWith(
+                                  color: kWhiteColor,
+                                ),
+                                textAlign: TextAlign.left,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ),
-                  SizedBox(width: 20.ic),
 
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12.sp),
-                    child: Text(
-                      'VS',
-                      style: AppTypography.textXsMedium.copyWith(
-                        color: kWhiteColor,
-                        fontWeight: FontWeight.bold,
+                      Container(
+                        width: vsWidth,
+
+                        alignment: Alignment.center,
+                        child: Text(
+                          'VS',
+                          style: AppTypography.textXsMedium.copyWith(
+                            color: kWhiteColor,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
 
-                  if (country2.isNotEmpty)
-                    CountryFlag.fromCountryCode(
-                      country2,
-                      height: 16.h,
-                      width: 16.w,
-                    ),
-
-                  Expanded(
-                    child: Text(
-                      team2Name,
-                      maxLines: 1,
-                      style: AppTypography.textXsMedium.copyWith(
-                        color: kWhiteColor,
+                      SizedBox(
+                        width: titleWidth,
+                        child: Row(
+                          children: [
+                            if (country2.isNotEmpty) ...[
+                              CountryFlag.fromCountryCode(
+                                country2,
+                                height: 12.h,
+                                width: 16.w,
+                              ),
+                              SizedBox(width: 4.w),
+                            ],
+                            Expanded(
+                              child: Text(
+                                team2Name,
+                                maxLines: 1,
+                                style: AppTypography.textXsMedium.copyWith(
+                                  color: kWhiteColor,
+                                ),
+                                textAlign: TextAlign.left,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                      textAlign: TextAlign.right,
-                    ),
-                  ),
-
-                  SizedBox(width: 12.sp),
-
-                  RotationTransition(
-                    turns: _rotationAnimation,
-                    child: Icon(
-                      Icons.keyboard_arrow_down,
-                      color: kWhiteColor,
-                      size: 20.sp,
-                    ),
-                  ),
-                ],
+                    ],
+                  );
+                },
               ),
             ),
           ),
