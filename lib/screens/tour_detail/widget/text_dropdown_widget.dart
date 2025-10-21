@@ -3,7 +3,6 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
-import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 
@@ -40,7 +39,7 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
     }
   }
 
-  Widget _buildDropdownItem(String text, String status) {
+  Widget _buildDropdownItem(String text, String status, bool isLast) {
     final roundStatus = RoundStatus.values.firstWhere(
       (e) => e.name == status,
       orElse: () => RoundStatus.completed,
@@ -79,24 +78,35 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
         break;
     }
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Expanded(
-          flex: 9,
-          child: Text(
-            text,
-            maxLines: 2,
-            style: AppTypography.textXsRegular.copyWith(color: kWhiteColor),
-            softWrap: true,
+    return Container(
+      height: 42.h,
+      decoration: BoxDecoration(
+        border:
+            isLast
+                ? null
+                : Border(
+                  bottom: BorderSide(color: kDividerColor, width: 0.5.h),
+                ),
+      ),
+      constraints: BoxConstraints(maxHeight: 42.h),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Expanded(
+            flex: 9,
+            child: Text(
+              text,
+              maxLines: 2,
+              style: AppTypography.textXsRegular.copyWith(color: kWhiteColor),
+              overflow: TextOverflow.visible,
+              softWrap: true,
+            ),
           ),
-        ),
-        SizedBox(width: 8.w),
-        Expanded(
-          flex: 1,
-          child: Align(alignment: Alignment.centerRight, child: trailingIcon),
-        ),
-      ],
+          Spacer(),
+          trailingIcon,
+        ],
+      ),
     );
   }
 
@@ -131,18 +141,7 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Spacer(),
-                  Container(
-                    padding: EdgeInsets.symmetric(horizontal: 10.sp),
-                    alignment: Alignment.center,
-                    child: _buildDropdownItem(item['value']!, item['status']!),
-                  ),
-                  Spacer(),
-                  if (!isLast)
-                    Padding(
-                      padding: EdgeInsets.symmetric(vertical: 2.h),
-                      child: const DividerWidget(),
-                    ),
+                  _buildDropdownItem(item['value']!, item['status']!, isLast),
                 ],
               ),
             );
@@ -160,13 +159,12 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
       selectedItemBuilder: (BuildContext context) {
         return widget.items.map((item) {
           return Container(
-            padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 4.h),
-            alignment: Alignment.centerLeft,
-            constraints: BoxConstraints(minHeight: 44.h),
+            padding: EdgeInsets.symmetric(vertical: 4.sp, horizontal: 4.sp),
+            alignment: Alignment.center,
             child: Text(
               item['value']!,
               style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
-              maxLines: 3,
+              maxLines: 2,
               overflow: TextOverflow.visible,
               softWrap: true,
             ),
