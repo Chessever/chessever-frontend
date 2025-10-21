@@ -35,9 +35,7 @@ class _SplashScreenProvider {
         ref
             .read(starredProvider(GroupEventCategory.upcoming.name).notifier)
             .init(),
-      ]).timeout(
-        const Duration(seconds: 5),
-      );
+      ]).timeout(const Duration(seconds: 5));
     } catch (e) {
       // If network is slow or fails, proceed anyway to avoid indefinite blocking
       if (kDebugMode) {

@@ -201,6 +201,7 @@ class Player {
   final int fideId;
   final String fed;
   final int clock;
+  final String team;
 
   Player({
     required this.name,
@@ -209,6 +210,7 @@ class Player {
     required this.fideId,
     required this.fed,
     required this.clock,
+    required this.team,
   });
 
   factory Player.fromJsonString(String jsonString) {
@@ -230,6 +232,7 @@ class Player {
       fideId: (json['fideId'] as num?)?.toInt() ?? 0,
       fed: json['fed'] as String? ?? '',
       clock: (json['clock'] as num?)?.toInt() ?? 0,
+      team: json['team'] as String? ?? '',
     );
   }
 
@@ -241,6 +244,7 @@ class Player {
       'fideId': fideId,
       'fed': fed,
       'clock': clock,
+      'team': team,
     };
   }
 }

@@ -146,7 +146,7 @@ class _DummyView extends ConsumerWidget {
       name: 'Chessever',
       description: 'Chessever',
       imageUrl: 'Chessever',
-      players: ['Chessever'],
+      players: [],
       timeControl: 'Chessever',
       date: 'Chessever',
       location: 'US',

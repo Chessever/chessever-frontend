@@ -16,6 +16,7 @@ final gamesTourScreenProvider = StateNotifierProvider<
   // Watch tour details first - this is the primary dependency
   final tourDetailAsync = ref.watch(tourDetailScreenProvider);
   final showFinishedGames = ref.watch(showFinishedGamesProvider);
+
   if (tourDetailAsync.isLoading) {
     return GamesTourScreenProvider.loading(ref: ref);
   }
@@ -48,7 +49,7 @@ class GamesTourScreenProvider
     this.error,
   }) : super(const AsyncValue.loading()) {
     _setupListeners();
-    _recompute();
+    _initialize();
   }
 
   // Constructor for loading state
@@ -138,6 +139,19 @@ class GamesTourScreenProvider
     });
   }
 
+  Future<void> _initialize() async {
+    if (aboutTourModel == null) return;
+
+    // Wait until gamesTourProvider emits a value
+    final games = ref.read(gamesTourProvider(aboutTourModel!.id));
+
+    if (games.isLoading || games.hasError || games.value == null) {
+      return;
+    }
+
+    await _recompute();
+  }
+
   Future<void> _recompute({
     bool? isSearchModeOverride,
     String? searchQueryOverride,
@@ -147,6 +161,9 @@ class GamesTourScreenProvider
 
     try {
       final gamesAsync = ref.read(gamesTourProvider(aboutTourModel!.id));
+       if (gamesAsync.isLoading) {
+      return; 
+    }
       final pins = ref.read(gamesPinprovider(aboutTourModel!.id));
 
       final allGames = gamesAsync.value ?? <Games>[];
