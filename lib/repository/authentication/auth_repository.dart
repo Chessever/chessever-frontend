@@ -17,8 +17,16 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
 });
 
 class AuthRepository {
+  AuthRepository(this.ref) {
+    _supabase = Supabase.instance.client;
+    _googleInitialization = _initializeGoogleSignIn();
+  }
+
+  static const List<String> _googleScopes = ['email', 'profile'];
+
   late final SupabaseClient _supabase;
-  late final GoogleSignIn _googleSignIn;
+  final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
+  Future<void>? _googleInitialization;
   final Ref ref;
 
   // Read and trim env safely to avoid trailing spaces causing Apple failures.
@@ -35,13 +43,24 @@ class AuthRepository {
     }
   }
 
-  AuthRepository(this.ref) {
-    _supabase = SupabaseClient(_env('SUPABASE_URL'), _env('SUPABASE_ANON_KEY'));
+  Future<void> _initializeGoogleSignIn() async {
+    try {
+      await _googleSignIn.initialize(
+        clientId: Platform.isIOS ? _env('GOOGLE_IOS_CLIENT_ID') : null,
+        serverClientId: _env('GOOGLE_WEB_CLIENT_ID'),
+      );
 
-    _googleSignIn = GoogleSignIn(
-      clientId: _env('GOOGLE_WEB_CLIENT_ID'),
-      scopes: ['email', 'profile'],
-    );
+      final future = _googleSignIn.attemptLightweightAuthentication();
+      future?.catchError((_, __) => null);
+    } catch (e, st) {
+      await ref.read(errorLoggerProvider).logError(e, st);
+      rethrow;
+    }
+  }
+
+  Future<void> _ensureGoogleInitialized() async {
+    _googleInitialization ??= _initializeGoogleSignIn();
+    await _googleInitialization;
   }
 
   // Current user stream
@@ -62,19 +81,25 @@ class AuthRepository {
   Future<AppUser> signInWithGoogle() async {
     final sessionManager = ref.read(sessionManagerProvider);
 
+    await _ensureGoogleInitialized();
+
     try {
-      final googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) {
-        throw Exception('Google sign in was cancelled');
+      final account = await _googleSignIn.authenticate(
+        scopeHint: _googleScopes,
+      );
+      final idToken = account.authentication.idToken;
+
+      if (idToken == null || idToken.isEmpty) {
+        throw Exception('Failed to get Google ID token');
       }
 
-      final googleAuth = await googleUser.authentication;
-      final accessToken = googleAuth.accessToken;
-      final idToken = googleAuth.idToken;
+      final GoogleSignInClientAuthorization authorization =
+          await account.authorizationClient.authorizationForScopes(
+            _googleScopes,
+          ) ??
+          await account.authorizationClient.authorizeScopes(_googleScopes);
 
-      if (accessToken == null || idToken == null) {
-        throw Exception('Failed to get Google tokens');
-      }
+      final accessToken = authorization.accessToken;
 
       final response = await _supabase.auth.signInWithIdToken(
         provider: OAuthProvider.google,
@@ -92,6 +117,9 @@ class AuthRepository {
       await sessionManager.saveSession(session, user);
 
       return AppUser.fromSupabaseUser(user);
+    } on GoogleSignInException catch (e, st) {
+      await ref.read(errorLoggerProvider).logError(e, st);
+      throw _mapGoogleSignInException(e);
     } catch (e, st) {
       await ref.read(errorLoggerProvider).logError(e, st);
       rethrow;
@@ -190,13 +218,33 @@ class AuthRepository {
     }
   }
 
+  Exception _mapGoogleSignInException(GoogleSignInException e) {
+    switch (e.code) {
+      case GoogleSignInExceptionCode.canceled:
+        return Exception('Google sign in was cancelled');
+      case GoogleSignInExceptionCode.interrupted:
+      case GoogleSignInExceptionCode.uiUnavailable:
+        return Exception('Google sign in was interrupted. Please try again.');
+      case GoogleSignInExceptionCode.clientConfigurationError:
+      case GoogleSignInExceptionCode.providerConfigurationError:
+        return Exception(
+          e.description ??
+              'Google Sign-In configuration error. Verify iOS bundle ID, client IDs, and URL schemes.',
+        );
+      case GoogleSignInExceptionCode.userMismatch:
+        return Exception('Google sign in failed due to account mismatch.');
+      default:
+        return Exception(
+          e.description ?? 'Google sign in failed. Please try again.',
+        );
+    }
+  }
+
   // Sign Out
   Future<void> signOut() async {
     try {
-      // Sign out from Google if signed in
-      if (await _googleSignIn.isSignedIn()) {
-        await _googleSignIn.signOut();
-      }
+      await _ensureGoogleInitialized();
+      await _googleSignIn.signOut();
 
       await _supabase.auth.signOut();
     } catch (e, st) {
