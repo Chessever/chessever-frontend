@@ -81,6 +81,14 @@ const Map<String, String> _releaseEnvValues = {
     'SUPABASE_ANON_KEY',
     defaultValue: '',
   ),
+  'GOOGLE_WEB_CLIENT_ID': String.fromEnvironment(
+    'GOOGLE_WEB_CLIENT_ID',
+    defaultValue: '',
+  ),
+  'GOOGLE_IOS_CLIENT_ID': String.fromEnvironment(
+    'GOOGLE_IOS_CLIENT_ID',
+    defaultValue: '',
+  ),
   'SENTRY_FLUTTER': String.fromEnvironment('SENTRY_FLUTTER', defaultValue: ''),
   'CLARITY_PROJECT_ID': String.fromEnvironment(
     'CLARITY_PROJECT_ID',
@@ -88,6 +96,14 @@ const Map<String, String> _releaseEnvValues = {
   ),
   'RevenueCatAPIKey': String.fromEnvironment(
     'RevenueCatAPIKey',
+    defaultValue: '',
+  ),
+  'APPLE_SERVICE_ID': String.fromEnvironment(
+    'APPLE_SERVICE_ID',
+    defaultValue: '',
+  ),
+  'APPLE_REDIRECT_URI': String.fromEnvironment(
+    'APPLE_REDIRECT_URI',
     defaultValue: '',
   ),
 };
