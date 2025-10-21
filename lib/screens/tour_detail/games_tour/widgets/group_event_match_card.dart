@@ -2,7 +2,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_v
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/chess_progress_bar.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_games_tour_content_body.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -73,9 +73,9 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
     final team1Name = widget.roundTitle.split(' vs ').first;
     final team2Name = widget.roundTitle.split(' vs ').last;
     return Container(
-      margin: EdgeInsets.only(bottom: 12.sp),
+      margin: EdgeInsets.symmetric(vertical: 12.sp),
       decoration: BoxDecoration(
-        color: kBlackColor.withValues(alpha: 0.7),
+        color: kBlack2Color,
         borderRadius:
             _isExpanded
                 ? BorderRadius.circular(4.br)
@@ -90,12 +90,13 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
           InkWell(
             onTap: _toggleExpand,
             child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 16.sp),
+              padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 8.h),
               child: Row(
                 children: [
                   Expanded(
                     child: Text(
                       team1Name,
+                      maxLines: 1,
                       style: AppTypography.textXsMedium.copyWith(
                         color: kWhiteColor,
                       ),
@@ -116,6 +117,7 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
                   Expanded(
                     child: Text(
                       team2Name,
+                      maxLines: 1,
                       style: AppTypography.textXsMedium.copyWith(
                         color: kWhiteColor,
                       ),
@@ -142,7 +144,6 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
             firstChild: Column(
               children: [
                 Container(height: 10.h, color: kBlackColor),
-                SizedBox(height: 12.sp),
                 _buildGamesList(),
               ],
             ),
@@ -173,6 +174,7 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
     final games = widget.games;
 
     return ListView.builder(
+      padding: EdgeInsets.zero,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: games.length,
@@ -183,7 +185,8 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
           children: [
             if (index > 0) SizedBox(height: 8.sp),
             _buildGameRow(game),
-            Divider(height: 0.5.h, color: kDarkGreyColor),
+            if (index != (games.length - 1))
+              Divider(height: 0.5.h, color: kDarkGreyColor),
           ],
         );
       },

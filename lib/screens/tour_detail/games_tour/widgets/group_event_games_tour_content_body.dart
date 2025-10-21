@@ -1,8 +1,8 @@
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_match_card.dart';
-
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
@@ -49,20 +49,12 @@ class _GroupEventGamesTourContentBodyState
       return const TourLoadingWidget();
     }
     final rounds = gamesAppBar.value!.gamesAppBarModels;
-
-    final orderedGamesForChessBoard = <GamesTourModel>[];
-    for (var a = 0; a < rounds.length; a++) {
-      final allGamesForRound =
-          widget.gamesScreenModel.gamesTourModels
-              .where((game) => game.roundId == rounds[a].id)
-              .toList();
-      orderedGamesForChessBoard.addAll(allGamesForRound);
-    }
-
-    final orderedGamesData = GamesScreenModel(
-      gamesTourModels: orderedGamesForChessBoard,
-      pinnedGamedIs: widget.gamesScreenModel.pinnedGamedIs,
-    );
+    final orderedGamesData = ref
+        .read(gamesTourContentProvider)
+        .getOrderedGamesForChessBoard(
+          rounds: rounds,
+          gamesScreenModel: widget.gamesScreenModel,
+        );
 
     return Column(
       children: [
@@ -154,48 +146,16 @@ class _GroupEventGamesTourContentBodyState
     GamesAppBarModel selectedRound,
     GamesScreenModel orderedGamesData,
   ) {
-    final grouped = <String, List<MatchWithComparison>>{};
-
-    final gamesPerRound =
-        widget.gamesScreenModel.gamesTourModels
-            .where((game) => game.roundId == selectedRound.id)
-            .toList();
-
-    for (var game in gamesPerRound) {
-      final whiteTeam = game.whitePlayer.team ?? game.whitePlayer.countryCode;
-      final blackTeam = game.blackPlayer.team ?? game.blackPlayer.countryCode;
-      final header = '$whiteTeam vs $blackTeam';
-
-      // Check existing headers
-      final comparison = _compareAllWithOne(grouped.keys.toList(), header);
-
-      if (comparison == MatchComparison.sameOrder) {
-        // Same header, add to same list
-        grouped[header]!.add(
-          MatchWithComparison(game: game, comparison: comparison),
+    final grouped = ref
+        .read(gamesTourContentProvider)
+        .getGroupHeader(
+          selectedRoundId: selectedRound.id,
+          gamesScreenModel: widget.gamesScreenModel,
         );
-      } else if (comparison == MatchComparison.oppositeOrder) {
-        // Opposite header exists, find it and add there
-        final existingHeader = grouped.keys.firstWhere(
-          (h) =>
-              _compareMatchHeaders(h, header) == MatchComparison.oppositeOrder,
-        );
-        grouped[existingHeader]!.add(
-          MatchWithComparison(game: game, comparison: comparison),
-        );
-      } else {
-        // No matching header, create a new one
-        grouped[header] = [
-          MatchWithComparison(
-            game: game,
-            comparison: MatchComparison.sameOrder,
-          ),
-        ];
-      }
-    }
 
     // Build grouped cards
     return ListView.builder(
+      padding: EdgeInsets.zero,
       itemCount: grouped.length,
       itemBuilder: (context, index) {
         final header = grouped.keys.elementAt(index);
@@ -210,43 +170,5 @@ class _GroupEventGamesTourContentBodyState
         );
       },
     );
-  }
-}
-
-class MatchWithComparison {
-  final GamesTourModel game;
-  final MatchComparison comparison;
-
-  MatchWithComparison({required this.game, required this.comparison});
-}
-
-enum MatchComparison { sameOrder, oppositeOrder, different }
-
-MatchComparison _compareAllWithOne(List<String> headers, String compare) {
-  var allHeaders = <MatchComparison>[];
-
-  for (final header in headers) {
-    final comparison = _compareMatchHeaders(header, compare);
-    allHeaders.add(comparison);
-  }
-  if (allHeaders.contains(MatchComparison.sameOrder)) {
-    return MatchComparison.sameOrder;
-  } else if (allHeaders.contains(MatchComparison.oppositeOrder)) {
-    return MatchComparison.oppositeOrder;
-  } else {
-    return MatchComparison.different;
-  }
-}
-
-MatchComparison _compareMatchHeaders(String h1, String h2) {
-  final split1 = h1.split(' vs ').map((e) => e.trim()).toList();
-  final split2 = h2.split(' vs ').map((e) => e.trim()).toList();
-
-  if (split1[0] == split2[0] && split1[1] == split2[1]) {
-    return MatchComparison.sameOrder;
-  } else if (split1[0] == split2[1] && split1[1] == split2[0]) {
-    return MatchComparison.oppositeOrder;
-  } else {
-    return MatchComparison.different;
   }
 }
