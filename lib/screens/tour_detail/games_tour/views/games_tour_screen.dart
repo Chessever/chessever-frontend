@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_body.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_games_tour_content_body.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -27,65 +28,70 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
   @override
   Widget build(BuildContext context) {
     final gamesListViewMode = ref.watch(gamesListViewModeProvider);
-    final gamesTourAsync = ref.watch(gamesTourScreenProvider);
+    final gamesTourMode = ref.watch(gamesTourScreenModeProvider);
 
-    // Removed excessive debug logging to reduce console noise
+    return gamesTourMode.when(
+      data: (mode) {
+        final gamesTourAsync = ref.watch(gamesTourScreenProvider);
 
-    return gamesTourAsync.when(
-      data: (data) {
-        final aboutTourModel =
-            ref.watch(tourDetailScreenProvider).valueOrNull?.aboutTourModel;
-
-        // Add loading check for dependencies before showing empty state
-        final tourDetailAsync = ref.watch(tourDetailScreenProvider);
-        final gamesAsync =
-            aboutTourModel != null
-                ? ref.watch(gamesTourProvider(aboutTourModel.id))
-                : const AsyncValue.loading();
-
-        // Don't show empty state if we're still loading dependencies
-        if (tourDetailAsync.isLoading || gamesAsync.isLoading) {
-          return const TourLoadingWidget();
-        }
-
-        if (data.gamesTourModels.isEmpty) {
-          if (data.isSearchMode && data.searchQuery != null) {
-            return EmptySearchWidget(query: data.searchQuery!);
-          } else {
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  SvgPicture.asset(
-                    SvgAsset.tournamentIcon,
-                    height: 35,
-                    width: 35,
+        return gamesTourAsync.when(
+          data: (data) {
+            if (data.gamesTourModels.isEmpty) {
+              if (data.isSearchMode && data.searchQuery != null) {
+                return EmptySearchWidget(query: data.searchQuery!);
+              } else {
+                return Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12.sp),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SvgPicture.asset(
+                        SvgAsset.tournamentIcon,
+                        height: 35.h,
+                        width: 35.w,
+                      ),
+                      SizedBox(height: 10.h),
+                      Text(
+                        'No games going on',
+                        style: AppTypography.textMdRegular.copyWith(
+                          color: kWhiteColor,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
                   ),
-                  SizedBox(height: 10),
-                  Text(
-                    'No games going on',
-                    style: AppTypography.textMdRegular.copyWith(
-                      color: kWhiteColor,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
+                );
+              }
+            }
+            return RefreshIndicator(
+              onRefresh: _handleRefresh,
+              color: kWhiteColor70,
+              backgroundColor: kDarkGreyColor,
+              displacement: 60.h,
+              strokeWidth: 3.w,
+              child:
+                  mode == GamesTourScreenMode.normal
+                      ? GamesTourContentBody(
+                        gamesScreenModel: data,
+                        gamesListViewMode: gamesListViewMode,
+                      )
+                      : GroupEventGamesTourContentBody(
+                        gamesScreenModel: data,
+                        gamesListViewMode: gamesListViewMode,
+                        onReturnFromChessboard: (index) {},
+                      ),
+            );
+          },
+          error: (e, _) {
+            return Center(
+              child: Text(
+                'Error: $e',
+                style: AppTypography.textMdRegular.copyWith(color: kWhiteColor),
+                textAlign: TextAlign.center,
               ),
             );
-          }
-        }
-
-        return RefreshIndicator(
-          onRefresh: _handleRefresh,
-          color: kWhiteColor70,
-          backgroundColor: kDarkGreyColor,
-          displacement: 60.h,
-          strokeWidth: 3.w,
-          child: GamesTourContentBody(
-            gamesScreenModel: data,
-            gamesListViewMode: gamesListViewMode,
-          ),
+          },
+          loading: () => const TourLoadingWidget(),
         );
       },
       error: (e, _) {

@@ -6,7 +6,7 @@ class AboutTourModel extends Equatable {
   final String name;
   final String description;
   final String imageUrl;
-  final List<String> players;
+  final List<TournamentPlayer> players;
   final String timeControl;
   final String date;
   final String location;
@@ -32,7 +32,7 @@ class AboutTourModel extends Equatable {
       imageUrl: tour.image ?? '',
       //todo: This field needs to be added in the Tour Model
       description: '',
-      players: tour.info.playersList,
+      players: tour.players,
       //todo: add a fallback
       timeControl: tour.info.tc ?? '',
       date: tour.dateRangeFormatted,

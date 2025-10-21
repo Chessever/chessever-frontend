@@ -22,7 +22,7 @@ class GamesLocalStorage {
   Future<List<Games>> fetchAndSaveGames(String tourId) async {
     try {
       ref.read(loggerProvider).logInfo('Fetching games for tourId: $tourId');
-      
+
       final games = await ref
           .read(gameRepositoryProvider)
           .getGamesByTourId(tourId);
@@ -86,7 +86,7 @@ class GamesLocalStorage {
           initial.map((e) => Games.fromJson(json.decode(e))).toList();
 
       // Parse the rest in background isolate
-      compute(decodeGamesInIsolate, remaining).then((parsedRemaining) {
+      compute(_decodeGamesInIsolate, remaining).then((parsedRemaining) {
         final all = [...initialParsed, ...parsedRemaining];
         ref.read(fullGamesProvider.notifier).state = all;
       });
@@ -166,3 +166,10 @@ Map<String, dynamic> _decoder(String gameString) =>
     json.decode(gameString) as Map<String, dynamic>;
 
 final fullGamesProvider = StateProvider<List<Games>>((ref) => []);
+
+List<Games> _decodeGamesInIsolate(List<String> gameJsonList) {
+  return gameJsonList.map((e) {
+    final decoded = json.decode(e) as Map<String, dynamic>;
+    return Games.fromJson(decoded);
+  }).toList();
+}

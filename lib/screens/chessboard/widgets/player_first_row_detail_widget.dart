@@ -222,12 +222,13 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             );
 
     final spacing = playerView == PlayerView.gridView ? 4.w : 8.w;
-    final endPadding = playerView == PlayerView.gridView ? 8.w : 16.w; // Align with board edge
+    final endPadding =
+        playerView == PlayerView.gridView ? 8.w : 16.w; // Align with board edge
 
     // Board has 16.sp horizontal margin, engine gauge is 20.w wide
     // So flags should start at 16.sp + 20.w to align with board's left edge
     final boardMargin = 16.sp;
-    final engineGaugeWidth = 20.w;
+    final engineGaugeWidth = playerView == PlayerView.gridView ? 0.w : 20.w;
 
     return GestureDetector(
       onTap: () {
@@ -298,13 +299,22 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               builder: (context, constraints) {
                 // Parse name parts - format is "Surname, Given Names"
                 final fullName = playerCard.name;
-                final nameParts = fullName.split(',').map((e) => e.trim()).toList();
-                final surname = nameParts.isNotEmpty ? nameParts[0] : ''; // Part before comma
-                final firstName = nameParts.length > 1 ? nameParts[1] : ''; // Part after comma
+                final nameParts =
+                    fullName.split(',').map((e) => e.trim()).toList();
+                final surname =
+                    nameParts.isNotEmpty
+                        ? nameParts[0]
+                        : ''; // Part before comma
+                final firstName =
+                    nameParts.length > 1
+                        ? nameParts[1]
+                        : ''; // Part after comma
 
                 // Build static parts that must always be visible
-                final title = playerCard.title.isNotEmpty ? '${playerCard.title} ' : '';
-                final firstNameWithComma = firstName.isNotEmpty ? ', $firstName' : '';
+                final title =
+                    playerCard.title.isNotEmpty ? '${playerCard.title} ' : '';
+                final firstNameWithComma =
+                    firstName.isNotEmpty ? ', $firstName' : '';
                 final rating = ' ${playerCard.rating}';
 
                 // Create text painter to measure text width

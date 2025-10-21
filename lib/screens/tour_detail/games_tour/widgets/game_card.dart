@@ -202,7 +202,7 @@ class _CenterContent extends StatelessWidget {
       child:
           gamesTourModel.gameStatus == GameStatus.ongoing
               ? ChessProgressBar(gamesTourModel: gamesTourModel)
-              : _StatusText(status: gamesTourModel.gameStatus.displayText),
+              : StatusText(status: gamesTourModel.gameStatus.displayText),
     );
   }
 }
@@ -341,17 +341,18 @@ String _getString(String name) {
   }
 }
 
-class _StatusText extends StatelessWidget {
-  const _StatusText({required this.status, super.key});
+class StatusText extends StatelessWidget {
+  const StatusText({required this.status, this.color = kBlackColor, super.key});
 
   final String status;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
     return Text(
       status,
       textAlign: TextAlign.center,
-      style: AppTypography.textXsMedium.copyWith(color: kBlackColor),
+      style: AppTypography.textXsMedium.copyWith(color: color),
     );
   }
 }

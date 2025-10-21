@@ -313,6 +313,7 @@ class PlayerCard {
   final int rating;
   final String countryCode;
   final int? fideId;
+  final String? team;
 
   PlayerCard({
     required this.name,
@@ -320,6 +321,7 @@ class PlayerCard {
     required this.title,
     required this.rating,
     required this.countryCode,
+    required this.team,
     this.fideId,
   });
 
@@ -336,6 +338,7 @@ class PlayerCard {
       rating: player.rating >= 0 ? player.rating : 0,
       countryCode: player.fed.trim(),
       fideId: player.fideId > 0 ? player.fideId : null,
+      team: player.team,
     );
   }
 
@@ -346,6 +349,7 @@ class PlayerCard {
     int? rating,
     String? countryCode,
     int? fideId,
+    String? team,
   }) {
     return PlayerCard(
       name: name ?? this.name,
@@ -354,6 +358,7 @@ class PlayerCard {
       rating: rating ?? this.rating,
       countryCode: countryCode ?? this.countryCode,
       fideId: fideId ?? this.fideId,
+      team: team ?? this.team,
     );
   }
 
