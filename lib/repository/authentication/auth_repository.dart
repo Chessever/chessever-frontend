@@ -45,8 +45,15 @@ class AuthRepository {
 
   Future<void> _initializeGoogleSignIn() async {
     try {
+      final clientId =
+          Platform.isIOS
+              ? _env('GOOGLE_IOS_CLIENT_ID')
+              : Platform.isAndroid
+              ? _env('GOOGLE_ANDROID_CLIENT_ID')
+              : null;
+
       await _googleSignIn.initialize(
-        clientId: Platform.isIOS ? _env('GOOGLE_IOS_CLIENT_ID') : null,
+        clientId: clientId,
         serverClientId: _env('GOOGLE_WEB_CLIENT_ID'),
       );
 
