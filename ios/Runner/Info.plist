@@ -38,7 +38,21 @@
 					<string>com.chessever.app</string>
 				</array>
 			</dict>
+			<!-- Google Sign In URL Scheme -->
+			<dict>
+				<key>CFBundleTypeRole</key>
+				<string>Editor</string>
+				<key>CFBundleURLSchemes</key>
+				<array>
+					<string>com.googleusercontent.apps.882734779574-8v68and9jcueedkvk0dl2ftse6dn8kt3</string>
+				</array>
+			</dict>
 		</array>
+		<!-- Google Sign In Client IDs -->
+		<key>GIDClientID</key>
+		<string>882734779574-8v68and9jcueedkvk0dl2ftse6dn8kt3.apps.googleusercontent.com</string>
+		<key>GIDServerClientID</key>
+		<string>882734779574-0qk635jlqrbp9qhenmau7pd6bffiag2j.apps.googleusercontent.com</string>
 		<key>CFBundleVersion</key>
 		<string>$(FLUTTER_BUILD_NUMBER)</string>
 		<key>LSApplicationQueriesSchemes</key>

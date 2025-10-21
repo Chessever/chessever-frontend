@@ -22,6 +22,7 @@ import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chessever2/utils/notification_service.dart';
 import 'package:chessever2/utils/lifecycle_event_handler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/auth_state_listener.dart';
 import 'package:chessever2/widgets/board_color_dialog.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -256,39 +257,41 @@ class _MyAppState extends ConsumerState<MyApp> {
     ///Initializing  Responsive Unit
     ResponsiveHelper.init(context);
 
-    return MaterialApp(
-      locale: locale,
-      supportedLocales: AppLocalizations.supportedLocales,
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      // builder: DevicePreview.appBuilder,
-      debugShowCheckedModeBanner: false,
-      title: 'ChessEver',
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      themeMode: themeMode,
-      navigatorKey: navigatorKey,
-      navigatorObservers: [routeObserver],
-      initialRoute: '/',
-      routes: {
-        '/': (context) => const SplashScreen(),
-        '/auth_screen': (context) => const AuthScreen(),
-        '/home_screen': (context) => const HomeScreen(),
-        '/group_event_screen': (context) => const GroupEventScreen(),
-        '/tournament_detail_screen':
-            (context) => const TournamentDetailScreen(),
-        '/calendar_screen': (context) => const CalendarScreen(),
-        '/library_screen': (context) => const LibraryScreen(),
-        '/favorites_screen': (context) => const FavoriteScreen(),
-        '/scorecard_screen': (context) => const ScoreCardScreen(),
-        // '/chess_screen': (context) => const ChessScreen(),
-        // New Screen
-        '/player_list_screen': (context) => const PlayerListScreen(),
-        // Updated to use the new FavoriteScreen
-        '/countryman_games_screen': (context) => const CountrymanGamesScreen(),
-        '/standings': (context) => const PlayerTourScreen(),
-        '/calendar_detail_screen': (context) => CalendarDetailsScreen(),
-        '/Board_sheet': (context) => BoardColorDialog(),
-      },
+    return AuthStateListener(
+      child: MaterialApp(
+        locale: locale,
+        supportedLocales: AppLocalizations.supportedLocales,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        // builder: DevicePreview.appBuilder,
+        debugShowCheckedModeBanner: false,
+        title: 'ChessEver',
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        themeMode: themeMode,
+        navigatorKey: navigatorKey,
+        navigatorObservers: [routeObserver],
+        initialRoute: '/',
+        routes: {
+          '/': (context) => const SplashScreen(),
+          '/auth_screen': (context) => const AuthScreen(),
+          '/home_screen': (context) => const HomeScreen(),
+          '/group_event_screen': (context) => const GroupEventScreen(),
+          '/tournament_detail_screen':
+              (context) => const TournamentDetailScreen(),
+          '/calendar_screen': (context) => const CalendarScreen(),
+          '/library_screen': (context) => const LibraryScreen(),
+          '/favorites_screen': (context) => const FavoriteScreen(),
+          '/scorecard_screen': (context) => const ScoreCardScreen(),
+          // '/chess_screen': (context) => const ChessScreen(),
+          // New Screen
+          '/player_list_screen': (context) => const PlayerListScreen(),
+          // Updated to use the new FavoriteScreen
+          '/countryman_games_screen': (context) => const CountrymanGamesScreen(),
+          '/standings': (context) => const PlayerTourScreen(),
+          '/calendar_detail_screen': (context) => CalendarDetailsScreen(),
+          '/Board_sheet': (context) => BoardColorDialog(),
+        },
+      ),
     );
   }
 }

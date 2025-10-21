@@ -65,23 +65,26 @@ class _SplashScreenProvider {
       }),
     );
 
-    /// check if user is already logged in
+    // Check authentication state - session manager will recover session if exists
+    // This also triggers Supabase auth state change which the listener will pick up
     final sessionManager = ref.read(sessionManagerProvider);
     final isLoggedIn = await sessionManager.isLoggedIn();
+
     if (kDebugMode) {
-      print('Is user logged in: $isLoggedIn');
+      print('🔐 User logged in: $isLoggedIn');
     }
 
-    // if (isLoggedIn || kDebugMode) {
-    //   await Future.microtask(() async {
-    //     ref.read(countryDropdownProvider);
-    //   });
-    //   Navigator.pushNamedAndRemoveUntil(context, '/home_screen', (_) => false);
-    // } else {
-    //   Navigator.pushNamedAndRemoveUntil(context, '/auth_screen', (_) => false);
-    // }
-
+    // Check if context is still valid before navigation
     if (!context.mounted) return;
-    Navigator.pushNamedAndRemoveUntil(context, '/home_screen', (_) => false);
+
+    // Initial navigation - the AuthStateListener will handle subsequent auth changes
+    if (isLoggedIn) {
+      // User is logged in - initialize country dropdown and go to home
+      ref.read(countryDropdownProvider);
+      Navigator.pushNamedAndRemoveUntil(context, '/home_screen', (_) => false);
+    } else {
+      // User is not logged in - go to auth screen
+      Navigator.pushNamedAndRemoveUntil(context, '/auth_screen', (_) => false);
+    }
   }
 }
