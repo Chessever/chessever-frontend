@@ -4,6 +4,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_games_card.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
+import 'package:chessever2/utils/string_utils_provider.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -94,7 +95,8 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
           InkWell(
             onTap: _toggleExpand,
             child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 16.sp),
+              height: 60.h,
+              padding: EdgeInsets.only(left: 12.sp, right: 12.sp),
               child: Row(
                 children: [
                   Expanded(
@@ -110,7 +112,9 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
                         ],
                         Expanded(
                           child: Text(
-                            team1Name,
+                            ref
+                                .read(stringUtilsProvider)
+                                .getTrimmedString(team1Name),
                             maxLines: 1,
                             style: AppTypography.textXsMedium.copyWith(
                               color: kWhiteColor,
@@ -123,11 +127,14 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
                   ),
 
                   Expanded(
-                    child: Text(
-                      'VS',
-                      style: AppTypography.textXsMedium.copyWith(
-                        color: kWhiteColor,
-                        fontWeight: FontWeight.bold,
+                    child: Center(
+                      child: Text(
+                        'VS',
+                        textAlign: TextAlign.center,
+                        style: AppTypography.textXsMedium.copyWith(
+                          color: kWhiteColor,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ),
@@ -145,7 +152,9 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
                         ],
                         Expanded(
                           child: Text(
-                            team2Name,
+                            ref
+                                .read(stringUtilsProvider)
+                                .getTrimmedString(team2Name),
                             maxLines: 1,
                             style: AppTypography.textXsMedium.copyWith(
                               color: kWhiteColor,
