@@ -48,7 +48,7 @@ class _GroupEventGamesCardState extends ConsumerState<GroupEventGamesCard> {
                 .read(gameCardWrapperProvider)
                 .navigateToChessBoard(
                   context: context,
-                  orderedGames: widget.games.map((e) => e.game).toList(),
+                  orderedGames: widget.gamesData.gamesTourModels,
                   gameIndex: gameIndex,
                   onReturnFromChessboard: widget.onReturnFromChessboard,
                 );
