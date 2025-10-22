@@ -2028,6 +2028,24 @@ class ChessBoardScreenNotifierNew
           if (pvLines.isEmpty && cascadeEval.pvs.isNotEmpty) {
             debugPrint('🔄 RETRY: Cloud PV building failed, retrying after 200ms...');
             await Future.delayed(const Duration(milliseconds: 200));
+
+            // Check if position changed during the delay
+            final currentState = state.value;
+            if (currentState != null) {
+              final currentPos = currentState.isAnalysisMode
+                  ? currentState.analysisState.position
+                  : currentState.position;
+              if (currentPos != null) {
+                final currentFenBase = currentPos.fen.split(' ').take(3).join(' ');
+                final targetFenBase = fen.split(' ').take(3).join(' ');
+
+                if (currentFenBase != targetFenBase) {
+                  debugPrint('🚫 RETRY CANCELLED: Position changed during delay (was: $targetFenBase, now: $currentFenBase)');
+                  return;
+                }
+              }
+            }
+
             pvLines = await _buildPrincipalVariations(fen, cascadeEval.pvs);
             if (pvLines.isNotEmpty) {
               debugPrint('✅ RETRY: Cloud PV building succeeded on retry');
@@ -2092,6 +2110,24 @@ class ChessBoardScreenNotifierNew
             if (stockfishPvLines.isEmpty && localEval.pvs.isNotEmpty) {
               debugPrint('🔄 RETRY: Stockfish PV building failed, retrying after 200ms...');
               await Future.delayed(const Duration(milliseconds: 200));
+
+              // Check if position changed during the delay
+              final currentState = state.value;
+              if (currentState != null) {
+                final currentPos = currentState.isAnalysisMode
+                    ? currentState.analysisState.position
+                    : currentState.position;
+                if (currentPos != null) {
+                  final currentFenBase = currentPos.fen.split(' ').take(3).join(' ');
+                  final targetFenBase = fen.split(' ').take(3).join(' ');
+
+                  if (currentFenBase != targetFenBase) {
+                    debugPrint('🚫 RETRY CANCELLED: Position changed during delay (was: $targetFenBase, now: $currentFenBase)');
+                    return;
+                  }
+                }
+              }
+
               stockfishPvLines = await _buildPrincipalVariations(fen, localEval.pvs);
               if (stockfishPvLines.isNotEmpty) {
                 debugPrint('✅ RETRY: Stockfish PV building succeeded on retry');

@@ -77,6 +77,27 @@ class _RoundDropdown extends HookConsumerWidget {
     required this.onChanged,
   });
 
+  int? _extractRoundNumber(String name) {
+    final m = RegExp(r'(\d+)').firstMatch(name);
+    if (m != null && m.groupCount > 0) {
+      return int.tryParse(m.group(0)!);
+    }
+    return null;
+  }
+
+  List<GamesAppBarModel> _sortRoundsDesc(List<GamesAppBarModel> items) {
+    final list = List<GamesAppBarModel>.from(items);
+    list.sort((a, b) {
+      final an = _extractRoundNumber(a.name);
+      final bn = _extractRoundNumber(b.name);
+      if (an == null && bn == null) return 0;
+      if (an == null) return 1;
+      if (bn == null) return -1;
+      return bn.compareTo(an);
+    });
+    return list;
+  }
+
   Widget _buildRow(GamesAppBarModel round, bool showDivider) {
     Widget trailingIcon;
     switch (round.roundStatus) {
@@ -152,6 +173,7 @@ class _RoundDropdown extends HookConsumerWidget {
     ValueNotifier<bool> isOpen,
   ) {
     OverlayEntry? overlayEntry;
+    final sortedRounds = _sortRoundsDesc(rounds);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       try {
         if (!context.mounted) {
@@ -200,7 +222,7 @@ class _RoundDropdown extends HookConsumerWidget {
                               child: ListView.separated(
                                 padding: EdgeInsets.zero,
                                 shrinkWrap: true,
-                                itemCount: rounds.length,
+                                itemCount: sortedRounds.length,
                                 separatorBuilder: (context, index) {
                                   return Padding(
                                     padding: EdgeInsets.symmetric(
@@ -210,7 +232,7 @@ class _RoundDropdown extends HookConsumerWidget {
                                   );
                                 },
                                 itemBuilder: (context, index) {
-                                  final round = rounds[index];
+                                  final round = sortedRounds[index];
                                   final isSelected =
                                       round.id == selectedRoundId;
 
