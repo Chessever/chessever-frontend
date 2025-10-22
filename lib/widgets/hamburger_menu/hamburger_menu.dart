@@ -1,3 +1,4 @@
+import 'package:chessever2/providers/app_version_provider.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -145,6 +146,7 @@ class HamburgerMenu extends StatelessWidget {
                   ],
                 ),
               ),
+              _VersionFooter(),
               _LogOutButton(
                 onLogoutPressed: () {
                   callbacks.onLogoutPressed();
@@ -237,6 +239,74 @@ class _MenuItem extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _VersionFooter extends ConsumerWidget {
+  const _VersionFooter({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final version = ref.watch(appVersionProvider);
+    return version.when(
+      data: (versionString) {
+        return Container(
+          padding: EdgeInsets.symmetric(horizontal: 20.sp, vertical: 16.sp),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Divider
+              Container(
+                height: 1,
+                color: kWhiteColor.withOpacity(0.1),
+              ),
+              SizedBox(height: 16.h),
+              
+              // Email
+              Row(
+                children: [
+                  Icon(
+                    Icons.email_outlined,
+                    size: 14.ic,
+                    color: kWhiteColor.withOpacity(0.5),
+                  ),
+                  SizedBox(width: 6.w),
+                  Text(
+                    'info@chessever.com',
+                    style: AppTypography.textXsRegular.copyWith(
+                      color: kWhiteColor.withOpacity(0.5),
+                    ),
+                  ),
+                ],
+              ),
+              
+              SizedBox(height: 8.h),
+              
+              // Copyright
+              Text(
+                '© 2025 ChessEver',
+                style: AppTypography.textXsRegular.copyWith(
+                  color: kWhiteColor.withOpacity(0.4),
+                ),
+              ),
+              
+              SizedBox(height: 8.h),
+              
+              // Version
+              Text(
+                'Version $versionString',
+                style: AppTypography.textXsRegular.copyWith(
+                  color: kWhiteColor.withOpacity(0.3),
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+      error: (_, __) => SizedBox.shrink(),
+      loading: () => SizedBox.shrink(),
     );
   }
 }

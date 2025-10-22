@@ -143,18 +143,16 @@ class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
                 borderRadius: BorderRadius.circular(2.br),
               ),
               child: Text(
-                // Show "..." when evaluating, otherwise show the evaluation
-                widget.isEvaluating
+                // Prefer showing last known evaluation even while evaluating.
+                // Only show "..." if neither current nor cached evaluation exists.
+                (widget.evaluation == null && _lastValidEvaluation == null)
                     ? '...'
-                    : (widget.evaluation == null && _lastValidEvaluation == null)
-                    ? '...'
-                    : ((widget.evaluation ?? _lastValidEvaluation)!.abs() >=
-                            10.0 &&
-                        widget.mate != 0)
-                    ? '#${widget.mate.abs()}'
-                    : (widget.evaluation ?? _lastValidEvaluation)!
-                        .abs()
-                        .toStringAsFixed(1),
+                    : (((widget.evaluation ?? _lastValidEvaluation)!.abs() >= 10.0) &&
+                            widget.mate != 0)
+                        ? '#${widget.mate.abs()}'
+                        : (widget.evaluation ?? _lastValidEvaluation)!
+                            .abs()
+                            .toStringAsFixed(1),
                 maxLines: 1,
                 textAlign: TextAlign.center,
                 style: AppTypography.textSmRegular.copyWith(
