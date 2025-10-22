@@ -5,6 +5,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 
 class GroupEventGamesCard extends ConsumerStatefulWidget {
   const GroupEventGamesCard({
@@ -29,11 +30,12 @@ class _GroupEventGamesCardState extends ConsumerState<GroupEventGamesCard> {
     // Use the games list from widget data to maintain correct order for group events
     final fullGamesList = widget.gamesData.gamesTourModels;
 
-    return ListView.builder(
+    return ListView.separated(
       padding: EdgeInsets.zero,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: widget.games.length,
+      separatorBuilder: (context, _) => SizedBox(height: 12.sp),
       itemBuilder: (context, index) {
         final game = widget.games[index];
 
@@ -41,7 +43,11 @@ class _GroupEventGamesCardState extends ConsumerState<GroupEventGamesCard> {
           (g) => g.gameId == game.game.gameId,
         );
         return GameCard(
-          matchComparison: game,
+          // Force white-left orientation for group events
+          matchComparison: MatchWithComparison(
+            game: game.game,
+            comparison: MatchComparison.sameOrder,
+          ),
           onPinToggle: (game) async {
             await ref
                 .read(gamesTourScreenProvider.notifier)
