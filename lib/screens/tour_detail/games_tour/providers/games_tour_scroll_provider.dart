@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:flutter/widgets.dart';
@@ -186,12 +188,41 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
   }
 
   int _getGamesInRoundAsListItems(String roundId) {
+    // Check if we're in group event mode
+    final screenMode = _ref.read(gamesTourScreenModeProvider).valueOrNull;
+    final isGroupEvent = screenMode == GamesTourScreenMode.groupEvent;
+
+    if (isGroupEvent) {
+      // For group events, count team matchup cards
+      return _getTeamMatchupCardsInRound(roundId);
+    }
+
+    // For regular events, count games (grid or list)
     final gamesCount = _getGamesInRound(roundId);
     if (_ref.read(gamesListViewModeProvider) ==
         GamesListViewMode.chessBoardGrid) {
       return (gamesCount / 2).ceil(); // 2 per row
     }
     return gamesCount;
+  }
+
+  int _getTeamMatchupCardsInRound(String roundId) {
+    // Get games for this round
+    final gamesData = _ref.read(gamesTourScreenProvider).valueOrNull;
+    if (gamesData == null) return 0;
+
+    final roundGames =
+        gamesData.gamesTourModels.where((g) => g.roundId == roundId).toList();
+    if (roundGames.isEmpty) return 0;
+
+    // Use the same grouping logic as the UI
+    final grouped = _ref.read(gamesTourContentProvider).getGroupHeader(
+          selectedRoundId: roundId,
+          gamesScreenModel: gamesData,
+        );
+
+    // Return the number of team matchup cards
+    return grouped.keys.length;
   }
 
   int _getGamesInRound(String roundId) {
