@@ -81,6 +81,18 @@ const Map<String, String> _releaseEnvValues = {
     'SUPABASE_ANON_KEY',
     defaultValue: '',
   ),
+  'GOOGLE_ANDROID_CLIENT_ID': String.fromEnvironment(
+    'GOOGLE_ANDROID_CLIENT_ID',
+    defaultValue: '',
+  ),
+  'GOOGLE_WEB_CLIENT_ID': String.fromEnvironment(
+    'GOOGLE_WEB_CLIENT_ID',
+    defaultValue: '',
+  ),
+  'GOOGLE_IOS_CLIENT_ID': String.fromEnvironment(
+    'GOOGLE_IOS_CLIENT_ID',
+    defaultValue: '',
+  ),
   'SENTRY_FLUTTER': String.fromEnvironment('SENTRY_FLUTTER', defaultValue: ''),
   'CLARITY_PROJECT_ID': String.fromEnvironment(
     'CLARITY_PROJECT_ID',
@@ -88,6 +100,14 @@ const Map<String, String> _releaseEnvValues = {
   ),
   'RevenueCatAPIKey': String.fromEnvironment(
     'RevenueCatAPIKey',
+    defaultValue: '',
+  ),
+  'APPLE_SERVICE_ID': String.fromEnvironment(
+    'APPLE_SERVICE_ID',
+    defaultValue: '',
+  ),
+  'APPLE_REDIRECT_URI': String.fromEnvironment(
+    'APPLE_REDIRECT_URI',
     defaultValue: '',
   ),
 };
@@ -286,7 +306,8 @@ class _MyAppState extends ConsumerState<MyApp> {
           // New Screen
           '/player_list_screen': (context) => const PlayerListScreen(),
           // Updated to use the new FavoriteScreen
-          '/countryman_games_screen': (context) => const CountrymanGamesScreen(),
+          '/countryman_games_screen':
+              (context) => const CountrymanGamesScreen(),
           '/standings': (context) => const PlayerTourScreen(),
           '/calendar_detail_screen': (context) => CalendarDetailsScreen(),
           '/Board_sheet': (context) => BoardColorDialog(),
