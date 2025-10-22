@@ -26,6 +26,17 @@ class AboutTourScreen extends ConsumerWidget {
             final countryCode = ref
                 .read(locationServiceProvider)
                 .getCountryCode(data.aboutTourModel.location);
+            final players = data.aboutTourModel.players;
+
+            // Filter out players with null rating
+            var ratedPlayers = players.where((p) => p.rating != null).toList();
+            if (ratedPlayers.isNotEmpty) {
+              // Sort by highest rating first
+              ratedPlayers.sort((a, b) => b.rating!.compareTo(a.rating!));
+
+              ratedPlayers = ratedPlayers.take(4).toList();
+            }
+
             return Scaffold(
               bottomNavigationBar: Container(
                 padding: EdgeInsets.only(
@@ -90,7 +101,13 @@ class AboutTourScreen extends ConsumerWidget {
                         ),
                       ),
                       SizedBox(height: 12.h),
-                      _TitleDescWidget(title: 'Players', description: ''),
+                      _TitleDescWidget(
+                        title: 'Players',
+                        description: ratedPlayers
+                            .map((e) => e.displayName)
+                            .join(', '),
+                      ),
+
                       SizedBox(height: 12),
                       _TitleDescWidget(
                         title: 'Time Control',

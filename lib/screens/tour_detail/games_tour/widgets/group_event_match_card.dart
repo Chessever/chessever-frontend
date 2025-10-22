@@ -1,10 +1,11 @@
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/widgets/chess_progress_bar.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_games_card.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_match_card_provider.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
+import 'package:chessever2/utils/string_utils_provider.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -77,6 +78,11 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
     final country2 = ref
         .read(locationServiceProvider)
         .getValidCountryCodeFromName(team2Name);
+
+    final matchScore = ref
+        .read(groupEventMatchCardProvider)
+        .getMatchScore(matchList: widget.games, team: team1Name);
+
     return Container(
       margin: EdgeInsets.symmetric(vertical: 12.sp),
       decoration: BoxDecoration(
@@ -95,80 +101,83 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
           InkWell(
             onTap: _toggleExpand,
             child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 16.sp),
-              child: LayoutBuilder(
-                builder: (context, constrains) {
-                  final titleWidth = ((40 / 100) * constrains.maxWidth);
-                  final vsWidth = ((20 / 100) * constrains.maxWidth);
-                  return Row(
-                    children: [
-                      SizedBox(
-                        width: titleWidth,
-                        child: Row(
-                          children: [
-                            if (country1.isNotEmpty) ...[
-                              CountryFlag.fromCountryCode(
-                                country1,
-                                height: 12.h,
-                                width: 16.w,
-                              ),
-                              SizedBox(width: 4.w),
-                            ],
-                            Expanded(
-                              child: Text(
-                                team1Name,
-                                maxLines: 1,
-                                style: AppTypography.textXsMedium.copyWith(
-                                  color: kWhiteColor,
+              height: 60.h,
+              padding: EdgeInsets.only(left: 12.sp, right: 12.sp),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        if (country1.isNotEmpty) ...[
+                          CountryFlag.fromCountryCode(
+                            country1,
+                            height: 12.h,
+                            width: 16.w,
+                          ),
+                          SizedBox(width: 4.w),
+                        ],
+                        Expanded(
+                          child: Text(
+                            ref
+                                .read(stringUtilsProvider)
+                                .getTrimmedStringWithScore(
+                                  team1Name,
+                                  matchScore.first,
                                 ),
-                                textAlign: TextAlign.left,
-                              ),
+                            maxLines: 1,
+                            style: AppTypography.textXsMedium.copyWith(
+                              color: kWhiteColor,
                             ),
-                          ],
-                        ),
-                      ),
-
-                      Container(
-                        width: vsWidth,
-
-                        alignment: Alignment.center,
-                        child: Text(
-                          'VS',
-                          style: AppTypography.textXsMedium.copyWith(
-                            color: kWhiteColor,
-                            fontWeight: FontWeight.bold,
+                            textAlign: TextAlign.left,
                           ),
                         ),
-                      ),
+                      ],
+                    ),
+                  ),
 
-                      SizedBox(
-                        width: titleWidth,
-                        child: Row(
-                          children: [
-                            if (country2.isNotEmpty) ...[
-                              CountryFlag.fromCountryCode(
-                                country2,
-                                height: 12.h,
-                                width: 16.w,
-                              ),
-                              SizedBox(width: 4.w),
-                            ],
-                            Expanded(
-                              child: Text(
-                                team2Name,
-                                maxLines: 1,
-                                style: AppTypography.textXsMedium.copyWith(
-                                  color: kWhiteColor,
-                                ),
-                                textAlign: TextAlign.left,
-                              ),
-                            ),
-                          ],
+                  Expanded(
+                    child: Center(
+                      child: Text(
+                        'VS',
+                        textAlign: TextAlign.center,
+                        style: AppTypography.textXsMedium.copyWith(
+                          color: kWhiteColor,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ],
-                  );
-                },
+                    ),
+                  ),
+
+                  Expanded(
+                    child: Row(
+                      children: [
+                        if (country2.isNotEmpty) ...[
+                          CountryFlag.fromCountryCode(
+                            country2,
+                            height: 12.h,
+                            width: 16.w,
+                          ),
+                          SizedBox(width: 4.w),
+                        ],
+                        Expanded(
+                          child: Text(
+                            ref
+                                .read(stringUtilsProvider)
+                                .getTrimmedStringWithScore(
+                                  team1Name,
+                                  matchScore.last,
+                                ),
+                            maxLines: 1,
+                            style: AppTypography.textXsMedium.copyWith(
+                              color: kWhiteColor,
+                            ),
+                            textAlign: TextAlign.left,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -194,39 +203,16 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
   Widget _buildGamesList() {
     switch (widget.gamesListViewMode) {
       case GamesListViewMode.gamesCard:
-        return _buildGamesCardView();
+        return GroupEventGamesCard(
+          games: widget.games,
+          gamesData: widget.gamesData,
+          onReturnFromChessboard: widget.onReturnFromChessboard,
+        );
       case GamesListViewMode.chessBoardGrid:
         return _buildChessBoardGridView();
       case GamesListViewMode.chessBoard:
         return _buildChessBoardView();
     }
-  }
-
-  Widget _buildGamesCardView() {
-    final games = widget.games;
-
-    return ListView.builder(
-      padding: EdgeInsets.zero,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: games.length,
-      itemBuilder: (context, index) {
-        final game = games[index];
-
-        return Container(
-          padding: EdgeInsets.symmetric(vertical: 8.sp),
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(
-                color: kDarkGreyColor,
-                width: index == (games.length - 1) ? 0 : 0.5.h,
-              ),
-            ),
-          ),
-          child: _buildGameRow(game),
-        );
-      },
-    );
   }
 
   Widget _buildChessBoardGridView() {
@@ -283,96 +269,6 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
     );
   }
 
-  Widget _buildGameRow(MatchWithComparison game) {
-    final gameIndex = widget.gamesData.gamesTourModels.indexOf(game.game);
-
-    // Combine title + name + rating
-    String formatPlayer(PlayerCard player) {
-      final title = player.title.isNotEmpty == true ? '${player.title} ' : '';
-      final rating = player.rating > 0 ? ' (${player.rating})' : '';
-      return '$title${player.name}$rating';
-    }
-
-    final player1 =
-        game.comparison == MatchComparison.sameOrder
-            ? game.game.whitePlayer
-            : game.game.blackPlayer;
-
-    final player2 =
-        game.comparison == MatchComparison.sameOrder
-            ? game.game.blackPlayer
-            : game.game.whitePlayer;
-
-    return InkWell(
-      onTap:
-          () => ref
-              .read(gameCardWrapperProvider)
-              .navigateToChessBoard(
-                context: context,
-                orderedGames: widget.gamesData.gamesTourModels,
-                gameIndex: gameIndex,
-                onReturnFromChessboard: widget.onReturnFromChessboard,
-              ),
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 10.sp),
-        child: Row(
-          children: [
-            // Left player
-            Expanded(
-              flex: 4,
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  formatPlayer(player1),
-                  style: AppTypography.textXsMedium.copyWith(
-                    color: kWhiteColor,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ),
-
-            // Middle progress bar
-            Expanded(
-              flex: 2,
-              child: Center(
-                child:
-                    game.game.gameStatus == GameStatus.ongoing
-                        ? game.comparison == MatchComparison.sameOrder
-                            ? ChessProgressBar(gamesTourModel: game.game)
-                            : ChessProgressBar.reversedMode(
-                              gamesTourModel: game.game,
-                            )
-                        : StatusText(
-                          status: _displayTextSupporter(game),
-                          color: kWhiteColor,
-                        ),
-              ),
-            ),
-
-            // Right player
-            Expanded(
-              flex: 4,
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: Text(
-                  formatPlayer(player2),
-                  style: AppTypography.textXsMedium.copyWith(
-                    color: kWhiteColor,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.right,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildGridChessBoard(MatchWithComparison matchWithComparison) {
     final gameIndex = widget.gamesData.gamesTourModels.indexOf(
       matchWithComparison.game,
@@ -396,35 +292,5 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
               .read(gamesTourScreenProvider.notifier)
               .togglePinGame(matchWithComparison.game.gameId),
     );
-  }
-}
-
-String _displayTextSupporter(MatchWithComparison game) {
-  if (game.comparison == MatchComparison.sameOrder) {
-    switch (game.game.gameStatus) {
-      case GameStatus.whiteWins:
-        return '1-0';
-      case GameStatus.blackWins:
-        return '0-1';
-      case GameStatus.draw:
-        return '½-½';
-      case GameStatus.ongoing:
-        return '*';
-      case GameStatus.unknown:
-        return '';
-    }
-  } else {
-    switch (game.game.gameStatus) {
-      case GameStatus.whiteWins:
-        return '0-1';
-      case GameStatus.blackWins:
-        return '1-0';
-      case GameStatus.draw:
-        return '½-½';
-      case GameStatus.ongoing:
-        return '*';
-      case GameStatus.unknown:
-        return '';
-    }
   }
 }
