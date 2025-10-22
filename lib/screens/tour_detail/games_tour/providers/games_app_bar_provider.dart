@@ -122,21 +122,35 @@ class _GamesAppBarNotifier
     }
   }
 
-  int _calculateRoundHeaderIndex(String roundId) {
-    final allRounds = state.valueOrNull?.gamesAppBarModels ?? [];
+  /// Extract round number from round name (e.g., "Round 9" -> 9, "round7" -> 7)
+  int? _extractRoundNumber(String roundName) {
+    final match = RegExp(r'(\d+)').firstMatch(roundName);
+    if (match != null && match.groupCount > 0) {
+      return int.tryParse(match.group(0)!);
+    }
+    return null;
+  }
 
-    final rounds =
-        allRounds.where((round) {
-          final gamesInRound =
-              ref
+  int _calculateRoundHeaderIndex(String roundId) {
+    final vm = state.valueOrNull;
+    final allRounds = vm?.gamesAppBarModels ?? [];
+    final selectedId = vm?.selectedId;
+    final userSelected = vm?.userSelectedId ?? false;
+
+    // Respect visible-rounds rule: hide upcoming by default; include selected upcoming
+    final rounds = allRounds.where((round) {
+      final gamesInRound =
+          ref
                   .read(gamesTourScreenProvider)
                   .valueOrNull
                   ?.gamesTourModels
                   .where((g) => g.roundId == round.id)
                   .length ??
               0;
-          return gamesInRound > 0;
-        }).toList();
+      if (gamesInRound == 0) return false;
+      if (userSelected && selectedId == round.id) return true;
+      return round.roundStatus != RoundStatus.upcoming;
+    }).toList();
 
     // Check if we're in group event mode
     final screenMode = ref.read(gamesTourScreenModeProvider).valueOrNull;
@@ -227,16 +241,31 @@ class _GamesAppBarNotifier
               .toList();
 
       models.sort((a, b) {
-        final aDate = a.startsAt;
-        final bDate = b.startsAt;
+        // Priority order: live > ongoing > completed > upcoming
+        final statusPriority = {
+          RoundStatus.live: 0,
+          RoundStatus.ongoing: 1,
+          RoundStatus.completed: 2,
+          RoundStatus.upcoming: 3,
+        };
 
-        // --- Null handling ---
-        if (aDate == null && bDate == null) return 0;
-        if (aDate == null) return 1; // nulls go last
-        if (bDate == null) return -1;
+        final aPriority = statusPriority[a.roundStatus] ?? 4;
+        final bPriority = statusPriority[b.roundStatus] ?? 4;
 
-        // --- Sort by date descending (latest first) ---
-        return bDate.compareTo(aDate);
+        // Sort by status priority first
+        if (aPriority != bPriority) {
+          return aPriority.compareTo(bPriority);
+        }
+
+        // Within same status, sort by round number descending (bigger numbers first)
+        final aNum = _extractRoundNumber(a.name);
+        final bNum = _extractRoundNumber(b.name);
+
+        if (aNum == null && bNum == null) return 0;
+        if (aNum == null) return 1; // nulls go last
+        if (bNum == null) return -1;
+
+        return bNum.compareTo(aNum); // Descending order
       });
 
       await _applySelectionFrom(models, tourId!);
@@ -268,6 +297,33 @@ class _GamesAppBarNotifier
               ),
             )
             .toList();
+
+    // Re-sort with same priority logic: live > ongoing > completed > upcoming
+    updated.sort((a, b) {
+      final statusPriority = {
+        RoundStatus.live: 0,
+        RoundStatus.ongoing: 1,
+        RoundStatus.completed: 2,
+        RoundStatus.upcoming: 3,
+      };
+
+      final aPriority = statusPriority[a.roundStatus] ?? 4;
+      final bPriority = statusPriority[b.roundStatus] ?? 4;
+
+      if (aPriority != bPriority) {
+        return aPriority.compareTo(bPriority);
+      }
+
+      // Within same status, sort by round number descending (bigger numbers first)
+      final aNum = _extractRoundNumber(a.name);
+      final bNum = _extractRoundNumber(b.name);
+
+      if (aNum == null && bNum == null) return 0;
+      if (aNum == null) return 1;
+      if (bNum == null) return -1;
+
+      return bNum.compareTo(aNum); // Descending order
+    });
 
     final sticky = ref.read(userSelectedRoundProvider);
     final hasStickyValid =

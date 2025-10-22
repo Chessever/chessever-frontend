@@ -82,6 +82,12 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
     final matchScore = ref
         .read(groupEventMatchCardProvider)
         .getMatchScore(matchList: widget.games, team: team1Name);
+    final team1ScoreStr = matchScore.first % 1 == 0
+        ? matchScore.first.toStringAsFixed(0)
+        : matchScore.first.toStringAsFixed(1);
+    final team2ScoreStr = matchScore.last % 1 == 0
+        ? matchScore.last.toStringAsFixed(0)
+        : matchScore.last.toStringAsFixed(1);
 
     final radius = Radius.circular(12.br);
     final cardBorderRadius = BorderRadius.circular(12.br);
@@ -110,7 +116,6 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
               child: Row(
                 children: [
                   Expanded(
-                    flex: 5,
                     child: Row(
                       children: [
                         if (country1.isNotEmpty) ...[
@@ -123,12 +128,7 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
                         ],
                         Expanded(
                           child: Text(
-                            ref
-                                .read(stringUtilsProvider)
-                                .getTrimmedStringWithScore(
-                                  team1Name,
-                                  matchScore.first,
-                                ),
+                            team1Name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: AppTypography.textXsMedium.copyWith(
@@ -141,8 +141,22 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
                     ),
                   ),
 
-                  Expanded(
-                    flex: 2,
+                  SizedBox(
+                    width: 36.w,
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        team1ScoreStr,
+                        style: AppTypography.textXsMedium.copyWith(
+                          color: kWhiteColor,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  SizedBox(
+                    width: 32.w,
                     child: Center(
                       child: Text(
                         'VS',
@@ -155,19 +169,26 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
                     ),
                   ),
 
+                  SizedBox(
+                    width: 36.w,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        team2ScoreStr,
+                        style: AppTypography.textXsMedium.copyWith(
+                          color: kWhiteColor,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+
                   Expanded(
-                    flex: 5,
                     child: Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         Expanded(
                           child: Text(
-                            ref
-                                .read(stringUtilsProvider)
-                                .getTrimmedStringWithScore(
-                                  team2Name,
-                                  matchScore.last,
-                                ),
+                            team2Name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: AppTypography.textXsMedium.copyWith(
