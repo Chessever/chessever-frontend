@@ -24,13 +24,15 @@ class _GroupEventMatchCardController {
           case GameStatus.ongoing:
             break;
           case GameStatus.whiteWins:
-            teamAWon = teamAWon + 1;
+            teamAWon += 1;
             break;
           case GameStatus.blackWins:
-            teamBWon = teamBWon + 1;
+            teamBWon += 1;
+            break;
           case GameStatus.draw:
-            teamAWon = teamAWon + 0.5;
-            teamBWon = teamBWon + 0.5;
+            teamAWon += 0.5;
+            teamBWon += 0.5;
+            break;
           case GameStatus.unknown:
             break;
         }
@@ -40,13 +42,15 @@ class _GroupEventMatchCardController {
           case GameStatus.ongoing:
             break;
           case GameStatus.whiteWins:
-            teamBWon = teamBWon + 1;
+            teamBWon += 1;
             break;
           case GameStatus.blackWins:
-            teamAWon = teamAWon + 1;
+            teamAWon += 1;
+            break;
           case GameStatus.draw:
-            teamAWon = teamAWon + 0.5;
-            teamBWon = teamBWon + 0.5;
+            teamAWon += 0.5;
+            teamBWon += 0.5;
+            break;
           case GameStatus.unknown:
             break;
         }

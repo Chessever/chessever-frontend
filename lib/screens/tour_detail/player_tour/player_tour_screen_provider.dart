@@ -1,220 +1,245 @@
+import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
-import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
 
-// Provider for the standings state
-final playerTourScreenProvider = StateNotifierProvider<
-  _PlayerTourScreenController,
-  AsyncValue<List<PlayerStandingModel>>
->((ref) {
-  final groupBroadcastId = ref.watch(selectedBroadcastModelProvider)!.id;
-  final aboutTourModel =
-      ref.watch(tourDetailScreenProvider).value?.aboutTourModel;
+/// Provides player standings for the tournament detail "Players" tab.
+/// Uses [AutoDisposeAsyncNotifier] so the heavy computation only runs when needed
+/// and automatically refreshes when any dependency changes.
+final playerTourScreenProvider =
+    AutoDisposeAsyncNotifierProvider<PlayerTourScreenNotifier, List<PlayerStandingModel>>(
+      PlayerTourScreenNotifier.new,
+    );
 
-  final gamesTourScreen = ref.watch(gamesTourScreenProvider);
+class PlayerTourScreenNotifier
+    extends AutoDisposeAsyncNotifier<List<PlayerStandingModel>> {
+  @override
+  Future<List<PlayerStandingModel>> build() async {
+    // Keep provider alive while the page is visible to avoid eager disposal
+    ref.keepAlive();
 
-  if (gamesTourScreen.isLoading ||
-      gamesTourScreen.hasError ||
-      aboutTourModel == null) {
-    return _PlayerTourScreenController.loading(ref, '', '');
+    final selectedBroadcast = ref.watch(selectedBroadcastModelProvider);
+    final tourDetailAsync = ref.watch(tourDetailScreenProvider);
+    final gamesTourAsync = ref.watch(gamesTourScreenProvider);
+
+    if (selectedBroadcast == null ||
+        selectedBroadcast.id.isEmpty ||
+        tourDetailAsync.isLoading ||
+        tourDetailAsync.hasError ||
+        gamesTourAsync.isLoading ||
+        gamesTourAsync.hasError) {
+      return const [];
+    }
+
+    final aboutTourModel = tourDetailAsync.value?.aboutTourModel;
+    if (aboutTourModel == null || aboutTourModel.id.isEmpty) {
+      return const [];
+    }
+
+    final tourDetail = tourDetailAsync.value!;
+    final gamesData = gamesTourAsync.value!;
+
+    return _buildStandings(
+      tourDetail: tourDetail,
+      gamesData: gamesData,
+      tourId: aboutTourModel.id,
+    );
   }
 
-  return _PlayerTourScreenController(
-    ref: ref,
-    tourId: aboutTourModel.id,
-    groupBroadcastId: groupBroadcastId,
-  );
-});
+  Future<List<PlayerStandingModel>> _buildStandings({
+    required TourDetailViewModel tourDetail,
+    required GamesScreenModel gamesData,
+    required String tourId,
+  }) async {
+    // Step 1: Collect all players for the active tour
+    final selectedTours = tourDetail.tours.where((e) => e.tour.id == tourId);
+    var tournamentPlayers = <TournamentPlayer>[];
+    for (final tour in selectedTours) {
+      tournamentPlayers.addAll(tour.tour.players);
+    }
 
-class _PlayerTourScreenController
-    extends StateNotifier<AsyncValue<List<PlayerStandingModel>>> {
-  _PlayerTourScreenController({
-    required this.ref,
-    required this.tourId,
-    required this.groupBroadcastId,
-  }) : super(AsyncValue.loading()) {
-    loadPlayers();
-  }
+    // Remove duplicates using a composite key (name + fideId + team) to avoid
+    // merging similarly named players across different teams.
+    final seen = <String>{};
+    tournamentPlayers = tournamentPlayers.where((player) {
+      final key =
+          '${_canonicalName(player.name)}-${player.fideId ?? 0}-${player.team ?? ''}';
+      if (seen.contains(key)) return false;
+      seen.add(key);
+      return true;
+    }).toList();
 
-  _PlayerTourScreenController.loading(
-    this.ref,
-    this.tourId,
-    this.groupBroadcastId,
-  ) : super(AsyncValue.loading());
+    // Step 2: Index games by normalized player name
+    final gamesByPlayerKey = <String, List<_PlayerGameRef>>{};
 
-  final Ref ref;
-  final String tourId;
-  final String groupBroadcastId;
-  Future<void> loadPlayers() async {
-    try {
-      // 🧩 Step 1: Load tournament players from local storage
-      final allTours = ref.read(tourDetailScreenProvider).value!.tours;
-
-      final selectedTours = allTours.where((e) => e.tour.id == tourId).toList();
-      var tournamentPlayers = <TournamentPlayer>[];
-
-      for (final tour in selectedTours) {
-        tournamentPlayers.addAll(tour.tour.players);
+    for (final game in gamesData.gamesTourModels) {
+      for (final ref in _expandGameRefs(game)) {
+        if (ref.key.isEmpty) continue;
+        gamesByPlayerKey.putIfAbsent(ref.key, () => []).add(ref);
       }
+    }
 
-      // Remove duplicates by name + fideId (safe deduplication)
-      final seen = <String>{};
-      tournamentPlayers =
-          tournamentPlayers.where((p) {
-            final key = '${p.name.trim().toLowerCase()}-${p.fideId ?? 0}';
-            if (seen.contains(key)) return false;
-            seen.add(key);
-            return true;
-          }).toList();
+    // Step 3: Enrich player data and compute match results
+    final enrichedPlayers = <TournamentPlayer>[];
 
-      // 🧩 Step 2: Load all games for this tournament
-      final gamesScreenData = ref.read(gamesTourScreenProvider);
-      final allGames = gamesScreenData.value?.gamesTourModels ?? [];
+    for (final player in tournamentPlayers) {
+      final key = _canonicalName(player.name);
+      final playerGames = gamesByPlayerKey[key] ?? const <_PlayerGameRef>[];
+      final referenceCard = playerGames.isNotEmpty ? playerGames.first.playerCard : null;
 
-      // 🧩 Step 3: Enrich player info (federation, title, rating, fideId)
-      for (int i = 0; i < tournamentPlayers.length; i++) {
-        final player = tournamentPlayers[i];
+      final updatedPlayer = player.copyWith(
+        federation:
+            (player.federation?.trim().isNotEmpty ?? false)
+                ? player.federation
+                : _nonEmpty(referenceCard?.federation) ?? player.federation,
+        title:
+            (player.title?.trim().isNotEmpty ?? false)
+                ? player.title
+                : _nonEmpty(referenceCard?.title) ?? player.title,
+        rating:
+            (player.rating != null && player.rating! > 0)
+                ? player.rating
+                : _positive(referenceCard?.rating) ?? player.rating,
+        fideId:
+            (player.fideId != null && player.fideId! > 0)
+                ? player.fideId
+                : referenceCard?.fideId ?? player.fideId,
+      );
 
-        GamesTourModel? relatedGame;
-        try {
-          relatedGame = allGames.firstWhere((g) {
-            final playerName = player.name.trim().toLowerCase();
-            final whiteName = g.whitePlayer.name.toLowerCase();
-            final blackName = g.blackPlayer.name.toLowerCase();
-            return ref
-                    .read(playerUtilsProvider)
-                    .isSamePlayer(playerName, whiteName) ||
-                ref
-                    .read(playerUtilsProvider)
-                    .isSamePlayer(playerName, blackName);
-          });
-        } catch (_) {
-          relatedGame = null;
+      var calculatedScore = 0.0;
+      var gamesPlayed = 0;
+
+      for (final gameRef in playerGames) {
+        final status = gameRef.game.gameStatus;
+        if (status == GameStatus.ongoing || status == GameStatus.unknown) {
+          continue;
         }
 
-        if (relatedGame == null) continue;
-
-        final isWhite = ref
-            .read(playerUtilsProvider)
-            .isSamePlayer(
-              player.name.trim().toLowerCase(),
-              relatedGame.whitePlayer.name.toLowerCase(),
-            );
-        final card =
-            isWhite ? relatedGame.whitePlayer : relatedGame.blackPlayer;
-
-        tournamentPlayers[i] = player.copyWith(
-          federation:
-              (player.federation?.trim().isNotEmpty ?? false)
-                  ? player.federation
-                  : (card.federation.trim().isNotEmpty
-                      ? card.federation
-                      : player.federation),
-          title:
-              (player.title?.trim().isNotEmpty ?? false)
-                  ? player.title
-                  : (card.title.trim().isNotEmpty ? card.title : player.title),
-          rating:
-              (player.rating != null && player.rating! > 0)
-                  ? player.rating
-                  : (card.rating > 0 ? card.rating : player.rating),
-          fideId:
-              (player.fideId != null && player.fideId! > 0)
-                  ? player.fideId
-                  : (card.fideId ?? player.fideId),
-        );
+        gamesPlayed++;
+        switch (status) {
+          case GameStatus.whiteWins:
+            if (gameRef.isWhite) calculatedScore += 1.0;
+            break;
+          case GameStatus.blackWins:
+            if (!gameRef.isWhite) calculatedScore += 1.0;
+            break;
+          case GameStatus.draw:
+            calculatedScore += 0.5;
+            break;
+          default:
+            break;
+        }
       }
 
-      // 🧩 Step 4: Calculate score and games played
-      for (int i = 0; i < tournamentPlayers.length; i++) {
-        final player = tournamentPlayers[i];
-
-        final playerGames =
-            allGames.where((game) {
-              final playerName = player.name.trim().toLowerCase();
-              return ref
-                      .read(playerUtilsProvider)
-                      .isSamePlayer(
-                        playerName,
-                        game.whitePlayer.name.toLowerCase(),
-                      ) ||
-                  ref
-                      .read(playerUtilsProvider)
-                      .isSamePlayer(
-                        playerName,
-                        game.blackPlayer.name.toLowerCase(),
-                      );
-            }).toList();
-
-        double calculatedScore = 0.0;
-        int gamesPlayed = 0;
-
-        for (final game in playerGames) {
-          // Skip ongoing or unknown games
-          if (game.gameStatus == GameStatus.ongoing ||
-              game.gameStatus == GameStatus.unknown) {
-            continue;
-          }
-
-          gamesPlayed++;
-          final isWhite = ref
-              .read(playerUtilsProvider)
-              .isSamePlayer(
-                player.name.trim().toLowerCase(),
-                game.whitePlayer.name.toLowerCase(),
-              );
-
-          switch (game.gameStatus) {
-            case GameStatus.whiteWins:
-              if (isWhite) calculatedScore += 1.0;
-              break;
-            case GameStatus.blackWins:
-              if (!isWhite) calculatedScore += 1.0;
-              break;
-            case GameStatus.draw:
-              calculatedScore += 0.5;
-              break;
-            default:
-              break;
-          }
-        }
-
-        tournamentPlayers[i] = player.copyWith(
+      enrichedPlayers.add(
+        updatedPlayer.copyWith(
           score: calculatedScore,
           played: gamesPlayed,
-        );
-      }
-
-      // 🧩 Step 5: Sort by score (desc), then by games played (desc)
-      tournamentPlayers.sort((a, b) {
-        final aScore = a.score ?? double.tryParse(a.scoreString) ?? 0.0;
-        final bScore = b.score ?? double.tryParse(b.scoreString) ?? 0.0;
-
-        if (bScore != aScore) return bScore.compareTo(aScore);
-        return b.played.compareTo(a.played);
-      });
-
-      // 🧩 Step 6: Update provider state
-      final standings =
-          tournamentPlayers
-              .map((e) => PlayerStandingModel.fromPlayer(e))
-              .toList();
-
-      state = AsyncValue.data(standings);
-    } catch (e, _) {
-      state = const AsyncValue.data([]);
+        ),
+      );
     }
+
+    // Step 4: Sort by tournament score, then games played
+    enrichedPlayers.sort((a, b) {
+      final aScore = a.score ?? 0.0;
+      final bScore = b.score ?? 0.0;
+      if (bScore != aScore) return bScore.compareTo(aScore);
+      return b.played.compareTo(a.played);
+    });
+
+    return enrichedPlayers
+        .map((player) => PlayerStandingModel.fromPlayer(player))
+        .toList();
   }
+
+  /// Normalizes a player's name into a canonical form so that "Magnus Carlsen"
+  /// and "Carlsen Magnus" collapse to the same key.
+  String _canonicalName(String name) {
+    final normalized = _normalizeName(name);
+    if (normalized.isEmpty) return normalized;
+
+    final parts = normalized.split(' ');
+    if (parts.length == 2) {
+      final reversed = '${parts[1]} ${parts[0]}';
+      return normalized.compareTo(reversed) <= 0 ? normalized : reversed;
+    }
+    return normalized;
+  }
+
+  String _normalizeName(String name) {
+    return name
+        .toLowerCase()
+        .replaceAll(',', '')
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .join(' ');
+  }
+
+  String? _nonEmpty(String? value) =>
+      (value != null && value.trim().isNotEmpty) ? value : null;
+
+  int? _positive(int? value) => (value != null && value > 0) ? value : null;
+}
+
+class _PlayerGameRef {
+  _PlayerGameRef({
+    required this.key,
+    required this.game,
+    required this.playerCard,
+    required this.isWhite,
+  });
+
+  final String key;
+  final GamesTourModel game;
+  final PlayerCard playerCard;
+  final bool isWhite;
+}
+
+Iterable<_PlayerGameRef> _expandGameRefs(GamesTourModel game) {
+  final whiteRef = _PlayerGameRef(
+    key: _canonicalGameKey(game.whitePlayer.name),
+    game: game,
+    playerCard: game.whitePlayer,
+    isWhite: true,
+  );
+
+  final blackRef = _PlayerGameRef(
+    key: _canonicalGameKey(game.blackPlayer.name),
+    game: game,
+    playerCard: game.blackPlayer,
+    isWhite: false,
+  );
+
+  return <_PlayerGameRef>[whiteRef, blackRef];
+}
+
+String _canonicalGameKey(String name) {
+  final normalized = name
+      .toLowerCase()
+      .replaceAll(',', '')
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((part) => part.isNotEmpty)
+      .join(' ');
+
+  if (normalized.isEmpty) return normalized;
+
+  final parts = normalized.split(' ');
+  if (parts.length == 2) {
+    final reversed = '${parts[1]} ${parts[0]}';
+    return normalized.compareTo(reversed) <= 0 ? normalized : reversed;
+  }
+  return normalized;
 }
 
 final tournamentFavoritePlayersProvider =
     FutureProvider<List<PlayerStandingModel>>((ref) async {
       final favoritesService = ref.read(favoriteStandingsPlayerService);
-      return await favoritesService.getFavoritePlayers();
+      return favoritesService.getFavoritePlayers();
     });

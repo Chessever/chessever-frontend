@@ -16,15 +16,15 @@ class RoundHeader extends ConsumerWidget {
     // Now handled centrally in GamesTourScreen for better performance
 
     return Container(
-      margin: EdgeInsets.only(top: 16.h, bottom: 8.h),
+      margin: EdgeInsets.symmetric(vertical: 12.sp),
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
       decoration: BoxDecoration(
         color: kDarkGreyColor,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: kWhiteColor.withOpacity(0.1)),
+        borderRadius: BorderRadius.circular(12.br),
+        border: Border.all(color: kWhiteColor.withValues(alpha: 0.1)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),
