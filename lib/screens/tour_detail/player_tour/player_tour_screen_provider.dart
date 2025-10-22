@@ -144,12 +144,14 @@ class PlayerTourScreenNotifier
       );
     }
 
-    // Step 4: Sort by tournament score, then games played
+    // Step 4: Sort by points collected (score), then by ELO rating
     enrichedPlayers.sort((a, b) {
       final aScore = a.score ?? 0.0;
       final bScore = b.score ?? 0.0;
+      // Primary sort: by score (whoever collected more points)
       if (bScore != aScore) return bScore.compareTo(aScore);
-      return b.played.compareTo(a.played);
+      // Secondary sort: by rating/ELO (higher rated player first when scores are equal)
+      return (b.rating ?? 0).compareTo(a.rating ?? 0);
     });
 
     return enrichedPlayers
