@@ -325,8 +325,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   @override
   void initState() {
     super.initState();
-    _pageController = PageController(initialPage: widget.currentIndex);
-    _currentPageIndex = widget.currentIndex;
+    // Defensive: Ensure currentIndex is within bounds of games list
+    final safeIndex = widget.currentIndex.clamp(0, widget.games.length - 1);
+    _pageController = PageController(initialPage: safeIndex);
+    _currentPageIndex = safeIndex;
 
     // Set up screenshot detection listener
     _screenCaptureEvent.addScreenRecordListener((isRecording) {

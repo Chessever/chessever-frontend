@@ -26,6 +26,10 @@ class GroupEventGamesCard extends ConsumerStatefulWidget {
 class _GroupEventGamesCardState extends ConsumerState<GroupEventGamesCard> {
   @override
   Widget build(BuildContext buildCxt) {
+    // Get the full games list from the provider to ensure we have all games
+    final fullGamesData = ref.watch(gamesTourScreenProvider).valueOrNull;
+    final fullGamesList = fullGamesData?.gamesTourModels ?? widget.gamesData.gamesTourModels;
+
     return ListView.builder(
       padding: EdgeInsets.zero,
       shrinkWrap: true,
@@ -34,7 +38,7 @@ class _GroupEventGamesCardState extends ConsumerState<GroupEventGamesCard> {
       itemBuilder: (context, index) {
         final game = widget.games[index];
 
-        final gameIndex = widget.gamesData.gamesTourModels.indexOf(game.game);
+        final gameIndex = fullGamesList.indexOf(game.game);
         return GameCard(
           matchComparison: game,
           onPinToggle: (game) async {
@@ -48,7 +52,7 @@ class _GroupEventGamesCardState extends ConsumerState<GroupEventGamesCard> {
                 .read(gameCardWrapperProvider)
                 .navigateToChessBoard(
                   context: context,
-                  orderedGames: widget.games.map((e) => e.game).toList(),
+                  orderedGames: fullGamesList,
                   gameIndex: gameIndex,
                   onReturnFromChessboard: widget.onReturnFromChessboard,
                 );
