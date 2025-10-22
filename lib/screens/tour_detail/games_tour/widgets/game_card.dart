@@ -1,10 +1,12 @@
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/chess_progress_bar.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/string_utils_provider.dart';
 import 'package:chessever2/widgets/atomic_countdown_text.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:dartchess/dartchess.dart';
@@ -15,19 +17,19 @@ import 'package:chessever2/screens/chessboard/widgets/context_pop_up_menu.dart';
 
 class GameCard extends ConsumerWidget {
   const GameCard({
-    required this.gamesTourModel,
+    required this.matchComparison,
     required this.onPinToggle,
     required this.pinnedIds,
     required this.onTap,
     super.key,
   });
 
-  final GamesTourModel gamesTourModel;
+  final MatchWithComparison matchComparison;
   final void Function(GamesTourModel game) onPinToggle;
   final List<String> pinnedIds;
   final Function() onTap;
 
-  bool get isPinned => pinnedIds.contains(gamesTourModel.gameId);
+  bool get isPinned => pinnedIds.contains(matchComparison.game.gameId);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -41,7 +43,7 @@ class GameCard extends ConsumerWidget {
         width: double.infinity,
         child: Stack(
           children: [
-            _GameCardContent(gamesTourModel: gamesTourModel),
+            _GameCardContent(matchComparison: matchComparison),
             if (isPinned) PinIconOverlay(right: 8.sp, top: 2.sp),
           ],
         ),
@@ -97,7 +99,7 @@ class GameCard extends ConsumerWidget {
                       height: cardSize.height,
                       child: Stack(
                         children: [
-                          _GameCardContent(gamesTourModel: gamesTourModel),
+                          _GameCardContent(matchComparison: matchComparison),
                           if (isPinned) PinIconOverlay(right: 8.sp, top: 4.sp),
                         ],
                       ),
@@ -110,7 +112,7 @@ class GameCard extends ConsumerWidget {
                   child: ContextPopupMenu(
                     isPinned: isPinned,
                     onPinToggle: () {
-                      onPinToggle(gamesTourModel);
+                      onPinToggle(matchComparison.game);
                       Future.microtask(() {
                         Navigator.pop(buildContext);
                       });
@@ -134,28 +136,37 @@ class GameCard extends ConsumerWidget {
 }
 
 class _GameCardContent extends ConsumerWidget {
-  const _GameCardContent({required this.gamesTourModel});
+  const _GameCardContent({required this.matchComparison});
 
-  final GamesTourModel gamesTourModel;
+  final MatchWithComparison matchComparison;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Column(
       children: [
-        _TopSection(gamesTourModel: gamesTourModel),
-        _BottomSection(gamesTourModel: gamesTourModel),
+        _TopSection(matchComparison: matchComparison),
+        _BottomSection(matchComparison: matchComparison),
       ],
     );
   }
 }
 
 class _TopSection extends ConsumerWidget {
-  const _TopSection({required this.gamesTourModel});
+  const _TopSection({required this.matchComparison});
 
-  final GamesTourModel gamesTourModel;
+  final MatchWithComparison matchComparison;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final player1 =
+        matchComparison.comparison == MatchComparison.sameOrder
+            ? matchComparison.game.whitePlayer
+            : matchComparison.game.blackPlayer;
+
+    final player2 =
+        matchComparison.comparison == MatchComparison.sameOrder
+            ? matchComparison.game.blackPlayer
+            : matchComparison.game.whitePlayer;
     return Container(
       height: 60.h,
       padding: EdgeInsets.only(left: 12.sp, right: 12.sp),
@@ -170,19 +181,17 @@ class _TopSection extends ConsumerWidget {
         children: [
           Expanded(
             child: _GamesRound(
-              playerName: gamesTourModel.whitePlayer.name,
-              playerRank:
-                  '${gamesTourModel.whitePlayer.title} ${gamesTourModel.whitePlayer.rating}',
-              countryCode: gamesTourModel.whitePlayer.countryCode,
+              playerName: player1.name,
+              playerRank: '${player1.title} ${player1.rating}',
+              countryCode: player1.countryCode,
             ),
           ),
-          Expanded(child: _CenterContent(gamesTourModel: gamesTourModel)),
+          Expanded(child: _CenterContent(matchWithComparison: matchComparison)),
           Expanded(
             child: _GamesRound(
-              playerName: gamesTourModel.blackPlayer.name,
-              playerRank:
-                  '${gamesTourModel.blackPlayer.title} ${gamesTourModel.blackPlayer.rating}',
-              countryCode: gamesTourModel.blackPlayer.countryCode,
+              playerName: player2.name,
+              playerRank: '${player2.title} ${player2.rating}',
+              countryCode: player2.countryCode,
             ),
           ),
         ],
@@ -192,25 +201,29 @@ class _TopSection extends ConsumerWidget {
 }
 
 class _CenterContent extends StatelessWidget {
-  const _CenterContent({required this.gamesTourModel});
+  const _CenterContent({required this.matchWithComparison});
 
-  final GamesTourModel gamesTourModel;
+  final MatchWithComparison matchWithComparison;
 
   @override
   Widget build(BuildContext context) {
     return Center(
       child:
-          gamesTourModel.gameStatus == GameStatus.ongoing
-              ? ChessProgressBar(gamesTourModel: gamesTourModel)
-              : StatusText(status: gamesTourModel.gameStatus.displayText),
+          matchWithComparison.game.gameStatus == GameStatus.ongoing
+              ? matchWithComparison.comparison == MatchComparison.sameOrder
+                  ? ChessProgressBar(gamesTourModel: matchWithComparison.game)
+                  : ChessProgressBar.reversedMode(
+                    gamesTourModel: matchWithComparison.game,
+                  )
+              : StatusText(status: _displayTextSupporter(matchWithComparison)),
     );
   }
 }
 
 class _BottomSection extends ConsumerWidget {
-  const _BottomSection({required this.gamesTourModel});
+  const _BottomSection({required this.matchComparison});
 
-  final GamesTourModel gamesTourModel;
+  final MatchWithComparison matchComparison;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -225,21 +238,40 @@ class _BottomSection extends ConsumerWidget {
         ),
       ),
       child: Row(
-        children: [
-          _TimerWidget(
-            turn: gamesTourModel.activePlayer == Side.white,
-            time: gamesTourModel.whiteTimeDisplay,
-            gamesTourModel: gamesTourModel,
-            isWhitePlayer: true,
-          ),
-          Spacer(),
-          _TimerWidget(
-            turn: gamesTourModel.activePlayer == Side.black,
-            time: gamesTourModel.blackTimeDisplay,
-            gamesTourModel: gamesTourModel,
-            isWhitePlayer: false,
-          ),
-        ],
+        children:
+            matchComparison.comparison == MatchComparison.sameOrder
+                ? [
+                  _TimerWidget(
+                    turn: matchComparison.game.activePlayer == Side.white,
+                    time: matchComparison.game.whiteTimeDisplay,
+                    gamesTourModel: matchComparison.game,
+                    isWhitePlayer: true,
+                  ),
+                  Spacer(),
+                  _TimerWidget(
+                    turn: matchComparison.game.activePlayer == Side.black,
+                    time: matchComparison.game.blackTimeDisplay,
+                    gamesTourModel: matchComparison.game,
+                    isWhitePlayer: false,
+                  ),
+                ]
+                : [
+                  _TimerWidget(
+                    turn: matchComparison.game.activePlayer == Side.black,
+                    time: matchComparison.game.blackTimeDisplay,
+                    gamesTourModel: matchComparison.game,
+                    isWhitePlayer: false,
+                  ),
+
+                  Spacer(),
+
+                  _TimerWidget(
+                    turn: matchComparison.game.activePlayer == Side.white,
+                    time: matchComparison.game.whiteTimeDisplay,
+                    gamesTourModel: matchComparison.game,
+                    isWhitePlayer: true,
+                  ),
+                ],
       ),
     );
   }
@@ -268,7 +300,7 @@ class _GamesRound extends ConsumerWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Text(
-          _getString(playerName),
+          ref.read(stringUtilsProvider).getTrimmedString(playerName),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: AppTypography.textXsMedium.copyWith(color: kBlackColor),
@@ -304,40 +336,6 @@ class _GamesRound extends ConsumerWidget {
         ),
       ],
     );
-  }
-}
-
-String _getString(String name) {
-  if (name.length > 18) {
-    final firstAndLastName = name.split(',');
-    if (firstAndLastName.length == 2) {
-      final lastName = firstAndLastName[0].trim();
-      final firstName = firstAndLastName[1].trim();
-
-      if (firstName.isNotEmpty) {
-        final firstInitial = firstName[0].toUpperCase();
-        final targetFormat = '$lastName, $firstInitial.';
-
-        if (targetFormat.length <= 18) {
-          return targetFormat;
-        } else {
-          final maxLastNameLength = 18 - 4; // 18 - ", I.".length
-          final truncatedLastName =
-              '${lastName.substring(0, maxLastNameLength)}…';
-          return '$truncatedLastName, $firstInitial.';
-        }
-      } else {
-        // No first name, just return truncated last name
-        return lastName.length > 18
-            ? '${lastName.substring(0, 15)}…'
-            : lastName;
-      }
-    } else {
-      // Not in "LastName, FirstName" format, just truncate
-      return '${name.substring(0, 15)}…';
-    }
-  } else {
-    return name;
   }
 }
 
@@ -409,5 +407,35 @@ class _TimerWidget extends StatelessWidget {
                 : (turn ? kPrimaryColor : kWhiteColor),
       ),
     );
+  }
+}
+
+String _displayTextSupporter(MatchWithComparison game) {
+  if (game.comparison == MatchComparison.sameOrder) {
+    switch (game.game.gameStatus) {
+      case GameStatus.whiteWins:
+        return '1-0';
+      case GameStatus.blackWins:
+        return '0-1';
+      case GameStatus.draw:
+        return '½-½';
+      case GameStatus.ongoing:
+        return '*';
+      case GameStatus.unknown:
+        return '';
+    }
+  } else {
+    switch (game.game.gameStatus) {
+      case GameStatus.whiteWins:
+        return '0-1';
+      case GameStatus.blackWins:
+        return '1-0';
+      case GameStatus.draw:
+        return '½-½';
+      case GameStatus.ongoing:
+        return '*';
+      case GameStatus.unknown:
+        return '';
+    }
   }
 }
