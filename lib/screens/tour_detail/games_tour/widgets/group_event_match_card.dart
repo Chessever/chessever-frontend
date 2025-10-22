@@ -239,7 +239,7 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
             (index * 2 + 1) < games.length ? games[index * 2 + 1] : null;
 
         return Padding(
-          padding: EdgeInsets.only(bottom: 5.sp),
+          padding: EdgeInsets.only(bottom: 12.sp),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -270,15 +270,18 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
           (g) => g.gameId == matchWithComparison.game.gameId,
         );
 
-        return GameCardWrapperWidget(
-          game: matchWithComparison.game,
-          gamesData: GamesScreenModel(
-            gamesTourModels: fullGamesList,
-            pinnedGamedIs: widget.gamesData.pinnedGamedIs,
+        return Padding(
+          padding: EdgeInsets.only(bottom: 12.sp),
+          child: GameCardWrapperWidget(
+            game: matchWithComparison.game,
+            gamesData: GamesScreenModel(
+              gamesTourModels: fullGamesList,
+              pinnedGamedIs: widget.gamesData.pinnedGamedIs,
+            ),
+            gameIndex: gameIndex,
+            isChessBoardVisible: true,
+            onReturnFromChessboard: widget.onReturnFromChessboard,
           ),
-          gameIndex: gameIndex,
-          isChessBoardVisible: true,
-          onReturnFromChessboard: widget.onReturnFromChessboard,
         );
       },
     );
