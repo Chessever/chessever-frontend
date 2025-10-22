@@ -257,8 +257,8 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
       itemCount: games.length,
       itemBuilder: (context, index) {
         final matchWithComparison = games[index];
-        final gameIndex = fullGamesList.indexOf(
-          matchWithComparison.game,
+        final gameIndex = fullGamesList.indexWhere(
+          (g) => g.gameId == matchWithComparison.game.gameId,
         );
 
         return GameCardWrapperWidget(
@@ -280,8 +280,8 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
     final fullGamesData = ref.watch(gamesTourScreenProvider).valueOrNull;
     final fullGamesList = fullGamesData?.gamesTourModels ?? widget.gamesData.gamesTourModels;
 
-    final gameIndex = fullGamesList.indexOf(
-      matchWithComparison.game,
+    final gameIndex = fullGamesList.indexWhere(
+      (g) => g.gameId == matchWithComparison.game.gameId,
     );
 
     return GridChessBoardFromFENNew(
