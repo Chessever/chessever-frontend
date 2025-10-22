@@ -100,15 +100,8 @@ class PlayerTourScreen extends ConsumerWidget {
                               final favIds =
                                   favData.players.map((e) => e.fideId).toSet();
 
-                              // Sort players so that favorites appear at the top
-                              final sortedData = [
-                                ...data.where(
-                                  (e) => favIds.contains(e.fideId),
-                                ), // favorites first (in same order)
-                                ...data.where(
-                                  (e) => !favIds.contains(e.fideId),
-                                ), // non-favorites follow (same order)
-                              ];
+                              // Keep provider ordering (already absolute-score sorted)
+                              final sortedData = data;
 
                               return Expanded(
                                 child: ListView.builder(
