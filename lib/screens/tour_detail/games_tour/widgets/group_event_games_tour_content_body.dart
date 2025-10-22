@@ -54,7 +54,9 @@ class _GroupEventGamesTourContentBodyState
           gamesScreenModel: widget.gamesScreenModel,
         );
 
-    return selectedRoundId != null
+    return widget.gamesScreenModel.isSearchMode
+        ? _buildGroupedGameCardsOnSearchMode(rounds, orderedGamesData)
+        : selectedRoundId != null
         ? Padding(
           padding: EdgeInsets.only(left: 16.sp, right: 16.sp, bottom: 12.sp),
           child: _buildGroupedGameCardsBuilder(
@@ -75,6 +77,36 @@ class _GroupEventGamesTourContentBodyState
         .read(gamesTourContentProvider)
         .getGroupHeader(
           selectedRoundId: selectedRound.id,
+          gamesScreenModel: widget.gamesScreenModel,
+        );
+
+    // Build grouped cards
+    return ListView.builder(
+      padding: EdgeInsets.zero,
+      itemCount: grouped.length,
+      itemBuilder: (context, index) {
+        final header = grouped.keys.elementAt(index);
+        final gamesForTeam = grouped[header]!;
+
+        return GroupEventMatchCard(
+          roundTitle: header,
+          games: gamesForTeam,
+          gamesData: orderedGamesData,
+          gamesListViewMode: widget.gamesListViewMode,
+          onReturnFromChessboard: widget.onReturnFromChessboard,
+        );
+      },
+    );
+  }
+
+  Widget _buildGroupedGameCardsOnSearchMode(
+    List<GamesAppBarModel> gamesAppBarModels,
+    GamesScreenModel orderedGamesData,
+  ) {
+    final grouped = ref
+        .read(gamesTourContentProvider)
+        .getGroupHeaderOnSearch(
+          rounds: gamesAppBarModels,
           gamesScreenModel: widget.gamesScreenModel,
         );
 
