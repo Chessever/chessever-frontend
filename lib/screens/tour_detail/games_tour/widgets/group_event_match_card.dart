@@ -246,6 +246,9 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
 
   Widget _buildChessBoardView() {
     final games = widget.games;
+    // Get the full games list from the provider to ensure we have all games
+    final fullGamesData = ref.watch(gamesTourScreenProvider).valueOrNull;
+    final fullGamesList = fullGamesData?.gamesTourModels ?? widget.gamesData.gamesTourModels;
 
     return ListView.builder(
       padding: EdgeInsets.zero,
@@ -254,13 +257,16 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
       itemCount: games.length,
       itemBuilder: (context, index) {
         final matchWithComparison = games[index];
-        final gameIndex = widget.gamesData.gamesTourModels.indexOf(
+        final gameIndex = fullGamesList.indexOf(
           matchWithComparison.game,
         );
 
         return GameCardWrapperWidget(
           game: matchWithComparison.game,
-          gamesData: widget.gamesData,
+          gamesData: GamesScreenModel(
+            gamesTourModels: fullGamesList,
+            pinnedGamedIs: widget.gamesData.pinnedGamedIs,
+          ),
           gameIndex: gameIndex,
           isChessBoardVisible: true,
           onReturnFromChessboard: widget.onReturnFromChessboard,
@@ -270,7 +276,11 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
   }
 
   Widget _buildGridChessBoard(MatchWithComparison matchWithComparison) {
-    final gameIndex = widget.gamesData.gamesTourModels.indexOf(
+    // Get the full games list from the provider to ensure we have all games
+    final fullGamesData = ref.watch(gamesTourScreenProvider).valueOrNull;
+    final fullGamesList = fullGamesData?.gamesTourModels ?? widget.gamesData.gamesTourModels;
+
+    final gameIndex = fullGamesList.indexOf(
       matchWithComparison.game,
     );
 
@@ -282,7 +292,7 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
               .read(gameCardWrapperProvider)
               .navigateToChessBoard(
                 context: context,
-                orderedGames: widget.gamesData.gamesTourModels,
+                orderedGames: fullGamesList,
                 gameIndex: gameIndex,
                 onReturnFromChessboard: widget.onReturnFromChessboard,
               ),
