@@ -13,6 +13,30 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+/// Compile-time environment values injected via `--dart-define`.
+const Map<String, String> _releaseEnvValues = {
+  'GOOGLE_ANDROID_CLIENT_ID': String.fromEnvironment(
+    'GOOGLE_ANDROID_CLIENT_ID',
+    defaultValue: '',
+  ),
+  'GOOGLE_WEB_CLIENT_ID': String.fromEnvironment(
+    'GOOGLE_WEB_CLIENT_ID',
+    defaultValue: '',
+  ),
+  'GOOGLE_IOS_CLIENT_ID': String.fromEnvironment(
+    'GOOGLE_IOS_CLIENT_ID',
+    defaultValue: '',
+  ),
+  'APPLE_SERVICE_ID': String.fromEnvironment(
+    'APPLE_SERVICE_ID',
+    defaultValue: '',
+  ),
+  'APPLE_REDIRECT_URI': String.fromEnvironment(
+    'APPLE_REDIRECT_URI',
+    defaultValue: '',
+  ),
+};
+
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   return AuthRepository(ref);
 });
@@ -36,8 +60,9 @@ class AuthRepository {
     if (kDebugMode) {
       value = dotenv.env[key]?.trim();
     } else {
-      // In production, CodeMagic injects environment variables
-      value = String.fromEnvironment(key);
+      // In production, CodeMagic injects environment variables via --dart-define
+      // We must look them up from the compile-time const map
+      value = _releaseEnvValues[key];
     }
 
     if (value == null || value.isEmpty) {
