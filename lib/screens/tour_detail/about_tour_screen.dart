@@ -90,10 +90,7 @@ class AboutTourScreen extends ConsumerWidget {
                         ),
                       ),
                       SizedBox(height: 12.h),
-                      _TitleDescWidget(
-                        title: 'Players',
-                        description: data.aboutTourModel.players.join(', '),
-                      ),
+                      _TitleDescWidget(title: 'Players', description: ''),
                       SizedBox(height: 12),
                       _TitleDescWidget(
                         title: 'Time Control',
