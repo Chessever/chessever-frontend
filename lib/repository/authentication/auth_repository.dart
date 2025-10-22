@@ -3,6 +3,7 @@ import 'dart:math';
 import 'dart:io' show Platform;
 import 'package:chessever2/providers/error_logger_provider.dart';
 import 'package:chessever2/repository/authentication/model/app_user.dart';
+import 'package:chessever2/repository/authentication/model/exceptions.dart';
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
@@ -30,31 +31,51 @@ class AuthRepository {
   final Ref ref;
 
   // Read and trim env safely to avoid trailing spaces causing Apple failures.
-  String _env(String key) {
+  String _env(String key, {bool required = true}) {
+    String? value;
     if (kDebugMode) {
-      final v = dotenv.env[key]?.trim();
-      if (v == null || v.isEmpty) {
-        throw Exception('Missing env: $key');
-      }
-      return v;
+      value = dotenv.env[key]?.trim();
     } else {
       // In production, CodeMagic injects environment variables
-      final value = String.fromEnvironment(key);
-      if (value.isEmpty) {
+      value = String.fromEnvironment(key);
+    }
+
+    if (value == null || value.isEmpty) {
+      if (required) {
         throw Exception('Missing env: $key');
       }
-      return value;
+      return '';
     }
+
+    return value;
   }
 
   Future<void> _initializeGoogleSignIn() async {
     try {
-      final clientId =
-          Platform.isIOS
-              ? _env('GOOGLE_IOS_CLIENT_ID')
-              : Platform.isAndroid
-              ? _env('GOOGLE_ANDROID_CLIENT_ID')
-              : null;
+      String? clientId;
+      if (Platform.isIOS) {
+        clientId = _env('GOOGLE_IOS_CLIENT_ID');
+      } else if (Platform.isAndroid) {
+        final androidClientId = _env(
+          'GOOGLE_ANDROID_CLIENT_ID',
+          required: false,
+        );
+        clientId = androidClientId.isEmpty ? null : androidClientId;
+        if (clientId == null) {
+          if (kDebugMode) {
+            debugPrint(
+              '⚠️ GOOGLE_ANDROID_CLIENT_ID not provided; proceeding without explicit Android client ID.',
+            );
+          } else {
+            await ref
+                .read(errorLoggerProvider)
+                .logError(
+                  Exception('Missing GOOGLE_ANDROID_CLIENT_ID'),
+                  StackTrace.current,
+                );
+          }
+        }
+      }
 
       await _googleSignIn.initialize(
         clientId: clientId,
@@ -129,6 +150,9 @@ class AuthRepository {
 
       return AppUser.fromSupabaseUser(user);
     } on GoogleSignInException catch (e, st) {
+      if (e.code == GoogleSignInExceptionCode.canceled) {
+        throw const CancelledSignInException();
+      }
       await ref.read(errorLoggerProvider).logError(e, st);
       throw _mapGoogleSignInException(e);
     } catch (e, st) {
@@ -212,7 +236,7 @@ class AuthRepository {
       debugPrint('Apple auth exception: code=${e.code}, message=${e.message}');
       switch (e.code) {
         case AuthorizationErrorCode.canceled:
-          throw Exception('Apple sign in was cancelled');
+          throw const CancelledSignInException();
         case AuthorizationErrorCode.notHandled:
           throw Exception('Apple sign in not handled');
         case AuthorizationErrorCode.failed:
