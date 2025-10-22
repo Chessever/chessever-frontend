@@ -39,7 +39,11 @@ class AuthRepository {
       return v;
     } else {
       // In production, CodeMagic injects environment variables
-      return String.fromEnvironment(key);
+      final value = String.fromEnvironment(key);
+      if (value.isEmpty) {
+        throw Exception('Missing env: $key');
+      }
+      return value;
     }
   }
 
