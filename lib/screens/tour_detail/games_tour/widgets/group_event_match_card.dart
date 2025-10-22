@@ -83,17 +83,18 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
         .read(groupEventMatchCardProvider)
         .getMatchScore(matchList: widget.games, team: team1Name);
 
+    final radius = Radius.circular(12.br);
+    final cardBorderRadius = BorderRadius.circular(12.br);
+    final headerBorderRadius =
+        _isExpanded
+            ? BorderRadius.only(topLeft: radius, topRight: radius)
+            : cardBorderRadius;
+
     return Container(
       margin: EdgeInsets.symmetric(vertical: 12.sp),
       decoration: BoxDecoration(
         color: kBlack2Color,
-        borderRadius:
-            _isExpanded
-                ? BorderRadius.circular(4.br)
-                : BorderRadius.only(
-                  topLeft: Radius.circular(4.br),
-                  topRight: Radius.circular(4.br),
-                ),
+        borderRadius: cardBorderRadius,
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -103,6 +104,10 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
             child: Container(
               height: 60.h,
               padding: EdgeInsets.only(left: 12.sp, right: 12.sp),
+              decoration: BoxDecoration(
+                color: kBlack2Color,
+                borderRadius: headerBorderRadius,
+              ),
               child: Row(
                 children: [
                   Expanded(
@@ -164,7 +169,7 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
                             ref
                                 .read(stringUtilsProvider)
                                 .getTrimmedStringWithScore(
-                                  team1Name,
+                                  team2Name,
                                   matchScore.last,
                                 ),
                             maxLines: 1,

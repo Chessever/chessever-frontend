@@ -17,7 +17,12 @@ final tourDetailScreenProvider = StateNotifierProvider<
 >((ref) {
   final groupBroadcast = ref.watch(selectedBroadcastModelProvider);
 
-  return _TourDetailScreenNotifier(ref: ref, groupBroadcast: groupBroadcast!);
+  // Handle null case - return a notifier that will show loading/error state
+  if (groupBroadcast == null) {
+    return _TourDetailScreenNotifier.loading(ref);
+  }
+
+  return _TourDetailScreenNotifier(ref: ref, groupBroadcast: groupBroadcast);
 });
 
 class _TourDetailScreenNotifier
@@ -34,6 +39,16 @@ class _TourDetailScreenNotifier
     setupLiveTourIdListener();
     loadTourDetails();
   }
+
+  // Loading constructor for when broadcast is not yet available
+  _TourDetailScreenNotifier.loading(this.ref)
+    : groupBroadcast = GroupBroadcast(
+        id: '',
+        createdAt: DateTime.now(),
+        name: '',
+        search: [],
+      ),
+      super(const AsyncValue.loading());
 
   final Ref ref;
   final GroupBroadcast groupBroadcast;
@@ -304,7 +319,6 @@ class _TourDetailScreenNotifier
     }
 
     // 3️⃣ If no live tours, pick most recently completed tour
-    final now = DateTime.now();
     final completedTours =
         tourModels
             .where((model) => model.roundStatus == RoundStatus.completed)
