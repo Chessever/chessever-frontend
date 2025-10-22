@@ -8,6 +8,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:flutter/widgets.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 
 final gamesTourScrollProvider =
     StateNotifierProvider<_GamesTourScrollProvider, ItemScrollController>(
@@ -36,6 +37,30 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
       _itemPositionsListener; // Expose for Riverpod
 
   String? _lastVisibleGameId;
+
+  /// Compute rounds visible in the list view: hide upcoming by default,
+  /// include the selected upcoming round only when user explicitly selected it.
+  List<GamesAppBarModel> _getVisibleRounds() {
+    final vm = _ref.read(gamesAppBarProvider).valueOrNull;
+    if (vm == null) return <GamesAppBarModel>[];
+    final selectedId = vm.selectedId;
+    final userSelected = vm.userSelectedId;
+
+    final models = vm.gamesAppBarModels;
+    final visible = <GamesAppBarModel>[];
+    for (final r in models) {
+      final hasGames = _getGamesInRound(r.id) > 0;
+      if (!hasGames) continue;
+      if (userSelected && r.id == selectedId) {
+        visible.add(r);
+        continue;
+      }
+      if (r.roundStatus != RoundStatus.upcoming) {
+        visible.add(r);
+      }
+    }
+    return visible;
+  }
 
   /// Set flag to prevent scroll listener from updating dropdown during programmatic scroll
   void startProgrammaticScroll() {
@@ -78,9 +103,7 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
   }
 
   String? _getGameIdFromItemIndex(int itemIndex) {
-    final allRounds =
-        _ref.read(gamesAppBarProvider).valueOrNull?.gamesAppBarModels ?? [];
-    final rounds = allRounds.where((r) => _getGamesInRound(r.id) > 0).toList();
+    final rounds = _getVisibleRounds();
 
     int currentIndex = 0;
     for (final round in rounds) {
@@ -130,9 +153,7 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
   }
 
   int? _getItemIndexForGameId(String gameId) {
-    final allRounds =
-        _ref.read(gamesAppBarProvider).valueOrNull?.gamesAppBarModels ?? [];
-    final rounds = allRounds.where((r) => _getGamesInRound(r.id) > 0).toList();
+    final rounds = _getVisibleRounds();
 
     int currentIndex = 0;
     for (final round in rounds) {
@@ -191,10 +212,7 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
   }
 
   String? _getRoundIdFromItemIndex(int itemIndex) {
-    final allRounds =
-        _ref.read(gamesAppBarProvider).valueOrNull?.gamesAppBarModels ?? [];
-    final rounds =
-        allRounds.where((round) => _getGamesInRound(round.id) > 0).toList();
+    final rounds = _getVisibleRounds();
 
     int currentIndex = 0;
     for (final round in rounds) {

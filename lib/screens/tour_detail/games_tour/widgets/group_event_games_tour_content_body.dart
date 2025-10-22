@@ -38,13 +38,23 @@ class _GroupEventGamesTourContentBodyState
       return const TourLoadingWidget();
     }
     final rounds = gamesAppBar.value!.gamesAppBarModels;
+    final selectedRoundId = gamesAppBar.value?.selectedId;
+    final userSelected = gamesAppBar.value?.userSelectedId ?? false;
 
-    // Filter to only rounds that have games
-    final visibleRounds =
-        rounds
-            .where((round) => widget.gamesScreenModel.gamesTourModels
-                .any((game) => game.roundId == round.id))
-            .toList();
+    // Filter rounds to hide upcoming rounds by default.
+    // Include upcoming only when user explicitly selected that round.
+    final visibleRounds = rounds.where((round) {
+      final roundGames = widget.gamesScreenModel.gamesTourModels
+          .where((game) => game.roundId == round.id)
+          .toList();
+      if (roundGames.isEmpty) return false;
+
+      // Always include explicitly user-selected round
+      if (userSelected && round.id == selectedRoundId) return true;
+
+      // Otherwise, exclude upcoming rounds
+      return round.roundStatus != RoundStatus.upcoming;
+    }).toList();
 
     if (visibleRounds.isEmpty) {
       return const SizedBox.shrink();
@@ -53,7 +63,7 @@ class _GroupEventGamesTourContentBodyState
     final orderedGamesData = ref
         .read(gamesTourContentProvider)
         .getOrderedGamesForChessBoard(
-          rounds: rounds,
+          rounds: visibleRounds,
           gamesScreenModel: widget.gamesScreenModel,
         );
 
