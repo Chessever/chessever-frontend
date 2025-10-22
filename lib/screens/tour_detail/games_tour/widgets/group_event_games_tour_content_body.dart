@@ -9,6 +9,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
+import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 class GroupEventGamesTourContentBody extends ConsumerStatefulWidget {
   final GamesScreenModel gamesScreenModel;
@@ -29,14 +31,6 @@ class GroupEventGamesTourContentBody extends ConsumerStatefulWidget {
 
 class _GroupEventGamesTourContentBodyState
     extends ConsumerState<GroupEventGamesTourContentBody> {
-  final ScrollController _scrollController = ScrollController();
-
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     final gamesAppBar = ref.watch(gamesAppBarProvider);
@@ -63,11 +57,18 @@ class _GroupEventGamesTourContentBodyState
           gamesScreenModel: widget.gamesScreenModel,
         );
 
+    // Get scroll controller and listener from provider
+    final scrollController = ref.watch(gamesTourScrollProvider);
+    final itemPositionsListener =
+        ref.watch(gamesTourScrollProvider.notifier).itemPositionsListener;
+
     return Padding(
       padding: EdgeInsets.only(left: 16.sp, right: 16.sp, bottom: 12.sp),
       child: _buildAllRoundsView(
         visibleRounds,
         orderedGamesData,
+        scrollController,
+        itemPositionsListener,
       ),
     );
   }
@@ -75,9 +76,11 @@ class _GroupEventGamesTourContentBodyState
   Widget _buildAllRoundsView(
     List<GamesAppBarModel> visibleRounds,
     GamesScreenModel orderedGamesData,
+    ItemScrollController scrollController,
+    ItemPositionsListener itemPositionsListener,
   ) {
-    // Build a list of all items: [round header, team cards, round header, team cards, ...]
-    final allItems = <Widget>[];
+    // Build a flat list of all items with round tracking
+    final allItems = <_GroupEventItem>[];
 
     for (final round in visibleRounds) {
       // Get team groupings for this round
@@ -94,11 +97,15 @@ class _GroupEventGamesTourContentBodyState
               .where((game) => game.roundId == round.id)
               .toList();
 
-      // Add round header
+      // Add round header item
       allItems.add(
-        RoundHeader(
-          round: round,
-          roundGames: roundGames,
+        _GroupEventItem(
+          roundId: round.id,
+          widget: RoundHeader(
+            round: round,
+            roundGames: roundGames,
+          ),
+          isHeader: true,
         ),
       );
 
@@ -106,25 +113,43 @@ class _GroupEventGamesTourContentBodyState
       for (final header in grouped.keys) {
         final gamesForTeam = grouped[header]!;
         allItems.add(
-          GroupEventMatchCard(
-            roundTitle: header,
-            games: gamesForTeam,
-            gamesData: orderedGamesData,
-            gamesListViewMode: widget.gamesListViewMode,
-            onReturnFromChessboard: widget.onReturnFromChessboard,
+          _GroupEventItem(
+            roundId: round.id,
+            widget: GroupEventMatchCard(
+              roundTitle: header,
+              games: gamesForTeam,
+              gamesData: orderedGamesData,
+              gamesListViewMode: widget.gamesListViewMode,
+              onReturnFromChessboard: widget.onReturnFromChessboard,
+            ),
+            isHeader: false,
           ),
         );
       }
     }
 
-    // Build scrollable list with all rounds
-    return ListView.builder(
-      controller: _scrollController,
+    // Build scrollable positioned list with all rounds
+    return ScrollablePositionedList.builder(
+      itemScrollController: scrollController,
+      itemPositionsListener: itemPositionsListener,
       padding: EdgeInsets.zero,
       itemCount: allItems.length,
       itemBuilder: (context, index) {
-        return allItems[index];
+        return allItems[index].widget;
       },
     );
   }
+}
+
+/// Helper class to track items with their round association
+class _GroupEventItem {
+  final String roundId;
+  final Widget widget;
+  final bool isHeader;
+
+  _GroupEventItem({
+    required this.roundId,
+    required this.widget,
+    required this.isHeader,
+  });
 }
