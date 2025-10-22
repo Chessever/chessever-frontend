@@ -246,9 +246,8 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
 
   Widget _buildChessBoardView() {
     final games = widget.games;
-    // Get the full games list from the provider to ensure we have all games
-    final fullGamesData = ref.watch(gamesTourScreenProvider).valueOrNull;
-    final fullGamesList = fullGamesData?.gamesTourModels ?? widget.gamesData.gamesTourModels;
+    // Use the games list from widget data to maintain correct order for group events
+    final fullGamesList = widget.gamesData.gamesTourModels;
 
     return ListView.builder(
       padding: EdgeInsets.zero,
@@ -276,9 +275,8 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
   }
 
   Widget _buildGridChessBoard(MatchWithComparison matchWithComparison) {
-    // Get the full games list from the provider to ensure we have all games
-    final fullGamesData = ref.watch(gamesTourScreenProvider).valueOrNull;
-    final fullGamesList = fullGamesData?.gamesTourModels ?? widget.gamesData.gamesTourModels;
+    // Use the games list from widget data to maintain correct order for group events
+    final fullGamesList = widget.gamesData.gamesTourModels;
 
     final gameIndex = fullGamesList.indexWhere(
       (g) => g.gameId == matchWithComparison.game.gameId,

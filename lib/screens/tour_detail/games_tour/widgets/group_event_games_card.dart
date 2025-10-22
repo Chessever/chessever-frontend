@@ -26,9 +26,8 @@ class GroupEventGamesCard extends ConsumerStatefulWidget {
 class _GroupEventGamesCardState extends ConsumerState<GroupEventGamesCard> {
   @override
   Widget build(BuildContext buildCxt) {
-    // Get the full games list from the provider to ensure we have all games
-    final fullGamesData = ref.watch(gamesTourScreenProvider).valueOrNull;
-    final fullGamesList = fullGamesData?.gamesTourModels ?? widget.gamesData.gamesTourModels;
+    // Use the games list from widget data to maintain correct order for group events
+    final fullGamesList = widget.gamesData.gamesTourModels;
 
     return ListView.builder(
       padding: EdgeInsets.zero,
