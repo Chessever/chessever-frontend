@@ -16,8 +16,7 @@ class RoundHeader extends ConsumerWidget {
     // Now handled centrally in GamesTourScreen for better performance
 
     return Container(
-      margin: EdgeInsets.symmetric(vertical: 12.sp),
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+      padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 14.sp),
       decoration: BoxDecoration(
         color: kDarkGreyColor,
         borderRadius: BorderRadius.circular(12.br),

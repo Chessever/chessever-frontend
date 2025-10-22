@@ -144,13 +144,16 @@ class PlayerTourScreenNotifier
       );
     }
 
-    // Step 4: Sort by points collected (score), then by ELO rating
+    // Step 4: Sort by ABSOLUTE SCORE (not percentage!)
+    // Example: 3.5/4 (87.5%) should rank HIGHER than 3/3 (100%) because 3.5 > 3
     enrichedPlayers.sort((a, b) {
-      final aScore = a.score ?? 0.0;
-      final bScore = b.score ?? 0.0;
-      // Primary sort: by score (whoever collected more points)
+      final aScore = a.score ?? 0.0;  // Absolute points collected (e.g., 3.5)
+      final bScore = b.score ?? 0.0;  // Absolute points collected (e.g., 3.0)
+      
+      // Primary sort: by absolute score descending (whoever collected MORE points)
       if (bScore != aScore) return bScore.compareTo(aScore);
-      // Secondary sort: by rating/ELO (higher rated player first when scores are equal)
+      
+      // Secondary sort: by rating/ELO descending (higher rated player first when scores equal)
       return (b.rating ?? 0).compareTo(a.rating ?? 0);
     });
 

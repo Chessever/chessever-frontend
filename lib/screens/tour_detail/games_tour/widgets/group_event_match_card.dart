@@ -91,7 +91,6 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
             : cardBorderRadius;
 
     return Container(
-      margin: EdgeInsets.symmetric(vertical: 12.sp),
       decoration: BoxDecoration(
         color: kBlack2Color,
         borderRadius: cardBorderRadius,
@@ -111,6 +110,7 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
               child: Row(
                 children: [
                   Expanded(
+                    flex: 5,
                     child: Row(
                       children: [
                         if (country1.isNotEmpty) ...[
@@ -130,6 +130,7 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
                                   matchScore.first,
                                 ),
                             maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: AppTypography.textXsMedium.copyWith(
                               color: kWhiteColor,
                             ),
@@ -141,6 +142,7 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
                   ),
 
                   Expanded(
+                    flex: 2,
                     child: Center(
                       child: Text(
                         'VS',
@@ -154,16 +156,10 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
                   ),
 
                   Expanded(
+                    flex: 5,
                     child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        if (country2.isNotEmpty) ...[
-                          CountryFlag.fromCountryCode(
-                            country2,
-                            height: 12.h,
-                            width: 16.w,
-                          ),
-                          SizedBox(width: 4.w),
-                        ],
                         Expanded(
                           child: Text(
                             ref
@@ -173,12 +169,21 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
                                   matchScore.last,
                                 ),
                             maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: AppTypography.textXsMedium.copyWith(
                               color: kWhiteColor,
                             ),
-                            textAlign: TextAlign.left,
+                            textAlign: TextAlign.right,
                           ),
                         ),
+                        if (country2.isNotEmpty) ...[
+                          SizedBox(width: 4.w),
+                          CountryFlag.fromCountryCode(
+                            country2,
+                            height: 12.h,
+                            width: 16.w,
+                          ),
+                        ],
                       ],
                     ),
                   ),

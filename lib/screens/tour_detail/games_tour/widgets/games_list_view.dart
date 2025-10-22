@@ -99,42 +99,45 @@ class GamesListView extends ConsumerWidget {
       itemCount: _flattened.length,
       itemBuilder: (context, index) {
         final item = _flattened[index];
+        final isLastItem = index == _flattened.length - 1;
+        final nextIsHeader = !isLastItem && _flattened[index + 1] is _HeaderItem;
 
         if (item is _HeaderItem) {
-          return RoundHeader(round: item.round, roundGames: item.roundGames);
+          // Round headers get more spacing below for visual hierarchy
+          return Padding(
+            padding: EdgeInsets.only(bottom: 16.sp),
+            child: RoundHeader(round: item.round, roundGames: item.roundGames),
+          );
         } else if (item is _GameRowItem) {
-          return gamesListViewMode == GamesListViewMode.chessBoardGrid
-              ? _buildGridRow(context, ref, item)
-              : _buildCardRow(context, ref, item);
+          // Cards get standard spacing, extra before next header
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: nextIsHeader ? 20.sp : 12.sp,
+            ),
+            child: gamesListViewMode == GamesListViewMode.chessBoardGrid
+                ? _buildGridRow(context, ref, item)
+                : _buildCardRow(context, ref, item),
+          );
         }
         return const SizedBox.shrink();
       },
       padding: EdgeInsets.only(
-        left:
-            gamesListViewMode == GamesListViewMode.chessBoardGrid
-                ? 12.sp
-                : 20.sp,
-        right:
-            gamesListViewMode == GamesListViewMode.chessBoardGrid
-                ? 12.sp
-                : 20.sp,
+        left: 16.sp,
+        right: 16.sp,
         top: 16.sp,
-        bottom: MediaQuery.of(context).viewPadding.bottom,
+        bottom: MediaQuery.of(context).viewPadding.bottom + 8.sp,
       ),
     );
   }
 
   Widget _buildGridRow(BuildContext context, WidgetRef ref, _GameRowItem item) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: 12.sp),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          _buildGridGame(context, ref, item.game1, item.globalIndex1),
-          if (item.game2 != null)
-            _buildGridGame(context, ref, item.game2!, item.globalIndex2!),
-        ],
-      ),
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        _buildGridGame(context, ref, item.game1, item.globalIndex1),
+        if (item.game2 != null)
+          _buildGridGame(context, ref, item.game2!, item.globalIndex2!),
+      ],
     );
   }
 
@@ -168,18 +171,15 @@ class GamesListView extends ConsumerWidget {
   }
 
   Widget _buildCardRow(BuildContext context, WidgetRef ref, _GameRowItem item) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: 12.sp),
-      child: GameCardWrapperWidget(
-        game: item.game1,
-        gamesData: gamesData,
-        gameIndex: item.globalIndex1,
-        isChessBoardVisible: gamesListViewMode == GamesListViewMode.chessBoard,
-        onReturnFromChessboard: (returnedIndex) {
-          _scrollToGameIndex(returnedIndex);
-          onReturnFromChessboard?.call(returnedIndex);
-        },
-      ),
+    return GameCardWrapperWidget(
+      game: item.game1,
+      gamesData: gamesData,
+      gameIndex: item.globalIndex1,
+      isChessBoardVisible: gamesListViewMode == GamesListViewMode.chessBoard,
+      onReturnFromChessboard: (returnedIndex) {
+        _scrollToGameIndex(returnedIndex);
+        onReturnFromChessboard?.call(returnedIndex);
+      },
     );
   }
 

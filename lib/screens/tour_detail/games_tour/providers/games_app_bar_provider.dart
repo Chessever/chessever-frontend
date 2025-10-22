@@ -1,6 +1,9 @@
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
+import 'package:flutter/animation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
@@ -80,11 +83,41 @@ class _GamesAppBarNotifier
   }
 
   Future<void> _scrollToRound(String roundId) async {
-    final controller = ref.read(gamesTourScrollProvider);
+    final scrollProvider = ref.read(gamesTourScrollProvider.notifier);
+    final controller = scrollProvider.state;
     final itemIndex = _calculateRoundHeaderIndex(roundId);
-    if (itemIndex >= 0) {
+    
+    // Debug logging
+    print('🎯 Scrolling to round: $roundId, calculated index: $itemIndex');
+    
+    if (itemIndex >= 0 && controller.isAttached) {
+      // Prevent scroll listener from updating dropdown during programmatic scroll
+      scrollProvider.startProgrammaticScroll();
+      
+      // Small delay to ensure layout is ready
+      await Future.delayed(const Duration(milliseconds: 100));
+      
       if (controller.isAttached) {
-        controller.jumpTo(index: itemIndex, alignment: 0.02);
+        try {
+          // Use alignment 0.0 to position round header at the very top
+          controller.jumpTo(
+            index: itemIndex,
+            alignment: 0.0,
+          );
+        } catch (e) {
+          // Fallback if jumpTo fails
+          try {
+            controller.scrollTo(
+              index: itemIndex,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              alignment: 0.0,
+            );
+          } catch (_) {}
+        }
+        
+        // Re-enable scroll listener after scroll completes
+        scrollProvider.endProgrammaticScroll();
       }
     }
   }
@@ -105,35 +138,62 @@ class _GamesAppBarNotifier
           return gamesInRound > 0;
         }).toList();
 
+    // Check if we're in group event mode
+    final screenMode = ref.read(gamesTourScreenModeProvider).valueOrNull;
+    final isGroupEvent = screenMode == GamesTourScreenMode.groupEvent;
     final viewMode = ref.read(gamesListViewModeProvider);
     final bool isGrid = viewMode == GamesListViewMode.chessBoardGrid;
+
+    print('📊 Index calculation - Target: $roundId, Mode: ${isGroupEvent ? "Group" : "Regular"}, Grid: $isGrid');
 
     int index = 0;
 
     for (final round in rounds) {
       // If this is the round we want to scroll to, return the index of its header.
       if (round.id == roundId) {
+        print('✅ Found target round "${round.name}" at index: $index');
         return index;
       }
 
-      // count games in this round
-      final gamesInRound =
-          ref
-              .read(gamesTourScreenProvider)
-              .valueOrNull
-              ?.gamesTourModels
-              .where((g) => g.roundId == round.id)
-              .length ??
-          0;
+      // Count items in this round (header + content items)
+      int itemCount = 1; // header
 
-      if (isGrid) {
-        // grid: 1 header + ceil(games/2) rows (each row holds up to 2 games)
-        final rows = (gamesInRound + 1) ~/ 2; // integer ceil
-        index += 1 + rows;
+      if (isGroupEvent) {
+        // For group events, count team matchup cards
+        final gamesData = ref.read(gamesTourScreenProvider).valueOrNull;
+        if (gamesData != null) {
+          final grouped = ref.read(gamesTourContentProvider).getGroupHeader(
+                selectedRoundId: round.id,
+                gamesScreenModel: gamesData,
+              );
+          final cardCount = grouped.keys.length;
+          itemCount += cardCount; // number of team matchup cards
+          print('   Round "${round.name}": 1 header + $cardCount cards = $itemCount items');
+        }
       } else {
-        // list: 1 header + gamesInRound items
-        index += 1 + gamesInRound;
+        // For regular events, count games
+        final gamesInRound =
+            ref
+                .read(gamesTourScreenProvider)
+                .valueOrNull
+                ?.gamesTourModels
+                .where((g) => g.roundId == round.id)
+                .length ??
+            0;
+
+        if (isGrid) {
+          // grid: ceil(games/2) rows (each row holds up to 2 games)
+          final rows = (gamesInRound / 2).ceil();
+          itemCount += rows;
+          print('   Round "${round.name}": 1 header + $rows rows ($gamesInRound games) = $itemCount items');
+        } else {
+          // list: one item per game
+          itemCount += gamesInRound;
+          print('   Round "${round.name}": 1 header + $gamesInRound games = $itemCount items');
+        }
       }
+
+      index += itemCount;
     }
 
     return -1; // not found

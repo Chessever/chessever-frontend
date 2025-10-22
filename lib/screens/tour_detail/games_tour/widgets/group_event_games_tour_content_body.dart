@@ -62,18 +62,17 @@ class _GroupEventGamesTourContentBodyState
     final itemPositionsListener =
         ref.watch(gamesTourScrollProvider.notifier).itemPositionsListener;
 
-    return Padding(
-      padding: EdgeInsets.only(left: 16.sp, right: 16.sp, bottom: 12.sp),
-      child: _buildAllRoundsView(
-        visibleRounds,
-        orderedGamesData,
-        scrollController,
-        itemPositionsListener,
-      ),
+    return _buildAllRoundsView(
+      context,
+      visibleRounds,
+      orderedGamesData,
+      scrollController,
+      itemPositionsListener,
     );
   }
 
   Widget _buildAllRoundsView(
+    BuildContext context,
     List<GamesAppBarModel> visibleRounds,
     GamesScreenModel orderedGamesData,
     ItemScrollController scrollController,
@@ -132,10 +131,34 @@ class _GroupEventGamesTourContentBodyState
     return ScrollablePositionedList.builder(
       itemScrollController: scrollController,
       itemPositionsListener: itemPositionsListener,
-      padding: EdgeInsets.zero,
+      padding: EdgeInsets.only(
+        left: 16.sp,
+        right: 16.sp,
+        top: 16.sp,
+        bottom: MediaQuery.of(context).viewPadding.bottom + 8.sp,
+      ),
       itemCount: allItems.length,
       itemBuilder: (context, index) {
-        return allItems[index].widget;
+        final item = allItems[index];
+        final isLastItem = index == allItems.length - 1;
+        final nextIsHeader = !isLastItem && allItems[index + 1].isHeader;
+        
+        // Apply beautiful UI spacing with visual hierarchy
+        EdgeInsets padding;
+        if (item.isHeader) {
+          // Round headers get more spacing below (16sp)
+          padding = EdgeInsets.only(bottom: 16.sp);
+        } else {
+          // Team cards: standard spacing (12sp), extra before next header (20sp)
+          padding = EdgeInsets.only(
+            bottom: nextIsHeader ? 20.sp : 12.sp,
+          );
+        }
+        
+        return Padding(
+          padding: padding,
+          child: item.widget,
+        );
       },
     );
   }

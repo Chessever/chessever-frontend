@@ -30,20 +30,38 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
   late ItemPositionsListener _itemPositionsListener;
   Timer? _debounceTimer;
   String? _lastVisibleRoundId;
+  bool _isProgrammaticScroll = false;
 
   ItemPositionsListener get itemPositionsListener =>
       _itemPositionsListener; // Expose for Riverpod
 
   String? _lastVisibleGameId;
 
+  /// Set flag to prevent scroll listener from updating dropdown during programmatic scroll
+  void startProgrammaticScroll() {
+    _isProgrammaticScroll = true;
+  }
+
+  /// Reset flag after programmatic scroll completes to re-enable scroll sync
+  void endProgrammaticScroll() {
+    // Add a small delay to ensure the scroll has fully completed
+    Future.delayed(const Duration(milliseconds: 200), () {
+      _isProgrammaticScroll = false;
+    });
+  }
+
   void _onItemPositionsChanged() {
+    // Skip updates during programmatic scroll
+    if (_isProgrammaticScroll) return;
+
     _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 100), () {
+    _debounceTimer = Timer(const Duration(milliseconds: 50), () {
       final positions = _itemPositionsListener.itemPositions.value;
       if (positions.isEmpty) return;
 
+      // Find the topmost visible item (considering items that are at least partially visible)
       final topItem =
-          positions.where((pos) => pos.itemLeadingEdge < 0.5).firstOrNull;
+          positions.where((pos) => pos.itemLeadingEdge < 0.3).firstOrNull;
       if (topItem == null) return;
 
       final gameId = _getGameIdFromItemIndex(topItem.index);
@@ -154,17 +172,20 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
 
   void _notifyRoundChange(String roundId) {
     final gamesAppBarAsync = _ref.read(gamesAppBarProvider);
-    final currentSelected = gamesAppBarAsync.valueOrNull?.selectedId;
-    if (currentSelected != roundId) {
-      final gamesAppBarData = gamesAppBarAsync.valueOrNull;
-      if (gamesAppBarData != null) {
-        final targetRound =
-            gamesAppBarData.gamesAppBarModels
-                .where((round) => round.id == roundId)
-                .firstOrNull;
-        if (targetRound != null) {
-          _ref.read(gamesAppBarProvider.notifier).selectSilently(targetRound);
-        }
+    final gamesAppBarData = gamesAppBarAsync.valueOrNull;
+    if (gamesAppBarData == null) return;
+
+    final currentSelected = gamesAppBarData.selectedId;
+    final wasUserSelected = gamesAppBarData.userSelectedId;
+
+    // Only update if round actually changed and it wasn't a user selection
+    if (currentSelected != roundId && !wasUserSelected) {
+      final targetRound =
+          gamesAppBarData.gamesAppBarModels
+              .where((round) => round.id == roundId)
+              .firstOrNull;
+      if (targetRound != null) {
+        _ref.read(gamesAppBarProvider.notifier).selectSilently(targetRound);
       }
     }
   }
