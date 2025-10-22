@@ -3,6 +3,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_games_card.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_match_card_provider.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/string_utils_provider.dart';
 import 'package:country_flags/country_flags.dart';
@@ -77,6 +78,11 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
     final country2 = ref
         .read(locationServiceProvider)
         .getValidCountryCodeFromName(team2Name);
+
+    final matchScore = ref
+        .read(groupEventMatchCardProvider)
+        .getMatchScore(matchList: widget.games, team: team1Name);
+
     return Container(
       margin: EdgeInsets.symmetric(vertical: 12.sp),
       decoration: BoxDecoration(
@@ -114,7 +120,10 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
                           child: Text(
                             ref
                                 .read(stringUtilsProvider)
-                                .getTrimmedString(team1Name),
+                                .getTrimmedStringWithScore(
+                                  team1Name,
+                                  matchScore.first,
+                                ),
                             maxLines: 1,
                             style: AppTypography.textXsMedium.copyWith(
                               color: kWhiteColor,
@@ -154,7 +163,10 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
                           child: Text(
                             ref
                                 .read(stringUtilsProvider)
-                                .getTrimmedString(team2Name),
+                                .getTrimmedStringWithScore(
+                                  team1Name,
+                                  matchScore.last,
+                                ),
                             maxLines: 1,
                             style: AppTypography.textXsMedium.copyWith(
                               color: kWhiteColor,
