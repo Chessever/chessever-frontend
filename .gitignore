@@ -14,6 +14,7 @@
 
 # Environment variables
 .env
+.env.*
 
 lichess_openapi_structure.json
 

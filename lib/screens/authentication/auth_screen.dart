@@ -103,7 +103,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   }
 
   void _showErrorDialog(String errorMessage) {
-    showAlertModal(
+    showAlertModal<void>(
       context: context,
       horizontalPadding: 40.sp,
       verticalPadding: 0,
@@ -166,7 +166,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 child: ElevatedButton(
                   onPressed: () {
                     Navigator.of(context).pop();
-                    ref.read(authScreenProvider.notifier).clearError();
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: kWhiteColor,
@@ -177,17 +176,17 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     ),
                     elevation: 0,
                   ),
-                  child: Text(
-                    'Try Again',
-                    style: AppTypography.textSmBold,
-                  ),
+                  child: Text('Try Again', style: AppTypography.textSmBold),
                 ),
               ),
             ],
           ),
         ),
       ),
-    );
+    ).whenComplete(() {
+      if (!mounted) return;
+      ref.read(authScreenProvider.notifier).clearError();
+    });
   }
 }
 

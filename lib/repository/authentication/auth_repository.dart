@@ -3,6 +3,7 @@ import 'dart:math';
 import 'dart:io' show Platform;
 import 'package:chessever2/providers/error_logger_provider.dart';
 import 'package:chessever2/repository/authentication/model/app_user.dart';
+import 'package:chessever2/repository/authentication/model/exceptions.dart';
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
@@ -11,6 +12,30 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+/// Compile-time environment values injected via `--dart-define`.
+const Map<String, String> _releaseEnvValues = {
+  'GOOGLE_ANDROID_CLIENT_ID': String.fromEnvironment(
+    'GOOGLE_ANDROID_CLIENT_ID',
+    defaultValue: '',
+  ),
+  'GOOGLE_WEB_CLIENT_ID': String.fromEnvironment(
+    'GOOGLE_WEB_CLIENT_ID',
+    defaultValue: '',
+  ),
+  'GOOGLE_IOS_CLIENT_ID': String.fromEnvironment(
+    'GOOGLE_IOS_CLIENT_ID',
+    defaultValue: '',
+  ),
+  'APPLE_SERVICE_ID': String.fromEnvironment(
+    'APPLE_SERVICE_ID',
+    defaultValue: '',
+  ),
+  'APPLE_REDIRECT_URI': String.fromEnvironment(
+    'APPLE_REDIRECT_URI',
+    defaultValue: '',
+  ),
+};
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   return AuthRepository(ref);
@@ -30,23 +55,55 @@ class AuthRepository {
   final Ref ref;
 
   // Read and trim env safely to avoid trailing spaces causing Apple failures.
-  String _env(String key) {
+  String _env(String key, {bool required = true}) {
+    String? value;
     if (kDebugMode) {
-      final v = dotenv.env[key]?.trim();
-      if (v == null || v.isEmpty) {
+      value = dotenv.env[key]?.trim();
+    } else {
+      // In production, CodeMagic injects environment variables via --dart-define
+      // We must look them up from the compile-time const map
+      value = _releaseEnvValues[key];
+    }
+
+    if (value == null || value.isEmpty) {
+      if (required) {
         throw Exception('Missing env: $key');
       }
-      return v;
-    } else {
-      // In production, CodeMagic injects environment variables
-      return String.fromEnvironment(key);
+      return '';
     }
+
+    return value;
   }
 
   Future<void> _initializeGoogleSignIn() async {
     try {
+      String? clientId;
+      if (Platform.isIOS) {
+        clientId = _env('GOOGLE_IOS_CLIENT_ID');
+      } else if (Platform.isAndroid) {
+        final androidClientId = _env(
+          'GOOGLE_ANDROID_CLIENT_ID',
+          required: false,
+        );
+        clientId = androidClientId.isEmpty ? null : androidClientId;
+        if (clientId == null) {
+          if (kDebugMode) {
+            debugPrint(
+              '⚠️ GOOGLE_ANDROID_CLIENT_ID not provided; proceeding without explicit Android client ID.',
+            );
+          } else {
+            await ref
+                .read(errorLoggerProvider)
+                .logError(
+                  Exception('Missing GOOGLE_ANDROID_CLIENT_ID'),
+                  StackTrace.current,
+                );
+          }
+        }
+      }
+
       await _googleSignIn.initialize(
-        clientId: Platform.isIOS ? _env('GOOGLE_IOS_CLIENT_ID') : null,
+        clientId: clientId,
         serverClientId: _env('GOOGLE_WEB_CLIENT_ID'),
       );
 
@@ -118,6 +175,9 @@ class AuthRepository {
 
       return AppUser.fromSupabaseUser(user);
     } on GoogleSignInException catch (e, st) {
+      if (e.code == GoogleSignInExceptionCode.canceled) {
+        throw const CancelledSignInException();
+      }
       await ref.read(errorLoggerProvider).logError(e, st);
       throw _mapGoogleSignInException(e);
     } catch (e, st) {
@@ -201,7 +261,7 @@ class AuthRepository {
       debugPrint('Apple auth exception: code=${e.code}, message=${e.message}');
       switch (e.code) {
         case AuthorizationErrorCode.canceled:
-          throw Exception('Apple sign in was cancelled');
+          throw const CancelledSignInException();
         case AuthorizationErrorCode.notHandled:
           throw Exception('Apple sign in not handled');
         case AuthorizationErrorCode.failed:

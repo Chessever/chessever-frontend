@@ -1,6 +1,7 @@
 // auth_screen_state.dart
 import 'package:chessever2/repository/authentication/model/app_user.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
+import 'package:chessever2/repository/authentication/model/exceptions.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'auth_screen_state.dart';
 
@@ -34,6 +35,8 @@ class AuthScreenNotifier extends StateNotifier<AuthScreenState> {
         user: user,
         showCountrySelection: true,
       );
+    } on CancelledSignInException {
+      state = state.copyWith(isLoading: false);
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
