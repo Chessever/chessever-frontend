@@ -94,7 +94,7 @@
 -> search functionality in players and favourites screen
 
 #25 june
--> Update android package name and label, [ com.chessever.app ]
+-> Update android package name and label, [ com.chessEver.app ]
 -> Update bundle identifier to [ com.chessever.app  ],
 -> Add release config,
 -> chessboard
