@@ -38,7 +38,9 @@ class _GroupEventGamesCardState extends ConsumerState<GroupEventGamesCard> {
       itemBuilder: (context, index) {
         final game = widget.games[index];
 
-        final gameIndex = fullGamesList.indexOf(game.game);
+        final gameIndex = fullGamesList.indexWhere(
+          (g) => g.gameId == game.game.gameId,
+        );
         return GameCard(
           matchComparison: game,
           onPinToggle: (game) async {
