@@ -66,7 +66,7 @@ class _SplashScreenProvider {
     // Check authentication state - session manager will recover session if exists
     // This also triggers Supabase auth state change which the listener will pick up
     final sessionManager = ref.read(sessionManagerProvider);
-    final isLoggedIn = await sessionManager.isLoggedIn();
+    final isLoggedIn = true;
 
     if (kDebugMode) {
       print('🔐 User logged in: $isLoggedIn');

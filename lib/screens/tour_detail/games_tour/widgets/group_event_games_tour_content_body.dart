@@ -8,8 +8,6 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/utils/app_typography.dart';
 
 class GroupEventGamesTourContentBody extends ConsumerStatefulWidget {
   final GamesScreenModel gamesScreenModel;
@@ -56,89 +54,16 @@ class _GroupEventGamesTourContentBodyState
           gamesScreenModel: widget.gamesScreenModel,
         );
 
-    return Column(
-      children: [
-        Expanded(
-          child:
-              selectedRoundId != null
-                  ? Padding(
-                    padding: EdgeInsets.only(
-                      left: 16.sp,
-                      right: 16.sp,
-                      bottom: 12.sp,
-                    ),
-                    child: _buildGroupedGameCardsBuilder(
-                      rounds,
-                      rounds.firstWhere((r) => r.id == selectedRoundId),
-                      orderedGamesData,
-                    ),
-                  )
-                  : const SizedBox.shrink(),
-        ),
-        if (rounds.isNotEmpty)
-          Align(
-            alignment: Alignment.bottomRight,
-            child: Padding(
-              padding: EdgeInsets.only(bottom: 15.sp),
-              child: Container(
-                width: MediaQuery.of(context).size.width * 0.5,
-                height: 48.h,
-                margin: EdgeInsets.only(right: 16.sp, bottom: 16.sp),
-                child: SingleChildScrollView(
-                  controller: _scrollController,
-                  scrollDirection: Axis.horizontal,
-                  physics: const BouncingScrollPhysics(),
-                  child: Row(
-                    children: List.generate(rounds.length, (index) {
-                      final round = rounds[index];
-                      final isSelected = round.id == selectedRoundId;
-
-                      String roundNumber = '${index + 1}';
-                      final m = RegExp(r'\d+').firstMatch(round.name);
-                      if (m != null) roundNumber = m.group(0)!;
-
-                      return GestureDetector(
-                        onTap: () {
-                          ref.read(gamesAppBarProvider.notifier).select(round);
-                        },
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          margin: EdgeInsets.only(right: 12.sp),
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 20.sp,
-                            vertical: 12.sp,
-                          ),
-                          decoration: BoxDecoration(
-                            color: kBlack2Color,
-                            borderRadius: BorderRadius.circular(8),
-                            border:
-                                isSelected
-                                    ? Border.all(
-                                      color: const Color(0xFF404040),
-                                      width: 1.w,
-                                    )
-                                    : null,
-                          ),
-                          child: Text(
-                            roundNumber,
-                            style: AppTypography.textSmMedium.copyWith(
-                              color:
-                                  isSelected
-                                      ? Colors.white
-                                      : const Color(0xFF666666),
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      );
-                    }),
-                  ),
-                ),
-              ),
-            ),
+    return selectedRoundId != null
+        ? Padding(
+          padding: EdgeInsets.only(left: 16.sp, right: 16.sp, bottom: 12.sp),
+          child: _buildGroupedGameCardsBuilder(
+            rounds,
+            rounds.firstWhere((r) => r.id == selectedRoundId),
+            orderedGamesData,
           ),
-      ],
-    );
+        )
+        : const SizedBox.shrink();
   }
 
   Widget _buildGroupedGameCardsBuilder(

@@ -3,6 +3,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -47,7 +48,10 @@ class GameCardWrapperWidget extends ConsumerWidget {
         )
         : GameCard(
           key: ValueKey(keyValue),
-          gamesTourModel: game,
+          matchComparison: MatchWithComparison(
+            game: game,
+            comparison: MatchComparison.sameOrder,
+          ),
           pinnedIds: gamesData.pinnedGamedIs,
           onPinToggle:
               (_) async => await ref
