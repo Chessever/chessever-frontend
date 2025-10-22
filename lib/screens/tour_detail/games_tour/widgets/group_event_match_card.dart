@@ -164,7 +164,7 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
                             ref
                                 .read(stringUtilsProvider)
                                 .getTrimmedStringWithScore(
-                                  team1Name,
+                                  team2Name,
                                   matchScore.last,
                                 ),
                             maxLines: 1,
