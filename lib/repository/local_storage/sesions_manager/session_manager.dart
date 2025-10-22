@@ -34,7 +34,7 @@ class _SessionManager {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_keyPersistSession);
     await prefs.remove(_keyPersistUser);
-    ref.read(authRepositoryProvider).signOut();
+    await ref.read(authRepositoryProvider).signOut();
     ref.invalidate(authScreenProvider);
     await ref.read(countryDropdownProvider.notifier).clearSelection();
   }
