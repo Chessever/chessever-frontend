@@ -11,47 +11,58 @@ class _GroupEventMatchCardController {
 
   final Ref ref;
 
+  /// Helper to normalize team names for comparison
+  String _normalizeTeamName(String name) {
+    return name.trim().toLowerCase();
+  }
+  
+  /// Helper to check if two team names match
+  bool _teamsMatch(String name1, String name2) {
+    return _normalizeTeamName(name1) == _normalizeTeamName(name2);
+  }
+  
   List<double> getMatchScore({
     required List<MatchWithComparison> matchList,
     required String team,
   }) {
-    var teamAWon = 0.0;
-    var teamBWon = 0.0;
-    for (var a = 0; a < matchList.length; a++) {
-      if (matchList[a].comparison == MatchComparison.sameOrder) {
-        final status = matchList[a].game.gameStatus;
-        switch (status) {
-          case GameStatus.ongoing:
-            break;
-          case GameStatus.whiteWins:
-            teamAWon = teamAWon + 1;
-            break;
-          case GameStatus.blackWins:
-            teamBWon = teamBWon + 1;
-          case GameStatus.draw:
-            teamAWon = teamAWon + 0.5;
-            teamBWon = teamBWon + 0.5;
-          case GameStatus.unknown:
-            break;
+    if (matchList.isEmpty) return [0.0, 0.0];
+
+    double team1 = 0.0; // Header left side
+    double team2 = 0.0; // Header right side
+
+    for (final m in matchList) {
+      final status = m.game.gameStatus;
+
+      // Ignore live/unknown games
+      if (status == GameStatus.ongoing || status == GameStatus.unknown) {
+        continue;
+      }
+
+      if (status == GameStatus.draw) {
+        // Draw: both teams get 0.5
+        team1 += 0.5;
+        team2 += 0.5;
+        continue;
+      }
+
+      final same = m.comparison == MatchComparison.sameOrder;
+      if (status == GameStatus.whiteWins) {
+        // White belongs to header team1 when sameOrder, else to team2
+        if (same) {
+          team1 += 1.0;
+        } else {
+          team2 += 1.0;
         }
-      } else {
-        final status = matchList[a].game.gameStatus;
-        switch (status) {
-          case GameStatus.ongoing:
-            break;
-          case GameStatus.whiteWins:
-            teamBWon = teamBWon + 1;
-            break;
-          case GameStatus.blackWins:
-            teamAWon = teamAWon + 1;
-          case GameStatus.draw:
-            teamAWon = teamAWon + 0.5;
-            teamBWon = teamBWon + 0.5;
-          case GameStatus.unknown:
-            break;
+      } else if (status == GameStatus.blackWins) {
+        // Black belongs to header team2 when sameOrder, else to team1
+        if (same) {
+          team2 += 1.0;
+        } else {
+          team1 += 1.0;
         }
       }
     }
-    return [teamAWon, teamBWon];
+
+    return [team1, team2];
   }
 }

@@ -3,6 +3,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_list_view.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -28,6 +29,8 @@ class GamesTourContentBody extends ConsumerWidget {
 
     final rounds =
         ref.watch(gamesAppBarProvider).value?.gamesAppBarModels ?? [];
+    final selectedRoundId = gamesAppBar.value?.selectedId;
+    final userSelected = gamesAppBar.value?.userSelectedId ?? false;
 
     // Group games by round while preserving the original sorting within each round
     final gamesByRound = <String, List<GamesTourModel>>{};
@@ -44,10 +47,18 @@ class GamesTourContentBody extends ConsumerWidget {
       }
     }
 
-    final visibleRounds =
-        rounds
-            .where((round) => (gamesByRound[round.id]?.isNotEmpty ?? false))
-            .toList();
+    // Filter rounds to hide upcoming rounds by default.
+    // Include upcoming only when user explicitly selected that round.
+    final visibleRounds = rounds.where((round) {
+      final roundGames = gamesByRound[round.id] ?? [];
+      if (roundGames.isEmpty) return false;
+
+      // Always include explicitly user-selected round
+      if (userSelected && round.id == selectedRoundId) return true;
+
+      // Otherwise, exclude upcoming rounds
+      return round.roundStatus != RoundStatus.upcoming;
+    }).toList();
 
     // Create a properly ordered flat list that matches the ListView display order
     final orderedGamesForChessBoard = <GamesTourModel>[];

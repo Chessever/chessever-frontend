@@ -32,7 +32,9 @@ class StockfishSingleton {
   StreamSubscription? _currentSubscription;
   final Map<String, EnhancedCloudEval> _evaluationCache = {};
   final List<_EvalJob> _jobQueue = []; // Queue for pending evaluations
+  final Map<String, _EvalJob> _pendingJobs = {}; // Keyed by cacheKey
   bool _isProcessing = false; // Flag to prevent concurrent processing
+  static const int _maxQueueSize = 60; // Soft cap to avoid backlog
 
   Future<EnhancedCloudEval> evaluatePosition(
     String fen, {
@@ -58,14 +60,44 @@ class StockfishSingleton {
       return _evaluationCache[cacheKey]!;
     }
 
+    // Deduplicate: if same job is current or pending, attach to it
+    if (_currentJob?.key == cacheKey) {
+      debugPrint('📋 QUEUE: Coalesced with CURRENT job for $fen');
+      return _currentJob!.completer.future;
+    }
+    final pending = _pendingJobs[cacheKey];
+    if (pending != null) {
+      debugPrint('📋 QUEUE: Coalesced with PENDING job for $fen');
+      return pending.completer.future;
+    }
+
     // Create job and add to queue
     final completer = Completer<EnhancedCloudEval>();
-    final job = _EvalJob(fen, depth, completer);
+    final job = _EvalJob(fen, depth, cacheKey, completer);
 
     _jobQueue.add(job);
+    _pendingJobs[cacheKey] = job;
     debugPrint(
       '📋 QUEUE: Added job for $fen (queue size: ${_jobQueue.length})',
     );
+
+    // Enforce soft cap: drop oldest overflow jobs safely
+    while (_jobQueue.length > _maxQueueSize) {
+      final dropped = _jobQueue.removeAt(0);
+      _pendingJobs.remove(dropped.key);
+      if (!dropped.completer.isCompleted) {
+        dropped.completer.complete(
+          EnhancedCloudEval(
+            fen: dropped.fen,
+            knodes: 0,
+            depth: 0,
+            pvs: [Pv(moves: '', cp: 0, mate: 0)],
+            isCancelled: true,
+          ),
+        );
+      }
+      debugPrint('🗑️ QUEUE: Dropped overflow job for ${dropped.fen}');
+    }
 
     // Start processing queue if not already processing
     if (!_isProcessing) {
@@ -129,6 +161,7 @@ class StockfishSingleton {
       _currentJob = job;
       debugPrint('⚙️ PROCESSING: ${job.fen} (${_jobQueue.length} remaining)');
       await _processCurrentJob();
+      _pendingJobs.remove(job.key);
       _currentJob = null;
     }
 
@@ -360,6 +393,7 @@ class StockfishSingleton {
 class _EvalJob {
   final String fen;
   final int depth;
+  final String key;
   final Completer<EnhancedCloudEval> completer;
-  _EvalJob(this.fen, this.depth, this.completer);
+  _EvalJob(this.fen, this.depth, this.key, this.completer);
 }
