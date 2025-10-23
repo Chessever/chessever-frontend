@@ -98,20 +98,23 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
       return calculatedMoveTime;
     }, [chessBoardState, isWhitePlayer, gamesTourModel]);
 
+    // Harmonized text styles for consistent visual hierarchy
     final rankStyle =
         playerView == PlayerView.listView
             ? TextStyle(
               fontSize: 8.5.f,
               fontWeight: FontWeight.w600,
               color: kLightYellowColor,
-              height: 1.2,
+              height: 1.15,
+              letterSpacing: 0,
             )
             : playerView == PlayerView.gridView
-            ? AppTypography.textXsMedium.copyWith(
+            ? TextStyle(
+              fontSize: 8.f,
+              fontWeight: FontWeight.w600,
               color: kLightYellowColor,
-              fontWeight: FontWeight.w400,
-              fontSize: 4.f,
-              height: 1.2,
+              height: 1.15,
+              letterSpacing: -0.15,
             )
             : AppTypography.textXsMedium.copyWith(
               color: kLightYellowColor,
@@ -126,14 +129,16 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               fontSize: 8.5.f,
               fontWeight: FontWeight.w500,
               color: kWhiteColor,
-              height: 1.2,
+              height: 1.15,
+              letterSpacing: 0,
             )
             : playerView == PlayerView.gridView
-            ? AppTypography.textXsMedium.copyWith(
+            ? TextStyle(
+              fontSize: 8.f,
+              fontWeight: FontWeight.w600,
               color: kWhiteColor,
-              fontWeight: FontWeight.w400,
-              fontSize: 4.f,
-              height: 1.2,
+              height: 1.15,
+              letterSpacing: -0.15,
             )
             : AppTypography.textXsMedium.copyWith(
               color: kWhiteColor,
@@ -146,89 +151,89 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
         playerView == PlayerView.listView
             ? TextStyle(
               fontSize: 8.5.f,
-              fontWeight: FontWeight.w500, // Match name font weight
+              fontWeight: FontWeight.w500,
               color: kWhiteColor70,
-              height: 1.2,
+              height: 1.15,
+              letterSpacing: 0,
             )
             : playerView == PlayerView.gridView
-            ? AppTypography.textXsMedium.copyWith(
+            ? TextStyle(
+              fontSize: 7.5.f,
+              fontWeight: FontWeight.w500,
               color: kWhiteColor70,
-              fontWeight: FontWeight.w400,
-              fontSize: 4.f,
-              height: 1.2,
+              height: 1.15,
+              letterSpacing: -0.15,
             )
             : AppTypography.textXsMedium.copyWith(
               color: kWhiteColor70,
-              fontWeight: FontWeight.w600, // Match name font weight
+              fontWeight: FontWeight.w600,
               fontSize: 14.f,
               height: 1.2,
             );
 
+    // Proportional flag sizing for visual consistency
     final flagHeight =
         playerView == PlayerView.listView
             ? 10.h
             : playerView == PlayerView.gridView
-            ? 8.h
+            ? 12.h
             : 12.h;
     final flagWidth =
         playerView == PlayerView.listView
             ? 12.w
             : playerView == PlayerView.gridView
-            ? 10.w
+            ? 16.w
             : 16.w;
-
-    // Determine if we're showing scores (finished game)
-    final isGameFinished = gamesTourModel.gameStatus.isFinished;
 
     final timeStyle =
         playerView == PlayerView.listView
             ? TextStyle(
-              color: isCurrentPlayer ? kWhiteColor70 : kWhiteColor,
               fontSize: 8.5.f,
               fontWeight: FontWeight.w500,
+              color: isCurrentPlayer ? kWhiteColor70 : kWhiteColor,
+              height: 1.15,
+              letterSpacing: 0,
             )
             : playerView == PlayerView.gridView
-            ? AppTypography.textXsMedium.copyWith(
-              color: isCurrentPlayer ? kWhiteColor70 : kWhiteColor,
-              fontSize: 4.f,
-              fontWeight: FontWeight.w500,
-            )
-            : AppTypography.textXsMedium.copyWith(
-              color: isCurrentPlayer ? kWhiteColor70 : kWhiteColor,
-              fontSize: 14.f,
-              fontWeight: FontWeight.w500,
-            );
-
-    final scoreStyle =
-        playerView == PlayerView.listView
             ? TextStyle(
-              color: kWhiteColor,
-              fontSize: 8.5.f,
+              fontSize: 8.f,
               fontWeight: FontWeight.w600,
-              height: 1.2,
-            )
-            : playerView == PlayerView.gridView
-            ? AppTypography.textXsMedium.copyWith(
-              color: kWhiteColor,
-              fontSize: 4.f,
-              fontWeight: FontWeight.w600,
-              height: 1.2,
+              color: isCurrentPlayer ? kWhiteColor70 : kWhiteColor,
+              height: 1.15,
+              letterSpacing: -0.2,
             )
             : AppTypography.textXsMedium.copyWith(
-              color: kWhiteColor,
+              color: isCurrentPlayer ? kWhiteColor70 : kWhiteColor,
               fontSize: 14.f,
-              fontWeight: FontWeight.w600,
-              height: 1.2,
+              fontWeight: FontWeight.w500,
             );
 
-    final spacing = playerView == PlayerView.gridView ? 4.w : 8.w;
-    final endPadding =
-        playerView == PlayerView.gridView ? 8.w : 16.w; // Align with board edge
+    // CRITICAL: Pixel-perfect alignment with board edges
+    // Structure: [Container Padding] [EvalBar] [Flag at board LEFT edge] [Name] [Clock at board RIGHT edge] [Container Padding]
+    //
+    // ListView: Container ALREADY has 24.sp padding, so NO additional margin needed!
+    // GridView: No container padding, so we handle margins here
+    // BoardView: Container has 16.sp margin, so we add 16.sp here to match
 
-    // Board has 16.sp horizontal margin, engine gauge is 20.w wide
-    // So flags should start at 16.sp + 20.w to align with board's left edge
-    final boardMargin = 16.sp;
-    final engineGaugeWidth = playerView == PlayerView.gridView ? 0.w : 20.w;
+    // Element spacing - between flag and name
+    final elementSpacing = playerView == PlayerView.gridView ? 4.w : 8.w;
+
+    // Left/Right margins:
+    // ListView: 0 (container already has 24.sp padding via ChessBoardFromFENNew)
+    // GridView: 0 (no container padding)
+    // BoardView: 16.sp (matches container margin in chess_board_screen_new)
+    final boardMargin =
+        playerView == PlayerView.listView ? 0.sp :  // NO margin - container has padding!
+        playerView == PlayerView.gridView ? 0.sp :
+        16.sp; // BoardView needs margin
+
+    final endPadding = boardMargin; // Right margin matches left margin
+
+    // Eval bar width - matches the actual evaluation bar widget width
+    final engineGaugeWidth = playerView == PlayerView.gridView ? 10.w : 20.w;
+
+    // Clock padding - minimal, keeps clock at board edge
+    final clockPadding = playerView == PlayerView.gridView ? 2.sp : 4.sp;
 
     return GestureDetector(
       onTap: () {
@@ -254,27 +259,35 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
           Navigator.pushNamed(context, '/scorecard_screen');
         });
       },
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
+      child: SizedBox(
+        height: playerView == PlayerView.gridView ? 20.h : null,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
           SizedBox(width: boardMargin),
-          // Show score on the very left for finished games (aligned with engine gauge)
-          if (isGameFinished) ...[
-            SizedBox(
-              width: engineGaugeWidth,
-              child: Text(
-                gamesTourModel.gameStatus == GameStatus.whiteWins
-                    ? (isWhitePlayer ? '1' : '0')
-                    : gamesTourModel.gameStatus == GameStatus.blackWins
-                    ? (isWhitePlayer ? '0' : '1')
-                    : '½',
-                style: scoreStyle,
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ] else
-            SizedBox(width: engineGaugeWidth),
+          // Game result score - centered in eval bar width
+          SizedBox(
+            width: engineGaugeWidth,
+            child: gamesTourModel.gameStatus.isFinished
+                ? Center(
+                    child: Text(
+                      gamesTourModel.gameStatus == GameStatus.whiteWins
+                          ? (isWhitePlayer ? '1' : '0')
+                          : gamesTourModel.gameStatus == GameStatus.blackWins
+                          ? (isWhitePlayer ? '0' : '1')
+                          : '½',
+                      style: TextStyle(
+                        fontSize: playerView == PlayerView.gridView ? 9.f : 10.f,
+                        fontWeight: FontWeight.w700,
+                        color: kWhiteColor,
+                        height: 1.0,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  )
+                : null,
+          ),
           if (playerCard.countryCode.toUpperCase() == 'FID') ...[
             Image.asset(
               PngAsset.fideLogo,
@@ -284,16 +297,16 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               cacheWidth: 48,
               cacheHeight: 36,
             ),
-            SizedBox(width: spacing),
+            SizedBox(width: elementSpacing),
           ] else if (validCountryCode.isNotEmpty) ...[
             CountryFlag.fromCountryCode(
               validCountryCode,
               height: flagHeight,
               width: flagWidth,
             ),
-            SizedBox(width: spacing),
+            SizedBox(width: elementSpacing),
           ] else
-            SizedBox(width: spacing),
+            SizedBox(width: elementSpacing),
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -337,25 +350,69 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                 // Calculate available space for surname
                 final availableForSurname = constraints.maxWidth - staticWidth;
 
-                // Try to fit full surname
+                // Smart truncation: try progressively shorter versions
                 String displaySurname = surname;
+                String displayFirstName = firstNameWithComma;
+
                 if (surname.isNotEmpty) {
                   textPainter.text = TextSpan(text: surname, style: nameStyle);
                   textPainter.layout();
 
+                  // If full name doesn't fit, try intelligent truncation
                   if (textPainter.width > availableForSurname) {
-                    // Surname doesn't fit, use initials
+                    // Strategy 1: Abbreviate surname
                     final surnameParts = surname.split(' ');
                     displaySurname = surnameParts
                         .where((part) => part.isNotEmpty)
                         .map((part) => '${part[0]}.')
                         .join(' ');
+
+                    // Re-check if abbreviated surname + full first name fits
+                    textPainter.text = TextSpan(
+                      children: [
+                        TextSpan(text: displaySurname, style: nameStyle),
+                        TextSpan(text: firstNameWithComma, style: nameStyle),
+                      ],
+                    );
+                    textPainter.layout();
+
+                    // Strategy 2: If still doesn't fit, abbreviate first name too
+                    if (textPainter.width > constraints.maxWidth - staticWidth &&
+                        firstName.isNotEmpty) {
+                      final firstNameParts = firstName.split(' ');
+                      final abbreviatedFirst = firstNameParts
+                          .where((part) => part.isNotEmpty)
+                          .map((part) => '${part[0]}.')
+                          .join(' ');
+                      displayFirstName = ', $abbreviatedFirst';
+
+                      // Strategy 3: For extremely tight spaces (gridView on small phones)
+                      // Use only initials
+                      if (playerView == PlayerView.gridView) {
+                        textPainter.text = TextSpan(
+                          children: [
+                            if (title.isNotEmpty)
+                              TextSpan(text: title, style: rankStyle),
+                            TextSpan(text: displaySurname, style: nameStyle),
+                            TextSpan(text: displayFirstName, style: nameStyle),
+                            TextSpan(text: rating, style: ratingStyle),
+                          ],
+                        );
+                        textPainter.layout();
+
+                        // If still overflowing, drop first name entirely
+                        if (textPainter.width > constraints.maxWidth) {
+                          displayFirstName = '';
+                        }
+                      }
+                    }
                   }
                 }
 
                 return RichText(
-                  overflow: TextOverflow.visible,
+                  overflow: TextOverflow.ellipsis,
                   maxLines: 1,
+                  softWrap: false,
                   textAlign: TextAlign.left,
                   text: TextSpan(
                     children: [
@@ -363,8 +420,8 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                         TextSpan(text: title, style: rankStyle),
                       if (displaySurname.isNotEmpty)
                         TextSpan(text: displaySurname, style: nameStyle),
-                      if (firstNameWithComma.isNotEmpty)
-                        TextSpan(text: firstNameWithComma, style: nameStyle),
+                      if (displayFirstName.isNotEmpty)
+                        TextSpan(text: displayFirstName, style: nameStyle),
                       TextSpan(text: rating, style: ratingStyle),
                     ],
                   ),
@@ -375,29 +432,39 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
           if (isPinned) ...[
             SvgPicture.asset(
               SvgAsset.pin,
-              color: kpinColor,
-              height: 12.h,
-              width: 12.w,
+              colorFilter: ColorFilter.mode(kpinColor, BlendMode.srcIn),
+              height: playerView == PlayerView.gridView ? 12.h : 12.h,
+              width: playerView == PlayerView.gridView ? 12.w : 12.w,
             ),
-            SizedBox(width: 4.w),
+            SizedBox(width: playerView == PlayerView.gridView ? 3.w : 4.w),
           ],
-          // Always show clock/time on the right
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 4.sp),
-            decoration: BoxDecoration(
-              color: isCurrentPlayer ? kDarkBlue : Colors.transparent,
-            ),
-            child: _PlayerClock(
-              isWhitePlayer: isWhitePlayer,
-              gamesTourModel: gamesTourModel,
-              chessBoardState: chessBoardState,
-              isCurrentPlayer: isCurrentPlayer,
-              timeStyle: timeStyle,
-              moveTime: moveTime,
+          // Always show clock/time on the right - constrained to not overflow
+          Flexible(
+            flex: 0,
+            child: Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: clockPadding,
+                vertical: playerView == PlayerView.gridView ? 0.5.sp : 0,
+              ),
+              decoration: BoxDecoration(
+                color: isCurrentPlayer ? kDarkBlue : Colors.transparent,
+                borderRadius: playerView == PlayerView.gridView
+                    ? BorderRadius.circular(2)
+                    : null,
+              ),
+              child: _PlayerClock(
+                isWhitePlayer: isWhitePlayer,
+                gamesTourModel: gamesTourModel,
+                chessBoardState: chessBoardState,
+                isCurrentPlayer: isCurrentPlayer,
+                timeStyle: timeStyle,
+                moveTime: moveTime,
+              ),
             ),
           ),
           SizedBox(width: endPadding),
         ],
+        ),
       ),
     );
   }

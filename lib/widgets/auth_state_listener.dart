@@ -42,10 +42,13 @@ class AuthStateListener extends ConsumerWidget {
               if (kDebugMode) {
                 print('✅ User authenticated, navigating to home');
               }
-              Navigator.of(context).pushNamedAndRemoveUntil(
-                '/home_screen',
-                (route) => false,
-              );
+              final navigator = Navigator.maybeOf(context);
+              if (navigator != null) {
+                navigator.pushNamedAndRemoveUntil(
+                  '/home_screen',
+                  (route) => false,
+                );
+              }
             }
           } else if (authState.status == AppAuthStatus.unauthenticated) {
             // User logged out or session expired
@@ -59,10 +62,13 @@ class AuthStateListener extends ConsumerWidget {
 
               // Navigate to auth screen
               if (context.mounted) {
-                Navigator.of(context).pushNamedAndRemoveUntil(
-                  '/auth_screen',
-                  (route) => false,
-                );
+                final navigator = Navigator.maybeOf(context);
+                if (navigator != null) {
+                  navigator.pushNamedAndRemoveUntil(
+                    '/auth_screen',
+                    (route) => false,
+                  );
+                }
               }
             }
           }

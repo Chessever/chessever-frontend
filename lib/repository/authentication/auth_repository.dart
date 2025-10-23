@@ -107,8 +107,9 @@ class AuthRepository {
         serverClientId: _env('GOOGLE_WEB_CLIENT_ID'),
       );
 
-      final future = _googleSignIn.attemptLightweightAuthentication();
-      future?.catchError((_, __) => null);
+      // Disabled automatic sign-in to prevent unwanted Google OAuth popups
+      // final future = _googleSignIn.attemptLightweightAuthentication();
+      // future?.catchError((_, __) => null);
     } catch (e, st) {
       await ref.read(errorLoggerProvider).logError(e, st);
       rethrow;
@@ -120,8 +121,24 @@ class AuthRepository {
     await _googleInitialization;
   }
 
+  // Create a bypass user for Android (production workaround for OAuth issues)
+  AppUser get _androidBypassUser {
+    return AppUser(
+      id: 'android-bypass-user',
+      email: 'android.user@chessever.com',
+      displayName: 'Android User',
+      createdAt: DateTime.now(),
+      isAnonymous: false,
+    );
+  }
+
   // Current user stream
   Stream<AppUser?> get authStateChanges {
+    // Bypass authentication for Android users due to production OAuth issues
+    if (Platform.isAndroid) {
+      return Stream.value(_androidBypassUser);
+    }
+
     return _supabase.auth.onAuthStateChange.map((data) {
       final user = data.session?.user;
       return user != null ? AppUser.fromSupabaseUser(user) : null;
@@ -130,6 +147,11 @@ class AuthRepository {
 
   // Get current user
   AppUser? get currentUser {
+    // Bypass authentication for Android users due to production OAuth issues
+    if (Platform.isAndroid) {
+      return _androidBypassUser;
+    }
+
     final user = _supabase.auth.currentUser;
     return user != null ? AppUser.fromSupabaseUser(user) : null;
   }
