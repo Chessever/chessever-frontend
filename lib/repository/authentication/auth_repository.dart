@@ -278,6 +278,29 @@ class AuthRepository {
     }
   }
 
+  // Anonymous Sign In (Fallback)
+  Future<AppUser> signInAnonymously() async {
+    final sessionManager = ref.read(sessionManagerProvider);
+
+    try {
+      final response = await _supabase.auth.signInAnonymously();
+
+      final user = response.user;
+      final session = response.session;
+
+      if (user == null || session == null) {
+        throw Exception('Failed to sign in anonymously');
+      }
+
+      await sessionManager.saveSession(session, user);
+
+      return AppUser.fromSupabaseUser(user);
+    } catch (e, st) {
+      await ref.read(errorLoggerProvider).logError(e, st);
+      rethrow;
+    }
+  }
+
   Exception _mapGoogleSignInException(GoogleSignInException e) {
     switch (e.code) {
       case GoogleSignInExceptionCode.canceled:
