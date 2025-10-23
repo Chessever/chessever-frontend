@@ -83,7 +83,7 @@ class AuthRepository {
       } else if (Platform.isAndroid) {
         final androidClientId = _env(
           'GOOGLE_ANDROID_CLIENT_ID',
-          required: false,
+          required: true,
         );
         clientId = androidClientId.isEmpty ? null : androidClientId;
         if (clientId == null) {
