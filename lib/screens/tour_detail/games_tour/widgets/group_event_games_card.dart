@@ -43,11 +43,8 @@ class _GroupEventGamesCardState extends ConsumerState<GroupEventGamesCard> {
           (g) => g.gameId == game.game.gameId,
         );
         return GameCard(
-          // Force white-left orientation for group events
-          matchComparison: MatchWithComparison(
-            game: game.game,
-            comparison: MatchComparison.sameOrder,
-          ),
+          // Use actual comparison to maintain team positions
+          matchComparison: game,
           onPinToggle: (game) async {
             await ref
                 .read(gamesTourScreenProvider.notifier)
