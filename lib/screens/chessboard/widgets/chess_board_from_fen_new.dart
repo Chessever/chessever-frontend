@@ -349,7 +349,7 @@ class _ChessBoardLayout extends ConsumerWidget {
           isWhitePlayer: false,
           isCurrentPlayer: gamesTourModel.activePlayer == Side.black,
           isPinned: isPinned,
-          playerView: PlayerView.gridView,
+          playerView: PlayerView.listView,
         ),
         SizedBox(height: 4.h),
         _ChessBoardWithEvaluation(
@@ -357,7 +357,7 @@ class _ChessBoardLayout extends ConsumerWidget {
           lastMove: lastMove,
           sideBarWidth: sideBarWidth,
           boardSize: boardSize,
-          playerView: PlayerView.gridView,
+          playerView: PlayerView.listView,
         ),
         SizedBox(height: 4.h),
         _PlayerRow(
@@ -365,7 +365,7 @@ class _ChessBoardLayout extends ConsumerWidget {
           isWhitePlayer: true,
           isCurrentPlayer: gamesTourModel.activePlayer == Side.white,
           isPinned: false,
-          playerView: PlayerView.gridView,
+          playerView: PlayerView.listView,
         ),
       ],
     );
