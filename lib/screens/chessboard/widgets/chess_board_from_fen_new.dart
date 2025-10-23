@@ -104,25 +104,31 @@ class ChessBoardFromFENNew extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sideBarWidth = 20.w;
-    final horizontalPadding = 48.sp * 2;
-    final screenWidth = MediaQuery.of(context).size.width;
-    final boardSize = screenWidth - sideBarWidth - horizontalPadding;
 
     return Padding(
       padding: EdgeInsets.only(left: 24.sp, right: 24.sp, bottom: 8.sp),
-      child: GestureDetector(
-        onTap: onChanged,
-        onLongPressStart: (details) {
-          HapticFeedback.lightImpact();
-          _showBlurredPopup(context, details);
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Get width AFTER padding is applied
+          final availableWidth = constraints.maxWidth;
+          // Board size is available width minus the evaluation bar
+          final boardSize = availableWidth - sideBarWidth;
+
+          return GestureDetector(
+            onTap: onChanged,
+            onLongPressStart: (details) {
+              HapticFeedback.lightImpact();
+              _showBlurredPopup(context, details);
+            },
+            child: _ChessBoardLayout(
+              gamesTourModel: gamesTourModel,
+              lastMove: _uciToMove(gamesTourModel.lastMove ?? ''),
+              sideBarWidth: sideBarWidth,
+              boardSize: boardSize,
+              isPinned: isPinned,
+            ),
+          );
         },
-        child: _ChessBoardLayout(
-          gamesTourModel: gamesTourModel,
-          lastMove: _uciToMove(gamesTourModel.lastMove ?? ''),
-          sideBarWidth: sideBarWidth,
-          boardSize: boardSize,
-          isPinned: isPinned,
-        ),
       ),
     );
   }
@@ -388,41 +394,47 @@ class _ChessBoardContent extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final sideBarWidth = 20.w;
-    final horizontalPadding = 48.sp * 2;
-    final screenWidth = MediaQuery.of(context).size.width;
-    final chessBoardSize = screenWidth - sideBarWidth - horizontalPadding;
 
     return SizedBox(
       width: boardSize.width,
       height: boardSize.height,
       child: Padding(
         padding: EdgeInsets.only(left: 24.sp, right: 24.sp, bottom: 8.sp),
-        child: Column(
-          children: [
-            _PlayerRow(
-              gamesTourModel: gamesTourModel,
-              isWhitePlayer: false,
-              isCurrentPlayer: gamesTourModel.activePlayer == Side.black,
-              isPinned: isPinned,
-              playerView: PlayerView.listView,
-            ),
-            SizedBox(height: 4.h),
-            _ChessBoardWithEvaluation(
-              gamesTourModel: gamesTourModel,
-              lastMove: lastMove,
-              sideBarWidth: sideBarWidth,
-              boardSize: chessBoardSize,
-              playerView: PlayerView.listView,
-            ),
-            SizedBox(height: 4.h),
-            _PlayerRow(
-              gamesTourModel: gamesTourModel,
-              isWhitePlayer: true,
-              isCurrentPlayer: gamesTourModel.activePlayer == Side.white,
-              isPinned: false,
-              playerView: PlayerView.listView,
-            ),
-          ],
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // Get width AFTER padding is applied
+            final availableWidth = constraints.maxWidth;
+            // Board size is available width minus the evaluation bar
+            final chessBoardSize = availableWidth - sideBarWidth;
+
+            return Column(
+              children: [
+                _PlayerRow(
+                  gamesTourModel: gamesTourModel,
+                  isWhitePlayer: false,
+                  isCurrentPlayer: gamesTourModel.activePlayer == Side.black,
+                  isPinned: isPinned,
+                  playerView: PlayerView.listView,
+                ),
+                SizedBox(height: 4.h),
+                _ChessBoardWithEvaluation(
+                  gamesTourModel: gamesTourModel,
+                  lastMove: lastMove,
+                  sideBarWidth: sideBarWidth,
+                  boardSize: chessBoardSize,
+                  playerView: PlayerView.listView,
+                ),
+                SizedBox(height: 4.h),
+                _PlayerRow(
+                  gamesTourModel: gamesTourModel,
+                  isWhitePlayer: true,
+                  isCurrentPlayer: gamesTourModel.activePlayer == Side.white,
+                  isPinned: false,
+                  playerView: PlayerView.listView,
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
