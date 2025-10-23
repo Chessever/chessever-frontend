@@ -280,22 +280,35 @@ class AuthRepository {
 
   // Anonymous Sign In (Fallback)
   Future<AppUser> signInAnonymously() async {
+    debugPrint('🔵 [REPO] signInAnonymously() called');
     final sessionManager = ref.read(sessionManagerProvider);
 
     try {
+      debugPrint('🔵 [REPO] Calling Supabase auth.signInAnonymously()...');
       final response = await _supabase.auth.signInAnonymously();
+      debugPrint('🔵 [REPO] Supabase response received');
 
       final user = response.user;
       final session = response.session;
 
+      debugPrint('🔵 [REPO] User: ${user?.id}, Session: ${session != null}');
+
       if (user == null || session == null) {
+        debugPrint('❌ [REPO] User or session is null!');
         throw Exception('Failed to sign in anonymously');
       }
 
+      debugPrint('🔵 [REPO] Saving session...');
       await sessionManager.saveSession(session, user);
+      debugPrint('✅ [REPO] Session saved successfully');
 
-      return AppUser.fromSupabaseUser(user);
+      final appUser = AppUser.fromSupabaseUser(user);
+      debugPrint('✅ [REPO] AppUser created: ${appUser.id}');
+      return appUser;
     } catch (e, st) {
+      debugPrint('❌ [REPO] Exception in signInAnonymously!');
+      debugPrint('   Error: $e');
+      debugPrint('   Type: ${e.runtimeType}');
       await ref.read(errorLoggerProvider).logError(e, st);
       rethrow;
     }

@@ -2,6 +2,7 @@
 import 'package:chessever2/repository/authentication/model/app_user.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/repository/authentication/model/exceptions.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'auth_screen_state.dart';
 
@@ -26,10 +27,43 @@ class AuthScreenNotifier extends StateNotifier<AuthScreenState> {
   }
 
   Future<void> _performSignIn(Future<AppUser> Function() signInMethod) async {
+    debugPrint('🔵 [AUTH] Starting sign-in flow...');
     state = state.copyWith(isLoading: true, errorMessage: null);
 
+    // 🧪 DEBUG MODE: Force anonymous sign-in to test fallback
+    // TODO: Remove or comment out this block when done testing
+    if (kDebugMode) {
+      debugPrint('🧪 [AUTH] DEBUG MODE DETECTED: Forcing anonymous sign-in...');
+      try {
+        debugPrint('🔵 [AUTH] Calling signInAnonymously()...');
+        final anonymousUser = await _authRepository.signInAnonymously();
+        debugPrint('✅ [AUTH] Anonymous sign-in succeeded!');
+        debugPrint('   User ID: ${anonymousUser.id}');
+        debugPrint('   User email: ${anonymousUser.email}');
+        state = state.copyWith(
+          isLoading: false,
+          user: anonymousUser,
+          showCountrySelection: true,
+        );
+        debugPrint('🟢 [AUTH] State updated with anonymous user');
+        return;
+      } catch (e, st) {
+        debugPrint('❌ [AUTH] Anonymous sign-in FAILED in debug mode!');
+        debugPrint('   Error: $e');
+        debugPrint('   Stack trace: $st');
+        state = state.copyWith(
+          isLoading: false,
+          errorMessage: 'Anonymous sign-in failed: ${e.toString()}',
+        );
+        return;
+      }
+    }
+
+    debugPrint('🔵 [AUTH] Attempting OAuth sign-in...');
     try {
       final user = await signInMethod();
+      debugPrint('✅ [AUTH] OAuth sign-in succeeded!');
+      debugPrint('   User ID: ${user.id}');
       state = state.copyWith(
         isLoading: false,
         user: user,
@@ -37,22 +71,35 @@ class AuthScreenNotifier extends StateNotifier<AuthScreenState> {
       );
     } on CancelledSignInException {
       // User cancelled - don't fall back to anonymous
+      debugPrint('⚠️ [AUTH] User cancelled sign-in');
       state = state.copyWith(isLoading: false);
     } catch (e) {
       // OAuth failed - fall back to anonymous sign-in
+      debugPrint('❌ [AUTH] OAuth sign-in FAILED!');
+      debugPrint('   Error: $e');
+      debugPrint('   Error type: ${e.runtimeType}');
+      debugPrint('🔄 [AUTH] Attempting fallback to anonymous sign-in...');
+
       try {
         final anonymousUser = await _authRepository.signInAnonymously();
+        debugPrint('✅ [AUTH] Anonymous fallback succeeded!');
+        debugPrint('   User ID: ${anonymousUser.id}');
         state = state.copyWith(
           isLoading: false,
           user: anonymousUser,
           showCountrySelection: true,
         );
-      } catch (anonymousError) {
+        debugPrint('🟢 [AUTH] State updated with anonymous user (fallback)');
+      } catch (anonymousError, anonymousSt) {
         // Both OAuth and anonymous sign-in failed
+        debugPrint('❌ [AUTH] Anonymous fallback ALSO FAILED!');
+        debugPrint('   Error: $anonymousError');
+        debugPrint('   Stack trace: $anonymousSt');
         state = state.copyWith(
           isLoading: false,
           errorMessage: _getErrorMessage(e.toString()),
         );
+        debugPrint('🔴 [AUTH] Showing error to user: ${_getErrorMessage(e.toString())}');
       }
     }
   }
