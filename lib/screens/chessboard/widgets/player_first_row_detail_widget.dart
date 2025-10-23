@@ -232,8 +232,8 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     // Eval bar width - matches the actual evaluation bar widget width
     final engineGaugeWidth = playerView == PlayerView.gridView ? 10.w : 20.w;
 
-    // Clock padding - minimal, keeps clock at board edge
-    final clockPadding = playerView == PlayerView.gridView ? 2.sp : 4.sp;
+    // Clock padding - zero for list/board view to sit exactly at edge
+    final clockPadding = playerView == PlayerView.gridView ? 2.sp : 0.sp;
 
     return GestureDetector(
       onTap: () {
@@ -438,28 +438,25 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             ),
             SizedBox(width: playerView == PlayerView.gridView ? 3.w : 4.w),
           ],
-          // Always show clock/time on the right - constrained to not overflow
-          Flexible(
-            flex: 0,
-            child: Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: clockPadding,
-                vertical: playerView == PlayerView.gridView ? 0.5.sp : 0,
-              ),
-              decoration: BoxDecoration(
-                color: isCurrentPlayer ? kDarkBlue : Colors.transparent,
-                borderRadius: playerView == PlayerView.gridView
-                    ? BorderRadius.circular(2)
-                    : null,
-              ),
-              child: _PlayerClock(
-                isWhitePlayer: isWhitePlayer,
-                gamesTourModel: gamesTourModel,
-                chessBoardState: chessBoardState,
-                isCurrentPlayer: isCurrentPlayer,
-                timeStyle: timeStyle,
-                moveTime: moveTime,
-              ),
+          // Always show clock/time on the right - simplified structure to prevent overflow
+          Container(
+            padding: EdgeInsets.symmetric(
+              horizontal: clockPadding,
+              vertical: playerView == PlayerView.gridView ? 1.sp : 0,
+            ),
+            decoration: BoxDecoration(
+              color: isCurrentPlayer ? kDarkBlue : Colors.transparent,
+              borderRadius: playerView == PlayerView.gridView
+                  ? BorderRadius.circular(2)
+                  : null,
+            ),
+            child: _PlayerClock(
+              isWhitePlayer: isWhitePlayer,
+              gamesTourModel: gamesTourModel,
+              chessBoardState: chessBoardState,
+              isCurrentPlayer: isCurrentPlayer,
+              timeStyle: timeStyle,
+              moveTime: moveTime,
             ),
           ),
           SizedBox(width: endPadding),
