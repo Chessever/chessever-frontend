@@ -36,12 +36,24 @@ class AuthScreenNotifier extends StateNotifier<AuthScreenState> {
         showCountrySelection: true,
       );
     } on CancelledSignInException {
+      // User cancelled - don't fall back to anonymous
       state = state.copyWith(isLoading: false);
     } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        errorMessage: _getErrorMessage(e.toString()),
-      );
+      // OAuth failed - fall back to anonymous sign-in
+      try {
+        final anonymousUser = await _authRepository.signInAnonymously();
+        state = state.copyWith(
+          isLoading: false,
+          user: anonymousUser,
+          showCountrySelection: true,
+        );
+      } catch (anonymousError) {
+        // Both OAuth and anonymous sign-in failed
+        state = state.copyWith(
+          isLoading: false,
+          errorMessage: _getErrorMessage(e.toString()),
+        );
+      }
     }
   }
 
