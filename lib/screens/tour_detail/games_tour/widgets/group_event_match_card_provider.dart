@@ -11,24 +11,14 @@ class _GroupEventMatchCardController {
 
   final Ref ref;
 
-  /// Helper to normalize team names for comparison
-  String _normalizeTeamName(String name) {
-    return name.trim().toLowerCase();
-  }
-  
-  /// Helper to check if two team names match
-  bool _teamsMatch(String name1, String name2) {
-    return _normalizeTeamName(name1) == _normalizeTeamName(name2);
-  }
-  
   List<double> getMatchScore({
     required List<MatchWithComparison> matchList,
     required String team,
   }) {
     if (matchList.isEmpty) return [0.0, 0.0];
 
-    double team1 = 0.0; // Header left side
-    double team2 = 0.0; // Header right side
+    double team1Score = 0.0; // Left side of header
+    double team2Score = 0.0; // Right side of header
 
     for (final m in matchList) {
       final status = m.game.gameStatus;
@@ -39,30 +29,31 @@ class _GroupEventMatchCardController {
       }
 
       if (status == GameStatus.draw) {
-        // Draw: both teams get 0.5
-        team1 += 0.5;
-        team2 += 0.5;
+        team1Score += 0.5;
+        team2Score += 0.5;
         continue;
       }
 
-      final same = m.comparison == MatchComparison.sameOrder;
+      // Use comparison to determine which team is on which side
+      // sameOrder: white=team1(left), black=team2(right)
+      // oppositeOrder: black=team1(left), white=team2(right)
+      final isSameOrder = m.comparison == MatchComparison.sameOrder;
+
       if (status == GameStatus.whiteWins) {
-        // White belongs to header team1 when sameOrder, else to team2
-        if (same) {
-          team1 += 1.0;
+        if (isSameOrder) {
+          team1Score += 1.0; // White is on left side
         } else {
-          team2 += 1.0;
+          team2Score += 1.0; // White is on right side
         }
       } else if (status == GameStatus.blackWins) {
-        // Black belongs to header team2 when sameOrder, else to team1
-        if (same) {
-          team2 += 1.0;
+        if (isSameOrder) {
+          team2Score += 1.0; // Black is on right side
         } else {
-          team1 += 1.0;
+          team1Score += 1.0; // Black is on left side
         }
       }
     }
 
-    return [team1, team2];
+    return [team1Score, team2Score];
   }
 }
