@@ -5,7 +5,6 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_con
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_games_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_match_card_provider.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
-import 'package:chessever2/utils/string_utils_provider.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -82,18 +81,26 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
     final matchScore = ref
         .read(groupEventMatchCardProvider)
         .getMatchScore(matchList: widget.games, team: team1Name);
+    final team1ScoreStr =
+        matchScore.first % 1 == 0
+            ? matchScore.first.toStringAsFixed(0)
+            : matchScore.first.toStringAsFixed(1);
+    final team2ScoreStr =
+        matchScore.last % 1 == 0
+            ? matchScore.last.toStringAsFixed(0)
+            : matchScore.last.toStringAsFixed(1);
+
+    final radius = Radius.circular(12.br);
+    final cardBorderRadius = BorderRadius.circular(12.br);
+    final headerBorderRadius =
+        _isExpanded
+            ? BorderRadius.only(topLeft: radius, topRight: radius)
+            : cardBorderRadius;
 
     return Container(
-      margin: EdgeInsets.symmetric(vertical: 12.sp),
       decoration: BoxDecoration(
         color: kBlack2Color,
-        borderRadius:
-            _isExpanded
-                ? BorderRadius.circular(4.br)
-                : BorderRadius.only(
-                  topLeft: Radius.circular(4.br),
-                  topRight: Radius.circular(4.br),
-                ),
+        borderRadius: cardBorderRadius,
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -103,6 +110,10 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
             child: Container(
               height: 60.h,
               padding: EdgeInsets.only(left: 12.sp, right: 12.sp),
+              decoration: BoxDecoration(
+                color: kBlack2Color,
+                borderRadius: headerBorderRadius,
+              ),
               child: Row(
                 children: [
                   Expanded(
@@ -118,13 +129,9 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
                         ],
                         Expanded(
                           child: Text(
-                            ref
-                                .read(stringUtilsProvider)
-                                .getTrimmedStringWithScore(
-                                  team1Name,
-                                  matchScore.first,
-                                ),
+                            team1Name,
                             maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: AppTypography.textXsMedium.copyWith(
                               color: kWhiteColor,
                             ),
@@ -135,7 +142,22 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
                     ),
                   ),
 
-                  Expanded(
+                  SizedBox(
+                    width: 36.w,
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        team1ScoreStr,
+                        style: AppTypography.textXsMedium.copyWith(
+                          color: kWhiteColor,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  SizedBox(
+                    width: 32.w,
                     child: Center(
                       child: Text(
                         'VS',
@@ -148,32 +170,42 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
                     ),
                   ),
 
+                  SizedBox(
+                    width: 36.w,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        team2ScoreStr,
+                        style: AppTypography.textXsMedium.copyWith(
+                          color: kWhiteColor,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+
                   Expanded(
                     child: Row(
                       children: [
+                        Expanded(
+                          child: Text(
+                            team2Name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTypography.textXsMedium.copyWith(
+                              color: kWhiteColor,
+                            ),
+                            textAlign: TextAlign.right,
+                          ),
+                        ),
                         if (country2.isNotEmpty) ...[
+                          SizedBox(width: 4.w),
                           CountryFlag.fromCountryCode(
                             country2,
                             height: 12.h,
                             width: 16.w,
                           ),
-                          SizedBox(width: 4.w),
                         ],
-                        Expanded(
-                          child: Text(
-                            ref
-                                .read(stringUtilsProvider)
-                                .getTrimmedStringWithScore(
-                                  team2Name,
-                                  matchScore.last,
-                                ),
-                            maxLines: 1,
-                            style: AppTypography.textXsMedium.copyWith(
-                              color: kWhiteColor,
-                            ),
-                            textAlign: TextAlign.left,
-                          ),
-                        ),
                       ],
                     ),
                   ),
@@ -229,7 +261,7 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
             (index * 2 + 1) < games.length ? games[index * 2 + 1] : null;
 
         return Padding(
-          padding: EdgeInsets.only(bottom: 5.sp),
+          padding: EdgeInsets.only(bottom: 12.sp),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -246,6 +278,8 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
 
   Widget _buildChessBoardView() {
     final games = widget.games;
+    // Use the games list from widget data to maintain correct order for group events
+    final fullGamesList = widget.gamesData.gamesTourModels;
 
     return ListView.builder(
       padding: EdgeInsets.zero,
@@ -254,24 +288,33 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
       itemCount: games.length,
       itemBuilder: (context, index) {
         final matchWithComparison = games[index];
-        final gameIndex = widget.gamesData.gamesTourModels.indexOf(
-          matchWithComparison.game,
+        final gameIndex = fullGamesList.indexWhere(
+          (g) => g.gameId == matchWithComparison.game.gameId,
         );
 
-        return GameCardWrapperWidget(
-          game: matchWithComparison.game,
-          gamesData: widget.gamesData,
-          gameIndex: gameIndex,
-          isChessBoardVisible: true,
-          onReturnFromChessboard: widget.onReturnFromChessboard,
+        return Padding(
+          padding: EdgeInsets.only(bottom: 12.sp),
+          child: GameCardWrapperWidget(
+            game: matchWithComparison.game,
+            gamesData: GamesScreenModel(
+              gamesTourModels: fullGamesList,
+              pinnedGamedIs: widget.gamesData.pinnedGamedIs,
+            ),
+            gameIndex: gameIndex,
+            isChessBoardVisible: true,
+            onReturnFromChessboard: widget.onReturnFromChessboard,
+          ),
         );
       },
     );
   }
 
   Widget _buildGridChessBoard(MatchWithComparison matchWithComparison) {
-    final gameIndex = widget.gamesData.gamesTourModels.indexOf(
-      matchWithComparison.game,
+    // Use the games list from widget data to maintain correct order for group events
+    final fullGamesList = widget.gamesData.gamesTourModels;
+
+    final gameIndex = fullGamesList.indexWhere(
+      (g) => g.gameId == matchWithComparison.game.gameId,
     );
 
     return GridChessBoardFromFENNew(
@@ -282,7 +325,7 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
               .read(gameCardWrapperProvider)
               .navigateToChessBoard(
                 context: context,
-                orderedGames: widget.gamesData.gamesTourModels,
+                orderedGames: fullGamesList,
                 gameIndex: gameIndex,
                 onReturnFromChessboard: widget.onReturnFromChessboard,
               ),

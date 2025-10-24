@@ -148,13 +148,24 @@ class _GamesTourContentProvider {
     }
   }
 
+  /// Normalize team names for consistent comparison
+  String _normalizeTeamName(String name) {
+    return name.trim().toLowerCase();
+  }
+
   MatchComparison _compareMatchHeaders(String h1, String h2) {
     final split1 = h1.split(' vs ').map((e) => e.trim()).toList();
     final split2 = h2.split(' vs ').map((e) => e.trim()).toList();
 
-    if (split1[0] == split2[0] && split1[1] == split2[1]) {
+    // Normalize team names for case-insensitive comparison
+    final team1A = _normalizeTeamName(split1[0]);
+    final team1B = _normalizeTeamName(split1[1]);
+    final team2A = _normalizeTeamName(split2[0]);
+    final team2B = _normalizeTeamName(split2[1]);
+
+    if (team1A == team2A && team1B == team2B) {
       return MatchComparison.sameOrder;
-    } else if (split1[0] == split2[1] && split1[1] == split2[0]) {
+    } else if (team1A == team2B && team1B == team2A) {
       return MatchComparison.oppositeOrder;
     } else {
       return MatchComparison.different;

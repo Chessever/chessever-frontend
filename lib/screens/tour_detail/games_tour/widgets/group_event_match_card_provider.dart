@@ -15,43 +15,45 @@ class _GroupEventMatchCardController {
     required List<MatchWithComparison> matchList,
     required String team,
   }) {
-    var teamAWon = 0.0;
-    var teamBWon = 0.0;
-    for (var a = 0; a < matchList.length; a++) {
-      if (matchList[a].comparison == MatchComparison.sameOrder) {
-        final status = matchList[a].game.gameStatus;
-        switch (status) {
-          case GameStatus.ongoing:
-            break;
-          case GameStatus.whiteWins:
-            teamAWon = teamAWon + 1;
-            break;
-          case GameStatus.blackWins:
-            teamBWon = teamBWon + 1;
-          case GameStatus.draw:
-            teamAWon = teamAWon + 0.5;
-            teamBWon = teamBWon + 0.5;
-          case GameStatus.unknown:
-            break;
+    if (matchList.isEmpty) return [0.0, 0.0];
+
+    double team1Score = 0.0; // Left side of header
+    double team2Score = 0.0; // Right side of header
+
+    for (final m in matchList) {
+      final status = m.game.gameStatus;
+
+      // Ignore live/unknown games
+      if (status == GameStatus.ongoing || status == GameStatus.unknown) {
+        continue;
+      }
+
+      if (status == GameStatus.draw) {
+        team1Score += 0.5;
+        team2Score += 0.5;
+        continue;
+      }
+
+      // Use comparison to determine which team is on which side
+      // sameOrder: white=team1(left), black=team2(right)
+      // oppositeOrder: black=team1(left), white=team2(right)
+      final isSameOrder = m.comparison == MatchComparison.sameOrder;
+
+      if (status == GameStatus.whiteWins) {
+        if (isSameOrder) {
+          team1Score += 1.0; // White is on left side
+        } else {
+          team2Score += 1.0; // White is on right side
         }
-      } else {
-        final status = matchList[a].game.gameStatus;
-        switch (status) {
-          case GameStatus.ongoing:
-            break;
-          case GameStatus.whiteWins:
-            teamBWon = teamBWon + 1;
-            break;
-          case GameStatus.blackWins:
-            teamAWon = teamAWon + 1;
-          case GameStatus.draw:
-            teamAWon = teamAWon + 0.5;
-            teamBWon = teamBWon + 0.5;
-          case GameStatus.unknown:
-            break;
+      } else if (status == GameStatus.blackWins) {
+        if (isSameOrder) {
+          team2Score += 1.0; // Black is on right side
+        } else {
+          team1Score += 1.0; // Black is on left side
         }
       }
     }
-    return [teamAWon, teamBWon];
+
+    return [team1Score, team2Score];
   }
 }

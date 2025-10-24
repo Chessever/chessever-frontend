@@ -1,6 +1,9 @@
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
+import 'package:flutter/animation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
@@ -80,60 +83,131 @@ class _GamesAppBarNotifier
   }
 
   Future<void> _scrollToRound(String roundId) async {
-    final controller = ref.read(gamesTourScrollProvider);
+    final scrollProvider = ref.read(gamesTourScrollProvider.notifier);
+    final controller = scrollProvider.state;
     final itemIndex = _calculateRoundHeaderIndex(roundId);
-    if (itemIndex >= 0) {
+    
+    // Debug logging
+    print('🎯 Scrolling to round: $roundId, calculated index: $itemIndex');
+    
+    if (itemIndex >= 0 && controller.isAttached) {
+      // Prevent scroll listener from updating dropdown during programmatic scroll
+      scrollProvider.startProgrammaticScroll();
+      
+      // Small delay to ensure layout is ready
+      await Future.delayed(const Duration(milliseconds: 100));
+      
       if (controller.isAttached) {
-        controller.jumpTo(index: itemIndex, alignment: 0.02);
+        try {
+          // Use alignment 0.0 to position round header at the very top
+          controller.jumpTo(
+            index: itemIndex,
+            alignment: 0.0,
+          );
+        } catch (e) {
+          // Fallback if jumpTo fails
+          try {
+            controller.scrollTo(
+              index: itemIndex,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              alignment: 0.0,
+            );
+          } catch (_) {}
+        }
+        
+        // Re-enable scroll listener after scroll completes
+        scrollProvider.endProgrammaticScroll();
       }
     }
   }
 
-  int _calculateRoundHeaderIndex(String roundId) {
-    final allRounds = state.valueOrNull?.gamesAppBarModels ?? [];
+  /// Extract round number from round name (e.g., "Round 9" -> 9, "round7" -> 7)
+  int? _extractRoundNumber(String roundName) {
+    final match = RegExp(r'(\d+)').firstMatch(roundName);
+    if (match != null && match.groupCount > 0) {
+      return int.tryParse(match.group(0)!);
+    }
+    return null;
+  }
 
-    final rounds =
-        allRounds.where((round) {
-          final gamesInRound =
-              ref
+  int _calculateRoundHeaderIndex(String roundId) {
+    final vm = state.valueOrNull;
+    final allRounds = vm?.gamesAppBarModels ?? [];
+    final selectedId = vm?.selectedId;
+    final userSelected = vm?.userSelectedId ?? false;
+
+    // Respect visible-rounds rule: hide upcoming by default; include selected upcoming
+    final rounds = allRounds.where((round) {
+      final gamesInRound =
+          ref
                   .read(gamesTourScreenProvider)
                   .valueOrNull
                   ?.gamesTourModels
                   .where((g) => g.roundId == round.id)
                   .length ??
               0;
-          return gamesInRound > 0;
-        }).toList();
+      if (gamesInRound == 0) return false;
+      if (userSelected && selectedId == round.id) return true;
+      return round.roundStatus != RoundStatus.upcoming;
+    }).toList();
 
+    // Check if we're in group event mode
+    final screenMode = ref.read(gamesTourScreenModeProvider).valueOrNull;
+    final isGroupEvent = screenMode == GamesTourScreenMode.groupEvent;
     final viewMode = ref.read(gamesListViewModeProvider);
     final bool isGrid = viewMode == GamesListViewMode.chessBoardGrid;
+
+    print('📊 Index calculation - Target: $roundId, Mode: ${isGroupEvent ? "Group" : "Regular"}, Grid: $isGrid');
 
     int index = 0;
 
     for (final round in rounds) {
       // If this is the round we want to scroll to, return the index of its header.
       if (round.id == roundId) {
+        print('✅ Found target round "${round.name}" at index: $index');
         return index;
       }
 
-      // count games in this round
-      final gamesInRound =
-          ref
-              .read(gamesTourScreenProvider)
-              .valueOrNull
-              ?.gamesTourModels
-              .where((g) => g.roundId == round.id)
-              .length ??
-          0;
+      // Count items in this round (header + content items)
+      int itemCount = 1; // header
 
-      if (isGrid) {
-        // grid: 1 header + ceil(games/2) rows (each row holds up to 2 games)
-        final rows = (gamesInRound + 1) ~/ 2; // integer ceil
-        index += 1 + rows;
+      if (isGroupEvent) {
+        // For group events, count team matchup cards
+        final gamesData = ref.read(gamesTourScreenProvider).valueOrNull;
+        if (gamesData != null) {
+          final grouped = ref.read(gamesTourContentProvider).getGroupHeader(
+                selectedRoundId: round.id,
+                gamesScreenModel: gamesData,
+              );
+          final cardCount = grouped.keys.length;
+          itemCount += cardCount; // number of team matchup cards
+          print('   Round "${round.name}": 1 header + $cardCount cards = $itemCount items');
+        }
       } else {
-        // list: 1 header + gamesInRound items
-        index += 1 + gamesInRound;
+        // For regular events, count games
+        final gamesInRound =
+            ref
+                .read(gamesTourScreenProvider)
+                .valueOrNull
+                ?.gamesTourModels
+                .where((g) => g.roundId == round.id)
+                .length ??
+            0;
+
+        if (isGrid) {
+          // grid: ceil(games/2) rows (each row holds up to 2 games)
+          final rows = (gamesInRound / 2).ceil();
+          itemCount += rows;
+          print('   Round "${round.name}": 1 header + $rows rows ($gamesInRound games) = $itemCount items');
+        } else {
+          // list: one item per game
+          itemCount += gamesInRound;
+          print('   Round "${round.name}": 1 header + $gamesInRound games = $itemCount items');
+        }
       }
+
+      index += itemCount;
     }
 
     return -1; // not found
@@ -167,16 +241,31 @@ class _GamesAppBarNotifier
               .toList();
 
       models.sort((a, b) {
-        final aDate = a.startsAt;
-        final bDate = b.startsAt;
+        // Priority order: live > ongoing > completed > upcoming
+        final statusPriority = {
+          RoundStatus.live: 0,
+          RoundStatus.ongoing: 1,
+          RoundStatus.completed: 2,
+          RoundStatus.upcoming: 3,
+        };
 
-        // --- Null handling ---
-        if (aDate == null && bDate == null) return 0;
-        if (aDate == null) return 1; // nulls go last
-        if (bDate == null) return -1;
+        final aPriority = statusPriority[a.roundStatus] ?? 4;
+        final bPriority = statusPriority[b.roundStatus] ?? 4;
 
-        // --- Sort by date descending (latest first) ---
-        return bDate.compareTo(aDate);
+        // Sort by status priority first
+        if (aPriority != bPriority) {
+          return aPriority.compareTo(bPriority);
+        }
+
+        // Within same status, sort by round number descending (bigger numbers first)
+        final aNum = _extractRoundNumber(a.name);
+        final bNum = _extractRoundNumber(b.name);
+
+        if (aNum == null && bNum == null) return 0;
+        if (aNum == null) return 1; // nulls go last
+        if (bNum == null) return -1;
+
+        return bNum.compareTo(aNum); // Descending order
       });
 
       await _applySelectionFrom(models, tourId!);
@@ -208,6 +297,33 @@ class _GamesAppBarNotifier
               ),
             )
             .toList();
+
+    // Re-sort with same priority logic: live > ongoing > completed > upcoming
+    updated.sort((a, b) {
+      final statusPriority = {
+        RoundStatus.live: 0,
+        RoundStatus.ongoing: 1,
+        RoundStatus.completed: 2,
+        RoundStatus.upcoming: 3,
+      };
+
+      final aPriority = statusPriority[a.roundStatus] ?? 4;
+      final bPriority = statusPriority[b.roundStatus] ?? 4;
+
+      if (aPriority != bPriority) {
+        return aPriority.compareTo(bPriority);
+      }
+
+      // Within same status, sort by round number descending (bigger numbers first)
+      final aNum = _extractRoundNumber(a.name);
+      final bNum = _extractRoundNumber(b.name);
+
+      if (aNum == null && bNum == null) return 0;
+      if (aNum == null) return 1;
+      if (bNum == null) return -1;
+
+      return bNum.compareTo(aNum); // Descending order
+    });
 
     final sticky = ref.read(userSelectedRoundProvider);
     final hasStickyValid =
