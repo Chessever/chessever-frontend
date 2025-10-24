@@ -323,11 +323,9 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                         ? nameParts[1]
                         : ''; // Part after comma
 
-                // Build static parts that must always be visible
+                // Build static parts
                 final title =
                     playerCard.title.isNotEmpty ? '${playerCard.title} ' : '';
-                final firstNameWithComma =
-                    firstName.isNotEmpty ? ', $firstName' : '';
                 final rating = ' ${playerCard.rating}';
 
                 // Create text painter to measure text width
@@ -336,75 +334,60 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                   maxLines: 1,
                 );
 
-                // Measure static parts (title + firstName + rating)
-                textPainter.text = TextSpan(
-                  children: [
-                    TextSpan(text: title, style: rankStyle),
-                    TextSpan(text: firstNameWithComma, style: nameStyle),
-                    TextSpan(text: rating, style: ratingStyle),
-                  ],
-                );
-                textPainter.layout();
-                final staticWidth = textPainter.width;
-
-                // Calculate available space for surname
-                final availableForSurname = constraints.maxWidth - staticWidth;
-
-                // Smart truncation: try progressively shorter versions
+                // Smart truncation: ALWAYS prioritize showing full surname
+                // Only abbreviate/truncate other parts, never reduce surname to initials
                 String displaySurname = surname;
-                String displayFirstName = firstNameWithComma;
+                String displayFirstName = firstName.isNotEmpty ? ', $firstName' : '';
 
                 if (surname.isNotEmpty) {
-                  textPainter.text = TextSpan(text: surname, style: nameStyle);
+                  // Strategy 1: Try full surname + full first name
+                  textPainter.text = TextSpan(
+                    children: [
+                      if (title.isNotEmpty) TextSpan(text: title, style: rankStyle),
+                      TextSpan(text: surname, style: nameStyle),
+                      if (firstName.isNotEmpty)
+                        TextSpan(text: ', $firstName', style: nameStyle),
+                      TextSpan(text: rating, style: ratingStyle),
+                    ],
+                  );
                   textPainter.layout();
 
-                  // If full name doesn't fit, try intelligent truncation
-                  if (textPainter.width > availableForSurname) {
-                    // Strategy 1: Abbreviate surname
-                    final surnameParts = surname.split(' ');
-                    displaySurname = surnameParts
+                  // If doesn't fit, start trimming (but keep full surname!)
+                  if (textPainter.width > constraints.maxWidth && firstName.isNotEmpty) {
+                    // Strategy 2: Keep full surname + abbreviate first name
+                    final firstNameParts = firstName.split(' ');
+                    final abbreviatedFirst = firstNameParts
                         .where((part) => part.isNotEmpty)
                         .map((part) => '${part[0]}.')
                         .join(' ');
+                    displayFirstName = ', $abbreviatedFirst';
 
-                    // Re-check if abbreviated surname + full first name fits
                     textPainter.text = TextSpan(
                       children: [
-                        TextSpan(text: displaySurname, style: nameStyle),
-                        TextSpan(text: firstNameWithComma, style: nameStyle),
+                        if (title.isNotEmpty) TextSpan(text: title, style: rankStyle),
+                        TextSpan(text: surname, style: nameStyle),
+                        TextSpan(text: displayFirstName, style: nameStyle),
+                        TextSpan(text: rating, style: ratingStyle),
                       ],
                     );
                     textPainter.layout();
 
-                    // Strategy 2: If still doesn't fit, abbreviate first name too
-                    if (textPainter.width > constraints.maxWidth - staticWidth &&
-                        firstName.isNotEmpty) {
-                      final firstNameParts = firstName.split(' ');
-                      final abbreviatedFirst = firstNameParts
-                          .where((part) => part.isNotEmpty)
-                          .map((part) => '${part[0]}.')
-                          .join(' ');
-                      displayFirstName = ', $abbreviatedFirst';
+                    // Strategy 3: If still doesn't fit, drop first name entirely
+                    if (textPainter.width > constraints.maxWidth) {
+                      displayFirstName = '';
 
-                      // Strategy 3: For extremely tight spaces (gridView on small phones)
-                      // Use only initials
-                      if (playerView == PlayerView.gridView) {
-                        textPainter.text = TextSpan(
-                          children: [
-                            if (title.isNotEmpty)
-                              TextSpan(text: title, style: rankStyle),
-                            TextSpan(text: displaySurname, style: nameStyle),
-                            TextSpan(text: displayFirstName, style: nameStyle),
-                            TextSpan(text: rating, style: ratingStyle),
-                          ],
-                        );
-                        textPainter.layout();
+                      textPainter.text = TextSpan(
+                        children: [
+                          if (title.isNotEmpty) TextSpan(text: title, style: rankStyle),
+                          TextSpan(text: surname, style: nameStyle),
+                          TextSpan(text: rating, style: ratingStyle),
+                        ],
+                      );
+                      textPainter.layout();
 
-                        // If still overflowing, drop first name entirely
-                        if (textPainter.width > constraints.maxWidth) {
-                          displayFirstName = '';
-                        }
-                      }
+                      // Strategy 4: If STILL doesn't fit, let ellipsis truncate surname
+                      // This is the last resort - RichText will handle the truncation
+                      // We keep displaySurname as the full surname, RichText will add "..."
                     }
                   }
                 }
