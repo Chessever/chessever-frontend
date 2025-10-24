@@ -66,7 +66,7 @@ class _SplashScreenProvider {
     // Check authentication state - session manager will recover session if exists
     // This also triggers Supabase auth state change which the listener will pick up
     final sessionManager = ref.read(sessionManagerProvider);
-    final isLoggedIn = await sessionManager.isLoggedIn();
+    final isLoggedIn = kDebugMode ? true : await sessionManager.isLoggedIn();
 
     if (kDebugMode) {
       print('🔐 User logged in: $isLoggedIn');
@@ -78,8 +78,9 @@ class _SplashScreenProvider {
     // Initial navigation - the AuthStateListener will handle subsequent auth changes
     if (isLoggedIn) {
       // User is logged in - initialize country dropdown and go to home
-      ref.read(countryDropdownProvider);
-      Navigator.pushNamedAndRemoveUntil(context, '/home_screen', (_) => false);
+      // ref.read(countryDropdownProvider);
+      // Navigator.pushNamedAndRemoveUntil(context, '/home_screen', (_) => false);
+      Navigator.pushNamed(context, '/premium_screen');
     } else {
       // User is not logged in - go to auth screen
       Navigator.pushNamedAndRemoveUntil(context, '/auth_screen', (_) => false);

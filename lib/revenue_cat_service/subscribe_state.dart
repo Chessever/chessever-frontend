@@ -1,4 +1,4 @@
-import 'package:chessever2/revenue_cat_service/revenue_cat_service.dart';
+import 'package:chessever2/revenue_cat_service/revenue_cat_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:purchases_flutter/models/package_wrapper.dart';
 

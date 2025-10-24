@@ -162,7 +162,7 @@ flutter:
     - assets/sfx/
     - assets/launch.jpg
     - assets/app_icon.png
-    # - .env
+    - .env
     # - .env.dev
     - shorebird.yaml
 
