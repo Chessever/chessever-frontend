@@ -43,18 +43,20 @@ class _GroupEventGamesTourContentBodyState
 
     // Filter rounds to hide upcoming rounds by default.
     // Include upcoming only when user explicitly selected that round.
-    final visibleRounds = rounds.where((round) {
-      final roundGames = widget.gamesScreenModel.gamesTourModels
-          .where((game) => game.roundId == round.id)
-          .toList();
-      if (roundGames.isEmpty) return false;
+    final visibleRounds =
+        rounds.where((round) {
+          final roundGames =
+              widget.gamesScreenModel.gamesTourModels
+                  .where((game) => game.roundId == round.id)
+                  .toList();
+          if (roundGames.isEmpty) return false;
 
-      // Always include explicitly user-selected round
-      if (userSelected && round.id == selectedRoundId) return true;
+          // Always include explicitly user-selected round
+          if (userSelected && round.id == selectedRoundId) return true;
 
-      // Otherwise, exclude upcoming rounds
-      return round.roundStatus != RoundStatus.upcoming;
-    }).toList();
+          // Otherwise, exclude upcoming rounds
+          return round.roundStatus != RoundStatus.upcoming;
+        }).toList();
 
     if (visibleRounds.isEmpty) {
       return const SizedBox.shrink();
@@ -72,13 +74,17 @@ class _GroupEventGamesTourContentBodyState
     final itemPositionsListener =
         ref.watch(gamesTourScrollProvider.notifier).itemPositionsListener;
 
-    return _buildAllRoundsView(
-      context,
-      visibleRounds,
-      orderedGamesData,
-      scrollController,
-      itemPositionsListener,
-    );
+    return widget.gamesScreenModel.isSearchMode
+        ? _buildGroupedGameCardsOnSearchMode(rounds, orderedGamesData)
+        : selectedRoundId != null
+        ? _buildAllRoundsView(
+          context,
+          visibleRounds,
+          orderedGamesData,
+          scrollController,
+          itemPositionsListener,
+        )
+        : SizedBox.shrink();
   }
 
   Widget _buildAllRoundsView(
@@ -110,10 +116,7 @@ class _GroupEventGamesTourContentBodyState
       allItems.add(
         _GroupEventItem(
           roundId: round.id,
-          widget: RoundHeader(
-            round: round,
-            roundGames: roundGames,
-          ),
+          widget: RoundHeader(round: round, roundGames: roundGames),
           isHeader: true,
         ),
       );
@@ -152,7 +155,7 @@ class _GroupEventGamesTourContentBodyState
         final item = allItems[index];
         final isLastItem = index == allItems.length - 1;
         final nextIsHeader = !isLastItem && allItems[index + 1].isHeader;
-        
+
         // Apply beautiful UI spacing with visual hierarchy
         EdgeInsets padding;
         if (item.isHeader) {
@@ -160,14 +163,39 @@ class _GroupEventGamesTourContentBodyState
           padding = EdgeInsets.only(bottom: 16.sp);
         } else {
           // Team cards: standard spacing (12sp), extra before next header (20sp)
-          padding = EdgeInsets.only(
-            bottom: nextIsHeader ? 20.sp : 12.sp,
-          );
+          padding = EdgeInsets.only(bottom: nextIsHeader ? 20.sp : 12.sp);
         }
-        
-        return Padding(
-          padding: padding,
-          child: item.widget,
+
+        return Padding(padding: padding, child: item.widget);
+      },
+    );
+  }
+
+  Widget _buildGroupedGameCardsOnSearchMode(
+    List<GamesAppBarModel> gamesAppBarModels,
+    GamesScreenModel orderedGamesData,
+  ) {
+    final grouped = ref
+        .read(gamesTourContentProvider)
+        .getGroupHeaderOnSearch(
+          rounds: gamesAppBarModels,
+          gamesScreenModel: widget.gamesScreenModel,
+        );
+
+    // Build grouped cards
+    return ListView.builder(
+      padding: EdgeInsets.zero,
+      itemCount: grouped.length,
+      itemBuilder: (context, index) {
+        final header = grouped.keys.elementAt(index);
+        final gamesForTeam = grouped[header]!;
+
+        return GroupEventMatchCard(
+          roundTitle: header,
+          games: gamesForTeam,
+          gamesData: orderedGamesData,
+          gamesListViewMode: widget.gamesListViewMode,
+          onReturnFromChessboard: widget.onReturnFromChessboard,
         );
       },
     );

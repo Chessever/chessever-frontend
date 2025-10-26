@@ -44,31 +44,36 @@ class _StringUtilsController {
   }
 
   String getTrimmedStringWithScore(String name, double score) {
-    const maxTotalLength = 18;
-    const scoreStartIndex = 14; // score starts at char 14 (1-based)
+    const maxTotalLength = 16;
+    const scoreStartIndex = 12; // score starts at 14th character (1-based)
     const nameMaxLength = scoreStartIndex - 1; // 13 chars for name area
 
-    final scoreStr = score.toStringAsFixed(
-      score % 1 == 0 ? 0 : 1,
-    ); // "1", "1.5"
-    String formattedName;
+    // Format score: no decimal if whole, 1 decimal if fractional
+    final scoreStr =
+        score % 1 == 0 ? score.toStringAsFixed(0) : score.toStringAsFixed(1);
 
-    // Parse name like "LastName, FirstName"
-    formattedName =
+    // Trim and add ellipsis if name is too long
+    String formattedName =
         name.length > nameMaxLength
             ? '${name.substring(0, nameMaxLength - 1)}…'
             : name;
 
-    // Pad to align score to fixed position
-    if (formattedName.length < nameMaxLength) {
-      formattedName = formattedName.padRight(nameMaxLength);
+    // Pad so the score always starts at the 14th position
+    formattedName = formattedName.padRight(nameMaxLength);
+
+    // Combine
+    String result = '$formattedName $scoreStr';
+
+    // If total exceeds max length, trim the name part but keep score intact
+    if (result.length > maxTotalLength) {
+      final allowedNameLength = maxTotalLength - (scoreStr.length + 1);
+      final safeName =
+          name.length > allowedNameLength
+              ? '${name.substring(0, allowedNameLength - 1)}…'
+              : name.padRight(allowedNameLength);
+      result = '$safeName $scoreStr';
     }
 
-    final result = '$formattedName $scoreStr';
-
-    // Ensure not longer than 18 chars total
-    return result.length > maxTotalLength
-        ? result.substring(0, maxTotalLength)
-        : result;
+    return result;
   }
 }

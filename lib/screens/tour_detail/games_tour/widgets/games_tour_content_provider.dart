@@ -34,7 +34,56 @@ class _GamesTourContentProvider {
     return GamesScreenModel(
       gamesTourModels: orderedGamesForChessBoard,
       pinnedGamedIs: gamesScreenModel.pinnedGamedIs,
+      isSearchMode: gamesScreenModel.isSearchMode,
     );
+  }
+
+  Map<String, List<MatchWithComparison>> getGroupHeaderOnSearch({
+    required List<GamesAppBarModel> rounds,
+    required GamesScreenModel gamesScreenModel,
+  }) {
+    final grouped = <String, List<MatchWithComparison>>{};
+
+    for (var a = 0; a < rounds.length; a++) {
+      final gamesPerRound =
+          gamesScreenModel.gamesTourModels
+              .where((game) => game.roundId == rounds[a].id)
+              .toList();
+      for (var game in gamesPerRound) {
+        final whiteTeam = game.whitePlayer.team ?? game.whitePlayer.countryCode;
+        final blackTeam = game.blackPlayer.team ?? game.blackPlayer.countryCode;
+        final header = '$whiteTeam vs $blackTeam';
+
+        // Check existing headers
+        final comparison = _compareAllWithOne(grouped.keys.toList(), header);
+
+        if (comparison == MatchComparison.sameOrder) {
+          // Same header, add to same list
+          grouped[header]!.add(
+            MatchWithComparison(game: game, comparison: comparison),
+          );
+        } else if (comparison == MatchComparison.oppositeOrder) {
+          // Opposite header exists, find it and add there
+          final existingHeader = grouped.keys.firstWhere(
+            (h) =>
+                _compareMatchHeaders(h, header) ==
+                MatchComparison.oppositeOrder,
+          );
+          grouped[existingHeader]!.add(
+            MatchWithComparison(game: game, comparison: comparison),
+          );
+        } else {
+          // No matching header, create a new one
+          grouped[header] = [
+            MatchWithComparison(
+              game: game,
+              comparison: MatchComparison.sameOrder,
+            ),
+          ];
+        }
+      }
+    }
+    return grouped;
   }
 
   Map<String, List<MatchWithComparison>> getGroupHeader({

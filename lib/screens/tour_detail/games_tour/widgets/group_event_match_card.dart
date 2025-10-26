@@ -5,7 +5,6 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_con
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_games_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_match_card_provider.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
-import 'package:chessever2/utils/string_utils_provider.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -82,12 +81,14 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
     final matchScore = ref
         .read(groupEventMatchCardProvider)
         .getMatchScore(matchList: widget.games, team: team1Name);
-    final team1ScoreStr = matchScore.first % 1 == 0
-        ? matchScore.first.toStringAsFixed(0)
-        : matchScore.first.toStringAsFixed(1);
-    final team2ScoreStr = matchScore.last % 1 == 0
-        ? matchScore.last.toStringAsFixed(0)
-        : matchScore.last.toStringAsFixed(1);
+    final team1ScoreStr =
+        matchScore.first % 1 == 0
+            ? matchScore.first.toStringAsFixed(0)
+            : matchScore.first.toStringAsFixed(1);
+    final team2ScoreStr =
+        matchScore.last % 1 == 0
+            ? matchScore.last.toStringAsFixed(0)
+            : matchScore.last.toStringAsFixed(1);
 
     final radius = Radius.circular(12.br);
     final cardBorderRadius = BorderRadius.circular(12.br);

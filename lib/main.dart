@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:chessever2/l10n/app_localizations.dart';
 import 'package:chessever2/localization/locale_provider.dart';
+import 'package:chessever2/revenue_cat_service/revenue_cat_provider.dart';
 import 'package:chessever2/screens/authentication/auth_screen.dart';
 import 'package:chessever2/screens/calendar/calendar_detail_screen.dart';
 import 'package:chessever2/screens/favorites/favorite_screen.dart';
@@ -12,6 +13,8 @@ import 'package:chessever2/screens/countryman_games_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/players/player_screen.dart';
 import 'package:chessever2/screens/players/providers/player_providers.dart';
+import 'package:chessever2/screens/premium/premium_popup_listener.dart';
+import 'package:chessever2/screens/premium/premium_screen.dart';
 import 'package:chessever2/screens/splash/splash_screen.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen.dart';
@@ -30,7 +33,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -170,8 +172,10 @@ Future<void> main() async {
       ]);
 
       // Non-critical: Load audio assets in background (don't block app startup)
-      unawaited(AudioPlayerService.instance.initializeAndLoadAllAssets());
-      // await _initRevenueCat();
+      if (kReleaseMode) {
+        unawaited(AudioPlayerService.instance.initializeAndLoadAllAssets());
+      }
+      await RevenueCatService.init();
 
       await SentryFlutter.init(
         (options) {
@@ -185,17 +189,6 @@ Future<void> main() async {
     (error, stackTrace) {
       Sentry.captureException(error, stackTrace: stackTrace);
     },
-  );
-}
-
-Future<void> _initRevenueCat() async {
-  await Purchases.setDebugLogsEnabled(true); // Enable debug logs
-  // final SupabaseClient = Supabase.instance.client;
-  // final user = SupabaseClient.auth.currentUser;
-  // await Purchases.setDebugLogsEnabled(true);
-  await Purchases.configure(
-    PurchasesConfiguration(_getEnv('RevenueCatAPIKey')),
-    // appUserId: '',
   );
 }
 
@@ -290,6 +283,9 @@ class _MyAppState extends ConsumerState<MyApp> {
         themeMode: themeMode,
         navigatorKey: navigatorKey,
         navigatorObservers: [routeObserver],
+        builder: (context, child) {
+          return PremiumPopupListener(child: child ?? const SizedBox.shrink());
+        },
         initialRoute: '/',
         routes: {
           '/': (context) => const SplashScreen(),
@@ -302,7 +298,7 @@ class _MyAppState extends ConsumerState<MyApp> {
           '/library_screen': (context) => const LibraryScreen(),
           '/favorites_screen': (context) => const FavoriteScreen(),
           '/scorecard_screen': (context) => const ScoreCardScreen(),
-          // '/chess_screen': (context) => const ChessScreen(),
+          '/premium_screen': (context) => const PremiumScreen(),
           // New Screen
           '/player_list_screen': (context) => const PlayerListScreen(),
           // Updated to use the new FavoriteScreen

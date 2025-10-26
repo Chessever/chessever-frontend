@@ -1,5 +1,6 @@
 import 'package:chessever2/providers/app_version_provider.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -10,6 +11,8 @@ import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+import '../../utils/png_asset.dart';
 
 /// Handler for hamburger menu callbacks
 class HamburgerMenuCallbacks {
@@ -32,13 +35,14 @@ class HamburgerMenuCallbacks {
   });
 }
 
-class HamburgerMenu extends StatelessWidget {
+class HamburgerMenu extends ConsumerWidget {
   final HamburgerMenuCallbacks callbacks;
 
   const HamburgerMenu({super.key, required this.callbacks});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isSubscribed = ref.watch(subscriptionProvider).isSubscribed;
     return SizedBox(
       width: 260.w, // Set fixed width for hamburger menu
       child: Drawer(
@@ -121,28 +125,28 @@ class HamburgerMenu extends StatelessWidget {
                     //   },
                     // ),
                     // SizedBox(height: 12.h),
-                    // Container(
-                    //   decoration: BoxDecoration(
-                    //     gradient: LinearGradient(
-                    //       colors: [kgradientEndColors, kgradientStartColors],
-                    //       begin: Alignment.topLeft,
-                    //       end: Alignment.bottomRight,
-                    //     ),
-                    //   ),
-                    //   child: _MenuItem(
-                    //     color: Colors.transparent,
-                    //     customIcon: Image.asset(
-                    //       PngAsset.premiumIcon,
-                    //       width: 28.w,
-                    //       height: 28.h,
-                    //       fit: BoxFit.contain,
-                    //     ),
-                    //     title: 'Try Premium for free',
-                    //     onPressed: () {
-                    //       callbacks.onPremiumPressed();
-                    //     },
-                    //   ),
-                    // ),
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [kgradientEndColors, kgradientStartColors],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                      ),
+                      child: _MenuItem(
+                        color: Colors.transparent,
+                        customIcon: Image.asset(
+                          PngAsset.premiumIcon,
+                          width: 28.w,
+                          height: 28.h,
+                          fit: BoxFit.contain,
+                        ),
+                        title: isSubscribed ? 'Subscriptions' : 'Try Premium' ,
+                        onPressed: () {
+                          callbacks.onPremiumPressed();
+                        },
+                      ),
+                    ),
                   ],
                 ),
               ),
