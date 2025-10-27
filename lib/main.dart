@@ -278,6 +278,7 @@ class _MyAppState extends ConsumerState<MyApp> {
     ResponsiveHelper.init(context);
 
     return AuthStateListener(
+      navigatorKey: navigatorKey,
       child: MaterialApp(
         locale: locale,
         supportedLocales: AppLocalizations.supportedLocales,

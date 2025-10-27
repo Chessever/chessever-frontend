@@ -30,35 +30,6 @@ class AuthScreenNotifier extends StateNotifier<AuthScreenState> {
     debugPrint('🔵 [AUTH] Starting sign-in flow...');
     state = state.copyWith(isLoading: true, errorMessage: null);
 
-    // 🧪 DEBUG MODE: Force anonymous sign-in to test fallback
-    // TODO: Remove or comment out this block when done testing
-    if (kDebugMode) {
-      debugPrint('🧪 [AUTH] DEBUG MODE DETECTED: Forcing anonymous sign-in...');
-      try {
-        debugPrint('🔵 [AUTH] Calling signInAnonymously()...');
-        final anonymousUser = await _authRepository.signInAnonymously();
-        debugPrint('✅ [AUTH] Anonymous sign-in succeeded!');
-        debugPrint('   User ID: ${anonymousUser.id}');
-        debugPrint('   User email: ${anonymousUser.email}');
-        state = state.copyWith(
-          isLoading: false,
-          user: anonymousUser,
-          showCountrySelection: true,
-        );
-        debugPrint('🟢 [AUTH] State updated with anonymous user');
-        return;
-      } catch (e, st) {
-        debugPrint('❌ [AUTH] Anonymous sign-in FAILED in debug mode!');
-        debugPrint('   Error: $e');
-        debugPrint('   Stack trace: $st');
-        state = state.copyWith(
-          isLoading: false,
-          errorMessage: 'Anonymous sign-in failed: ${e.toString()}',
-        );
-        return;
-      }
-    }
-
     debugPrint('🔵 [AUTH] Attempting OAuth sign-in...');
     try {
       final user = await signInMethod();
