@@ -35,7 +35,8 @@ class _SessionManager {
     await prefs.remove(_keyPersistSession);
     await prefs.remove(_keyPersistUser);
     await ref.read(authRepositoryProvider).signOut();
-    ref.invalidate(authScreenProvider);
+    // Reset auth screen state without disposing the notifier to avoid races
+    ref.read(authScreenProvider.notifier).reset();
     await ref.read(countryDropdownProvider.notifier).clearSelection();
   }
 
@@ -45,7 +46,8 @@ class _SessionManager {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_keyPersistSession);
     await prefs.remove(_keyPersistUser);
-    ref.invalidate(authScreenProvider);
+    // Keep the auth notifier alive but reset its state when clearing storage
+    ref.read(authScreenProvider.notifier).reset();
     await ref.read(countryDropdownProvider.notifier).clearSelection();
   }
 

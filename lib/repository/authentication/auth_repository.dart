@@ -187,19 +187,22 @@ class AuthRepository {
     }
   }
 
-  // Apple Sign In
+  // Apple Sign In (iOS only)
   Future<AppUser> signInWithApple() async {
     final sessionManager = ref.read(sessionManagerProvider);
 
+    // Apple Sign-In is only available on iOS
+    if (!Platform.isIOS) {
+      throw Exception('Apple Sign-In is only available on iOS devices.');
+    }
+
     try {
       // Ensure Apple Sign In is actually available (e.g., user signed into iCloud).
-      if (Platform.isIOS) {
-        final available = await SignInWithApple.isAvailable();
-        if (!available) {
-          throw Exception(
-            'Apple Sign In not available on this device. Sign into iCloud and try again.',
-          );
-        }
+      final available = await SignInWithApple.isAvailable();
+      if (!available) {
+        throw Exception(
+          'Apple Sign In not available on this device. Sign into iCloud and try again.',
+        );
       }
 
       // Generate nonce for security
@@ -213,16 +216,6 @@ class AuthRepository {
         ],
         // Apple expects the SHA256(nonce)
         nonce: hashedNonce,
-        // On Android the plugin uses the web flow; you must provide Service ID + Redirect URI
-        webAuthenticationOptions:
-            Platform.isAndroid
-                ? WebAuthenticationOptions(
-                  clientId: _env(
-                    'APPLE_SERVICE_ID',
-                  ), // Service ID from Apple Developer
-                  redirectUri: Uri.parse(_env('APPLE_REDIRECT_URI')),
-                )
-                : null,
       );
 
       final idToken = credential.identityToken;
