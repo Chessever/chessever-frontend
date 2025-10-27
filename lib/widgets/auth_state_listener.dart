@@ -8,7 +8,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// Widget that listens to auth state changes and handles navigation.
 /// Receives the root [navigatorKey] so we can interact with the app navigator
 /// even though this listener wraps the entire [MaterialApp].
-class AuthStateListener extends ConsumerWidget {
+class AuthStateListener extends HookConsumerWidget {
   const AuthStateListener({
     required this.child,
     required this.navigatorKey,
