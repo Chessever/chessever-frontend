@@ -10,14 +10,14 @@ keytool -list -v -keystore android/my-release-key.jks -alias my-key-alias -store
 
 ### Navigate to: https://console.cloud.google.com/apis/credentials
 
-### Find OAuth 2.0 Client ID: `882734779574-9ajudu3cqv1v6qc1edcasldc7ac3e50l.apps.googleusercontent.com`
+### Find OAuth 2.0 Client ID: `$GOOGLE_ANDROID_CLIENT_ID`
 
 Verify:
 - [ ] Type: **Android**
 - [ ] Package name: `com.chessEver.app`
 - [ ] SHA-1: `DC:83:1A:5D:5C:F3:77:62:9A:BE:C4:6A:F3:D5:09:10:03:45:A9:F9`
 
-### Find Web OAuth 2.0 Client ID: `882734779574-0qk635jlqrbp9qhenmau7pd6bffiag2j.apps.googleusercontent.com`
+### Find Web OAuth 2.0 Client ID: `$GOOGLE_WEB_CLIENT_ID`
 
 Verify:
 - [ ] Type: **Web application**
@@ -45,9 +45,9 @@ Verify:
 ## 5. CodeMagic Environment Variables
 
 Verify in CodeMagic dashboard:
-- [ ] `GOOGLE_ANDROID_CLIENT_ID` = `882734779574-9ajudu3cqv1v6qc1edcasldc7ac3e50l.apps.googleusercontent.com`
-- [ ] `GOOGLE_WEB_CLIENT_ID` = `882734779574-0qk635jlqrbp9qhenmau7pd6bffiag2j.apps.googleusercontent.com`
-- [ ] `GOOGLE_IOS_CLIENT_ID` = `882734779574-8v68and9jcueedkvk0dl2ftse6dn8kt3.apps.googleusercontent.com`
+- [ ] `GOOGLE_ANDROID_CLIENT_ID` = `$GOOGLE_ANDROID_CLIENT_ID`
+- [ ] `GOOGLE_WEB_CLIENT_ID` = `$GOOGLE_WEB_CLIENT_ID`
+- [ ] `GOOGLE_IOS_CLIENT_ID` = `$GOOGLE_IOS_CLIENT_ID`
 
 ## 6. Build Configuration
 
@@ -62,9 +62,9 @@ Verify CodeMagic build script includes:
 
 ```bash
 flutter build apk --release \
-  --dart-define=GOOGLE_ANDROID_CLIENT_ID=882734779574-9ajudu3cqv1v6qc1edcasldc7ac3e50l.apps.googleusercontent.com \
-  --dart-define=GOOGLE_WEB_CLIENT_ID=882734779574-0qk635jlqrbp9qhenmau7pd6bffiag2j.apps.googleusercontent.com \
-  --dart-define=GOOGLE_IOS_CLIENT_ID=882734779574-8v68and9jcueedkvk0dl2ftse6dn8kt3.apps.googleusercontent.com
+  --dart-define=GOOGLE_ANDROID_CLIENT_ID=$GOOGLE_ANDROID_CLIENT_ID \
+  --dart-define=GOOGLE_WEB_CLIENT_ID=$GOOGLE_WEB_CLIENT_ID \
+  --dart-define=GOOGLE_IOS_CLIENT_ID=$GOOGLE_IOS_CLIENT_ID
 ```
 
 Install on device and test Google Sign-In.
