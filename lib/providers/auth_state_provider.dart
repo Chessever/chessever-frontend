@@ -1,21 +1,31 @@
+import 'dart:async';
+
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/repository/authentication/model/app_user.dart';
 import 'package:chessever2/repository/authentication/model/auth_state.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// Global auth state provider that listens to Supabase auth changes
-/// This is the single source of truth for authentication state
+/// Global auth state provider that listens to Supabase auth changes.
+/// Converts raw Supabase auth events into [AppAuthState] values and surfaces
+/// stream errors to the UI as error states instead of throwing.
 final authStateProvider = StreamProvider<AppAuthState>((ref) {
   final authRepository = ref.watch(authRepositoryProvider);
 
-  return authRepository.authStateChanges.map((user) {
-    if (user != null) {
-      return AppAuthState.authenticated(user);
-    } else {
-      return const AppAuthState.unauthenticated();
-    }
-  }).handleError((error, stackTrace) {
-    return AppAuthState.error(error.toString());
+  return Stream<AppAuthState>.multi((controller) {
+    final sub = authRepository.authStateChanges.listen(
+      (user) {
+        if (user != null) {
+          controller.add(AppAuthState.authenticated(user));
+        } else {
+          controller.add(const AppAuthState.unauthenticated());
+        }
+      },
+      onError: (error, stackTrace) {
+        controller.add(AppAuthState.error(error.toString()));
+      },
+    );
+
+    controller.onCancel = () => sub.cancel();
   });
 });
 

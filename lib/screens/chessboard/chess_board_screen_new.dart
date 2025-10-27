@@ -34,7 +34,6 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:flutter_svg/svg.dart';
-import 'package:screen_capture_event/screen_capture_event.dart';
 
 /// Cached move impact results keyed by game id/signature to avoid recomputation
 class CachedMoveImpact {
@@ -291,8 +290,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   bool analysisMode = false;
   int? _lastViewedIndex;
   int _currentPageIndex = 0;
-  final ScreenCaptureEvent _screenCaptureEvent = ScreenCaptureEvent();
-  bool _isShareOverlayVisible = false;
 
   GamesTourModel _resolveGameForIndex(int index) {
     if (widget.games.isEmpty) {
@@ -329,20 +326,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
     final safeIndex = widget.currentIndex.clamp(0, widget.games.length - 1);
     _pageController = PageController(initialPage: safeIndex);
     _currentPageIndex = safeIndex;
-
-    // Set up screenshot detection listener
-    _screenCaptureEvent.addScreenRecordListener((isRecording) {
-      // Don't show overlay during screen recording
-    });
-
-    _screenCaptureEvent.addScreenShotListener((filePath) {
-      // When user takes a native screenshot, show the share overlay
-      if (mounted) {
-        _showShareOverlay();
-      }
-    });
-
-    _screenCaptureEvent.watch();
 
     // Note: We'll enable streaming in didChangeDependencies when ref is available
   }
@@ -421,7 +404,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
 
   @override
   void dispose() {
-    _screenCaptureEvent.dispose();
     _pageController.dispose();
     super.dispose();
   }
@@ -451,53 +433,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
     );
-  }
-
-  Future<void> _showShareOverlay() async {
-    if (_isShareOverlayVisible) {
-      return;
-    }
-
-    _isShareOverlayVisible = true;
-    try {
-      final game = _resolveGameForIndex(_currentPageIndex);
-      final stateAsync = ref.read(
-        chessBoardScreenProviderNew(
-          ChessBoardProviderParams(game: game, index: _currentPageIndex),
-        ),
-      );
-
-      // Only show overlay if state is loaded
-      final state = stateAsync.valueOrNull;
-      if (state == null) return;
-
-      // Fetch PGN from database
-      final gameWithPgn = await ref
-          .read(gameRepositoryProvider)
-          .getGameById(game.gameId);
-      final pgn = gameWithPgn.pgn ?? "";
-
-      // Show share overlay
-      if (!mounted) return;
-
-      await Navigator.of(context).push(
-        PageRouteBuilder(
-          opaque: false,
-          barrierDismissible: true,
-          barrierColor: Colors.transparent,
-          pageBuilder:
-              (context, animation, secondaryAnimation) =>
-                  _ShareGameScreen(game: game, state: state, pgn: pgn),
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            return FadeTransition(opacity: animation, child: child);
-          },
-        ),
-      );
-    } catch (e) {
-      debugPrint('Error showing share overlay: $e');
-    } finally {
-      _isShareOverlayVisible = false;
-    }
   }
 
   @override

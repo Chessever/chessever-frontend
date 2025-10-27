@@ -89,7 +89,7 @@ User taps "Continue with Google"
   - Go to: Dashboard → Authentication → Providers → Anonymous → Enable
 
 ### **Google Cloud Console** ⚠️ (Optional - fallback covers this)
-**Release Client ID:** `882734779574-9ajudu3cqv1v6qc1edcasldc7ac3e50l.apps.googleusercontent.com`
+**Release Client ID:** `$GOOGLE_ANDROID_CLIENT_ID`
 
 Required configuration:
 - [ ] Package name: `com.chessEver.app`
