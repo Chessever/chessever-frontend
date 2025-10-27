@@ -35,6 +35,10 @@ class AuthScreenNotifier extends StateNotifier<AuthScreenState> {
       final user = await signInMethod();
       debugPrint('✅ [AUTH] OAuth sign-in succeeded!');
       debugPrint('   User ID: ${user.id}');
+      if (!mounted) {
+        debugPrint('⚪ [AUTH] Notifier disposed before completing OAuth success handling');
+        return;
+      }
       state = state.copyWith(
         isLoading: false,
         user: user,
@@ -55,6 +59,10 @@ class AuthScreenNotifier extends StateNotifier<AuthScreenState> {
         final anonymousUser = await _authRepository.signInAnonymously();
         debugPrint('✅ [AUTH] Anonymous fallback succeeded!');
         debugPrint('   User ID: ${anonymousUser.id}');
+        if (!mounted) {
+          debugPrint('⚪ [AUTH] Notifier disposed before completing anonymous fallback handling');
+          return;
+        }
         state = state.copyWith(
           isLoading: false,
           user: anonymousUser,
@@ -66,11 +74,16 @@ class AuthScreenNotifier extends StateNotifier<AuthScreenState> {
         debugPrint('❌ [AUTH] Anonymous fallback ALSO FAILED!');
         debugPrint('   Error: $anonymousError');
         debugPrint('   Stack trace: $anonymousSt');
+        final errorMessage = _getErrorMessage(e.toString());
+        if (!mounted) {
+          debugPrint('⚪ [AUTH] Notifier disposed before propagating fallback error');
+          return;
+        }
         state = state.copyWith(
           isLoading: false,
-          errorMessage: _getErrorMessage(e.toString()),
+          errorMessage: errorMessage,
         );
-        debugPrint('🔴 [AUTH] Showing error to user: ${_getErrorMessage(e.toString())}');
+        debugPrint('🔴 [AUTH] Showing error to user: $errorMessage');
       }
     }
   }
