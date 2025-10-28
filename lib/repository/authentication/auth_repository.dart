@@ -121,24 +121,8 @@ class AuthRepository {
     await _googleInitialization;
   }
 
-  // Create a bypass user for Android (production workaround for OAuth issues)
-  AppUser get _androidBypassUser {
-    return AppUser(
-      id: 'android-bypass-user',
-      email: 'android.user@chessever.com',
-      displayName: 'Android User',
-      createdAt: DateTime.now(),
-      isAnonymous: false,
-    );
-  }
-
   // Current user stream
   Stream<AppUser?> get authStateChanges {
-    // Bypass authentication for Android users due to production OAuth issues
-    if (Platform.isAndroid) {
-      return Stream.value(_androidBypassUser);
-    }
-
     return _supabase.auth.onAuthStateChange.map((data) {
       final user = data.session?.user;
       return user != null ? AppUser.fromSupabaseUser(user) : null;
@@ -147,11 +131,6 @@ class AuthRepository {
 
   // Get current user
   AppUser? get currentUser {
-    // Bypass authentication for Android users due to production OAuth issues
-    if (Platform.isAndroid) {
-      return _androidBypassUser;
-    }
-
     final user = _supabase.auth.currentUser;
     return user != null ? AppUser.fromSupabaseUser(user) : null;
   }
@@ -208,19 +187,22 @@ class AuthRepository {
     }
   }
 
-  // Apple Sign In
+  // Apple Sign In (iOS only)
   Future<AppUser> signInWithApple() async {
     final sessionManager = ref.read(sessionManagerProvider);
 
+    // Apple Sign-In is only available on iOS
+    if (!Platform.isIOS) {
+      throw Exception('Apple Sign-In is only available on iOS devices.');
+    }
+
     try {
       // Ensure Apple Sign In is actually available (e.g., user signed into iCloud).
-      if (Platform.isIOS) {
-        final available = await SignInWithApple.isAvailable();
-        if (!available) {
-          throw Exception(
-            'Apple Sign In not available on this device. Sign into iCloud and try again.',
-          );
-        }
+      final available = await SignInWithApple.isAvailable();
+      if (!available) {
+        throw Exception(
+          'Apple Sign In not available on this device. Sign into iCloud and try again.',
+        );
       }
 
       // Generate nonce for security
@@ -234,16 +216,6 @@ class AuthRepository {
         ],
         // Apple expects the SHA256(nonce)
         nonce: hashedNonce,
-        // On Android the plugin uses the web flow; you must provide Service ID + Redirect URI
-        webAuthenticationOptions:
-            Platform.isAndroid
-                ? WebAuthenticationOptions(
-                  clientId: _env(
-                    'APPLE_SERVICE_ID',
-                  ), // Service ID from Apple Developer
-                  redirectUri: Uri.parse(_env('APPLE_REDIRECT_URI')),
-                )
-                : null,
       );
 
       final idToken = credential.identityToken;

@@ -2,15 +2,11 @@ import 'package:chessever2/repository/local_storage/sesions_manager/session_mana
 import 'package:chessever2/screens/authentication/auth_screen.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
-import 'package:chessever2/screens/premium/premium_screen.dart'; // Import premium screen
 import 'package:chessever2/screens/premium/provider/premium_screen_provider.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
-import 'package:chessever2/widgets/custom_upgrade_alert.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:upgrader/upgrader.dart';
 import '../group_event/group_event_screen.dart';
 import '../premium/provider/premiun_popup_provider.dart';
 import 'widget/bottom_nav_bar.dart';
@@ -26,90 +22,79 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  // Define upgrader at widget level (not in build)
-  static final _upgrader = Upgrader(
-    messages: CustomUpgraderMessages(),
-    durationUntilAlertAgain: const Duration(days: 1),
-    debugDisplayAlways: kDebugMode,
-    debugLogging: kDebugMode,
-  );
-
   @override
   Widget build(BuildContext context) {
-    return CustomUpgradeAlert(
-      upgrader: _upgrader,
-      child: Scaffold(
-        key: HomeScreen.scaffoldKey,
-        drawer: HamburgerMenu(
-          callbacks: HamburgerMenuCallbacks(
-            onPlayersPressed: () {
-              // Navigate to players screen
-              Navigator.pushNamed(context, '/player_list_screen');
-            },
-            onFavoritesPressed: () {
-              // Navigate to favorites screen
-              Navigator.pushNamed(context, '/favorites_screen');
-            },
-            onCountrymanPressed: () {
-              final status = ref.read(statusProvider);
+    return Scaffold(
+      key: HomeScreen.scaffoldKey,
+      drawer: HamburgerMenu(
+        callbacks: HamburgerMenuCallbacks(
+          onPlayersPressed: () {
+            // Navigate to players screen
+            Navigator.pushNamed(context, '/player_list_screen');
+          },
+          onFavoritesPressed: () {
+            // Navigate to favorites screen
+            Navigator.pushNamed(context, '/favorites_screen');
+          },
+          onCountrymanPressed: () {
+            final status = ref.read(statusProvider);
 
-              if (status) {
-                ref.read(premiumPopupProvider.notifier).show();
-              } else {
-                showAlertModal(
-                  context: context,
-                  barrierDismissible: false,
-                  horizontalPadding: 0,
-                  verticalPadding: 0,
-                  child: CountryPickerWidget(isHamburgerMode: true),
-                );
-              }
-            },
-            onAnalysisBoardPressed: () {},
-            onSupportPressed: () {
-              // Handle support action
-              // e.g., open support form or chat
-            },
-
-            onPremiumPressed: () {
+            if (status) {
               ref.read(premiumPopupProvider.notifier).show();
-            },
-
-            onLogoutPressed: () async {
-              await showDialog<void>(
+            } else {
+              showAlertModal(
                 context: context,
-                builder:
-                    (dialogContext) => AlertDialog(
-                      title: const Text('Logout'),
-                      content: const Text('Are you sure you want to log out?'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          child: const Text('Cancel'),
-                        ),
-                        TextButton(
-                          onPressed: () async {
-                            Navigator.of(dialogContext).pop();
-                            final sessionManager = ref.read(
-                              sessionManagerProvider,
-                            );
-                            await sessionManager.clearSession();
-
-                            Navigator.of(
-                              context,
-                            ).pushNamedAndRemoveUntil('/', (route) => false);
-                          },
-                          child: const Text('Logout'),
-                        ),
-                      ],
-                    ),
+                barrierDismissible: false,
+                horizontalPadding: 0,
+                verticalPadding: 0,
+                child: CountryPickerWidget(isHamburgerMode: true),
               );
-            },
-          ),
+            }
+          },
+          onAnalysisBoardPressed: () {},
+          onSupportPressed: () {
+            // Handle support action
+            // e.g., open support form or chat
+          },
+
+          onPremiumPressed: () {
+            ref.read(premiumPopupProvider.notifier).show();
+          },
+
+          onLogoutPressed: () async {
+            await showDialog<void>(
+              context: context,
+              builder:
+                  (dialogContext) => AlertDialog(
+                    title: const Text('Logout'),
+                    content: const Text('Are you sure you want to log out?'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('Cancel'),
+                      ),
+                      TextButton(
+                        onPressed: () async {
+                          Navigator.of(dialogContext).pop();
+                          final sessionManager = ref.read(
+                            sessionManagerProvider,
+                          );
+                          await sessionManager.clearSession();
+
+                          Navigator.of(
+                            context,
+                          ).pushNamedAndRemoveUntil('/', (route) => false);
+                        },
+                        child: const Text('Logout'),
+                      ),
+                    ],
+                  ),
+            );
+          },
         ),
-        bottomNavigationBar: BottomNavBar(),
-        body: BottomNavBarView(),
       ),
+      bottomNavigationBar: BottomNavBar(),
+      body: BottomNavBarView(),
     );
   }
 }

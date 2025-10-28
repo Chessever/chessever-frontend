@@ -13,7 +13,6 @@ import 'package:chessever2/screens/countryman_games_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/players/player_screen.dart';
 import 'package:chessever2/screens/players/providers/player_providers.dart';
-import 'package:chessever2/screens/premium/premium_popup_listener.dart';
 import 'package:chessever2/screens/premium/premium_screen.dart';
 import 'package:chessever2/screens/splash/splash_screen.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
@@ -27,11 +26,13 @@ import 'package:chessever2/utils/lifecycle_event_handler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/auth_state_listener.dart';
 import 'package:chessever2/widgets/board_color_dialog.dart';
+import 'package:chessever2/widgets/custom_upgrade_alert.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -39,6 +40,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:worker_manager/worker_manager.dart';
 import 'package:clarity_flutter/clarity_flutter.dart';
 import 'package:amplitude_flutter/amplitude.dart';
+import 'package:upgrader/upgrader.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_provider.dart';
 
@@ -229,48 +231,62 @@ Future<void> _clearEvaluationCache() async {
   } catch (e, _) {}
 }
 
-class MyApp extends ConsumerStatefulWidget {
+class MyApp extends HookConsumerWidget {
   const MyApp({super.key});
 
   @override
-  ConsumerState<MyApp> createState() => _MyAppState();
-}
-
-class _MyAppState extends ConsumerState<MyApp> {
-  @override
-  void initState() {
-    super.initState();
-    // Initialize settings from persistent storage
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Initialize Clarity after first frame is built
-
-      final clarityConfig = ClarityConfig(
-        projectId: _getEnv('CLARITY_PROJECT_ID'),
-      );
-
-      final initialized = Clarity.initialize(context, clarityConfig);
-      debugPrint("Clarity initialized: $initialized");
-      // Initialize the favorites service
-      _initializeFavoritesService();
-    });
-  }
-
-  // Initialize the favorites service
-  Future<void> _initializeFavoritesService() async {
-    // Initialize player favorites
-    final playerViewModel = ref.read(playerViewModelProvider);
-    await playerViewModel.initialize();
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
     final locale = ref.watch(localeProvider);
 
-    ///Initializing  Responsive Unit
+    /// Initializing Responsive Unit
     ResponsiveHelper.init(context);
 
+    final upgrader = useMemoized(
+      () => Upgrader(
+        messages: CustomUpgraderMessages(),
+        durationUntilAlertAgain: const Duration(days: 1),
+        debugDisplayAlways: kDebugMode,
+        debugLogging: kDebugMode,
+      ),
+      const [],
+    );
+
+    useEffect(() {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!context.mounted) {
+          return;
+        }
+
+        try {
+          final clarityConfig = ClarityConfig(
+            projectId: _getEnv('CLARITY_PROJECT_ID'),
+          );
+
+          final initialized = Clarity.initialize(context, clarityConfig);
+          debugPrint('Clarity initialized: $initialized');
+        } catch (e, st) {
+          if (kDebugMode) {
+            debugPrint('Failed to initialize Clarity: $e');
+            debugPrintStack(stackTrace: st);
+          }
+        }
+
+        try {
+          await _initializeFavoritesService(ref);
+        } catch (e, st) {
+          if (kDebugMode) {
+            debugPrint('Failed to initialize favorites service: $e');
+            debugPrintStack(stackTrace: st);
+          }
+        }
+      });
+
+      return null;
+    }, const []);
+
     return AuthStateListener(
+      navigatorKey: navigatorKey,
       child: MaterialApp(
         locale: locale,
         supportedLocales: AppLocalizations.supportedLocales,
@@ -283,10 +299,13 @@ class _MyAppState extends ConsumerState<MyApp> {
         themeMode: themeMode,
         navigatorKey: navigatorKey,
         navigatorObservers: [routeObserver],
-        builder: (context, child) {
-          return PremiumPopupListener(child: child ?? const SizedBox.shrink());
-        },
         initialRoute: '/',
+        builder:
+            (context, child) => CustomUpgradeAlert(
+              upgrader: upgrader,
+              navigatorKey: navigatorKey,
+              child: child ?? const SizedBox.shrink(),
+            ),
         routes: {
           '/': (context) => const SplashScreen(),
           '/auth_screen': (context) => const AuthScreen(),
@@ -301,7 +320,6 @@ class _MyAppState extends ConsumerState<MyApp> {
           '/premium_screen': (context) => const PremiumScreen(),
           // New Screen
           '/player_list_screen': (context) => const PlayerListScreen(),
-          // Updated to use the new FavoriteScreen
           '/countryman_games_screen':
               (context) => const CountrymanGamesScreen(),
           '/standings': (context) => const PlayerTourScreen(),
@@ -311,4 +329,9 @@ class _MyAppState extends ConsumerState<MyApp> {
       ),
     );
   }
+}
+
+Future<void> _initializeFavoritesService(WidgetRef ref) async {
+  final playerViewModel = ref.read(playerViewModelProvider);
+  await playerViewModel.initialize();
 }
