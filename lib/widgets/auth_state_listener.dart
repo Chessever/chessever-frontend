@@ -1,4 +1,5 @@
 import 'package:chessever2/providers/auth_state_provider.dart';
+import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/repository/authentication/model/auth_state.dart';
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
 import 'package:flutter/foundation.dart';
@@ -8,7 +9,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// Widget that listens to auth state changes and handles navigation.
 /// Receives the root [navigatorKey] so we can interact with the app navigator
 /// even though this listener wraps the entire [MaterialApp].
-class AuthStateListener extends HookConsumerWidget {
+class AuthStateListener extends ConsumerWidget {
   const AuthStateListener({
     required this.child,
     required this.navigatorKey,
