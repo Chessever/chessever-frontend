@@ -15,24 +15,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Compile-time environment values injected via `--dart-define`.
 const Map<String, String> _releaseEnvValues = {
-  'GOOGLE_ANDROID_CLIENT_ID': String.fromEnvironment(
-    'GOOGLE_ANDROID_CLIENT_ID',
-    defaultValue: '',
-  ),
   'GOOGLE_WEB_CLIENT_ID': String.fromEnvironment(
     'GOOGLE_WEB_CLIENT_ID',
     defaultValue: '',
   ),
   'GOOGLE_IOS_CLIENT_ID': String.fromEnvironment(
     'GOOGLE_IOS_CLIENT_ID',
-    defaultValue: '',
-  ),
-  'APPLE_SERVICE_ID': String.fromEnvironment(
-    'APPLE_SERVICE_ID',
-    defaultValue: '',
-  ),
-  'APPLE_REDIRECT_URI': String.fromEnvironment(
-    'APPLE_REDIRECT_URI',
     defaultValue: '',
   ),
 };
@@ -77,34 +65,17 @@ class AuthRepository {
 
   Future<void> _initializeGoogleSignIn() async {
     try {
+      // clientId is only needed for iOS
+      // Android works automatically without it (uses SHA-1 from Google Cloud Console)
       String? clientId;
       if (Platform.isIOS) {
         clientId = _env('GOOGLE_IOS_CLIENT_ID');
-      } else if (Platform.isAndroid) {
-        final androidClientId = _env(
-          'GOOGLE_ANDROID_CLIENT_ID',
-          required: true,
-        );
-        clientId = androidClientId.isEmpty ? null : androidClientId;
-        if (clientId == null) {
-          if (kDebugMode) {
-            debugPrint(
-              '⚠️ GOOGLE_ANDROID_CLIENT_ID not provided; proceeding without explicit Android client ID.',
-            );
-          } else {
-            await ref
-                .read(errorLoggerProvider)
-                .logError(
-                  Exception('Missing GOOGLE_ANDROID_CLIENT_ID'),
-                  StackTrace.current,
-                );
-          }
-        }
       }
+      // On Android, clientId should be null
 
       await _googleSignIn.initialize(
-        clientId: clientId,
-        serverClientId: _env('GOOGLE_WEB_CLIENT_ID'),
+        clientId: clientId, // iOS client ID or null for Android
+        serverClientId: _env('GOOGLE_WEB_CLIENT_ID'), // Web client ID for Supabase
       );
 
       // Disabled automatic sign-in to prevent unwanted Google OAuth popups
@@ -158,6 +129,7 @@ class AuthRepository {
           await account.authorizationClient.authorizeScopes(_googleScopes);
 
       final accessToken = authorization.accessToken;
+      
 
       final response = await _supabase.auth.signInWithIdToken(
         provider: OAuthProvider.google,
