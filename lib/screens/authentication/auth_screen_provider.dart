@@ -1,6 +1,6 @@
 // auth_screen_state.dart
-import 'package:chessever2/repository/authentication/model/app_user.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
+import 'package:chessever2/repository/authentication/model/app_user.dart';
 import 'package:chessever2/repository/authentication/model/exceptions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -9,21 +9,24 @@ import 'auth_screen_state.dart';
 // Provider definition
 final authScreenProvider =
     StateNotifierProvider<AuthScreenNotifier, AuthScreenState>((ref) {
-      final authRepository = ref.read(authRepositoryProvider);
-      return AuthScreenNotifier(authRepository);
+      return AuthScreenNotifier(ref);
     });
 
 class AuthScreenNotifier extends StateNotifier<AuthScreenState> {
-  final AuthRepository _authRepository;
+  AuthScreenNotifier(this.ref) : super(const AuthScreenState());
 
-  AuthScreenNotifier(this._authRepository) : super(const AuthScreenState());
+  final Ref ref;
 
   Future<void> signInWithGoogle() async {
-    await _performSignIn(() => _authRepository.signInWithGoogle());
+    await _performSignIn(
+      () => ref.read(authStateProvider.notifier).signInWithGoogle(),
+    );
   }
 
   Future<void> signInWithApple() async {
-    await _performSignIn(() => _authRepository.signInWithApple());
+    await _performSignIn(
+      () => ref.read(authStateProvider.notifier).signInWithApple(),
+    );
   }
 
   Future<void> _performSignIn(Future<AppUser> Function() signInMethod) async {
@@ -56,7 +59,8 @@ class AuthScreenNotifier extends StateNotifier<AuthScreenState> {
       debugPrint('🔄 [AUTH] Attempting fallback to anonymous sign-in...');
 
       try {
-        final anonymousUser = await _authRepository.signInAnonymously();
+        final anonymousUser =
+            await ref.read(authStateProvider.notifier).signInAnonymously();
         debugPrint('✅ [AUTH] Anonymous fallback succeeded!');
         debugPrint('   User ID: ${anonymousUser.id}');
         if (!mounted) {
