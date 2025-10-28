@@ -1,17 +1,16 @@
 import 'dart:convert';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
-import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/screens/authentication/auth_screen_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-final sessionManagerProvider = Provider<_SessionManager>((ref) {
-  return _SessionManager(ref);
+final sessionManagerProvider = Provider<SessionManager>((ref) {
+  return SessionManager(ref);
 });
 
-class _SessionManager {
-  _SessionManager(this.ref);
+class SessionManager {
+  SessionManager(this.ref);
 
   final Ref ref;
 
@@ -27,17 +26,6 @@ class _SessionManager {
     await prefs.setString(_keyPersistUser, jsonEncode(user.toJson()));
 
     print('Session saved: ${session.toJson()}');
-  }
-
-  /// Clear session from storage and Supabase
-  Future<void> clearSession() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_keyPersistSession);
-    await prefs.remove(_keyPersistUser);
-    await ref.read(authRepositoryProvider).signOut();
-    // Reset auth screen state without disposing the notifier to avoid races
-    ref.read(authScreenProvider.notifier).reset();
-    await ref.read(countryDropdownProvider.notifier).clearSelection();
   }
 
   /// Clear only local storage without calling signOut
@@ -80,11 +68,11 @@ class _SessionManager {
       }
 
       // Session invalid - clear local storage
-      await clearSession();
+      await clearLocalStorage();
       return false;
     } catch (e) {
       // Session recovery failed - clear local storage
-      await clearSession();
+      await clearLocalStorage();
       return false;
     }
   }
