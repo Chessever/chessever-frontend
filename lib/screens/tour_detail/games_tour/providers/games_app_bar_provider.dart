@@ -295,7 +295,27 @@ class _GamesAppBarNotifier
   }
 
   void _sortRounds(List<GamesAppBarModel> models) {
-    models.sort(_compareRounds);
+    // Check if we should show next upcoming round at top
+    final hasLiveOrOngoing = models.any((m) =>
+      m.roundStatus == RoundStatus.live || m.roundStatus == RoundStatus.ongoing
+    );
+    final hasCompleted = models.any((m) => m.roundStatus == RoundStatus.completed);
+    final showNextUpcomingFirst = !hasLiveOrOngoing && hasCompleted;
+
+    models.sort((a, b) {
+      // Special case: When showing next upcoming round with completed rounds,
+      // put upcoming first (top-most)
+      if (showNextUpcomingFirst) {
+        if (a.roundStatus == RoundStatus.upcoming && b.roundStatus != RoundStatus.upcoming) {
+          return -1; // Upcoming comes first
+        }
+        if (b.roundStatus == RoundStatus.upcoming && a.roundStatus != RoundStatus.upcoming) {
+          return 1; // Upcoming comes first
+        }
+      }
+
+      return _compareRounds(a, b);
+    });
   }
 
   int _compareRounds(GamesAppBarModel a, GamesAppBarModel b) {

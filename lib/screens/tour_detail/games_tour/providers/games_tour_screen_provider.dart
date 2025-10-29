@@ -182,8 +182,57 @@ class GamesTourScreenProvider
         gameInfo[game.id] = (roundNum, gameNum);
       }
 
+      // Check if there are any live games
+      final hasLiveGames = allGames.any((g) => g.status == "*");
+
+      print('🎮 GamesTourScreen: Total games: ${allGames.length}, Live games: ${allGames.where((g) => g.status == "*").length}');
+      if (allGames.where((g) => g.status == "*").isNotEmpty) {
+        print('🎮 GamesTourScreen: Live game rounds: ${allGames.where((g) => g.status == "*").map((g) => g.roundSlug).join(", ")}');
+      }
+
+      // Find the upcoming round if no live games exist
+      int? upcomingRoundNumber;
+      if (!hasLiveGames && allGames.isNotEmpty) {
+        // Find the highest round number with all games finished
+        final roundNumbers = gameInfo.values.map((info) => info.$1).toSet().toList()..sort();
+        if (roundNumbers.isNotEmpty) {
+          final maxRound = roundNumbers.last;
+          // The upcoming round is the next one
+          upcomingRoundNumber = maxRound + 1;
+
+          // Check if this round actually exists in our games
+          final upcomingRoundExists = allGames.any((g) {
+            final roundNum = gameInfo[g.id]?.$1 ?? 0;
+            return roundNum == upcomingRoundNumber;
+          });
+
+          if (!upcomingRoundExists) {
+            upcomingRoundNumber = null; // No upcoming round available
+          }
+        }
+      }
+
       final sortedGames = List<Games>.from(allGames);
       sortedGames.sort((a, b) {
+        // FIRST PRIORITY: Live games always at top (status "*")
+        final aLive = a.status == "*";
+        final bLive = b.status == "*";
+        if (aLive && !bLive) return -1;
+        if (!aLive && bLive) return 1;
+
+        // SECOND PRIORITY: If no live games, show upcoming round at top
+        if (!hasLiveGames && upcomingRoundNumber != null) {
+          final (roundA, _) = gameInfo[a.id] ?? (0, 0);
+          final (roundB, _) = gameInfo[b.id] ?? (0, 0);
+
+          final aUpcoming = roundA == upcomingRoundNumber;
+          final bUpcoming = roundB == upcomingRoundNumber;
+
+          if (aUpcoming && !bUpcoming) return -1;
+          if (!aUpcoming && bUpcoming) return 1;
+        }
+
+        // THIRD PRIORITY: Pinned games (only in non-search mode)
         if (!isSearchMode) {
           final aPinned = pinnedIds.contains(a.id);
           final bPinned = pinnedIds.contains(b.id);
@@ -195,7 +244,7 @@ class GamesTourScreenProvider
         final (roundA, gameA) = gameInfo[a.id] ?? (0, 0);
         final (roundB, gameB) = gameInfo[b.id] ?? (0, 0);
 
-        // First, sort by round number DESCENDING (to match the round list order)
+        // Fourth, sort by round number DESCENDING (to match the round list order)
         if (roundA != roundB) return roundB.compareTo(roundA);
 
         // Within same round, sort by game number DESCENDING (Game 2 before Game 1)
@@ -398,6 +447,13 @@ class GamesTourScreenProvider
 
     final sortedGames = List<Games>.from(games);
     sortedGames.sort((a, b) {
+      // FIRST PRIORITY: Live games always at top
+      final aLive = a.status == "*";
+      final bLive = b.status == "*";
+      if (aLive && !bLive) return -1;
+      if (!aLive && bLive) return 1;
+
+      // SECOND PRIORITY: Pinned games
       final aPinned = pinnedIds.contains(a.id);
       final bPinned = pinnedIds.contains(b.id);
       if (aPinned && !bPinned) return -1;
@@ -406,7 +462,7 @@ class GamesTourScreenProvider
       final (roundA, gameA) = gameInfo[a.id] ?? (0, 0);
       final (roundB, gameB) = gameInfo[b.id] ?? (0, 0);
 
-      // Sort by round DESCENDING (to match the round list order)
+      // Sort by round DESCENDING
       if (roundA != roundB) return roundB.compareTo(roundA);
 
       // Within same round, sort by game DESCENDING (Game 2 before Game 1)
@@ -476,7 +532,7 @@ class GamesTourScreenProvider
     if (aboutTourModel == null) return;
     try {
       clearSearch();
-      ref.refresh(gamesTourProvider(aboutTourModel!.id));
+      final _ = ref.refresh(gamesTourProvider(aboutTourModel!.id));
     } catch (e, st) {
       if (mounted) state = AsyncValue.error(e, st);
     }

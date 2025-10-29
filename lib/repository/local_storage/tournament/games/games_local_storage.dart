@@ -27,11 +27,18 @@ class GamesLocalStorage {
           .read(gameRepositoryProvider)
           .getGamesByTourId(tourId);
 
+      // Save to cache in background - don't wait for it
+      // This prevents blocking the UI for large tournaments
       final value = _encodeMyGamesList(games);
-
-      await ref
+      ref
           .read(sharedPreferencesRepository)
-          .setStringList(getSaveKey(tourId), value);
+          .setStringList(getSaveKey(tourId), value)
+          .catchError((error, st) {
+        ref.read(loggerProvider).logError(
+          'Failed to save games to cache: $error',
+          st,
+        );
+      });
 
       return games;
     } catch (error, st) {

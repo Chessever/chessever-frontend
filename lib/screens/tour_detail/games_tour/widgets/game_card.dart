@@ -207,9 +207,12 @@ class _CenterContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Use effectiveGameStatus to handle DB update lag
+    final effectiveStatus = matchWithComparison.game.effectiveGameStatus;
+
     return Center(
       child:
-          matchWithComparison.game.gameStatus == GameStatus.ongoing
+          effectiveStatus == GameStatus.ongoing
               ? matchWithComparison.comparison == MatchComparison.sameOrder
                   ? ChessProgressBar(gamesTourModel: matchWithComparison.game)
                   : ChessProgressBar.reversedMode(
@@ -371,7 +374,12 @@ class _TimerWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Use effectiveGameStatus to detect if game is actually finished
+    final effectiveStatus = gamesTourModel.effectiveGameStatus;
+    final isGameFinished = effectiveStatus.isFinished;
+
     final isClockRunning =
+        !isGameFinished &&
         gamesTourModel.gameStatus.isOngoing &&
         gamesTourModel.lastMoveTime != null &&
         gamesTourModel.activePlayer != null &&
@@ -388,21 +396,16 @@ class _TimerWidget extends StatelessWidget {
             ? gamesTourModel.whiteClockSeconds
             : gamesTourModel.blackClockSeconds;
 
-    // Removed excessive debug logging - only log for specific games if needed
-    // print('🔥 GameCard Timer: Game ${gamesTourModel.gameId} ${isWhitePlayer ? 'White' : 'Black'} - '
-    //       'clockSeconds: $clockSeconds, lastMoveTime: ${gamesTourModel.lastMoveTime}, '
-    //       'isClockRunning: $isClockRunning');
-
     return AtomicCountdownText(
       clockSeconds:
           clockSeconds, // Primary source: time in seconds from last_clock fields
       clockCentiseconds:
           clockCentiseconds, // Fallback source: raw database clock
       lastMoveTime: gamesTourModel.lastMoveTime,
-      isActive: isClockRunning,
+      isActive: isClockRunning, // Clock frozen if game is effectively finished
       style: AppTypography.textXsMedium.copyWith(
         color:
-            gamesTourModel.gameStatus.isFinished
+            isGameFinished
                 ? kWhiteColor
                 : (turn ? kPrimaryColor : kWhiteColor),
       ),
@@ -411,8 +414,11 @@ class _TimerWidget extends StatelessWidget {
 }
 
 String _displayTextSupporter(MatchWithComparison game) {
+  // Use effectiveGameStatus to show correct result even if DB hasn't updated
+  final effectiveStatus = game.game.effectiveGameStatus;
+
   if (game.comparison == MatchComparison.sameOrder) {
-    switch (game.game.gameStatus) {
+    switch (effectiveStatus) {
       case GameStatus.whiteWins:
         return '1-0';
       case GameStatus.blackWins:
@@ -425,7 +431,7 @@ String _displayTextSupporter(MatchWithComparison game) {
         return '';
     }
   } else {
-    switch (game.game.gameStatus) {
+    switch (effectiveStatus) {
       case GameStatus.whiteWins:
         return '0-1';
       case GameStatus.blackWins:

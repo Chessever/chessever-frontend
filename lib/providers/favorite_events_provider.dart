@@ -55,7 +55,7 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
     }
   }
 
-  /// Add event to favorites
+  /// Add event to favorites (optimistic update)
   Future<void> addFavorite({
     required String eventId,
     required String eventName,
@@ -63,19 +63,38 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
     int? maxAvgElo,
     String? dates,
   }) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('User must be logged in to favorite events');
+    }
+
+    final metadata = <String, dynamic>{
+      if (timeControl != null) 'timeControl': timeControl,
+      if (maxAvgElo != null) 'maxAvgElo': maxAvgElo,
+      if (dates != null) 'dates': dates,
+    };
+
+    // Create optimistic event
+    final optimisticEvent = FavoriteEvent(
+      id: 'temp_${DateTime.now().millisecondsSinceEpoch}',
+      userId: userId,
+      eventId: eventId,
+      eventName: eventName,
+      metadata: metadata,
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+    );
+
+    // STEP 1: Optimistic update - update state immediately
+    final currentEvents = state.valueOrNull ?? [];
+    final updatedEvents = [...currentEvents, optimisticEvent];
+    state = AsyncValue.data(updatedEvents);
+
+    // Cache immediately
+    await _cacheEvents(updatedEvents);
+
     try {
-      final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) {
-        throw Exception('User must be logged in to favorite events');
-      }
-
-      final metadata = <String, dynamic>{
-        if (timeControl != null) 'timeControl': timeControl,
-        if (maxAvgElo != null) 'maxAvgElo': maxAvgElo,
-        if (dates != null) 'dates': dates,
-      };
-
-      // Insert to Supabase
+      // STEP 2: Sync to Supabase in background
       await _supabase.from('user_favorite_events').upsert({
         'user_id': userId,
         'event_id': eventId,
@@ -85,24 +104,37 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
 
       debugPrint('[FavoriteEvents] Added event $eventId to Supabase');
 
-      // Refresh state
-      await refresh();
+      // STEP 3: Fetch fresh data from Supabase (without loading state)
+      final freshEvents = await _loadFavorites();
+      state = AsyncValue.data(freshEvents);
     } catch (e, st) {
       debugPrint('[FavoriteEvents] Error adding event: $e');
       debugPrint('[FavoriteEvents] Stack: $st');
+
+      // STEP 4: Revert optimistic update on error
+      state = AsyncValue.data(currentEvents);
+      await _cacheEvents(currentEvents);
       rethrow;
     }
   }
 
-  /// Remove event from favorites
+  /// Remove event from favorites (optimistic update)
   Future<void> removeFavorite(String eventId) async {
-    try {
-      final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) {
-        throw Exception('User must be logged in to remove favorites');
-      }
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('User must be logged in to remove favorites');
+    }
 
-      // Delete from Supabase
+    // STEP 1: Optimistic update - update state immediately
+    final currentEvents = state.valueOrNull ?? [];
+    final updatedEvents = currentEvents.where((e) => e.eventId != eventId).toList();
+    state = AsyncValue.data(updatedEvents);
+
+    // Cache immediately
+    await _cacheEvents(updatedEvents);
+
+    try {
+      // STEP 2: Sync to Supabase in background
       await _supabase
           .from('user_favorite_events')
           .delete()
@@ -111,11 +143,16 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
 
       debugPrint('[FavoriteEvents] Removed event $eventId from Supabase');
 
-      // Refresh state
-      await refresh();
+      // STEP 3: Fetch fresh data from Supabase (without loading state)
+      final freshEvents = await _loadFavorites();
+      state = AsyncValue.data(freshEvents);
     } catch (e, st) {
       debugPrint('[FavoriteEvents] Error removing event: $e');
       debugPrint('[FavoriteEvents] Stack: $st');
+
+      // STEP 4: Revert optimistic update on error
+      state = AsyncValue.data(currentEvents);
+      await _cacheEvents(currentEvents);
       rethrow;
     }
   }

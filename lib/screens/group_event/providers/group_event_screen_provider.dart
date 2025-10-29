@@ -10,6 +10,7 @@ import 'package:chessever2/screens/group_event/providers/sorting_all_event_provi
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
+import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
@@ -48,6 +49,7 @@ class _GroupEventScreenController
   }) : super(const AsyncValue.loading()) {
     loadTours();
     _listenToLiveIds();
+    _listenToFavorites();
   }
 
   @override
@@ -77,6 +79,26 @@ class _GroupEventScreenController
           ref.read(liveBroadcastIdsProvider.notifier).state = liveIds;
           _updateLiveStatusInExistingModels();
         }
+      });
+    });
+  }
+
+  void _listenToFavorites() {
+    ref.listen(favoriteEventsProvider, (previous, next) {
+      // When favorites change, re-sort the current list
+      next.whenData((favorites) {
+        final currentModels = state.valueOrNull;
+        if (currentModels == null || currentModels.isEmpty) return;
+
+        // Re-sort with updated favorites
+        final sortingService = ref.read(tournamentSortingServiceProvider);
+        final sortedTours = tourEventCategory == GroupEventCategory.upcoming
+            ? sortingService.sortUpcomingTours(currentModels)
+            : tourEventCategory == GroupEventCategory.past
+                ? sortingService.sortPastTours(currentModels)
+                : sortingService.sortAllTours(currentModels);
+
+        state = AsyncValue.data(sortedTours);
       });
     });
   }

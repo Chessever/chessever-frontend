@@ -45,7 +45,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
               animation: searchController,
               builder: (cxt, _) {
                 return Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16.sp),
+                  padding: EdgeInsets.only(left: 4.sp, right: 16.sp),
                   child: Row(
                     children: [
                       IconButton(
@@ -57,6 +57,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
                           size: 24.ic,
                         ),
                       ),
+                      SizedBox(width: 8.w),
                       Expanded(
                         child: Padding(
                           padding: EdgeInsets.symmetric(vertical: 8.sp),

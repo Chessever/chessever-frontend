@@ -1,4 +1,4 @@
-import 'package:chessever2/providers/favorite_players_provider.dart';
+import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/standings/widget/player_dropdown.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -41,19 +41,13 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
   }
 
   Future<void> _toggleFavorite() async {
-    final favoritesService = ref.read(favoritePlayersProviderNew.notifier);
+    final favoritesNotifier = ref.read(favoritePlayersNotifierProvider.notifier);
     final player = ref.read(selectedPlayerProvider);
 
     if (player != null) {
       try {
-        // Toggle using new unified favorites system
-        final isNowFavorite = await favoritesService.toggleFavorite(
-          fideId: player.fideId?.toString(),
-          playerName: player.name,
-          countryCode: player.countryCode,
-          rating: player.score,
-          title: player.title,
-        );
+        // Toggle using old provider with complete PlayerStandingModel
+        final isNowFavorite = await favoritesNotifier.toggleFavorite(player);
 
         if (isNowFavorite) {
           _animationController.forward().then(
@@ -78,10 +72,14 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
   Widget build(BuildContext context) {
     final player = ref.watch(selectedPlayerProvider);
 
-    // Use new unified favorites system
-    final isFavorite = player != null
-        ? ref.watch(isPlayerFavoritedProvider(player.name))
-        : false;
+    // Use old provider system
+    final favoritesAsync = ref.watch(favoritePlayersNotifierProvider);
+    final isFavorite = player != null && favoritesAsync.maybeWhen(
+      data: (state) => state.players.any((p) => p.fideId == player.fideId),
+      orElse: () => false,
+      skipLoadingOnRefresh: true,
+      skipLoadingOnReload: true,
+    );
 
     return Row(
       children: [
