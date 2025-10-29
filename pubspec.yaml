@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 5.9.32+197
+version: 5.10.0+202
 
 environment:
   sdk: ^3.7.2
@@ -121,6 +121,7 @@ dependencies:
   flutter_animate: ^4.5.0
   gal: ^2.3.2
   package_info_plus: ^8.1.3
+  dart_mappable: ^4.2.2
 
 dev_dependencies:
   flutter_test:
@@ -135,6 +136,7 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
   build_runner: ^2.4.15
+  dart_mappable_builder: ^4.2.3
   # riverpod_generator: ^2.6.5
   riverpod_annotation: ^2.6.1
 
@@ -161,8 +163,8 @@ flutter:
     - assets/sfx/
     - assets/launch.jpg
     - assets/app_icon.png
-    # - .env
-    # - .env.dev
+    - .env
+    - .env.dev
     - shorebird.yaml
 
   # An image asset can refer to one or more resolution-specific "variants", see

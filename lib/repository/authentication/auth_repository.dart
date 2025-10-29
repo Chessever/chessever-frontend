@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:io' show Platform;
+
 import 'package:chessever2/providers/error_logger_provider.dart';
 import 'package:chessever2/repository/authentication/model/app_user.dart';
+import 'package:chessever2/repository/authentication/model/auth_state.dart';
 import 'package:chessever2/repository/authentication/model/exceptions.dart';
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
 import 'package:crypto/crypto.dart';
@@ -15,10 +18,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Compile-time environment values injected via `--dart-define`.
 const Map<String, String> _releaseEnvValues = {
-  'GOOGLE_ANDROID_CLIENT_ID': String.fromEnvironment(
-    'GOOGLE_ANDROID_CLIENT_ID',
-    defaultValue: '',
-  ),
   'GOOGLE_WEB_CLIENT_ID': String.fromEnvironment(
     'GOOGLE_WEB_CLIENT_ID',
     defaultValue: '',
@@ -27,41 +26,407 @@ const Map<String, String> _releaseEnvValues = {
     'GOOGLE_IOS_CLIENT_ID',
     defaultValue: '',
   ),
-  'APPLE_SERVICE_ID': String.fromEnvironment(
-    'APPLE_SERVICE_ID',
-    defaultValue: '',
-  ),
-  'APPLE_REDIRECT_URI': String.fromEnvironment(
-    'APPLE_REDIRECT_URI',
-    defaultValue: '',
-  ),
 };
 
-final authRepositoryProvider = Provider<AuthRepository>((ref) {
-  return AuthRepository(ref);
-});
+final authStateProvider =
+    AutoDisposeAsyncNotifierProvider<AuthController, AppAuthState>(
+      AuthController.new,
+    );
 
-class AuthRepository {
-  AuthRepository(this.ref) {
-    _supabase = Supabase.instance.client;
-    _googleInitialization = _initializeGoogleSignIn();
-  }
+class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
+  AuthController();
 
-  static const List<String> _googleScopes = ['email', 'profile'];
+  static const List<String> _scopes = ['email', 'profile'];
+  static Completer<void>? _googleInitCompleter;
+
+  final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
 
   late final SupabaseClient _supabase;
-  final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
-  Future<void>? _googleInitialization;
-  final Ref ref;
+  late final SessionManager _sessionManager;
+  StreamSubscription<AuthState>? _authSubscription;
 
-  // Read and trim env safely to avoid trailing spaces causing Apple failures.
+  @override
+  FutureOr<AppAuthState> build() async {
+    _supabase = Supabase.instance.client;
+    _sessionManager = ref.read(sessionManagerProvider);
+
+    await _ensureGoogleInitialized();
+    _startAuthListener();
+
+    final currentUser = _supabase.auth.currentUser;
+    if (currentUser != null) {
+      return AppAuthState.authenticated(AppUser.fromSupabaseUser(currentUser));
+    }
+
+    return const AppAuthState.unauthenticated();
+  }
+
+  void _startAuthListener() {
+    _authSubscription?.cancel();
+    _authSubscription = _supabase.auth.onAuthStateChange.listen(
+      (data) {
+        unawaited(_handleAuthStateChange(data));
+      },
+      onError: (error, stackTrace) async {
+        await ref.read(errorLoggerProvider).logError(error, stackTrace);
+        state = AsyncValue.data(AppAuthState.error(error.toString()));
+      },
+    );
+
+    ref.onDispose(() async {
+      await _authSubscription?.cancel();
+      _authSubscription = null;
+    });
+  }
+
+  Future<void> _handleAuthStateChange(AuthState data) async {
+    final session = data.session;
+    final supabaseUser = session?.user;
+    switch (data.event) {
+      case AuthChangeEvent.initialSession:
+      case AuthChangeEvent.tokenRefreshed:
+      case AuthChangeEvent.signedIn:
+      case AuthChangeEvent.userUpdated:
+        if (supabaseUser != null && session != null) {
+          final appUser = AppUser.fromSupabaseUser(supabaseUser);
+          await _sessionManager.saveSession(session, supabaseUser);
+          state = AsyncValue.data(AppAuthState.authenticated(appUser));
+        }
+        break;
+      case AuthChangeEvent.signedOut:
+      case AuthChangeEvent.passwordRecovery:
+      // ignore: deprecated_member_use
+      case AuthChangeEvent.userDeleted:
+        await _sessionManager.clearLocalStorage();
+        state = const AsyncValue.data(AppAuthState.unauthenticated());
+        break;
+      default:
+        break;
+    }
+  }
+
+  Future<AppUser> signInWithGoogle() async {
+    state = const AsyncValue.data(AppAuthState.loading());
+    await _ensureGoogleInitialized();
+
+    try {
+      if (kDebugMode) {
+        debugPrint('🔵 [GOOGLE AUTH] Step 1: Authenticating...');
+      }
+
+      // Step 1: Authenticate (without authorization scopes)
+      // Don't pass scopeHint here - we'll authorize separately
+      final account = await _googleSignIn.authenticate();
+
+      if (kDebugMode) {
+        debugPrint('✅ [GOOGLE AUTH] Step 1 complete: Authenticated');
+        debugPrint('🔵 [GOOGLE AUTH] Step 2: Getting ID token...');
+      }
+
+      final idToken = account.authentication.idToken;
+
+      if (idToken == null || idToken.isEmpty) {
+        throw Exception('Failed to obtain Google ID token.');
+      }
+
+      if (kDebugMode) {
+        debugPrint('✅ [GOOGLE AUTH] Step 2 complete: Got ID token');
+        debugPrint('🔵 [GOOGLE AUTH] Step 3: Authorizing scopes...');
+      }
+
+      // Step 2: Try to get authorization (might already be authorized)
+      GoogleSignInClientAuthorization? authorization;
+      try {
+        authorization = await account.authorizationClient.authorizationForScopes(_scopes);
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('⚠️ [GOOGLE AUTH] authorizationForScopes failed, trying authorizeScopes: $e');
+        }
+      }
+
+      // If not authorized, request authorization (this will show UI)
+      if (authorization == null) {
+        if (kDebugMode) {
+          debugPrint('🔵 [GOOGLE AUTH] Not authorized yet, requesting authorization...');
+        }
+        authorization = await account.authorizationClient.authorizeScopes(_scopes);
+      }
+
+      final accessToken = authorization.accessToken;
+
+      if (kDebugMode) {
+        debugPrint('✅ [GOOGLE AUTH] Step 3 complete: Got access token');
+        debugPrint('🔵 [GOOGLE AUTH] Step 4: Signing in to Supabase...');
+      }
+
+      final response = await _supabase.auth.signInWithIdToken(
+        provider: OAuthProvider.google,
+        idToken: idToken,
+        accessToken: accessToken,
+      );
+
+      final user = response.user;
+      final session = response.session;
+      if (user == null || session == null) {
+        throw Exception('Failed to authenticate with Supabase.');
+      }
+
+      final appUser = AppUser.fromSupabaseUser(user);
+      await _sessionManager.saveSession(session, user);
+
+      if (kDebugMode) {
+        debugPrint('✅ [GOOGLE AUTH] Sign-in complete!');
+      }
+
+      state = AsyncValue.data(AppAuthState.authenticated(appUser));
+      return appUser;
+    } on GoogleSignInException catch (e, st) {
+      await ref.read(errorLoggerProvider).logError(e, st);
+
+      if (kDebugMode) {
+        debugPrint('❌ [GOOGLE AUTH] GoogleSignInException: ${e.code} - ${e.description}');
+      }
+
+      // Only treat as cancellation if it's truly a user action
+      // But per migration guide, "canceled" can also mean config error on Android!
+      if (e.code == GoogleSignInExceptionCode.canceled) {
+        if (Platform.isAndroid) {
+          // On Android, "canceled" often means configuration error
+          debugPrint('❌ [GOOGLE AUTH] Canceled on Android - likely config error (SHA-1/client ID). Falling back to anonymous.');
+          return await _fallbackToAnonymousSignIn();
+        } else {
+          // On iOS, canceled is more reliable
+          state = const AsyncValue.data(AppAuthState.unauthenticated());
+          throw const CancelledSignInException();
+        }
+      }
+
+      final mapped = _mapGoogleSignInException(e);
+      final message = _exceptionMessage(mapped);
+      state = AsyncValue.data(AppAuthState.error(message));
+
+      // Fallback to anonymous sign-in on any Google auth failure
+      debugPrint('❌ [GOOGLE AUTH] Google sign-in failed: $message. Falling back to anonymous sign-in');
+      return await _fallbackToAnonymousSignIn();
+    } catch (e, st) {
+      await ref.read(errorLoggerProvider).logError(e, st);
+      debugPrint('❌ [GOOGLE AUTH] Exception occurred: $e. Falling back to anonymous sign-in');
+      return await _fallbackToAnonymousSignIn();
+    }
+  }
+
+  Future<AppUser> signInWithApple() async {
+    state = const AsyncValue.data(AppAuthState.loading());
+
+    if (!Platform.isIOS) {
+      final message = 'Apple Sign-In is only available on iOS devices.';
+      state = AsyncValue.data(AppAuthState.error(message));
+      debugPrint('❌ [APPLE AUTH] Not iOS, falling back to anonymous sign-in');
+      return await _fallbackToAnonymousSignIn();
+    }
+
+    try {
+      final available = await SignInWithApple.isAvailable();
+      if (!available) {
+        debugPrint('❌ [APPLE AUTH] Not available, falling back to anonymous sign-in');
+        return await _fallbackToAnonymousSignIn();
+      }
+
+      final rawNonce = _generateNonce();
+      final hashedNonce = _sha256ofString(rawNonce);
+
+      final credential = await SignInWithApple.getAppleIDCredential(
+        scopes: [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+        nonce: hashedNonce,
+      );
+
+      final idToken = credential.identityToken;
+      if (idToken == null) {
+        throw Exception('Failed to get Apple ID token.');
+      }
+
+      final response = await _supabase.auth.signInWithIdToken(
+        provider: OAuthProvider.apple,
+        idToken: idToken,
+        nonce: rawNonce,
+      );
+
+      final user = response.user;
+      final session = response.session;
+      if (user == null || session == null) {
+        throw Exception('Failed to authenticate with Supabase.');
+      }
+
+      await _sessionManager.saveSession(session, user);
+
+      final fullName =
+          '${credential.givenName ?? ''} ${credential.familyName ?? ''}'.trim();
+      final data = <String, dynamic>{};
+      if (fullName.isNotEmpty) data['full_name'] = fullName;
+      if (credential.email != null) data['email'] = credential.email;
+      if (data.isNotEmpty) {
+        await _supabase.auth.updateUser(UserAttributes(data: data));
+      }
+
+      final appUser = AppUser.fromSupabaseUser(user);
+      state = AsyncValue.data(AppAuthState.authenticated(appUser));
+      return appUser;
+    } on SignInWithAppleAuthorizationException catch (e, st) {
+      await ref.read(errorLoggerProvider).logError(e, st);
+      switch (e.code) {
+        case AuthorizationErrorCode.canceled:
+          state = const AsyncValue.data(AppAuthState.unauthenticated());
+          throw const CancelledSignInException();
+        case AuthorizationErrorCode.notHandled:
+        case AuthorizationErrorCode.failed:
+        case AuthorizationErrorCode.invalidResponse:
+        case AuthorizationErrorCode.unknown:
+        default:
+          debugPrint('❌ [APPLE AUTH] Authorization failed, falling back to anonymous sign-in');
+          return await _fallbackToAnonymousSignIn();
+      }
+    } catch (e, st) {
+      await ref.read(errorLoggerProvider).logError(e, st);
+      debugPrint('❌ [APPLE AUTH] Exception occurred, falling back to anonymous sign-in');
+      return await _fallbackToAnonymousSignIn();
+    }
+  }
+
+  Future<AppUser> signInAnonymously() async {
+    state = const AsyncValue.data(AppAuthState.loading());
+
+    try {
+      final response = await _supabase.auth.signInAnonymously();
+
+      final user = response.user;
+      final session = response.session;
+      if (user == null || session == null) {
+        throw Exception('Failed to sign in anonymously.');
+      }
+
+      await _sessionManager.saveSession(session, user);
+
+      final appUser = AppUser.fromSupabaseUser(user);
+      state = AsyncValue.data(AppAuthState.authenticated(appUser));
+      return appUser;
+    } catch (e, st) {
+      await ref.read(errorLoggerProvider).logError(e, st);
+      state = AsyncValue.data(AppAuthState.error(_exceptionMessage(e)));
+      rethrow;
+    }
+  }
+
+  /// Internal fallback method to sign in anonymously when OAuth fails
+  Future<AppUser> _fallbackToAnonymousSignIn() async {
+    try {
+      debugPrint('🔄 [FALLBACK] Attempting anonymous sign-in...');
+      final response = await _supabase.auth.signInAnonymously();
+
+      final user = response.user;
+      final session = response.session;
+      if (user == null || session == null) {
+        throw Exception('Failed to sign in anonymously.');
+      }
+
+      await _sessionManager.saveSession(session, user);
+
+      final appUser = AppUser.fromSupabaseUser(user);
+      state = AsyncValue.data(AppAuthState.authenticated(appUser));
+      debugPrint('✅ [FALLBACK] Anonymous sign-in successful');
+      return appUser;
+    } catch (e, st) {
+      debugPrint('❌ [FALLBACK] Anonymous sign-in failed: $e');
+      await ref.read(errorLoggerProvider).logError(e, st);
+      state = AsyncValue.data(AppAuthState.error(_exceptionMessage(e)));
+      rethrow;
+    }
+  }
+
+  Future<void> signOut() async {
+    state = const AsyncValue.data(AppAuthState.loading());
+    await _ensureGoogleInitialized();
+
+    try {
+      try {
+        await _googleSignIn.disconnect();
+      } catch (_) {
+        // Ignore if already disconnected.
+      }
+
+      await _supabase.auth.signOut();
+      await _sessionManager.clearLocalStorage();
+      state = const AsyncValue.data(AppAuthState.unauthenticated());
+    } catch (e, st) {
+      await ref.read(errorLoggerProvider).logError(e, st);
+      final rawMessage = _exceptionMessage(e);
+      final message = rawMessage.isEmpty
+          ? 'Failed to sign out. Please try again.'
+          : rawMessage;
+      state = AsyncValue.data(AppAuthState.error(message));
+      rethrow;
+    }
+  }
+
+  Future<void> _ensureGoogleInitialized() {
+    final existing = _googleInitCompleter;
+    if (existing != null) {
+      return existing.future;
+    }
+
+    final completer = Completer<void>();
+    _googleInitCompleter = completer;
+
+    () async {
+      try {
+        await _initializeGoogleSignIn();
+        completer.complete();
+      } catch (error, stackTrace) {
+        await ref.read(errorLoggerProvider).logError(error, stackTrace);
+        _googleInitCompleter = null;
+        if (!completer.isCompleted) {
+          completer.completeError(error, stackTrace);
+        }
+      }
+    }();
+
+    return completer.future;
+  }
+
+  Future<void> _initializeGoogleSignIn() async {
+    if (kDebugMode) {
+      debugPrint('🔵 [GOOGLE INIT] Starting initialization...');
+      debugPrint('   Platform: ${Platform.isAndroid ? "Android" : "iOS"}');
+    }
+
+    // clientId is only needed for iOS (Android auto-handles it via SHA-1/package name)
+    String? clientId;
+    if (Platform.isIOS) {
+      clientId = _env('GOOGLE_IOS_CLIENT_ID');
+    }
+
+    // serverClientId (web client ID) is REQUIRED for server-side auth
+    final serverClientId = _env('GOOGLE_WEB_CLIENT_ID');
+
+    await _googleSignIn.initialize(
+      clientId: clientId,
+      serverClientId: serverClientId,
+    );
+
+    if (kDebugMode) {
+      debugPrint('✅ [GOOGLE INIT] Initialization successful');
+      debugPrint('   clientId: ${clientId ?? "null (Android auto-handled)"}');
+      debugPrint('   serverClientId: $serverClientId');
+    }
+  }
+
   String _env(String key, {bool required = true}) {
     String? value;
     if (kDebugMode) {
       value = dotenv.env[key]?.trim();
     } else {
-      // In production, CodeMagic injects environment variables via --dart-define
-      // We must look them up from the compile-time const map
       value = _releaseEnvValues[key];
     }
 
@@ -75,243 +440,10 @@ class AuthRepository {
     return value;
   }
 
-  Future<void> _initializeGoogleSignIn() async {
-    try {
-      String? clientId;
-      if (Platform.isIOS) {
-        clientId = _env('GOOGLE_IOS_CLIENT_ID');
-      } else if (Platform.isAndroid) {
-        final androidClientId = _env(
-          'GOOGLE_ANDROID_CLIENT_ID',
-          required: true,
-        );
-        clientId = androidClientId.isEmpty ? null : androidClientId;
-        if (clientId == null) {
-          if (kDebugMode) {
-            debugPrint(
-              '⚠️ GOOGLE_ANDROID_CLIENT_ID not provided; proceeding without explicit Android client ID.',
-            );
-          } else {
-            await ref
-                .read(errorLoggerProvider)
-                .logError(
-                  Exception('Missing GOOGLE_ANDROID_CLIENT_ID'),
-                  StackTrace.current,
-                );
-          }
-        }
-      }
-
-      await _googleSignIn.initialize(
-        clientId: clientId,
-        serverClientId: _env('GOOGLE_WEB_CLIENT_ID'),
-      );
-
-      // Disabled automatic sign-in to prevent unwanted Google OAuth popups
-      // final future = _googleSignIn.attemptLightweightAuthentication();
-      // future?.catchError((_, __) => null);
-    } catch (e, st) {
-      await ref.read(errorLoggerProvider).logError(e, st);
-      rethrow;
-    }
-  }
-
-  Future<void> _ensureGoogleInitialized() async {
-    _googleInitialization ??= _initializeGoogleSignIn();
-    await _googleInitialization;
-  }
-
-  // Current user stream
-  Stream<AppUser?> get authStateChanges {
-    return _supabase.auth.onAuthStateChange.map((data) {
-      final user = data.session?.user;
-      return user != null ? AppUser.fromSupabaseUser(user) : null;
-    });
-  }
-
-  // Get current user
-  AppUser? get currentUser {
-    final user = _supabase.auth.currentUser;
-    return user != null ? AppUser.fromSupabaseUser(user) : null;
-  }
-
-  // Google Sign In
-  Future<AppUser> signInWithGoogle() async {
-    final sessionManager = ref.read(sessionManagerProvider);
-
-    await _ensureGoogleInitialized();
-
-    try {
-      final account = await _googleSignIn.authenticate(
-        scopeHint: _googleScopes,
-      );
-      final idToken = account.authentication.idToken;
-
-      if (idToken == null || idToken.isEmpty) {
-        throw Exception('Failed to get Google ID token');
-      }
-
-      final GoogleSignInClientAuthorization authorization =
-          await account.authorizationClient.authorizationForScopes(
-            _googleScopes,
-          ) ??
-          await account.authorizationClient.authorizeScopes(_googleScopes);
-
-      final accessToken = authorization.accessToken;
-
-      final response = await _supabase.auth.signInWithIdToken(
-        provider: OAuthProvider.google,
-        idToken: idToken,
-        accessToken: accessToken,
-      );
-
-      final user = response.user;
-      final session = response.session;
-
-      if (user == null || session == null) {
-        throw Exception('Failed to authenticate with Supabase');
-      }
-
-      await sessionManager.saveSession(session, user);
-
-      return AppUser.fromSupabaseUser(user);
-    } on GoogleSignInException catch (e, st) {
-      if (e.code == GoogleSignInExceptionCode.canceled) {
-        throw const CancelledSignInException();
-      }
-      await ref.read(errorLoggerProvider).logError(e, st);
-      throw _mapGoogleSignInException(e);
-    } catch (e, st) {
-      await ref.read(errorLoggerProvider).logError(e, st);
-      rethrow;
-    }
-  }
-
-  // Apple Sign In (iOS only)
-  Future<AppUser> signInWithApple() async {
-    final sessionManager = ref.read(sessionManagerProvider);
-
-    // Apple Sign-In is only available on iOS
-    if (!Platform.isIOS) {
-      throw Exception('Apple Sign-In is only available on iOS devices.');
-    }
-
-    try {
-      // Ensure Apple Sign In is actually available (e.g., user signed into iCloud).
-      final available = await SignInWithApple.isAvailable();
-      if (!available) {
-        throw Exception(
-          'Apple Sign In not available on this device. Sign into iCloud and try again.',
-        );
-      }
-
-      // Generate nonce for security
-      final rawNonce = _generateNonce();
-      final hashedNonce = _sha256ofString(rawNonce);
-
-      final credential = await SignInWithApple.getAppleIDCredential(
-        scopes: [
-          AppleIDAuthorizationScopes.email,
-          AppleIDAuthorizationScopes.fullName,
-        ],
-        // Apple expects the SHA256(nonce)
-        nonce: hashedNonce,
-      );
-
-      final idToken = credential.identityToken;
-      if (idToken == null) {
-        throw Exception('Failed to get Apple ID token');
-      }
-
-      final response = await _supabase.auth.signInWithIdToken(
-        provider: OAuthProvider.apple,
-        idToken: idToken,
-        // Supabase expects the original raw nonce
-        nonce: rawNonce,
-      );
-
-      final user = response.user;
-      final session = response.session;
-      if (user == null || session == null) {
-        throw Exception('Failed to authenticate with Supabase');
-      }
-
-      // Persist session the same way as Google
-      await sessionManager.saveSession(session, user);
-
-      // Update optional metadata if Apple returned name/email (only on first consent)
-      final fullName =
-          '${credential.givenName ?? ''} ${credential.familyName ?? ''}'.trim();
-      final data = <String, dynamic>{};
-      if (fullName.isNotEmpty) data['full_name'] = fullName;
-      if (credential.email != null) data['email'] = credential.email;
-      if (data.isNotEmpty) {
-        await _supabase.auth.updateUser(UserAttributes(data: data));
-      }
-
-      return AppUser.fromSupabaseUser(user);
-    } on SignInWithAppleAuthorizationException catch (e) {
-      // Map common Apple errors to actionable messages
-      debugPrint('Apple auth exception: code=${e.code}, message=${e.message}');
-      switch (e.code) {
-        case AuthorizationErrorCode.canceled:
-          throw const CancelledSignInException();
-        case AuthorizationErrorCode.notHandled:
-          throw Exception('Apple sign in not handled');
-        case AuthorizationErrorCode.failed:
-        case AuthorizationErrorCode.invalidResponse:
-        case AuthorizationErrorCode.unknown:
-        default:
-          throw Exception(
-            'Apple sign in failed. Check capability, iCloud login, and time settings.',
-          );
-      }
-    } catch (e, st) {
-      await ref.read(errorLoggerProvider).logError(e, st);
-      rethrow;
-    }
-  }
-
-  // Anonymous Sign In (Fallback)
-  Future<AppUser> signInAnonymously() async {
-    debugPrint('🔵 [REPO] signInAnonymously() called');
-    final sessionManager = ref.read(sessionManagerProvider);
-
-    try {
-      debugPrint('🔵 [REPO] Calling Supabase auth.signInAnonymously()...');
-      final response = await _supabase.auth.signInAnonymously();
-      debugPrint('🔵 [REPO] Supabase response received');
-
-      final user = response.user;
-      final session = response.session;
-
-      debugPrint('🔵 [REPO] User: ${user?.id}, Session: ${session != null}');
-
-      if (user == null || session == null) {
-        debugPrint('❌ [REPO] User or session is null!');
-        throw Exception('Failed to sign in anonymously');
-      }
-
-      debugPrint('🔵 [REPO] Saving session...');
-      await sessionManager.saveSession(session, user);
-      debugPrint('✅ [REPO] Session saved successfully');
-
-      final appUser = AppUser.fromSupabaseUser(user);
-      debugPrint('✅ [REPO] AppUser created: ${appUser.id}');
-      return appUser;
-    } catch (e, st) {
-      debugPrint('❌ [REPO] Exception in signInAnonymously!');
-      debugPrint('   Error: $e');
-      debugPrint('   Type: ${e.runtimeType}');
-      await ref.read(errorLoggerProvider).logError(e, st);
-      rethrow;
-    }
-  }
-
   Exception _mapGoogleSignInException(GoogleSignInException e) {
     switch (e.code) {
       case GoogleSignInExceptionCode.canceled:
-        return Exception('Google sign in was cancelled');
+        return Exception('Google sign in was cancelled.');
       case GoogleSignInExceptionCode.interrupted:
       case GoogleSignInExceptionCode.uiUnavailable:
         return Exception('Google sign in was interrupted. Please try again.');
@@ -319,7 +451,7 @@ class AuthRepository {
       case GoogleSignInExceptionCode.providerConfigurationError:
         return Exception(
           e.description ??
-              'Google Sign-In configuration error. Verify iOS bundle ID, client IDs, and URL schemes.',
+              'Google Sign-In configuration error. Verify bundle ID, client IDs, and URL schemes.',
         );
       case GoogleSignInExceptionCode.userMismatch:
         return Exception('Google sign in failed due to account mismatch.');
@@ -330,20 +462,15 @@ class AuthRepository {
     }
   }
 
-  // Sign Out
-  Future<void> signOut() async {
-    try {
-      await _ensureGoogleInitialized();
-      await _googleSignIn.signOut();
-
-      await _supabase.auth.signOut();
-    } catch (e, st) {
-      await ref.read(errorLoggerProvider).logError(e, st);
-      rethrow;
+  String _exceptionMessage(Object error) {
+    final message = error.toString();
+    const prefix = 'Exception: ';
+    if (message.startsWith(prefix)) {
+      return message.substring(prefix.length);
     }
+    return message;
   }
 
-  // Helper methods for Apple Sign In
   String _generateNonce([int length = 32]) {
     const charset =
         '0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._';

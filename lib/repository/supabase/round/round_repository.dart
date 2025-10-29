@@ -151,34 +151,30 @@ class RoundRepository extends BaseRepository {
 
   Future<Round?> getLatestRoundByLastMove(String tourId) async {
     return handleApiCall(() async {
-      final rounds = await getRoundsByTourId(tourId);
+      final response = await supabase
+          .from('games')
+          .select('round:round_id(id,slug,tour_id,tour_slug,name,created_at,starts_at,url),round_id,last_move_time')
+          .eq('tour_id', tourId)
+          .not('last_move', 'is', null)
+          .order('last_move_time', ascending: false)
+          .limit(1);
 
-      if (rounds.isEmpty) {
+      if (response.isEmpty) {
         return null;
       }
 
-      Round? latestRoundWithMove;
-
-      for (final round in rounds) {
-        final gamesResponse = await supabase
-            .from('games')
-            .select('id, last_move')
-            .eq('round_id', round.id)
-            .not('last_move', 'is', null)
-            .limit(1);
-
-        final nonNullMoveCount = (gamesResponse as List).length;
-
-        if (nonNullMoveCount > 0) {
-          latestRoundWithMove = round;
-        }
+      final row = response.first;
+      final roundJson = row['round'];
+      if (roundJson is Map<String, dynamic>) {
+        return Round.fromJson(roundJson);
       }
 
-      if (latestRoundWithMove == null) {
-        latestRoundWithMove = rounds.last;
-      } else {}
+      final roundId = row['round_id'];
+      if (roundId is String && roundId.isNotEmpty) {
+        return await getRoundById(roundId);
+      }
 
-      return latestRoundWithMove;
+      return null;
     });
   }
 }

@@ -14,6 +14,8 @@ class ScoreboardCardWidget extends ConsumerWidget {
   final int score; // Current score/rating
   final double? scoreChange; // Score change (can be positive or negative)
   final String? matchScore; // Match score (e.g., "2.5/3")
+  final bool? isWhite; // Whether the player played white
+  final String? roundLabel;
   final int index;
   final bool isFirst;
   final bool isLast;
@@ -27,6 +29,8 @@ class ScoreboardCardWidget extends ConsumerWidget {
     this.title, // Changed to optional parameter
     this.scoreChange,
     this.matchScore,
+    this.isWhite,
+    this.roundLabel,
     required this.index,
     required this.isFirst,
     required this.isLast,
@@ -66,6 +70,17 @@ class ScoreboardCardWidget extends ConsumerWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
+            if (roundLabel != null) ...[
+              Padding(
+                padding: EdgeInsets.only(right: 12.w),
+                child: Text(
+                  roundLabel!,
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: kWhiteColor70,
+                  ),
+                ),
+              ),
+            ],
             // Player Info (flag + name)
             Expanded(
               child: Row(
@@ -84,7 +99,7 @@ class ScoreboardCardWidget extends ConsumerWidget {
                         cacheHeight: 36,
                       ),
                     ),
-                    SizedBox(width: 4.w),
+                    SizedBox(width: 6.w),
                   ] else if (validCountryCode.isNotEmpty) ...[
                     SizedBox(
                       width: 16.w,
@@ -95,9 +110,9 @@ class ScoreboardCardWidget extends ConsumerWidget {
                         width: 16.w,
                       ),
                     ),
-                    SizedBox(width: 4.w),
+                    SizedBox(width: 6.w),
                   ],
-                  Flexible(
+                  Expanded(
                     child: Padding(
                       padding: EdgeInsets.only(bottom: 4.sp),
                       child: RichText(
@@ -109,7 +124,7 @@ class ScoreboardCardWidget extends ConsumerWidget {
                               TextSpan(
                                 text: '$title ',
                                 style: AppTypography.textXsMedium.copyWith(
-                                  color: kWhiteColor,
+                                  color: kWhiteColor70,
                                 ),
                               ),
                             TextSpan(
@@ -126,12 +141,13 @@ class ScoreboardCardWidget extends ConsumerWidget {
                 ],
               ),
             ),
-
-            // ELO column (fixed width to match header)
+            SizedBox(width: 8.w),
+            // ELO column (compact width)
             SizedBox(
-              width: 100.w,
+              width: 70.w,
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Text(
                     score.toString(),
@@ -143,8 +159,8 @@ class ScoreboardCardWidget extends ConsumerWidget {
                     SizedBox(width: 4.w),
                     Text(
                       scoreChange! > 0
-                          ? '+${scoreChange!.toStringAsFixed(2)}'
-                          : scoreChange!.toStringAsFixed(2),
+                          ? '+${scoreChange!.toStringAsFixed(1)}'
+                          : scoreChange!.toStringAsFixed(1),
                       style: AppTypography.textXsMedium.copyWith(
                         color: scoreChange! > 0 ? kGreenColor : kRedColor,
                       ),
@@ -153,14 +169,41 @@ class ScoreboardCardWidget extends ConsumerWidget {
                 ],
               ),
             ),
-
-            // Match Score column (fixed width to match header)
+            SizedBox(width: 8.w),
+            // Match Score column (compact width)
             SizedBox(
-              width: 60.w,
-              child: Text(
-                matchScore == null ? '' : matchScore!,
-                textAlign: TextAlign.end,
-                style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+              width: 50.w,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  if (isWhite != null) ...[
+                    Container(
+                      width: 8.w,
+                      height: 8.h,
+                      decoration: BoxDecoration(
+                        color: isWhite! ? Colors.white : Colors.black,
+                        shape: BoxShape.circle,
+                        border: isWhite!
+                            ? null
+                            : Border.all(
+                                color: kWhiteColor.withValues(alpha: 0.3),
+                                width: 0.5,
+                              ),
+                      ),
+                    ),
+                    SizedBox(width: 8.w),
+                  ],
+                  Expanded(
+                    child: Text(
+                      matchScore == null ? '' : matchScore!,
+                      textAlign: TextAlign.start,
+                      style: AppTypography.textXsMedium.copyWith(
+                        color: kWhiteColor,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],

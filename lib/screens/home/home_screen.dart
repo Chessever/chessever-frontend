@@ -1,4 +1,5 @@
-import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
+import 'package:chessever2/providers/auth_state_provider.dart';
+import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/screens/authentication/auth_screen.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
@@ -62,6 +63,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           },
 
           onLogoutPressed: () async {
+            final currentUser = ref.read(currentUserProvider);
+
+            // If user is anonymous, just navigate to login page (don't sign out)
+            if (currentUser?.isAnonymous == true) {
+              Navigator.of(context).pop(); // Close drawer
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(
+                  builder: (context) => const AuthScreen(),
+                ),
+              );
+              return;
+            }
+
+            // For authenticated users, show confirmation dialog
             await showDialog<void>(
               context: context,
               builder:
@@ -76,14 +91,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       TextButton(
                         onPressed: () async {
                           Navigator.of(dialogContext).pop();
-                          final sessionManager = ref.read(
-                            sessionManagerProvider,
-                          );
-                          await sessionManager.clearSession();
-
-                          Navigator.of(
-                            context,
-                          ).pushNamedAndRemoveUntil('/', (route) => false);
+                          await ref
+                              .read(authStateProvider.notifier)
+                              .signOut();
                         },
                         child: const Text('Logout'),
                       ),

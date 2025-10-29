@@ -6,6 +6,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_con
 import 'package:flutter/animation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
+import 'package:chessever2/repository/supabase/round/round.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_rounds_id_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart'; // adjust import path if needed
@@ -29,6 +30,7 @@ class _GamesAppBarNotifier
     extends StateNotifier<AsyncValue<GamesAppBarViewModel>> {
   _GamesAppBarNotifier({required this.ref, required this.tourId})
     : _liveRounds = [],
+      _roundSortMeta = {},
       super(const AsyncValue.loading()) {
     ref.listen<List<String>?>(
       liveRoundsIdProvider.select((a) => a.valueOrNull),
@@ -44,6 +46,7 @@ class _GamesAppBarNotifier
 
   final String? tourId;
   List<String> _liveRounds;
+  final Map<String, _RoundSortMeta> _roundSortMeta;
 
   Future<void> refresh() async {
     await _load();
@@ -124,11 +127,12 @@ class _GamesAppBarNotifier
 
   /// Extract round number from round name (e.g., "Round 9" -> 9, "round7" -> 7)
   int? _extractRoundNumber(String roundName) {
-    final match = RegExp(r'(\d+)').firstMatch(roundName);
-    if (match != null && match.groupCount > 0) {
-      return int.tryParse(match.group(0)!);
-    }
-    return null;
+    return _parseRoundNumber(roundName);
+  }
+
+  /// Extract game number from round name (e.g., "Round 6 - Game 2" -> 2)
+  int? _extractGameNumber(String roundName) {
+    return _parseGameNumber(roundName);
   }
 
   int _calculateRoundHeaderIndex(String roundId) {
@@ -137,8 +141,9 @@ class _GamesAppBarNotifier
     final selectedId = vm?.selectedId;
     final userSelected = vm?.userSelectedId ?? false;
 
-    // Respect visible-rounds rule: hide upcoming by default; include selected upcoming
-    final rounds = allRounds.where((round) {
+    // Smart filtering: Match the logic in games_tour_content_body.dart
+    final gamesByRound = <String, int>{};
+    for (final round in allRounds) {
       final gamesInRound =
           ref
                   .read(gamesTourScreenProvider)
@@ -147,8 +152,38 @@ class _GamesAppBarNotifier
                   .where((g) => g.roundId == round.id)
                   .length ??
               0;
+      gamesByRound[round.id] = gamesInRound;
+    }
+
+    final hasLiveOrOngoing = allRounds.any((r) =>
+      r.roundStatus == RoundStatus.live || r.roundStatus == RoundStatus.ongoing
+    );
+
+    final hasCompleted = allRounds.any((r) => r.roundStatus == RoundStatus.completed);
+
+    final allAreUpcoming = allRounds.every((r) =>
+      r.roundStatus == RoundStatus.upcoming || (gamesByRound[r.id] ?? 0) == 0
+    );
+
+    final rounds = allRounds.where((round) {
+      final gamesInRound = gamesByRound[round.id] ?? 0;
       if (gamesInRound == 0) return false;
+
       if (userSelected && selectedId == round.id) return true;
+
+      if (allAreUpcoming) return true;
+
+      if (hasLiveOrOngoing) {
+        return round.roundStatus != RoundStatus.upcoming;
+      }
+
+      if (hasCompleted && round.roundStatus == RoundStatus.upcoming) {
+        final upcomingRounds = allRounds.where((r) =>
+          r.roundStatus == RoundStatus.upcoming && (gamesByRound[r.id] ?? 0) > 0
+        ).toList();
+        return upcomingRounds.isNotEmpty && upcomingRounds.first.id == round.id;
+      }
+
       return round.roundStatus != RoundStatus.upcoming;
     }).toList();
 
@@ -235,43 +270,89 @@ class _GamesAppBarNotifier
         return;
       }
 
+      _roundSortMeta
+        ..clear()
+        ..addEntries(
+          rounds.map(
+            (round) => MapEntry(
+              round.id,
+              _RoundSortMeta.fromRound(round),
+            ),
+          ),
+        );
+
       final models =
           rounds
               .map((r) => GamesAppBarModel.fromRound(r, _liveRounds))
               .toList();
 
-      models.sort((a, b) {
-        // Priority order: live > ongoing > completed > upcoming
-        final statusPriority = {
-          RoundStatus.live: 0,
-          RoundStatus.ongoing: 1,
-          RoundStatus.completed: 2,
-          RoundStatus.upcoming: 3,
-        };
-
-        final aPriority = statusPriority[a.roundStatus] ?? 4;
-        final bPriority = statusPriority[b.roundStatus] ?? 4;
-
-        // Sort by status priority first
-        if (aPriority != bPriority) {
-          return aPriority.compareTo(bPriority);
-        }
-
-        // Within same status, sort by round number descending (bigger numbers first)
-        final aNum = _extractRoundNumber(a.name);
-        final bNum = _extractRoundNumber(b.name);
-
-        if (aNum == null && bNum == null) return 0;
-        if (aNum == null) return 1; // nulls go last
-        if (bNum == null) return -1;
-
-        return bNum.compareTo(aNum); // Descending order
-      });
+      _sortRounds(models);
 
       await _applySelectionFrom(models, tourId!);
     } catch (e, st) {
       state = AsyncValue.error(e, st);
     }
+  }
+
+  void _sortRounds(List<GamesAppBarModel> models) {
+    models.sort(_compareRounds);
+  }
+
+  int _compareRounds(GamesAppBarModel a, GamesAppBarModel b) {
+    final aPriority = _statusPriorityMap[a.roundStatus] ?? _defaultStatusRank;
+    final bPriority = _statusPriorityMap[b.roundStatus] ?? _defaultStatusRank;
+
+    if (aPriority != bPriority) {
+      return aPriority.compareTo(bPriority);
+    }
+
+    final aMeta = _roundSortMeta[a.id];
+    final bMeta = _roundSortMeta[b.id];
+
+    final aRoundNum = aMeta?.roundNumber ?? _extractRoundNumber(a.name);
+    final bRoundNum = bMeta?.roundNumber ?? _extractRoundNumber(b.name);
+    final roundCompare = _compareIntsDesc(aRoundNum, bRoundNum);
+    if (roundCompare != 0) return roundCompare;
+
+    final aGameNum = aMeta?.gameNumber ?? _extractGameNumber(a.name);
+    final bGameNum = bMeta?.gameNumber ?? _extractGameNumber(b.name);
+    final gameCompare = _compareIntsDesc(aGameNum, bGameNum);
+    if (gameCompare != 0) return gameCompare;
+
+    final aStarts = aMeta?.startsAt ?? a.startsAt;
+    final bStarts = bMeta?.startsAt ?? b.startsAt;
+    final startCompare = _compareDatesDesc(aStarts, bStarts);
+    if (startCompare != 0) return startCompare;
+
+    final createdCompare =
+        _compareDatesDesc(aMeta?.createdAt, bMeta?.createdAt);
+    if (createdCompare != 0) return createdCompare;
+
+    final slugCompare = _compareStringsDesc(aMeta?.slug, bMeta?.slug);
+    if (slugCompare != 0) return slugCompare;
+
+    return a.name.compareTo(b.name);
+  }
+
+  int _compareIntsDesc(int? a, int? b) {
+    if (a == null && b == null) return 0;
+    if (a == null) return 1;
+    if (b == null) return -1;
+    return b.compareTo(a);
+  }
+
+  int _compareDatesDesc(DateTime? a, DateTime? b) {
+    if (a == null && b == null) return 0;
+    if (a == null) return 1;
+    if (b == null) return -1;
+    return b.compareTo(a);
+  }
+
+  int _compareStringsDesc(String? a, String? b) {
+    if (a == null && b == null) return 0;
+    if (a == null) return 1;
+    if (b == null) return -1;
+    return b.toLowerCase().compareTo(a.toLowerCase());
   }
 
   /// Recompute statuses on live-rounds change, update selection only if the user
@@ -298,32 +379,7 @@ class _GamesAppBarNotifier
             )
             .toList();
 
-    // Re-sort with same priority logic: live > ongoing > completed > upcoming
-    updated.sort((a, b) {
-      final statusPriority = {
-        RoundStatus.live: 0,
-        RoundStatus.ongoing: 1,
-        RoundStatus.completed: 2,
-        RoundStatus.upcoming: 3,
-      };
-
-      final aPriority = statusPriority[a.roundStatus] ?? 4;
-      final bPriority = statusPriority[b.roundStatus] ?? 4;
-
-      if (aPriority != bPriority) {
-        return aPriority.compareTo(bPriority);
-      }
-
-      // Within same status, sort by round number descending (bigger numbers first)
-      final aNum = _extractRoundNumber(a.name);
-      final bNum = _extractRoundNumber(b.name);
-
-      if (aNum == null && bNum == null) return 0;
-      if (aNum == null) return 1;
-      if (bNum == null) return -1;
-
-      return bNum.compareTo(aNum); // Descending order
-    });
+    _sortRounds(updated);
 
     final sticky = ref.read(userSelectedRoundProvider);
     final hasStickyValid =
@@ -465,4 +521,58 @@ class _GamesAppBarNotifier
       _scrollToRound(fallbackId);
     }
   }
+}
+
+const _statusPriorityMap = {
+  RoundStatus.live: 0,
+  RoundStatus.ongoing: 1,
+  RoundStatus.completed: 2,
+  RoundStatus.upcoming: 3,
+};
+const _defaultStatusRank = 99;
+
+class _RoundSortMeta {
+  const _RoundSortMeta({
+    required this.slug,
+    required this.createdAt,
+    required this.startsAt,
+    required this.roundNumber,
+    required this.gameNumber,
+  });
+
+  final String slug;
+  final DateTime createdAt;
+  final DateTime? startsAt;
+  final int? roundNumber;
+  final int? gameNumber;
+
+  factory _RoundSortMeta.fromRound(Round round) {
+    return _RoundSortMeta(
+      slug: round.slug,
+      createdAt: round.createdAt,
+      startsAt: round.startsAt,
+      roundNumber:
+          _parseRoundNumber(round.name) ?? _parseRoundNumber(round.slug),
+      gameNumber:
+          _parseGameNumber(round.name) ?? _parseGameNumber(round.slug),
+    );
+  }
+}
+
+int? _parseRoundNumber(String? value) {
+  if (value == null || value.isEmpty) return null;
+  final match =
+      RegExp(r'round[\s_\-:]*?(\d+)', caseSensitive: false).firstMatch(value) ??
+      RegExp(r'\b(\d{1,3})\b').firstMatch(value);
+  return match != null ? int.tryParse(match.group(1)!) : null;
+}
+
+int? _parseGameNumber(String? value) {
+  if (value == null || value.isEmpty) return null;
+  final match =
+      RegExp(
+        r'(?:game|board|match)[\s_\-:]*?(\d+)',
+        caseSensitive: false,
+      ).firstMatch(value);
+  return match != null ? int.tryParse(match.group(1)!) : null;
 }

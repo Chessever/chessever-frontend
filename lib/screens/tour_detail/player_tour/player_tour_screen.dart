@@ -100,8 +100,19 @@ class PlayerTourScreen extends ConsumerWidget {
                               final favIds =
                                   favData.players.map((e) => e.fideId).toSet();
 
-                              // Keep provider ordering (already absolute-score sorted)
-                              final sortedData = data;
+                              // Sort with favorited players on top, preserving score order within each group
+                              final favoritePlayers = <PlayerStandingModel>[];
+                              final nonFavoritePlayers = <PlayerStandingModel>[];
+
+                              for (final player in data) {
+                                if (favIds.contains(player.fideId)) {
+                                  favoritePlayers.add(player);
+                                } else {
+                                  nonFavoritePlayers.add(player);
+                                }
+                              }
+
+                              final sortedData = [...favoritePlayers, ...nonFavoritePlayers];
 
                               return Expanded(
                                 child: ListView.builder(

@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:chessever2/screens/standings/score_card_screen.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:chessever2/providers/board_settings_provider.dart';
@@ -1238,7 +1237,13 @@ class _BottomNavBar extends ConsumerWidget {
       gameIndex: index,
       onFlip: () => notifier.flipBoard(),
       toggleEngineVisibility: () => notifier.toggleEngineVisibility(),
-      onRightMove: canMoveForward ? () => notifier.analysisStepForward() : null,
+      onRightMove: canMoveForward ? () {
+        notifier.analysisStepForward();
+        // Clear unseen indicator when navigating forward
+        if (state.hasUnseenMoves) {
+          notifier.markMovesAsSeen();
+        }
+      } : null,
       onLeftMove:
           canMoveBackward ? () => notifier.analysisStepBackward() : null,
       onLongPressBackwardStart: () => notifier.startLongPressBackward(),
@@ -1248,6 +1253,7 @@ class _BottomNavBar extends ConsumerWidget {
       canMoveForward: canMoveForward,
       canMoveBackward: canMoveBackward,
       showEngineAnalysis: state.showPrincipalVariations,
+      showUnseenMoveBadge: state.hasUnseenMoves,
     );
   }
 }
@@ -1914,6 +1920,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                   move: move,
                   modeAwareCurrentIndex: modeAwareCurrentIndex,
                   boardParams: boardParams,
+                  totalMoveCount: sans.length,
+                  hasUnseenMoves: widget.state.hasUnseenMoves,
                 );
               }).toList(),
         ),
@@ -2387,6 +2395,65 @@ class _PrincipalVariationListState
   }
 }
 
+/// Blinking red dot indicator widget to show unseen moves
+class _BlinkingRedDot extends StatefulWidget {
+  final double size;
+
+  const _BlinkingRedDot({this.size = 8.0});
+
+  @override
+  State<_BlinkingRedDot> createState() => _BlinkingRedDotState();
+}
+
+class _BlinkingRedDotState extends State<_BlinkingRedDot>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+    _animation = Tween<double>(begin: 0.3, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+    _controller.repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) {
+        return Container(
+          width: widget.size,
+          height: widget.size,
+          decoration: BoxDecoration(
+            color: Colors.red.withValues(alpha: _animation.value),
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.red.withValues(alpha: _animation.value * 0.5),
+                blurRadius: 4,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _SkeletonContainer extends StatefulWidget {
   final double height;
   final double width;
@@ -2446,7 +2513,7 @@ class _SkeletonContainerState extends State<_SkeletonContainer>
 
 /// Isolated widget for each move notation to prevent layout shifts
 /// Only this widget rebuilds when its impact calculation completes
-class _MoveNotationWidget extends ConsumerWidget {
+class _MoveNotationWidget extends HookConsumerWidget {
   final GamesTourModel game;
   final int index;
   final int currentPageIndex;
@@ -2454,6 +2521,8 @@ class _MoveNotationWidget extends ConsumerWidget {
   final String move;
   final int modeAwareCurrentIndex;
   final ChessBoardProviderParams boardParams;
+  final int totalMoveCount;
+  final bool hasUnseenMoves;
 
   const _MoveNotationWidget({
     super.key,
@@ -2464,6 +2533,8 @@ class _MoveNotationWidget extends ConsumerWidget {
     required this.move,
     required this.modeAwareCurrentIndex,
     required this.boardParams,
+    required this.totalMoveCount,
+    required this.hasUnseenMoves,
   });
 
   @override
@@ -2471,6 +2542,10 @@ class _MoveNotationWidget extends ConsumerWidget {
     final isCurrentMove = moveIndex == modeAwareCurrentIndex;
     final fullMoveNumber = (moveIndex / 2).floor() + 1;
     final isWhiteMove = moveIndex % 2 == 0;
+
+    // Check if this is the last move and there are unseen moves
+    final isLastMove = moveIndex == totalMoveCount - 1;
+    final showUnseenIndicator = isLastMove && hasUnseenMoves;
 
     // DISABLED: Move impact calculation in notation list
     // This was causing eval bar to get stuck because it creates 100+ provider watchers
@@ -2494,45 +2569,60 @@ class _MoveNotationWidget extends ConsumerWidget {
     }
 
     return GestureDetector(
-      onTap:
-          () => ref
-              .read(chessBoardScreenProviderNew(params).notifier)
-              .goToMove(moveIndex),
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 6.sp, vertical: 2.sp),
-        decoration: BoxDecoration(
-          color:
-              isCurrentMove
-                  ? kWhiteColor70.withValues(alpha: 0.4)
-                  : Colors.transparent,
-          borderRadius: BorderRadius.circular(4.sp),
-          border: Border.all(
-            color: isCurrentMove ? kWhiteColor : Colors.transparent,
-            width: 0.5,
-          ),
-        ),
-        child: RichText(
-          text: TextSpan(
-            children: [
-              TextSpan(
-                text: displayText,
-                style: AppTypography.textXsMedium.copyWith(
-                  color: textColor,
-                  fontWeight:
-                      isCurrentMove ? FontWeight.bold : FontWeight.normal,
-                ),
+      onTap: () {
+        ref.read(chessBoardScreenProviderNew(params).notifier).goToMove(moveIndex);
+        // If tapping on the last move, clear the unseen indicator
+        if (isLastMove && hasUnseenMoves) {
+          ref.read(chessBoardScreenProviderNew(params).notifier).markMovesAsSeen();
+        }
+      },
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 6.sp, vertical: 2.sp),
+            decoration: BoxDecoration(
+              color:
+                  isCurrentMove
+                      ? kWhiteColor70.withValues(alpha: 0.4)
+                      : Colors.transparent,
+              borderRadius: BorderRadius.circular(4.sp),
+              border: Border.all(
+                color: isCurrentMove ? kWhiteColor : Colors.transparent,
+                width: 0.5,
               ),
-              if (impactSymbol.isNotEmpty)
-                TextSpan(
-                  text: impactSymbol,
-                  style: AppTypography.textXsMedium.copyWith(
-                    color: impact!.impact.color,
-                    fontWeight: FontWeight.bold,
+            ),
+            child: RichText(
+              text: TextSpan(
+                children: [
+                  TextSpan(
+                    text: displayText,
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: textColor,
+                      fontWeight:
+                          isCurrentMove ? FontWeight.bold : FontWeight.normal,
+                    ),
                   ),
-                ),
-            ],
+                  if (impactSymbol.isNotEmpty)
+                    TextSpan(
+                      text: impactSymbol,
+                      style: AppTypography.textXsMedium.copyWith(
+                        color: impact!.impact.color,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ),
-        ),
+          // Show red dot indicator on top-right corner if this is the last unseen move
+          if (showUnseenIndicator)
+            Positioned(
+              top: -2.sp,
+              right: -2.sp,
+              child: _BlinkingRedDot(size: 6.sp),
+            ),
+        ],
       ),
     );
   }
