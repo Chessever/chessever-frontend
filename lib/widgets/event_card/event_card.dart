@@ -1,3 +1,4 @@
+import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -224,31 +225,69 @@ class _StarWidget extends ConsumerStatefulWidget {
 }
 
 class _StarWidgetState extends ConsumerState<_StarWidget> {
+  bool _isLoading = false;
+
   @override
   Widget build(BuildContext context) {
-    // Check both old system (for backward compatibility) and new system
-    final eventCategory = ref.watch(selectedGroupCategoryProvider);
-    final starredList = ref.watch(starredProvider(eventCategory.name));
-
-    final isStarred = starredList.contains(widget.tourEventCardModel.id);
+    // Use new unified favorites system with Supabase + local cache
+    final isStarred = ref.watch(
+      isEventFavoritedProvider(widget.tourEventCardModel.id),
+    );
 
     return InkWell(
-      onTap: () async {
-        // Toggle in both old and new systems for compatibility
-        await ref
-            .read(starredProvider(eventCategory.name).notifier)
-            .toggleStarred(widget.tourEventCardModel.id);
+      onTap: _isLoading ? null : () async {
+        setState(() => _isLoading = true);
+
+        try {
+          await ref.read(favoriteEventsProvider.notifier).toggleFavorite(
+            eventId: widget.tourEventCardModel.id,
+            eventName: widget.tourEventCardModel.title,
+            timeControl: widget.tourEventCardModel.timeControl,
+            maxAvgElo: widget.tourEventCardModel.maxAvgElo > 0
+                ? widget.tourEventCardModel.maxAvgElo
+                : null,
+            dates: widget.tourEventCardModel.dates.isNotEmpty
+                ? widget.tourEventCardModel.dates
+                : null,
+          );
+
+          HapticFeedback.lightImpact();
+        } catch (e) {
+          debugPrint('[EventCard] Error toggling favorite: $e');
+          // Show error to user
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Failed to update favorite. Please try again.'),
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        } finally {
+          if (mounted) {
+            setState(() => _isLoading = false);
+          }
+        }
       },
       child: Container(
         alignment: Alignment.centerRight,
         width: 30.w,
         height: 40.h,
-        child: SvgWidget(
-          isStarred ? SvgAsset.starFilledIcon : SvgAsset.starIcon,
-          semanticsLabel: 'Favorite Icon',
-          height: 20.h,
-          width: 20.w,
-        ),
+        child: _isLoading
+            ? SizedBox(
+                width: 20.w,
+                height: 20.h,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(kPrimaryColor),
+                ),
+              )
+            : SvgWidget(
+                isStarred ? SvgAsset.starFilledIcon : SvgAsset.starIcon,
+                semanticsLabel: 'Favorite Icon',
+                height: 20.h,
+                width: 20.w,
+              ),
       ),
     );
   }

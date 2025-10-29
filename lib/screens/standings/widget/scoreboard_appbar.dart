@@ -1,4 +1,4 @@
-import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
+import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/screens/standings/widget/player_dropdown.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -41,18 +41,35 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
   }
 
   Future<void> _toggleFavorite() async {
-    print('toggle pressed');
-    final favoritesService = ref.read(favoritePlayersNotifierProvider.notifier);
+    final favoritesService = ref.read(favoritePlayersProviderNew.notifier);
     final player = ref.read(selectedPlayerProvider);
 
     if (player != null) {
-      // Toggle in the tournament players favorites system
-      final isNowFavorite = await favoritesService.toggleFavorite(player);
-
-      if (isNowFavorite) {
-        _animationController.forward().then(
-          (_) => _animationController.reverse(),
+      try {
+        // Toggle using new unified favorites system
+        final isNowFavorite = await favoritesService.toggleFavorite(
+          fideId: player.fideId?.toString(),
+          playerName: player.name,
+          countryCode: player.countryCode,
+          rating: player.score,
+          title: player.title,
         );
+
+        if (isNowFavorite) {
+          _animationController.forward().then(
+            (_) => _animationController.reverse(),
+          );
+        }
+      } catch (e) {
+        debugPrint('Error toggling favorite: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to update favorite. Please try again.'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
       }
     }
   }
@@ -60,14 +77,11 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
   @override
   Widget build(BuildContext context) {
     final player = ref.watch(selectedPlayerProvider);
-    final favoritesAsync = ref.watch(favoritePlayersNotifierProvider);
-    final isFavorite = favoritesAsync.maybeWhen(
-      data:
-          (favorites) =>
-              player != null &&
-              favorites.players.any((fav) => fav.fideId == player.fideId),
-      orElse: () => false,
-    );
+
+    // Use new unified favorites system
+    final isFavorite = player != null
+        ? ref.watch(isPlayerFavoritedProvider(player.name))
+        : false;
 
     return Row(
       children: [

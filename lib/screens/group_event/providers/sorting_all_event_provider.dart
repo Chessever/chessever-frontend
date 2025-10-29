@@ -1,3 +1,4 @@
+import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -30,7 +31,8 @@ class TournamentSortingService {
       return a.title.toLowerCase().compareTo(b.title.toLowerCase());
     });
 
-    return filteredList;
+    // Apply favorite sorting (favorited events on top)
+    return _applyFavoriteSorting(filteredList);
   }
 
   List<GroupEventCardModel> sortUpcomingTours(List<GroupEventCardModel> tours) {
@@ -61,7 +63,8 @@ class TournamentSortingService {
       return a.title.toLowerCase().compareTo(b.title.toLowerCase());
     });
 
-    return filteredList;
+    // Apply favorite sorting (favorited events on top)
+    return _applyFavoriteSorting(filteredList);
   }
 
   List<GroupEventCardModel> sortPastTours(
@@ -94,7 +97,8 @@ class TournamentSortingService {
       }
     });
 
-    return sortedTours;
+    // Apply favorite sorting (favorited events on top)
+    return _applyFavoriteSorting(sortedTours);
   }
 
   int _extractDaysFromTimeUntilStart(String txt) {
@@ -137,6 +141,29 @@ class TournamentSortingService {
 
     // Return favorites first, then non-favorites (both in original order)
     return [...favoriteEvents, ...nonFavoriteEvents];
+  }
+
+  /// Apply favorite sorting to put favorited events on top
+  /// Uses the favoriteEventsProvider to get the list of favorited event IDs
+  List<GroupEventCardModel> _applyFavoriteSorting(
+    List<GroupEventCardModel> tours,
+  ) {
+    final favoritesAsync = ref.read(favoriteEventsProvider);
+
+    // If favorites are loading or failed, return tours as-is
+    final favorites = favoritesAsync.valueOrNull;
+    if (favorites == null || favorites.isEmpty) {
+      return tours;
+    }
+
+    // Extract favorited event IDs (filter out nulls if any)
+    final favoriteIds = favorites
+        .map((e) => e.eventId)
+        .where((id) => id.isNotEmpty)
+        .toList();
+
+    // Use existing sortBasedOnFavorite method
+    return sortBasedOnFavorite(tours: tours, favorites: favoriteIds);
   }
 
   static Map<String, DateTime>? _extractDates(String dateString) {

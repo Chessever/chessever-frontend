@@ -174,6 +174,14 @@ class GamesTourScreenProvider
           isSearchModeOverride ?? (current?.isSearchMode ?? false);
       final searchQuery = searchQueryOverride ?? current?.searchQuery;
 
+      // Pre-parse numbers to avoid repeated regex operations
+      final gameInfo = <String, (int, int)>{};
+      for (final game in allGames) {
+        final roundNum = _extractRoundNumber(game.roundSlug);
+        final gameNum = _extractGameNumber(game.roundSlug);
+        gameInfo[game.id] = (roundNum, gameNum);
+      }
+
       final sortedGames = List<Games>.from(allGames);
       sortedGames.sort((a, b) {
         if (!isSearchMode) {
@@ -183,10 +191,17 @@ class GamesTourScreenProvider
           if (!aPinned && bPinned) return 1;
         }
 
-        // Compare by round number, then game number (desc), then board number
-        final roundSlugComparison = _compareRoundSlugs(a.roundSlug, b.roundSlug);
-        if (roundSlugComparison != 0) return roundSlugComparison;
+        // Use pre-parsed values for performance
+        final (roundA, gameA) = gameInfo[a.id] ?? (0, 0);
+        final (roundB, gameB) = gameInfo[b.id] ?? (0, 0);
 
+        // First, sort by round number DESCENDING (to match the round list order)
+        if (roundA != roundB) return roundB.compareTo(roundA);
+
+        // Within same round, sort by game number DESCENDING (Game 2 before Game 1)
+        if (gameA != gameB) return gameB.compareTo(gameA);
+
+        // Finally, sort by board number ASCENDING
         final aBoard = a.boardNr, bBoard = b.boardNr;
         if (aBoard != null && bBoard != null) return aBoard.compareTo(bBoard);
         if (aBoard != null) return -1;
@@ -287,6 +302,12 @@ class GamesTourScreenProvider
     var pinnedIds = ref.read(gamesPinprovider(aboutTourModel!.id)).allPins;
     var finishedGames = games.where((g) => g.status != '*').toList();
 
+    // Pre-parse for performance
+    final gameInfo = <String, (int, int)>{};
+    for (final game in finishedGames) {
+      gameInfo[game.id] = (_extractRoundNumber(game.roundSlug), _extractGameNumber(game.roundSlug));
+    }
+
     final sortedGames = List<Games>.from(finishedGames);
     sortedGames.sort((a, b) {
       final aPinned = pinnedIds.contains(a.id);
@@ -294,9 +315,14 @@ class GamesTourScreenProvider
       if (aPinned && !bPinned) return -1;
       if (!aPinned && bPinned) return 1;
 
-      // Maintain same ordering as main list
-      final roundSlugComparison = _compareRoundSlugs(a.roundSlug, b.roundSlug);
-      if (roundSlugComparison != 0) return roundSlugComparison;
+      final (roundA, gameA) = gameInfo[a.id] ?? (0, 0);
+      final (roundB, gameB) = gameInfo[b.id] ?? (0, 0);
+
+      // Sort by round DESCENDING (to match the round list order)
+      if (roundA != roundB) return roundB.compareTo(roundA);
+
+      // Within same round, sort by game DESCENDING (Game 2 before Game 1)
+      if (gameA != gameB) return gameB.compareTo(gameA);
 
       final aBoard = a.boardNr, bBoard = b.boardNr;
       if (aBoard != null && bBoard != null) return aBoard.compareTo(bBoard);
@@ -321,6 +347,12 @@ class GamesTourScreenProvider
     var unfinishedGames = games.where((g) => g.status == '*').toList();
     final pinnedIds = ref.read(gamesPinprovider(aboutTourModel!.id)).allPins;
 
+    // Pre-parse for performance
+    final gameInfo = <String, (int, int)>{};
+    for (final game in unfinishedGames) {
+      gameInfo[game.id] = (_extractRoundNumber(game.roundSlug), _extractGameNumber(game.roundSlug));
+    }
+
     final sortedGames = List<Games>.from(unfinishedGames);
     sortedGames.sort((a, b) {
       final aPinned = pinnedIds.contains(a.id);
@@ -328,9 +360,14 @@ class GamesTourScreenProvider
       if (aPinned && !bPinned) return -1;
       if (!aPinned && bPinned) return 1;
 
-      // Maintain same ordering as main list
-      final roundSlugComparison = _compareRoundSlugs(a.roundSlug, b.roundSlug);
-      if (roundSlugComparison != 0) return roundSlugComparison;
+      final (roundA, gameA) = gameInfo[a.id] ?? (0, 0);
+      final (roundB, gameB) = gameInfo[b.id] ?? (0, 0);
+
+      // Sort by round DESCENDING (to match the round list order)
+      if (roundA != roundB) return roundB.compareTo(roundA);
+
+      // Within same round, sort by game DESCENDING (Game 2 before Game 1)
+      if (gameA != gameB) return gameB.compareTo(gameA);
 
       final aBoard = a.boardNr, bBoard = b.boardNr;
       if (aBoard != null && bBoard != null) return aBoard.compareTo(bBoard);
@@ -353,6 +390,12 @@ class GamesTourScreenProvider
     var games = ref.read(gamesTourProvider(aboutTourModel!.id)).value ?? [];
     final pinnedIds = ref.read(gamesPinprovider(aboutTourModel!.id)).allPins;
 
+    // Pre-parse for performance
+    final gameInfo = <String, (int, int)>{};
+    for (final game in games) {
+      gameInfo[game.id] = (_extractRoundNumber(game.roundSlug), _extractGameNumber(game.roundSlug));
+    }
+
     final sortedGames = List<Games>.from(games);
     sortedGames.sort((a, b) {
       final aPinned = pinnedIds.contains(a.id);
@@ -360,9 +403,14 @@ class GamesTourScreenProvider
       if (aPinned && !bPinned) return -1;
       if (!aPinned && bPinned) return 1;
 
-      // Maintain same ordering as main list
-      final roundSlugComparison = _compareRoundSlugs(a.roundSlug, b.roundSlug);
-      if (roundSlugComparison != 0) return roundSlugComparison;
+      final (roundA, gameA) = gameInfo[a.id] ?? (0, 0);
+      final (roundB, gameB) = gameInfo[b.id] ?? (0, 0);
+
+      // Sort by round DESCENDING (to match the round list order)
+      if (roundA != roundB) return roundB.compareTo(roundA);
+
+      // Within same round, sort by game DESCENDING (Game 2 before Game 1)
+      if (gameA != gameB) return gameB.compareTo(gameA);
 
       final aBoard = a.boardNr, bBoard = b.boardNr;
       if (aBoard != null && bBoard != null) return aBoard.compareTo(bBoard);
@@ -434,39 +482,16 @@ class GamesTourScreenProvider
     }
   }
 
-  // Helper method to compare round slugs (e.g., "round-6--game-1", "round-6--game-2")
-  // Sorts by round number ascending, then by game number descending (most recent game first)
-  int _compareRoundSlugs(String roundSlugA, String roundSlugB) {
-    // Extract round and game numbers from round slug
-    // Format: "round-X--game-Y"
-    final roundGamePattern = RegExp(r'round-?(\d+)--game-?(\d+)', caseSensitive: false);
+  // Helper method to extract round number from round slug
+  int _extractRoundNumber(String roundSlug) {
+    final match = RegExp(r'round-?(\d+)', caseSensitive: false).firstMatch(roundSlug) ??
+                  RegExp(r'(\d+)').firstMatch(roundSlug);
+    return int.tryParse(match?.group(1) ?? '0') ?? 0;
+  }
 
-    final matchA = roundGamePattern.firstMatch(roundSlugA);
-    final matchB = roundGamePattern.firstMatch(roundSlugB);
-
-    // If both match the pattern, compare round then game
-    if (matchA != null && matchB != null) {
-      final roundA = int.tryParse(matchA.group(1) ?? '0') ?? 0;
-      final roundB = int.tryParse(matchB.group(1) ?? '0') ?? 0;
-
-      // First compare by round number (ascending)
-      if (roundA != roundB) {
-        return roundA.compareTo(roundB);
-      }
-
-      // Same round: compare by game number (descending - higher game number comes first)
-      final gameA = int.tryParse(matchA.group(2) ?? '0') ?? 0;
-      final gameB = int.tryParse(matchB.group(2) ?? '0') ?? 0;
-      return gameB.compareTo(gameA); // Note: reversed for descending order
-    }
-
-    // Fallback: try to extract just round number
-    int extractRoundNum(String slug) {
-      final match = RegExp(r'round-?(\d+)', caseSensitive: false).firstMatch(slug) ??
-                    RegExp(r'(\d+)').firstMatch(slug);
-      return int.tryParse(match?.group(1) ?? '0') ?? 0;
-    }
-
-    return extractRoundNum(roundSlugA).compareTo(extractRoundNum(roundSlugB));
+  // Helper method to extract game number from round slug (e.g., "round-6--game-2" -> 2)
+  int _extractGameNumber(String roundSlug) {
+    final match = RegExp(r'game-?(\d+)', caseSensitive: false).firstMatch(roundSlug);
+    return int.tryParse(match?.group(1) ?? '0') ?? 0;
   }
 }

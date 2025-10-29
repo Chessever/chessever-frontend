@@ -153,30 +153,17 @@ class RoundRepository extends BaseRepository {
     return handleApiCall(() async {
       final response = await supabase
           .from('games')
-          .select(
-            'round:round_id (
-              id,
-              slug,
-              tour_id,
-              tour_slug,
-              name,
-              created_at,
-              starts_at,
-              url
-            ),
-            round_id,
-            last_move_time',
-          )
+          .select('round:round_id(id,slug,tour_id,tour_slug,name,created_at,starts_at,url),round_id,last_move_time')
           .eq('tour_id', tourId)
           .not('last_move', 'is', null)
           .order('last_move_time', ascending: false)
           .limit(1);
 
-      if (response is! List || response.isEmpty) {
+      if (response.isEmpty) {
         return null;
       }
 
-      final row = response.first as Map<String, dynamic>;
+      final row = response.first;
       final roundJson = row['round'];
       if (roundJson is Map<String, dynamic>) {
         return Round.fromJson(roundJson);

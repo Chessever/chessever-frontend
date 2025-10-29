@@ -1,7 +1,12 @@
+import 'dart:async';
+
 import 'package:chessever2/providers/auth_state_provider.dart';
+import 'package:chessever2/providers/favorite_events_provider.dart';
+import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/repository/authentication/model/auth_state.dart';
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
+import 'package:chessever2/utils/favorites_migration.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -49,6 +54,36 @@ class AuthStateListener extends ConsumerWidget {
           }
 
           if (authState.status == AppAuthStatus.authenticated) {
+            // User just authenticated - migrate old favorites and sync from Supabase
+            unawaited(
+              Future(() async {
+                try {
+                  if (kDebugMode) {
+                    print('🔄 [Auth] User authenticated, starting favorites migration & sync...');
+                  }
+
+                  // Step 1: Migrate old SharedPreferences favorites (runs only once)
+                  await FavoritesMigration.migrateIfNeeded();
+
+                  // Step 2: Sync from Supabase (fetch latest)
+                  await Future.wait([
+                    ref.read(favoriteEventsProvider.notifier).syncFromSupabase(),
+                    ref.read(favoritePlayersProviderNew.notifier).syncFromSupabase(),
+                  ]);
+
+                  if (kDebugMode) {
+                    print('✅ [Auth] Favorites migration & sync complete');
+                  }
+                } catch (e, st) {
+                  if (kDebugMode) {
+                    print('⚠️ [Auth] Failed to sync favorites: $e');
+                    print('Stack: $st');
+                  }
+                  // Don't rethrow - shouldn't block authentication flow
+                }
+              }),
+            );
+
             if (currentRoute == '/auth_screen') {
               navigator.pushNamedAndRemoveUntil(
                 '/home_screen',
