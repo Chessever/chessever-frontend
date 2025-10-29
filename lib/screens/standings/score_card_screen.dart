@@ -46,12 +46,12 @@ final playerGamesProvider = FutureProvider.family<
     }
     var allGames = games.map((game) => GamesTourModel.fromGame(game)).toList();
 
+    // Sort by date (descending) - most recent games first
+    final epochFallback = DateTime.fromMillisecondsSinceEpoch(0);
     allGames.sort((a, b) {
-      final aOpponent =
-          a.whitePlayer.name == player.name ? a.blackPlayer : a.whitePlayer;
-      final bOpponent =
-          b.whitePlayer.name == player.name ? b.blackPlayer : b.whitePlayer;
-      return bOpponent.rating.compareTo(aOpponent.rating);
+      final aTime = a.lastMoveTime ?? epochFallback;
+      final bTime = b.lastMoveTime ?? epochFallback;
+      return bTime.compareTo(aTime);
     });
 
     return allGames;
@@ -189,6 +189,7 @@ class ScoreCardScreen extends ConsumerWidget {
       );
     }
 
+    final gameDateFallback = DateTime.fromMillisecondsSinceEpoch(0);
     final playerGames =
         allGames.where((game) {
           return ref
@@ -198,6 +199,11 @@ class ScoreCardScreen extends ConsumerWidget {
                   .read(playerUtilsProvider)
                   .isSamePlayer(game.blackPlayer.name, player.name);
         }).toList();
+    playerGames.sort((a, b) {
+      final aTime = a.lastMoveTime ?? gameDateFallback;
+      final bTime = b.lastMoveTime ?? gameDateFallback;
+      return bTime.compareTo(aTime);
+    });
 
     final nameParts = player.name.split(',');
     final initials =
@@ -386,7 +392,7 @@ class ScoreCardScreen extends ConsumerWidget {
                           Icon(
                             Icons.info_outline,
                             size: 48.ic,
-                            color: kWhiteColor.withOpacity(0.5),
+                            color: kWhiteColor.withValues(alpha: 0.5),
                           ),
                           SizedBox(height: 16.h),
                           Text(
@@ -394,7 +400,7 @@ class ScoreCardScreen extends ConsumerWidget {
                                 ? 'No games in this tournament'
                                 : 'No games available',
                             style: AppTypography.textMdMedium.copyWith(
-                              color: kWhiteColor.withOpacity(0.7),
+                              color: kWhiteColor.withValues(alpha: 0.7),
                             ),
                           ),
                           SizedBox(height: 8.h),
@@ -404,7 +410,7 @@ class ScoreCardScreen extends ConsumerWidget {
                                 : 'Games will appear once they are played',
                             textAlign: TextAlign.center,
                             style: AppTypography.textSmRegular.copyWith(
-                              color: kWhiteColor.withOpacity(0.5),
+                              color: kWhiteColor.withValues(alpha: 0.5),
                             ),
                           ),
                         ],
@@ -443,6 +449,10 @@ class ScoreCardScreen extends ConsumerWidget {
                         return Padding(
                           padding: EdgeInsets.symmetric(horizontal: 20.0.sp),
                           child: ScoreboardCardWidget(
+                            roundLabel:
+                                hasTournamentContext
+                                    ? _buildRoundLabel(game)
+                                    : null,
                             countryCode: opponent.countryCode,
                             title: opponent.title,
                             name: opponent.name,
@@ -450,6 +460,7 @@ class ScoreCardScreen extends ConsumerWidget {
                             scoreChange:
                                 ratingChange != 0.0 ? ratingChange : null,
                             matchScore: result,
+                            isWhite: isWhite,
                             index: index,
                             isFirst: index == 0,
                             isLast: index == playerGames.length - 1,
@@ -496,13 +507,46 @@ class ScoreCardScreen extends ConsumerWidget {
     );
   }
 
+  String? _buildRoundLabel(GamesTourModel game) {
+    final slugLabel = _parseRoundLabel(game.roundSlug);
+    if (slugLabel != null) return slugLabel;
+
+    final roundIdLabel = _parseRoundLabel(game.roundId);
+    return roundIdLabel;
+  }
+
+  String? _parseRoundLabel(String? source) {
+    if (source == null || source.isEmpty) return null;
+
+    final patterns = [
+      RegExp(r'round[-\s]?(\d+)', caseSensitive: false),
+      RegExp(r'rapid[-\s]?(\d+)', caseSensitive: false),
+      RegExp(r'blitz[-\s]?(\d+)', caseSensitive: false),
+      RegExp(r'^(\d+)$'),
+      RegExp(r'r(\d+)', caseSensitive: false),
+      RegExp(r'game[-\s]?(\d+)', caseSensitive: false),
+    ];
+
+    for (final pattern in patterns) {
+      final match = pattern.firstMatch(source);
+      if (match != null && match.groupCount >= 1) {
+        final number = match.group(1);
+        if (number != null && number.isNotEmpty) {
+          return 'R$number:';
+        }
+      }
+    }
+
+    return null;
+  }
+
   String _getGameResult(GamesTourModel game, String playerName) {
     final isWhite = game.whitePlayer.name == playerName;
     switch (game.gameStatus) {
       case GameStatus.whiteWins:
-        return isWhite ? '1-0' : '0-1';
+        return '1-0';
       case GameStatus.blackWins:
-        return isWhite ? '0-1' : '1-0';
+        return '0-1';
       case GameStatus.draw:
         return '½-½';
       case GameStatus.ongoing:
