@@ -149,6 +149,8 @@ Future<void> main() async {
         NotificationService.initialize(),
         // Clear evaluation cache
         _clearEvaluationCache(),
+        // Reset favorites for Supabase migration (one-time for beta users)
+        _resetFavoritesForMigration(),
         // Initialize Amplitude (with error handling)
         Future(() async {
           try {
@@ -225,6 +227,59 @@ Future<void> _clearEvaluationCache() async {
       print('📁 Evaluation cache version $CACHE_VERSION is up to date');
     }
   } catch (e, _) {}
+}
+
+/// Resets favorites system to clean state for Supabase migration
+/// This is a one-time reset for beta users to ensure clean transition
+Future<void> _resetFavoritesForMigration() async {
+  try {
+    const int MIGRATION_VERSION = 1; // Update this to trigger reset
+    const String versionKey = 'favorites_reset_version';
+
+    final prefs = await SharedPreferences.getInstance();
+    final currentVersion = prefs.getInt(versionKey) ?? 0;
+
+    if (currentVersion < MIGRATION_VERSION) {
+      print(
+        '🧹 RESETTING FAVORITES: Migrating to Supabase-backed system (v$MIGRATION_VERSION)',
+      );
+
+      // Old SharedPreferences-only keys to clear
+      const oldKeys = [
+        'favorite_players', // Old player favorites
+        'current', // Old event favorites (current category)
+        'upcoming', // Old event favorites (upcoming category)
+        'past', // Old event favorites (past category)
+        'cached_favorite_players_full', // Old cache key
+        'cached_favorite_events', // Old event cache
+        'cached_favorite_players', // Old player cache
+        'favorites_migration_complete_v1', // Old migration flag
+      ];
+
+      int removedCount = 0;
+      for (final key in oldKeys) {
+        if (prefs.containsKey(key)) {
+          await prefs.remove(key);
+          removedCount++;
+        }
+      }
+
+      // Update version to prevent re-running
+      await prefs.setInt(versionKey, MIGRATION_VERSION);
+
+      print(
+        '✅ Favorites reset complete: $removedCount keys cleared. Users will need to re-favorite players/events.',
+      );
+      print('   New system uses Supabase + SharedPreferences cache.');
+    } else {
+      print('📁 Favorites migration version $MIGRATION_VERSION is up to date');
+    }
+  } catch (e, st) {
+    print('❌ Error resetting favorites: $e');
+    if (kDebugMode) {
+      debugPrintStack(stackTrace: st);
+    }
+  }
 }
 
 class MyApp extends HookConsumerWidget {

@@ -41,12 +41,13 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            AnimatedBuilder(
-              animation: searchController,
-              builder: (cxt, _) {
-                return Padding(
-                  padding: EdgeInsets.only(left: 4.sp, right: 16.sp),
-                  child: Row(
+            // Top bar with back button and search
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 8.sp),
+              child: AnimatedBuilder(
+                animation: searchController,
+                builder: (cxt, _) {
+                  return Row(
                     children: [
                       IconButton(
                         iconSize: 24.ic,
@@ -57,29 +58,27 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
                           size: 24.ic,
                         ),
                       ),
-                      SizedBox(width: 8.w),
+                      SizedBox(width: 12.w),
                       Expanded(
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(vertical: 8.sp),
-                          child: SearchBarWidget(
-                            hintText: 'Search Favorite Player',
-                            margin: 0.sp,
-                            autoFocus: false,
-                            controller: searchController,
-                            focusNode: focusNode,
-                            onChanged: (_) {
-                              setState(() {});
-                            },
-                            onClose: _clearSearch,
-                          ),
+                        child: SearchBarWidget(
+                          hintText: 'Search Favorite Player',
+                          margin: 0.sp,
+                          autoFocus: false,
+                          controller: searchController,
+                          focusNode: focusNode,
+                          onChanged: (_) {
+                            setState(() {});
+                          },
+                          onClose: _clearSearch,
                         ),
                       ),
                     ],
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
-            SizedBox(height: 16.h),
+
+            SizedBox(height: 8.h),
             Expanded(
               child: ref
                   .watch(favoritePlayersNotifierProvider)
@@ -119,106 +118,100 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
     final sortedPlayers = [...players]
       ..sort((a, b) => b.score.compareTo(a.score));
 
-    return RefreshIndicator(
-      onRefresh: () async {
-        await ref
-            .read(favoritePlayersNotifierProvider.notifier)
-            .refreshFavorites();
-      },
-      child: Column(
-        children: [
-          Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: 8.0.sp,
-            ), // Matches StandingScoreCard padding
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // Player column (Expanded — same as in ScoreCard)
-                Expanded(
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 20.w,
-                      ), // Space for flag area (16.w + 4.w spacing)
-                      Flexible(
-                        child: Text(
-                          'Player',
-                          style: AppTypography.textSmMedium.copyWith(
-                            color: kWhiteColor,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Elo column (fixed width 100.w)
-                SizedBox(
-                  width: 100.w,
-                  child: Text(
-                    'Elo',
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: kWhiteColor,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-
-                // Favorite icon column (fixed width 60.w)
-                SizedBox(width: 60.w),
-              ],
-            ),
-          ),
-
-          SizedBox(height: 8.h),
-          Expanded(
-            child: Padding(
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 20.sp),
+      child: RefreshIndicator(
+        onRefresh: () async {
+          await ref
+              .read(favoritePlayersNotifierProvider.notifier)
+              .refreshFavorites();
+        },
+        child: Column(
+          children: [
+            // Column headers
+            Padding(
               padding: EdgeInsets.symmetric(horizontal: 8.sp),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4.br),
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  padding: EdgeInsets.only(
-                    bottom: MediaQuery.of(context).viewInsets.bottom + 16.sp,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Player column (Expanded — same as in ScoreCard)
+                  Expanded(
+                    child: Row(
+                      children: [
+                        SizedBox(width: 20.w), // Space for flag area
+                        Flexible(
+                          child: Text(
+                            'Player',
+                            style: AppTypography.textSmMedium.copyWith(
+                              color: kWhiteColor,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  itemCount: sortedPlayers.length,
-                  itemBuilder: (context, index) {
-                    final player = sortedPlayers[index];
-                    return StandingScoreCard(
-                      countryCode: player.countryCode,
-                      title: player.title,
-                      name: player.name,
-                      score: player.score,
-                      scoreChange: player.scoreChange,
-                      matchScore: player.matchScore,
-                      index: index,
-                      isFirst: index == 0,
-                      isLast: index == sortedPlayers.length - 1,
-                      onTap: () {
-                        FocusScope.of(context).unfocus();
-                        ref.read(selectedPlayerProvider.notifier).state =
-                            player;
-                        Navigator.pushNamed(context, '/scorecard_screen');
-                      },
-                      onToggleFavorite: () => _removeFavoritePlayer(player),
-                      onLongPress: (details) {
-                        _showContextMenu(
-                          context,
-                          details.globalPosition,
-                          player,
-                        );
-                      },
-                      isFav: true,
-                      hideScore: true,
-                    );
-                  },
-                ),
+
+                  // Elo column (fixed width 100.w)
+                  SizedBox(
+                    width: 100.w,
+                    child: Text(
+                      'Elo',
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: kWhiteColor,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+
+                  // Favorite icon column (fixed width 60.w)
+                  SizedBox(width: 60.w),
+                ],
               ),
             ),
-          ),
-        ],
+
+            SizedBox(height: 4.h),
+
+            // Player list
+            Expanded(
+              child: ListView.builder(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 16.sp,
+                ),
+                itemCount: sortedPlayers.length,
+                itemBuilder: (context, index) {
+                  final player = sortedPlayers[index];
+                  return StandingScoreCard(
+                    countryCode: player.countryCode,
+                    title: player.title,
+                    name: player.name,
+                    score: player.score,
+                    scoreChange: player.scoreChange,
+                    matchScore: player.matchScore,
+                    index: index,
+                    isFirst: index == 0,
+                    isLast: index == sortedPlayers.length - 1,
+                    onTap: () {
+                      FocusScope.of(context).unfocus();
+                      ref.read(selectedPlayerProvider.notifier).state = player;
+                      Navigator.pushNamed(context, '/scorecard_screen');
+                    },
+                    onToggleFavorite: () => _removeFavoritePlayer(player),
+                    onLongPress: (details) {
+                      _showContextMenu(
+                        context,
+                        details.globalPosition,
+                        player,
+                      );
+                    },
+                    isFav: true,
+                    hideScore: true,
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -231,13 +224,13 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
           Icon(
             Icons.favorite_outline,
             size: 48.ic,
-            color: kWhiteColor.withOpacity(0.5),
+            color: kWhiteColor.withValues(alpha: 0.5),
           ),
           SizedBox(height: 16.h),
           Text(
             title,
             style: AppTypography.textMdMedium.copyWith(
-              color: kWhiteColor.withOpacity(0.7),
+              color: kWhiteColor.withValues(alpha: 0.7),
             ),
           ),
           Padding(
@@ -246,7 +239,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
               subtitle,
               textAlign: TextAlign.center,
               style: AppTypography.textSmRegular.copyWith(
-                color: kWhiteColor.withOpacity(0.5),
+                color: kWhiteColor.withValues(alpha: 0.5),
               ),
             ),
           ),
@@ -265,7 +258,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
           Text(
             'Error loading favorites',
             style: AppTypography.textMdMedium.copyWith(
-              color: kWhiteColor.withOpacity(0.7),
+              color: kWhiteColor.withValues(alpha: 0.7),
             ),
           ),
           Padding(
@@ -274,7 +267,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
               error,
               textAlign: TextAlign.center,
               style: AppTypography.textSmRegular.copyWith(
-                color: kWhiteColor.withOpacity(0.5),
+                color: kWhiteColor.withValues(alpha: 0.5),
               ),
             ),
           ),
@@ -306,15 +299,15 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
         .removeFavorite(player);
   }
 
-  void _showContextMenu(
+  Future<void> _showContextMenu(
     BuildContext context,
     Offset position,
     PlayerStandingModel player,
-  ) {
+  ) async {
     final RenderBox overlay =
         Overlay.of(context).context.findRenderObject() as RenderBox;
 
-    showMenu(
+    final value = await showMenu(
       context: context,
       position: RelativeRect.fromRect(
         position & const Size(40, 40),
@@ -337,24 +330,20 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
           ),
         ),
       ],
-    ).then((value) {
-      if (value == 'delete') {
-        _showDeleteConfirmation(context, player).then((confirmed) {
-          if (confirmed == true) {
-            HapticFeedback.mediumImpact();
-          }
-        });
-      }
-    });
+    );
+
+    if (!mounted || value != 'delete') return;
+
+    final confirmed = await _showDeleteConfirmation(player);
+    if (confirmed == true && mounted) {
+      HapticFeedback.mediumImpact();
+    }
   }
 
-  Future<bool?> _showDeleteConfirmation(
-    BuildContext context,
-    PlayerStandingModel player,
-  ) {
+  Future<bool?> _showDeleteConfirmation(PlayerStandingModel player) {
     return showDialog<bool>(
       context: context,
-      builder: (BuildContext context) {
+      builder: (BuildContext dialogContext) {
         return AlertDialog(
           backgroundColor: kBlack2Color,
           shape: RoundedRectangleBorder(
@@ -372,7 +361,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
+              onPressed: () => Navigator.of(dialogContext).pop(false),
               child: Text(
                 'Cancel',
                 style: AppTypography.textSmMedium.copyWith(
@@ -382,7 +371,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
             ),
             TextButton(
               onPressed: () {
-                Navigator.of(context).pop(true);
+                Navigator.of(dialogContext).pop(true);
                 _removeFavoritePlayer(player);
               },
               child: Text(
