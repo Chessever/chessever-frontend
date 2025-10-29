@@ -47,8 +47,21 @@ class GamesTourContentBody extends ConsumerWidget {
       }
     }
 
-    // Filter rounds to hide upcoming rounds by default.
-    // Include upcoming only when user explicitly selected that round.
+    // Smart filtering: Show upcoming rounds intelligently
+    // 1. If there are live/ongoing rounds → hide upcoming rounds (unless explicitly selected)
+    // 2. If only completed rounds exist → show next upcoming round
+    // 3. If all rounds are upcoming → show all upcoming rounds
+
+    final hasLiveOrOngoing = rounds.any((r) =>
+      r.roundStatus == RoundStatus.live || r.roundStatus == RoundStatus.ongoing
+    );
+
+    final hasCompleted = rounds.any((r) => r.roundStatus == RoundStatus.completed);
+
+    final allAreUpcoming = rounds.every((r) =>
+      r.roundStatus == RoundStatus.upcoming || gamesByRound[r.id]?.isEmpty == true
+    );
+
     final visibleRounds = rounds.where((round) {
       final roundGames = gamesByRound[round.id] ?? [];
       if (roundGames.isEmpty) return false;
@@ -56,7 +69,25 @@ class GamesTourContentBody extends ConsumerWidget {
       // Always include explicitly user-selected round
       if (userSelected && round.id == selectedRoundId) return true;
 
-      // Otherwise, exclude upcoming rounds
+      // If all rounds are upcoming, show them all
+      if (allAreUpcoming) return true;
+
+      // If there are live/ongoing rounds, hide upcoming
+      if (hasLiveOrOngoing) {
+        return round.roundStatus != RoundStatus.upcoming;
+      }
+
+      // If only completed rounds exist, show completed + first upcoming
+      if (hasCompleted && round.roundStatus == RoundStatus.upcoming) {
+        // Find the first upcoming round and only show that one
+        final upcomingRounds = rounds.where((r) =>
+          r.roundStatus == RoundStatus.upcoming &&
+          (gamesByRound[r.id]?.isNotEmpty ?? false)
+        ).toList();
+        return upcomingRounds.isNotEmpty && upcomingRounds.first.id == round.id;
+      }
+
+      // Show completed/ongoing/live rounds
       return round.roundStatus != RoundStatus.upcoming;
     }).toList();
 

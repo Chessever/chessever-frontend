@@ -79,6 +79,9 @@ class _SplashScreenProvider {
     if (isLoggedIn) {
       // User is logged in - initialize country dropdown and go to home
       ref.read(countryDropdownProvider);
+
+      // Note: Favorites migration and sync happens in AuthStateListener
+
       Navigator.pushNamedAndRemoveUntil(context, '/home_screen', (_) => false);
     } else {
       // User is not logged in - go to auth screen
