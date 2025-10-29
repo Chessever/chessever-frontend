@@ -73,6 +73,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           },
 
           onLogoutPressed: () async {
+            final currentUser = ref.read(currentUserProvider);
+
+            // If user is anonymous, just navigate to login page (don't sign out)
+            if (currentUser?.isAnonymous == true) {
+              Navigator.of(context).pop(); // Close drawer
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(
+                  builder: (context) => const AuthScreen(),
+                ),
+              );
+              return;
+            }
+
+            // For authenticated users, show confirmation dialog
             await showDialog<void>(
               context: context,
               builder:
