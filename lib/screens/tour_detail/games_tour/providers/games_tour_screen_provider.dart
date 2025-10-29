@@ -183,8 +183,9 @@ class GamesTourScreenProvider
           if (!aPinned && bPinned) return 1;
         }
 
-        final roundComparison = _compareRounds(a.roundId, b.roundId);
-        if (roundComparison != 0) return roundComparison;
+        // Compare by round number, then game number (desc), then board number
+        final roundSlugComparison = _compareRoundSlugs(a.roundSlug, b.roundSlug);
+        if (roundSlugComparison != 0) return roundSlugComparison;
 
         final aBoard = a.boardNr, bBoard = b.boardNr;
         if (aBoard != null && bBoard != null) return aBoard.compareTo(bBoard);
@@ -292,6 +293,15 @@ class GamesTourScreenProvider
       final bPinned = pinnedIds.contains(b.id);
       if (aPinned && !bPinned) return -1;
       if (!aPinned && bPinned) return 1;
+
+      // Maintain same ordering as main list
+      final roundSlugComparison = _compareRoundSlugs(a.roundSlug, b.roundSlug);
+      if (roundSlugComparison != 0) return roundSlugComparison;
+
+      final aBoard = a.boardNr, bBoard = b.boardNr;
+      if (aBoard != null && bBoard != null) return aBoard.compareTo(bBoard);
+      if (aBoard != null) return -1;
+      if (bBoard != null) return 1;
       return 0;
     });
 
@@ -317,6 +327,15 @@ class GamesTourScreenProvider
       final bPinned = pinnedIds.contains(b.id);
       if (aPinned && !bPinned) return -1;
       if (!aPinned && bPinned) return 1;
+
+      // Maintain same ordering as main list
+      final roundSlugComparison = _compareRoundSlugs(a.roundSlug, b.roundSlug);
+      if (roundSlugComparison != 0) return roundSlugComparison;
+
+      final aBoard = a.boardNr, bBoard = b.boardNr;
+      if (aBoard != null && bBoard != null) return aBoard.compareTo(bBoard);
+      if (aBoard != null) return -1;
+      if (bBoard != null) return 1;
       return 0;
     });
     state = AsyncValue.data(
@@ -340,6 +359,15 @@ class GamesTourScreenProvider
       final bPinned = pinnedIds.contains(b.id);
       if (aPinned && !bPinned) return -1;
       if (!aPinned && bPinned) return 1;
+
+      // Maintain same ordering as main list
+      final roundSlugComparison = _compareRoundSlugs(a.roundSlug, b.roundSlug);
+      if (roundSlugComparison != 0) return roundSlugComparison;
+
+      final aBoard = a.boardNr, bBoard = b.boardNr;
+      if (aBoard != null && bBoard != null) return aBoard.compareTo(bBoard);
+      if (aBoard != null) return -1;
+      if (bBoard != null) return 1;
       return 0;
     });
     state = AsyncValue.data(
@@ -406,15 +434,39 @@ class GamesTourScreenProvider
     }
   }
 
-  // Helper method to compare round IDs (round1, round2, etc.)
-  int _compareRounds(String roundIdA, String roundIdB) {
-    int num(String id) {
-      final match =
-          RegExp(r'round(\d+)', caseSensitive: false).firstMatch(id) ??
-          RegExp(r'(\d+)').firstMatch(id);
+  // Helper method to compare round slugs (e.g., "round-6--game-1", "round-6--game-2")
+  // Sorts by round number ascending, then by game number descending (most recent game first)
+  int _compareRoundSlugs(String roundSlugA, String roundSlugB) {
+    // Extract round and game numbers from round slug
+    // Format: "round-X--game-Y"
+    final roundGamePattern = RegExp(r'round-?(\d+)--game-?(\d+)', caseSensitive: false);
+
+    final matchA = roundGamePattern.firstMatch(roundSlugA);
+    final matchB = roundGamePattern.firstMatch(roundSlugB);
+
+    // If both match the pattern, compare round then game
+    if (matchA != null && matchB != null) {
+      final roundA = int.tryParse(matchA.group(1) ?? '0') ?? 0;
+      final roundB = int.tryParse(matchB.group(1) ?? '0') ?? 0;
+
+      // First compare by round number (ascending)
+      if (roundA != roundB) {
+        return roundA.compareTo(roundB);
+      }
+
+      // Same round: compare by game number (descending - higher game number comes first)
+      final gameA = int.tryParse(matchA.group(2) ?? '0') ?? 0;
+      final gameB = int.tryParse(matchB.group(2) ?? '0') ?? 0;
+      return gameB.compareTo(gameA); // Note: reversed for descending order
+    }
+
+    // Fallback: try to extract just round number
+    int extractRoundNum(String slug) {
+      final match = RegExp(r'round-?(\d+)', caseSensitive: false).firstMatch(slug) ??
+                    RegExp(r'(\d+)').firstMatch(slug);
       return int.tryParse(match?.group(1) ?? '0') ?? 0;
     }
 
-    return num(roundIdA).compareTo(num(roundIdB));
+    return extractRoundNum(roundSlugA).compareTo(extractRoundNum(roundSlugB));
   }
 }

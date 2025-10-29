@@ -18,6 +18,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
   final bool canMoveForward;
   final bool canMoveBackward;
   final bool showEngineAnalysis;
+  final bool showUnseenMoveBadge;
 
   const ChessBoardBottomNavBar({
     super.key,
@@ -33,6 +34,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
     this.onLongPressBackwardEnd,
     this.onLongPressForwardStart,
     this.onLongPressForwardEnd,
+    this.showUnseenMoveBadge = false,
   });
 
   @override
@@ -77,6 +79,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
                 onLongPressStart:
                     canMoveForward ? onLongPressForwardStart : null,
                 onLongPressEnd: onLongPressForwardEnd,
+                showBadge: showUnseenMoveBadge,
               ),
             ],
           ),
