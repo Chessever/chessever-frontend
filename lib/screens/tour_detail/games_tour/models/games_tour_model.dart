@@ -155,23 +155,52 @@ class GamesTourModel {
     }
 
     try {
+      // Check if game has started (has moves)
+      final gameHasStarted = game.lastMove != null && game.lastMove!.isNotEmpty;
+
+      // Determine clock display
+      String whiteTimeDisplay;
+      String blackTimeDisplay;
+      int? whiteClockSecondsToUse;
+      int? blackClockSecondsToUse;
+
+      if (gameHasStarted) {
+        // Game has started - use actual clock values
+        whiteTimeDisplay = game.lastClockWhite != null
+            ? _formatTimeFromSeconds(game.lastClockWhite!)
+            : _formatTime(white.clock);
+        blackTimeDisplay = game.lastClockBlack != null
+            ? _formatTimeFromSeconds(game.lastClockBlack!)
+            : _formatTime(black.clock);
+        whiteClockSecondsToUse = game.lastClockWhite;
+        blackClockSecondsToUse = game.lastClockBlack;
+      } else {
+        // Game hasn't started - try to extract time control from PGN
+        final initialTime = _extractInitialTimeFromPGN(game.pgn);
+        if (initialTime != null) {
+          whiteTimeDisplay = _formatTimeFromSeconds(initialTime);
+          blackTimeDisplay = _formatTimeFromSeconds(initialTime);
+          whiteClockSecondsToUse = initialTime;
+          blackClockSecondsToUse = initialTime;
+        } else {
+          // Couldn't determine time control - use placeholder
+          whiteTimeDisplay = '--:--';
+          blackTimeDisplay = '--:--';
+          whiteClockSecondsToUse = null;
+          blackClockSecondsToUse = null;
+        }
+      }
+
       return GamesTourModel(
         gameId: game.id,
         whitePlayer: PlayerCard.fromPlayer(white),
         blackPlayer: PlayerCard.fromPlayer(black),
-        // Use new last_clock fields (in seconds) if available, fallback to player clock (in centiseconds)
-        whiteTimeDisplay:
-            game.lastClockWhite != null
-                ? _formatTimeFromSeconds(game.lastClockWhite!)
-                : _formatTime(white.clock),
-        blackTimeDisplay:
-            game.lastClockBlack != null
-                ? _formatTimeFromSeconds(game.lastClockBlack!)
-                : _formatTime(black.clock),
+        whiteTimeDisplay: whiteTimeDisplay,
+        blackTimeDisplay: blackTimeDisplay,
         whiteClockCentiseconds: white.clock,
         blackClockCentiseconds: black.clock,
-        whiteClockSeconds: game.lastClockWhite,
-        blackClockSeconds: game.lastClockBlack,
+        whiteClockSeconds: whiteClockSecondsToUse,
+        blackClockSeconds: blackClockSecondsToUse,
         gameStatus: GameStatus.fromString(game.status),
         roundId: game.roundId, // Include roundId in model
         roundSlug: game.roundSlug, // Include roundSlug for display
@@ -188,6 +217,43 @@ class GamesTourModel {
         'Failed to create GamesTourModel from game ${game.id}: $e',
       );
     }
+  }
+
+  /// Extract initial time control from PGN header
+  /// Handles formats like: "10+5", "600+5", "3600+0", etc.
+  /// Returns the initial time in seconds, or null if not found
+  static int? _extractInitialTimeFromPGN(String? pgn) {
+    if (pgn == null || pgn.isEmpty) return null;
+
+    try {
+      // Look for TimeControl header in PGN
+      // Example: [TimeControl "10+5"] or [TimeControl "600+5"]
+      final timeControlMatch = RegExp(
+        r'\[TimeControl\s+"([^"]+)"\]',
+        caseSensitive: false,
+      ).firstMatch(pgn);
+
+      if (timeControlMatch != null) {
+        final timeControlStr = timeControlMatch.group(1)!;
+
+        // Parse formats like "10+5" (10 minutes + 5 second increment)
+        // or "600+5" (600 seconds + 5 second increment)
+        final parts = timeControlStr.split('+');
+        if (parts.isNotEmpty) {
+          final baseTime = int.tryParse(parts[0].trim());
+          if (baseTime != null) {
+            // If base time is less than 200, assume it's in minutes, convert to seconds
+            // Otherwise, assume it's already in seconds
+            return baseTime < 200 ? baseTime * 60 : baseTime;
+          }
+        }
+      }
+    } catch (e) {
+      // Silently fail if time control parsing fails
+      // We'll show "--:--" in the UI
+    }
+
+    return null;
   }
 
   static String _formatTime(int? clockTimeCentiseconds) {
@@ -258,6 +324,95 @@ class GamesTourModel {
       // Fallback if FEN is invalid
       return null;
     }
+  }
+
+  /// Effective game status with fallback detection for finished games
+  /// When DB hasn't updated but game is actually finished (clock at 00:00 with moves played)
+  GameStatus get effectiveGameStatus {
+    // If game is already marked as finished, return that status
+    if (gameStatus.isFinished) {
+      return gameStatus;
+    }
+
+    // Check if this looks like a finished game but DB hasn't updated
+    final hasMovesPlayed = lastMove != null && lastMove!.isNotEmpty;
+    final whiteClockZero = (whiteClockSeconds ?? 0) <= 0;
+    final blackClockZero = (blackClockSeconds ?? 0) <= 0;
+
+    // If clock is at 00:00 and at least one move was played, evaluate position
+    if (hasMovesPlayed && (whiteClockZero || blackClockZero)) {
+      return _evaluateGameResult();
+    }
+
+    // Otherwise return the current status
+    return gameStatus;
+  }
+
+  /// Evaluates the current position to determine the game result
+  GameStatus _evaluateGameResult() {
+    // If no FEN available, can't evaluate
+    if (fen == null || fen!.isEmpty) {
+      return gameStatus;
+    }
+
+    try {
+      final setup = Setup.parseFen(fen!);
+      final position = Chess.fromSetup(setup);
+
+      // Check if position is checkmate
+      if (position.isCheckmate) {
+        // The player whose turn it is got checkmated
+        return setup.turn == Side.white ? GameStatus.blackWins : GameStatus.whiteWins;
+      }
+
+      // Check if position is stalemate or insufficient material
+      if (position.isStalemate || position.isInsufficientMaterial) {
+        return GameStatus.draw;
+      }
+
+      // Evaluate material to determine likely winner
+      final materialEval = _evaluateMaterial(setup);
+
+      // If material difference is significant (> 3 points), declare winner
+      if (materialEval > 3) {
+        return GameStatus.whiteWins;
+      } else if (materialEval < -3) {
+        return GameStatus.blackWins;
+      }
+
+      // If material is close or equal, it's a draw
+      return GameStatus.draw;
+    } catch (e) {
+      // If evaluation fails, return current status
+      return gameStatus;
+    }
+  }
+
+  /// Evaluates material balance (positive = white ahead, negative = black ahead)
+  int _evaluateMaterial(Setup setup) {
+    int whiteScore = 0;
+    int blackScore = 0;
+
+    final pieceValues = {
+      Role.pawn: 1,
+      Role.knight: 3,
+      Role.bishop: 3,
+      Role.rook: 5,
+      Role.queen: 9,
+      Role.king: 0, // King doesn't count in material
+    };
+
+    for (final (_, piece) in setup.board.pieces) {
+      final value = pieceValues[piece.role] ?? 0;
+
+      if (piece.color == Side.white) {
+        whiteScore += value;
+      } else {
+        blackScore += value;
+      }
+    }
+
+    return whiteScore - blackScore;
   }
 
   @override
@@ -413,7 +568,7 @@ enum GameStatus {
       case '*':
         return GameStatus.ongoing;
       default:
-        print('Unknown game status: "$normalizedStatus"');
+        // Unknown status - return unknown
         return GameStatus.unknown;
     }
   }

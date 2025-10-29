@@ -777,6 +777,10 @@ class _LoadingScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final sideBarWidth = 20.w;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final boardSize = screenWidth - sideBarWidth - 32.w;
+
     return Scaffold(
       appBar: _AppBar(
         game: games[currentGameIndex],
@@ -786,13 +790,159 @@ class _LoadingScreen extends StatelessWidget {
         isLoading: true,
         lastViewedIndex: lastViewedIndex,
       ),
-      body: Center(
+      body: Skeletonizer(
+        enabled: true,
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            CircularProgressIndicator(color: kGreenColor),
-            SizedBox(height: 16.h),
-            Text('Loading game...', style: AppTypography.textSmMedium),
+            // Top player skeleton
+            Container(
+              margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+              padding: EdgeInsets.all(8.sp),
+              decoration: BoxDecoration(
+                color: kBlack2Color,
+                borderRadius: BorderRadius.circular(8.br),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40.w,
+                    height: 40.h,
+                    decoration: BoxDecoration(
+                      color: kWhiteColor.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  SizedBox(width: 8.w),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 120.w,
+                          height: 14.h,
+                          decoration: BoxDecoration(
+                            color: kWhiteColor.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(4.br),
+                          ),
+                        ),
+                        SizedBox(height: 4.h),
+                        Container(
+                          width: 60.w,
+                          height: 12.h,
+                          decoration: BoxDecoration(
+                            color: kWhiteColor.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(4.br),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 2.h),
+            // Board skeleton
+            Container(
+              margin: EdgeInsets.symmetric(horizontal: 16.sp),
+              child: Row(
+                children: [
+                  // Eval bar skeleton
+                  Container(
+                    width: sideBarWidth,
+                    height: boardSize,
+                    decoration: BoxDecoration(
+                      color: kWhiteColor.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(4.br),
+                    ),
+                  ),
+                  // Board skeleton
+                  Container(
+                    width: boardSize,
+                    height: boardSize,
+                    decoration: BoxDecoration(
+                      color: kWhiteColor.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(4.br),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 2.h),
+            // Bottom player skeleton
+            Container(
+              margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+              padding: EdgeInsets.all(8.sp),
+              decoration: BoxDecoration(
+                color: kBlack2Color,
+                borderRadius: BorderRadius.circular(8.br),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40.w,
+                    height: 40.h,
+                    decoration: BoxDecoration(
+                      color: kWhiteColor.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  SizedBox(width: 8.w),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 120.w,
+                          height: 14.h,
+                          decoration: BoxDecoration(
+                            color: kWhiteColor.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(4.br),
+                          ),
+                        ),
+                        SizedBox(height: 4.h),
+                        Container(
+                          width: 60.w,
+                          height: 12.h,
+                          decoration: BoxDecoration(
+                            color: kWhiteColor.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(4.br),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Moves area skeleton
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                margin: EdgeInsets.only(top: 8.h),
+                decoration: BoxDecoration(
+                  color: kDarkGreyColor.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(12.sp),
+                    topRight: Radius.circular(12.sp),
+                  ),
+                ),
+                padding: EdgeInsets.all(20.sp),
+                child: Wrap(
+                  spacing: 6.sp,
+                  runSpacing: 6.sp,
+                  children: List.generate(8, (index) {
+                    return Container(
+                      width: (35 + (index % 5) * 20).w,
+                      height: 14.h,
+                      decoration: BoxDecoration(
+                        color: kWhiteColor.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(3.sp),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -1239,9 +1389,13 @@ class _BottomNavBar extends ConsumerWidget {
       toggleEngineVisibility: () => notifier.toggleEngineVisibility(),
       onRightMove: canMoveForward ? () {
         notifier.analysisStepForward();
-        // Clear unseen indicator when navigating forward
+        // Clear unseen indicator ONLY when reaching the last move
         if (state.hasUnseenMoves) {
-          notifier.markMovesAsSeen();
+          // Check if we'll be at the last move after stepping forward
+          final willBeAtLastMove = state.analysisState.currentMoveIndex + 1 >= state.allMoves.length - 1;
+          if (willBeAtLastMove) {
+            notifier.markMovesAsSeen();
+          }
         }
       } : null,
       onLeftMove:
@@ -1696,17 +1850,33 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     // Analysis mode is always active, use analysis state
     final oldSans = oldWidget.state.analysisState.moveSans;
     final newSans = widget.state.analysisState.moveSans;
+    final oldCurrentIndex = oldWidget.state.analysisState.currentMoveIndex;
+    final newCurrentIndex = widget.state.analysisState.currentMoveIndex;
 
     if (oldSans.length != newSans.length) {
       _initializeMoveKeys();
-      _hasInitiallyScrolled = false; // Reset on move list change
-      _scheduleEnsureInitialScroll();
+
+      // Only reset scroll position if user was viewing the last move
+      // This preserves scroll position when viewing historical moves
+      final wasViewingLastMove = oldCurrentIndex >= oldSans.length - 1;
+      final isNewMoveAdded = newSans.length > oldSans.length;
+
+      if (isNewMoveAdded && wasViewingLastMove) {
+        // User was following along, auto-scroll to new move
+        _hasInitiallyScrolled = false;
+        _scheduleEnsureInitialScroll();
+      } else if (isNewMoveAdded && !wasViewingLastMove) {
+        // User is viewing history, preserve scroll position
+        // Don't reset _hasInitiallyScrolled, don't schedule scroll
+        debugPrint('📌 Preserving scroll position - user viewing move $oldCurrentIndex while new move arrived');
+      } else {
+        // Move count decreased (unlikely) or other change, reset
+        _hasInitiallyScrolled = false;
+        _scheduleEnsureInitialScroll();
+      }
     }
 
     // Auto-scroll when current move changes
-    // Analysis mode is always active, use analysis state
-    final oldCurrentIndex = oldWidget.state.analysisState.currentMoveIndex;
-    final newCurrentIndex = widget.state.analysisState.currentMoveIndex;
 
     // Only trigger scroll if on current page and index changed
     if (widget.index == widget.currentPageIndex &&

@@ -19,6 +19,7 @@ import 'package:dartchess/dartchess.dart';
 import 'package:easy_debounce/easy_debounce.dart';
 import 'package:fast_immutable_collections/fast_immutable_collections.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:worker_manager/worker_manager.dart';
 
@@ -71,18 +72,9 @@ class ChessBoardScreenNotifierNew
   ProviderSubscription<ChessGameNavigatorState>? _navigatorSubscription;
 
   void _initializeState() {
-    state = AsyncValue.data(
-      ChessBoardStateNew(
-        game: game,
-        pgnData: null,
-        isLoadingMoves: true,
-        fenData: game.fen,
-        evaluation: null, // Start with null to indicate no evaluation yet
-        isEvaluating: false,
-        isAnalysisMode:
-            true, // ENABLED BY DEFAULT: Analysis mode active from start
-      ),
-    );
+    // Start with loading state so UI shows loading screen until parseMoves() completes
+    // This prevents the board from briefly showing the starting position
+    state = const AsyncValue.loading();
     parseMoves();
   }
 
@@ -159,8 +151,8 @@ class ChessBoardScreenNotifierNew
     if (_hasParsedMoves) return;
     _hasParsedMoves = true;
 
+    // Get current state or null if in loading state (first initialization)
     final currentState = state.value;
-    if (currentState == null) return;
 
     try {
       // If no PGN in the current game object, fetch from repository
@@ -209,26 +201,81 @@ class ChessBoardScreenNotifierNew
       // If this is the first time loading the game, mark all moves as seen
       // Otherwise, only mark as unseen if the user is NOT viewing the last move
       final isFirstLoad = lastSeenMoveCount == 0;
-      final isViewingLastMove = currentState.analysisState.currentMoveIndex == currentState.allMoves.length - 1;
-      final shouldMarkAsUnseen = hasNewMoves && !isFirstLoad && !isViewingLastMove;
+      final wasViewingLastMove = currentState != null &&
+          currentState.allMoves.isNotEmpty &&
+          currentState.analysisState.currentMoveIndex == currentState.allMoves.length - 1;
+      final shouldMarkAsUnseen = hasNewMoves && !isFirstLoad && !wasViewingLastMove;
 
-      state = AsyncValue.data(
-        currentState.copyWith(
-          position: finalPos,
-          startingPosition: startingPos,
-          lastMove: lastMove,
-          allMoves: allMoves,
-          moveSans: moveSans,
-          currentMoveIndex: lastMoveIndex,
-          pgnData: pgn,
-          isLoadingMoves: false,
-          evaluation: null, // Reset evaluation to trigger new calculation
-          isEvaluating: true, // Show loading indicator while evaluating
-          analysisState: AnalysisBoardState(startingPosition: startingPos),
-          moveTimes: moveTimes,
-          hasUnseenMoves: shouldMarkAsUnseen,
-        ),
-      );
+      // Determine which move index to display:
+      // - If first load: ALWAYS jump to last move
+      // - If user was viewing last move: jump to new last move
+      // - If user was viewing an earlier move AND it's not first load: stay at current position (don't jump)
+      final newMoveIndex = isFirstLoad
+          ? lastMoveIndex  // Always show latest on first load
+          : (wasViewingLastMove
+              ? lastMoveIndex  // Jump to new last move if user was already viewing last
+              : currentState?.analysisState.currentMoveIndex ?? lastMoveIndex);  // Stay at current position otherwise
+
+      // Calculate position for the move index we're displaying
+      Position displayPosition = startingPos;
+      Move? displayLastMove;
+      if (newMoveIndex >= 0 && newMoveIndex < allMoves.length) {
+        for (int i = 0; i <= newMoveIndex; i++) {
+          displayLastMove = allMoves[i];
+          displayPosition = displayPosition.play(allMoves[i]);
+        }
+      }
+
+      // Create new state (either from scratch or copying existing state)
+      final newState = currentState != null
+          ? currentState.copyWith(
+              position: finalPos, // Always track the actual final position
+              startingPosition: startingPos,
+              lastMove: lastMove, // Always track the actual last move
+              allMoves: allMoves,
+              moveSans: moveSans,
+              currentMoveIndex: newMoveIndex, // Respects viewing position
+              pgnData: pgn,
+              isLoadingMoves: false,
+              evaluation: null, // Reset evaluation to trigger new calculation
+              isEvaluating: true, // Show loading indicator while evaluating
+              analysisState: AnalysisBoardState(
+                startingPosition: startingPos,
+                currentMoveIndex: newMoveIndex,
+                position: displayPosition,
+                lastMove: displayLastMove,
+                moveSans: moveSans,
+                allMoves: allMoves,  // Must include all moves for proper navigation
+              ),
+              moveTimes: moveTimes,
+              hasUnseenMoves: shouldMarkAsUnseen,
+            )
+          : ChessBoardStateNew(
+              game: game,
+              position: finalPos,
+              startingPosition: startingPos,
+              lastMove: lastMove,
+              allMoves: allMoves,
+              moveSans: moveSans,
+              currentMoveIndex: newMoveIndex,
+              pgnData: pgn,
+              isLoadingMoves: false,
+              evaluation: null,
+              isEvaluating: true,
+              isAnalysisMode: true,
+              analysisState: AnalysisBoardState(
+                startingPosition: startingPos,
+                currentMoveIndex: newMoveIndex,
+                position: displayPosition,
+                lastMove: displayLastMove,
+                moveSans: moveSans,
+                allMoves: allMoves,
+              ),
+              moveTimes: moveTimes,
+              hasUnseenMoves: shouldMarkAsUnseen,
+            );
+
+      state = AsyncValue.data(newState);
 
       // Update last seen move count if this is the first load
       if (isFirstLoad) {
@@ -2772,7 +2819,12 @@ class ChessBoardScreenNotifierNew
   void startLongPressForward() {
     _isLongPressing = true;
     _longPressTimer?.cancel();
-    _longPressTimer = Timer.periodic(const Duration(milliseconds: 300), (_) {
+
+    // Trigger initial haptic feedback
+    HapticFeedback.mediumImpact();
+
+    // Faster interval for smoother fast-forward (150ms instead of 300ms)
+    _longPressTimer = Timer.periodic(const Duration(milliseconds: 150), (_) {
       try {
         final currentState = state.value;
         final canAdvance =
@@ -2780,8 +2832,12 @@ class ChessBoardScreenNotifierNew
                 ? currentState!.analysisState.canMoveForward
                 : currentState?.canMoveForward == true;
         if (canAdvance && !_isProcessingMove) {
+          // Light haptic feedback on each step
+          HapticFeedback.selectionClick();
           moveForward();
         } else {
+          // Final haptic feedback when reaching end
+          HapticFeedback.lightImpact();
           stopLongPress();
         }
       } on StateError {
@@ -2793,7 +2849,12 @@ class ChessBoardScreenNotifierNew
   void startLongPressBackward() {
     _isLongPressing = true;
     _longPressTimer?.cancel();
-    _longPressTimer = Timer.periodic(const Duration(milliseconds: 300), (_) {
+
+    // Trigger initial haptic feedback
+    HapticFeedback.mediumImpact();
+
+    // Faster interval for smoother fast-backward (150ms instead of 300ms)
+    _longPressTimer = Timer.periodic(const Duration(milliseconds: 150), (_) {
       try {
         final currentState = state.value;
         final canRetreat =
@@ -2801,8 +2862,12 @@ class ChessBoardScreenNotifierNew
                 ? currentState!.analysisState.canMoveBackward
                 : currentState?.canMoveBackward == true;
         if (canRetreat && !_isProcessingMove) {
+          // Light haptic feedback on each step
+          HapticFeedback.selectionClick();
           moveBackward();
         } else {
+          // Final haptic feedback when reaching start
+          HapticFeedback.lightImpact();
           stopLongPress();
         }
       } on StateError {

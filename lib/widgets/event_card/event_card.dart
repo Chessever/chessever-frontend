@@ -1,11 +1,9 @@
 import 'package:chessever2/providers/favorite_events_provider.dart';
-import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
-import 'package:chessever2/widgets/event_card/starred_provider.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -215,79 +213,55 @@ class _LiveTag extends StatelessWidget {
   }
 }
 
-class _StarWidget extends ConsumerStatefulWidget {
+class _StarWidget extends ConsumerWidget {
   const _StarWidget({required this.tourEventCardModel});
 
   final GroupEventCardModel tourEventCardModel;
 
   @override
-  ConsumerState<_StarWidget> createState() => _StarWidgetState();
-}
-
-class _StarWidgetState extends ConsumerState<_StarWidget> {
-  bool _isLoading = false;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     // Use new unified favorites system with Supabase + local cache
-    final isStarred = ref.watch(
-      isEventFavoritedProvider(widget.tourEventCardModel.id),
+    // skipLoadingOnRefresh prevents flickering when refreshing from Supabase
+    final favoritesAsync = ref.watch(favoriteEventsProvider);
+
+    final isStarred = favoritesAsync.maybeWhen(
+      data: (events) => events.any((e) => e.eventId == tourEventCardModel.id),
+      orElse: () => false,
+      skipLoadingOnRefresh: true,
+      skipLoadingOnReload: true,
     );
 
     return InkWell(
-      onTap: _isLoading ? null : () async {
-        setState(() => _isLoading = true);
+      onTap: () {
+        // Optimistic update - UI changes immediately, Supabase syncs in background
+        HapticFeedback.lightImpact();
 
-        try {
-          await ref.read(favoriteEventsProvider.notifier).toggleFavorite(
-            eventId: widget.tourEventCardModel.id,
-            eventName: widget.tourEventCardModel.title,
-            timeControl: widget.tourEventCardModel.timeControl,
-            maxAvgElo: widget.tourEventCardModel.maxAvgElo > 0
-                ? widget.tourEventCardModel.maxAvgElo
-                : null,
-            dates: widget.tourEventCardModel.dates.isNotEmpty
-                ? widget.tourEventCardModel.dates
-                : null,
-          );
-
-          HapticFeedback.lightImpact();
-        } catch (e) {
+        ref.read(favoriteEventsProvider.notifier).toggleFavorite(
+          eventId: tourEventCardModel.id,
+          eventName: tourEventCardModel.title,
+          timeControl: tourEventCardModel.timeControl,
+          maxAvgElo: tourEventCardModel.maxAvgElo > 0
+              ? tourEventCardModel.maxAvgElo
+              : null,
+          dates: tourEventCardModel.dates.isNotEmpty
+              ? tourEventCardModel.dates
+              : null,
+        ).catchError((e) {
           debugPrint('[EventCard] Error toggling favorite: $e');
-          // Show error to user
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Failed to update favorite. Please try again.'),
-                duration: Duration(seconds: 2),
-              ),
-            );
-          }
-        } finally {
-          if (mounted) {
-            setState(() => _isLoading = false);
-          }
-        }
+          // Silently handle error - state will be corrected on next refresh
+          return false;
+        });
       },
       child: Container(
         alignment: Alignment.centerRight,
         width: 30.w,
         height: 40.h,
-        child: _isLoading
-            ? SizedBox(
-                width: 20.w,
-                height: 20.h,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(kPrimaryColor),
-                ),
-              )
-            : SvgWidget(
-                isStarred ? SvgAsset.starFilledIcon : SvgAsset.starIcon,
-                semanticsLabel: 'Favorite Icon',
-                height: 20.h,
-                width: 20.w,
-              ),
+        child: SvgWidget(
+          isStarred ? SvgAsset.starFilledIcon : SvgAsset.starIcon,
+          semanticsLabel: 'Favorite Icon',
+          height: 20.h,
+          width: 20.w,
+        ),
       ),
     );
   }

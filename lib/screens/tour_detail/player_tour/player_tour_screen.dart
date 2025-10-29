@@ -170,6 +170,8 @@ class PlayerTourScreen extends ConsumerWidget {
                             error: (error, stackTrace) {
                               return _StandingScreenLoading();
                             },
+                            skipLoadingOnRefresh: true,
+                            skipLoadingOnReload: true,
                           );
                 },
                 error: (e, _) {

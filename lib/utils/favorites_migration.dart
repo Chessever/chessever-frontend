@@ -120,15 +120,12 @@ class FavoritesMigration {
         try {
           final player = PlayerStandingModel.fromJson(item as Map<String, dynamic>);
 
+          // Store the complete PlayerStandingModel data in metadata
           playersToMigrate.add({
             'user_id': userId,
             'fide_id': player.fideId?.toString(),
             'player_name': player.name,
-            'metadata': {
-              'countryCode': player.countryCode,
-              'rating': player.score,
-              'title': player.title,
-            },
+            'metadata': player.toJson(), // Store complete model
           });
         } catch (e) {
           debugPrint('[FavoritesMigration] Error parsing player: $e, item: $item');

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
+import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/repository/authentication/model/auth_state.dart';
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
@@ -70,6 +71,9 @@ class AuthStateListener extends ConsumerWidget {
                     ref.read(favoriteEventsProvider.notifier).syncFromSupabase(),
                     ref.read(favoritePlayersProviderNew.notifier).syncFromSupabase(),
                   ]);
+
+                  // Step 3: Invalidate the old player provider to trigger reload from Supabase
+                  ref.invalidate(favoritePlayersNotifierProvider);
 
                   if (kDebugMode) {
                     print('✅ [Auth] Favorites migration & sync complete');

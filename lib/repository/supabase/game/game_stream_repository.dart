@@ -36,6 +36,14 @@ class _GameStreamRepository {
         .map((data) => data.isEmpty ? null : data.first['fen'] as String?);
   }
 
+  Stream<String?> subscribeToStatus(String gameId) {
+    return Supabase.instance.client
+        .from('games')
+        .stream(primaryKey: ['id'])
+        .eq('id', gameId)
+        .map((data) => data.isEmpty ? null : data.first['status'] as String?);
+  }
+
   // New comprehensive game streaming for clock updates
   Stream<Map<String, dynamic>?> subscribeToGameUpdates(String gameId) {
     return Supabase.instance.client

@@ -1,5 +1,7 @@
 import 'package:chessever2/repository/local_storage/tournament/games/pin_games_local_storage.dart';
+import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_auto_pin_provider.dart';
+import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class GamesPinState {
@@ -40,10 +42,24 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
   _GamesPinController({required this.ref, required this.tourId})
     : super(GamesPinState()) {
     loadPinnedGames();
+    _listenToFavoritePlayers();
   }
 
   final Ref ref;
   final String tourId;
+
+  void _listenToFavoritePlayers() {
+    // Listen to favorite players changes and recompute auto-pins
+    ref.listen<AsyncValue<List<PlayerStandingModel>>>(
+      tournamentFavoritePlayersProvider,
+      (previous, next) {
+        next.whenData((players) {
+          // Recompute auto-pins when favorite players change
+          computeAutoPins();
+        });
+      },
+    );
+  }
 
   Future<void> loadPinnedGames() async {
     final manualPins = await ref

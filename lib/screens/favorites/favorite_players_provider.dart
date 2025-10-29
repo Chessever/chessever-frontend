@@ -52,18 +52,20 @@ class FavoritePlayersNotifier
     final currentState = state.valueOrNull;
     if (currentState == null) return;
 
+    // STEP 1: Optimistic update - update UI immediately
+    final updatedPlayers =
+        currentState.players.where((p) => p.name != player.name).toList();
+    state = AsyncValue.data(currentState.copyWith(players: updatedPlayers));
+
     try {
-      final updatedPlayers =
-          currentState.players.where((p) => p.name != player.name).toList();
-
-      state = AsyncValue.data(currentState.copyWith(players: updatedPlayers));
-
+      // STEP 2: Sync to Supabase in background
       await _favoritesService.toggleFavorite(player);
     } catch (e, stack) {
       debugPrint('Error: $e');
       debugPrint('Stack: $stack');
 
-      await refreshFavorites();
+      // STEP 3: Revert optimistic update on error (without loading state)
+      state = AsyncValue.data(currentState);
     }
   }
 
@@ -93,19 +95,21 @@ class FavoritePlayersNotifier
     final currentState = state.valueOrNull;
     if (currentState == null) return;
 
+    // STEP 1: Optimistic update - update UI immediately
+    final updatedPlayers = List<PlayerStandingModel>.from(
+      currentState.players,
+    )..add(player);
+    state = AsyncValue.data(currentState.copyWith(players: updatedPlayers));
+
     try {
-      final updatedPlayers = List<PlayerStandingModel>.from(
-        currentState.players,
-      )..add(player);
-
-      state = AsyncValue.data(currentState.copyWith(players: updatedPlayers));
-
+      // STEP 2: Sync to Supabase in background
       await _favoritesService.toggleFavorite(player);
     } catch (e, stack) {
       debugPrint('Error: $e');
       debugPrint('Stack: $stack');
 
-      await refreshFavorites();
+      // STEP 3: Revert optimistic update on error (without loading state)
+      state = AsyncValue.data(currentState);
     }
   }
 
