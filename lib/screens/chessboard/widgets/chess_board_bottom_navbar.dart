@@ -56,6 +56,7 @@ class ChessSvgBottomNavbarWithLongPress extends StatelessWidget {
   final VoidCallback? onPressed;
   final VoidCallback? onLongPressStart;
   final VoidCallback? onLongPressEnd;
+  final bool showBadge;
 
   const ChessSvgBottomNavbarWithLongPress({
     super.key,
@@ -64,6 +65,7 @@ class ChessSvgBottomNavbarWithLongPress extends StatelessWidget {
     required this.onPressed,
     this.onLongPressStart,
     this.onLongPressEnd,
+    this.showBadge = false,
   });
 
   @override
@@ -80,16 +82,86 @@ class ChessSvgBottomNavbarWithLongPress extends StatelessWidget {
         height: 40.h,
         width: width,
         padding: EdgeInsets.all(8.sp),
-        child: SvgWidget(
-          svgPath,
-          height: 24.h,
-          width: 24.w,
-          colorFilter: ColorFilter.mode(
-            onPressed != null ? kWhiteColor : kWhiteColor70,
-            BlendMode.srcIn,
-          ),
+        child: Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.center,
+          children: [
+            SvgWidget(
+              svgPath,
+              height: 24.h,
+              width: 24.w,
+              colorFilter: ColorFilter.mode(
+                onPressed != null ? kWhiteColor : kWhiteColor70,
+                BlendMode.srcIn,
+              ),
+            ),
+            // Show red dot badge on top-right corner if showBadge is true
+            if (showBadge && onPressed != null)
+              Positioned(
+                top: 0,
+                right: 0,
+                child: _UnseenMovesBadge(),
+              ),
+          ],
         ),
       ),
+    );
+  }
+}
+
+/// Blinking red dot badge for navigation buttons
+class _UnseenMovesBadge extends StatefulWidget {
+  const _UnseenMovesBadge();
+
+  @override
+  State<_UnseenMovesBadge> createState() => _UnseenMovesBadgeState();
+}
+
+class _UnseenMovesBadgeState extends State<_UnseenMovesBadge>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+    _animation = Tween<double>(begin: 0.3, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+    _controller.repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) {
+        return Container(
+          width: 8.w,
+          height: 8.h,
+          decoration: BoxDecoration(
+            color: Colors.red.withValues(alpha: _animation.value),
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.red.withValues(alpha: _animation.value * 0.5),
+                blurRadius: 3,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

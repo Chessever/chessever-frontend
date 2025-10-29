@@ -36,6 +36,12 @@ final currentlyVisiblePageIndexProvider = StateProvider<int>((ref) {
   return 0;
 });
 
+/// Global provider to track last seen move count per game
+/// This is used to determine if there are unseen moves when new moves arrive
+final lastSeenMoveCountProvider = StateProvider<Map<String, int>>((ref) {
+  return {};
+});
+
 class ChessBoardScreenNotifierNew
     extends StateNotifier<AsyncValue<ChessBoardStateNew>> {
   ChessBoardScreenNotifierNew(
@@ -195,6 +201,17 @@ class ChessBoardScreenNotifierNew
       // Only update state if still mounted
       if (!mounted) return;
 
+      // Check if there are new unseen moves
+      final lastSeenMoveCount = ref.read(lastSeenMoveCountProvider)[game.gameId] ?? 0;
+      final currentMoveCount = moveSans.length;
+      final hasNewMoves = currentMoveCount > lastSeenMoveCount;
+
+      // If this is the first time loading the game, mark all moves as seen
+      // Otherwise, only mark as unseen if the user is NOT viewing the last move
+      final isFirstLoad = lastSeenMoveCount == 0;
+      final isViewingLastMove = currentState.analysisState.currentMoveIndex == currentState.allMoves.length - 1;
+      final shouldMarkAsUnseen = hasNewMoves && !isFirstLoad && !isViewingLastMove;
+
       state = AsyncValue.data(
         currentState.copyWith(
           position: finalPos,
@@ -209,8 +226,17 @@ class ChessBoardScreenNotifierNew
           isEvaluating: true, // Show loading indicator while evaluating
           analysisState: AnalysisBoardState(startingPosition: startingPos),
           moveTimes: moveTimes,
+          hasUnseenMoves: shouldMarkAsUnseen,
         ),
       );
+
+      // Update last seen move count if this is the first load
+      if (isFirstLoad) {
+        ref.read(lastSeenMoveCountProvider.notifier).state = {
+          ...ref.read(lastSeenMoveCountProvider),
+          game.gameId: currentMoveCount,
+        };
+      }
 
       // Analysis board is always initialized since analysis mode is always active
       await _initializeAnalysisBoard();
@@ -295,6 +321,21 @@ class ChessBoardScreenNotifierNew
     return timeString;
   }
 
+  /// Mark all moves as seen (clear the unseen indicator)
+  void markMovesAsSeen() {
+    final currentState = state.value;
+    if (currentState == null) return;
+
+    // Update the state to clear the unseen flag
+    state = AsyncValue.data(currentState.copyWith(hasUnseenMoves: false));
+
+    // Update the global provider with the current move count
+    ref.read(lastSeenMoveCountProvider.notifier).state = {
+      ...ref.read(lastSeenMoveCountProvider),
+      game.gameId: currentState.moveSans.length,
+    };
+  }
+
   void goToMove(int moveIndex) {
     // Analysis mode is always active, use analysis navigation
     analysisModeGoToMove(moveIndex);
@@ -340,6 +381,9 @@ class ChessBoardScreenNotifierNew
       newPosition = newPosition.play(currentState.analysisState.allMoves[i]);
     }
 
+    // Check if navigating to the last move to clear unseen indicator
+    final isNavigatingToLastMove = moveIndex == currentState.analysisState.allMoves.length - 1;
+
     state = AsyncValue.data(
       currentState.copyWith(
         analysisState: currentState.analysisState.copyWith(
@@ -359,8 +403,19 @@ class ChessBoardScreenNotifierNew
         variantBaseLastMove: null,
         variantBaseMoveIndex: null,
         shapes: const ISet.empty(),
+        // Clear unseen indicator if navigating to the last move
+        hasUnseenMoves: isNavigatingToLastMove ? false : currentState.hasUnseenMoves,
       ),
     );
+
+    // Update last seen move count if navigating to the last move
+    if (isNavigatingToLastMove && currentState.hasUnseenMoves) {
+      ref.read(lastSeenMoveCountProvider.notifier).state = {
+        ...ref.read(lastSeenMoveCountProvider),
+        game.gameId: currentState.moveSans.length,
+      };
+    }
+
     _cancelEvaluation = false;
     _updateEvaluation();
     _isProcessingMove = false;
