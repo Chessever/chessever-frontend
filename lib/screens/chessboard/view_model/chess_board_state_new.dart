@@ -243,7 +243,6 @@ class ChessBoardStateNew {
   final List<int> variantMovePointer; // Track progress through selected variant
   final bool showEngineAnalysis; // Toggle visibility of engine gauge and principal variations
   final bool showPrincipalVariations; // Toggle visibility of principal variation cards only
-  final bool hasUnseenMoves; // Track if there are new moves the user hasn't seen yet
   /// FEN position where current PVs were generated
   final String? variantBaseFen;
 
@@ -291,7 +290,6 @@ class ChessBoardStateNew {
     this.variantMovePointer = const [],
     this.showEngineAnalysis = true, // Active by default
     this.showPrincipalVariations = true, // Active by default
-    this.hasUnseenMoves = false,
     this.variantBaseFen,
     this.variantBaseMovePointer,
     this.variantBaseLastMove,
@@ -325,7 +323,6 @@ class ChessBoardStateNew {
     List<int>? variantMovePointer,
     bool? showEngineAnalysis,
     bool? showPrincipalVariations,
-    bool? hasUnseenMoves,
     Object? variantBaseFen = _noChange,
     Object? variantBaseMovePointer = _noChange,
     Object? variantBaseLastMove = _noChange,
@@ -372,7 +369,6 @@ class ChessBoardStateNew {
       variantMovePointer: variantMovePointer ?? this.variantMovePointer,
       showEngineAnalysis: showEngineAnalysis ?? this.showEngineAnalysis,
       showPrincipalVariations: showPrincipalVariations ?? this.showPrincipalVariations,
-      hasUnseenMoves: hasUnseenMoves ?? this.hasUnseenMoves,
       variantBaseFen:
           identical(variantBaseFen, _noChange)
               ? this.variantBaseFen
@@ -411,7 +407,6 @@ class ChessBoardStateNew {
         other.selectedVariantIndex == selectedVariantIndex &&
         other.showEngineAnalysis == showEngineAnalysis &&
         other.showPrincipalVariations == showPrincipalVariations &&
-        other.hasUnseenMoves == hasUnseenMoves &&
         other.variantBaseFen == variantBaseFen;
   }
 
@@ -431,7 +426,6 @@ class ChessBoardStateNew {
         (selectedVariantIndex?.hashCode ?? 0) ^
         showEngineAnalysis.hashCode ^
         showPrincipalVariations.hashCode ^
-        hasUnseenMoves.hashCode ^
         (variantBaseFen?.hashCode ?? 0);
   }
 }
