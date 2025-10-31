@@ -32,7 +32,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:purchases_flutter/purchases_flutter.dart' as purchases;
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -182,12 +182,13 @@ Future<void> main() async {
 }
 
 Future<void> _initRevenueCat() async {
-  await Purchases.setDebugLogsEnabled(true); // Enable debug logs
+  // ignore: unused_element
+  await purchases.Purchases.setLogLevel(purchases.LogLevel.debug); // Enable debug logs
   // final SupabaseClient = Supabase.instance.client;
   // final user = SupabaseClient.auth.currentUser;
   // await Purchases.setDebugLogsEnabled(true);
-  await Purchases.configure(
-    PurchasesConfiguration(_getEnv('RevenueCatAPIKey')),
+  await purchases.Purchases.configure(
+    purchases.PurchasesConfiguration(_getEnv('RevenueCatAPIKey')),
     // appUserId: '',
   );
 }
@@ -196,16 +197,16 @@ Future<void> _initRevenueCat() async {
 /// Update CACHE_VERSION number to trigger cache clearing
 Future<void> _clearEvaluationCache() async {
   try {
-    const int CACHE_VERSION = 3; // Update this number to clear cache
+    const int cacheVersion = 3; // Update this number to clear cache
     const String versionKey = 'eval_cache_clear_version';
     const String evalPrefix = 'cloud_eval_';
 
     final prefs = await SharedPreferences.getInstance();
     final currentVersion = prefs.getInt(versionKey) ?? 0;
 
-    if (currentVersion < CACHE_VERSION) {
+    if (currentVersion < cacheVersion) {
       print(
-        '🧹 CLEARING EVALUATION CACHE: version $currentVersion -> $CACHE_VERSION',
+        '🧹 CLEARING EVALUATION CACHE: version $currentVersion -> $cacheVersion',
       );
 
       // Find and remove all evaluation cache entries
@@ -218,13 +219,13 @@ Future<void> _clearEvaluationCache() async {
       }
 
       // Update version
-      await prefs.setInt(versionKey, CACHE_VERSION);
+      await prefs.setInt(versionKey, cacheVersion);
 
       print(
-        '✅ Evaluation cache cleared: $removedCount entries removed, version updated to $CACHE_VERSION',
+        '✅ Evaluation cache cleared: $removedCount entries removed, version updated to $cacheVersion',
       );
     } else {
-      print('📁 Evaluation cache version $CACHE_VERSION is up to date');
+      print('📁 Evaluation cache version $cacheVersion is up to date');
     }
   } catch (e, _) {}
 }
@@ -233,15 +234,15 @@ Future<void> _clearEvaluationCache() async {
 /// This is a one-time reset for beta users to ensure clean transition
 Future<void> _resetFavoritesForMigration() async {
   try {
-    const int MIGRATION_VERSION = 1; // Update this to trigger reset
+    const int migrationVersion = 1; // Update this to trigger reset
     const String versionKey = 'favorites_reset_version';
 
     final prefs = await SharedPreferences.getInstance();
     final currentVersion = prefs.getInt(versionKey) ?? 0;
 
-    if (currentVersion < MIGRATION_VERSION) {
+    if (currentVersion < migrationVersion) {
       print(
-        '🧹 RESETTING FAVORITES: Migrating to Supabase-backed system (v$MIGRATION_VERSION)',
+        '🧹 RESETTING FAVORITES: Migrating to Supabase-backed system (v$migrationVersion)',
       );
 
       // Old SharedPreferences-only keys to clear
@@ -265,14 +266,14 @@ Future<void> _resetFavoritesForMigration() async {
       }
 
       // Update version to prevent re-running
-      await prefs.setInt(versionKey, MIGRATION_VERSION);
+      await prefs.setInt(versionKey, migrationVersion);
 
       print(
         '✅ Favorites reset complete: $removedCount keys cleared. Users will need to re-favorite players/events.',
       );
       print('   New system uses Supabase + SharedPreferences cache.');
     } else {
-      print('📁 Favorites migration version $MIGRATION_VERSION is up to date');
+      print('📁 Favorites migration version $migrationVersion is up to date');
     }
   } catch (e, st) {
     print('❌ Error resetting favorites: $e');

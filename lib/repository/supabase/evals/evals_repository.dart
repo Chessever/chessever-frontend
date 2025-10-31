@@ -144,7 +144,7 @@ class EvalRepository extends BaseRepository {
     bool legacyPerspective = false;
 
     final pvsList = <Pv>[];
-    for (final entry in (eval.pvs as List)) {
+    for (final entry in eval.pvs) {
       final map = Map<String, dynamic>.from(entry as Map);
       final hasPerspectiveKey = map.containsKey('whitePerspective');
 

@@ -4,6 +4,7 @@ import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/repository/supabase/evals/persist_cloud_eval.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
+import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator_state_manager.dart';
@@ -67,6 +68,9 @@ class ChessBoardScreenNotifierNew
   final Map<String, double> _evaluationCache = {};
   final Map<String, int?> _mateCache = {};
   final Map<String, List<AnalysisLine>> _pvCache = {};
+  int _evalRequestCounter = 0;
+  int? _activeEvalRequestId;
+  String? _activeEvalKey;
   ChessGame? _analysisGame;
   ChessGameNavigatorStateManager? _analysisStateManager;
   ProviderSubscription<ChessGameNavigatorState>? _navigatorSubscription;
@@ -88,9 +92,28 @@ class ChessBoardScreenNotifierNew
     return evaluation;
   }
 
+  String _fenCacheKey(String fen) {
+    final parts = fen.split(' ');
+    if (parts.length < 4) return fen;
+    return '${parts[0]} ${parts[1]} ${parts[2]} ${parts[3]}';
+  }
+
+  void _updateLastSeenMoveCount(int moveCount) {
+    Future.microtask(() {
+      if (!mounted) return;
+      final current = ref.read(lastSeenMoveCountProvider);
+      ref.read(lastSeenMoveCountProvider.notifier).state = {
+        ...current,
+        game.gameId: moveCount,
+      };
+    });
+  }
+
   void _setupPgnStreamListener() {
     // Only listen to game updates stream if the game is ongoing
-    debugPrint('🔧 STREAM SETUP: game ${game.gameId}, index: $index, status: ${game.gameStatus}');
+    debugPrint(
+      '🔧 STREAM SETUP: game ${game.gameId}, index: $index, status: ${game.gameStatus}',
+    );
 
     if (game.gameStatus == GameStatus.ongoing) {
       debugPrint('✅ LISTENER ACTIVE for game ${game.gameId}');
@@ -98,7 +121,9 @@ class ChessBoardScreenNotifierNew
         debugPrint('📡 STREAM EVENT for game ${game.gameId}');
 
         next.whenData((gameData) {
-          debugPrint('📦 DATA: game ${game.gameId}, pgn_len=${gameData?['pgn']?.toString().length}, white_clock=${gameData?['last_clock_white']}, black_clock=${gameData?['last_clock_black']}');
+          debugPrint(
+            '📦 DATA: game ${game.gameId}, pgn_len=${gameData?['pgn']?.toString().length}, white_clock=${gameData?['last_clock_white']}, black_clock=${gameData?['last_clock_black']}',
+          );
 
           if (gameData != null) {
             final currentState = state.value;
@@ -113,9 +138,13 @@ class ChessBoardScreenNotifierNew
                   gameData['last_move_time'] != null
                       ? DateTime.tryParse(gameData['last_move_time'] as String)
                       : game.lastMoveTime,
-              whiteClockSeconds: (gameData['last_clock_white'] as num?)?.round(),
-              blackClockSeconds: (gameData['last_clock_black'] as num?)?.round(),
-              gameStatus: _parseGameStatus(gameData['status'] as String? ?? '*'),
+              whiteClockSeconds:
+                  (gameData['last_clock_white'] as num?)?.round(),
+              blackClockSeconds:
+                  (gameData['last_clock_black'] as num?)?.round(),
+              gameStatus: _parseGameStatus(
+                gameData['status'] as String? ?? '*',
+              ),
             );
 
             // CRITICAL: Update state immediately with new game object to show clock changes
@@ -123,7 +152,7 @@ class ChessBoardScreenNotifierNew
 
             // Reparse moves to show updated position
             _hasParsedMoves = false;
-            parseMoves();
+            parseMoves(pgnOverride: game.pgn);
           }
         });
       });
@@ -146,7 +175,7 @@ class ChessBoardScreenNotifierNew
     }
   }
 
-  Future<void> parseMoves() async {
+  Future<void> parseMoves({String? pgnOverride}) async {
     // Don't reparse if already parsing or already parsed
     if (_hasParsedMoves) return;
     _hasParsedMoves = true;
@@ -155,15 +184,47 @@ class ChessBoardScreenNotifierNew
     final currentState = state.value;
 
     try {
-      // If no PGN in the current game object, fetch from repository
-      final gameWithPgn = await ref
-          .read(gameRepositoryProvider)
-          .getGameById(game.gameId);
+      String? pgn = pgnOverride ?? game.pgn;
 
-      // Check if still mounted after async operation
-      if (!mounted) return;
+      Games? gameWithPgn;
+      if (pgn == null || pgn.isEmpty) {
+        gameWithPgn = await ref
+            .read(gameRepositoryProvider)
+            .getGameById(game.gameId);
 
-      String pgn = gameWithPgn.pgn ?? _getSamplePgnData();
+        if (!mounted) return;
+
+        pgn = gameWithPgn.pgn;
+      }
+
+      // Ensure PGN is not empty
+      if (pgn == null || pgn.trim().isEmpty) {
+        pgn = _getSamplePgnData();
+      }
+
+      // Avoid expensive re-parse when nothing changed (e.g. clock-only updates)
+      if (currentState != null && currentState.pgnData == pgn) {
+        state = AsyncValue.data(
+          currentState.copyWith(game: game, isLoadingMoves: false),
+        );
+        return;
+      }
+
+      // Update cached game reference with latest PGN if we fetched it
+      if (gameWithPgn != null) {
+        game = game.copyWith(
+          pgn: gameWithPgn.pgn ?? pgn,
+          fen: gameWithPgn.fen ?? game.fen,
+          lastMove: gameWithPgn.lastMove ?? game.lastMove,
+          lastMoveTime: gameWithPgn.lastMoveTime ?? game.lastMoveTime,
+          whiteClockSeconds:
+              gameWithPgn.lastClockWhite ?? game.whiteClockSeconds,
+          blackClockSeconds:
+              gameWithPgn.lastClockBlack ?? game.blackClockSeconds,
+        );
+      } else {
+        game = game.copyWith(pgn: pgn);
+      }
 
       final gameData = PgnGame.parsePgn(pgn);
       final startingPos = PgnGame.startingPosition(gameData.headers);
@@ -194,27 +255,33 @@ class ChessBoardScreenNotifierNew
       if (!mounted) return;
 
       // Check if there are new unseen moves
-      final lastSeenMoveCount = ref.read(lastSeenMoveCountProvider)[game.gameId] ?? 0;
+      final lastSeenMoveCount =
+          ref.read(lastSeenMoveCountProvider)[game.gameId] ?? 0;
       final currentMoveCount = moveSans.length;
       final hasNewMoves = currentMoveCount > lastSeenMoveCount;
 
       // If this is the first time loading the game, mark all moves as seen
       // Otherwise, only mark as unseen if the user is NOT viewing the last move
       final isFirstLoad = lastSeenMoveCount == 0;
-      final wasViewingLastMove = currentState != null &&
+      final wasViewingLastMove =
+          currentState != null &&
           currentState.allMoves.isNotEmpty &&
-          currentState.analysisState.currentMoveIndex == currentState.allMoves.length - 1;
-      final shouldMarkAsUnseen = hasNewMoves && !isFirstLoad && !wasViewingLastMove;
+          currentState.analysisState.currentMoveIndex ==
+              currentState.allMoves.length - 1;
+      final shouldMarkAsUnseen =
+          hasNewMoves && !isFirstLoad && !wasViewingLastMove;
 
       // Determine which move index to display:
       // - If first load: ALWAYS jump to last move
       // - If user was viewing last move: jump to new last move
       // - If user was viewing an earlier move AND it's not first load: stay at current position (don't jump)
-      final newMoveIndex = isFirstLoad
-          ? lastMoveIndex  // Always show latest on first load
-          : (wasViewingLastMove
-              ? lastMoveIndex  // Jump to new last move if user was already viewing last
-              : currentState?.analysisState.currentMoveIndex ?? lastMoveIndex);  // Stay at current position otherwise
+      final newMoveIndex =
+          isFirstLoad
+              ? lastMoveIndex // Always show latest on first load
+              : (wasViewingLastMove
+                  ? lastMoveIndex // Jump to new last move if user was already viewing last
+                  : currentState?.analysisState.currentMoveIndex ??
+                      lastMoveIndex); // Stay at current position otherwise
 
       // Calculate position for the move index we're displaying
       Position displayPosition = startingPos;
@@ -227,62 +294,61 @@ class ChessBoardScreenNotifierNew
       }
 
       // Create new state (either from scratch or copying existing state)
-      final newState = currentState != null
-          ? currentState.copyWith(
-              position: finalPos, // Always track the actual final position
-              startingPosition: startingPos,
-              lastMove: lastMove, // Always track the actual last move
-              allMoves: allMoves,
-              moveSans: moveSans,
-              currentMoveIndex: newMoveIndex, // Respects viewing position
-              pgnData: pgn,
-              isLoadingMoves: false,
-              evaluation: null, // Reset evaluation to trigger new calculation
-              isEvaluating: true, // Show loading indicator while evaluating
-              analysisState: AnalysisBoardState(
+      final newState =
+          currentState != null
+              ? currentState.copyWith(
+                position: finalPos, // Always track the actual final position
                 startingPosition: startingPos,
-                currentMoveIndex: newMoveIndex,
-                position: displayPosition,
-                lastMove: displayLastMove,
-                moveSans: moveSans,
-                allMoves: allMoves,  // Must include all moves for proper navigation
-              ),
-              moveTimes: moveTimes,
-              hasUnseenMoves: shouldMarkAsUnseen,
-            )
-          : ChessBoardStateNew(
-              game: game,
-              position: finalPos,
-              startingPosition: startingPos,
-              lastMove: lastMove,
-              allMoves: allMoves,
-              moveSans: moveSans,
-              currentMoveIndex: newMoveIndex,
-              pgnData: pgn,
-              isLoadingMoves: false,
-              evaluation: null,
-              isEvaluating: true,
-              isAnalysisMode: true,
-              analysisState: AnalysisBoardState(
-                startingPosition: startingPos,
-                currentMoveIndex: newMoveIndex,
-                position: displayPosition,
-                lastMove: displayLastMove,
-                moveSans: moveSans,
+                lastMove: lastMove, // Always track the actual last move
                 allMoves: allMoves,
-              ),
-              moveTimes: moveTimes,
-              hasUnseenMoves: shouldMarkAsUnseen,
-            );
+                moveSans: moveSans,
+                currentMoveIndex: newMoveIndex, // Respects viewing position
+                pgnData: pgn,
+                isLoadingMoves: false,
+                evaluation: null, // Reset evaluation to trigger new calculation
+                isEvaluating: true, // Show loading indicator while evaluating
+                analysisState: AnalysisBoardState(
+                  startingPosition: startingPos,
+                  currentMoveIndex: newMoveIndex,
+                  position: displayPosition,
+                  lastMove: displayLastMove,
+                  moveSans: moveSans,
+                  allMoves:
+                      allMoves, // Must include all moves for proper navigation
+                ),
+                moveTimes: moveTimes,
+                hasUnseenMoves: shouldMarkAsUnseen,
+              )
+              : ChessBoardStateNew(
+                game: game,
+                position: finalPos,
+                startingPosition: startingPos,
+                lastMove: lastMove,
+                allMoves: allMoves,
+                moveSans: moveSans,
+                currentMoveIndex: newMoveIndex,
+                pgnData: pgn,
+                isLoadingMoves: false,
+                evaluation: null,
+                isEvaluating: true,
+                isAnalysisMode: true,
+                analysisState: AnalysisBoardState(
+                  startingPosition: startingPos,
+                  currentMoveIndex: newMoveIndex,
+                  position: displayPosition,
+                  lastMove: displayLastMove,
+                  moveSans: moveSans,
+                  allMoves: allMoves,
+                ),
+                moveTimes: moveTimes,
+                hasUnseenMoves: shouldMarkAsUnseen,
+              );
 
       state = AsyncValue.data(newState);
 
       // Update last seen move count if this is the first load
       if (isFirstLoad) {
-        ref.read(lastSeenMoveCountProvider.notifier).state = {
-          ...ref.read(lastSeenMoveCountProvider),
-          game.gameId: currentMoveCount,
-        };
+        _updateLastSeenMoveCount(currentMoveCount);
       }
 
       // Analysis board is always initialized since analysis mode is always active
@@ -377,10 +443,7 @@ class ChessBoardScreenNotifierNew
     state = AsyncValue.data(currentState.copyWith(hasUnseenMoves: false));
 
     // Update the global provider with the current move count
-    ref.read(lastSeenMoveCountProvider.notifier).state = {
-      ...ref.read(lastSeenMoveCountProvider),
-      game.gameId: currentState.moveSans.length,
-    };
+    _updateLastSeenMoveCount(currentState.moveSans.length);
   }
 
   void goToMove(int moveIndex) {
@@ -429,7 +492,8 @@ class ChessBoardScreenNotifierNew
     }
 
     // Check if navigating to the last move to clear unseen indicator
-    final isNavigatingToLastMove = moveIndex == currentState.analysisState.allMoves.length - 1;
+    final isNavigatingToLastMove =
+        moveIndex == currentState.analysisState.allMoves.length - 1;
 
     state = AsyncValue.data(
       currentState.copyWith(
@@ -451,16 +515,14 @@ class ChessBoardScreenNotifierNew
         variantBaseMoveIndex: null,
         shapes: const ISet.empty(),
         // Clear unseen indicator if navigating to the last move
-        hasUnseenMoves: isNavigatingToLastMove ? false : currentState.hasUnseenMoves,
+        hasUnseenMoves:
+            isNavigatingToLastMove ? false : currentState.hasUnseenMoves,
       ),
     );
 
     // Update last seen move count if navigating to the last move
     if (isNavigatingToLastMove && currentState.hasUnseenMoves) {
-      ref.read(lastSeenMoveCountProvider.notifier).state = {
-        ...ref.read(lastSeenMoveCountProvider),
-        game.gameId: currentState.moveSans.length,
-      };
+      _updateLastSeenMoveCount(currentState.moveSans.length);
     }
 
     _cancelEvaluation = false;
@@ -658,7 +720,9 @@ class ChessBoardScreenNotifierNew
           currentState,
         ).copyWith(principalVariations: const [], isEvaluating: true);
         state = AsyncValue.data(clearedState);
-        _updateEvaluation(); // Force fresh evaluation for current position
+        _updateEvaluation(
+          force: true,
+        ); // Force fresh evaluation for current position
         return;
       }
 
@@ -682,9 +746,10 @@ class ChessBoardScreenNotifierNew
           );
           _resumeVariantAutoPlay = true;
           final currentFen = currentState.analysisState.position.fen;
-          _pvCache.remove(currentFen);
-          _evaluationCache.remove(currentFen);
-          _mateCache.remove(currentFen);
+          final cacheKey = _fenCacheKey(currentFen);
+          _pvCache.remove(cacheKey);
+          _evaluationCache.remove(cacheKey);
+          _mateCache.remove(cacheKey);
 
           // CRITICAL: Update variant base to CURRENT position for extension
           // The new PVs will start from here, and variantMovePointer resets to []
@@ -699,7 +764,7 @@ class ChessBoardScreenNotifierNew
           debugPrint(
             '🎯 PLAY VARIANT FORWARD: Extension base set to $currentFen, resetting pointer',
           );
-          _updateEvaluation();
+          _updateEvaluation(force: true);
         } else {
           debugPrint(
             '🎯 PLAY VARIANT FORWARD: Extension already in progress, waiting',
@@ -740,7 +805,7 @@ class ChessBoardScreenNotifierNew
 
         // Trigger new evaluation for the new position
         // Cache will be checked first, fresh eval if needed
-        _updateEvaluation();
+        _updateEvaluation(force: true);
         return;
       }
 
@@ -871,7 +936,9 @@ class ChessBoardScreenNotifierNew
         currentState,
       ).copyWith(principalVariations: const [], isEvaluating: true);
       state = AsyncValue.data(clearedState);
-      _updateEvaluation(); // Force fresh evaluation for current position
+      _updateEvaluation(
+        force: true,
+      ); // Force fresh evaluation for current position
       return;
     }
 
@@ -1049,15 +1116,19 @@ class ChessBoardScreenNotifierNew
           false, // Don't fire immediately - we'll sync manually after replaceState
     );
 
-    // Always initialize at current position, ignore saved state
-    // This ensures analysis mode continues from wherever the user is viewing
-    navigator.replaceState(
-      ChessGameNavigatorState(game: _analysisGame!, movePointer: movePointer),
-    );
+    // Always initialize at current position, ignore saved state.
+    // Defer to the next microtask to avoid mutating another provider
+    // during initialization, which Riverpod asserts against.
+    await Future.microtask(() {
+      if (!mounted) return;
+      navigator.replaceState(
+        ChessGameNavigatorState(game: _analysisGame!, movePointer: movePointer),
+      );
 
-    // Manually sync the initial state
-    final initialState = ref.read(chessGameNavigatorProvider(_analysisGame!));
-    _syncAnalysisFromNavigator(initialState);
+      // Manually sync the initial state after replaceState
+      final initialState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+      _syncAnalysisFromNavigator(initialState);
+    });
   }
 
   Future<void> _persistAnalysisState() async {
@@ -1469,7 +1540,9 @@ class ChessBoardScreenNotifierNew
     final currentState = state.value;
     if (currentState == null) return;
     state = AsyncValue.data(
-      currentState.copyWith(showPrincipalVariations: !currentState.showPrincipalVariations),
+      currentState.copyWith(
+        showPrincipalVariations: !currentState.showPrincipalVariations,
+      ),
     );
   }
 
@@ -1557,7 +1630,9 @@ class ChessBoardScreenNotifierNew
         }
       }
       if (!anyPvValid) {
-        debugPrint('⚠️ BUILD PV: No PVs are valid for this FEN - possible cache mismatch');
+        debugPrint(
+          '⚠️ BUILD PV: No PVs are valid for this FEN - possible cache mismatch',
+        );
         return const [];
       }
     } catch (e) {
@@ -1741,8 +1816,8 @@ class ChessBoardScreenNotifierNew
     final baseFen = state.variantBaseFen!;
 
     // Compare first 3 FEN components (position, turn, castling)
-    final currentParts = currentFen.split(' ').take(3).join(' ');
-    final baseParts = baseFen.split(' ').take(3).join(' ');
+    final currentParts = currentFen.split(' ').take(4).join(' ');
+    final baseParts = baseFen.split(' ').take(4).join(' ');
 
     // If we're at the base position, it's valid
     if (currentParts == baseParts) {
@@ -1761,7 +1836,7 @@ class ChessBoardScreenNotifierNew
           state.variantMovePointer.length,
         );
         final matches =
-            testPosition.fen.split(' ').take(3).join(' ') == currentParts;
+            testPosition.fen.split(' ').take(4).join(' ') == currentParts;
         debugPrint(
           '🎯 VARIANT VALIDATION: Position reachable from base - ${matches ? "VALID" : "INVALID"}',
         );
@@ -1855,8 +1930,8 @@ class ChessBoardScreenNotifierNew
         previousBaseFen != null &&
         !isExtensionUpdate) {
       // Only validate if NOT an extension update
-      final baseFenCompare = previousBaseFen.split(' ').take(3).join(' ');
-      final pvFenCompare = baseFen.split(' ').take(3).join(' ');
+      final baseFenCompare = previousBaseFen.split(' ').take(4).join(' ');
+      final pvFenCompare = baseFen.split(' ').take(4).join(' ');
 
       if (baseFenCompare != pvFenCompare) {
         debugPrint('🎯 PV RESULTS: REJECTING - PVs for different position');
@@ -2055,7 +2130,8 @@ class ChessBoardScreenNotifierNew
     return position;
   }
 
-  Future<void> _evaluatePosition() async {
+  Future<void> _evaluatePosition({bool force = false}) async {
+    int? requestId;
     try {
       final initialState = state.value;
       if (initialState == null || initialState.isLoadingMoves) return;
@@ -2066,14 +2142,15 @@ class ChessBoardScreenNotifierNew
               : initialState.position?.fen;
       if (fen == null) return;
 
-      state = AsyncValue.data(
-        initialState.copyWith(shapes: const ISet.empty(), isEvaluating: true),
-      );
+      final cacheKey = _fenCacheKey(fen);
 
-      final cachedEval = _evaluationCache[fen];
-      final cachedPv = _pvCache[fen];
-      final cachedMate = _mateCache[fen];
-      if (cachedEval != null && cachedPv != null && cachedPv.isNotEmpty) {
+      final cachedEval = _evaluationCache[cacheKey];
+      final cachedPv = _pvCache[cacheKey];
+      final cachedMate = _mateCache[cacheKey];
+      if (!force &&
+          cachedEval != null &&
+          cachedPv != null &&
+          cachedPv.isNotEmpty) {
         var cachedState = initialState.copyWith(
           evaluation: cachedEval,
           mate: cachedMate ?? initialState.mate,
@@ -2099,6 +2176,23 @@ class ChessBoardScreenNotifierNew
         );
         return;
       }
+
+      if (!force &&
+          _activeEvalKey == cacheKey &&
+          _activeEvalRequestId != null) {
+        debugPrint(
+          '🎯 EVAL: Skipping duplicate request for $cacheKey (already running)',
+        );
+        return;
+      }
+
+      final currentRequestId = requestId = ++_evalRequestCounter;
+      _activeEvalKey = cacheKey;
+      _activeEvalRequestId = currentRequestId;
+
+      state = AsyncValue.data(
+        initialState.copyWith(shapes: const ISet.empty(), isEvaluating: true),
+      );
 
       CloudEval? primaryEval;
       double? evaluation;
@@ -2128,21 +2222,29 @@ class ChessBoardScreenNotifierNew
 
           // RETRY: If cloud PV building failed but we have PVs, try once more
           if (pvLines.isEmpty && cascadeEval.pvs.isNotEmpty) {
-            debugPrint('🔄 RETRY: Cloud PV building failed, retrying after 200ms...');
+            debugPrint(
+              '🔄 RETRY: Cloud PV building failed, retrying after 200ms...',
+            );
             await Future.delayed(const Duration(milliseconds: 200));
 
             // Check if position changed during the delay
             final currentState = state.value;
             if (currentState != null) {
-              final currentPos = currentState.isAnalysisMode
-                  ? currentState.analysisState.position
-                  : currentState.position;
+              final currentPos =
+                  currentState.isAnalysisMode
+                      ? currentState.analysisState.position
+                      : currentState.position;
               if (currentPos != null) {
-                final currentFenBase = currentPos.fen.split(' ').take(3).join(' ');
-                final targetFenBase = fen.split(' ').take(3).join(' ');
+                final currentFenBase = currentPos.fen
+                    .split(' ')
+                    .take(4)
+                    .join(' ');
+                final targetFenBase = fen.split(' ').take(4).join(' ');
 
                 if (currentFenBase != targetFenBase) {
-                  debugPrint('🚫 RETRY CANCELLED: Position changed during delay (was: $targetFenBase, now: $currentFenBase)');
+                  debugPrint(
+                    '🚫 RETRY CANCELLED: Position changed during delay (was: $targetFenBase, now: $currentFenBase)',
+                  );
                   return;
                 }
               }
@@ -2152,7 +2254,9 @@ class ChessBoardScreenNotifierNew
             if (pvLines.isNotEmpty) {
               debugPrint('✅ RETRY: Cloud PV building succeeded on retry');
             } else {
-              debugPrint('❌ RETRY: Cloud PV building failed again, will try Stockfish');
+              debugPrint(
+                '❌ RETRY: Cloud PV building failed again, will try Stockfish',
+              );
             }
           }
 
@@ -2206,31 +2310,45 @@ class ChessBoardScreenNotifierNew
             debugPrint(
               '🎯 EVAL: Building principal variations from Stockfish MultiPV...',
             );
-            var stockfishPvLines = await _buildPrincipalVariations(fen, localEval.pvs);
+            var stockfishPvLines = await _buildPrincipalVariations(
+              fen,
+              localEval.pvs,
+            );
 
             // RETRY: If Stockfish PV building failed, try once more after a small delay
             if (stockfishPvLines.isEmpty && localEval.pvs.isNotEmpty) {
-              debugPrint('🔄 RETRY: Stockfish PV building failed, retrying after 200ms...');
+              debugPrint(
+                '🔄 RETRY: Stockfish PV building failed, retrying after 200ms...',
+              );
               await Future.delayed(const Duration(milliseconds: 200));
 
               // Check if position changed during the delay
               final currentState = state.value;
               if (currentState != null) {
-                final currentPos = currentState.isAnalysisMode
-                    ? currentState.analysisState.position
-                    : currentState.position;
+                final currentPos =
+                    currentState.isAnalysisMode
+                        ? currentState.analysisState.position
+                        : currentState.position;
                 if (currentPos != null) {
-                  final currentFenBase = currentPos.fen.split(' ').take(3).join(' ');
-                  final targetFenBase = fen.split(' ').take(3).join(' ');
+                  final currentFenBase = currentPos.fen
+                      .split(' ')
+                      .take(4)
+                      .join(' ');
+                  final targetFenBase = fen.split(' ').take(4).join(' ');
 
                   if (currentFenBase != targetFenBase) {
-                    debugPrint('🚫 RETRY CANCELLED: Position changed during delay (was: $targetFenBase, now: $currentFenBase)');
+                    debugPrint(
+                      '🚫 RETRY CANCELLED: Position changed during delay (was: $targetFenBase, now: $currentFenBase)',
+                    );
                     return;
                   }
                 }
               }
 
-              stockfishPvLines = await _buildPrincipalVariations(fen, localEval.pvs);
+              stockfishPvLines = await _buildPrincipalVariations(
+                fen,
+                localEval.pvs,
+              );
               if (stockfishPvLines.isNotEmpty) {
                 debugPrint('✅ RETRY: Stockfish PV building succeeded on retry');
               } else {
@@ -2241,13 +2359,18 @@ class ChessBoardScreenNotifierNew
             // Merge: Keep cloud PVs first, then add unique Stockfish PVs
             if (needsMorePvs && pvLines.isNotEmpty) {
               final merged = <AnalysisLine>[...pvLines];
-              final existingFirstMoves = pvLines.map((line) =>
-                line.sanMoves.isNotEmpty ? line.sanMoves.first : ''
-              ).toSet();
+              final existingFirstMoves =
+                  pvLines
+                      .map(
+                        (line) =>
+                            line.sanMoves.isNotEmpty ? line.sanMoves.first : '',
+                      )
+                      .toSet();
 
               for (final sfLine in stockfishPvLines) {
                 if (merged.length >= 3) break;
-                final firstMove = sfLine.sanMoves.isNotEmpty ? sfLine.sanMoves.first : '';
+                final firstMove =
+                    sfLine.sanMoves.isNotEmpty ? sfLine.sanMoves.first : '';
                 // Add if it's a different first move (different principal variation)
                 if (!existingFirstMoves.contains(firstMove)) {
                   merged.add(sfLine);
@@ -2299,7 +2422,9 @@ class ChessBoardScreenNotifierNew
       // If we have evaluation but no PVs, still proceed - show eval bar without PV cards
       // BUT: Schedule a retry for the current visible position to get PVs
       if (pvLines.isEmpty && primaryEval.pvs.isNotEmpty) {
-        debugPrint('⚠️ EVAL: Have evaluation ($evaluation) but PV conversion failed - will retry');
+        debugPrint(
+          '⚠️ EVAL: Have evaluation ($evaluation) but PV conversion failed - will retry',
+        );
         debugPrint('   primaryEval?.pvs.length=${primaryEval.pvs.length}');
         debugPrint(
           '   ⚠️ PRIMARY EVAL HAS PVS BUT pvLines IS EMPTY - possible FEN mismatch, scheduling retry',
@@ -2316,25 +2441,30 @@ class ChessBoardScreenNotifierNew
           if (currentState == null) return;
 
           // Check if we're still on the same position
-          final currentPos = currentState.isAnalysisMode
-              ? currentState.analysisState.position
-              : currentState.position;
+          final currentPos =
+              currentState.isAnalysisMode
+                  ? currentState.analysisState.position
+                  : currentState.position;
           if (currentPos == null) return;
 
-          final currentFenBase = currentPos.fen.split(' ').take(3).join(' ');
-          final targetFenBase = fen.split(' ').take(3).join(' ');
+          final currentFenBase = currentPos.fen.split(' ').take(4).join(' ');
+          final targetFenBase = fen.split(' ').take(4).join(' ');
 
           // Only retry if still on same position and still no PVs
           if (currentFenBase == targetFenBase &&
               currentState.principalVariations.isEmpty &&
               !currentState.isEvaluating) {
-            debugPrint('🔄 RETRY: Re-evaluating position to get PVs (target: $targetFenBase)');
+            debugPrint(
+              '🔄 RETRY: Re-evaluating position to get PVs (target: $targetFenBase)',
+            );
             _evaluatePosition();
           }
         });
         // Continue with empty PVs - we still want to show the evaluation
       } else if (pvLines.isEmpty) {
-        debugPrint('⚠️ EVAL: No PVs available and primaryEval has no PVs either');
+        debugPrint(
+          '⚠️ EVAL: No PVs available and primaryEval has no PVs either',
+        );
       }
 
       // OPTIMIZATION: Don't await cache persistence - run in background for speed
@@ -2350,6 +2480,7 @@ class ChessBoardScreenNotifierNew
       });
 
       if (_cancelEvaluation || state.value == null || !mounted) return;
+      if (_activeEvalRequestId != currentRequestId) return;
       var currentSnapshot = state.value;
       if (currentSnapshot == null) return;
 
@@ -2360,8 +2491,8 @@ class ChessBoardScreenNotifierNew
               : currentSnapshot.position!;
 
       // Allow small FEN differences (like move counters) during variant exploration
-      final currentFenBase = position.fen.split(' ').take(3).join(' ');
-      final evalFenBase = fen.split(' ').take(3).join(' ');
+      final currentFenBase = position.fen.split(' ').take(4).join(' ');
+      final evalFenBase = fen.split(' ').take(4).join(' ');
 
       if (currentFenBase != evalFenBase) {
         debugPrint(
@@ -2373,24 +2504,29 @@ class ChessBoardScreenNotifierNew
 
         // CRITICAL: Still cache the evaluation result even if position changed
         // This prevents wasted computation and speeds up navigation
-        _evaluationCache[fen] = evaluation;
-        _mateCache[fen] = primaryEval.pvs.first.mate ?? currentSnapshot.mate;
-        _pvCache[fen] = pvLines;
+        _evaluationCache[cacheKey] = evaluation;
+        _mateCache[cacheKey] =
+            primaryEval.pvs.first.mate ?? currentSnapshot.mate;
+        _pvCache[cacheKey] = pvLines;
 
         // EDGE CASE FIX: Check if we have cached evaluation for the CURRENT position
         // This handles race conditions where evaluation completes after position changed
         // but the new position already has a cached result available
         final currentPositionFen = position.fen;
-        final cachedCurrentEval = _evaluationCache[currentPositionFen];
-        final cachedCurrentPv = _pvCache[currentPositionFen];
-        final cachedCurrentMate = _mateCache[currentPositionFen];
+        final currentCacheKey = _fenCacheKey(currentPositionFen);
+        final cachedCurrentEval = _evaluationCache[currentCacheKey];
+        final cachedCurrentPv = _pvCache[currentCacheKey];
+        final cachedCurrentMate = _mateCache[currentCacheKey];
 
-        if (cachedCurrentEval != null && cachedCurrentPv != null && cachedCurrentPv.isNotEmpty) {
+        if (cachedCurrentEval != null &&
+            cachedCurrentPv != null &&
+            cachedCurrentPv.isNotEmpty) {
           // Apply cached evaluation for current position to prevent stuck loading state
           debugPrint(
             '🎯 EVAL: Applying cached result for current position to prevent loading state',
           );
-          final basePointer = inAnalysis ? currentSnapshot.analysisState.movePointer : null;
+          final basePointer =
+              inAnalysis ? currentSnapshot.analysisState.movePointer : null;
 
           final inVariantExploration =
               currentSnapshot.selectedVariantIndex != null &&
@@ -2398,7 +2534,8 @@ class ChessBoardScreenNotifierNew
               currentSnapshot.variantBaseFen != null;
 
           final ISet<Shape> shapes;
-          if (currentSnapshot.selectedVariantIndex != null && cachedCurrentPv.isNotEmpty) {
+          if (currentSnapshot.selectedVariantIndex != null &&
+              cachedCurrentPv.isNotEmpty) {
             shapes = _getAllVariantArrowShapes(
               cachedCurrentPv,
               currentSnapshot.selectedVariantIndex!,
@@ -2408,13 +2545,18 @@ class ChessBoardScreenNotifierNew
               fen: currentPositionFen,
               knodes: 0,
               depth: 0,
-              pvs: cachedCurrentPv.map((line) => Pv(
-                moves: line.moves.map((m) => m.uci).join(' '),
-                cp: ((line.evaluation ?? 0) * 100).toInt(),
-                isMate: line.isMate,
-                mate: line.mate,
-                whitePerspective: true,
-              )).toList(),
+              pvs:
+                  cachedCurrentPv
+                      .map(
+                        (line) => Pv(
+                          moves: line.moves.map((m) => m.uci).join(' '),
+                          cp: ((line.evaluation ?? 0) * 100).toInt(),
+                          isMate: line.isMate,
+                          mate: line.mate,
+                          whitePerspective: true,
+                        ),
+                      )
+                      .toList(),
             );
             shapes = getBestMoveShape(position, evalForShapes);
           }
@@ -2425,8 +2567,14 @@ class ChessBoardScreenNotifierNew
             isEvaluating: false,
             shapes: shapes,
             principalVariations: cachedCurrentPv,
-            variantBaseFen: inVariantExploration ? currentSnapshot.variantBaseFen : currentPositionFen,
-            variantBaseMovePointer: inVariantExploration ? currentSnapshot.variantBaseMovePointer : basePointer,
+            variantBaseFen:
+                inVariantExploration
+                    ? currentSnapshot.variantBaseFen
+                    : currentPositionFen,
+            variantBaseMovePointer:
+                inVariantExploration
+                    ? currentSnapshot.variantBaseMovePointer
+                    : basePointer,
             analysisState: currentSnapshot.analysisState.copyWith(
               suggestionLines: cachedCurrentPv,
             ),
@@ -2442,7 +2590,9 @@ class ChessBoardScreenNotifierNew
           );
         } else {
           // No cached result for current position - just turn off evaluating flag
-          state = AsyncValue.data(currentSnapshot.copyWith(isEvaluating: false));
+          state = AsyncValue.data(
+            currentSnapshot.copyWith(isEvaluating: false),
+          );
         }
         return;
       }
@@ -2451,9 +2601,9 @@ class ChessBoardScreenNotifierNew
           inAnalysis ? currentSnapshot.analysisState.movePointer : null;
       final mateScore = primaryEval.pvs.first.mate ?? currentSnapshot.mate;
 
-      _evaluationCache[fen] = evaluation;
-      _mateCache[fen] = mateScore;
-      _pvCache[fen] = pvLines;
+      _evaluationCache[cacheKey] = evaluation;
+      _mateCache[cacheKey] = mateScore;
+      _pvCache[cacheKey] = pvLines;
 
       // CRITICAL: Don't overwrite variant base if we're exploring a variant
       final inVariantExploration =
@@ -2508,6 +2658,11 @@ class ChessBoardScreenNotifierNew
       final fallbackState = state.value;
       if (fallbackState != null) {
         state = AsyncValue.data(fallbackState.copyWith(isEvaluating: false));
+      }
+    } finally {
+      if (requestId != null && _activeEvalRequestId == requestId) {
+        _activeEvalRequestId = null;
+        _activeEvalKey = null;
       }
     }
   }
@@ -2767,13 +2922,17 @@ class ChessBoardScreenNotifierNew
     return arrows.toISet();
   }
 
-  void _updateEvaluation() {
+  void _updateEvaluation({bool force = false}) {
     if (_isLongPressing) return;
 
     // CRITICAL: Cancel any pending debounced evaluation first
     EasyDebounce.cancel('evaluation-$index');
 
     _cancelEvaluation = false;
+    if (force) {
+      _activeEvalKey = null;
+      _activeEvalRequestId = null;
+    }
 
     // CRITICAL: Clear stale PVs immediately when position changes
     final currentState = state.value;
@@ -2788,9 +2947,9 @@ class ChessBoardScreenNotifierNew
       if (currentState.variantBaseFen != null && fenToEval != null) {
         final pvFenBase = currentState.variantBaseFen!
             .split(' ')
-            .take(3)
+            .take(4)
             .join(' ');
-        final currentFenBase = fenToEval.split(' ').take(3).join(' ');
+        final currentFenBase = fenToEval.split(' ').take(4).join(' ');
 
         if (pvFenBase != currentFenBase) {
           debugPrint('🎯 UPDATE EVAL: Clearing stale PVs for new position');
@@ -2812,7 +2971,7 @@ class ChessBoardScreenNotifierNew
       debugPrint(
         '🎯 EVAL: Starting evaluation immediately for current position',
       );
-      _evaluatePosition();
+      _evaluatePosition(force: force);
     }
   }
 
@@ -2974,7 +3133,9 @@ List<Map<String, dynamic>> _analysisLinesWorker(Map<String, dynamic> payload) {
       for (final token in tokens) {
         final parsedMove = Move.parse(token);
         if (parsedMove == null) {
-          debugPrint('⚠️ UCI->SAN failed: "$token" could not be parsed as a valid move');
+          debugPrint(
+            '⚠️ UCI->SAN failed: "$token" could not be parsed as a valid move',
+          );
           valid = false;
           break;
         }

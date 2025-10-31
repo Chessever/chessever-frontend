@@ -32,7 +32,6 @@ class _GameSearchController extends StateNotifier<GameSearchState> {
 
   // Round ordering
   Map<String, int>? _roundOrderMap;
-  List<GamesAppBarModel>? _cachedRounds;
 
   // Tournament tracking
   String? _currentTourId;
@@ -59,7 +58,6 @@ class _GameSearchController extends StateNotifier<GameSearchState> {
   }
 
   void _cacheRoundOrder(List<GamesAppBarModel> rounds) {
-    _cachedRounds = List.unmodifiable(rounds);
     _roundOrderMap = {};
 
     for (int i = 0; i < rounds.length; i++) {
@@ -283,7 +281,6 @@ class _GameSearchController extends StateNotifier<GameSearchState> {
   /// Force refresh round order
   Future<void> refreshRoundOrder() async {
     _roundOrderMap = null;
-    _cachedRounds = null;
 
     ref.invalidate(gamesAppBarProvider);
     await Future.delayed(const Duration(milliseconds: 100));

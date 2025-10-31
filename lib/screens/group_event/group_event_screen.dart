@@ -317,7 +317,7 @@ class _SegmentedSwitcher extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final nameUpdate = ref.watch(searchQueryProvider);
+    ref.watch(searchQueryProvider);  // Watch to trigger rebuilds
     final realQuery = searchController.text.trim();
 
     final options =

@@ -169,13 +169,56 @@ class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
   }
 }
 
-class EvaluationBarWidgetForGames extends ConsumerWidget {
+/// PERFORMANCE-OPTIMIZED: Lightweight evaluation bar for games list
+/// Does NOT fetch evaluations to avoid killing performance with 20+ simultaneous network calls
+/// Only shows a neutral bar - evaluations are fetched when user opens the game
+class EvaluationBarWidgetForGames extends StatelessWidget {
   final double width;
   final double height;
   final String fen;
   final PlayerView playerView;
 
   const EvaluationBarWidgetForGames({
+    required this.width,
+    required this.height,
+    required this.fen,
+    required this.playerView,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // PERFORMANCE FIX: Do NOT call cascadeEvalProvider here!
+    // Calling it for every game in the list causes:
+    // - 20+ simultaneous Supabase queries
+    // - 20+ simultaneous Lichess API calls
+    // - 20+ potential Stockfish evaluations on main thread
+    // This kills performance when multiple live games are ongoing
+
+    // Show a neutral evaluation bar - actual evaluation is only fetched when user opens the game
+    return _Bars(
+      width: width,
+      height: height,
+      whiteHeight: height * 0.5,
+      blackHeight: height * 0.5,
+      evaluation: 0.0,
+      isEvaluating: false,
+      playerView: playerView,
+      isFlipped: false, // Game cards always show from white's perspective
+    );
+  }
+}
+
+// DEPRECATED: Old implementation that caused performance issues
+// Keeping commented for reference in case we want to re-enable with proper optimization
+/*
+class EvaluationBarWidgetForGames_OLD extends ConsumerWidget {
+  final double width;
+  final double height;
+  final String fen;
+  final PlayerView playerView;
+
+  const EvaluationBarWidgetForGames_OLD({
     required this.width,
     required this.height,
     required this.fen,
@@ -271,6 +314,7 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
         );
   }
 }
+*/
 
 class _Bars extends StatefulWidget {
   const _Bars({
@@ -282,8 +326,6 @@ class _Bars extends StatefulWidget {
     required this.playerView,
     this.isEvaluating = false,
     this.isFlipped = false,
-
-    super.key,
   });
 
   final double width;

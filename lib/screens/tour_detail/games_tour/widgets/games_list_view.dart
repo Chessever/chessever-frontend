@@ -12,24 +12,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 class GamesListView extends ConsumerWidget {
-  final List<GamesAppBarModel> rounds;
-  final Map<String, List<GamesTourModel>> gamesByRound;
-  final GamesScreenModel gamesData;
-  final GamesListViewMode gamesListViewMode;
-  final ItemScrollController itemScrollController;
-  final ItemPositionsListener itemPositionsListener;
-  final void Function(int)? onReturnFromChessboard;
-
-  /// Flattened items (header + games)
-  late final List<_ListItem> _flattened;
-
-  /// Direct lookup: globalGameIndex → listIndex
-  late final Map<int, int> _scrollIndexMap;
-
-  /// Direct lookup: gameId → globalIndex
-  late final Map<String, int> _globalIndexMap;
-
-  GamesListView({
+  const GamesListView({
     super.key,
     required this.rounds,
     required this.gamesByRound,
@@ -38,87 +21,66 @@ class GamesListView extends ConsumerWidget {
     required this.itemScrollController,
     required this.itemPositionsListener,
     this.onReturnFromChessboard,
-  }) {
-    _globalIndexMap = {
-      for (var i = 0; i < gamesData.gamesTourModels.length; i++)
-        gamesData.gamesTourModels[i].gameId: i,
-    };
+  });
 
-    _flattened = [];
-    _scrollIndexMap = {};
-
-    int listIndex = 0;
-    int currentGameIndex = 0;
-
-    for (final round in rounds) {
-      final roundGames = gamesByRound[round.id] ?? [];
-
-      // header
-      _flattened.add(_HeaderItem(round, roundGames));
-      listIndex++;
-
-      if (gamesListViewMode == GamesListViewMode.chessBoardGrid) {
-        for (int i = 0; i < roundGames.length; i += 2) {
-          final game1 = roundGames[i];
-          final game2 = i + 1 < roundGames.length ? roundGames[i + 1] : null;
-
-          _flattened.add(
-            _GameRowItem(
-              game1,
-              _globalIndexMap[game1.gameId]!,
-              game2,
-              game2 != null ? _globalIndexMap[game2.gameId]! : null,
-            ),
-          );
-
-          // map both game indexes to same row index
-          _scrollIndexMap[currentGameIndex] = listIndex;
-          _scrollIndexMap[currentGameIndex + 1] = listIndex;
-
-          currentGameIndex += 2;
-          listIndex++;
-        }
-      } else {
-        for (final game in roundGames) {
-          final globalIndex = _globalIndexMap[game.gameId]!;
-          _flattened.add(_GameRowItem(game, globalIndex));
-          _scrollIndexMap[currentGameIndex] = listIndex;
-
-          currentGameIndex++;
-          listIndex++;
-        }
-      }
-    }
-  }
+  final List<GamesAppBarModel> rounds;
+  final Map<String, List<GamesTourModel>> gamesByRound;
+  final GamesScreenModel gamesData;
+  final GamesListViewMode gamesListViewMode;
+  final ItemScrollController itemScrollController;
+  final ItemPositionsListener itemPositionsListener;
+  final void Function(int)? onReturnFromChessboard;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final itemCount = _computeItemCount(
+      gamesListViewMode,
+      rounds,
+      gamesByRound,
+    );
+
+    if (itemCount == 0) {
+      return const SizedBox.shrink();
+    }
+
     return ScrollablePositionedList.builder(
       itemScrollController: itemScrollController,
       itemPositionsListener: itemPositionsListener,
-      itemCount: _flattened.length,
+      itemCount: itemCount,
       itemBuilder: (context, index) {
-        final item = _flattened[index];
-        final isLastItem = index == _flattened.length - 1;
-        final nextIsHeader = !isLastItem && _flattened[index + 1] is _HeaderItem;
+        final lookup = _lookupItem(
+          index: index,
+          rounds: rounds,
+          gamesByRound: gamesByRound,
+          mode: gamesListViewMode,
+        );
 
-        if (item is _HeaderItem) {
-          // Round headers get more spacing below for visual hierarchy
+        if (lookup == null) {
+          return const SizedBox.shrink();
+        }
+
+        if (lookup is _HeaderData) {
           return Padding(
             padding: EdgeInsets.only(bottom: 16.sp),
-            child: RoundHeader(round: item.round, roundGames: item.roundGames),
-          );
-        } else if (item is _GameRowItem) {
-          // Cards get standard spacing, extra before next header
-          return Padding(
-            padding: EdgeInsets.only(
-              bottom: nextIsHeader ? 20.sp : 12.sp,
+            child: RoundHeader(
+              round: lookup.round,
+              roundGames: lookup.roundGames,
             ),
-            child: gamesListViewMode == GamesListViewMode.chessBoardGrid
-                ? _buildGridRow(context, ref, item)
-                : _buildCardRow(context, ref, item),
           );
         }
+
+        if (lookup is _GameRowData) {
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: lookup.isLastInSection ? 20.sp : 12.sp,
+            ),
+            child:
+                gamesListViewMode == GamesListViewMode.chessBoardGrid
+                    ? _buildGridRow(context, ref, lookup)
+                    : _buildCardRow(context, ref, lookup),
+          );
+        }
+
         return const SizedBox.shrink();
       },
       padding: EdgeInsets.only(
@@ -130,7 +92,7 @@ class GamesListView extends ConsumerWidget {
     );
   }
 
-  Widget _buildGridRow(BuildContext context, WidgetRef ref, _GameRowItem item) {
+  Widget _buildGridRow(BuildContext context, WidgetRef ref, _GameRowData item) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -158,7 +120,12 @@ class GamesListView extends ConsumerWidget {
                 orderedGames: gamesData.gamesTourModels,
                 gameIndex: globalIndex,
                 onReturnFromChessboard: (returnedIndex) {
-                  _scrollToGameIndex(returnedIndex);
+                  _scrollToGameIndex(
+                    returnedIndex,
+                    rounds,
+                    gamesByRound,
+                    gamesListViewMode,
+                  );
                   onReturnFromChessboard?.call(returnedIndex);
                 },
               ),
@@ -170,21 +137,36 @@ class GamesListView extends ConsumerWidget {
     );
   }
 
-  Widget _buildCardRow(BuildContext context, WidgetRef ref, _GameRowItem item) {
+  Widget _buildCardRow(BuildContext context, WidgetRef ref, _GameRowData item) {
     return GameCardWrapperWidget(
       game: item.game1,
       gamesData: gamesData,
       gameIndex: item.globalIndex1,
       isChessBoardVisible: gamesListViewMode == GamesListViewMode.chessBoard,
       onReturnFromChessboard: (returnedIndex) {
-        _scrollToGameIndex(returnedIndex);
+        _scrollToGameIndex(
+          returnedIndex,
+          rounds,
+          gamesByRound,
+          gamesListViewMode,
+        );
         onReturnFromChessboard?.call(returnedIndex);
       },
     );
   }
 
-  void _scrollToGameIndex(int gameIndex) {
-    final listIndex = _scrollIndexMap[gameIndex];
+  void _scrollToGameIndex(
+    int gameIndex,
+    List<GamesAppBarModel> rounds,
+    Map<String, List<GamesTourModel>> gamesByRound,
+    GamesListViewMode mode,
+  ) {
+    final listIndex = _listIndexForGameIndex(
+      gameIndex: gameIndex,
+      rounds: rounds,
+      gamesByRound: gamesByRound,
+      mode: mode,
+    );
     if (listIndex != null) {
       itemScrollController.scrollTo(
         index: listIndex,
@@ -195,18 +177,151 @@ class GamesListView extends ConsumerWidget {
   }
 }
 
-sealed class _ListItem {}
+int _computeItemCount(
+  GamesListViewMode mode,
+  List<GamesAppBarModel> rounds,
+  Map<String, List<GamesTourModel>> gamesByRound,
+) {
+  var count = 0;
+  final isGrid = mode == GamesListViewMode.chessBoardGrid;
 
-class _HeaderItem extends _ListItem {
-  final GamesAppBarModel round;
-  final List<GamesTourModel> roundGames;
-  _HeaderItem(this.round, this.roundGames);
+  for (final round in rounds) {
+    final roundGames = gamesByRound[round.id] ?? const <GamesTourModel>[];
+    if (roundGames.isEmpty) continue;
+
+    count++; // header
+    if (isGrid) {
+      count += (roundGames.length / 2).ceil();
+    } else {
+      count += roundGames.length;
+    }
+  }
+
+  return count;
 }
 
-class _GameRowItem extends _ListItem {
+Object? _lookupItem({
+  required int index,
+  required List<GamesAppBarModel> rounds,
+  required Map<String, List<GamesTourModel>> gamesByRound,
+  required GamesListViewMode mode,
+}) {
+  var currentIndex = 0;
+  var globalGameIndex = 0;
+  final isGrid = mode == GamesListViewMode.chessBoardGrid;
+
+  for (final round in rounds) {
+    final roundGames = gamesByRound[round.id] ?? const <GamesTourModel>[];
+    if (roundGames.isEmpty) continue;
+
+    final roundStartIndex = globalGameIndex;
+
+    if (index == currentIndex) {
+      return _HeaderData(round, roundGames);
+    }
+
+    currentIndex++; // move past header
+    final gamesCount = roundGames.length;
+
+    if (isGrid) {
+      final rowCount = (gamesCount / 2).ceil();
+      if (index < currentIndex + rowCount) {
+        final row = index - currentIndex;
+        final game1Index = row * 2;
+        final game2Index = game1Index + 1;
+
+        return _GameRowData(
+          game1: roundGames[game1Index],
+          globalIndex1: roundStartIndex + game1Index,
+          game2: game2Index < gamesCount ? roundGames[game2Index] : null,
+          globalIndex2:
+              game2Index < gamesCount ? roundStartIndex + game2Index : null,
+          isLastInSection: row == rowCount - 1,
+        );
+      }
+      currentIndex += rowCount;
+    } else {
+      if (index < currentIndex + gamesCount) {
+        final localIndex = index - currentIndex;
+        return _GameRowData(
+          game1: roundGames[localIndex],
+          globalIndex1: roundStartIndex + localIndex,
+          isLastInSection: localIndex == gamesCount - 1,
+        );
+      }
+      currentIndex += gamesCount;
+    }
+
+    globalGameIndex = roundStartIndex + gamesCount;
+  }
+
+  return null;
+}
+
+int? _listIndexForGameIndex({
+  required int gameIndex,
+  required List<GamesAppBarModel> rounds,
+  required Map<String, List<GamesTourModel>> gamesByRound,
+  required GamesListViewMode mode,
+}) {
+  if (gameIndex < 0) return null;
+
+  var currentIndex = 0;
+  var globalGameIndex = 0;
+  final isGrid = mode == GamesListViewMode.chessBoardGrid;
+
+  for (final round in rounds) {
+    final roundGames = gamesByRound[round.id] ?? const <GamesTourModel>[];
+    if (roundGames.isEmpty) continue;
+
+    final roundStartIndex = globalGameIndex;
+    final gamesCount = roundGames.length;
+
+    // skip header
+    currentIndex++;
+
+    if (gameIndex >= roundStartIndex &&
+        gameIndex < roundStartIndex + gamesCount) {
+      final localIndex = gameIndex - roundStartIndex;
+      if (isGrid) {
+        final row = localIndex ~/ 2;
+        return currentIndex + row;
+      } else {
+        return currentIndex + localIndex;
+      }
+    }
+
+    if (isGrid) {
+      currentIndex += (gamesCount / 2).ceil();
+    } else {
+      currentIndex += gamesCount;
+    }
+
+    globalGameIndex = roundStartIndex + gamesCount;
+  }
+
+  return null;
+}
+
+class _HeaderData {
+  _HeaderData(this.round, this.roundGames);
+
+  final GamesAppBarModel round;
+  final List<GamesTourModel> roundGames;
+}
+
+class _GameRowData {
+  _GameRowData({
+    required this.game1,
+    required this.globalIndex1,
+    this.game2,
+    this.globalIndex2,
+    required this.isLastInSection,
+  });
+
   final GamesTourModel game1;
   final int globalIndex1;
   final GamesTourModel? game2;
   final int? globalIndex2;
-  _GameRowItem(this.game1, this.globalIndex1, [this.game2, this.globalIndex2]);
+  final bool isLastInSection;
 }
