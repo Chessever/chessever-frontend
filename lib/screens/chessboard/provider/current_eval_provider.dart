@@ -5,7 +5,6 @@ import 'package:chessever2/repository/lichess/cloud_eval/lichess_eval_repository
 import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.dart';
 import 'package:chessever2/repository/supabase/evals/evals_repository.dart';
 import 'package:chessever2/repository/supabase/evals/persist_cloud_eval.dart';
-import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart' show FutureProvider;
 import 'stockfish_singleton.dart';
 
@@ -38,7 +37,7 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<CloudEval, String>
         .read(evalsRepositoryProvider)
         .fetchFromSupabase(fen);
     if (supabaseEval != null) {
-      final cloud = await ref
+      final cloud = ref
           .read(evalsRepositoryProvider)
           .evalsToCloudEval(fen, supabaseEval);
       final fenParts = fen.split(' ');
@@ -134,7 +133,7 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval,
         .fetchFromSupabase(fen)
         .then((supabaseEval) async {
           if (supabaseEval == null) return null;
-          final cloud = await evalsRepo.evalsToCloudEval(fen, supabaseEval);
+          final cloud = evalsRepo.evalsToCloudEval(fen, supabaseEval);
           if (_isValidEvaluation(cloud)) {
             final fenParts = fen.split(' ');
             final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';

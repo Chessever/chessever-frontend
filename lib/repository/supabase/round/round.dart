@@ -27,13 +27,16 @@ class Round {
       // Validate required fields
       if (json['id'] == null) throw Exception('Missing required field: id');
       if (json['slug'] == null) throw Exception('Missing required field: slug');
-      if (json['tour_id'] == null)
+      if (json['tour_id'] == null) {
         throw Exception('Missing required field: tour_id');
-      if (json['tour_slug'] == null)
+      }
+      if (json['tour_slug'] == null) {
         throw Exception('Missing required field: tour_slug');
+      }
       if (json['name'] == null) throw Exception('Missing required field: name');
-      if (json['created_at'] == null)
+      if (json['created_at'] == null) {
         throw Exception('Missing required field: created_at');
+      }
 
       if (json['url'] == null) throw Exception('Missing required field: url');
 
@@ -78,22 +81,22 @@ class Round {
     throw Exception('DateTime value must be a string: $dateValue');
   }
 
-  // Helper method to safely parse bool
-  static bool _parseBool(dynamic boolValue) {
-    if (boolValue == null) {
-      throw Exception('Boolean value is null');
-    }
-
-    if (boolValue is bool) {
-      return boolValue;
-    }
-
-    if (boolValue is String) {
-      return boolValue.toLowerCase() == 'true';
-    }
-
-    throw Exception('Boolean value must be bool or string: $boolValue');
-  }
+  // Helper method to safely parse bool - not currently used but kept for future use
+  // static bool _parseBool(dynamic boolValue) {
+  //   if (boolValue == null) {
+  //     throw Exception('Boolean value is null');
+  //   }
+  //
+  //   if (boolValue is bool) {
+  //     return boolValue;
+  //   }
+  //
+  //   if (boolValue is String) {
+  //     return boolValue.toLowerCase() == 'true';
+  //   }
+  //
+  //   throw Exception('Boolean value must be bool or string: $boolValue');
+  // }
 
   Map<String, dynamic> toJson() {
     return {

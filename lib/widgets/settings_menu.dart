@@ -1,6 +1,5 @@
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
-import 'package:chessever2/widgets/blur_background.dart';
 import 'package:flutter/material.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -21,7 +20,7 @@ class SettingsMenu extends StatelessWidget {
   final Widget? timezoneIcon;
 
   const SettingsMenu({
-    Key? key,
+    super.key,
     required this.notificationsEnabled,
     this.languageSubtitle = "English",
     this.timezoneSubtitle = "UTC+0",
@@ -34,7 +33,7 @@ class SettingsMenu extends StatelessWidget {
     this.boardSettingsIcon,
     this.languageIcon,
     this.timezoneIcon,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -67,7 +66,7 @@ class SettingsMenu extends StatelessWidget {
               decoration: BoxDecoration(
                 border: Border(
                   bottom: BorderSide(
-                    color: Colors.grey.shade800.withOpacity(0.1),
+                    color: Colors.grey.shade800.withValues(alpha: 0.1),
                     width: 1,
                   ),
                 ),
@@ -119,8 +118,8 @@ class SettingsMenu extends StatelessWidget {
               decoration: BoxDecoration(
                 border: Border(
                   bottom: BorderSide(
-                    color: Colors.grey.shade800.withOpacity(
-                      0.15,
+                    color: Colors.grey.shade800.withValues(
+                      alpha: 0.15,
                     ), // Reduced opacity from 0.3 to 0.15
                     width: 1,
                   ),
@@ -167,8 +166,8 @@ class SettingsMenu extends StatelessWidget {
               decoration: BoxDecoration(
                 border: Border(
                   bottom: BorderSide(
-                    color: Colors.grey.shade800.withOpacity(
-                      0.15,
+                    color: Colors.grey.shade800.withValues(
+                      alpha: 0.15,
                     ), // Reduced opacity from 0.3 to 0.15
                     width: 1,
                   ),
@@ -233,12 +232,12 @@ class SettingsMenu extends StatelessWidget {
                       onChanged: (value) {
                         onNotificationsPressed?.call();
                       },
-                      activeColor: kWhiteColor,
+                      activeThumbColor: kWhiteColor,
                       // Circle color is white
                       activeTrackColor: kPrimaryColor,
                       // Track uses app primary color
                       inactiveThumbColor: kWhiteColor,
-                      inactiveTrackColor: Colors.grey.withOpacity(0.5),
+                      inactiveTrackColor: Colors.grey.withValues(alpha: 0.5),
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                   ),

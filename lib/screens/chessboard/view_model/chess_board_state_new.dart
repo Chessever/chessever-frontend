@@ -241,8 +241,12 @@ class ChessBoardStateNew {
   final List<AnalysisLine> principalVariations;
   final int? selectedVariantIndex; // Track which engine suggestion is selected
   final List<int> variantMovePointer; // Track progress through selected variant
-  final bool showEngineAnalysis; // Toggle visibility of engine gauge and principal variations
-  final bool showPrincipalVariations; // Toggle visibility of principal variation cards only
+  final bool
+  showEngineAnalysis; // Toggle visibility of engine gauge and principal variations
+  final bool
+  showPrincipalVariations; // Toggle visibility of principal variation cards only
+  final bool
+  hasUnseenMoves; // Flag to indicate if there are unseen moves (for live games)
   /// FEN position where current PVs were generated
   final String? variantBaseFen;
 
@@ -290,6 +294,7 @@ class ChessBoardStateNew {
     this.variantMovePointer = const [],
     this.showEngineAnalysis = true, // Active by default
     this.showPrincipalVariations = true, // Active by default
+    this.hasUnseenMoves = false,
     this.variantBaseFen,
     this.variantBaseMovePointer,
     this.variantBaseLastMove,
@@ -323,6 +328,7 @@ class ChessBoardStateNew {
     List<int>? variantMovePointer,
     bool? showEngineAnalysis,
     bool? showPrincipalVariations,
+    bool? hasUnseenMoves,
     Object? variantBaseFen = _noChange,
     Object? variantBaseMovePointer = _noChange,
     Object? variantBaseLastMove = _noChange,
@@ -368,7 +374,9 @@ class ChessBoardStateNew {
               : selectedVariantIndex as int?,
       variantMovePointer: variantMovePointer ?? this.variantMovePointer,
       showEngineAnalysis: showEngineAnalysis ?? this.showEngineAnalysis,
-      showPrincipalVariations: showPrincipalVariations ?? this.showPrincipalVariations,
+      showPrincipalVariations:
+          showPrincipalVariations ?? this.showPrincipalVariations,
+      hasUnseenMoves: hasUnseenMoves ?? this.hasUnseenMoves,
       variantBaseFen:
           identical(variantBaseFen, _noChange)
               ? this.variantBaseFen
@@ -407,7 +415,11 @@ class ChessBoardStateNew {
         other.selectedVariantIndex == selectedVariantIndex &&
         other.showEngineAnalysis == showEngineAnalysis &&
         other.showPrincipalVariations == showPrincipalVariations &&
-        other.variantBaseFen == variantBaseFen;
+        other.hasUnseenMoves == hasUnseenMoves &&
+        other.variantBaseFen == variantBaseFen &&
+        other.principalVariations.length == principalVariations.length &&
+        other.analysisState.suggestionLines.length ==
+            analysisState.suggestionLines.length;
   }
 
   @override
@@ -426,6 +438,9 @@ class ChessBoardStateNew {
         (selectedVariantIndex?.hashCode ?? 0) ^
         showEngineAnalysis.hashCode ^
         showPrincipalVariations.hashCode ^
-        (variantBaseFen?.hashCode ?? 0);
+        hasUnseenMoves.hashCode ^
+        (variantBaseFen?.hashCode ?? 0) ^
+        principalVariations.length.hashCode ^
+        analysisState.suggestionLines.length.hashCode;
   }
 }

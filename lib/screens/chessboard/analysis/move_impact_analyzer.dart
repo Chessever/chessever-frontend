@@ -313,44 +313,45 @@ MoveImpactAnalysis? _calculateMoveImpactFromAlternatives({
     final bool actualMateForPlayer = actualResultPlayer >= mateThreshold;
     final bool actualMateAgainstPlayer = actualResultPlayer <= -mateThreshold;
 
-    bool lostMaterialForPlayer = false;
-    final fenAfter = positionFenAfterMove;
-    if (positionFenBeforeMove.isNotEmpty && fenAfter != null && fenAfter.isNotEmpty) {
-      final int materialBefore = _materialBalance(positionFenBeforeMove);
-      final int materialAfter = _materialBalance(fenAfter);
-      final int materialDelta = materialAfter - materialBefore;
-      if (isWhiteMove) {
-        lostMaterialForPlayer = materialDelta < 0;
-      } else {
-        lostMaterialForPlayer = materialDelta > 0;
-      }
-    }
+    // Variables disabled for brilliant/great move classification
+    // bool lostMaterialForPlayer = false;
+    // final fenAfter = positionFenAfterMove;
+    // if (positionFenBeforeMove.isNotEmpty && fenAfter != null && fenAfter.isNotEmpty) {
+    //   final int materialBefore = _materialBalance(positionFenBeforeMove);
+    //   final int materialAfter = _materialBalance(fenAfter);
+    //   final int materialDelta = materialAfter - materialBefore;
+    //   if (isWhiteMove) {
+    //     lostMaterialForPlayer = materialDelta < 0;
+    //   } else {
+    //     lostMaterialForPlayer = materialDelta > 0;
+    //   }
+    // }
 
     // Perspective conversions for probability metrics
     final wpBest = _cpToWinProb(bestResultPlayer);
     final wpActual = _cpToWinProb(actualResultPlayer);
     final double rawWinProbLoss = wpBest - wpActual;
     final winProbLoss = rawWinProbLoss <= 0 ? 0.0 : rawWinProbLoss.clamp(0.0, 1.0);
-    final winProbGain = (wpActual - wpBest).clamp(0.0, 1.0);
+    // final winProbGain = (wpActual - wpBest).clamp(0.0, 1.0);  // Disabled for brilliant/great
 
     // Centipawn gap remains informative for UI (positive ⇒ worse than best)
     final alternativesGapRaw = bestResultPlayer - actualResultPlayer;
     final int cpLoss = math.max(0, alternativesGapRaw);
     final int alternativesGap = alternativesGapRaw;
 
-    final phase = _detectGamePhase(positionEvalBeforeMove.fen);
-    final nearBestCount = _countNearBestMoves(pvs);
-    final decided = _isDecidedPosition(bestResultingCp);
-    final actualDecided = _isDecidedPosition(actualResultPlayer);
-    final bool lowConfidence = positionEvalBeforeMove.depth < 12 || positionEvalBeforeMove.knodes < 80;
+    // final phase = _detectGamePhase(positionEvalBeforeMove.fen);  // Disabled for brilliant/great
+    // final nearBestCount = _countNearBestMoves(pvs);  // Disabled for brilliant/great
+    // final decided = _isDecidedPosition(bestResultingCp);  // Disabled for brilliant/great
+    // final actualDecided = _isDecidedPosition(actualResultPlayer);  // Disabled
+    // final bool lowConfidence = positionEvalBeforeMove.depth < 12 || positionEvalBeforeMove.knodes < 80;  // Disabled
 
-    final thresholds = _phaseThresholdsMap[phase]!;
-    final positiveGainThreshold = math.max(0.04, thresholds.great / 2);
+    // final thresholds = _phaseThresholdsMap[phase]!;  // Disabled for brilliant/great
+    // final positiveGainThreshold = math.max(0.04, thresholds.great / 2);  // Disabled for brilliant/great
 
-    final bool bothDecidedSame = decided && actualDecided &&
-        (bestResultPlayer == 0 || actualResultPlayer == 0 || bestResultPlayer.sign == actualResultPlayer.sign);
-    final AdvantageTier bestTier = _advantageTier(bestResultPlayer);
-    final AdvantageTier actualTier = _advantageTier(actualResultPlayer);
+    // final bool bothDecidedSame = decided && actualDecided &&
+    //     (bestResultPlayer == 0 || actualResultPlayer == 0 || bestResultPlayer.sign == actualResultPlayer.sign);  // Disabled
+    // final AdvantageTier bestTier = _advantageTier(bestResultPlayer);  // Disabled for brilliant/great
+    // final AdvantageTier actualTier = _advantageTier(actualResultPlayer);  // Disabled for brilliant/great
     final PositionOutcome outcomeBefore = _outcomeForPlayer(bestResultPlayer);
     final PositionOutcome outcomeAfter = _outcomeForPlayer(actualResultPlayer);
 
@@ -484,31 +485,30 @@ MoveImpactAnalysis? _calculateMoveImpactFromAlternatives({
     }
 
     if (impact == MoveImpactType.normal) {
-      final highlightImpact = _classifyBrilliantOrGreat(
-        playerMoveRank: playerMoveRank,
-        winProbLoss: winProbLoss,
-        winProbGain: winProbGain,
-        positiveGainThreshold: positiveGainThreshold,
-        bestResultPlayer: bestResultPlayer,
-        actualResultPlayer: actualResultPlayer,
-        alternativesGap: alternativesGap,
-        pvs: pvs,
-        nearBestCount: nearBestCount,
-        decided: decided,
-        bothDecidedSame: bothDecidedSame,
-        lowConfidence: lowConfidence,
-        playerMoveSan: playerMoveSan,
-        isWhiteMove: isWhiteMove,
-        playerMoveFoundInPv: playerMoveFoundInPv,
-        bestTier: bestTier,
-        actualTier: actualTier,
-        bestMateForPlayer: bestMateForPlayer,
-        actualMateForPlayer: actualMateForPlayer,
-        actualMateAgainstPlayer: actualMateAgainstPlayer,
-        lostMaterialForPlayer: lostMaterialForPlayer,
-      );
-
       // DISABLED: Brilliant/great moves no longer classified
+      // final highlightImpact = _classifyBrilliantOrGreat(
+      //   playerMoveRank: playerMoveRank,
+      //   winProbLoss: winProbLoss,
+      //   winProbGain: winProbGain,
+      //   positiveGainThreshold: positiveGainThreshold,
+      //   bestResultPlayer: bestResultPlayer,
+      //   actualResultPlayer: actualResultPlayer,
+      //   alternativesGap: alternativesGap,
+      //   pvs: pvs,
+      //   nearBestCount: nearBestCount,
+      //   decided: decided,
+      //   bothDecidedSame: bothDecidedSame,
+      //   lowConfidence: lowConfidence,
+      //   playerMoveSan: playerMoveSan,
+      //   isWhiteMove: isWhiteMove,
+      //   playerMoveFoundInPv: playerMoveFoundInPv,
+      //   bestTier: bestTier,
+      //   actualTier: actualTier,
+      //   bestMateForPlayer: bestMateForPlayer,
+      //   actualMateForPlayer: actualMateForPlayer,
+      //   actualMateAgainstPlayer: actualMateAgainstPlayer,
+      //   lostMaterialForPlayer: lostMaterialForPlayer,
+      // );
       // if (highlightImpact != MoveImpactType.normal) {
       //   impact = highlightImpact;
       // }
@@ -540,106 +540,107 @@ MoveImpactAnalysis? _calculateMoveImpactFromAlternatives({
   }
 }
 
-MoveImpactType _classifyBrilliantOrGreat({
-  required int playerMoveRank,
-  required double winProbLoss,
-  required double winProbGain,
-  required double positiveGainThreshold,
-  required int bestResultPlayer,
-  required int actualResultPlayer,
-  required int alternativesGap,
-  required List<Pv> pvs,
-  required int nearBestCount,
-  required bool decided,
-  required bool bothDecidedSame,
-  required bool lowConfidence,
-  required String playerMoveSan,
-  required bool isWhiteMove,
-  required bool playerMoveFoundInPv,
-  required AdvantageTier bestTier,
-  required AdvantageTier actualTier,
-  required bool bestMateForPlayer,
-  required bool actualMateForPlayer,
-  required bool actualMateAgainstPlayer,
-  required bool lostMaterialForPlayer,
-}) {
-  if (playerMoveRank != 0 || decided || bothDecidedSame || pvs.length < 3) {
-    return MoveImpactType.normal;
-  }
-  if (!playerMoveFoundInPv) {
-    return MoveImpactType.normal;
-  }
-  if (actualMateAgainstPlayer) {
-    return MoveImpactType.normal;
-  }
-
-  final cpSecondPlayer = _pvCpForPlayer(pvs, 1, isWhiteMove, fallback: bestResultPlayer);
-  final cpThirdPlayer = _pvCpForPlayer(pvs, 2, isWhiteMove, fallback: bestResultPlayer);
-  final gapToSecond = (bestResultPlayer - cpSecondPlayer).abs();
-  final gapToThird = (bestResultPlayer - cpThirdPlayer).abs();
-  final bool uniqueOnlyMove = nearBestCount <= 1 && gapToSecond >= 100 && gapToThird >= 160;
-  final bool strongGap = gapToSecond >= 90 || gapToThird >= 150;
-  final bool clearGap = gapToSecond >= 70 || gapToThird >= 120;
-  final bool preservesEval = winProbLoss <= 0.01;
-  final bool improvedEval = winProbGain >= positiveGainThreshold;
-  final bool sacrificeDetected = _isSacrifice(
-        moveSan: playerMoveSan,
-        cpBefore: bestResultPlayer,
-        cpAfter: actualResultPlayer,
-        lostMaterial: lostMaterialForPlayer,
-      );
-  final bool quietTactical = _isQuietTactical(
-        moveSan: playerMoveSan,
-        evalSwing: alternativesGap,
-      );
-  final bool tactical = sacrificeDetected || quietTactical;
-  final double wpBest = _cpToWinProb(bestResultPlayer);
-  final double wpSecond = _cpToWinProb(cpSecondPlayer);
-  final double winProbGap = (wpBest - wpSecond).abs();
-  final bool hugeWinProbGap = winProbGap >= 0.12;
-  final bool strongWinProbGap = winProbGap >= 0.08;
-
-  final bool qualifiesBrilliant = !lowConfidence &&
-      (actualMateForPlayer ||
-          (uniqueOnlyMove && (tactical || hugeWinProbGap)) ||
-          (bestMateForPlayer && preservesEval && (tactical || hugeWinProbGap)));
-
-  // DISABLED: Brilliant moves no longer classified
-  // if (qualifiesBrilliant && (preservesEval || improvedEval || actualMateForPlayer)) {
-  //   final reasons = {
-  //     'uniqueOnly': uniqueOnlyMove,
-  //     'tactical': tactical,
-  //     'mateFor': actualMateForPlayer,
-  //     'mateSaved': bestMateForPlayer,
-  //     'winProbGap': winProbGap.toStringAsFixed(3),
-  //   };
-  //   debugPrint('✨ BRILLIANT reason=$reasons move=$playerMoveSan');
-  //   return MoveImpactType.brilliant;
-  // }
-
-  // DISABLED: Great moves no longer classified
-  // final bool greatByPreserve = preservesEval && !lowConfidence && (strongGap || strongWinProbGap);
-  // final bool greatByGain = improvedEval && (strongGap || strongWinProbGap || actualTier == AdvantageTier.winning);
-  // final bool greatByTactics = preservesEval && tactical && !lowConfidence && clearGap;
-  // final bool greatByMate = actualMateForPlayer && !lowConfidence;
-  // final bool greatByRescue = preservesEval && bestTier == AdvantageTier.equal && actualTier == AdvantageTier.slight;
-  //
-  // if ((preservesEval || improvedEval || actualMateForPlayer) &&
-  //     (greatByPreserve || greatByGain || greatByTactics || greatByMate || greatByRescue)) {
-  //   final reasons = {
-  //     'preserve': greatByPreserve,
-  //     'gain': greatByGain,
-  //     'tactical': greatByTactics,
-  //     'mate': greatByMate,
-  //     'rescue': greatByRescue,
-  //     'winProbGap': winProbGap.toStringAsFixed(3),
-  //   };
-  //   debugPrint('⭐ GREAT reason=$reasons move=$playerMoveSan');
-  //   return MoveImpactType.great;
-  // }
-
-  return MoveImpactType.normal;
-}
+// DISABLED: Brilliant/great move classification is no longer used
+// MoveImpactType _classifyBrilliantOrGreat({
+//   required int playerMoveRank,
+//   required double winProbLoss,
+//   required double winProbGain,
+//   required double positiveGainThreshold,
+//   required int bestResultPlayer,
+//   required int actualResultPlayer,
+//   required int alternativesGap,
+//   required List<Pv> pvs,
+//   required int nearBestCount,
+//   required bool decided,
+//   required bool bothDecidedSame,
+//   required bool lowConfidence,
+//   required String playerMoveSan,
+//   required bool isWhiteMove,
+//   required bool playerMoveFoundInPv,
+//   required AdvantageTier bestTier,
+//   required AdvantageTier actualTier,
+//   required bool bestMateForPlayer,
+//   required bool actualMateForPlayer,
+//   required bool actualMateAgainstPlayer,
+//   required bool lostMaterialForPlayer,
+// }) {
+//   if (playerMoveRank != 0 || decided || bothDecidedSame || pvs.length < 3) {
+//     return MoveImpactType.normal;
+//   }
+//   if (!playerMoveFoundInPv) {
+//     return MoveImpactType.normal;
+//   }
+//   if (actualMateAgainstPlayer) {
+//     return MoveImpactType.normal;
+//   }
+//
+//   final cpSecondPlayer = _pvCpForPlayer(pvs, 1, isWhiteMove, fallback: bestResultPlayer);
+//   final cpThirdPlayer = _pvCpForPlayer(pvs, 2, isWhiteMove, fallback: bestResultPlayer);
+//   final gapToSecond = (bestResultPlayer - cpSecondPlayer).abs();
+//   final gapToThird = (bestResultPlayer - cpThirdPlayer).abs();
+//   final bool uniqueOnlyMove = nearBestCount <= 1 && gapToSecond >= 100 && gapToThird >= 160;
+//   final bool strongGap = gapToSecond >= 90 || gapToThird >= 150;
+//   final bool clearGap = gapToSecond >= 70 || gapToThird >= 120;
+//   final bool preservesEval = winProbLoss <= 0.01;
+//   final bool improvedEval = winProbGain >= positiveGainThreshold;
+//   final bool sacrificeDetected = _isSacrifice(
+//         moveSan: playerMoveSan,
+//         cpBefore: bestResultPlayer,
+//         cpAfter: actualResultPlayer,
+//         lostMaterial: lostMaterialForPlayer,
+//       );
+//   final bool quietTactical = _isQuietTactical(
+//         moveSan: playerMoveSan,
+//         evalSwing: alternativesGap,
+//       );
+//   final bool tactical = sacrificeDetected || quietTactical;
+//   final double wpBest = _cpToWinProb(bestResultPlayer);
+//   final double wpSecond = _cpToWinProb(cpSecondPlayer);
+//   final double winProbGap = (wpBest - wpSecond).abs();
+//   final bool hugeWinProbGap = winProbGap >= 0.12;
+//   final bool strongWinProbGap = winProbGap >= 0.08;
+//
+//   final bool qualifiesBrilliant = !lowConfidence &&
+//       (actualMateForPlayer ||
+//           (uniqueOnlyMove && (tactical || hugeWinProbGap)) ||
+//           (bestMateForPlayer && preservesEval && (tactical || hugeWinProbGap)));
+//
+//   // DISABLED: Brilliant moves no longer classified
+//   // if (qualifiesBrilliant && (preservesEval || improvedEval || actualMateForPlayer)) {
+//   //   final reasons = {
+//   //     'uniqueOnly': uniqueOnlyMove,
+//   //     'tactical': tactical,
+//   //     'mateFor': actualMateForPlayer,
+//   //     'mateSaved': bestMateForPlayer,
+//   //     'winProbGap': winProbGap.toStringAsFixed(3),
+//   //   };
+//   //   debugPrint('✨ BRILLIANT reason=$reasons move=$playerMoveSan');
+//   //   return MoveImpactType.brilliant;
+//   // }
+//
+//   // DISABLED: Great moves no longer classified
+//   // final bool greatByPreserve = preservesEval && !lowConfidence && (strongGap || strongWinProbGap);
+//   // final bool greatByGain = improvedEval && (strongGap || strongWinProbGap || actualTier == AdvantageTier.winning);
+//   // final bool greatByTactics = preservesEval && tactical && !lowConfidence && clearGap;
+//   // final bool greatByMate = actualMateForPlayer && !lowConfidence;
+//   // final bool greatByRescue = preservesEval && bestTier == AdvantageTier.equal && actualTier == AdvantageTier.slight;
+//   //
+//   // if ((preservesEval || improvedEval || actualMateForPlayer) &&
+//   //     (greatByPreserve || greatByGain || greatByTactics || greatByMate || greatByRescue)) {
+//   //   final reasons = {
+//   //     'preserve': greatByPreserve,
+//   //     'gain': greatByGain,
+//   //     'tactical': greatByTactics,
+//   //     'mate': greatByMate,
+//   //     'rescue': greatByRescue,
+//   //     'winProbGap': winProbGap.toStringAsFixed(3),
+//   //   };
+//   //   debugPrint('⭐ GREAT reason=$reasons move=$playerMoveSan');
+//   //   return MoveImpactType.great;
+//   // }
+//
+//   return MoveImpactType.normal;
+// }
 
 MoveImpactAnalysis? calculateMoveImpact({
   required CloudEval? positionEvalBeforeMove,
@@ -717,6 +718,7 @@ String? _uciToSan(String uci, Position position) {
   }
 }
 
+// These enums are kept for legacy compatibility but are not actively used
 /// Game phase enum for dynamic thresholds
 enum GamePhase {
   opening,
