@@ -22,6 +22,35 @@ class EnhancedCloudEval {
   });
 }
 
+class EngineOptions {
+  final int multiPv;
+  final int threads;
+  final int hashMb;
+  final int? maxDepth;
+  final int timeoutMs; // used for dynamic deepening
+
+  const EngineOptions({
+    this.multiPv = 3,
+    this.threads = 1,
+    this.hashMb = 64,
+    this.maxDepth,
+    this.timeoutMs = 6000,
+  });
+}
+
+class EngineProgress {
+  final String fen;
+  final int depth;
+  final int knodes;
+  final List<Pv> pvs;
+  const EngineProgress({
+    required this.fen,
+    required this.depth,
+    required this.knodes,
+    required this.pvs,
+  });
+}
+
 class StockfishSingleton {
   StockfishSingleton._();
   static final StockfishSingleton _i = StockfishSingleton._();
@@ -35,10 +64,15 @@ class StockfishSingleton {
   final Map<String, _EvalJob> _pendingJobs = {}; // Keyed by cacheKey
   bool _isProcessing = false; // Flag to prevent concurrent processing
   static const int _maxQueueSize = 60; // Soft cap to avoid backlog
+  final StreamController<EngineProgress> _progressController =
+      StreamController<EngineProgress>.broadcast();
+
+  Stream<EngineProgress> get progressStream => _progressController.stream;
 
   Future<EnhancedCloudEval> evaluatePosition(
     String fen, {
     int depth = 15,
+    EngineOptions options = const EngineOptions(),
   }) async {
     // Validate depth range
     if (depth < 1 || depth > 25) {
@@ -53,7 +87,7 @@ class StockfishSingleton {
     // Create cache key including side to move for perspective-aware caching
     final fenParts = fen.split(' ');
     final sideToMove = fenParts.length > 1 ? fenParts[1] : 'w';
-    final cacheKey = '${fen}_${depth}_$sideToMove';
+    final cacheKey = '${fen}_${depth}_${options.multiPv}_$sideToMove';
 
     if (_evaluationCache.containsKey(cacheKey)) {
       debugPrint('📦 CACHE HIT for $fen');
@@ -73,7 +107,7 @@ class StockfishSingleton {
 
     // Create job and add to queue
     final completer = Completer<EnhancedCloudEval>();
-    final job = _EvalJob(fen, depth, cacheKey, completer);
+    final job = _EvalJob(fen, depth, cacheKey, completer, options);
 
     _jobQueue.add(job);
     _pendingJobs[cacheKey] = job;
@@ -176,6 +210,7 @@ class StockfishSingleton {
     final fen = job.fen;
     final depth = job.depth;
     final completer = job.completer;
+    final options = job.options;
 
     // Ensure engine is ready
     if (_engine == null || _engine!.state.value != StockfishState.ready) {
@@ -238,6 +273,20 @@ class StockfishSingleton {
             final pv = Pv(moves: moves, cp: cp, isMate: true, mate: mate);
             pvs[multipvIndex - 1] = pv;
           }
+
+          // Emit progressive deepening updates
+          final truncated = pvs.where((pv) => pv.moves.isNotEmpty).toList();
+          if (truncated.isNotEmpty) {
+            final normalized = _normalizeToWhitePerspective(truncated, fen);
+            _progressController.add(
+              EngineProgress(
+                fen: fen,
+                depth: finalDepth,
+                knodes: knodes,
+                pvs: normalized,
+              ),
+            );
+          }
         }
       }
 
@@ -276,10 +325,17 @@ class StockfishSingleton {
     });
 
     try {
-      debugPrint('   → Sending: MultiPV 3, depth $depth');
-      _engine!.stdin = 'setoption name MultiPV value 3';
+      debugPrint('   → Sending options and starting search');
+      _engine!.stdin = 'setoption name MultiPV value ${options.multiPv}';
+      _engine!.stdin = 'setoption name Threads value ${options.threads}';
+      _engine!.stdin = 'setoption name Hash value ${options.hashMb}';
       _engine!.stdin = 'position fen $fen';
-      _engine!.stdin = 'go depth $depth';
+      if (options.maxDepth != null) {
+        _engine!.stdin = 'go depth ${options.maxDepth}';
+      } else {
+        // Dynamic deepening using movetime budget
+        _engine!.stdin = 'go movetime ${options.timeoutMs}';
+      }
     } catch (e) {
       debugPrint('❌ ERROR sending commands to Stockfish: $e');
       if (!completer.isCompleted) {
@@ -297,8 +353,9 @@ class StockfishSingleton {
       return;
     }
 
-    // Set up timeout
-    Timer(const Duration(seconds: 10), () {
+    // Set up timeout (only used as a safety net)
+    final timeout = options.timeoutMs.clamp(1000, 60000);
+    Timer(Duration(milliseconds: timeout), () {
       if (_currentJob == job && !completer.isCompleted && !evaluationComplete) {
         final filteredPvs = pvs
             .where((pv) => pv.moves.isNotEmpty)
@@ -376,6 +433,7 @@ class StockfishSingleton {
     _engine?.dispose();
     _engine = null;
     _evaluationCache.clear();
+    _progressController.close();
   }
 
   void clearCache() {
@@ -395,5 +453,6 @@ class _EvalJob {
   final int depth;
   final String key;
   final Completer<EnhancedCloudEval> completer;
-  _EvalJob(this.fen, this.depth, this.key, this.completer);
+  final EngineOptions options;
+  _EvalJob(this.fen, this.depth, this.key, this.completer, this.options);
 }

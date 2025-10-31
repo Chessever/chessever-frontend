@@ -8,6 +8,7 @@ class ChessSvgBottomNavbar extends StatelessWidget {
   final double width;
   final VoidCallback? onPressed;
   final bool isActive;
+  final String? bottomCaption;
 
   const ChessSvgBottomNavbar({
     super.key,
@@ -15,6 +16,7 @@ class ChessSvgBottomNavbar extends StatelessWidget {
     required this.width,
     required this.onPressed,
     this.isActive = false,
+    this.bottomCaption,
   });
 
   @override
@@ -33,17 +35,33 @@ class ChessSvgBottomNavbar extends StatelessWidget {
       onTap: onPressed,
       child: Container(
         alignment: Alignment.center,
-        height: 40.h,
+        height: 48.h,
         width: width,
-        padding: EdgeInsets.all(8.sp),
-        child: SvgWidget(
-          svgPath,
-          height: 24.h,
-          width: 24.w,
-          colorFilter: ColorFilter.mode(
-            iconColor,
-            BlendMode.srcIn,
-          ),
+        padding: EdgeInsets.all(4.sp),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SvgWidget(
+              svgPath,
+              height: 22.h,
+              width: 22.w,
+              colorFilter: ColorFilter.mode(
+                iconColor,
+                BlendMode.srcIn,
+              ),
+            ),
+            if (bottomCaption != null)
+              Padding(
+                padding: EdgeInsets.only(top: 2.h),
+                child: Text(
+                  bottomCaption!,
+                  style: TextStyle(
+                    color: kWhiteColor70,
+                    fontSize: 9.sp,
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

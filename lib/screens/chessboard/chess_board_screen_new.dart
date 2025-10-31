@@ -5,6 +5,7 @@ import 'package:skeletonizer/skeletonizer.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:chessever2/providers/board_settings_provider.dart';
 import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
+import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/analysis/move_impact_analyzer.dart';
 import 'package:chessever2/screens/chessboard/analysis/simple_move_impact.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
@@ -13,6 +14,10 @@ import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/move_annotation_overlay.dart';
 import 'package:chessever2/screens/chessboard/widgets/share_game_card_overlay.dart';
+import 'package:chessever2/screens/chessboard/provider/engine_progress_provider.dart';
+import 'package:chessever2/screens/chessboard/chess_board_settings_page.dart';
+import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
+import 'package:chessever2/screens/chessboard/notation/notation_view.dart';
 import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
@@ -1019,6 +1024,8 @@ class _AppBar extends ConsumerWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final engineSettingsAsync = ref.watch(engineSettingsProvider);
+    final engineSettings = engineSettingsAsync.valueOrNull;
     return AppBar(
       elevation: 0,
       leading: IconButton(
@@ -1038,6 +1045,10 @@ class _AppBar extends ConsumerWidget implements PreferredSizeWidget {
           onSelected: (value) {
             if (value == 'share') {
               shareGameBtnClicked(context, ref);
+            } else if (value == 'engine_settings') {
+              Future.microtask(() async {
+                await Navigator.of(context).push(ChessBoardSettingsPage.route());
+              });
             }
           },
           itemBuilder:
@@ -1049,6 +1060,16 @@ class _AppBar extends ConsumerWidget implements PreferredSizeWidget {
                       Icon(Icons.share, color: kWhiteColor),
                       SizedBox(width: 8.w),
                       const Text('Share Game'),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'engine_settings',
+                  child: Row(
+                    children: [
+                      const Icon(Icons.settings, color: kWhiteColor),
+                      SizedBox(width: 8.w),
+                      const Text('Board Settings'),
                     ],
                   ),
                 ),
@@ -1496,22 +1517,10 @@ class _AnalysisGameBody extends ConsumerWidget {
                 }
                 return false;
               },
-              child: SingleChildScrollView(
-                scrollDirection: Axis.vertical,
-                physics: const ClampingScrollPhysics(),
-                dragStartBehavior: DragStartBehavior.down,
-                child: GestureDetector(
-                  onHorizontalDragStart: (_) {},
-                  onHorizontalDragUpdate: (_) {},
-                  onHorizontalDragEnd: (_) {},
-                  behavior: HitTestBehavior.translucent,
-                  child: _MovesDisplay(
-                    index: index,
-                    currentPageIndex: currentPageIndex,
-                    state: state,
-                    game: game,
-                  ),
-                ),
+              child: NotationView(
+                game: state.analysisState.game ??
+                    ChessGame.fromPgn(state.game.gameId, state.pgnData ?? ''),
+                padding: EdgeInsets.all(20.sp),
               ),
             ),
           ),
@@ -1680,19 +1689,22 @@ class _BoardWithSidebar extends ConsumerWidget {
           margin: EdgeInsets.symmetric(horizontal: 16.sp),
           child: Row(
             children: [
-              SizedBox(
-                width: sideBarWidth,
-                height: boardSize,
-                child: EvaluationBarWidget(
+              if (engineSettings?.showEngineGauge ?? true)
+                SizedBox(
                   width: sideBarWidth,
                   height: boardSize,
-                  index: index,
-                  isFlipped: state.isBoardFlipped,
-                  evaluation: state.evaluation,
-                  mate: state.mate ?? 0,
-                  isEvaluating: state.isEvaluating,
-                ),
-              ),
+                  child: EvaluationBarWidget(
+                    width: sideBarWidth,
+                    height: boardSize,
+                    index: index,
+                    isFlipped: state.isBoardFlipped,
+                    evaluation: state.evaluation,
+                    mate: state.mate ?? 0,
+                    isEvaluating: state.isEvaluating,
+                  ),
+                )
+              else
+                SizedBox(width: sideBarWidth, height: boardSize),
               Stack(
                 children: [
                   // Analysis mode is always active, always use analysis board
@@ -1703,6 +1715,13 @@ class _BoardWithSidebar extends ConsumerWidget {
                     index: index,
                     game: state.game,
                   ),
+                  // Optional depth overlay label
+                  if (engineSettings?.showDepthOverlay ?? true)
+                    Positioned(
+                      top: 6.sp,
+                      left: 6.sp,
+                      child: _DepthBadge(boardSize: boardSize, index: index, state: state),
+                    ),
                   // Add move annotation overlay - only show if impact is not normal and not exploring a variant
                   if (currentMoveImpact != null &&
                       currentMoveImpact.impact != MoveImpactType.normal &&
@@ -1719,6 +1738,28 @@ class _BoardWithSidebar extends ConsumerWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _DepthBadge extends ConsumerWidget {
+  final double boardSize;
+  final int index;
+  final ChessBoardStateNew state;
+  const _DepthBadge({required this.boardSize, required this.index, required this.state});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final fen = state.analysisState.position.fen;
+    final progress = ref.watch(engineDepthProvider)[fen];
+    if (progress == null || progress.depth <= 0) return const SizedBox.shrink();
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 6.sp, vertical: 2.sp),
+      decoration: BoxDecoration(
+        color: kBlackColor.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(6.sp),
+      ),
+      child: Text('d${progress.depth}', style: AppTypography.textXsMedium.copyWith(color: kWhiteColor)),
     );
   }
 }
@@ -1746,9 +1787,11 @@ class _AnalysisBoard extends ConsumerWidget {
     final boardTheme = ref
         .read(boardSettingsRepository)
         .getBoardTheme(boardSettingsValue.boardColor);
-    // final params = ChessBoardProviderParams(game: game, index: index);
-    // final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+    final params = ChessBoardProviderParams(game: game, index: index);
+    final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
 
+    final engineSettingsAsync = ref.watch(engineSettingsProvider);
+    final showArrows = (engineSettingsAsync.valueOrNull?.showPvArrows ?? true);
     return Chessboard(
       size: size,
       settings: ChessboardSettings(
@@ -1791,24 +1834,32 @@ class _AnalysisBoard extends ConsumerWidget {
       fen: chessBoardState.analysisState.position.fen,
       lastMove: chessBoardState.analysisState.lastMove,
       // Only show shapes (arrows) when principal variations are enabled
-      shapes:
-          chessBoardState.showPrincipalVariations
-              ? chessBoardState.shapes
-              : const ISet.empty(),
-      // DISABLED: Manual piece movement disabled in analysis mode
-      // game: GameData(
-      //   playerSide:
-      //       chessBoardState.analysisState.position.turn == Side.white
-      //           ? PlayerSide.white
-      //           : PlayerSide.black,
-      //   validMoves: chessBoardState.analysisState.validMoves,
-      //   sideToMove: chessBoardState.analysisState.position.turn,
-      //   isCheck: chessBoardState.analysisState.position.isCheck,
-      //   promotionMove: chessBoardState.analysisState.promotionMove,
-      //   onMove: notifier.onAnalysisMove,
-      //   onPromotionSelection: notifier.onAnalysisPromotionSelection,
-      // ),
-      game: null, // Board is now read-only in analysis mode
+      shapes: chessBoardState.showPrincipalVariations && showArrows
+          ? chessBoardState.shapes
+          : const ISet.empty(),
+      game: GameData(
+        playerSide:
+            chessBoardState.analysisState.position.turn == Side.white
+                ? PlayerSide.white
+                : PlayerSide.black,
+        validMoves: chessBoardState.analysisState.validMoves,
+        sideToMove: chessBoardState.analysisState.position.turn,
+        isCheck: chessBoardState.analysisState.position.isCheck,
+        promotionMove: chessBoardState.analysisState.promotionMove,
+        onMove: (move, {isDrop, isPremove}) {
+          // Forward to notifier and provide subtle haptics here for responsiveness
+          try {
+            notifier.onAnalysisMove(move as NormalMove, isDrop: isDrop, isPremove: isPremove);
+            HapticFeedback.lightImpact();
+          } catch (_) {
+            HapticFeedback.selectionClick();
+          }
+        },
+        onPromotionSelection: (role) {
+          notifier.onAnalysisPromotionSelection(role);
+          HapticFeedback.mediumImpact();
+        },
+      ),
     );
   }
 }
@@ -2172,7 +2223,9 @@ class _PrincipalVariationListState
   @override
   void initState() {
     super.initState();
-    final lines = widget.state.principalVariations.take(3).toList();
+    final settings = ref.watch(engineSettingsProvider).valueOrNull;
+    final pvCount = (settings?.principalVariationCount ?? 3).clamp(1, 5);
+    final lines = widget.state.principalVariations.take(pvCount).toList();
     final initialIndex = widget.state.selectedVariantIndex ?? 0;
     // Ensure initial page is within bounds
     _currentPage = lines.isEmpty ? 0 : initialIndex.clamp(0, lines.length - 1);
@@ -2213,7 +2266,9 @@ class _PrincipalVariationListState
     }
 
     // Update page when variant selection changes externally
-    final lines = widget.state.principalVariations.take(3).toList();
+    final settings = ref.watch(engineSettingsProvider).valueOrNull;
+    final pvCount = (settings?.principalVariationCount ?? 3).clamp(1, 5);
+    final lines = widget.state.principalVariations.take(pvCount).toList();
     final newIndex = widget.state.selectedVariantIndex ?? 0;
     // Check bounds against actual number of lines
     if (newIndex != _currentPage && newIndex < lines.length) {

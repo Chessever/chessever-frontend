@@ -170,24 +170,19 @@ List<double?> _parseEvalsFromPgn(String pgn) {
   return evals;
 }
 
-// Centipawn / win probability thresholds for negative move classification
-const int _kDrawInaccuracyCpThreshold = 80; // 0.8 pawns swing inside draw range
-const double _kDrawInaccuracyWinProbThreshold = 0.045;
+// Stricter thresholds per spec (cp in centipawns, WP in 0..1)
+const int _kDrawInterestingCp = 120; // draw-range only
+const double _kDrawInterestingWP = 0.08;
 
-const int _kCourseChangeMistakeCpThreshold = 90; // loss of win/draw boundary
-const double _kCourseChangeMistakeWinProbThreshold = 0.055;
-const int _kCourseChangeBlunderCpThreshold = 200;
-const double _kCourseChangeBlunderWinProbThreshold = 0.11;
+const int _kStayingInaccuracyCp = 160;
+const double _kStayingInaccuracyWP = 0.12;
+const double _kStayingInaccuracyRelative = 0.75;
 
-const int _kStayingMistakeCpThreshold = 110;
-const double _kStayingMistakeWinProbThreshold = 0.075;
-const double _kStayingMistakeRelativeThreshold = 0.55;
+const int _kCourseChangeBlunderCp = 220;
+const double _kCourseChangeBlunderWP = 0.20;
 
-const int _kStayingInterestingCpThreshold = 80;
-const double _kStayingInterestingWinProbThreshold = 0.05;
-const double _kStayingInterestingRelativeThreshold = 0.4;
-
-const double _kDrawSignFlipWinProbAssist = 0.04;
+const int _kSmallDriftCp = 120;
+const double _kSmallDriftWP = 0.08;
 
 /// BULLETPROOF Move Impact Analysis - Understanding Chess Engine Evaluation
 ///
@@ -512,6 +507,95 @@ MoveImpactAnalysis? _calculateMoveImpactFromAlternatives({
       // if (highlightImpact != MoveImpactType.normal) {
       //   impact = highlightImpact;
       // }
+    }
+
+    // Confidence score gating
+    double confidenceScore = 1.0;
+    // Depth and PV count
+    final minDepth = (positionEvalBeforeMove.depth);
+    if (minDepth < 16) confidenceScore -= 0.3;
+    if (pvs.length < 3) confidenceScore -= 0.2;
+    // near-best dispersion
+    final nearBestCount = _countNearBestMoves(pvs);
+    if (nearBestCount > 3) confidenceScore -= 0.15;
+    // If player's move not found in PV and losses are not huge, reduce confidence strongly
+    if (!playerMoveFoundInPv && !actualMateAgainstPlayer && !actualMateForPlayer && cpLoss < _kCourseChangeBlunderCp) {
+      confidenceScore -= 0.25;
+    }
+    if (confidenceScore < 0.0) confidenceScore = 0.0;
+
+    // Phase adjustment to thresholds
+    final phase = _detectGamePhase(positionEvalBeforeMove.fen);
+    int smallDriftCp = _kSmallDriftCp;
+    double smallDriftWp = _kSmallDriftWP;
+    int drawInterestingCp = _kDrawInterestingCp;
+    double drawInterestingWP = _kDrawInterestingWP;
+    int stayingInaccCp = _kStayingInaccuracyCp;
+    double stayingInaccWP = _kStayingInaccuracyWP;
+    int courseChangeBlunderCp = _kCourseChangeBlunderCp;
+    double courseChangeBlunderWP = _kCourseChangeBlunderWP;
+
+    if (phase == GamePhase.opening) {
+      drawInterestingCp += 40;
+      stayingInaccCp += 40;
+      courseChangeBlunderCp += 40;
+      drawInterestingWP += 0.02;
+      stayingInaccWP += 0.02;
+      courseChangeBlunderWP += 0.02;
+      smallDriftWp += 0.02;
+    } else if (phase == GamePhase.endgame) {
+      // Keep cp thresholds, increase WP sensitivity requirements slightly
+      stayingInaccWP += 0.02;
+      drawInterestingWP += 0.02;
+      smallDriftWp += 0.02;
+    }
+
+    // Early small drift filter (same bucket)
+    final sameBucket = outcomeBefore == outcomeAfter || (outcomeBefore == PositionOutcome.draw && outcomeAfter == PositionOutcome.draw);
+    if (sameBucket && cpLoss < smallDriftCp && winProbLoss < smallDriftWp) {
+      impact = MoveImpactType.normal;
+      return MoveImpactAnalysis(
+        impact: impact,
+        evalChange: alternativesGap / 100.0,
+        bestMoveEval: bestResultPlayer / 100.0,
+        actualMoveEval: actualResultPlayer / 100.0,
+        bestMoveSan: bestPv.moves.isNotEmpty
+            ? (_uciToSan(bestPv.moves.split(' ').first, positionBeforeMove) ??
+                _extractSanFromPv(bestPv.moves))
+            : null,
+        actualMoveSan: playerMoveSan,
+        moveIndex: moveNumber,
+      );
+    }
+
+    // Bucket boundary crossing?
+    final boundaryCrossed = outcomeBefore != outcomeAfter;
+
+    // Classification skeleton
+    if (boundaryCrossed) {
+      if (cpLoss >= courseChangeBlunderCp || winProbLoss >= courseChangeBlunderWP || (bestMateForPlayer && !actualMateForPlayer) || actualMateAgainstPlayer) {
+        impact = MoveImpactType.blunder;
+      } else {
+        impact = MoveImpactType.inaccuracy; // course change but not huge -> inaccuracy
+      }
+    } else {
+      // Staying in same bucket
+      final denom = math.max(bestResultPlayer.abs(), stayingInaccCp);
+      final relativeLoss = denom == 0 ? 0.0 : alternativesGap.abs() / denom.toDouble();
+      if (cpLoss >= stayingInaccCp || winProbLoss >= stayingInaccWP || relativeLoss >= _kStayingInaccuracyRelative) {
+        impact = MoveImpactType.inaccuracy;
+      } else if (cpLoss >= drawInterestingCp || winProbLoss >= drawInterestingWP) {
+        impact = MoveImpactType.interesting;
+      } else {
+        impact = MoveImpactType.normal;
+      }
+    }
+
+    // Confidence gating for non-mate cases
+    if (!(bestMateForPlayer || actualMateForPlayer || actualMateAgainstPlayer)) {
+      if (confidenceScore < 0.75) {
+        impact = MoveImpactType.normal;
+      }
     }
 
     // DISABLED: Brilliant/great moves no longer classified

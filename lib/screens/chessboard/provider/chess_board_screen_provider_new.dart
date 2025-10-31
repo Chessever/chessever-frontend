@@ -11,6 +11,7 @@ import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator_stat
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
+import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -1187,10 +1188,12 @@ class ChessBoardScreenNotifierNew
           '🎯 ANALYSIS MOVE: ERROR - Move ${move.uci} is ILLEGAL in current board position ${boardPosition.fen}',
         );
         debugPrint('🎯 ANALYSIS MOVE: Turn to move: ${boardPosition.turn}');
+        HapticFeedback.selectionClick();
         return;
       }
     } catch (e) {
       debugPrint('🎯 ANALYSIS MOVE: ERROR - Failed legality check: $e');
+      HapticFeedback.selectionClick();
       return;
     }
 
@@ -1228,6 +1231,7 @@ class ChessBoardScreenNotifierNew
 
         _analysisNavigator?.makeOrGoToMove(move.uci);
         _playSoundForSan(san);
+        HapticFeedback.mediumImpact();
         return;
       } else {
         debugPrint(
@@ -1277,6 +1281,7 @@ class ChessBoardScreenNotifierNew
       // Navigator is in sync, apply move through it
       debugPrint('🎯 MANUAL MOVE FALLBACK: Navigator in sync, applying move');
       _analysisNavigator?.makeOrGoToMove(move.uci);
+      HapticFeedback.mediumImpact();
       return;
     } catch (e) {
       debugPrint('🎯 MANUAL MOVE FALLBACK: ERROR - $e');
@@ -1639,7 +1644,9 @@ class ChessBoardScreenNotifierNew
       debugPrint('⚠️ BUILD PV: FEN validation failed: $e');
       return const [];
     }
-    final limitedPvs = pvs.take(_kMaxPrincipalVariations).toList();
+    final engineSettings = ref.read(engineSettingsProvider).valueOrNull;
+    final pvCount = (engineSettings?.principalVariationCount ?? _kMaxPrincipalVariations).clamp(1, 5);
+    final limitedPvs = pvs.take(pvCount).toList();
     final payload = {
       'fen': fen,
       'pvs':
@@ -2200,9 +2207,62 @@ class ChessBoardScreenNotifierNew
 
       debugPrint('🎯 EVAL START: Evaluating position $fen');
 
-      // OPTIMIZED: Try cascade (cloud sources) FIRST for speed
+      // Prefer local dynamic engine if user enabled it
+      final engineSettings = ref.read(engineSettingsProvider).valueOrNull ?? const EngineSettings();
+      if (engineSettings.preferLocal) {
+        debugPrint('🎯 EVAL: Using local dynamic engine as preferred');
+        // Stream progressive updates for this request
+        final sub = StockfishSingleton().progressStream.listen((progress) async {
+          if (_activeEvalRequestId != requestId) return;
+          final progressFenBase = progress.fen.split(' ').take(4).join(' ');
+          final targetFenBase = fen.split(' ').take(4).join(' ');
+          if (progressFenBase != targetFenBase) return;
+          final lines = await _buildPrincipalVariations(fen, progress.pvs);
+          final snap = state.value;
+          if (snap == null) return;
+          final updated = snap.copyWith(
+            isEvaluating: true,
+            principalVariations: lines,
+            suggestionLines: lines,
+          );
+          if (mounted) state = AsyncValue.data(updated);
+        });
+        try {
+          int _toMs(int idx) {
+            const opts = [5000, 10000, 20000, 30000, 60000, 60000];
+            return opts[idx.clamp(0, opts.length - 1)];
+          }
+          final local = await StockfishSingleton().evaluatePosition(
+            fen,
+            depth: engineSettings.maxDepth ?? 15,
+            options: EngineOptions(
+              multiPv: engineSettings.multiPv,
+              threads: engineSettings.threads,
+              hashMb: engineSettings.hashMb,
+              maxDepth: engineSettings.maxDepth,
+              timeoutMs: engineSettings.timeoutMs > 0
+                  ? engineSettings.timeoutMs
+                  : _toMs(engineSettings.searchTimeIndex),
+            ),
+          );
+          if (!local.isCancelled && local.pvs.isNotEmpty) {
+            primaryEval = CloudEval(
+              fen: fen,
+              knodes: local.knodes,
+              depth: local.depth,
+              pvs: local.pvs,
+            );
+            evaluation = _getConsistentEvaluation(local.pvs.first.cp / 100.0, fen);
+            pvLines = await _buildPrincipalVariations(fen, local.pvs);
+          }
+        } finally {
+          await sub.cancel();
+        }
+      }
+
+      // OPTIMIZED: Try cascade (cloud sources) FIRST for speed when not preferring local
       // Cascade queries local DB, Supabase, and Lichess in parallel
-      try {
+      if (!engineSettings.preferLocal) try {
         debugPrint(
           '🎯 EVAL: Requesting cascade evaluation (parallel cloud sources)...',
         );
@@ -2283,9 +2343,23 @@ class ChessBoardScreenNotifierNew
           debugPrint(
             '🎯 EVAL: Need ${needsEval ? "eval + " : ""}${needsMorePvs ? "more PVs (have ${pvLines.length}/3)" : ""}, running Stockfish...',
           );
+          final engineSettings2 = ref.read(engineSettingsProvider).valueOrNull ?? const EngineSettings();
+          int _toMs(int idx) {
+            const opts = [5000, 10000, 20000, 30000, 60000, 60000];
+            return opts[idx.clamp(0, opts.length - 1)];
+          }
           final localEval = await StockfishSingleton().evaluatePosition(
             fen,
-            depth: _resumeVariantAutoPlay ? 12 : 15,
+            depth: engineSettings2.maxDepth ?? (_resumeVariantAutoPlay ? 12 : 15),
+            options: EngineOptions(
+              multiPv: engineSettings2.multiPv,
+              threads: engineSettings2.threads,
+              hashMb: engineSettings2.hashMb,
+              maxDepth: engineSettings2.maxDepth,
+              timeoutMs: engineSettings2.timeoutMs > 0
+                  ? engineSettings2.timeoutMs
+                  : _toMs(engineSettings2.searchTimeIndex),
+            ),
           );
           debugPrint(
             '🎯 EVAL: Stockfish completed, isCancelled=${localEval.isCancelled}, pvs.length=${localEval.pvs.length}',
@@ -2761,8 +2835,10 @@ class ChessBoardScreenNotifierNew
         return const ISet.empty();
       }
 
-      // Get up to [_kMaxPrincipalVariations] principal variations
-      final pvsToShow = cloudEval.pvs.take(_kMaxPrincipalVariations).toList();
+      // Get up to principal variations based on settings
+      final engineSettings = ref.read(engineSettingsProvider).valueOrNull;
+      final pvCount = (engineSettings?.principalVariationCount ?? _kMaxPrincipalVariations).clamp(1, 5);
+      final pvsToShow = cloudEval.pvs.take(pvCount).toList();
 
       for (int i = 0; i < pvsToShow.length; i++) {
         final pv = pvsToShow[i];

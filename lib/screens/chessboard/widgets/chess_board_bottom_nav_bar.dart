@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_navbar.dart';
+import 'package:chessever2/screens/chessboard/provider/engine_progress_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
@@ -40,6 +41,14 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final width = MediaQuery.of(context).size.width / 4; // 4 buttons now
+    String? depthLabel;
+    try {
+      // Try to read current fen depth from progress provider
+      final map = ref.watch(engineDepthProvider);
+      final fen = state.analysisState.position.fen;
+      final progress = map[fen];
+      if (progress != null && showEngineAnalysis) depthLabel = 'd${progress.depth}';
+    } catch (_) {}
     return Container(
       width: MediaQuery.of(context).size.width,
       decoration: const BoxDecoration(color: kBlackColor),
@@ -55,6 +64,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
                 svgPath: SvgAsset.laptop,
                 onPressed: toggleEngineVisibility,
                 isActive: showEngineAnalysis,
+                bottomCaption: depthLabel,
               ),
 
               // Flip Board Button

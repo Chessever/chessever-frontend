@@ -76,15 +76,78 @@ final singleMoveImpactProvider = FutureProvider.family.autoDispose<MoveImpactAna
         ),
         priority: WorkPriority.low, // LOW priority - don't block eval bar!
       );
-
-      debugPrint('🎨 LAZY IMPACT: Move ${params.moveIndex} classified as ${analysis?.impact.symbol}');
-      return analysis;
+      // Sparsity policy gating
+      final gated = _SparsityManager.instance.apply(
+        params.gameId,
+        params.moveIndex,
+        analysis,
+      );
+      debugPrint('🎨 LAZY IMPACT: Move ${params.moveIndex} classified as ${gated?.impact.symbol}');
+      return gated;
     } catch (e) {
       debugPrint('⚠️ LAZY IMPACT: Error calculating move ${params.moveIndex}: $e');
       return null;
     }
   },
 );
+
+class _SparsityManager {
+  static final _SparsityManager instance = _SparsityManager._();
+  _SparsityManager._();
+
+  final Map<String, List<int>> _highlightsByGame = {};
+
+  MoveImpactAnalysis? apply(String gameId, int plyIndex, MoveImpactAnalysis? analysis) {
+    if (analysis == null) return null;
+    if (analysis.impact == MoveImpactType.normal) return analysis;
+    final list = _highlightsByGame.putIfAbsent(gameId, () => <int>[]);
+
+    // Hard cap
+    if (list.length >= 6) {
+      return MoveImpactAnalysis(
+        impact: MoveImpactType.normal,
+        evalChange: analysis.evalChange,
+        bestMoveEval: analysis.bestMoveEval,
+        actualMoveEval: analysis.actualMoveEval,
+        bestMoveSan: analysis.bestMoveSan,
+        actualMoveSan: analysis.actualMoveSan,
+        moveIndex: analysis.moveIndex,
+      );
+    }
+
+    // Min spacing: 6 plies
+    if (list.isNotEmpty && (plyIndex - list.last).abs() < 6) {
+      return MoveImpactAnalysis(
+        impact: MoveImpactType.normal,
+        evalChange: analysis.evalChange,
+        bestMoveEval: analysis.bestMoveEval,
+        actualMoveEval: analysis.actualMoveEval,
+        bestMoveSan: analysis.bestMoveSan,
+        actualMoveSan: analysis.actualMoveSan,
+        moveIndex: analysis.moveIndex,
+      );
+    }
+
+    // Average ≤ 1 every 8 plies
+    final avg = list.isEmpty ? 0.0 : list.length / (list.last + 1).toDouble();
+    if (avg > (1 / 8)) {
+      return MoveImpactAnalysis(
+        impact: MoveImpactType.normal,
+        evalChange: analysis.evalChange,
+        bestMoveEval: analysis.bestMoveEval,
+        actualMoveEval: analysis.actualMoveEval,
+        bestMoveSan: analysis.bestMoveSan,
+        actualMoveSan: analysis.actualMoveSan,
+        moveIndex: analysis.moveIndex,
+      );
+    }
+
+    // Accept and record
+    list.add(plyIndex);
+    return analysis;
+  }
+}
+
 
 // DEPRECATED: Old bulk evaluation approach that blocks eval bar
 // Kept for backward compatibility but should not be used for new code

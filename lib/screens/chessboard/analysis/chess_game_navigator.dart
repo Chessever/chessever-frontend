@@ -406,6 +406,127 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
   void replaceState(ChessGameNavigatorState newState) {
     state = newState;
   }
+
+  // Removes a variation line that starts at the given pointer (which should end with ..., varIndex, 0)
+  void deleteVariationAtPointer(ChessMovePointer pointerToVariationHead) {
+    if (pointerToVariationHead.length < 3) return; // must point into a variation
+    final ptr = List<int>.from(pointerToVariationHead);
+    // parent pointer of the move that owns the variations list
+    final ownerPtr = List<int>.from(ptr)..removeRange(ptr.length - 2, ptr.length);
+    final varIndex = ptr[ptr.length - 2];
+
+    // Navigate to the owner move whose variations we will modify
+    final newMainline = List<ChessMove>.from(state.game.mainline);
+    List<ChessLine> stack = [newMainline];
+    ChessMove? ownerMove;
+    for (int i = 0; i < ownerPtr.length; i++) {
+      if (i.isEven) {
+        ownerMove = stack.last[ownerPtr[i]];
+      } else {
+        stack.add(List<ChessMove>.from(ownerMove!.variations![ownerPtr[i]]));
+      }
+    }
+    if (ownerMove == null) return;
+    final variations = List<ChessLine>.from(ownerMove.variations ?? const []);
+    if (varIndex < 0 || varIndex >= variations.length) return;
+    variations.removeAt(varIndex);
+    final updatedOwner = ownerMove.copyWith(
+      variations: variations.isEmpty ? null : variations,
+    );
+
+    // Write back updated owner move into the structure
+    List<ChessLine> writeStack = [newMainline];
+    ChessMove? writeMove;
+    for (int i = 0; i < ownerPtr.length; i++) {
+      if (i.isEven) {
+        final l = writeStack.last;
+        if (i == ownerPtr.length - 1) {
+          l[ownerPtr[i]] = updatedOwner;
+        } else {
+          writeMove = l[ownerPtr[i]];
+        }
+      } else {
+        writeStack.add(List<ChessMove>.from(writeMove!.variations![ownerPtr[i]]));
+      }
+    }
+
+    // New pointer after deletion: move to the owner move
+    final newPointer = ownerPtr;
+    replaceState(
+      ChessGameNavigatorState(
+        game: state.game.copyWith(mainline: newMainline),
+        movePointer: newPointer,
+      ),
+    );
+  }
+
+  // Promote a variation to mainline at the branching point
+  void promoteVariationToMainline(ChessMovePointer pointerToVariationHead) {
+    if (pointerToVariationHead.length < 3) return;
+    final ptr = List<int>.from(pointerToVariationHead);
+    final ownerPtr = List<int>.from(ptr)..removeRange(ptr.length - 2, ptr.length);
+    final varIndex = ptr[ptr.length - 2];
+
+    // Navigate to owner move and fetch current mainline segment and variation to promote
+    final newMainline = List<ChessMove>.from(state.game.mainline);
+    List<ChessLine> stack = [newMainline];
+    ChessMove? ownerMove;
+    for (int i = 0; i < ownerPtr.length; i++) {
+      if (i.isEven) {
+        ownerMove = stack.last[ownerPtr[i]];
+      } else {
+        stack.add(List<ChessMove>.from(ownerMove!.variations![ownerPtr[i]]));
+      }
+    }
+    if (ownerMove == null) return;
+    final variations = List<ChessLine>.from(ownerMove.variations ?? const []);
+    if (varIndex < 0 || varIndex >= variations.length) return;
+    final promoted = List<ChessMove>.from(variations[varIndex]);
+
+    // Determine current line (the line right after ownerPtr in structure)
+    // The owner move is followed by a mainline move at some index; variations are stored on that move
+    // We replace from that next move onward with the promoted line and push the replaced segment as a sibling variation.
+    // Find the line that contains the move whose variations we modified: it's the line at ownerPtr context.
+    List<ChessLine> cursorStack = [newMainline];
+    ChessMove? ctxMove;
+    for (int i = 0; i < ownerPtr.length; i++) {
+      if (i.isEven) {
+        ctxMove = cursorStack.last[ownerPtr[i]];
+      } else {
+        cursorStack.add(List<ChessMove>.from(ctxMove!.variations![ownerPtr[i]]));
+      }
+    }
+    final lineAtContext = cursorStack.last;
+    final followingIndex = ownerPtr.isNotEmpty ? ownerPtr.last + 1 : 0;
+    if (followingIndex >= lineAtContext.length) return; // nothing to promote against
+    final replacedTail = lineAtContext.sublist(followingIndex);
+
+    // Update the head move (the first move after branch) to host new variations: replacedTail + remaining variations except promoted
+    final headMove = lineAtContext[followingIndex];
+    final remainingVariations = List<ChessLine>.from(variations)
+      ..removeAt(varIndex)
+      ..insert(0, replacedTail);
+    final updatedHead = headMove.copyWith(
+      variations: remainingVariations,
+    );
+
+    // Splice promoted line into mainline
+    lineAtContext
+      ..removeRange(followingIndex, lineAtContext.length)
+      ..addAll(promoted);
+
+    // Write back updated head
+    lineAtContext[followingIndex] = updatedHead;
+
+    // New pointer to the head of promoted line
+    final newPointer = List<int>.from(ownerPtr)..addAll([followingIndex]);
+    replaceState(
+      ChessGameNavigatorState(
+        game: state.game.copyWith(mainline: newMainline),
+        movePointer: newPointer,
+      ),
+    );
+  }
 }
 
 final chessGameNavigatorProvider = StateNotifierProvider.family<

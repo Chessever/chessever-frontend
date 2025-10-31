@@ -7,6 +7,7 @@ import 'package:chessever2/repository/supabase/evals/evals_repository.dart';
 import 'package:chessever2/repository/supabase/evals/persist_cloud_eval.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart' show FutureProvider;
 import 'stockfish_singleton.dart';
+import 'package:chessever2/providers/engine_settings_provider.dart';
 
 /// 1. local → 2. Supabase → 3. lichess
 /// Uses autoDispose to cancel evaluations when switching games
@@ -65,7 +66,22 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<CloudEval, String>
         .catchError((e) => <void>[]);
     return cloud;
   } catch (_) {
-    final sfEval = await StockfishSingleton().evaluatePosition(fen, depth: 15);
+    final settings = ref.read(engineSettingsProvider).valueOrNull ?? const EngineSettings();
+    int _toMs(int idx) {
+      const opts = [5000, 10000, 20000, 30000, 60000, 60000];
+      return opts[idx.clamp(0, opts.length - 1)];
+    }
+    final sfEval = await StockfishSingleton().evaluatePosition(
+          fen,
+          depth: settings.maxDepth ?? 15,
+          options: EngineOptions(
+            multiPv: settings.multiPv,
+            threads: settings.threads,
+            hashMb: settings.hashMb,
+            maxDepth: settings.maxDepth,
+            timeoutMs: settings.timeoutMs > 0 ? settings.timeoutMs : _toMs(settings.searchTimeIndex),
+          ),
+        );
     final cloudFromSF = CloudEval(
       fen: fen,
       knodes: sfEval.knodes,
@@ -185,8 +201,23 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval,
     // FALLBACK: All cloud sources failed, use Stockfish
     print('⚡ EVAL SOURCE: STOCKFISH FALLBACK for $fen (cloud sources unavailable)');
     try {
+      final settings = ref.read(engineSettingsProvider).valueOrNull ?? const EngineSettings();
+      int _toMs(int idx) {
+        const opts = [5000, 10000, 20000, 30000, 60000, 60000];
+        return opts[idx.clamp(0, opts.length - 1)];
+      }
       final sfEval = await StockfishSingleton()
-          .evaluatePosition(fen, depth: 15)
+          .evaluatePosition(
+            fen,
+            depth: settings.maxDepth ?? 15,
+            options: EngineOptions(
+              multiPv: settings.multiPv,
+              threads: settings.threads,
+              hashMb: settings.hashMb,
+              maxDepth: settings.maxDepth,
+              timeoutMs: settings.timeoutMs > 0 ? settings.timeoutMs : _toMs(settings.searchTimeIndex),
+            ),
+          )
           .timeout(
             const Duration(seconds: 20),
             onTimeout: () {
