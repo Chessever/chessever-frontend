@@ -2128,13 +2128,39 @@ class ChessBoardScreenNotifierNew
     int? requestId;
     try {
       final initialState = state.value;
-      if (initialState == null || initialState.isLoadingMoves) return;
+      if (initialState == null || initialState.isLoadingMoves) {
+        // CRITICAL FIX: Clear evaluating state on early return
+        if (initialState != null && initialState.isEvaluating) {
+          state = AsyncValue.data(initialState.copyWith(isEvaluating: false));
+        }
+        return;
+      }
 
-      final fen =
+      final currentPosition =
           initialState.isAnalysisMode
-              ? initialState.analysisState.position.fen
-              : initialState.position?.fen;
-      if (fen == null) return;
+              ? initialState.analysisState.position
+              : initialState.position;
+      final fen = currentPosition?.fen;
+      if (fen == null) {
+        // CRITICAL FIX: Clear evaluating state on early return
+        state = AsyncValue.data(initialState.copyWith(isEvaluating: false));
+        return;
+      }
+
+      // CHECKMATE DETECTION: If position is checkmate, set mate=0 and high eval immediately
+      if (currentPosition!.isCheckmate) {
+        debugPrint('🎯 EVAL: Position is checkmate, setting mate=0');
+        final checkmateEval = currentPosition.turn == Side.white ? -100.0 : 100.0; // Side that got mated loses
+        state = AsyncValue.data(
+          initialState.copyWith(
+            evaluation: checkmateEval,
+            mate: 0, // Checkmate delivered
+            isEvaluating: false,
+            principalVariations: const [], // No variations in checkmate
+          ),
+        );
+        return;
+      }
 
       final cacheKey = _fenCacheKey(fen);
 
@@ -2147,21 +2173,38 @@ class ChessBoardScreenNotifierNew
         await Future.delayed(const Duration(milliseconds: 50));
 
         // Check if position changed during delay
-        if (!mounted || _cancelEvaluation) return;
+        if (!mounted || _cancelEvaluation) {
+          // CRITICAL FIX: Clear evaluating state on early return
+          final fallbackState = state.value;
+          if (fallbackState != null && fallbackState.isEvaluating) {
+            state = AsyncValue.data(fallbackState.copyWith(isEvaluating: false));
+          }
+          return;
+        }
         final currentState = state.value;
-        if (currentState == null) return;
+        if (currentState == null) {
+          // CRITICAL FIX: Clear evaluating state on early return
+          if (initialState.isEvaluating) {
+            state = AsyncValue.data(initialState.copyWith(isEvaluating: false));
+          }
+          return;
+        }
         final currentFen =
             currentState.isAnalysisMode
                 ? currentState.analysisState.position.fen
                 : currentState.position?.fen;
         if (currentFen != null && _fenCacheKey(currentFen) != cacheKey) {
           debugPrint('🎯 EVAL: Position changed during cache delay, aborting');
+          // CRITICAL FIX: Clear evaluating state on early return
+          if (currentState.isEvaluating) {
+            state = AsyncValue.data(currentState.copyWith(isEvaluating: false));
+          }
           return;
         }
 
         var cachedState = initialState.copyWith(
           evaluation: cachedEval,
-          mate: cachedMate ?? initialState.mate,
+          mate: cachedMate, // Use cached mate directly, null if no mate
           isEvaluating: false,
         );
         state = AsyncValue.data(cachedState);
@@ -2208,6 +2251,7 @@ class ChessBoardScreenNotifierNew
         debugPrint(
           '🎯 EVAL: Skipping duplicate request for $cacheKey (already running)',
         );
+        // Don't clear isEvaluating here - another request is already running
         return;
       }
 
@@ -2270,6 +2314,10 @@ class ChessBoardScreenNotifierNew
                   debugPrint(
                     '🚫 RETRY CANCELLED: Position changed during delay (was: $targetFenBase, now: $currentFenBase)',
                   );
+                  // CRITICAL FIX: Clear evaluating state on early return
+                  if (currentState.isEvaluating) {
+                    state = AsyncValue.data(currentState.copyWith(isEvaluating: false));
+                  }
                   return;
                 }
               }
@@ -2310,7 +2358,7 @@ class ChessBoardScreenNotifierNew
           );
           final localEval = await StockfishSingleton().evaluatePosition(
             fen,
-            depth: _resumeVariantAutoPlay ? 10 : 12,
+            depth: _resumeVariantAutoPlay ? 18 : 25,
             prioritize: true,
           );
           debugPrint(
@@ -2509,10 +2557,26 @@ class ChessBoardScreenNotifierNew
         return <void>[];
       });
 
-      if (_cancelEvaluation || state.value == null || !mounted) return;
-      if (_activeEvalRequestId != currentRequestId) return;
+      if (_cancelEvaluation || state.value == null || !mounted) {
+        // CRITICAL FIX: Clear evaluating state on early return
+        final fallbackState = state.value;
+        if (fallbackState != null && fallbackState.isEvaluating) {
+          state = AsyncValue.data(fallbackState.copyWith(isEvaluating: false));
+        }
+        return;
+      }
+      if (_activeEvalRequestId != currentRequestId) {
+        // Don't clear isEvaluating - another request is handling it
+        return;
+      }
       var currentSnapshot = state.value;
-      if (currentSnapshot == null) return;
+      if (currentSnapshot == null) {
+        // CRITICAL FIX: Clear evaluating state on early return
+        if (initialState.isEvaluating) {
+          state = AsyncValue.data(initialState.copyWith(isEvaluating: false));
+        }
+        return;
+      }
 
       final inAnalysis = currentSnapshot.isAnalysisMode;
       final position =
@@ -2535,8 +2599,7 @@ class ChessBoardScreenNotifierNew
         // CRITICAL: Still cache the evaluation result even if position changed
         // This prevents wasted computation and speeds up navigation
         _evaluationCache[cacheKey] = evaluation;
-        _mateCache[cacheKey] =
-            primaryEval.pvs.first.mate ?? currentSnapshot.mate;
+        _mateCache[cacheKey] = primaryEval.pvs.first.mate; // Use engine mate directly, null if no mate
         _pvCache[cacheKey] = pvLines;
 
         // EDGE CASE FIX: Check if we have cached evaluation for the CURRENT position
@@ -2593,7 +2656,7 @@ class ChessBoardScreenNotifierNew
 
           final updatedState = currentSnapshot.copyWith(
             evaluation: cachedCurrentEval,
-            mate: cachedCurrentMate ?? currentSnapshot.mate,
+            mate: cachedCurrentMate, // Use cached mate directly, null if no mate
             isEvaluating: false,
             shapes: shapes,
             principalVariations: cachedCurrentPv,
@@ -2629,7 +2692,7 @@ class ChessBoardScreenNotifierNew
 
       final basePointer =
           inAnalysis ? currentSnapshot.analysisState.movePointer : null;
-      final mateScore = primaryEval.pvs.first.mate ?? currentSnapshot.mate;
+      final mateScore = primaryEval.pvs.first.mate; // Use engine mate directly, null if no mate
 
       _evaluationCache[cacheKey] = evaluation;
       _mateCache[cacheKey] = mateScore;
@@ -3003,6 +3066,21 @@ class ChessBoardScreenNotifierNew
         '🎯 EVAL: Starting evaluation immediately for current position',
       );
       _evaluatePosition(force: force);
+      
+      // SAFETY MECHANISM: Failsafe timeout to clear stuck isEvaluating state
+      // If evaluation takes longer than 15 seconds, force clear the loading state
+      Future.delayed(const Duration(seconds: 15), () {
+        final currentState = state.value;
+        if (currentState != null && currentState.isEvaluating && mounted) {
+          debugPrint('⚠️ EVAL TIMEOUT: Forcing isEvaluating to false after 15s timeout');
+          state = AsyncValue.data(
+            currentState.copyWith(
+              isEvaluating: false,
+              evaluation: currentState.evaluation ?? 0.0,
+            ),
+          );
+        }
+      });
     }
   }
 

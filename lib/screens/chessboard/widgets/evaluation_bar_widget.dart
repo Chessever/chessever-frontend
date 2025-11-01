@@ -13,7 +13,7 @@ class EvaluationBarWidget extends ConsumerStatefulWidget {
   final double? evaluation; // Made nullable to handle loading state
   final bool isFlipped;
   final int index;
-  final int mate;
+  final int? mate;
   final bool isEvaluating; // Add flag to show loading during evaluation
 
   const EvaluationBarWidget({
@@ -52,30 +52,27 @@ class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
 
   @override
   Widget build(BuildContext context) {
-    // SMART EVALUATION HANDLING:
-    // 1. If we have a valid evaluation and not evaluating -> update cache and use it
-    // 2. If we're evaluating -> FREEZE the bar at last valid position (no animation)
-    // 3. Only animate when evaluation is complete and different from cached value
-
+    // Simple, direct evaluation display
+    // - Show current evaluation from widget props
+    // - Cache only for smooth bar animation (not for text display)
+    
     double evalValueForDisplay;
     bool shouldAnimate = true;
 
     if (widget.evaluation != null) {
-      final newEval = widget.evaluation!;
-      final oldEval = _lastValidEvaluation;
-
-      if (!widget.isEvaluating &&
-          oldEval != null &&
-          (newEval - oldEval).abs() < 0.1) {
-        evalValueForDisplay = oldEval;
+      evalValueForDisplay = widget.evaluation!;
+      
+      // Only disable animation if change is tiny AND not evaluating
+      if (!widget.isEvaluating && 
+          _lastValidEvaluation != null &&
+          (evalValueForDisplay - _lastValidEvaluation!).abs() < 0.1) {
         shouldAnimate = false;
-      } else {
-        _lastValidEvaluation = newEval;
-        _globalEvaluationCache[_cacheKey] = newEval;
-        evalValueForDisplay = newEval;
-        shouldAnimate = !widget.isEvaluating;
       }
+      
+      _lastValidEvaluation = evalValueForDisplay;
+      _globalEvaluationCache[_cacheKey] = evalValueForDisplay;
     } else if (_lastValidEvaluation != null) {
+      // Fall back to cached value only when widget.evaluation is null
       evalValueForDisplay = _lastValidEvaluation!;
       shouldAnimate = false;
     } else {
@@ -146,14 +143,16 @@ class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
                 // Show "..." when actively calculating a new position
                 widget.isEvaluating
                     ? '...'
-                    : (widget.evaluation == null && _lastValidEvaluation == null)
+                    : (widget.evaluation == null && _lastValidEvaluation == null && widget.mate == null)
                     ? '...'
-                    : (((widget.evaluation ?? _lastValidEvaluation)!.abs() >= 10.0) &&
-                            widget.mate != 0)
-                        ? '#${widget.mate.abs()}'
-                        : (widget.evaluation ?? _lastValidEvaluation)!
-                            .abs()
-                            .toStringAsFixed(1),
+                    : (widget.mate == 0)
+                        ? 'M' // Checkmate delivered (mate in 0)
+                        : (widget.mate != null)
+                            ? '#${widget.mate!.abs()}' // Mate in X moves
+                            : (widget.evaluation ?? _lastValidEvaluation)!
+                                .abs()
+                                .clamp(0.0, 99.9)
+                                .toStringAsFixed(1),
                 maxLines: 1,
                 textAlign: TextAlign.center,
                 style: AppTypography.textSmRegular.copyWith(
@@ -435,9 +434,7 @@ class _BarsState extends State<_Bars> {
               child: Text(
                 widget.isEvaluating
                     ? '...' // Show loading indicator when evaluating
-                    : widget.evaluation.abs() >= 10.0
-                    ? "M" // Just show "M" for mate since we don't have the mate count here
-                    : widget.evaluation.abs().toStringAsFixed(1),
+                    : widget.evaluation.abs().clamp(0.0, 99.9).toStringAsFixed(1),
                 textAlign: TextAlign.center,
                 maxLines: 1,
                 style: AppTypography.textSmRegular.copyWith(

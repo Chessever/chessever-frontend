@@ -1694,7 +1694,7 @@ class _BoardWithSidebar extends ConsumerWidget {
                   index: index,
                   isFlipped: state.isBoardFlipped,
                   evaluation: state.evaluation,
-                  mate: state.mate ?? 0,
+                  mate: state.mate,
                   isEvaluating: state.isEvaluating,
                 ),
               ),
@@ -2405,53 +2405,52 @@ class _PrincipalVariationListState
                                   color: backgroundColor,
                                 ),
                                 clipBehavior: Clip.hardEdge,
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: 12.sp,
-                                  vertical: 10.sp,
-                                ),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Container(
-                                      margin: EdgeInsets.only(right: 10.sp),
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: 8.sp,
-                                        vertical: 4.sp,
+                                child: SingleChildScrollView(
+                                  scrollDirection: Axis.vertical,
+                                  physics: const BouncingScrollPhysics(),
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 12.sp,
+                                    vertical: 10.sp,
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Container(
+                                        margin: EdgeInsets.only(right: 10.sp),
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: 8.sp,
+                                          vertical: 4.sp,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: badgeBackgroundColor,
+                                          borderRadius: BorderRadius.circular(
+                                            4.sp,
+                                          ),
+                                          border: Border.all(
+                                            color: badgeBorderColor,
+                                            width: 1.0,
+                                          ),
+                                        ),
+                                        alignment: Alignment.center,
+                                        child: AnimatedSwitcher(
+                                          duration: const Duration(
+                                            milliseconds: 200,
+                                          ),
+                                          child: Text(
+                                            evalText,
+                                            key: ValueKey(evalText),
+                                            style: AppTypography.textXsMedium
+                                                .copyWith(
+                                                  color: kWhiteColor,
+                                                  fontWeight:
+                                                      isSelected
+                                                          ? FontWeight.w600
+                                                          : FontWeight.w500,
+                                                ),
+                                          ),
+                                        ),
                                       ),
-                                      decoration: BoxDecoration(
-                                        color: badgeBackgroundColor,
-                                        borderRadius: BorderRadius.circular(
-                                          4.sp,
-                                        ),
-                                        border: Border.all(
-                                          color: badgeBorderColor,
-                                          width: 1.0,
-                                        ),
-                                      ),
-                                      alignment: Alignment.center,
-                                      child: AnimatedSwitcher(
-                                        duration: const Duration(
-                                          milliseconds: 200,
-                                        ),
-                                        child: Text(
-                                          evalText,
-                                          key: ValueKey(evalText),
-                                          style: AppTypography.textXsMedium
-                                              .copyWith(
-                                                color: kWhiteColor,
-                                                fontWeight:
-                                                    isSelected
-                                                        ? FontWeight.w600
-                                                        : FontWeight.w500,
-                                              ),
-                                        ),
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child: SingleChildScrollView(
-                                        primary: false,
-                                        physics: const BouncingScrollPhysics(),
-                                        padding: EdgeInsets.only(right: 6.sp),
+                                      Expanded(
                                         child: Text(
                                           sanMoves.join(' '),
                                           softWrap: true,
@@ -2467,8 +2466,8 @@ class _PrincipalVariationListState
                                               ),
                                         ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
