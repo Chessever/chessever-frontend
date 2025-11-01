@@ -2442,10 +2442,7 @@ class _PrincipalVariationListState
                                             style: AppTypography.textXsMedium
                                                 .copyWith(
                                                   color: kWhiteColor,
-                                                  fontWeight:
-                                                      isSelected
-                                                          ? FontWeight.w600
-                                                          : FontWeight.w500,
+                                                  fontWeight: FontWeight.w600,
                                                 ),
                                           ),
                                         ),
@@ -2459,10 +2456,7 @@ class _PrincipalVariationListState
                                                 color: kWhiteColor.withValues(
                                                   alpha: 0.9,
                                                 ),
-                                                fontWeight:
-                                                    isSelected
-                                                        ? FontWeight.w600
-                                                        : FontWeight.normal,
+                                                fontWeight: FontWeight.w600,
                                               ),
                                         ),
                                       ),

@@ -4,7 +4,6 @@ import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/repository/supabase/evals/persist_cloud_eval.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
-import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator_state_manager.dart';
@@ -77,9 +76,19 @@ class ChessBoardScreenNotifierNew
   ProviderSubscription<ChessGameNavigatorState>? _navigatorSubscription;
 
   void _initializeState() {
-    // Start with loading state so UI shows loading screen until parseMoves() completes
-    // This prevents the board from briefly showing the starting position
-    state = const AsyncValue.loading();
+    // Start with an initial data state to ensure proper initialization
+    // The loading flag is handled by isLoadingMoves
+    state = AsyncValue.data(
+      ChessBoardStateNew(
+        game: game,
+        pgnData: null,
+        isLoadingMoves: true,
+        fenData: game.fen,
+        evaluation: null,
+        isEvaluating: false,
+        isAnalysisMode: true,
+      ),
+    );
     parseMoves();
   }
 
@@ -1110,19 +1119,14 @@ class ChessBoardScreenNotifierNew
           false, // Don't fire immediately - we'll sync manually after replaceState
     );
 
-    // Always initialize at current position, ignore saved state.
-    // Defer to the next microtask to avoid mutating another provider
-    // during initialization, which Riverpod asserts against.
-    await Future.microtask(() {
-      if (!mounted) return;
-      navigator.replaceState(
-        ChessGameNavigatorState(game: _analysisGame!, movePointer: movePointer),
-      );
+    // Always initialize at current position, ignore saved state
+    navigator.replaceState(
+      ChessGameNavigatorState(game: _analysisGame!, movePointer: movePointer),
+    );
 
-      // Manually sync the initial state after replaceState
-      final initialState = ref.read(chessGameNavigatorProvider(_analysisGame!));
-      _syncAnalysisFromNavigator(initialState);
-    });
+    // Manually sync the initial state after replaceState
+    final initialState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+    _syncAnalysisFromNavigator(initialState);
   }
 
   Future<void> _persistAnalysisState() async {
@@ -1598,7 +1602,15 @@ class ChessBoardScreenNotifierNew
       return const [];
     }
 
-    debugPrint('🎯 BUILD PV: Starting with ${pvs.length} PVs for $fen');
+    // Filter out PVs with empty or invalid moves BEFORE validation
+    // This prevents cloud cache pollution from breaking the entire cascade
+    final validPvs = pvs.where((pv) => pv.moves.trim().isNotEmpty).toList();
+    if (validPvs.isEmpty) {
+      debugPrint('⚠️ BUILD PV: All PVs have empty moves - likely stale cloud cache');
+      return const [];
+    }
+
+    debugPrint('🎯 BUILD PV: Starting with ${validPvs.length} valid PVs (filtered ${pvs.length - validPvs.length} empty) for $fen');
 
     // Validate that at least one PV can be played from this position
     // This catches cases where cached PVs from a different position are being used
@@ -1608,8 +1620,7 @@ class ChessBoardScreenNotifierNew
         Setup.parseFen(fen),
       );
       bool anyPvValid = false;
-      for (final pv in pvs) {
-        if (pv.moves.isEmpty) continue;
+      for (final pv in validPvs) {
         final firstMove = pv.moves.split(' ').first;
         final parsed = Move.parse(firstMove);
         if (parsed != null) {
@@ -1633,7 +1644,7 @@ class ChessBoardScreenNotifierNew
       debugPrint('⚠️ BUILD PV: FEN validation failed: $e');
       return const [];
     }
-    final limitedPvs = pvs.take(_kMaxPrincipalVariations).toList();
+    final limitedPvs = validPvs.take(_kMaxPrincipalVariations).toList();
     final payload = {
       'fen': fen,
       'pvs':
@@ -1810,8 +1821,8 @@ class ChessBoardScreenNotifierNew
     final baseFen = state.variantBaseFen!;
 
     // Compare first 3 FEN components (position, turn, castling)
-    final currentParts = currentFen.split(' ').take(4).join(' ');
-    final baseParts = baseFen.split(' ').take(4).join(' ');
+    final currentParts = currentFen.split(' ').take(3).join(' ');
+    final baseParts = baseFen.split(' ').take(3).join(' ');
 
     // If we're at the base position, it's valid
     if (currentParts == baseParts) {
@@ -1830,7 +1841,7 @@ class ChessBoardScreenNotifierNew
           state.variantMovePointer.length,
         );
         final matches =
-            testPosition.fen.split(' ').take(4).join(' ') == currentParts;
+            testPosition.fen.split(' ').take(3).join(' ') == currentParts;
         debugPrint(
           '🎯 VARIANT VALIDATION: Position reachable from base - ${matches ? "VALID" : "INVALID"}',
         );
@@ -1924,8 +1935,8 @@ class ChessBoardScreenNotifierNew
         previousBaseFen != null &&
         !isExtensionUpdate) {
       // Only validate if NOT an extension update
-      final baseFenCompare = previousBaseFen.split(' ').take(4).join(' ');
-      final pvFenCompare = baseFen.split(' ').take(4).join(' ');
+      final baseFenCompare = previousBaseFen.split(' ').take(3).join(' ');
+      final pvFenCompare = baseFen.split(' ').take(3).join(' ');
 
       if (baseFenCompare != pvFenCompare) {
         debugPrint('🎯 PV RESULTS: REJECTING - PVs for different position');
@@ -2168,11 +2179,10 @@ class ChessBoardScreenNotifierNew
       final cachedPv = _pvCache[cacheKey];
       final cachedMate = _mateCache[cacheKey];
       if (!force && cachedEval != null && cachedPv != null) {
-        // Add small delay so UI can show "..." indicator before displaying cached evaluation
-        // This gives user feedback that position is being evaluated, even with cache hit
-        await Future.delayed(const Duration(milliseconds: 50));
+        // PERFORMANCE: Return cached result immediately - no artificial delay
+        // The "..." indicator will briefly flash, giving visual feedback
 
-        // Check if position changed during delay
+        // Check if evaluation was cancelled
         if (!mounted || _cancelEvaluation) {
           // CRITICAL FIX: Clear evaluating state on early return
           final fallbackState = state.value;
@@ -2289,14 +2299,13 @@ class ChessBoardScreenNotifierNew
           );
           pvLines = await _buildPrincipalVariations(fen, cascadeEval.pvs);
 
-          // RETRY: If cloud PV building failed but we have PVs, try once more
+          // RETRY: If cloud PV building failed but we have PVs, try once more immediately
           if (pvLines.isEmpty && cascadeEval.pvs.isNotEmpty) {
             debugPrint(
-              '🔄 RETRY: Cloud PV building failed, retrying after 200ms...',
+              '🔄 RETRY: Cloud PV building failed, retrying immediately...',
             );
-            await Future.delayed(const Duration(milliseconds: 200));
 
-            // Check if position changed during the delay
+            // Check if position changed
             final currentState = state.value;
             if (currentState != null) {
               final currentPos =
@@ -2306,9 +2315,9 @@ class ChessBoardScreenNotifierNew
               if (currentPos != null) {
                 final currentFenBase = currentPos.fen
                     .split(' ')
-                    .take(4)
+                    .take(3)
                     .join(' ');
-                final targetFenBase = fen.split(' ').take(4).join(' ');
+                final targetFenBase = fen.split(' ').take(3).join(' ');
 
                 if (currentFenBase != targetFenBase) {
                   debugPrint(
@@ -2358,8 +2367,8 @@ class ChessBoardScreenNotifierNew
           );
           final localEval = await StockfishSingleton().evaluatePosition(
             fen,
-            depth: _resumeVariantAutoPlay ? 18 : 25,
-            prioritize: true,
+            depth: 15, // Consistent depth matching working commit a85edea
+            prioritize: force, // Only prioritize when explicitly forcing (user navigation)
           );
           debugPrint(
             '🎯 EVAL: Stockfish completed, isCancelled=${localEval.isCancelled}, pvs.length=${localEval.pvs.length}',
@@ -2389,14 +2398,13 @@ class ChessBoardScreenNotifierNew
               localEval.pvs,
             );
 
-            // RETRY: If Stockfish PV building failed, try once more after a small delay
+            // RETRY: If Stockfish PV building failed, try once more immediately
             if (stockfishPvLines.isEmpty && localEval.pvs.isNotEmpty) {
               debugPrint(
-                '🔄 RETRY: Stockfish PV building failed, retrying after 200ms...',
+                '🔄 RETRY: Stockfish PV building failed, retrying immediately...',
               );
-              await Future.delayed(const Duration(milliseconds: 200));
 
-              // Check if position changed during the delay
+              // Check if position changed
               final currentState = state.value;
               if (currentState != null) {
                 final currentPos =
@@ -2406,9 +2414,9 @@ class ChessBoardScreenNotifierNew
                 if (currentPos != null) {
                   final currentFenBase = currentPos.fen
                       .split(' ')
-                      .take(4)
+                      .take(3)
                       .join(' ');
-                  final targetFenBase = fen.split(' ').take(4).join(' ');
+                  final targetFenBase = fen.split(' ').take(3).join(' ');
 
                   if (currentFenBase != targetFenBase) {
                     debugPrint(
@@ -2525,8 +2533,8 @@ class ChessBoardScreenNotifierNew
                   : currentState.position;
           if (currentPos == null) return;
 
-          final currentFenBase = currentPos.fen.split(' ').take(4).join(' ');
-          final targetFenBase = fen.split(' ').take(4).join(' ');
+          final currentFenBase = currentPos.fen.split(' ').take(3).join(' ');
+          final targetFenBase = fen.split(' ').take(3).join(' ');
 
           // Only retry if still on same position and still no PVs
           if (currentFenBase == targetFenBase &&
@@ -2585,8 +2593,8 @@ class ChessBoardScreenNotifierNew
               : currentSnapshot.position!;
 
       // Allow small FEN differences (like move counters) during variant exploration
-      final currentFenBase = position.fen.split(' ').take(4).join(' ');
-      final evalFenBase = fen.split(' ').take(4).join(' ');
+      final currentFenBase = position.fen.split(' ').take(3).join(' ');
+      final evalFenBase = fen.split(' ').take(3).join(' ');
 
       if (currentFenBase != evalFenBase) {
         debugPrint(
@@ -3041,9 +3049,9 @@ class ChessBoardScreenNotifierNew
       if (currentState.variantBaseFen != null && fenToEval != null) {
         final pvFenBase = currentState.variantBaseFen!
             .split(' ')
-            .take(4)
+            .take(3)
             .join(' ');
-        final currentFenBase = fenToEval.split(' ').take(4).join(' ');
+        final currentFenBase = fenToEval.split(' ').take(3).join(' ');
 
         if (pvFenBase != currentFenBase) {
           debugPrint('🎯 UPDATE EVAL: Clearing stale PVs for new position');
@@ -3068,11 +3076,11 @@ class ChessBoardScreenNotifierNew
       _evaluatePosition(force: force);
       
       // SAFETY MECHANISM: Failsafe timeout to clear stuck isEvaluating state
-      // If evaluation takes longer than 15 seconds, force clear the loading state
-      Future.delayed(const Duration(seconds: 15), () {
+      // If evaluation takes longer than 5 seconds, force clear the loading state
+      Future.delayed(const Duration(seconds: 5), () {
         final currentState = state.value;
         if (currentState != null && currentState.isEvaluating && mounted) {
-          debugPrint('⚠️ EVAL TIMEOUT: Forcing isEvaluating to false after 15s timeout');
+          debugPrint('⚠️ EVAL TIMEOUT: Forcing isEvaluating to false after 5s timeout');
           state = AsyncValue.data(
             currentState.copyWith(
               isEvaluating: false,
