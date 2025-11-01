@@ -286,27 +286,28 @@ class EventFavoriteCard extends ConsumerWidget {
 
   Widget _buildTimeControlIcon(String timeControl) {
     final lowerTimeControl = timeControl.toLowerCase();
-    IconData icon;
-    Color iconColor;
+    String? assetPath;
 
     if (lowerTimeControl.contains('blitz')) {
-      icon = Icons.bolt;
-      iconColor = kRedColor;
+      assetPath = 'assets/pngs/blitz.png';
     } else if (lowerTimeControl.contains('rapid')) {
-      icon = Icons.flash_on;
-      iconColor = Colors.orange;
+      assetPath = 'assets/pngs/rapid.png';
     } else if (lowerTimeControl.contains('classic') || lowerTimeControl.contains('standard')) {
-      icon = Icons.access_time;
-      iconColor = kWhiteColor;
+      assetPath = 'assets/pngs/classical.png';
     } else {
-      icon = Icons.timer;
-      iconColor = kWhiteColor.withValues(alpha: 0.7);
+      // Fallback to timer icon for unknown time controls
+      return Icon(
+        Icons.timer,
+        size: 14.ic,
+        color: kWhiteColor.withValues(alpha: 0.7),
+      );
     }
 
-    return Icon(
-      icon,
-      size: 14.ic,
-      color: iconColor,
+    return Image.asset(
+      assetPath,
+      width: 14.ic,
+      height: 14.ic,
+      fit: BoxFit.contain,
     );
   }
 }

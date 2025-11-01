@@ -1,4 +1,6 @@
 import 'dart:math';
+import 'package:chessever2/providers/event_favorite_players_provider.dart';
+import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/screens/group_event/widget/all_events_tab_widget.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/group_event_filter_provider.dart';
@@ -9,7 +11,6 @@ import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart'
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/event_card/starred_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
@@ -228,17 +229,28 @@ class GroupEventScreen extends HookConsumerWidget {
                                 .read(groupEventScreenProvider.notifier)
                                 .isFetchingMore;
 
-                        // Combine old starred favorites with new unified favorites
-                        final starredFavorites = ref.watch(
-                          starredProvider(selectedTourEvent.name),
-                        );
+                        // Get favorites from unified favorites system (Supabase + local cache)
+                        final favoritesAsync = ref.watch(favoriteEventsProvider);
+                        final favoriteEvents = favoritesAsync.valueOrNull ?? [];
 
-                        // Combine both lists
-                        final allFavorites =
-                            <String>{...starredFavorites}.toList();
+                        // Extract event IDs from favorites
+                        final allFavorites = favoriteEvents
+                            .map((e) => e.eventId)
+                            .where((id) => id.isNotEmpty)
+                            .toList();
+
+                        // Build timestamp map for sorting within groups
+                        final favoriteTimestamps = <String, DateTime>{};
+                        for (final fav in favoriteEvents) {
+                          favoriteTimestamps[fav.eventId] = fav.createdAt;
+                        }
 
                         final isSearching =
                             searchController.text.trim().isNotEmpty;
+
+                        // Get cached favorite player data (populated by event cards as they render)
+                        final cachedEventFavoritePlayers =
+                            ref.watch(eventFavoritePlayersCacheProvider);
 
                         final finalEvents =
                             isSearching
@@ -248,6 +260,9 @@ class GroupEventScreen extends HookConsumerWidget {
                                     .sortBasedOnFavorite(
                                       tours: filteredEvents,
                                       favorites: allFavorites,
+                                      eventFavoritePlayersMap:
+                                          cachedEventFavoritePlayers,
+                                      favoriteTimestamps: favoriteTimestamps,
                                     );
 
                         return RefreshIndicator(

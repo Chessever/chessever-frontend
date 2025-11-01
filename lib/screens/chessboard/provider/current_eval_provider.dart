@@ -10,10 +10,10 @@ import 'stockfish_singleton.dart';
 
 /// 1. local → 2. Supabase → 3. lichess
 /// Uses autoDispose to cancel evaluations when switching games
-final cascadeEvalProvider = FutureProvider.family.autoDispose<CloudEval, String>((
-  ref,
-  fen,
-) async {
+final cascadeEvalProvider = FutureProvider.family.autoDispose<
+  CloudEval,
+  String
+>((ref, fen) async {
   final local = ref.read(localEvalCacheProvider);
   final persist = ref.read(persistCloudEvalProvider);
   final lichess = ref.read(lichessEvalRepoProvider);
@@ -61,11 +61,17 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<CloudEval, String>
       "🟢 EVAL SOURCE (cascadeEval): LICHESS (${cloud.pvs.length} PVs) - fen=$fen, side=$sideToMove, cp=$cp",
     );
     // OPTIMIZATION: Save to caches in background (unawaited)
-    Future.wait<void>([persist.call(fen, cloud), local.save(fen, cloud)])
-        .catchError((e) => <void>[]);
+    Future.wait<void>([
+      persist.call(fen, cloud),
+      local.save(fen, cloud),
+    ]).catchError((e) => <void>[]);
     return cloud;
   } catch (_) {
-    final sfEval = await StockfishSingleton().evaluatePosition(fen, depth: 15);
+    final sfEval = await StockfishSingleton().evaluatePosition(
+      fen,
+      depth: 12,
+      prioritize: true,
+    );
     final cloudFromSF = CloudEval(
       fen: fen,
       knodes: sfEval.knodes,
@@ -104,10 +110,10 @@ bool _isValidEvaluation(CloudEval cloud) {
 /// OPTIMIZED: Parallel queries to local → Supabase → Lichess, then Stockfish fallback
 /// Uses Future.any to return the first valid result for maximum speed
 /// Uses autoDispose to cancel evaluations when switching games
-final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval, String>((
-  ref,
-  fen,
-) async {
+final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
+  CloudEval,
+  String
+>((ref, fen) async {
   final local = ref.read(localEvalCacheProvider);
   final persist = ref.read(persistCloudEvalProvider);
   final lichess = ref.read(lichessEvalRepoProvider);
@@ -122,7 +128,9 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval,
       final fenParts = fen.split(' ');
       final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
       final cp = cached.pvs.isNotEmpty ? cached.pvs.first.cp : 0;
-      print("🔵 EVAL SOURCE: LOCAL CACHE (instant) - fen=$fen, side=$sideToMove, cp=$cp");
+      print(
+        "🔵 EVAL SOURCE: LOCAL CACHE (instant) - fen=$fen, side=$sideToMove, cp=$cp",
+      );
       return cached;
     }
 
@@ -138,7 +146,9 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval,
             final fenParts = fen.split(' ');
             final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
             final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
-            print("🟡 EVAL SOURCE: SUPABASE - fen=$fen, side=$sideToMove, cp=$cp");
+            print(
+              "🟡 EVAL SOURCE: SUPABASE - fen=$fen, side=$sideToMove, cp=$cp",
+            );
             // Background save to local cache
             local.save(fen, cloud).catchError((e) => null);
             return cloud;
@@ -157,7 +167,9 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval,
             final fenParts = fen.split(' ');
             final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
             final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
-            print("🟢 EVAL SOURCE: LICHESS (${cloud.pvs.length} PVs) - fen=$fen, side=$sideToMove, cp=$cp");
+            print(
+              "🟢 EVAL SOURCE: LICHESS (${cloud.pvs.length} PVs) - fen=$fen, side=$sideToMove, cp=$cp",
+            );
             // Background save to both caches
             Future.wait<void>([
               persist.call(fen, cloud),
@@ -183,12 +195,14 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval,
     }
 
     // FALLBACK: All cloud sources failed, use Stockfish
-    print('⚡ EVAL SOURCE: STOCKFISH FALLBACK for $fen (cloud sources unavailable)');
+    print(
+      '⚡ EVAL SOURCE: STOCKFISH FALLBACK for $fen (cloud sources unavailable)',
+    );
     try {
       final sfEval = await StockfishSingleton()
-          .evaluatePosition(fen, depth: 15)
+          .evaluatePosition(fen, depth: 12, prioritize: true)
           .timeout(
-            const Duration(seconds: 20),
+            const Duration(seconds: 12),
             onTimeout: () {
               print('⏱️ Stockfish evaluation timeout for $fen');
               throw TimeoutException('Stockfish evaluation took too long');

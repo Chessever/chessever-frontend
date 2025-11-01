@@ -1,3 +1,4 @@
+import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -117,19 +118,15 @@ class EventCard extends ConsumerWidget {
 
   Widget _buildTimeControlIcon() {
     final timeControl = tourEventCardModel.timeControl.toLowerCase();
-    IconData icon;
-    Color iconColor;
+    String? assetPath;
 
     if (timeControl.contains('blitz')) {
-      icon = Icons.bolt;
-      iconColor = kRedColor;
+      assetPath = 'assets/pngs/blitz.png';
     } else if (timeControl.contains('rapid')) {
-      icon = Icons.flash_on;
-      iconColor = Colors.orange;
+      assetPath = 'assets/pngs/rapid.png';
     } else if (timeControl.contains('classic') ||
         timeControl.contains('standard')) {
-      icon = Icons.access_time;
-      iconColor = kWhiteColor;
+      assetPath = 'assets/pngs/classical.png';
     } else {
       // Default fallback - show text if unknown format
       return Text(
@@ -138,7 +135,12 @@ class EventCard extends ConsumerWidget {
       );
     }
 
-    return Icon(icon, size: 14.sp, color: iconColor);
+    return Image.asset(
+      assetPath,
+      width: 14.sp,
+      height: 14.sp,
+      fit: BoxFit.contain,
+    );
   }
 }
 
@@ -173,20 +175,6 @@ class _UpcomingTag extends StatelessWidget {
       tourEventCardModel.timeUntilStart,
       style: AppTypography.textXsMedium.copyWith(
         color: kWhiteColor.withOpacity(0.7),
-      ),
-    );
-  }
-}
-
-class _OngoingTag extends StatelessWidget {
-  const _OngoingTag();
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      'Ongoing',
-      style: AppTypography.textXsBold.copyWith(
-        color: kPrimaryColor.withOpacity(0.4),
       ),
     );
   }
@@ -231,9 +219,47 @@ class _StarWidget extends ConsumerWidget {
       skipLoadingOnReload: true,
     );
 
+    // Check if event has favorite players
+    final eventFavoritePlayersAsync =
+        ref.watch(eventFavoritePlayersProvider(tourEventCardModel.id));
+
+    // Get current value and check if already cached
+    final currentCache = ref.watch(eventFavoritePlayersCacheProvider);
+    final eventFavoritePlayers = eventFavoritePlayersAsync.maybeWhen(
+      data: (data) {
+        // Update cache if data has changed (do this after build with microtask)
+        if (currentCache[tourEventCardModel.id] != data) {
+          Future.microtask(() {
+            ref
+                .read(eventFavoritePlayersCacheProvider.notifier)
+                .updateCache(tourEventCardModel.id, data);
+          });
+        }
+        return data;
+      },
+      orElse: () =>
+          currentCache[tourEventCardModel.id] ??
+          const EventFavoritePlayers.empty(),
+    );
+
+    // Priority: Star icon (user favorited) ALWAYS takes precedence
+    // Heart icon shows ONLY when NOT starred but has favorite players
+    final bool showHeart = !isStarred && eventFavoritePlayers.hasFavorites;
+    final bool showFilledStar = isStarred;
+
+    // Heart icon is NOT tappable - it's just informational
+    if (showHeart) {
+      return Container(
+        alignment: Alignment.centerRight,
+        width: 30.w,
+        height: 40.h,
+        child: _HeartIconWithCount(count: eventFavoritePlayers.count),
+      );
+    }
+
+    // Star icon is tappable - user can favorite/unfavorite
     return InkWell(
       onTap: () {
-        // Optimistic update - UI changes immediately, Supabase syncs in background
         HapticFeedback.lightImpact();
 
         ref.read(favoriteEventsProvider.notifier).toggleFavorite(
@@ -257,11 +283,60 @@ class _StarWidget extends ConsumerWidget {
         width: 30.w,
         height: 40.h,
         child: SvgWidget(
-          isStarred ? SvgAsset.starFilledIcon : SvgAsset.starIcon,
+          showFilledStar ? SvgAsset.starFilledIcon : SvgAsset.starIcon,
           semanticsLabel: 'Favorite Icon',
           height: 20.h,
           width: 20.w,
         ),
+      ),
+    );
+  }
+}
+
+class _HeartIconWithCount extends StatelessWidget {
+  const _HeartIconWithCount({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 24.w,
+      height: 24.h,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Heart icon
+          SvgWidget(
+            SvgAsset.favouriteRedIcon,
+            semanticsLabel: 'Has Favorite Players',
+            height: 20.h,
+            width: 20.w,
+          ),
+          // Count text centered in the middle (only show if > 1)
+          if (count > 1)
+            Text(
+              count > 9 ? '9+' : count.toString(),
+              style: AppTypography.textXsBold.copyWith(
+                color: kWhiteColor,
+                fontSize: 10.sp,
+                height: 1,
+                fontWeight: FontWeight.w900,
+                shadows: [
+                  Shadow(
+                    offset: Offset(0.5, 0.5),
+                    blurRadius: 1.5,
+                    color: kBlackColor.withValues(alpha: 0.7),
+                  ),
+                  Shadow(
+                    offset: Offset(-0.5, -0.5),
+                    blurRadius: 1.5,
+                    color: kBlackColor.withValues(alpha: 0.7),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }

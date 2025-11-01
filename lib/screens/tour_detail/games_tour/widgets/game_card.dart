@@ -244,35 +244,55 @@ class _BottomSection extends ConsumerWidget {
         children:
             matchComparison.comparison == MatchComparison.sameOrder
                 ? [
-                  _TimerWidget(
-                    turn: matchComparison.game.activePlayer == Side.white,
-                    time: matchComparison.game.whiteTimeDisplay,
-                    gamesTourModel: matchComparison.game,
-                    isWhitePlayer: true,
+                  SizedBox(
+                    width: 50.w, // Fixed width for clock
+                    child: _TimerWidget(
+                      turn: matchComparison.game.activePlayer == Side.white,
+                      time: matchComparison.game.whiteTimeDisplay,
+                      gamesTourModel: matchComparison.game,
+                      isWhitePlayer: true,
+                    ),
                   ),
-                  Spacer(),
-                  _TimerWidget(
-                    turn: matchComparison.game.activePlayer == Side.black,
-                    time: matchComparison.game.blackTimeDisplay,
-                    gamesTourModel: matchComparison.game,
-                    isWhitePlayer: false,
+                  Expanded(
+                    child: _LastMoveNotation(
+                      lastMove: matchComparison.game.lastMove,
+                      fen: matchComparison.game.fen,
+                    ),
+                  ),
+                  SizedBox(
+                    width: 50.w, // Fixed width for clock
+                    child: _TimerWidget(
+                      turn: matchComparison.game.activePlayer == Side.black,
+                      time: matchComparison.game.blackTimeDisplay,
+                      gamesTourModel: matchComparison.game,
+                      isWhitePlayer: false,
+                    ),
                   ),
                 ]
                 : [
-                  _TimerWidget(
-                    turn: matchComparison.game.activePlayer == Side.black,
-                    time: matchComparison.game.blackTimeDisplay,
-                    gamesTourModel: matchComparison.game,
-                    isWhitePlayer: false,
+                  SizedBox(
+                    width: 50.w, // Fixed width for clock
+                    child: _TimerWidget(
+                      turn: matchComparison.game.activePlayer == Side.black,
+                      time: matchComparison.game.blackTimeDisplay,
+                      gamesTourModel: matchComparison.game,
+                      isWhitePlayer: false,
+                    ),
                   ),
-
-                  Spacer(),
-
-                  _TimerWidget(
-                    turn: matchComparison.game.activePlayer == Side.white,
-                    time: matchComparison.game.whiteTimeDisplay,
-                    gamesTourModel: matchComparison.game,
-                    isWhitePlayer: true,
+                  Expanded(
+                    child: _LastMoveNotation(
+                      lastMove: matchComparison.game.lastMove,
+                      fen: matchComparison.game.fen,
+                    ),
+                  ),
+                  SizedBox(
+                    width: 50.w, // Fixed width for clock
+                    child: _TimerWidget(
+                      turn: matchComparison.game.activePlayer == Side.white,
+                      time: matchComparison.game.whiteTimeDisplay,
+                      gamesTourModel: matchComparison.game,
+                      isWhitePlayer: true,
+                    ),
                   ),
                 ],
       ),
@@ -396,18 +416,165 @@ class _TimerWidget extends StatelessWidget {
             ? gamesTourModel.whiteClockSeconds
             : gamesTourModel.blackClockSeconds;
 
-    return AtomicCountdownText(
-      clockSeconds:
-          clockSeconds, // Primary source: time in seconds from last_clock fields
-      clockCentiseconds:
-          clockCentiseconds, // Fallback source: raw database clock
-      lastMoveTime: gamesTourModel.lastMoveTime,
-      isActive: isClockRunning, // Clock frozen if game is effectively finished
-      style: AppTypography.textXsMedium.copyWith(
-        color:
-            isGameFinished
-                ? kWhiteColor
-                : (turn ? kPrimaryColor : kWhiteColor),
+    return Center(
+      child: AtomicCountdownText(
+        clockSeconds:
+            clockSeconds, // Primary source: time in seconds from last_clock fields
+        clockCentiseconds:
+            clockCentiseconds, // Fallback source: raw database clock
+        lastMoveTime: gamesTourModel.lastMoveTime,
+        isActive: isClockRunning, // Clock frozen if game is effectively finished
+        style: AppTypography.textXsMedium.copyWith(
+          color:
+              isGameFinished
+                  ? kWhiteColor
+                  : (turn ? kPrimaryColor : kWhiteColor),
+        ),
+      ),
+    );
+  }
+}
+
+class _LastMoveNotation extends StatelessWidget {
+  const _LastMoveNotation({required this.lastMove, required this.fen});
+
+  final String? lastMove;
+  final String? fen;
+
+  /// Converts UCI move (like "b8e8") to SAN notation (like "Re8", "Nf3", etc.)
+  String? _convertUciToSan() {
+    if (lastMove == null || lastMove!.isEmpty) {
+      return null;
+    }
+
+    // If FEN is not available, at least show the destination square
+    if (fen == null || fen!.isEmpty) {
+      // Extract just the destination square from UCI
+      if (lastMove!.length >= 4) {
+        return lastMove!.substring(2, 4);
+      }
+      return null;
+    }
+
+    try {
+      // Parse UCI move manually (format: "e2e4" or "e7e8q" for promotion)
+      if (lastMove!.length < 4) return null;
+
+      final fromSquare = lastMove!.substring(0, 2);
+      final toSquare = lastMove!.substring(2, 4);
+      final promotion = lastMove!.length == 5 ? lastMove![4] : null;
+
+      // Parse the current FEN (position AFTER the move)
+      final currentSetup = Setup.parseFen(fen!);
+      final currentPosition = Chess.fromSetup(currentSetup);
+
+      // Parse destination square using dartchess
+      final move = Move.parse(lastMove!);
+      if (move == null) {
+        // If Move.parse fails, just return destination square
+        return toSquare;
+      }
+
+      // Get the piece at the destination square in current position
+      final destSquare = move.to;
+      final piece = currentPosition.board.pieceAt(destSquare);
+
+      if (piece == null) {
+        // Castling moves: O-O or O-O-O
+        if ((fromSquare == 'e1' && (toSquare == 'g1' || toSquare == 'c1')) ||
+            (fromSquare == 'e8' && (toSquare == 'g8' || toSquare == 'c8'))) {
+          return toSquare == 'g1' || toSquare == 'g8' ? 'O-O' : 'O-O-O';
+        }
+        // Move might have been a capture, just return destination
+        return toSquare;
+      }
+
+      // Format the move based on piece type
+      final pieceSymbol = _getPieceSymbol(piece.role);
+      final moveStr = StringBuffer();
+
+      // Add piece symbol (except for pawns)
+      if (piece.role != Role.pawn) {
+        moveStr.write(pieceSymbol);
+      }
+
+      // For pawn captures, include the file
+      if (piece.role == Role.pawn && fromSquare[0] != toSquare[0]) {
+        moveStr.write(fromSquare[0]); // from file letter
+        moveStr.write('x');
+      }
+
+      // Add destination square
+      moveStr.write(toSquare);
+
+      // Add promotion piece if any
+      if (promotion != null) {
+        moveStr.write('=');
+        moveStr.write(promotion.toUpperCase());
+      }
+
+      // Add check/checkmate symbols if needed
+      if (currentPosition.isCheckmate) {
+        moveStr.write('#');
+      } else if (currentPosition.isCheck) {
+        moveStr.write('+');
+      }
+
+      return moveStr.toString();
+    } catch (e) {
+      // If conversion fails, at least return the destination square
+      if (lastMove!.length >= 4) {
+        return lastMove!.substring(2, 4);
+      }
+      return null;
+    }
+  }
+
+  String _getPieceSymbol(Role role) {
+    switch (role) {
+      case Role.king:
+        return 'K';
+      case Role.queen:
+        return 'Q';
+      case Role.rook:
+        return 'R';
+      case Role.bishop:
+        return 'B';
+      case Role.knight:
+        return 'N';
+      case Role.pawn:
+        return '';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Try to convert UCI to SAN
+    final sanMove = _convertUciToSan();
+
+    // Display the converted SAN move if successful
+    // If conversion fails but we have lastMove, show the raw lastMove as fallback
+    // This ensures we always show something if a move exists
+    final displayText = sanMove ?? lastMove;
+
+    if (displayText == null || displayText.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    // Debug output to see what's happening
+    if (lastMove != null && lastMove!.contains('b8e8')) {
+      debugPrint('🎯 GAME CARD MOVE: lastMove=$lastMove, fen exists=${fen != null}, sanMove=$sanMove');
+    }
+
+    return Center(
+      child: Text(
+        displayText,
+        style: AppTypography.textXsMedium.copyWith(
+          color: kWhiteColor,
+        ),
+        textAlign: TextAlign.center,
+        overflow: TextOverflow.ellipsis,
+        maxLines: 1,
       ),
     );
   }
