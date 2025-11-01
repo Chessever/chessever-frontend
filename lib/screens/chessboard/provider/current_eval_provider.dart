@@ -93,8 +93,16 @@ bool _isValidEvaluation(CloudEval cloud) {
 
   final firstPv = cloud.pvs.first;
 
-  // If it's exactly 0 cp with no moves, it's likely invalid
-  if (firstPv.cp == 0 && firstPv.moves.isEmpty) return false;
+  // CRITICAL: Reject evaluations where ALL PVs have empty moves
+  // This catches stale cloud cache entries that pollute the cascade
+  final hasAnyValidMoves = cloud.pvs.any((pv) => pv.moves.trim().isNotEmpty);
+  if (!hasAnyValidMoves) {
+    print('⚠️ EVAL VALIDATION: Rejected cloud eval with all empty moves (cp=${firstPv.cp})');
+    return false;
+  }
+
+  // If first PV is exactly 0 cp with no moves, it's likely invalid
+  if (firstPv.cp == 0 && firstPv.moves.trim().isEmpty) return false;
 
   // Accept mate scores (high cp values >= 100000 are mate scores)
   if (firstPv.cp.abs() >= 100000) {
@@ -102,7 +110,7 @@ bool _isValidEvaluation(CloudEval cloud) {
   }
 
   // Accept any evaluation with moves (including 0.0 - balanced positions are valid)
-  if (firstPv.moves.isNotEmpty) return true;
+  if (firstPv.moves.trim().isNotEmpty) return true;
 
   return false;
 }
@@ -160,9 +168,11 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
           return null;
         });
 
-    final lichessFuture = lichess
-        .getEval(fen, multiPv: 3)
-        .then((cloud) {
+    // Throttle Lichess API calls to prevent rate limiting (429 errors)
+    final lichessFuture = Future.delayed(
+      const Duration(milliseconds: 200),
+      () => lichess.getEval(fen, multiPv: 3),
+    ).then((cloud) {
           if (_isValidEvaluation(cloud)) {
             final fenParts = fen.split(' ');
             final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
@@ -200,7 +210,7 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
     );
     try {
       final sfEval = await StockfishSingleton()
-          .evaluatePosition(fen, depth: 12, prioritize: true)
+          .evaluatePosition(fen, depth: 12, prioritize: false)
           .timeout(
             const Duration(seconds: 12),
             onTimeout: () {
