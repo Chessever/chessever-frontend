@@ -68,6 +68,7 @@ class ChessBoardScreenNotifierNew
   final Map<String, double> _evaluationCache = {};
   final Map<String, int?> _mateCache = {};
   final Map<String, List<AnalysisLine>> _pvCache = {};
+  final Map<String, DateTime> _failedEvalTimestamps = {};
   int _evalRequestCounter = 0;
   int? _activeEvalRequestId;
   String? _activeEvalKey;
@@ -117,42 +118,50 @@ class ChessBoardScreenNotifierNew
 
     if (game.gameStatus == GameStatus.ongoing) {
       debugPrint('✅ LISTENER ACTIVE for game ${game.gameId}');
+      // CONSOLIDATED: One stream for ALL game data (PGN, clocks, status, etc.)
       ref.listen(gameUpdatesStreamProvider(game.gameId), (previous, next) {
         debugPrint('📡 STREAM EVENT for game ${game.gameId}');
 
         next.whenData((gameData) {
+          if (gameData == null) return;
+
           debugPrint(
-            '📦 DATA: game ${game.gameId}, pgn_len=${gameData?['pgn']?.toString().length}, white_clock=${gameData?['last_clock_white']}, black_clock=${gameData?['last_clock_black']}',
+            '📦 DATA: game ${game.gameId}, white_clock=${gameData['last_clock_white']}, black_clock=${gameData['last_clock_black']}, pgn_length=${(gameData['pgn'] as String?)?.length ?? 0}',
           );
 
-          if (gameData != null) {
-            final currentState = state.value;
-            if (currentState == null) return;
+          final currentState = state.value;
+          if (currentState == null) return;
 
-            // Update game data with stream values
-            game = game.copyWith(
-              pgn: gameData['pgn'] as String? ?? game.pgn,
-              fen: gameData['fen'] as String? ?? game.fen,
-              lastMove: gameData['last_move'] as String? ?? game.lastMove,
-              lastMoveTime:
-                  gameData['last_move_time'] != null
-                      ? DateTime.tryParse(gameData['last_move_time'] as String)
-                      : game.lastMoveTime,
-              whiteClockSeconds:
-                  (gameData['last_clock_white'] as num?)?.round(),
-              blackClockSeconds:
-                  (gameData['last_clock_black'] as num?)?.round(),
-              gameStatus: _parseGameStatus(
-                gameData['status'] as String? ?? '*',
-              ),
-            );
+          // Check if PGN has changed (new moves)
+          final newPgn = gameData['pgn'] as String?;
+          final pgnChanged = newPgn != null && newPgn != game.pgn;
 
-            // CRITICAL: Update state immediately with new game object to show clock changes
-            state = AsyncValue.data(currentState.copyWith(game: game));
+          // Update game data with ALL stream values including PGN
+          game = game.copyWith(
+            pgn: newPgn ?? game.pgn,
+            fen: gameData['fen'] as String? ?? game.fen,
+            lastMove: gameData['last_move'] as String? ?? game.lastMove,
+            lastMoveTime:
+                gameData['last_move_time'] != null
+                    ? DateTime.tryParse(gameData['last_move_time'] as String)
+                    : game.lastMoveTime,
+            whiteClockSeconds:
+                (gameData['last_clock_white'] as num?)?.round(),
+            blackClockSeconds:
+                (gameData['last_clock_black'] as num?)?.round(),
+            gameStatus: _parseGameStatus(
+              gameData['status'] as String? ?? '*',
+            ),
+          );
 
-            // Reparse moves to show updated position
+          // CRITICAL: Update state immediately with new game object to show clock changes
+          state = AsyncValue.data(currentState.copyWith(game: game));
+
+          // Only reparse moves if PGN actually changed (new moves arrived)
+          if (pgnChanged) {
+            debugPrint('🆕 NEW MOVES: Reparsing PGN for game ${game.gameId}');
             _hasParsedMoves = false;
-            parseMoves(pgnOverride: game.pgn);
+            parseMoves(pgnOverride: newPgn);
           }
         });
       });
@@ -186,15 +195,14 @@ class ChessBoardScreenNotifierNew
     try {
       String? pgn = pgnOverride ?? game.pgn;
 
-      Games? gameWithPgn;
       if (pgn == null || pgn.isEmpty) {
-        gameWithPgn = await ref
-            .read(gameRepositoryProvider)
-            .getGameById(game.gameId);
+        pgn = await ref.read(gameRepositoryProvider).getGamePgn(game.gameId);
 
         if (!mounted) return;
 
-        pgn = gameWithPgn.pgn;
+        if (pgn != null) {
+          game = game.copyWith(pgn: pgn);
+        }
       }
 
       // Ensure PGN is not empty
@@ -210,21 +218,7 @@ class ChessBoardScreenNotifierNew
         return;
       }
 
-      // Update cached game reference with latest PGN if we fetched it
-      if (gameWithPgn != null) {
-        game = game.copyWith(
-          pgn: gameWithPgn.pgn ?? pgn,
-          fen: gameWithPgn.fen ?? game.fen,
-          lastMove: gameWithPgn.lastMove ?? game.lastMove,
-          lastMoveTime: gameWithPgn.lastMoveTime ?? game.lastMoveTime,
-          whiteClockSeconds:
-              gameWithPgn.lastClockWhite ?? game.whiteClockSeconds,
-          blackClockSeconds:
-              gameWithPgn.lastClockBlack ?? game.blackClockSeconds,
-        );
-      } else {
-        game = game.copyWith(pgn: pgn);
-      }
+      game = game.copyWith(pgn: pgn);
 
       final gameData = PgnGame.parsePgn(pgn);
       final startingPos = PgnGame.startingPosition(gameData.headers);
@@ -2147,10 +2141,24 @@ class ChessBoardScreenNotifierNew
       final cachedEval = _evaluationCache[cacheKey];
       final cachedPv = _pvCache[cacheKey];
       final cachedMate = _mateCache[cacheKey];
-      if (!force &&
-          cachedEval != null &&
-          cachedPv != null &&
-          cachedPv.isNotEmpty) {
+      if (!force && cachedEval != null && cachedPv != null) {
+        // Add small delay so UI can show "..." indicator before displaying cached evaluation
+        // This gives user feedback that position is being evaluated, even with cache hit
+        await Future.delayed(const Duration(milliseconds: 50));
+
+        // Check if position changed during delay
+        if (!mounted || _cancelEvaluation) return;
+        final currentState = state.value;
+        if (currentState == null) return;
+        final currentFen =
+            currentState.isAnalysisMode
+                ? currentState.analysisState.position.fen
+                : currentState.position?.fen;
+        if (currentFen != null && _fenCacheKey(currentFen) != cacheKey) {
+          debugPrint('🎯 EVAL: Position changed during cache delay, aborting');
+          return;
+        }
+
         var cachedState = initialState.copyWith(
           evaluation: cachedEval,
           mate: cachedMate ?? initialState.mate,
@@ -2173,6 +2181,23 @@ class ChessBoardScreenNotifierNew
           baseFen: fen,
           baseMovePointer: basePointer,
           pvLines: cachedPv,
+        );
+        return;
+      }
+
+      final lastFailure = _failedEvalTimestamps[cacheKey];
+      if (!force &&
+          lastFailure != null &&
+          DateTime.now().difference(lastFailure) < const Duration(seconds: 6)) {
+        debugPrint(
+          '🎯 EVAL: Skipping new request for $cacheKey due to recent failure',
+        );
+        state = AsyncValue.data(
+          initialState.copyWith(
+            isEvaluating: false,
+            evaluation: initialState.evaluation ?? 0.0,
+            principalVariations: const [],
+          ),
         );
         return;
       }
@@ -2285,7 +2310,8 @@ class ChessBoardScreenNotifierNew
           );
           final localEval = await StockfishSingleton().evaluatePosition(
             fen,
-            depth: _resumeVariantAutoPlay ? 12 : 15,
+            depth: _resumeVariantAutoPlay ? 10 : 12,
+            prioritize: true,
           );
           debugPrint(
             '🎯 EVAL: Stockfish completed, isCancelled=${localEval.isCancelled}, pvs.length=${localEval.pvs.length}',
@@ -2405,6 +2431,10 @@ class ChessBoardScreenNotifierNew
         debugPrint(
           '   evaluation=$evaluation, pvLines.length=${pvLines.length}, primaryEval=$primaryEval',
         );
+        _failedEvalTimestamps[cacheKey] = DateTime.now();
+        _evaluationCache[cacheKey] = 0.0;
+        _mateCache[cacheKey] = null;
+        _pvCache[cacheKey] = const [];
         final fallbackState = state.value;
         if (fallbackState != null) {
           // Set a default evaluation to prevent stuck loading state
@@ -2604,6 +2634,7 @@ class ChessBoardScreenNotifierNew
       _evaluationCache[cacheKey] = evaluation;
       _mateCache[cacheKey] = mateScore;
       _pvCache[cacheKey] = pvLines;
+      _failedEvalTimestamps.remove(cacheKey);
 
       // CRITICAL: Don't overwrite variant base if we're exploring a variant
       final inVariantExploration =

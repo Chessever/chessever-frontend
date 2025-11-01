@@ -44,7 +44,7 @@ class _GameStreamRepository {
         .map((data) => data.isEmpty ? null : data.first['status'] as String?);
   }
 
-  // New comprehensive game streaming for clock updates
+  // Comprehensive game streaming - includes ALL game data in one stream
   Stream<Map<String, dynamic>?> subscribeToGameUpdates(String gameId) {
     return Supabase.instance.client
         .from('games')
@@ -54,7 +54,7 @@ class _GameStreamRepository {
           if (data.isEmpty) return null;
           final game = data.first;
           return {
-            'pgn': game['pgn'] as String?,
+            'pgn': game['pgn'] as String?, // Include PGN to eliminate need for separate stream
             'fen': game['fen'] as String?,
             'last_move': game['last_move'] as String?,
             'last_move_time': game['last_move_time'] as String?,

@@ -356,20 +356,17 @@ class ScoreCardScreen extends ConsumerWidget {
                           _RatingDisplay(
                             playerName: player.name,
                             timeControlType: "standard",
-                            icon: Icons.access_time,
-                            iconColor: kWhiteColor,
+                            assetPath: 'assets/pngs/classical.png',
                           ),
                           _RatingDisplay(
                             playerName: player.name,
                             timeControlType: "rapid",
-                            icon: Icons.flash_on,
-                            iconColor: Colors.orange,
+                            assetPath: 'assets/pngs/rapid.png',
                           ),
                           _RatingDisplay(
                             playerName: player.name,
                             timeControlType: "blitz",
-                            icon: Icons.bolt,
-                            iconColor: kRedColor,
+                            assetPath: 'assets/pngs/blitz.png',
                           ),
                         ],
                       ),
@@ -560,14 +557,12 @@ class ScoreCardScreen extends ConsumerWidget {
 class _RatingDisplay extends ConsumerWidget {
   final String playerName;
   final String timeControlType;
-  final IconData icon;
-  final Color iconColor;
+  final String assetPath;
 
   const _RatingDisplay({
     required this.playerName,
     required this.timeControlType,
-    required this.icon,
-    required this.iconColor,
+    required this.assetPath,
   });
 
   @override
@@ -581,7 +576,12 @@ class _RatingDisplay extends ConsumerWidget {
 
     return Row(
       children: [
-        Icon(icon, size: 16.sp, color: iconColor),
+        Image.asset(
+          assetPath,
+          width: 16.sp,
+          height: 16.sp,
+          fit: BoxFit.contain,
+        ),
         SizedBox(width: 4.w),
         ratingAsync.when(
           data:

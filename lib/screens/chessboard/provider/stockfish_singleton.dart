@@ -38,7 +38,8 @@ class StockfishSingleton {
 
   Future<EnhancedCloudEval> evaluatePosition(
     String fen, {
-    int depth = 15,
+    int depth = 20,
+    bool prioritize = false,
   }) async {
     // Validate depth range
     if (depth < 1 || depth > 25) {
@@ -58,6 +59,10 @@ class StockfishSingleton {
     if (_evaluationCache.containsKey(cacheKey)) {
       debugPrint('📦 CACHE HIT for $fen');
       return _evaluationCache[cacheKey]!;
+    }
+
+    if (prioritize) {
+      await _purgeQueue();
     }
 
     // Deduplicate: if same job is current or pending, attach to it
@@ -132,6 +137,8 @@ class StockfishSingleton {
         _currentJob!.completer.complete(cancelledResult);
       }
 
+      _pendingJobs.remove(_currentJob!.key);
+
       // Send stop command to engine if it's ready
       if (_engine != null && _engine!.state.value == StockfishState.ready) {
         try {
@@ -145,6 +152,36 @@ class StockfishSingleton {
       }
 
       _currentJob = null;
+    }
+  }
+
+  Future<void> _purgeQueue() async {
+    await _cancelCurrentEvaluation();
+
+    if (_jobQueue.isNotEmpty) {
+      for (final job in _jobQueue) {
+        if (!job.completer.isCompleted) {
+          job.completer.complete(
+            EnhancedCloudEval(
+              fen: job.fen,
+              knodes: 0,
+              depth: 0,
+              pvs: [Pv(moves: '', cp: 0, mate: 0)],
+              isCancelled: true,
+            ),
+          );
+        }
+      }
+      _jobQueue.clear();
+    }
+
+    _pendingJobs.clear();
+
+    // Wait until any in-flight processor finishes to avoid race conditions
+    if (_isProcessing) {
+      while (_isProcessing) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
     }
   }
 

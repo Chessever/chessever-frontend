@@ -1387,17 +1387,22 @@ class _BottomNavBar extends ConsumerWidget {
       gameIndex: index,
       onFlip: () => notifier.flipBoard(),
       toggleEngineVisibility: () => notifier.toggleEngineVisibility(),
-      onRightMove: canMoveForward ? () {
-        notifier.analysisStepForward();
-        // Clear unseen indicator ONLY when reaching the last move
-        if (state.hasUnseenMoves) {
-          // Check if we'll be at the last move after stepping forward
-          final willBeAtLastMove = state.analysisState.currentMoveIndex + 1 >= state.allMoves.length - 1;
-          if (willBeAtLastMove) {
-            notifier.markMovesAsSeen();
-          }
-        }
-      } : null,
+      onRightMove:
+          canMoveForward
+              ? () {
+                notifier.analysisStepForward();
+                // Clear unseen indicator ONLY when reaching the last move
+                if (state.hasUnseenMoves) {
+                  // Check if we'll be at the last move after stepping forward
+                  final willBeAtLastMove =
+                      state.analysisState.currentMoveIndex + 1 >=
+                      state.allMoves.length - 1;
+                  if (willBeAtLastMove) {
+                    notifier.markMovesAsSeen();
+                  }
+                }
+              }
+              : null,
       onLeftMove:
           canMoveBackward ? () => notifier.analysisStepBackward() : null,
       onLongPressBackwardStart: () => notifier.startLongPressBackward(),
@@ -1868,7 +1873,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       } else if (isNewMoveAdded && !wasViewingLastMove) {
         // User is viewing history, preserve scroll position
         // Don't reset _hasInitiallyScrolled, don't schedule scroll
-        debugPrint('📌 Preserving scroll position - user viewing move $oldCurrentIndex while new move arrived');
+        debugPrint(
+          '📌 Preserving scroll position - user viewing move $oldCurrentIndex while new move arrived',
+        );
       } else {
         // Move count decreased (unlikely) or other change, reset
         _hasInitiallyScrolled = false;
@@ -2166,54 +2173,23 @@ class _PrincipalVariationListState
     extends ConsumerState<_PrincipalVariationList> {
   late PageController _pageController;
   int _currentPage = 0;
-  Timer? _evaluationTimeoutTimer;
-  bool _forceHideSkeleton = false;
 
   @override
   void initState() {
     super.initState();
-    final lines = widget.state.principalVariations.take(3).toList();
+    final lines = widget.state.principalVariations.toList(growable: false);
     final initialIndex = widget.state.selectedVariantIndex ?? 0;
     // Ensure initial page is within bounds
     _currentPage = lines.isEmpty ? 0 : initialIndex.clamp(0, lines.length - 1);
     _pageController = PageController(initialPage: _currentPage);
-
-    // Start timeout timer if currently evaluating
-    if (widget.state.isEvaluating) {
-      _startEvaluationTimeout();
-    }
-  }
-
-  void _startEvaluationTimeout() {
-    _evaluationTimeoutTimer?.cancel();
-    _forceHideSkeleton = false;
-    // After 5 seconds, force hide skeleton to prevent stuck loading state
-    _evaluationTimeoutTimer = Timer(const Duration(seconds: 5), () {
-      if (mounted && widget.state.isEvaluating) {
-        setState(() {
-          _forceHideSkeleton = true;
-        });
-        debugPrint('⏰ PV TIMEOUT: Forced hiding skeleton after 5s timeout');
-      }
-    });
   }
 
   @override
   void didUpdateWidget(_PrincipalVariationList oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    // Reset timeout when evaluation state changes
-    if (widget.state.isEvaluating != oldWidget.state.isEvaluating) {
-      if (widget.state.isEvaluating) {
-        _startEvaluationTimeout();
-      } else {
-        _evaluationTimeoutTimer?.cancel();
-        _forceHideSkeleton = false;
-      }
-    }
-
     // Update page when variant selection changes externally
-    final lines = widget.state.principalVariations.take(3).toList();
+    final lines = widget.state.principalVariations.toList(growable: false);
     final newIndex = widget.state.selectedVariantIndex ?? 0;
     // Check bounds against actual number of lines
     if (newIndex != _currentPage && newIndex < lines.length) {
@@ -2230,7 +2206,6 @@ class _PrincipalVariationListState
 
   @override
   void dispose() {
-    _evaluationTimeoutTimer?.cancel();
     _pageController.dispose();
     super.dispose();
   }
@@ -2250,16 +2225,17 @@ class _PrincipalVariationListState
     final isWhiteToMove = (position?.turn ?? Side.white) == Side.white;
 
     final isEvaluating = widget.state.isEvaluating;
-    final lines = widget.state.principalVariations.take(3).toList();
+    final lines = widget.state.principalVariations.toList(growable: false);
+    const double _basePvHeight = 78;
+    final double pvCardHeight = _basePvHeight.h;
 
     // Check if position is terminal (game over)
     final isGameOver = position?.isGameOver ?? false;
 
     // Show skeleton when evaluating (to prevent stale data display) OR when first loading (no lines yet)
-    // But not when game is over OR when forced hidden by timeout
-    // CRITICAL: Force hide skeleton after timeout to prevent stuck loading state in live games
-    final showSkeleton =
-        !isGameOver && !_forceHideSkeleton && (isEvaluating || lines.isEmpty);
+    // But not when game is over
+    // Keep skeleton visible indefinitely while evaluating - never hide it with timeout
+    final showSkeleton = !isGameOver && (isEvaluating || lines.isEmpty);
 
     // Show end of game message when position is terminal
     final showEndOfGame = isGameOver && widget.state.isAnalysisMode;
@@ -2275,7 +2251,7 @@ class _PrincipalVariationListState
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           SizedBox(
-            height: 78.h,
+            height: pvCardHeight,
             child:
                 showEndOfGame
                     ? Center(
@@ -2418,6 +2394,7 @@ class _PrincipalVariationListState
                                   borderRadius: BorderRadius.circular(6.sp),
                                   color: backgroundColor,
                                 ),
+                                clipBehavior: Clip.hardEdge,
                                 padding: EdgeInsets.symmetric(
                                   horizontal: 12.sp,
                                   vertical: 10.sp,
@@ -2461,20 +2438,24 @@ class _PrincipalVariationListState
                                       ),
                                     ),
                                     Expanded(
-                                      child: Text(
-                                        sanMoves.join(' '),
-                                        style: AppTypography.textXsMedium
-                                            .copyWith(
-                                              color: kWhiteColor.withValues(
-                                                alpha: 0.9,
+                                      child: SingleChildScrollView(
+                                        primary: false,
+                                        physics: const BouncingScrollPhysics(),
+                                        padding: EdgeInsets.only(right: 6.sp),
+                                        child: Text(
+                                          sanMoves.join(' '),
+                                          softWrap: true,
+                                          style: AppTypography.textXsMedium
+                                              .copyWith(
+                                                color: kWhiteColor.withValues(
+                                                  alpha: 0.9,
+                                                ),
+                                                fontWeight:
+                                                    isSelected
+                                                        ? FontWeight.w600
+                                                        : FontWeight.normal,
                                               ),
-                                              fontWeight:
-                                                  isSelected
-                                                      ? FontWeight.w600
-                                                      : FontWeight.normal,
-                                            ),
-                                        overflow: TextOverflow.ellipsis,
-                                        maxLines: 3,
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -2587,9 +2568,10 @@ class _BlinkingRedDotState extends State<_BlinkingRedDot>
       duration: const Duration(milliseconds: 800),
       vsync: this,
     );
-    _animation = Tween<double>(begin: 0.3, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
+    _animation = Tween<double>(
+      begin: 0.3,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
     _controller.repeat(reverse: true);
   }
 
@@ -2740,10 +2722,14 @@ class _MoveNotationWidget extends HookConsumerWidget {
 
     return GestureDetector(
       onTap: () {
-        ref.read(chessBoardScreenProviderNew(params).notifier).goToMove(moveIndex);
+        ref
+            .read(chessBoardScreenProviderNew(params).notifier)
+            .goToMove(moveIndex);
         // If tapping on the last move, clear the unseen indicator
         if (isLastMove && hasUnseenMoves) {
-          ref.read(chessBoardScreenProviderNew(params).notifier).markMovesAsSeen();
+          ref
+              .read(chessBoardScreenProviderNew(params).notifier)
+              .markMovesAsSeen();
         }
       },
       child: Stack(

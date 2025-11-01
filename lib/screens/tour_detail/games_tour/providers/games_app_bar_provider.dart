@@ -10,6 +10,7 @@ import 'package:chessever2/repository/supabase/round/round.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_rounds_id_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart'; // adjust import path if needed
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 
 /// Sticky user selection
 final userSelectedRoundProvider =
@@ -89,24 +90,21 @@ class _GamesAppBarNotifier
     final scrollProvider = ref.read(gamesTourScrollProvider.notifier);
     final controller = scrollProvider.state;
     final itemIndex = _calculateRoundHeaderIndex(roundId);
-    
+
     // Debug logging
     print('🎯 Scrolling to round: $roundId, calculated index: $itemIndex');
-    
+
     if (itemIndex >= 0 && controller.isAttached) {
       // Prevent scroll listener from updating dropdown during programmatic scroll
-      scrollProvider.startProgrammaticScroll();
-      
+      scrollProvider.startProgrammaticScroll(targetRoundId: roundId);
+
       // Small delay to ensure layout is ready
       await Future.delayed(const Duration(milliseconds: 100));
-      
+
       if (controller.isAttached) {
         try {
           // Use alignment 0.0 to position round header at the very top
-          controller.jumpTo(
-            index: itemIndex,
-            alignment: 0.0,
-          );
+          controller.jumpTo(index: itemIndex, alignment: 0.0);
         } catch (e) {
           // Fallback if jumpTo fails
           try {
@@ -118,7 +116,7 @@ class _GamesAppBarNotifier
             );
           } catch (_) {}
         }
-        
+
         // Re-enable scroll listener after scroll completes
         scrollProvider.endProgrammaticScroll();
       }
@@ -146,46 +144,59 @@ class _GamesAppBarNotifier
     for (final round in allRounds) {
       final gamesInRound =
           ref
-                  .read(gamesTourScreenProvider)
-                  .valueOrNull
-                  ?.gamesTourModels
-                  .where((g) => g.roundId == round.id)
-                  .length ??
-              0;
+              .read(gamesTourScreenProvider)
+              .valueOrNull
+              ?.gamesTourModels
+              .where((g) => g.roundId == round.id)
+              .length ??
+          0;
       gamesByRound[round.id] = gamesInRound;
     }
 
-    final hasLiveOrOngoing = allRounds.any((r) =>
-      r.roundStatus == RoundStatus.live || r.roundStatus == RoundStatus.ongoing
+    final hasLiveOrOngoing = allRounds.any(
+      (r) =>
+          r.roundStatus == RoundStatus.live ||
+          r.roundStatus == RoundStatus.ongoing,
     );
 
-    final hasCompleted = allRounds.any((r) => r.roundStatus == RoundStatus.completed);
-
-    final allAreUpcoming = allRounds.every((r) =>
-      r.roundStatus == RoundStatus.upcoming || (gamesByRound[r.id] ?? 0) == 0
+    final hasCompleted = allRounds.any(
+      (r) => r.roundStatus == RoundStatus.completed,
     );
 
-    final rounds = allRounds.where((round) {
-      final gamesInRound = gamesByRound[round.id] ?? 0;
-      if (gamesInRound == 0) return false;
+    final allAreUpcoming = allRounds.every(
+      (r) =>
+          r.roundStatus == RoundStatus.upcoming ||
+          (gamesByRound[r.id] ?? 0) == 0,
+    );
 
-      if (userSelected && selectedId == round.id) return true;
+    final rounds =
+        allRounds.where((round) {
+          final gamesInRound = gamesByRound[round.id] ?? 0;
+          if (gamesInRound == 0) return false;
 
-      if (allAreUpcoming) return true;
+          if (userSelected && selectedId == round.id) return true;
 
-      if (hasLiveOrOngoing) {
-        return round.roundStatus != RoundStatus.upcoming;
-      }
+          if (allAreUpcoming) return true;
 
-      if (hasCompleted && round.roundStatus == RoundStatus.upcoming) {
-        final upcomingRounds = allRounds.where((r) =>
-          r.roundStatus == RoundStatus.upcoming && (gamesByRound[r.id] ?? 0) > 0
-        ).toList();
-        return upcomingRounds.isNotEmpty && upcomingRounds.first.id == round.id;
-      }
+          if (hasLiveOrOngoing) {
+            return round.roundStatus != RoundStatus.upcoming;
+          }
 
-      return round.roundStatus != RoundStatus.upcoming;
-    }).toList();
+          if (hasCompleted && round.roundStatus == RoundStatus.upcoming) {
+            final upcomingRounds =
+                allRounds
+                    .where(
+                      (r) =>
+                          r.roundStatus == RoundStatus.upcoming &&
+                          (gamesByRound[r.id] ?? 0) > 0,
+                    )
+                    .toList();
+            return upcomingRounds.isNotEmpty &&
+                upcomingRounds.first.id == round.id;
+          }
+
+          return round.roundStatus != RoundStatus.upcoming;
+        }).toList();
 
     // Check if we're in group event mode
     final screenMode = ref.read(gamesTourScreenModeProvider).valueOrNull;
@@ -193,7 +204,9 @@ class _GamesAppBarNotifier
     final viewMode = ref.read(gamesListViewModeProvider);
     final bool isGrid = viewMode == GamesListViewMode.chessBoardGrid;
 
-    print('📊 Index calculation - Target: $roundId, Mode: ${isGroupEvent ? "Group" : "Regular"}, Grid: $isGrid');
+    print(
+      '📊 Index calculation - Target: $roundId, Mode: ${isGroupEvent ? "Group" : "Regular"}, Grid: $isGrid',
+    );
 
     int index = 0;
 
@@ -211,13 +224,17 @@ class _GamesAppBarNotifier
         // For group events, count team matchup cards
         final gamesData = ref.read(gamesTourScreenProvider).valueOrNull;
         if (gamesData != null) {
-          final grouped = ref.read(gamesTourContentProvider).getGroupHeader(
+          final grouped = ref
+              .read(gamesTourContentProvider)
+              .getGroupHeader(
                 selectedRoundId: round.id,
                 gamesScreenModel: gamesData,
               );
           final cardCount = grouped.keys.length;
           itemCount += cardCount; // number of team matchup cards
-          print('   Round "${round.name}": 1 header + $cardCount cards = $itemCount items');
+          print(
+            '   Round "${round.name}": 1 header + $cardCount cards = $itemCount items',
+          );
         }
       } else {
         // For regular events, count games
@@ -234,11 +251,15 @@ class _GamesAppBarNotifier
           // grid: ceil(games/2) rows (each row holds up to 2 games)
           final rows = (gamesInRound / 2).ceil();
           itemCount += rows;
-          print('   Round "${round.name}": 1 header + $rows rows ($gamesInRound games) = $itemCount items');
+          print(
+            '   Round "${round.name}": 1 header + $rows rows ($gamesInRound games) = $itemCount items',
+          );
         } else {
           // list: one item per game
           itemCount += gamesInRound;
-          print('   Round "${round.name}": 1 header + $gamesInRound games = $itemCount items');
+          print(
+            '   Round "${round.name}": 1 header + $gamesInRound games = $itemCount items',
+          );
         }
       }
 
@@ -274,10 +295,7 @@ class _GamesAppBarNotifier
         ..clear()
         ..addEntries(
           rounds.map(
-            (round) => MapEntry(
-              round.id,
-              _RoundSortMeta.fromRound(round),
-            ),
+            (round) => MapEntry(round.id, _RoundSortMeta.fromRound(round)),
           ),
         );
 
@@ -294,22 +312,104 @@ class _GamesAppBarNotifier
     }
   }
 
+  Map<String, int> _buildRoundGameCounts() {
+    final games =
+        ref.read(gamesTourScreenProvider).valueOrNull?.gamesTourModels ??
+        const <GamesTourModel>[];
+    final counts = <String, int>{};
+    for (final game in games) {
+      counts.update(game.roundId, (value) => value + 1, ifAbsent: () => 1);
+    }
+    return counts;
+  }
+
+  bool _hasGames(String roundId, Map<String, int> counts) =>
+      (counts[roundId] ?? 0) > 0;
+
+  GamesAppBarModel? _pickRoundModelByStatus(
+    List<GamesAppBarModel> models,
+    Map<String, int> counts,
+    RoundStatus status,
+  ) {
+    final candidates =
+        models
+            .where((m) => m.roundStatus == status && _hasGames(m.id, counts))
+            .toList();
+    if (candidates.isEmpty) return null;
+
+    final bool ascending = status == RoundStatus.upcoming;
+    candidates.sort((a, b) => _compareByStart(a, b, ascending));
+    return candidates.first;
+  }
+
+  int _compareByStart(GamesAppBarModel a, GamesAppBarModel b, bool ascending) {
+    final aStart = a.startsAt;
+    final bStart = b.startsAt;
+
+    int compare;
+    if (aStart == null && bStart == null) {
+      compare = a.name.compareTo(b.name);
+    } else if (aStart == null) {
+      compare = 1;
+    } else if (bStart == null) {
+      compare = -1;
+    } else {
+      compare = aStart.compareTo(bStart);
+      if (compare == 0) {
+        compare = a.name.compareTo(b.name);
+      }
+    }
+
+    return ascending ? compare : -compare;
+  }
+
+  GamesAppBarModel? _selectAutoRound(
+    List<GamesAppBarModel> models,
+    Map<String, int> counts,
+  ) {
+    for (final status in const [
+      RoundStatus.live,
+      RoundStatus.ongoing,
+      RoundStatus.upcoming,
+      RoundStatus.completed,
+    ]) {
+      final pick = _pickRoundModelByStatus(models, counts, status);
+      if (pick != null) {
+        return pick;
+      }
+    }
+
+    for (final model in models) {
+      if (_hasGames(model.id, counts)) {
+        return model;
+      }
+    }
+
+    return models.isNotEmpty ? models.first : null;
+  }
+
   void _sortRounds(List<GamesAppBarModel> models) {
     // Check if we should show next upcoming round at top
-    final hasLiveOrOngoing = models.any((m) =>
-      m.roundStatus == RoundStatus.live || m.roundStatus == RoundStatus.ongoing
+    final hasLiveOrOngoing = models.any(
+      (m) =>
+          m.roundStatus == RoundStatus.live ||
+          m.roundStatus == RoundStatus.ongoing,
     );
-    final hasCompleted = models.any((m) => m.roundStatus == RoundStatus.completed);
+    final hasCompleted = models.any(
+      (m) => m.roundStatus == RoundStatus.completed,
+    );
     final showNextUpcomingFirst = !hasLiveOrOngoing && hasCompleted;
 
     models.sort((a, b) {
       // Special case: When showing next upcoming round with completed rounds,
       // put upcoming first (top-most)
       if (showNextUpcomingFirst) {
-        if (a.roundStatus == RoundStatus.upcoming && b.roundStatus != RoundStatus.upcoming) {
+        if (a.roundStatus == RoundStatus.upcoming &&
+            b.roundStatus != RoundStatus.upcoming) {
           return -1; // Upcoming comes first
         }
-        if (b.roundStatus == RoundStatus.upcoming && a.roundStatus != RoundStatus.upcoming) {
+        if (b.roundStatus == RoundStatus.upcoming &&
+            a.roundStatus != RoundStatus.upcoming) {
           return 1; // Upcoming comes first
         }
       }
@@ -344,8 +444,10 @@ class _GamesAppBarNotifier
     final startCompare = _compareDatesDesc(aStarts, bStarts);
     if (startCompare != 0) return startCompare;
 
-    final createdCompare =
-        _compareDatesDesc(aMeta?.createdAt, bMeta?.createdAt);
+    final createdCompare = _compareDatesDesc(
+      aMeta?.createdAt,
+      bMeta?.createdAt,
+    );
     if (createdCompare != 0) return createdCompare;
 
     final slugCompare = _compareStringsDesc(aMeta?.slug, bMeta?.slug);
@@ -402,8 +504,11 @@ class _GamesAppBarNotifier
     _sortRounds(updated);
 
     final sticky = ref.read(userSelectedRoundProvider);
+    final counts = _buildRoundGameCounts();
     final hasStickyValid =
-        sticky?.userSelected == true && updated.any((m) => m.id == sticky!.id);
+        sticky?.userSelected == true &&
+        updated.any((m) => m.id == sticky!.id) &&
+        _hasGames(sticky!.id, counts);
 
     if (hasStickyValid) {
       state = AsyncValue.data(
@@ -416,20 +521,27 @@ class _GamesAppBarNotifier
       _scrollToRound(sticky.id);
       return;
     }
+    final currentSelected = current.selectedId;
+    final currentStillValid =
+        currentSelected.isNotEmpty &&
+        updated.any((m) => m.id == currentSelected) &&
+        _hasGames(currentSelected, counts);
 
-    // Prefer a live round if selection wasn’t user-chosen
-    final live = updated.firstWhere(
-      (m) => m.roundStatus == RoundStatus.live,
-      orElse:
-          () => GamesAppBarModel(
-            id: '',
-            name: '',
-            startsAt: null,
-            roundStatus: RoundStatus.completed,
-          ),
-    );
+    if (currentStillValid) {
+      state = AsyncValue.data(
+        GamesAppBarViewModel(
+          gamesAppBarModels: updated,
+          selectedId: currentSelected,
+          userSelectedId: false,
+        ),
+      );
+      _scrollToRound(currentSelected);
+      return;
+    }
 
-    final nextSelected = (live.id.isNotEmpty ? live.id : current.selectedId);
+    final autoModel = _selectAutoRound(updated, counts);
+    final nextSelected =
+        autoModel?.id ?? (updated.isNotEmpty ? updated.first.id : '');
 
     state = AsyncValue.data(
       GamesAppBarViewModel(
@@ -438,7 +550,9 @@ class _GamesAppBarNotifier
         userSelectedId: false,
       ),
     );
-    _scrollToRound(nextSelected);
+    if (nextSelected.isNotEmpty) {
+      _scrollToRound(nextSelected);
+    }
   }
 
   Future<void> _applySelectionFrom(
@@ -447,7 +561,10 @@ class _GamesAppBarNotifier
   ) async {
     // 1) Respect sticky user selection if still present
     final sticky = ref.read(userSelectedRoundProvider);
-    if (sticky?.userSelected == true && models.any((m) => m.id == sticky!.id)) {
+    final counts = _buildRoundGameCounts();
+    if (sticky?.userSelected == true &&
+        models.any((m) => m.id == sticky!.id) &&
+        _hasGames(sticky!.id, counts)) {
       state = AsyncValue.data(
         GamesAppBarViewModel(
           gamesAppBarModels: models,
@@ -460,76 +577,41 @@ class _GamesAppBarNotifier
     }
 
     // 2) Prefer live round
-    final live = models.firstWhere(
-      (m) => m.roundStatus == RoundStatus.live,
-      orElse:
-          () =>
-              models.isNotEmpty
-                  ? models.last
-                  : const GamesAppBarModel(
-                    id: '',
-                    name: '',
-                    startsAt: null,
-                    roundStatus: RoundStatus.upcoming,
-                  ),
-    );
-    if (live.id.isNotEmpty && live.roundStatus == RoundStatus.live) {
+    final liveModel = _pickRoundModelByStatus(models, counts, RoundStatus.live);
+    if (liveModel != null) {
       state = AsyncValue.data(
         GamesAppBarViewModel(
           gamesAppBarModels: models,
-          selectedId: live.id,
+          selectedId: liveModel.id,
           userSelectedId: false,
         ),
       );
-      _scrollToRound(live.id);
+      _scrollToRound(liveModel.id);
       return;
     }
 
-    // 3) Try latest-by-last-move (single repo call, only if needed)
+    GamesAppBarModel? repoModel;
     try {
       final repo = ref.read(roundRepositoryProvider);
       final latest = await repo.getLatestRoundByLastMove(tourId);
-      if (latest != null && models.any((m) => m.id == latest.id)) {
-        state = AsyncValue.data(
-          GamesAppBarViewModel(
-            gamesAppBarModels: models,
-            selectedId: latest.id,
-            userSelectedId: false,
-          ),
-        );
-        _scrollToRound(latest.id);
-        return;
+      if (latest != null &&
+          models.any((m) => m.id == latest.id) &&
+          _hasGames(latest.id, counts)) {
+        repoModel = models.firstWhere((m) => m.id == latest.id);
       }
     } catch (e) {}
 
-    // Highest priority: live
-    GamesAppBarModel? selectedModel;
-    for (var a = 0; a < models.length; a++) {
-      if (models[a].roundStatus == RoundStatus.live) {
-        selectedModel = models[a];
-        break;
-      }
+    final autoModel = _selectAutoRound(models, counts);
+    GamesAppBarModel? selectedModel = autoModel;
+
+    if ((selectedModel == null ||
+            selectedModel.roundStatus == RoundStatus.completed) &&
+        repoModel != null) {
+      selectedModel = repoModel;
     }
 
-    for (var b = 0; b < models.length; b++) {
-      if (models[b].roundStatus == RoundStatus.ongoing) {
-        selectedModel = models[b];
-        break;
-      }
-    }
-
-    // Third priority: completed (if no live or ongoing)
-
-    for (var c = 0; c < models.length; c++) {
-      if (models[c].roundStatus == RoundStatus.completed) {
-        selectedModel ??= models[c];
-        break;
-      }
-    }
-
-    // Final fallback: last item
     final fallbackId =
-        selectedModel?.id ?? (models.isNotEmpty ? models.last.id : '');
+        selectedModel?.id ?? (models.isNotEmpty ? models.first.id : '');
     state = AsyncValue.data(
       GamesAppBarViewModel(
         gamesAppBarModels: models,
@@ -573,8 +655,7 @@ class _RoundSortMeta {
       startsAt: round.startsAt,
       roundNumber:
           _parseRoundNumber(round.name) ?? _parseRoundNumber(round.slug),
-      gameNumber:
-          _parseGameNumber(round.name) ?? _parseGameNumber(round.slug),
+      gameNumber: _parseGameNumber(round.name) ?? _parseGameNumber(round.slug),
     );
   }
 }
@@ -589,10 +670,9 @@ int? _parseRoundNumber(String? value) {
 
 int? _parseGameNumber(String? value) {
   if (value == null || value.isEmpty) return null;
-  final match =
-      RegExp(
-        r'(?:game|board|match)[\s_\-:]*?(\d+)',
-        caseSensitive: false,
-      ).firstMatch(value);
+  final match = RegExp(
+    r'(?:game|board|match)[\s_\-:]*?(\d+)',
+    caseSensitive: false,
+  ).firstMatch(value);
   return match != null ? int.tryParse(match.group(1)!) : null;
 }

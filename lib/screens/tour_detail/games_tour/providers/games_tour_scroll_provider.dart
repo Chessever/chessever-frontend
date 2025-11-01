@@ -47,24 +47,93 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
     final userSelected = vm.userSelectedId;
 
     final models = vm.gamesAppBarModels;
+    final counts = <String, int>{};
+    for (final model in models) {
+      counts[model.id] = _getGamesInRound(model.id);
+    }
+
+    final hasLiveOrOngoing = models.any(
+      (r) =>
+          (counts[r.id] ?? 0) > 0 &&
+          (r.roundStatus == RoundStatus.live ||
+              r.roundStatus == RoundStatus.ongoing),
+    );
+    final hasCompleted = models.any(
+      (r) => (counts[r.id] ?? 0) > 0 && r.roundStatus == RoundStatus.completed,
+    );
+    final allAreUpcoming = models.every(
+      (r) => (counts[r.id] ?? 0) == 0 || r.roundStatus == RoundStatus.upcoming,
+    );
+
+    final upcomingWithGames =
+        models
+            .where(
+              (r) =>
+                  r.roundStatus == RoundStatus.upcoming &&
+                  (counts[r.id] ?? 0) > 0,
+            )
+            .toList()
+          ..sort((a, b) {
+            final aStart = a.startsAt;
+            final bStart = b.startsAt;
+            if (aStart == null && bStart == null) {
+              return a.name.compareTo(b.name);
+            }
+            if (aStart == null) return 1;
+            if (bStart == null) return -1;
+            final cmp = aStart.compareTo(bStart);
+            return cmp == 0 ? a.name.compareTo(b.name) : cmp;
+          });
+
     final visible = <GamesAppBarModel>[];
-    for (final r in models) {
-      final hasGames = _getGamesInRound(r.id) > 0;
-      if (!hasGames) continue;
-      if (userSelected && r.id == selectedId) {
-        visible.add(r);
+    for (final round in models) {
+      final gamesInRound = counts[round.id] ?? 0;
+      if (gamesInRound == 0) {
+        if (userSelected && round.id == selectedId) {
+          visible.add(round);
+        }
         continue;
       }
-      if (r.roundStatus != RoundStatus.upcoming) {
-        visible.add(r);
+
+      if (userSelected && round.id == selectedId) {
+        visible.add(round);
+        continue;
+      }
+
+      if (allAreUpcoming) {
+        visible.add(round);
+        continue;
+      }
+
+      if (hasLiveOrOngoing) {
+        if (round.roundStatus != RoundStatus.upcoming) {
+          visible.add(round);
+        }
+        continue;
+      }
+
+      if (hasCompleted && round.roundStatus == RoundStatus.upcoming) {
+        if (upcomingWithGames.isNotEmpty &&
+            upcomingWithGames.first.id == round.id) {
+          visible.add(round);
+        }
+        continue;
+      }
+
+      if (round.roundStatus != RoundStatus.upcoming) {
+        visible.add(round);
       }
     }
+
     return visible;
   }
 
   /// Set flag to prevent scroll listener from updating dropdown during programmatic scroll
-  void startProgrammaticScroll() {
+  void startProgrammaticScroll({String? targetRoundId}) {
     _isProgrammaticScroll = true;
+    if (targetRoundId != null) {
+      _lastVisibleRoundId = targetRoundId;
+    }
   }
 
   /// Reset flag after programmatic scroll completes to re-enable scroll sync
@@ -255,10 +324,9 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
     if (roundGames.isEmpty) return 0;
 
     // Use the same grouping logic as the UI
-    final grouped = _ref.read(gamesTourContentProvider).getGroupHeader(
-          selectedRoundId: roundId,
-          gamesScreenModel: gamesData,
-        );
+    final grouped = _ref
+        .read(gamesTourContentProvider)
+        .getGroupHeader(selectedRoundId: roundId, gamesScreenModel: gamesData);
 
     // Return the number of team matchup cards
     return grouped.keys.length;

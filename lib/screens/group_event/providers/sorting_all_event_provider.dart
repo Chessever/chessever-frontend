@@ -1,5 +1,7 @@
+import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final tournamentSortingServiceProvider =
@@ -12,7 +14,10 @@ class TournamentSortingService {
 
   TournamentSortingService(this.ref);
 
-  List<GroupEventCardModel> sortAllTours(List<GroupEventCardModel> tours) {
+  List<GroupEventCardModel> sortAllTours(
+    List<GroupEventCardModel> tours, {
+    Map<String, EventFavoritePlayers>? eventFavoritePlayersMap,
+  }) {
     final filteredList = tours.toList();
 
     filteredList.sort((a, b) {
@@ -32,10 +37,16 @@ class TournamentSortingService {
     });
 
     // Apply favorite sorting (favorited events on top)
-    return _applyFavoriteSorting(filteredList);
+    return _applyFavoriteSorting(
+      filteredList,
+      eventFavoritePlayersMap: eventFavoritePlayersMap,
+    );
   }
 
-  List<GroupEventCardModel> sortUpcomingTours(List<GroupEventCardModel> tours) {
+  List<GroupEventCardModel> sortUpcomingTours(
+    List<GroupEventCardModel> tours, {
+    Map<String, EventFavoritePlayers>? eventFavoritePlayersMap,
+  }) {
     final filteredList = tours.toList();
 
     filteredList.sort((a, b) {
@@ -64,12 +75,16 @@ class TournamentSortingService {
     });
 
     // Apply favorite sorting (favorited events on top)
-    return _applyFavoriteSorting(filteredList);
+    return _applyFavoriteSorting(
+      filteredList,
+      eventFavoritePlayersMap: eventFavoritePlayersMap,
+    );
   }
 
   List<GroupEventCardModel> sortPastTours(
     List<GroupEventCardModel> tours, {
     bool ascending = false,
+    Map<String, EventFavoritePlayers>? eventFavoritePlayersMap,
   }) {
     var sortedTours = <GroupEventCardModel>[];
     sortedTours = tours;
@@ -98,7 +113,10 @@ class TournamentSortingService {
     });
 
     // Apply favorite sorting (favorited events on top)
-    return _applyFavoriteSorting(sortedTours);
+    return _applyFavoriteSorting(
+      sortedTours,
+      eventFavoritePlayersMap: eventFavoritePlayersMap,
+    );
   }
 
   int _extractDaysFromTimeUntilStart(String txt) {
@@ -122,48 +140,129 @@ class TournamentSortingService {
   List<GroupEventCardModel> sortBasedOnFavorite({
     required List<GroupEventCardModel> tours,
     required List<String> favorites,
+    Map<String, EventFavoritePlayers>? eventFavoritePlayersMap,
+    Map<String, DateTime>? favoriteTimestamps,
   }) {
-    if (favorites.isEmpty) {
-      return tours; // No favorites, return as-is
-    }
+    return _sortWithHeartPriority(
+      tours,
+      favorites,
+      eventFavoritePlayersMap,
+      favoriteTimestamps,
+    );
+  }
 
-    // Separate favorites from non-favorites while preserving order
-    final favoriteEvents = <GroupEventCardModel>[];
-    final nonFavoriteEvents = <GroupEventCardModel>[];
+  /// Sorts events with priority: Starred > Hearted (by count) > Regular
+  /// Within each group, sorts by timestamp (most recent first)
+  List<GroupEventCardModel> _sortWithHeartPriority(
+    List<GroupEventCardModel> tours,
+    List<String> starredFavorites,
+    Map<String, EventFavoritePlayers>? eventFavoritePlayersMap,
+    Map<String, DateTime>? favoriteTimestamps,
+  ) {
+    // Get favorite player counts for all events
+    final eventFavoritePlayerCounts = <String, int>{};
 
-    for (final tour in tours) {
-      if (favorites.contains(tour.id)) {
-        favoriteEvents.add(tour);
-      } else {
-        nonFavoriteEvents.add(tour);
+    if (eventFavoritePlayersMap != null) {
+      for (final tour in tours) {
+        final data = eventFavoritePlayersMap[tour.id];
+        if (data != null && data.hasFavorites) {
+          eventFavoritePlayerCounts[tour.id] = data.count;
+        }
       }
     }
 
-    // Return favorites first, then non-favorites (both in original order)
-    return [...favoriteEvents, ...nonFavoriteEvents];
+    // Categorize events into three groups
+    final starredEvents = <GroupEventCardModel>[];
+    final heartedEvents = <GroupEventCardModel>[];
+    final regularEvents = <GroupEventCardModel>[];
+
+    for (final tour in tours) {
+      if (starredFavorites.contains(tour.id)) {
+        // Priority 1: Starred by user
+        starredEvents.add(tour);
+      } else if ((eventFavoritePlayerCounts[tour.id] ?? 0) > 0) {
+        // Priority 2: Has favorite players (hearted)
+        heartedEvents.add(tour);
+      } else {
+        // Priority 3: Regular events
+        regularEvents.add(tour);
+      }
+    }
+
+    // Sort starred events by timestamp (most recent first)
+    starredEvents.sort((a, b) {
+      final timestampA = favoriteTimestamps?[a.id];
+      final timestampB = favoriteTimestamps?[b.id];
+
+      // If both have timestamps, sort by timestamp (newest first)
+      if (timestampA != null && timestampB != null) {
+        return timestampB.compareTo(timestampA);
+      }
+
+      // If only one has timestamp, prioritize it
+      if (timestampA != null) return -1;
+      if (timestampB != null) return 1;
+
+      // Otherwise maintain current order
+      return 0;
+    });
+
+    // Sort hearted events by favorite player count (descending), then by timestamp
+    heartedEvents.sort((a, b) {
+      final countA = eventFavoritePlayerCounts[a.id] ?? 0;
+      final countB = eventFavoritePlayerCounts[b.id] ?? 0;
+
+      // Primary sort: by count (more favorites first)
+      if (countA != countB) {
+        return countB.compareTo(countA);
+      }
+
+      // Secondary sort: by timestamp (if counts are equal, show most recent first)
+      final timestampA = favoriteTimestamps?[a.id];
+      final timestampB = favoriteTimestamps?[b.id];
+
+      if (timestampA != null && timestampB != null) {
+        return timestampB.compareTo(timestampA);
+      }
+
+      return 0;
+    });
+
+    // Return: starred first, then hearted (sorted by count), then regular
+    return [...starredEvents, ...heartedEvents, ...regularEvents];
   }
 
   /// Apply favorite sorting to put favorited events on top
   /// Uses the favoriteEventsProvider to get the list of favorited event IDs
   List<GroupEventCardModel> _applyFavoriteSorting(
-    List<GroupEventCardModel> tours,
-  ) {
+    List<GroupEventCardModel> tours, {
+    Map<String, EventFavoritePlayers>? eventFavoritePlayersMap,
+  }) {
     final favoritesAsync = ref.read(favoriteEventsProvider);
 
-    // If favorites are loading or failed, return tours as-is
+    // If favorites are loading or failed, still check for hearted events
     final favorites = favoritesAsync.valueOrNull;
-    if (favorites == null || favorites.isEmpty) {
-      return tours;
+    final favoriteIds = favorites
+            ?.map((e) => e.eventId)
+            .where((id) => id.isNotEmpty)
+            .toList() ??
+        <String>[];
+
+    // Build timestamp map for sorting within groups
+    final favoriteTimestamps = <String, DateTime>{};
+    if (favorites != null) {
+      for (final fav in favorites) {
+        favoriteTimestamps[fav.eventId] = fav.createdAt;
+      }
     }
 
-    // Extract favorited event IDs (filter out nulls if any)
-    final favoriteIds = favorites
-        .map((e) => e.eventId)
-        .where((id) => id.isNotEmpty)
-        .toList();
-
-    // Use existing sortBasedOnFavorite method
-    return sortBasedOnFavorite(tours: tours, favorites: favoriteIds);
+    // Use updated sortBasedOnFavorite method with heart priority
+    return sortBasedOnFavorite(
+      tours: tours,
+      favorites: favoriteIds,
+      eventFavoritePlayersMap: eventFavoritePlayersMap,
+      favoriteTimestamps: favoriteTimestamps,
+    );
   }
 
   static Map<String, DateTime>? _extractDates(String dateString) {
@@ -222,7 +321,7 @@ class TournamentSortingService {
         return {'start': date, 'end': date};
       }
     } catch (e) {
-      print('Error parsing date "$dateString": $e');
+      debugPrint('Error parsing date "$dateString": $e');
       return null;
     }
   }

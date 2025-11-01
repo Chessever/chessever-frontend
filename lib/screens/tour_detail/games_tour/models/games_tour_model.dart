@@ -166,24 +166,30 @@ class GamesTourModel {
 
       if (gameHasStarted) {
         // Game has started - use actual clock values
-        whiteTimeDisplay = game.lastClockWhite != null
-            ? _formatTimeFromSeconds(game.lastClockWhite!)
-            : _formatTime(white.clock);
-        blackTimeDisplay = game.lastClockBlack != null
-            ? _formatTimeFromSeconds(game.lastClockBlack!)
-            : _formatTime(black.clock);
+        whiteTimeDisplay =
+            game.lastClockWhite != null
+                ? _formatTimeFromSeconds(game.lastClockWhite!)
+                : _formatTime(white.clock);
+        blackTimeDisplay =
+            game.lastClockBlack != null
+                ? _formatTimeFromSeconds(game.lastClockBlack!)
+                : _formatTime(black.clock);
         whiteClockSecondsToUse = game.lastClockWhite;
         blackClockSecondsToUse = game.lastClockBlack;
       } else {
-        // Game hasn't started - try to extract time control from PGN
-        final initialTime = _extractInitialTimeFromPGN(game.pgn);
-        if (initialTime != null) {
-          whiteTimeDisplay = _formatTimeFromSeconds(initialTime);
-          blackTimeDisplay = _formatTimeFromSeconds(initialTime);
-          whiteClockSecondsToUse = initialTime;
-          blackClockSecondsToUse = initialTime;
+        final hasInitialClock = white.clock > 0 || black.clock > 0;
+
+        if (hasInitialClock) {
+          whiteTimeDisplay = _formatTime(white.clock);
+          blackTimeDisplay = _formatTime(black.clock);
+          whiteClockSecondsToUse = _centisecondsToSeconds(white.clock);
+          blackClockSecondsToUse = _centisecondsToSeconds(black.clock);
+        } else if (game.thinkTime != null && game.thinkTime! > 0) {
+          whiteTimeDisplay = _formatTimeFromSeconds(game.thinkTime!);
+          blackTimeDisplay = _formatTimeFromSeconds(game.thinkTime!);
+          whiteClockSecondsToUse = game.thinkTime;
+          blackClockSecondsToUse = game.thinkTime;
         } else {
-          // Couldn't determine time control - use placeholder
           whiteTimeDisplay = '--:--';
           blackTimeDisplay = '--:--';
           whiteClockSecondsToUse = null;
@@ -219,41 +225,9 @@ class GamesTourModel {
     }
   }
 
-  /// Extract initial time control from PGN header
-  /// Handles formats like: "10+5", "600+5", "3600+0", etc.
-  /// Returns the initial time in seconds, or null if not found
-  static int? _extractInitialTimeFromPGN(String? pgn) {
-    if (pgn == null || pgn.isEmpty) return null;
-
-    try {
-      // Look for TimeControl header in PGN
-      // Example: [TimeControl "10+5"] or [TimeControl "600+5"]
-      final timeControlMatch = RegExp(
-        r'\[TimeControl\s+"([^"]+)"\]',
-        caseSensitive: false,
-      ).firstMatch(pgn);
-
-      if (timeControlMatch != null) {
-        final timeControlStr = timeControlMatch.group(1)!;
-
-        // Parse formats like "10+5" (10 minutes + 5 second increment)
-        // or "600+5" (600 seconds + 5 second increment)
-        final parts = timeControlStr.split('+');
-        if (parts.isNotEmpty) {
-          final baseTime = int.tryParse(parts[0].trim());
-          if (baseTime != null) {
-            // If base time is less than 200, assume it's in minutes, convert to seconds
-            // Otherwise, assume it's already in seconds
-            return baseTime < 200 ? baseTime * 60 : baseTime;
-          }
-        }
-      }
-    } catch (e) {
-      // Silently fail if time control parsing fails
-      // We'll show "--:--" in the UI
-    }
-
-    return null;
+  static int? _centisecondsToSeconds(int? value) {
+    if (value == null || value <= 0) return null;
+    return (value / 100).round();
   }
 
   static String _formatTime(int? clockTimeCentiseconds) {
@@ -362,7 +336,9 @@ class GamesTourModel {
       // Check if position is checkmate
       if (position.isCheckmate) {
         // The player whose turn it is got checkmated
-        return setup.turn == Side.white ? GameStatus.blackWins : GameStatus.whiteWins;
+        return setup.turn == Side.white
+            ? GameStatus.blackWins
+            : GameStatus.whiteWins;
       }
 
       // Check if position is stalemate or insufficient material

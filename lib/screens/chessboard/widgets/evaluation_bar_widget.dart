@@ -143,9 +143,10 @@ class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
                 borderRadius: BorderRadius.circular(2.br),
               ),
               child: Text(
-                // Prefer showing last known evaluation even while evaluating.
-                // Only show "..." if neither current nor cached evaluation exists.
-                (widget.evaluation == null && _lastValidEvaluation == null)
+                // Show "..." when actively calculating a new position
+                widget.isEvaluating
+                    ? '...'
+                    : (widget.evaluation == null && _lastValidEvaluation == null)
                     ? '...'
                     : (((widget.evaluation ?? _lastValidEvaluation)!.abs() >= 10.0) &&
                             widget.mate != 0)

@@ -10,13 +10,37 @@ final gameRepositoryProvider = AutoDisposeProvider<GameRepository>((ref) {
   return GameRepository();
 });
 
+const String _gameListSelectColumns = '''
+          id,
+          round_id,
+          round_slug,
+          tour_id,
+          tour_slug,
+          name,
+          fen,
+          players,
+          last_move,
+          think_time,
+          status,
+          search,
+          lichess_id,
+          player_white,
+          player_black,
+          date_start,
+          time_start,
+          board_nr,
+          last_move_time,
+          last_clock_white,
+          last_clock_black
+        ''';
+
 class GameRepository extends BaseRepository {
   // Fetch games by round ID
   Future<List<Games>> getGamesByRoundId(String roundId) async {
     return handleApiCall(() async {
       final response = await supabase
           .from('games')
-          .select()
+          .select(_gameListSelectColumns)
           .eq('round_id', roundId)
           .order('id', ascending: true);
 
@@ -29,30 +53,7 @@ class GameRepository extends BaseRepository {
     return handleApiCall(() async {
       var query = supabase
           .from('games')
-          .select('''
-          id,
-          round_id,
-          round_slug,
-          tour_id,
-          tour_slug,
-          name,
-          fen,
-          players,
-          last_move,
-          think_time,
-          status,
-          pgn,
-          search,
-          lichess_id,
-          player_white,
-          player_black,
-          date_start,
-          time_start,
-          board_nr,
-          last_move_time,
-          last_clock_white,
-          last_clock_black
-        ''')
+          .select(_gameListSelectColumns)
           .eq('tour_id', tourId)
           .order('id', ascending: true);
 
@@ -99,30 +100,7 @@ class GameRepository extends BaseRepository {
       // Query games where the fideId appears in the players JSONB array
       var query = supabase
           .from('games')
-          .select('''
-          id,
-          round_id,
-          round_slug,
-          tour_id,
-          tour_slug,
-          name,
-          fen,
-          players,
-          last_move,
-          think_time,
-          status,
-          pgn,
-          search,
-          lichess_id,
-          player_white,
-          player_black,
-          date_start,
-          time_start,
-          board_nr,
-          last_move_time,
-          last_clock_white,
-          last_clock_black
-        ''')
+          .select(_gameListSelectColumns)
           .contains('players', [
             {'fideId': int.parse(fideId)},
           ])
@@ -154,30 +132,7 @@ class GameRepository extends BaseRepository {
     return handleApiCall(() async {
       final response = await supabase
           .from('games')
-          .select('''
-          id,
-          round_id,
-          round_slug,
-          tour_id,
-          tour_slug,
-          name,
-          fen,
-          players,
-          last_move,
-          think_time,
-          status,
-          pgn,
-          search,
-          lichess_id,
-          player_white,
-          player_black,
-          date_start,
-          time_start,
-          board_nr,
-          last_move_time,
-          last_clock_white,
-          last_clock_black
-        ''')
+          .select(_gameListSelectColumns)
           .contains('players', [
             {'fideId': int.parse(fideId)},
           ])
@@ -207,30 +162,7 @@ class GameRepository extends BaseRepository {
       // Query games where player_white or player_black matches the name
       var query = supabase
           .from('games')
-          .select('''
-          id,
-          round_id,
-          round_slug,
-          tour_id,
-          tour_slug,
-          name,
-          fen,
-          players,
-          last_move,
-          think_time,
-          status,
-          pgn,
-          search,
-          lichess_id,
-          player_white,
-          player_black,
-          date_start,
-          time_start,
-          board_nr,
-          last_move_time,
-          last_clock_white,
-          last_clock_black
-        ''')
+          .select(_gameListSelectColumns)
           .or('player_white.eq."$playerName",player_black.eq."$playerName"')
           .order('date_start', ascending: false)
           .order('time_start', ascending: false);
@@ -260,30 +192,7 @@ class GameRepository extends BaseRepository {
     return handleApiCall(() async {
       final response = await supabase
           .from('games')
-          .select('''
-          id,
-          round_id,
-          round_slug,
-          tour_id,
-          tour_slug,
-          name,
-          fen,
-          players,
-          last_move,
-          think_time,
-          status,
-          pgn,
-          search,
-          lichess_id,
-          player_white,
-          player_black,
-          date_start,
-          time_start,
-          board_nr,
-          last_move_time,
-          last_clock_white,
-          last_clock_black
-        ''')
+          .select(_gameListSelectColumns)
           .or('player_white.eq.$playerName,player_black.eq.$playerName')
           .order('date_start', ascending: false)
           .order('time_start', ascending: false)
@@ -298,12 +207,21 @@ class GameRepository extends BaseRepository {
     });
   }
 
+  Future<String?> getGamePgn(String gameId) async {
+    return handleApiCall(() async {
+      final response =
+          await supabase.from('games').select('pgn').eq('id', gameId).single();
+
+      return response['pgn'] as String?;
+    });
+  }
+
   // Get games where any player has a specific country code
   Future<List<Games>> getGamesByCountryCode(String countryCode) async {
     return handleApiCall(() async {
       final response = await supabase
           .from('games')
-          .select()
+          .select(_gameListSelectColumns)
           .contains('players', '[{"fed": "$countryCode"}]')
           .order('id', ascending: true);
 
