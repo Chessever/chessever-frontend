@@ -1858,6 +1858,16 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     final oldCurrentIndex = oldWidget.state.analysisState.currentMoveIndex;
     final newCurrentIndex = widget.state.analysisState.currentMoveIndex;
 
+    // CRITICAL: Force rebuild when hasUnseenMoves flag changes
+    // This ensures red dot indicators sync correctly between notation text and bottom nav
+    if (oldWidget.state.hasUnseenMoves != widget.state.hasUnseenMoves) {
+      debugPrint(
+        '🔴 hasUnseenMoves changed: ${oldWidget.state.hasUnseenMoves} -> ${widget.state.hasUnseenMoves}',
+      );
+      // Trigger rebuild to update all _MoveNotationWidget children
+      setState(() {});
+    }
+
     if (oldSans.length != newSans.length) {
       _initializeMoveKeys();
 
