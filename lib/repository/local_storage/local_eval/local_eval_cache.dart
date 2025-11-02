@@ -10,7 +10,7 @@ final localEvalCacheProvider = AutoDisposeProvider<LocalEvalCache>(
 class LocalEvalCache {
   static const _prefix = 'cloud_eval_';
   static const _versionKey = 'cloud_eval_version';
-  static const _currentVersion = 3;
+  static const _currentVersion = 5; // Bumped: Force clear stale cache from before v4 fix
 
   Future<void> save(String fen, CloudEval eval) async {
     final prefs = await SharedPreferences.getInstance();

@@ -102,10 +102,23 @@ class ChessBoardScreenNotifierNew
   /// Stockfish evaluations to white's perspective before caching.
   /// Lichess API returns evaluations in white's perspective by default.
   ///
-  /// So this method now just passes through the evaluation as-is.
-  /// Positive = white advantage, Negative = black advantage
+  /// CRITICAL CONTRACT:
+  /// - Input: evaluation from cascade provider (already in white's perspective)
+  /// - Output: MUST be in white's perspective
+  /// - Positive (+) = White advantage
+  /// - Negative (-) = Black advantage
+  /// - This contract is enforced throughout the evaluation pipeline
   double _getConsistentEvaluation(double evaluation, String fen) {
     // All evaluations are already in white's perspective from cascade provider
+    // This method validates and passes through the evaluation
+
+    // VALIDATION: Extreme values should only occur in mate scenarios
+    if (evaluation.abs() > 100.0 && evaluation.abs() < 99999) {
+      debugPrint(
+        '⚠️ EVAL WARNING: Unusual evaluation value $evaluation for FEN: $fen',
+      );
+    }
+
     return evaluation;
   }
 
@@ -1620,38 +1633,9 @@ class ChessBoardScreenNotifierNew
 
     debugPrint('🎯 BUILD PV: Starting with ${validPvs.length} valid PVs (filtered ${pvs.length - validPvs.length} empty) for $fen');
 
-    // Validate that at least one PV can be played from this position
-    // This catches cases where cached PVs from a different position are being used
-    try {
-      final testPosition = Position.setupPosition(
-        Rule.chess,
-        Setup.parseFen(fen),
-      );
-      bool anyPvValid = false;
-      for (final pv in validPvs) {
-        final firstMove = pv.moves.split(' ').first;
-        final parsed = Move.parse(firstMove);
-        if (parsed != null) {
-          try {
-            testPosition.makeSan(parsed);
-            anyPvValid = true;
-            break;
-          } catch (_) {
-            // This PV doesn't work for this position
-            continue;
-          }
-        }
-      }
-      if (!anyPvValid) {
-        debugPrint(
-          '⚠️ BUILD PV: No PVs are valid for this FEN - possible cache mismatch',
-        );
-        return const [];
-      }
-    } catch (e) {
-      debugPrint('⚠️ BUILD PV: FEN validation failed: $e');
-      return const [];
-    }
+    // OPTIMIZATION: Skip validation check - worker will filter out invalid moves
+    // The validation was making PV cards load slowly by doing upfront position creation
+    // If worker returns empty, we'll handle it gracefully below
     final limitedPvs = validPvs.take(_kMaxPrincipalVariations).toList();
     final payload = {
       'fen': fen,
@@ -2281,15 +2265,16 @@ class ChessBoardScreenNotifierNew
         return;
       }
 
-      // BUG FIX: Check if there's a stale active request (older than 3 seconds)
+      // BUG FIX: Check if there's a stale active request (older than 10 seconds)
       // This fixes the rare bug where evaluation gets stuck in loading state
+      // INCREASED from 3s to 10s to allow for legitimate deep Stockfish analysis
       if (!force &&
           _activeEvalKey == cacheKey &&
           _activeEvalRequestId != null) {
-        // Check if the active request is stale (started more than 3 seconds ago)
+        // Check if the active request is stale (started more than 10 seconds ago)
         final isStale = _activeEvalStartTime != null &&
             DateTime.now().difference(_activeEvalStartTime!) >
-                const Duration(seconds: 3);
+                const Duration(seconds: 10);
 
         if (isStale) {
           debugPrint(
@@ -2329,18 +2314,32 @@ class ChessBoardScreenNotifierNew
 
       // OPTIMIZED: Try cascade (cloud sources) FIRST for speed
       // Cascade queries local DB, Supabase, and Lichess in parallel
+      // CRITICAL: Add 8-second timeout to prevent hanging on slow network/API
       try {
         debugPrint(
           '🎯 EVAL: Requesting cascade evaluation (parallel cloud sources)...',
         );
         final cascadeEval = await ref.read(
           cascadeEvalProviderForBoard(fen).future,
+        ).timeout(
+          const Duration(seconds: 8),
+          onTimeout: () {
+            debugPrint('⏱️ EVAL: Cascade timeout after 8s, will try Stockfish');
+            throw TimeoutException('Cascade evaluation timeout');
+          },
         );
         if (cascadeEval.pvs.isNotEmpty) {
           primaryEval = cascadeEval;
-          evaluation = _getConsistentEvaluation(
-            cascadeEval.pvs.first.cp / 100.0,
-            fen,
+          final rawCp = cascadeEval.pvs.first.cp;
+          final rawEval = rawCp / 100.0;
+          evaluation = _getConsistentEvaluation(rawEval, fen);
+
+          // DEBUG: Track evaluation through pipeline
+          final fenParts = fen.split(' ');
+          final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
+          final whitePerspectiveFlag = cascadeEval.pvs.first.whitePerspective;
+          debugPrint(
+            '🔍 EVAL PIPELINE: fen=$fen, side=$sideToMove, rawCp=$rawCp, rawEval=$rawEval, evaluation=$evaluation, whitePerspective=$whitePerspectiveFlag',
           );
           debugPrint(
             '🎯 EVAL: Building principal variations from cloud source...',
@@ -2431,9 +2430,16 @@ class ChessBoardScreenNotifierNew
                 depth: localEval.depth,
                 pvs: localEval.pvs,
               );
-              evaluation = _getConsistentEvaluation(
-                localEval.pvs.first.cp / 100.0,
-                fen,
+              final rawCp = localEval.pvs.first.cp;
+              final rawEval = rawCp / 100.0;
+              evaluation = _getConsistentEvaluation(rawEval, fen);
+
+              // DEBUG: Track Stockfish evaluation through pipeline
+              final fenParts = fen.split(' ');
+              final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
+              final whitePerspectiveFlag = localEval.pvs.first.whitePerspective;
+              debugPrint(
+                '🔍 STOCKFISH PIPELINE: fen=$fen, side=$sideToMove, rawCp=$rawCp, rawEval=$rawEval, evaluation=$evaluation, whitePerspective=$whitePerspectiveFlag',
               );
             }
 
@@ -2553,23 +2559,32 @@ class ChessBoardScreenNotifierNew
         return;
       }
 
-      // If we have evaluation but no PVs, still proceed - show eval bar without PV cards
-      // BUT: Schedule a retry for the current visible position to get PVs
+      // CRITICAL: Always show evaluation even if PVs fail
+      // Show eval bar immediately, PV cards can come later via retry
       if (pvLines.isEmpty && primaryEval.pvs.isNotEmpty) {
         debugPrint(
-          '⚠️ EVAL: Have evaluation ($evaluation) but PV conversion failed - will retry',
+          '⚠️ EVAL: Have evaluation ($evaluation) but PV conversion failed',
         );
-        debugPrint('   primaryEval?.pvs.length=${primaryEval.pvs.length}');
-        debugPrint(
-          '   ⚠️ PRIMARY EVAL HAS PVS BUT pvLines IS EMPTY - possible FEN mismatch, scheduling retry',
-        );
-        debugPrint(
-          '   First PV: moves=${primaryEval.pvs.first.moves}, cp=${primaryEval.pvs.first.cp}',
-        );
+        debugPrint('   primaryEval.pvs.length=${primaryEval.pvs.length}');
+        debugPrint('   First PV: moves=${primaryEval.pvs.first.moves}, cp=${primaryEval.pvs.first.cp}');
 
-        // Schedule retry after a short delay to let position stabilize
-        // This handles race conditions during rapid live game moves
-        Future.delayed(const Duration(milliseconds: 500), () {
+        // IMMEDIATE UPDATE: Show eval bar with loading PVs indicator
+        final currentSnapshot = state.value;
+        if (currentSnapshot != null) {
+          state = AsyncValue.data(
+            currentSnapshot.copyWith(
+              evaluation: evaluation,
+              mate: primaryEval.pvs.first.mate,
+              isEvaluating: false, // Show eval bar immediately
+              principalVariations: const [], // Empty PVs for now
+            ),
+          );
+        }
+
+        // Schedule ONE retry for PVs - don't loop indefinitely
+        // Capture primaryEval in local scope for null safety
+        final evalForRetry = primaryEval;
+        Future.delayed(const Duration(milliseconds: 300), () async {
           if (!mounted || _cancelEvaluation) return;
           final currentState = state.value;
           if (currentState == null) return;
@@ -2587,18 +2602,57 @@ class ChessBoardScreenNotifierNew
           // Only retry if still on same position and still no PVs
           if (currentFenBase == targetFenBase &&
               currentState.principalVariations.isEmpty &&
-              !currentState.isEvaluating) {
-            debugPrint(
-              '🔄 RETRY: Re-evaluating position to get PVs (target: $targetFenBase)',
-            );
-            _evaluatePosition();
+              evalForRetry.pvs.isNotEmpty) {
+            debugPrint('🔄 RETRY: Re-building PVs for position $targetFenBase');
+            final retryPvLines = await _buildPrincipalVariations(fen, evalForRetry.pvs);
+
+            if (retryPvLines.isNotEmpty && mounted) {
+              final latestState = state.value;
+              if (latestState != null) {
+                final latestPos =
+                    latestState.isAnalysisMode
+                        ? latestState.analysisState.position
+                        : latestState.position;
+                final latestFenBase = latestPos?.fen.split(' ').take(3).join(' ');
+
+                // Only apply if position hasn't changed
+                if (latestFenBase == targetFenBase) {
+                  debugPrint('✅ RETRY SUCCESS: Applying ${retryPvLines.length} PVs');
+                  final basePointer =
+                      latestState.isAnalysisMode
+                          ? latestState.analysisState.movePointer
+                          : null;
+
+                  state = AsyncValue.data(
+                    latestState.copyWith(
+                      principalVariations: retryPvLines,
+                      variantBaseFen: fen,
+                      variantBaseMovePointer: basePointer,
+                      analysisState: latestState.analysisState.copyWith(
+                        suggestionLines: retryPvLines,
+                      ),
+                    ),
+                  );
+
+                  _applyPrincipalVariationResults(
+                    currentState: state.value!,
+                    currentPosition: latestPos!,
+                    baseFen: fen,
+                    baseMovePointer: basePointer,
+                    pvLines: retryPvLines,
+                  );
+                } else {
+                  debugPrint('🚫 RETRY CANCELLED: Position changed during retry');
+                }
+              }
+            } else {
+              debugPrint('❌ RETRY FAILED: Still no PVs after retry');
+            }
           }
         });
-        // Continue with empty PVs - we still want to show the evaluation
+        // Continue with rest of the method to cache what we have
       } else if (pvLines.isEmpty) {
-        debugPrint(
-          '⚠️ EVAL: No PVs available and primaryEval has no PVs either',
-        );
+        debugPrint('⚠️ EVAL: No PVs available from any source');
       }
 
       // OPTIMIZATION: Don't await cache persistence - run in background for speed
@@ -3151,21 +3205,9 @@ class ChessBoardScreenNotifierNew
       final visibleIndex = ref.read(currentlyVisiblePageIndexProvider);
       final shouldForce = force || (visibleIndex == index);
       _evaluatePosition(force: shouldForce);
-      
-      // SAFETY MECHANISM: Failsafe timeout to clear stuck isEvaluating state
-      // If evaluation takes longer than 5 seconds, force clear the loading state
-      Future.delayed(const Duration(seconds: 5), () {
-        final currentState = state.value;
-        if (currentState != null && currentState.isEvaluating && mounted) {
-          debugPrint('⚠️ EVAL TIMEOUT: Forcing isEvaluating to false after 5s timeout');
-          state = AsyncValue.data(
-            currentState.copyWith(
-              isEvaluating: false,
-              evaluation: currentState.evaluation ?? 0.0,
-            ),
-          );
-        }
-      });
+
+      // REMOVED: 5-second failsafe timeout that was conflicting with legitimate evaluations
+      // The stale request detection in _evaluatePosition handles this with a 10s timeout
     }
   }
 

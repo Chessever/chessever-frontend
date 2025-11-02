@@ -637,12 +637,8 @@ class _ShareCard extends ConsumerWidget {
                       child: EvaluationBarWidget(
                         width: sideBarWidth,
                         height: boardSize,
-                        index: currentMoveIndex,
+                        fen: positionFen,
                         isFlipped: isFlipped,
-                        evaluation: evaluation,
-                        mate: mate,
-                        isEvaluating: false,
-                        gameId: gameId, // Pass game ID for correct caching
                       ),
                     ),
                     SizedBox(

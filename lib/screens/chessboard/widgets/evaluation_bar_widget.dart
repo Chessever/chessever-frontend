@@ -1,29 +1,25 @@
+import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+/// REACTIVE EvaluationBarWidget - watches cascade provider directly
+/// Handles its own loading/data states independently from board provider
 class EvaluationBarWidget extends ConsumerStatefulWidget {
   final double width;
   final double height;
-  final double? evaluation; // Made nullable to handle loading state
+  final String fen; // Just need the FEN to watch evaluation
   final bool isFlipped;
-  final int index;
-  final int? mate;
-  final bool isEvaluating; // Add flag to show loading during evaluation
-  final String gameId; // CRITICAL: Include game ID to prevent wrong eval caching
 
   const EvaluationBarWidget({
     required this.width,
     required this.height,
-    required this.evaluation,
+    required this.fen,
     required this.isFlipped,
-    required this.index,
-    required this.mate,
-    required this.gameId, // REQUIRED to fix cross-game caching bugs
-    this.isEvaluating = false, // Default to false for backward compatibility
     super.key,
   });
 
@@ -34,6 +30,8 @@ class EvaluationBarWidget extends ConsumerStatefulWidget {
 
 class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
   double? _lastValidEvaluation;
+  int? _lastValidMate;
+  bool _isCurrentlyLoading = false;
 
   /// Converts evaluation to white advantage ratio
   /// eval: -5 to +5 (negative = black advantage, positive = white advantage)
@@ -41,60 +39,83 @@ class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
   double getWhiteRatio(double eval) => (eval.clamp(-5.0, 5.0) + 5.0) / 10.0;
 
   @override
-  void didUpdateWidget(EvaluationBarWidget oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // Reset cached evaluation when position changes (gameId or index)
-    // This ensures we don't show stale data from a different position
-    if (oldWidget.index != widget.index || oldWidget.gameId != widget.gameId) {
-      _lastValidEvaluation = null;
-    }
+  Widget build(BuildContext context) {
+    // REACTIVE: Watch the cascade provider directly for this FEN
+    final evalAsync = ref.watch(cascadeEvalProviderForBoard(widget.fen));
+
+    return evalAsync.when(
+      loading: () {
+        // Show loading state with last known evaluation if available
+        _isCurrentlyLoading = true;
+        return _buildBar(
+          evaluation: _lastValidEvaluation ?? 0.0,
+          mate: _lastValidMate ?? 0,
+          isLoading: true,
+          shouldAnimate: false,
+        );
+      },
+      error: (_, __) {
+        // Show error state with last known evaluation
+        _isCurrentlyLoading = false;
+        return _buildBar(
+          evaluation: _lastValidEvaluation ?? 0.0,
+          mate: _lastValidMate ?? 0,
+          isLoading: false,
+          shouldAnimate: false,
+        );
+      },
+      data: (cloudEval) {
+        // Extract evaluation from cloud eval
+        final wasLoading = _isCurrentlyLoading;
+        _isCurrentlyLoading = false;
+
+        if (cloudEval.pvs.isEmpty) {
+          // No evaluation available, show last known or default
+          return _buildBar(
+            evaluation: _lastValidEvaluation ?? 0.0,
+            mate: _lastValidMate ?? 0,
+            isLoading: false,
+            shouldAnimate: false,
+          );
+        }
+
+        final pv = cloudEval.pvs.first;
+        final rawCp = pv.cp;
+        final newEval = rawCp / 100.0;
+        final mate = pv.mate;
+
+        // Determine if we should animate based on change magnitude
+        final shouldAnimate =
+            wasLoading ||
+            _lastValidEvaluation == null ||
+            (newEval - _lastValidEvaluation!).abs() >= 0.1;
+
+        // Update cached values
+        _lastValidEvaluation = newEval;
+        _lastValidMate = mate;
+
+        return _buildBar(
+          evaluation: newEval,
+          mate: mate ?? 0,
+          isLoading: false,
+          shouldAnimate: shouldAnimate,
+        );
+      },
+    );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    // SIMPLE LOGIC: Just display what the provider gives us
-    // Provider already handles caching via:
-    // 1. _evaluationCache in chess_board_screen_provider_new.dart
-    // 2. localEvalCacheProvider (local storage)
-    // 3. Supabase evals table
-
-    double evalValueForDisplay;
-    bool shouldAnimate = true;
-
-    if (widget.evaluation != null) {
-      final newEval = widget.evaluation!;
-      final oldEval = _lastValidEvaluation;
-
-      // Only skip animation if evaluation barely changed to reduce jitter
-      if (!widget.isEvaluating &&
-          oldEval != null &&
-          (newEval - oldEval).abs() < 0.1) {
-        evalValueForDisplay = oldEval;
-        shouldAnimate = false;
-      } else {
-        _lastValidEvaluation = newEval;
-        evalValueForDisplay = newEval;
-        shouldAnimate = !widget.isEvaluating; // Freeze during evaluation
-      }
-    } else if (_lastValidEvaluation != null) {
-      // Show last known evaluation while waiting for new one
-      evalValueForDisplay = _lastValidEvaluation!;
-      shouldAnimate = false;
-    } else {
-      // No evaluation available yet
-      evalValueForDisplay = 0.0;
-      shouldAnimate = false;
-    }
-
-    final whiteRatio = getWhiteRatio(evalValueForDisplay);
+  Widget _buildBar({
+    required double evaluation,
+    required int mate,
+    required bool isLoading,
+    required bool shouldAnimate,
+  }) {
+    final whiteRatio = getWhiteRatio(evaluation);
     final blackRatio = 1.0 - whiteRatio;
 
     final whiteHeight = whiteRatio * widget.height;
     final blackHeight = blackRatio * widget.height;
 
-    // Color scheme (consistent regardless of move traversal):
-    // - White color (bottom when not flipped) = White advantage
-    // - Dark color (top when not flipped) = Black advantage
     final topHeight = widget.isFlipped ? whiteHeight : blackHeight;
     final bottomHeight = widget.isFlipped ? blackHeight : whiteHeight;
 
@@ -119,7 +140,6 @@ class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
               color: topColor,
             ),
           ),
-
           Align(
             alignment: Alignment.bottomCenter,
             child: AnimatedContainer(
@@ -133,11 +153,9 @@ class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
               color: bottomColor,
             ),
           ),
-
           Center(
             child: Container(width: widget.width, height: 2, color: kRedColor),
           ),
-
           Center(
             child: Container(
               padding: EdgeInsets.symmetric(horizontal: 1.w, vertical: 0.5.h),
@@ -146,16 +164,11 @@ class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
                 borderRadius: BorderRadius.circular(2.br),
               ),
               child: Text(
-                // Prefer showing last known evaluation even while evaluating.
-                // Only show "..." if neither current nor cached evaluation exists.
-                (widget.evaluation == null && _lastValidEvaluation == null)
+                isLoading
                     ? '...'
-                    : (((widget.evaluation ?? _lastValidEvaluation)!.abs() >= 10.0) &&
-                            widget.mate != null && widget.mate != 0)
-                        ? '#${widget.mate!.abs()}'
-                        : (widget.evaluation ?? _lastValidEvaluation)!
-                            .abs()
-                            .toStringAsFixed(1),
+                    : (evaluation.abs() >= 10.0 && mate != 0)
+                        ? '#${mate.abs()}'
+                        : evaluation.abs().toStringAsFixed(1),
                 maxLines: 1,
                 textAlign: TextAlign.center,
                 style: AppTypography.textSmRegular.copyWith(
@@ -172,56 +185,13 @@ class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
   }
 }
 
-/// PERFORMANCE-OPTIMIZED: Lightweight evaluation bar for games list
-/// Does NOT fetch evaluations to avoid killing performance with 20+ simultaneous network calls
-/// Only shows a neutral bar - evaluations are fetched when user opens the game
-class EvaluationBarWidgetForGames extends StatelessWidget {
+class EvaluationBarWidgetForGames extends ConsumerWidget {
   final double width;
   final double height;
   final String fen;
   final PlayerView playerView;
 
   const EvaluationBarWidgetForGames({
-    required this.width,
-    required this.height,
-    required this.fen,
-    required this.playerView,
-    super.key,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // PERFORMANCE FIX: Do NOT call cascadeEvalProvider here!
-    // Calling it for every game in the list causes:
-    // - 20+ simultaneous Supabase queries
-    // - 20+ simultaneous Lichess API calls
-    // - 20+ potential Stockfish evaluations on main thread
-    // This kills performance when multiple live games are ongoing
-
-    // Show a neutral evaluation bar - actual evaluation is only fetched when user opens the game
-    return _Bars(
-      width: width,
-      height: height,
-      whiteHeight: height * 0.5,
-      blackHeight: height * 0.5,
-      evaluation: 0.0,
-      isEvaluating: false,
-      playerView: playerView,
-      isFlipped: false, // Game cards always show from white's perspective
-    );
-  }
-}
-
-// DEPRECATED: Old implementation that caused performance issues
-// Keeping commented for reference in case we want to re-enable with proper optimization
-/*
-class EvaluationBarWidgetForGames_OLD extends ConsumerWidget {
-  final double width;
-  final double height;
-  final String fen;
-  final PlayerView playerView;
-
-  const EvaluationBarWidgetForGames_OLD({
     required this.width,
     required this.height,
     required this.fen,
@@ -317,7 +287,6 @@ class EvaluationBarWidgetForGames_OLD extends ConsumerWidget {
         );
   }
 }
-*/
 
 class _Bars extends StatefulWidget {
   const _Bars({
