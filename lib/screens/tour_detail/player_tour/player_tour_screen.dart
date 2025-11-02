@@ -100,19 +100,8 @@ class PlayerTourScreen extends ConsumerWidget {
                               final favIds =
                                   favData.players.map((e) => e.fideId).toSet();
 
-                              // Sort with favorited players on top, preserving score order within each group
-                              final favoritePlayers = <PlayerStandingModel>[];
-                              final nonFavoritePlayers = <PlayerStandingModel>[];
-
-                              for (final player in data) {
-                                if (favIds.contains(player.fideId)) {
-                                  favoritePlayers.add(player);
-                                } else {
-                                  nonFavoritePlayers.add(player);
-                                }
-                              }
-
-                              final sortedData = [...favoritePlayers, ...nonFavoritePlayers];
+                              // Keep players in their original ranking order (by score)
+                              // Do NOT reorder based on favorite status
 
                               return Expanded(
                                 child: ListView.builder(
@@ -124,12 +113,10 @@ class PlayerTourScreen extends ConsumerWidget {
                                         ).viewInsets.bottom +
                                         16.sp,
                                   ),
-                                  itemCount: sortedData.length,
+                                  itemCount: data.length,
                                   itemBuilder: (context, index) {
-                                    final player = sortedData[index];
-                                    final isFav = favData.players
-                                        .map((e) => e.fideId)
-                                        .contains(player.fideId);
+                                    final player = data[index];
+                                    final isFav = favIds.contains(player.fideId);
                                     return StandingScoreCard(
                                       countryCode: player.countryCode,
                                       title: player.title,
@@ -139,7 +126,7 @@ class PlayerTourScreen extends ConsumerWidget {
                                       matchScore: player.matchScore,
                                       index: index,
                                       isFirst: index == 0,
-                                      isLast: index == sortedData.length - 1,
+                                      isLast: index == data.length - 1,
                                       onTap: () {
                                         ref
                                             .read(

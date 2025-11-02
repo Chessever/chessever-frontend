@@ -32,31 +32,41 @@ class _LichessEvalRepository {
     throw HttpException('Unexpected status ${resp.statusCode}');
   }
 
-  /// Converts Lichess evaluation from current player's perspective to white's perspective
-  /// CRITICAL: Based on testing, when evaluations are wrong, it means they're NOT being flipped
-  /// when they should be. This indicates evaluations ARE from current player's perspective.
+  /// Converts Lichess evaluation from side-to-move perspective to WHITE'S perspective.
+  /// Positive cp after conversion always means white is better; negative means black is better.
   CloudEval _convertToWhitePerspective(CloudEval cloudEval, String fen, int multiPv) {
     // Parse FEN to determine whose turn it is
     final fenParts = fen.split(' ');
     final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
+    final isBlackToMove = sideToMove == 'b';
     final originalCp = cloudEval.pvs.isNotEmpty ? cloudEval.pvs.first.cp : 0;
 
-    print("🔍 LICHESS: Received ${cloudEval.pvs.length} PVs (multiPv=$multiPv), side=$sideToMove, firstCp=$originalCp");
+    print(
+      "🔍 LICHESS: Received ${cloudEval.pvs.length} PVs (multiPv=$multiPv), side=$sideToMove, firstCp=$originalCp",
+    );
 
-    final adjustedPvs = cloudEval.pvs
-        .map(
-          (pv) => Pv(
-            moves: pv.moves,
-            cp: pv.cp,
-            isMate: pv.isMate,
-            mate: pv.mate,
-            whitePerspective: true,
-          ),
-        )
-        .toList();
+    final adjustedPvs = cloudEval.pvs.map((pv) {
+      final correctedCp = isBlackToMove ? -pv.cp : pv.cp;
+      final correctedMate = pv.mate != null
+          ? (isBlackToMove ? -pv.mate! : pv.mate!)
+          : null;
+      return Pv(
+        moves: pv.moves,
+        cp: correctedCp,
+        isMate: pv.isMate,
+        mate: correctedMate,
+        whitePerspective: true,
+      );
+    }).toList();
 
+    final correctedFirst = adjustedPvs.isNotEmpty ? adjustedPvs.first.cp : 0;
+    print(
+      "✅ LICHESS NORMALIZED: side=$sideToMove, firstCpCorrected=$correctedFirst",
+    );
+
+    // Use the requested FEN to avoid mismatches on strict FEN equality checks elsewhere
     return CloudEval(
-      fen: cloudEval.fen,
+      fen: fen,
       knodes: cloudEval.knodes,
       depth: cloudEval.depth,
       pvs: adjustedPvs,

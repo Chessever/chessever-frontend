@@ -4,6 +4,9 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/rounded_search_bar.dart';
+import 'package:chessever2/screens/standings/player_standing_model.dart';
+import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
+import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'widgets/player_card.dart';
 import 'providers/player_providers.dart';
 
@@ -257,5 +260,36 @@ class _PlayerList extends ConsumerWidget {
   void _toggleFavorite(WidgetRef ref, String playerId) async {
     final viewModel = ref.read(playerViewModelProvider);
     viewModel.toggleFavorite(playerId);
+
+    // Also update the Supabase-backed favorites system so auto-pin updates immediately
+    try {
+      final players = ref.read(playerPaginationProvider).valueOrNull ?? [];
+      final player = players.firstWhere(
+        (p) => p['fideId'].toString() == playerId,
+        orElse: () => <String, dynamic>{},
+      );
+
+      if (player.isNotEmpty) {
+        final playerModel = PlayerStandingModel(
+          name: '${player['title'] ?? ''} ${player['name']}'.trim(),
+          countryCode: player['fed']?.toString() ?? '',
+          score: player['rating'] ?? 0,
+          scoreChange: 0,
+          matchScore: null,
+          fideId: int.tryParse(playerId),
+          title: player['title']?.toString(),
+        );
+
+        final favService = ref.read(favoriteStandingsPlayerService);
+        await favService.toggleFavorite(playerModel);
+
+        // Increment favorites version to trigger auto-pin recomputation
+        // This will cause the games list to re-sort immediately
+        ref.read(favoritesVersionProvider.notifier).state++;
+        debugPrint('[PlayerScreen] Incremented favorites version to trigger games resort');
+      }
+    } catch (e) {
+      debugPrint('Error updating Supabase favorites: $e');
+    }
   }
 }

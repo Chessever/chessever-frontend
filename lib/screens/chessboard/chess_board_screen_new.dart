@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
@@ -2242,10 +2241,11 @@ class _PrincipalVariationListState
     // Check if position is terminal (game over)
     final isGameOver = position?.isGameOver ?? false;
 
-    // Show skeleton when evaluating (to prevent stale data display) OR when first loading (no lines yet)
-    // But not when game is over
-    // Keep skeleton visible indefinitely while evaluating - never hide it with timeout
-    final showSkeleton = !isGameOver && (isEvaluating || lines.isEmpty);
+    // Show skeleton ONLY when we have no data yet
+    // If we have cached lines, show them immediately (even while evaluating)
+    // This prevents stuck loading states when isEvaluating flag has timing issues
+    // But don't show skeleton when game is over
+    final showSkeleton = !isGameOver && lines.isEmpty;
 
     // Show end of game message when position is terminal
     final showEndOfGame = isGameOver && widget.state.isAnalysisMode;
