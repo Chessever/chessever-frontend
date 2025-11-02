@@ -1695,6 +1695,7 @@ class _BoardWithSidebar extends ConsumerWidget {
                   evaluation: state.evaluation,
                   mate: state.mate,
                   isEvaluating: state.isEvaluating,
+                  gameId: game.gameId, // CRITICAL: Pass game ID for correct caching
                 ),
               ),
               Stack(
@@ -2906,6 +2907,7 @@ class _ShareGameScreen extends ConsumerWidget {
       mate: state.mate ?? 0,
       isFlipped: state.isBoardFlipped,
       gameStatus: game.gameStatus,
+      gameId: game.gameId, // Pass game ID for correct eval display
       onClose: () => Navigator.of(context).pop(),
     );
   }

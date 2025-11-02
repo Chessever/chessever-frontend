@@ -43,6 +43,7 @@ class ShareGameCardOverlay extends StatefulWidget {
   final bool isFlipped;
   final GameStatus gameStatus;
   final VoidCallback onClose;
+  final String gameId; // CRITICAL: Include game ID for correct eval caching
 
   const ShareGameCardOverlay({
     super.key,
@@ -69,6 +70,7 @@ class ShareGameCardOverlay extends StatefulWidget {
     required this.isFlipped,
     required this.gameStatus,
     required this.onClose,
+    required this.gameId, // REQUIRED for correct eval caching
   });
 
   @override
@@ -263,6 +265,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                             isFlipped: widget.isFlipped,
                             gameStatus: widget.gameStatus,
                             isPreview: true,
+                            gameId: widget.gameId, // Pass game ID for correct caching
                           ),
                         ),
                       )
@@ -369,6 +372,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                   isFlipped: widget.isFlipped,
                   gameStatus: widget.gameStatus,
                   isPreview: false,
+                  gameId: widget.gameId, // Pass game ID for correct caching
                 ),
               ),
             ),
@@ -404,6 +408,7 @@ class _ShareCard extends ConsumerWidget {
   final bool isFlipped;
   final GameStatus gameStatus;
   final bool isPreview;
+  final String gameId; // CRITICAL: Include game ID for correct eval caching
 
   const _ShareCard({
     required this.boardSettings,
@@ -430,6 +435,7 @@ class _ShareCard extends ConsumerWidget {
     required this.isFlipped,
     required this.gameStatus,
     this.isPreview = false,
+    required this.gameId, // REQUIRED for correct eval caching
   });
 
   Widget _buildEndScoreWidget({required bool isWhitePlayer}) {
@@ -636,6 +642,7 @@ class _ShareCard extends ConsumerWidget {
                         evaluation: evaluation,
                         mate: mate,
                         isEvaluating: false,
+                        gameId: gameId, // Pass game ID for correct caching
                       ),
                     ),
                     SizedBox(

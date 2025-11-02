@@ -13,6 +13,7 @@ class EvaluationBarWidget extends ConsumerStatefulWidget {
   final int index;
   final int? mate;
   final bool isEvaluating; // Add flag to show loading during evaluation
+  final String gameId; // CRITICAL: Include game ID to prevent wrong eval caching
 
   const EvaluationBarWidget({
     required this.width,
@@ -21,6 +22,7 @@ class EvaluationBarWidget extends ConsumerStatefulWidget {
     required this.isFlipped,
     required this.index,
     required this.mate,
+    required this.gameId, // REQUIRED to fix cross-game caching bugs
     this.isEvaluating = false, // Default to false for backward compatibility
     super.key,
   });
@@ -32,44 +34,38 @@ class EvaluationBarWidget extends ConsumerStatefulWidget {
 
 class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
   double? _lastValidEvaluation;
-  static final Map<String, double> _globalEvaluationCache = {};
 
   /// Converts evaluation to white advantage ratio
   /// eval: -5 to +5 (negative = black advantage, positive = white advantage)
   /// returns: 0.0 to 1.0 (0.0 = 100% black advantage, 1.0 = 100% white advantage)
   double getWhiteRatio(double eval) => (eval.clamp(-5.0, 5.0) + 5.0) / 10.0;
 
-  String get _cacheKey => 'eval_${widget.index}';
-
-  @override
-  void initState() {
-    super.initState();
-    // Restore last valid evaluation from global cache if available
-    _lastValidEvaluation = _globalEvaluationCache[_cacheKey];
-  }
-
   @override
   void didUpdateWidget(EvaluationBarWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // CRITICAL: When index changes (user moved to different position), load the cached eval for that position
-    if (oldWidget.index != widget.index) {
-      _lastValidEvaluation = _globalEvaluationCache[_cacheKey];
+    // Reset cached evaluation when position changes (gameId or index)
+    // This ensures we don't show stale data from a different position
+    if (oldWidget.index != widget.index || oldWidget.gameId != widget.gameId) {
+      _lastValidEvaluation = null;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // CRITICAL FIX: Always check global cache first for current position
-    // This ensures we show correct cached evaluation when switching positions
-    final cachedForCurrentPosition = _globalEvaluationCache[_cacheKey];
+    // SIMPLE LOGIC: Just display what the provider gives us
+    // Provider already handles caching via:
+    // 1. _evaluationCache in chess_board_screen_provider_new.dart
+    // 2. localEvalCacheProvider (local storage)
+    // 3. Supabase evals table
 
     double evalValueForDisplay;
     bool shouldAnimate = true;
 
     if (widget.evaluation != null) {
       final newEval = widget.evaluation!;
-      final oldEval = cachedForCurrentPosition ?? _lastValidEvaluation;
+      final oldEval = _lastValidEvaluation;
 
+      // Only skip animation if evaluation barely changed to reduce jitter
       if (!widget.isEvaluating &&
           oldEval != null &&
           (newEval - oldEval).abs() < 0.1) {
@@ -77,20 +73,15 @@ class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
         shouldAnimate = false;
       } else {
         _lastValidEvaluation = newEval;
-        _globalEvaluationCache[_cacheKey] = newEval;
         evalValueForDisplay = newEval;
-        shouldAnimate = !widget.isEvaluating;
+        shouldAnimate = !widget.isEvaluating; // Freeze during evaluation
       }
-    } else if (cachedForCurrentPosition != null) {
-      // Use cached evaluation for THIS position (not previous position)
-      evalValueForDisplay = cachedForCurrentPosition;
-      _lastValidEvaluation = cachedForCurrentPosition;
-      shouldAnimate = false;
     } else if (_lastValidEvaluation != null) {
-      // Fallback to instance state only if no cache for current position
+      // Show last known evaluation while waiting for new one
       evalValueForDisplay = _lastValidEvaluation!;
       shouldAnimate = false;
     } else {
+      // No evaluation available yet
       evalValueForDisplay = 0.0;
       shouldAnimate = false;
     }
