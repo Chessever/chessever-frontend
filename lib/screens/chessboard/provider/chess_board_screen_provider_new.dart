@@ -71,9 +71,11 @@ class ChessBoardScreenNotifierNew
   int _evalRequestCounter = 0;
   int? _activeEvalRequestId;
   String? _activeEvalKey;
+  DateTime? _activeEvalStartTime; // Track when active eval started
   ChessGame? _analysisGame;
   ChessGameNavigatorStateManager? _analysisStateManager;
   ProviderSubscription<ChessGameNavigatorState>? _navigatorSubscription;
+  bool _isInitialLoad = true;
 
   void _initializeState() {
     // Start with an initial data state to ensure proper initialization
@@ -95,10 +97,15 @@ class ChessBoardScreenNotifierNew
   /// Get evaluation with consistent perspective for evaluation bar display
   /// BULLETPROOF evaluation perspective handler
   /// This method GUARANTEES that ALL evaluations are in WHITE'S PERSPECTIVE
+  ///
+  /// The cascade provider (current_eval_provider.dart) already converts
+  /// Stockfish evaluations to white's perspective before caching.
+  /// Lichess API returns evaluations in white's perspective by default.
+  ///
+  /// So this method now just passes through the evaluation as-is.
+  /// Positive = white advantage, Negative = black advantage
   double _getConsistentEvaluation(double evaluation, String fen) {
-    debugPrint(
-      "🔍 EVAL WHITE PERSPECTIVE: FEN=$fen, eval=$evaluation (positive=WHITE advantage, negative=BLACK advantage)",
-    );
+    // All evaluations are already in white's perspective from cascade provider
     return evaluation;
   }
 
@@ -263,9 +270,9 @@ class ChessBoardScreenNotifierNew
       final currentMoveCount = moveSans.length;
       final hasNewMoves = currentMoveCount > lastSeenMoveCount;
 
-      // If this is the first time loading the game, mark all moves as seen
-      // Otherwise, only mark as unseen if the user is NOT viewing the last move
-      final isFirstLoad = lastSeenMoveCount == 0;
+      // Use instance-level initial load flag instead of global lastSeenMoveCount
+      // This ensures we ALWAYS focus on latest move when entering the game screen
+      final isFirstLoad = _isInitialLoad;
       final wasViewingLastMove =
           currentState != null &&
           currentState.allMoves.isNotEmpty &&
@@ -275,12 +282,12 @@ class ChessBoardScreenNotifierNew
           hasNewMoves && !isFirstLoad && !wasViewingLastMove;
 
       // Determine which move index to display:
-      // - If first load: ALWAYS jump to last move
+      // - If initial load (entering the game): ALWAYS jump to last move
       // - If user was viewing last move: jump to new last move
-      // - If user was viewing an earlier move AND it's not first load: stay at current position (don't jump)
+      // - If user was viewing an earlier move AND it's not initial load: stay at current position (don't jump)
       final newMoveIndex =
           isFirstLoad
-              ? lastMoveIndex // Always show latest on first load
+              ? lastMoveIndex // Always show latest on initial screen load
               : (wasViewingLastMove
                   ? lastMoveIndex // Jump to new last move if user was already viewing last
                   : currentState?.analysisState.currentMoveIndex ??
@@ -352,6 +359,7 @@ class ChessBoardScreenNotifierNew
       // Update last seen move count if this is the first load
       if (isFirstLoad) {
         _updateLastSeenMoveCount(currentMoveCount);
+        _isInitialLoad = false; // Mark initial load as complete
       }
 
       // Analysis board is always initialized since analysis mode is always active
@@ -2212,10 +2220,28 @@ class ChessBoardScreenNotifierNew
           return;
         }
 
+        // BUG FIX: Validate cached mate=0 before applying
+        final validatedCachedMate =
+            (cachedMate == 0 && !currentPosition.isCheckmate)
+                ? null // Invalid cached mate=0
+                : cachedMate;
+
+        if (cachedMate == 0 && !currentPosition.isCheckmate) {
+          debugPrint(
+            '⚠️ EVAL: Cached mate=0 invalid for position, ignoring',
+          );
+        }
+
+        // BUG FIX: Set principalVariations immediately when returning cached data
+        // Don't rely solely on _applyPrincipalVariationResults which can return early
         var cachedState = initialState.copyWith(
           evaluation: cachedEval,
-          mate: cachedMate, // Use cached mate directly, null if no mate
+          mate: validatedCachedMate, // Use validated cached mate
           isEvaluating: false,
+          principalVariations: cachedPv, // Set PVs immediately
+          analysisState: initialState.analysisState.copyWith(
+            suggestionLines: cachedPv, // Also set suggestion lines
+          ),
         );
         state = AsyncValue.data(cachedState);
 
@@ -2255,19 +2281,41 @@ class ChessBoardScreenNotifierNew
         return;
       }
 
+      // BUG FIX: Check if there's a stale active request (older than 3 seconds)
+      // This fixes the rare bug where evaluation gets stuck in loading state
       if (!force &&
           _activeEvalKey == cacheKey &&
           _activeEvalRequestId != null) {
-        debugPrint(
-          '🎯 EVAL: Skipping duplicate request for $cacheKey (already running)',
-        );
-        // Don't clear isEvaluating here - another request is already running
-        return;
+        // Check if the active request is stale (started more than 3 seconds ago)
+        final isStale = _activeEvalStartTime != null &&
+            DateTime.now().difference(_activeEvalStartTime!) >
+                const Duration(seconds: 3);
+
+        if (isStale) {
+          debugPrint(
+            '⚠️ EVAL: Clearing stale request for $cacheKey (started ${DateTime.now().difference(_activeEvalStartTime!).inSeconds}s ago)',
+          );
+          // CRITICAL BUG FIX: Clear the isEvaluating flag when clearing stale request
+          // This prevents the UI from getting stuck in loading state
+          state = AsyncValue.data(initialState.copyWith(isEvaluating: false));
+
+          // Clear the stale request tracking and continue with new one
+          _activeEvalRequestId = null;
+          _activeEvalKey = null;
+          _activeEvalStartTime = null;
+        } else {
+          debugPrint(
+            '🎯 EVAL: Skipping duplicate request for $cacheKey (already running)',
+          );
+          // Don't clear isEvaluating here - another request is already running
+          return;
+        }
       }
 
       final currentRequestId = requestId = ++_evalRequestCounter;
       _activeEvalKey = cacheKey;
       _activeEvalRequestId = currentRequestId;
+      _activeEvalStartTime = DateTime.now(); // Track when this request started
 
       state = AsyncValue.data(
         initialState.copyWith(shapes: const ISet.empty(), isEvaluating: true),
@@ -2662,9 +2710,21 @@ class ChessBoardScreenNotifierNew
             shapes = getBestMoveShape(position, evalForShapes);
           }
 
+          // BUG FIX: Validate cached mate=0 before applying
+          final validatedMate =
+              (cachedCurrentMate == 0 && !position.isCheckmate)
+                  ? null // Invalid cached mate=0
+                  : cachedCurrentMate;
+
+          if (cachedCurrentMate == 0 && !position.isCheckmate) {
+            debugPrint(
+              '⚠️ EVAL: Cached mate=0 invalid for current position, ignoring',
+            );
+          }
+
           final updatedState = currentSnapshot.copyWith(
             evaluation: cachedCurrentEval,
-            mate: cachedCurrentMate, // Use cached mate directly, null if no mate
+            mate: validatedMate, // Use validated mate value
             isEvaluating: false,
             shapes: shapes,
             principalVariations: cachedCurrentPv,
@@ -2700,7 +2760,19 @@ class ChessBoardScreenNotifierNew
 
       final basePointer =
           inAnalysis ? currentSnapshot.analysisState.movePointer : null;
-      final mateScore = primaryEval.pvs.first.mate; // Use engine mate directly, null if no mate
+      final rawMateScore = primaryEval.pvs.first.mate; // Use engine mate directly, null if no mate
+
+      // BUG FIX: Validate mate=0 - only allow it if position is actually checkmate
+      // This fixes the bug where "M" appears on regular positions
+      final mateScore = (rawMateScore == 0 && !position.isCheckmate)
+          ? null // Invalid mate=0, treat as regular position
+          : rawMateScore;
+
+      if (rawMateScore == 0 && !position.isCheckmate) {
+        debugPrint(
+          '⚠️ EVAL: API returned mate=0 for non-checkmate position, ignoring mate value',
+        );
+      }
 
       _evaluationCache[cacheKey] = evaluation;
       _mateCache[cacheKey] = mateScore;
@@ -2765,6 +2837,7 @@ class ChessBoardScreenNotifierNew
       if (requestId != null && _activeEvalRequestId == requestId) {
         _activeEvalRequestId = null;
         _activeEvalKey = null;
+        _activeEvalStartTime = null; // Clear start time on completion
       }
     }
   }
@@ -3034,6 +3107,7 @@ class ChessBoardScreenNotifierNew
     if (force) {
       _activeEvalKey = null;
       _activeEvalRequestId = null;
+      _activeEvalStartTime = null; // Clear start time when forcing new eval
     }
 
     // CRITICAL: Clear stale PVs immediately when position changes
@@ -3073,7 +3147,10 @@ class ChessBoardScreenNotifierNew
       debugPrint(
         '🎯 EVAL: Starting evaluation immediately for current position',
       );
-      _evaluatePosition(force: force);
+      // Prioritize evaluation if this board is currently visible in the PageView
+      final visibleIndex = ref.read(currentlyVisiblePageIndexProvider);
+      final shouldForce = force || (visibleIndex == index);
+      _evaluatePosition(force: shouldForce);
       
       // SAFETY MECHANISM: Failsafe timeout to clear stuck isEvaluating state
       // If evaluation takes longer than 5 seconds, force clear the loading state

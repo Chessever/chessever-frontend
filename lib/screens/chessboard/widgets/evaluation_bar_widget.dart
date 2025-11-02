@@ -1,9 +1,7 @@
-import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -51,28 +49,45 @@ class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
   }
 
   @override
+  void didUpdateWidget(EvaluationBarWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // CRITICAL: When index changes (user moved to different position), load the cached eval for that position
+    if (oldWidget.index != widget.index) {
+      _lastValidEvaluation = _globalEvaluationCache[_cacheKey];
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // Simple, direct evaluation display
-    // - Show current evaluation from widget props
-    // - Cache only for smooth bar animation (not for text display)
-    
+    // CRITICAL FIX: Always check global cache first for current position
+    // This ensures we show correct cached evaluation when switching positions
+    final cachedForCurrentPosition = _globalEvaluationCache[_cacheKey];
+
     double evalValueForDisplay;
     bool shouldAnimate = true;
 
     if (widget.evaluation != null) {
-      evalValueForDisplay = widget.evaluation!;
-      
-      // Only disable animation if change is tiny AND not evaluating
-      if (!widget.isEvaluating && 
-          _lastValidEvaluation != null &&
-          (evalValueForDisplay - _lastValidEvaluation!).abs() < 0.1) {
+      final newEval = widget.evaluation!;
+      final oldEval = cachedForCurrentPosition ?? _lastValidEvaluation;
+
+      if (!widget.isEvaluating &&
+          oldEval != null &&
+          (newEval - oldEval).abs() < 0.1) {
+        evalValueForDisplay = oldEval;
         shouldAnimate = false;
+      } else {
+        _lastValidEvaluation = newEval;
+        _globalEvaluationCache[_cacheKey] = newEval;
+        evalValueForDisplay = newEval;
+        shouldAnimate = !widget.isEvaluating;
       }
-      
-      _lastValidEvaluation = evalValueForDisplay;
-      _globalEvaluationCache[_cacheKey] = evalValueForDisplay;
+    } else if (cachedForCurrentPosition != null) {
+      // Use cached evaluation for THIS position (not previous position)
+      evalValueForDisplay = cachedForCurrentPosition;
+      _lastValidEvaluation = cachedForCurrentPosition;
+      shouldAnimate = false;
     } else if (_lastValidEvaluation != null) {
-      // Fall back to cached value only when widget.evaluation is null
+      // Fallback to instance state only if no cache for current position
       evalValueForDisplay = _lastValidEvaluation!;
       shouldAnimate = false;
     } else {
@@ -140,19 +155,16 @@ class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
                 borderRadius: BorderRadius.circular(2.br),
               ),
               child: Text(
-                // Show "..." when actively calculating a new position
-                widget.isEvaluating
+                // Prefer showing last known evaluation even while evaluating.
+                // Only show "..." if neither current nor cached evaluation exists.
+                (widget.evaluation == null && _lastValidEvaluation == null)
                     ? '...'
-                    : (widget.evaluation == null && _lastValidEvaluation == null && widget.mate == null)
-                    ? '...'
-                    : (widget.mate == 0)
-                        ? 'M' // Checkmate delivered (mate in 0)
-                        : (widget.mate != null)
-                            ? '#${widget.mate!.abs()}' // Mate in X moves
-                            : (widget.evaluation ?? _lastValidEvaluation)!
-                                .abs()
-                                .clamp(0.0, 99.9)
-                                .toStringAsFixed(1),
+                    : (((widget.evaluation ?? _lastValidEvaluation)!.abs() >= 10.0) &&
+                            widget.mate != null && widget.mate != 0)
+                        ? '#${widget.mate!.abs()}'
+                        : (widget.evaluation ?? _lastValidEvaluation)!
+                            .abs()
+                            .toStringAsFixed(1),
                 maxLines: 1,
                 textAlign: TextAlign.center,
                 style: AppTypography.textSmRegular.copyWith(

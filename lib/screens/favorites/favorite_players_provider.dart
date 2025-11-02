@@ -1,5 +1,6 @@
 import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
+import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -82,9 +83,15 @@ class FavoritePlayersNotifier
 
       if (isFav) {
         await removeFavorite(player);
+        // Increment favorites version to trigger immediate games re-sort
+        ref.read(favoritesVersionProvider.notifier).state++;
+        debugPrint('[FavoritePlayers] Incremented favorites version after removing favorite');
         return false;
       } else {
         await addFavorite(player);
+        // Increment favorites version to trigger immediate games re-sort
+        ref.read(favoritesVersionProvider.notifier).state++;
+        debugPrint('[FavoritePlayers] Incremented favorites version after adding favorite');
         return true;
       }
     }

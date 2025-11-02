@@ -72,11 +72,23 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
       depth: 12,
       prioritize: true,
     );
+
+    // StockfishSingleton already normalizes to WHITE perspective
     final cloudFromSF = CloudEval(
       fen: fen,
       knodes: sfEval.knodes,
       depth: sfEval.depth,
-      pvs: sfEval.pvs,
+      pvs: sfEval.pvs
+          .map(
+            (pv) => Pv(
+              moves: pv.moves,
+              cp: pv.cp,
+              isMate: pv.isMate,
+              mate: pv.mate,
+              whitePerspective: true,
+            ),
+          )
+          .toList(),
     );
     // OPTIMIZATION: Save to caches in background (unawaited)
     Future.wait<void>([
@@ -142,7 +154,7 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
       return cached;
     }
 
-    // OPTIMIZATION: Query Supabase AND Lichess in parallel, return first valid result
+    // OPTIMIZATION: Query Supabase AND Lichess in parallel, resolve FIRST valid result
     print('🚀 EVAL: Querying Supabase and Lichess in parallel for $fen');
 
     final supabaseFuture = evalsRepo
@@ -218,12 +230,25 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
               throw TimeoutException('Stockfish evaluation took too long');
             },
           );
+
+      // StockfishSingleton already normalized PVs to WHITE perspective
       final cloudFromSF = CloudEval(
         fen: fen,
         knodes: sfEval.knodes,
         depth: sfEval.depth,
-        pvs: sfEval.pvs,
+        pvs: sfEval.pvs
+            .map(
+              (pv) => Pv(
+                moves: pv.moves,
+                cp: pv.cp,
+                isMate: pv.isMate,
+                mate: pv.mate,
+                whitePerspective: true,
+              ),
+            )
+            .toList(),
       );
+
       // Save to cache for future use (background)
       Future.wait<void>([
         persist.call(fen, cloudFromSF),

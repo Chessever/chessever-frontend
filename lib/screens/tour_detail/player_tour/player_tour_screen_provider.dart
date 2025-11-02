@@ -243,8 +243,14 @@ String _canonicalGameKey(String name) {
   return normalized;
 }
 
+/// Version counter to force refreshes when favorites change
+final favoritesVersionProvider = StateProvider<int>((ref) => 0);
+
 final tournamentFavoritePlayersProvider =
     FutureProvider<List<PlayerStandingModel>>((ref) async {
+      // Watch the version to make this provider reactive to favorite changes
+      ref.watch(favoritesVersionProvider);
+
       final favoritesService = ref.read(favoriteStandingsPlayerService);
       return favoritesService.getFavoritePlayers();
     });
