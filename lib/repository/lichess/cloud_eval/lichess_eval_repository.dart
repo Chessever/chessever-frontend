@@ -26,7 +26,14 @@ class _LichessEvalRepository {
     }
 
     if (resp.statusCode == 404) {
+      print('📭 Lichess: No cloud eval for $fen');
       throw NoEvalException('No evaluation');
+    }
+
+    // 429 = Lichess rate limiting - just throw exception, cascade will fallback to Stockfish
+    if (resp.statusCode == 429) {
+      print('⚡ Lichess: Rate limited (429), falling back to Stockfish');
+      throw RateLimitException('Rate limited by Lichess');
     }
 
     throw HttpException('Unexpected status ${resp.statusCode}');
@@ -76,4 +83,10 @@ class NoEvalException implements Exception {
   final String message;
 
   NoEvalException(this.message);
+}
+
+class RateLimitException implements Exception {
+  final String message;
+
+  RateLimitException(this.message);
 }

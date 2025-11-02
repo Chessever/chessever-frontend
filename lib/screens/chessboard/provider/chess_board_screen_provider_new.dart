@@ -2313,20 +2313,14 @@ class ChessBoardScreenNotifierNew
       debugPrint('🎯 EVAL START: Evaluating position $fen');
 
       // OPTIMIZED: Try cascade (cloud sources) FIRST for speed
-      // Cascade queries local DB, Supabase, and Lichess in parallel
-      // CRITICAL: Add 8-second timeout to prevent hanging on slow network/API
+      // Cascade queries local DB → Supabase → Lichess → Stockfish sequentially
+      // Each source has its own timeout, so no need for overall cascade timeout
       try {
         debugPrint(
-          '🎯 EVAL: Requesting cascade evaluation (parallel cloud sources)...',
+          '🎯 EVAL: Requesting cascade evaluation (local → Supabase → Lichess → Stockfish)...',
         );
         final cascadeEval = await ref.read(
           cascadeEvalProviderForBoard(fen).future,
-        ).timeout(
-          const Duration(seconds: 8),
-          onTimeout: () {
-            debugPrint('⏱️ EVAL: Cascade timeout after 8s, will try Stockfish');
-            throw TimeoutException('Cascade evaluation timeout');
-          },
         );
         if (cascadeEval.pvs.isNotEmpty) {
           primaryEval = cascadeEval;
@@ -2351,6 +2345,12 @@ class ChessBoardScreenNotifierNew
             debugPrint(
               '🔄 RETRY: Cloud PV building failed, retrying immediately...',
             );
+
+            // Check if provider is still mounted before accessing state
+            if (!mounted) {
+              debugPrint('🚫 RETRY CANCELLED: Provider disposed');
+              return;
+            }
 
             // Check if position changed
             final currentState = state.value;
@@ -2415,7 +2415,6 @@ class ChessBoardScreenNotifierNew
           final localEval = await StockfishSingleton().evaluatePosition(
             fen,
             depth: 15, // Consistent depth matching working commit a85edea
-            prioritize: force, // Only prioritize when explicitly forcing (user navigation)
           );
           debugPrint(
             '🎯 EVAL: Stockfish completed, isCancelled=${localEval.isCancelled}, pvs.length=${localEval.pvs.length}',
@@ -2457,6 +2456,12 @@ class ChessBoardScreenNotifierNew
               debugPrint(
                 '🔄 RETRY: Stockfish PV building failed, retrying immediately...',
               );
+
+              // Check if provider is still mounted before accessing state
+              if (!mounted) {
+                debugPrint('🚫 RETRY CANCELLED: Provider disposed');
+                return;
+              }
 
               // Check if position changed
               final currentState = state.value;
