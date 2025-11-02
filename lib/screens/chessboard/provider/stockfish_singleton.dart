@@ -38,8 +38,7 @@ class StockfishSingleton {
 
   Future<EnhancedCloudEval> evaluatePosition(
     String fen, {
-    int depth = 20,
-    bool prioritize = false,
+    int depth = 15,
   }) async {
     // Validate depth range
     if (depth < 1 || depth > 25) {
@@ -59,13 +58,6 @@ class StockfishSingleton {
     if (_evaluationCache.containsKey(cacheKey)) {
       debugPrint('📦 CACHE HIT for $fen');
       return _evaluationCache[cacheKey]!;
-    }
-
-    // CRITICAL: Aggressively purge queue when prioritizing (user navigation)
-    // This ensures current position is evaluated IMMEDIATELY without waiting for stale jobs
-    if (prioritize) {
-      debugPrint('🔥 PRIORITY EVAL: Purging all pending jobs for $fen');
-      await _purgeQueue();
     }
 
     // Deduplicate: if same job is current or pending, attach to it
@@ -114,9 +106,15 @@ class StockfishSingleton {
 
     final result = await completer.future;
 
-    // Cache the result if it's valid
-    if (!result.isCancelled && result.pvs.isNotEmpty) {
+    // Cache the result if it's valid (has actual moves, not just empty PVs)
+    // CRITICAL: Don't cache timeout results with empty/partial PVs
+    if (!result.isCancelled &&
+        result.pvs.isNotEmpty &&
+        result.pvs.first.moves.isNotEmpty) {
       _evaluationCache[cacheKey] = result;
+      debugPrint('✅ CACHED: Stockfish eval for $fen (depth=${result.depth}, cp=${result.pvs.first.cp})');
+    } else if (result.pvs.isEmpty || result.pvs.first.moves.isEmpty) {
+      debugPrint('⚠️ NOT CACHED: Stockfish returned empty/partial result for $fen');
     }
 
     return result;
@@ -158,35 +156,6 @@ class StockfishSingleton {
     }
   }
 
-  Future<void> _purgeQueue() async {
-    await _cancelCurrentEvaluation();
-
-    if (_jobQueue.isNotEmpty) {
-      for (final job in _jobQueue) {
-        if (!job.completer.isCompleted) {
-          job.completer.complete(
-            EnhancedCloudEval(
-              fen: job.fen,
-              knodes: 0,
-              depth: 0,
-              pvs: [Pv(moves: '', cp: 0, mate: 0)],
-              isCancelled: true,
-            ),
-          );
-        }
-      }
-      _jobQueue.clear();
-    }
-
-    _pendingJobs.clear();
-
-    // Wait until any in-flight processor finishes to avoid race conditions
-    if (_isProcessing) {
-      while (_isProcessing) {
-        await Future<void>.delayed(const Duration(milliseconds: 10));
-      }
-    }
-  }
 
   Future<void> _processQueue() async {
     if (_isProcessing || _jobQueue.isEmpty) return;
@@ -337,10 +306,10 @@ class StockfishSingleton {
       return;
     }
 
-    // Set up timeout - reduced to 8s for faster fail-fast behavior
-    Timer(const Duration(seconds: 8), () {
+    // Set up timeout
+    Timer(const Duration(seconds: 10), () {
       if (_currentJob == job && !completer.isCompleted && !evaluationComplete) {
-        debugPrint('⏱️ STOCKFISH TIMEOUT: Job for $fen timed out after 8s');
+        debugPrint('⏱️ STOCKFISH TIMEOUT: Job for $fen timed out after 10s');
         final filteredPvs = pvs
             .where((pv) => pv.moves.isNotEmpty)
             .toList(growable: false);

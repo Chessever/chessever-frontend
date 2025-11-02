@@ -101,8 +101,8 @@ bool _isValidEvaluation(CloudEval cloud) {
   return false;
 }
 
-/// OPTIMIZED: Parallel queries to local → Supabase → Lichess, then Stockfish fallback
-/// Uses Future.wait to query both sources in parallel and returns first valid result
+/// SEQUENTIAL cascade: local → Supabase → Lichess → Stockfish
+/// Respects Lichess API rate limits by querying sequentially
 /// Uses autoDispose to cancel evaluations when switching games
 final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval, String>((
   ref,
@@ -113,21 +113,11 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval,
   final lichess = ref.read(lichessEvalRepoProvider);
   final evalsRepo = ref.read(evalsRepositoryProvider);
 
-  // CRITICAL: Track if user navigated away to avoid wasting resources
-  var isCancelled = false;
-  ref.onDispose(() {
-    isCancelled = true;
-    print('🚫 EVAL CANCELLED: User navigated away from $fen');
-  });
-
   try {
     if (fen.isEmpty) throw Exception('Empty FEN');
-    if (isCancelled) throw Exception('Evaluation cancelled');
 
-    // OPTIMIZATION: Check local cache first (fastest, synchronous-ish)
+    // 1️⃣ Check local cache first (instant)
     final cached = await local.fetch(fen);
-    if (isCancelled) throw Exception('Cancelled during cache check');
-
     if (cached != null && _isValidEvaluation(cached)) {
       final fenParts = fen.split(' ');
       final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
@@ -136,20 +126,11 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval,
       return cached;
     }
 
-    if (isCancelled) throw Exception('Cancelled before network queries');
-
-    // OPTIMIZATION: Query Supabase AND Lichess in parallel with individual timeouts
+    // 2️⃣ Query Supabase AND Lichess in parallel for maximum speed
     print('🚀 EVAL: Querying Supabase and Lichess in parallel for $fen');
 
     final supabaseFuture = evalsRepo
         .fetchFromSupabase(fen)
-        .timeout(
-          const Duration(seconds: 4),
-          onTimeout: () {
-            print('⏱️ Supabase query timeout for $fen');
-            return null;
-          },
-        )
         .then((supabaseEval) {
           if (supabaseEval == null) return null;
           final cloud = evalsRepo.evalsToCloudEval(fen, supabaseEval);
@@ -165,19 +146,12 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval,
           return null;
         })
         .catchError((e) {
-          print('Supabase eval error: $e');
+          print('Supabase eval failed: $e');
           return null;
         });
 
     final lichessFuture = lichess
         .getEval(fen, multiPv: 3)
-        .timeout(
-          const Duration(seconds: 5),
-          onTimeout: () {
-            print('⏱️ Lichess query timeout for $fen');
-            return CloudEval(fen: fen, knodes: 0, depth: 0, pvs: []);
-          },
-        )
         .then((cloud) {
           if (_isValidEvaluation(cloud)) {
             final fenParts = fen.split(' ');
@@ -195,67 +169,45 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval,
         })
         .catchError((e) {
           if (e is! NoEvalException) {
-            print('Lichess eval error: $e');
+            print('Lichess eval failed: $e');
           }
           return null;
         });
 
-    // Wait for both with overall timeout
-    try {
-      final results = await Future.wait([supabaseFuture, lichessFuture])
-          .timeout(const Duration(seconds: 6));
+    // Wait for both cloud sources to complete in parallel
+    final results = await Future.wait([supabaseFuture, lichessFuture]);
 
-      if (isCancelled) throw Exception('Cancelled after network queries');
-
-      // Return first valid result (Supabase is first in array, so prioritized)
-      for (final result in results) {
-        if (result != null) return result;
-      }
-    } catch (e) {
-      if (isCancelled) throw Exception('Cancelled during network queries');
-      print('⏱️ Overall cascade timeout for $fen: $e');
+    // Return first valid result (Supabase is first in array, so prioritized)
+    for (final result in results) {
+      if (result != null) return result;
     }
 
-    if (isCancelled) throw Exception('Cancelled before Stockfish fallback');
-
-    // FALLBACK: All cloud sources failed, use Stockfish with PRIORITY
+    // 3️⃣ FALLBACK: All cloud sources failed, use Stockfish as last resort
     print('⚡ EVAL SOURCE: STOCKFISH FALLBACK for $fen (cloud sources unavailable)');
     try {
       final sfEval = await StockfishSingleton()
-          .evaluatePosition(fen, depth: 10, prioritize: true)  // REDUCED: 15→10 for speed
+          .evaluatePosition(fen, depth: 15)
           .timeout(
-            const Duration(seconds: 5),  // REDUCED: 10s→5s to fail faster
+            const Duration(seconds: 20),
             onTimeout: () {
-              print('⏱️ Stockfish timeout for $fen - returning minimal eval');
-              // CRITICAL: Return minimal valid eval instead of throwing
-              return EnhancedCloudEval(
-                fen: fen,
-                knodes: 0,
-                depth: 0,
-                pvs: [Pv(moves: '', cp: 0, mate: 0)],  // Return 0.0 eval
-                isCancelled: false,
-              );
+              print('⏱️ Stockfish evaluation timeout for $fen');
+              throw TimeoutException('Stockfish evaluation took too long');
             },
           );
-      if (isCancelled) throw Exception('Cancelled after Stockfish evaluation');
-
       final cloudFromSF = CloudEval(
         fen: fen,
         knodes: sfEval.knodes,
         depth: sfEval.depth,
         pvs: sfEval.pvs,
       );
-
-      // Save to cache for future use (background) - only if not cancelled
-      if (!isCancelled) {
-        Future.wait<void>([
-          persist.call(fen, cloudFromSF),
-          local.save(fen, cloudFromSF),
-        ]).catchError((e) {
-          print('Background save failed for Stockfish eval $fen: $e');
-          return <void>[];
-        });
-      }
+      // Save to cache for future use (background)
+      Future.wait<void>([
+        persist.call(fen, cloudFromSF),
+        local.save(fen, cloudFromSF),
+      ]).catchError((e) {
+        print('Background save failed for Stockfish eval $fen: $e');
+        return <void>[];
+      });
       return cloudFromSF;
     } catch (e) {
       print('❌ Stockfish fallback failed for $fen: $e');
