@@ -138,9 +138,6 @@ class EvalRepository extends BaseRepository {
   }
 
   CloudEval evalsToCloudEval(String fen, Evals eval) {
-    final fenParts = fen.split(' ');
-    final isBlackToMove = fenParts.length >= 2 && fenParts[1] == 'b';
-
     bool legacyPerspective = false;
 
     final pvsList = <Pv>[];
@@ -148,7 +145,9 @@ class EvalRepository extends BaseRepository {
       final map = Map<String, dynamic>.from(entry as Map);
       final hasPerspectiveKey = map.containsKey('whitePerspective');
 
-      final moves = (map['moves'] as String?) ?? '';
+      final rawMoves =
+          (map['moves'] as String?) ?? (map['line'] as String?) ?? '';
+      final moves = rawMoves == 'no moves' ? '' : rawMoves;
 
       int cp = 0;
       bool isMate = false;
@@ -176,12 +175,13 @@ class EvalRepository extends BaseRepository {
       bool whitePerspective = (map['whitePerspective'] as bool?) ?? false;
 
       if (!whitePerspective && !hasPerspectiveKey) {
+        // CRITICAL: Legacy data (no whitePerspective key) from Lichess API
+        // was ALREADY in white's perspective - no conversion needed!
+        // Lichess API always returns evaluations in white's perspective.
+        // Only Stockfish returns side-to-move perspective (handled in stockfish_singleton.dart)
         legacyPerspective = true;
         whitePerspective = true;
-        if (isBlackToMove) {
-          cp = -cp;
-          if (mate != null) mate = -mate;
-        }
+        // NO CONVERSION - legacy Lichess data already in white's perspective!
       } else if (!whitePerspective) {
         // Stored from black's perspective explicitly - normalize
         whitePerspective = true;
@@ -214,4 +214,15 @@ class EvalRepository extends BaseRepository {
 
   Future<void> delete(int id) =>
       handleApiCall(() => supabase.from('evals').delete().eq('id', id));
+
+  /// DANGEROUS: Clears ALL evaluations from Supabase
+  /// Use only when fixing perspective bugs or data corruption
+  Future<void> clearAll() async {
+    await handleApiCall(() async {
+      print('⚠️ CLEARING ALL EVALS FROM SUPABASE...');
+      // Delete all records from evals table
+      await supabase.from('evals').delete().neq('id', 0);
+      print('✅ All evals cleared from Supabase');
+    });
+  }
 }

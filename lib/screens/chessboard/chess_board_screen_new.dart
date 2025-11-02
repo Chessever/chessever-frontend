@@ -7,6 +7,7 @@ import 'package:chessever2/repository/local_storage/board_settings_repository/bo
 import 'package:chessever2/screens/chessboard/analysis/move_impact_analyzer.dart';
 import 'package:chessever2/screens/chessboard/analysis/simple_move_impact.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
@@ -1690,12 +1691,9 @@ class _BoardWithSidebar extends ConsumerWidget {
                 child: EvaluationBarWidget(
                   width: sideBarWidth,
                   height: boardSize,
-                  index: index,
+                  // REACTIVE: Just pass FEN, eval bar watches provider directly
+                  fen: state.analysisState.position.fen,
                   isFlipped: state.isBoardFlipped,
-                  evaluation: state.evaluation,
-                  mate: state.mate,
-                  isEvaluating: state.isEvaluating,
-                  gameId: game.gameId, // CRITICAL: Pass game ID for correct caching
                 ),
               ),
               Stack(
@@ -2234,19 +2232,39 @@ class _PrincipalVariationListState
     final baseMoveNumber = position?.fullmoves ?? 1;
     final isWhiteToMove = (position?.turn ?? Side.white) == Side.white;
 
-    final isEvaluating = widget.state.isEvaluating;
-    final lines = widget.state.principalVariations.toList(growable: false);
-    const double _basePvHeight = 78;
-    final double pvCardHeight = _basePvHeight.h;
+    // REACTIVE: Watch cascade provider directly for current FEN
+    final currentFen = position?.fen ?? '';
+    final evalAsync = ref.watch(cascadeEvalProviderForBoard(currentFen));
 
     // Check if position is terminal (game over)
     final isGameOver = position?.isGameOver ?? false;
 
-    // Show skeleton ONLY when we have no data yet
-    // If we have cached lines, show them immediately (even while evaluating)
-    // This prevents stuck loading states when isEvaluating flag has timing issues
-    // But don't show skeleton when game is over
-    final showSkeleton = !isGameOver && lines.isEmpty;
+    const double _basePvHeight = 78;
+    final double pvCardHeight = _basePvHeight.h;
+
+    // Determine loading state and lines from evalAsync
+    late final bool isEvaluating;
+    late final List<AnalysisLine> lines;
+
+    evalAsync.when(
+      loading: () {
+        isEvaluating = true;
+        lines = widget.state.principalVariations.toList(growable: false); // Use cached while loading
+      },
+      error: (_, __) {
+        isEvaluating = false;
+        lines = widget.state.principalVariations.toList(growable: false); // Use cached on error
+      },
+      data: (cloudEval) {
+        isEvaluating = false;
+        // Use board provider's cached PVs if they match this FEN
+        // Otherwise show empty (will trigger recalculation in provider)
+        lines = widget.state.principalVariations.toList(growable: false);
+      },
+    );
+
+    // Show skeleton ONLY when evaluating AND no cached lines
+    final showSkeleton = !isGameOver && isEvaluating && lines.isEmpty;
 
     // Show end of game message when position is terminal
     final showEndOfGame = isGameOver && widget.state.isAnalysisMode;

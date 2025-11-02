@@ -10,10 +10,10 @@ import 'stockfish_singleton.dart';
 
 /// 1. local → 2. Supabase → 3. lichess
 /// Uses autoDispose to cancel evaluations when switching games
-final cascadeEvalProvider = FutureProvider.family.autoDispose<
-  CloudEval,
-  String
->((ref, fen) async {
+final cascadeEvalProvider = FutureProvider.family.autoDispose<CloudEval, String>((
+  ref,
+  fen,
+) async {
   final local = ref.read(localEvalCacheProvider);
   final persist = ref.read(persistCloudEvalProvider);
   final lichess = ref.read(lichessEvalRepoProvider);
@@ -61,34 +61,16 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
       "🟢 EVAL SOURCE (cascadeEval): LICHESS (${cloud.pvs.length} PVs) - fen=$fen, side=$sideToMove, cp=$cp",
     );
     // OPTIMIZATION: Save to caches in background (unawaited)
-    Future.wait<void>([
-      persist.call(fen, cloud),
-      local.save(fen, cloud),
-    ]).catchError((e) => <void>[]);
+    Future.wait<void>([persist.call(fen, cloud), local.save(fen, cloud)])
+        .catchError((e) => <void>[]);
     return cloud;
   } catch (_) {
-    final sfEval = await StockfishSingleton().evaluatePosition(
-      fen,
-      depth: 12,
-      prioritize: true,
-    );
-
-    // StockfishSingleton already normalizes to WHITE perspective
+    final sfEval = await StockfishSingleton().evaluatePosition(fen, depth: 15);
     final cloudFromSF = CloudEval(
       fen: fen,
       knodes: sfEval.knodes,
       depth: sfEval.depth,
-      pvs: sfEval.pvs
-          .map(
-            (pv) => Pv(
-              moves: pv.moves,
-              cp: pv.cp,
-              isMate: pv.isMate,
-              mate: pv.mate,
-              whitePerspective: true,
-            ),
-          )
-          .toList(),
+      pvs: sfEval.pvs,
     );
     // OPTIMIZATION: Save to caches in background (unawaited)
     Future.wait<void>([
@@ -105,16 +87,8 @@ bool _isValidEvaluation(CloudEval cloud) {
 
   final firstPv = cloud.pvs.first;
 
-  // CRITICAL: Reject evaluations where ALL PVs have empty moves
-  // This catches stale cloud cache entries that pollute the cascade
-  final hasAnyValidMoves = cloud.pvs.any((pv) => pv.moves.trim().isNotEmpty);
-  if (!hasAnyValidMoves) {
-    print('⚠️ EVAL VALIDATION: Rejected cloud eval with all empty moves (cp=${firstPv.cp})');
-    return false;
-  }
-
-  // If first PV is exactly 0 cp with no moves, it's likely invalid
-  if (firstPv.cp == 0 && firstPv.moves.trim().isEmpty) return false;
+  // If it's exactly 0 cp with no moves, it's likely invalid
+  if (firstPv.cp == 0 && firstPv.moves.isEmpty) return false;
 
   // Accept mate scores (high cp values >= 100000 are mate scores)
   if (firstPv.cp.abs() >= 100000) {
@@ -122,53 +96,68 @@ bool _isValidEvaluation(CloudEval cloud) {
   }
 
   // Accept any evaluation with moves (including 0.0 - balanced positions are valid)
-  if (firstPv.moves.trim().isNotEmpty) return true;
+  if (firstPv.moves.isNotEmpty) return true;
 
   return false;
 }
 
 /// OPTIMIZED: Parallel queries to local → Supabase → Lichess, then Stockfish fallback
-/// Uses Future.any to return the first valid result for maximum speed
+/// Uses Future.wait to query both sources in parallel and returns first valid result
 /// Uses autoDispose to cancel evaluations when switching games
-final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
-  CloudEval,
-  String
->((ref, fen) async {
+final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval, String>((
+  ref,
+  fen,
+) async {
   final local = ref.read(localEvalCacheProvider);
   final persist = ref.read(persistCloudEvalProvider);
   final lichess = ref.read(lichessEvalRepoProvider);
   final evalsRepo = ref.read(evalsRepositoryProvider);
 
+  // CRITICAL: Track if user navigated away to avoid wasting resources
+  var isCancelled = false;
+  ref.onDispose(() {
+    isCancelled = true;
+    print('🚫 EVAL CANCELLED: User navigated away from $fen');
+  });
+
   try {
     if (fen.isEmpty) throw Exception('Empty FEN');
+    if (isCancelled) throw Exception('Evaluation cancelled');
 
     // OPTIMIZATION: Check local cache first (fastest, synchronous-ish)
     final cached = await local.fetch(fen);
+    if (isCancelled) throw Exception('Cancelled during cache check');
+
     if (cached != null && _isValidEvaluation(cached)) {
       final fenParts = fen.split(' ');
       final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
       final cp = cached.pvs.isNotEmpty ? cached.pvs.first.cp : 0;
-      print(
-        "🔵 EVAL SOURCE: LOCAL CACHE (instant) - fen=$fen, side=$sideToMove, cp=$cp",
-      );
+      print("🔵 EVAL SOURCE: LOCAL CACHE (instant) - fen=$fen, side=$sideToMove, cp=$cp");
       return cached;
     }
 
-    // OPTIMIZATION: Query Supabase AND Lichess in parallel, resolve FIRST valid result
+    if (isCancelled) throw Exception('Cancelled before network queries');
+
+    // OPTIMIZATION: Query Supabase AND Lichess in parallel with individual timeouts
     print('🚀 EVAL: Querying Supabase and Lichess in parallel for $fen');
 
     final supabaseFuture = evalsRepo
         .fetchFromSupabase(fen)
-        .then((supabaseEval) async {
+        .timeout(
+          const Duration(seconds: 4),
+          onTimeout: () {
+            print('⏱️ Supabase query timeout for $fen');
+            return null;
+          },
+        )
+        .then((supabaseEval) {
           if (supabaseEval == null) return null;
           final cloud = evalsRepo.evalsToCloudEval(fen, supabaseEval);
           if (_isValidEvaluation(cloud)) {
             final fenParts = fen.split(' ');
             final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
             final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
-            print(
-              "🟡 EVAL SOURCE: SUPABASE - fen=$fen, side=$sideToMove, cp=$cp",
-            );
+            print("🟡 EVAL SOURCE: SUPABASE - fen=$fen, side=$sideToMove, cp=$cp");
             // Background save to local cache
             local.save(fen, cloud).catchError((e) => null);
             return cloud;
@@ -176,22 +165,25 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
           return null;
         })
         .catchError((e) {
-          print('Supabase eval failed: $e');
+          print('Supabase eval error: $e');
           return null;
         });
 
-    // Throttle Lichess API calls to prevent rate limiting (429 errors)
-    final lichessFuture = Future.delayed(
-      const Duration(milliseconds: 200),
-      () => lichess.getEval(fen, multiPv: 3),
-    ).then((cloud) {
+    final lichessFuture = lichess
+        .getEval(fen, multiPv: 3)
+        .timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            print('⏱️ Lichess query timeout for $fen');
+            return CloudEval(fen: fen, knodes: 0, depth: 0, pvs: []);
+          },
+        )
+        .then((cloud) {
           if (_isValidEvaluation(cloud)) {
             final fenParts = fen.split(' ');
             final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
             final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
-            print(
-              "🟢 EVAL SOURCE: LICHESS (${cloud.pvs.length} PVs) - fen=$fen, side=$sideToMove, cp=$cp",
-            );
+            print("🟢 EVAL SOURCE: LICHESS (${cloud.pvs.length} PVs) - fen=$fen, side=$sideToMove, cp=$cp");
             // Background save to both caches
             Future.wait<void>([
               persist.call(fen, cloud),
@@ -203,60 +195,67 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
         })
         .catchError((e) {
           if (e is! NoEvalException) {
-            print('Lichess eval failed: $e');
+            print('Lichess eval error: $e');
           }
           return null;
         });
 
-    // Wait for both to complete in parallel
-    final results = await Future.wait([supabaseFuture, lichessFuture]);
+    // Wait for both with overall timeout
+    try {
+      final results = await Future.wait([supabaseFuture, lichessFuture])
+          .timeout(const Duration(seconds: 6));
 
-    // Return first valid result (Supabase is first in array, so prioritized)
-    for (final result in results) {
-      if (result != null) return result;
+      if (isCancelled) throw Exception('Cancelled after network queries');
+
+      // Return first valid result (Supabase is first in array, so prioritized)
+      for (final result in results) {
+        if (result != null) return result;
+      }
+    } catch (e) {
+      if (isCancelled) throw Exception('Cancelled during network queries');
+      print('⏱️ Overall cascade timeout for $fen: $e');
     }
 
-    // FALLBACK: All cloud sources failed, use Stockfish
-    print(
-      '⚡ EVAL SOURCE: STOCKFISH FALLBACK for $fen (cloud sources unavailable)',
-    );
+    if (isCancelled) throw Exception('Cancelled before Stockfish fallback');
+
+    // FALLBACK: All cloud sources failed, use Stockfish with PRIORITY
+    print('⚡ EVAL SOURCE: STOCKFISH FALLBACK for $fen (cloud sources unavailable)');
     try {
       final sfEval = await StockfishSingleton()
-          .evaluatePosition(fen, depth: 12, prioritize: false)
+          .evaluatePosition(fen, depth: 10, prioritize: true)  // REDUCED: 15→10 for speed
           .timeout(
-            const Duration(seconds: 12),
+            const Duration(seconds: 5),  // REDUCED: 10s→5s to fail faster
             onTimeout: () {
-              print('⏱️ Stockfish evaluation timeout for $fen');
-              throw TimeoutException('Stockfish evaluation took too long');
+              print('⏱️ Stockfish timeout for $fen - returning minimal eval');
+              // CRITICAL: Return minimal valid eval instead of throwing
+              return EnhancedCloudEval(
+                fen: fen,
+                knodes: 0,
+                depth: 0,
+                pvs: [Pv(moves: '', cp: 0, mate: 0)],  // Return 0.0 eval
+                isCancelled: false,
+              );
             },
           );
+      if (isCancelled) throw Exception('Cancelled after Stockfish evaluation');
 
-      // StockfishSingleton already normalized PVs to WHITE perspective
       final cloudFromSF = CloudEval(
         fen: fen,
         knodes: sfEval.knodes,
         depth: sfEval.depth,
-        pvs: sfEval.pvs
-            .map(
-              (pv) => Pv(
-                moves: pv.moves,
-                cp: pv.cp,
-                isMate: pv.isMate,
-                mate: pv.mate,
-                whitePerspective: true,
-              ),
-            )
-            .toList(),
+        pvs: sfEval.pvs,
       );
 
-      // Save to cache for future use (background)
-      Future.wait<void>([
-        persist.call(fen, cloudFromSF),
-        local.save(fen, cloudFromSF),
-      ]).catchError((e) {
-        print('Background save failed for Stockfish eval $fen: $e');
-        return <void>[];
-      });
+      // Save to cache for future use (background) - only if not cancelled
+      if (!isCancelled) {
+        Future.wait<void>([
+          persist.call(fen, cloudFromSF),
+          local.save(fen, cloudFromSF),
+        ]).catchError((e) {
+          print('Background save failed for Stockfish eval $fen: $e');
+          return <void>[];
+        });
+      }
       return cloudFromSF;
     } catch (e) {
       print('❌ Stockfish fallback failed for $fen: $e');

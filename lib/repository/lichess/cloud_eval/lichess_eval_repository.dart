@@ -32,36 +32,34 @@ class _LichessEvalRepository {
     throw HttpException('Unexpected status ${resp.statusCode}');
   }
 
-  /// Converts Lichess evaluation from side-to-move perspective to WHITE'S perspective.
-  /// Positive cp after conversion always means white is better; negative means black is better.
+  /// Lichess API returns evaluations ALREADY in white's perspective
+  /// This method just validates and marks them with whitePerspective flag
+  /// NO CONVERSION NEEDED - Lichess API always gives white's perspective
   CloudEval _convertToWhitePerspective(CloudEval cloudEval, String fen, int multiPv) {
-    // Parse FEN to determine whose turn it is
+    // Parse FEN for logging only
     final fenParts = fen.split(' ');
     final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
-    final isBlackToMove = sideToMove == 'b';
     final originalCp = cloudEval.pvs.isNotEmpty ? cloudEval.pvs.first.cp : 0;
 
     print(
-      "🔍 LICHESS: Received ${cloudEval.pvs.length} PVs (multiPv=$multiPv), side=$sideToMove, firstCp=$originalCp",
+      "🔍 LICHESS: Received ${cloudEval.pvs.length} PVs (multiPv=$multiPv), side=$sideToMove, cp=$originalCp",
     );
 
+    // CRITICAL: Lichess API already returns evaluations in white's perspective!
+    // Positive = white advantage, Negative = black advantage
+    // We just need to mark the PVs with whitePerspective flag
     final adjustedPvs = cloudEval.pvs.map((pv) {
-      final correctedCp = isBlackToMove ? -pv.cp : pv.cp;
-      final correctedMate = pv.mate != null
-          ? (isBlackToMove ? -pv.mate! : pv.mate!)
-          : null;
       return Pv(
         moves: pv.moves,
-        cp: correctedCp,
+        cp: pv.cp, // NO CONVERSION - already in white's perspective!
         isMate: pv.isMate,
-        mate: correctedMate,
+        mate: pv.mate, // NO CONVERSION - already in white's perspective!
         whitePerspective: true,
       );
     }).toList();
 
-    final correctedFirst = adjustedPvs.isNotEmpty ? adjustedPvs.first.cp : 0;
     print(
-      "✅ LICHESS NORMALIZED: side=$sideToMove, firstCpCorrected=$correctedFirst",
+      "✅ LICHESS: Already in white's perspective - side=$sideToMove, cp=$originalCp",
     );
 
     // Use the requested FEN to avoid mismatches on strict FEN equality checks elsewhere

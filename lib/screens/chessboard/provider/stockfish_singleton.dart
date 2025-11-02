@@ -61,7 +61,10 @@ class StockfishSingleton {
       return _evaluationCache[cacheKey]!;
     }
 
+    // CRITICAL: Aggressively purge queue when prioritizing (user navigation)
+    // This ensures current position is evaluated IMMEDIATELY without waiting for stale jobs
     if (prioritize) {
+      debugPrint('🔥 PRIORITY EVAL: Purging all pending jobs for $fen');
       await _purgeQueue();
     }
 
@@ -334,17 +337,21 @@ class StockfishSingleton {
       return;
     }
 
-    // Set up timeout
-    Timer(const Duration(seconds: 10), () {
+    // Set up timeout - reduced to 8s for faster fail-fast behavior
+    Timer(const Duration(seconds: 8), () {
       if (_currentJob == job && !completer.isCompleted && !evaluationComplete) {
+        debugPrint('⏱️ STOCKFISH TIMEOUT: Job for $fen timed out after 8s');
         final filteredPvs = pvs
             .where((pv) => pv.moves.isNotEmpty)
             .toList(growable: false);
         final normalizedPvs = _normalizeToWhitePerspective(filteredPvs, fen);
+
+        // If we have at least SOME results, return them
+        // Otherwise return a minimal valid result to unblock the UI
         final fallbackResult = EnhancedCloudEval(
           fen: fen,
           knodes: knodes,
-          depth: finalDepth,
+          depth: finalDepth > 0 ? finalDepth : 0,
           pvs: normalizedPvs.isEmpty ? [Pv(moves: '', cp: 0)] : normalizedPvs,
           isCancelled: false,
         );
@@ -352,6 +359,13 @@ class StockfishSingleton {
         _currentJob = null;
         _currentSubscription?.cancel();
         _currentSubscription = null;
+
+        // Send stop command to free up the engine
+        try {
+          _engine?.stdin = 'stop';
+        } catch (e) {
+          debugPrint('Error stopping engine on timeout: $e');
+        }
       }
     });
 
@@ -366,6 +380,8 @@ class StockfishSingleton {
     final fenParts = fen.split(' ');
     final isBlackToMove = fenParts.length >= 2 && fenParts[1] == 'b';
     if (!isBlackToMove) {
+      // White to move - no conversion needed
+      debugPrint('🔧 STOCKFISH NORMALIZE: White to move, NO conversion, cp=${pvs.first.cp}');
       return pvs
           .map(
             (pv) => Pv(
@@ -379,6 +395,8 @@ class StockfishSingleton {
           .toList(growable: false);
     }
 
+    // Black to move - negate to convert to white's perspective
+    debugPrint('🔧 STOCKFISH NORMALIZE: Black to move, converting ${pvs.first.cp} -> ${-pvs.first.cp}');
     return pvs
         .map(
           (pv) => Pv(
