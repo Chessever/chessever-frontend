@@ -197,7 +197,7 @@ Future<void> _initRevenueCat() async {
 /// Update CACHE_VERSION number to trigger cache clearing
 Future<void> _clearEvaluationCache() async {
   try {
-    const int cacheVersion = 3; // Update this number to clear cache
+    const int cacheVersion = 4; // Update this number to clear cache
     const String versionKey = 'eval_cache_clear_version';
     const String evalPrefix = 'cloud_eval_';
 
