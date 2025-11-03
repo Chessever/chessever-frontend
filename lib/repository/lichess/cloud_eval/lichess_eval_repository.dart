@@ -14,29 +14,51 @@ class _LichessEvalRepository {
   final String baseUrl = 'https://lichess.org/api/cloud-eval';
 
   Future<CloudEval> getEval(String fen, {int multiPv = 3}) async {
-    final uri = Uri.parse('$baseUrl?fen=${Uri.encodeComponent(fen)}&multiPv=$multiPv');
-    final resp = await http.get(uri).timeout(const Duration(seconds: 8));
+    try {
+      final uri = Uri.parse('$baseUrl?fen=${Uri.encodeComponent(fen)}&multiPv=$multiPv');
+      print('🌐 Lichess: Requesting eval from $uri');
 
-    if (resp.statusCode == 200) {
-      final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
-      final cloudEval = CloudEval.fromJson(decoded);
+      final resp = await http.get(uri).timeout(
+        const Duration(seconds: 8),
+        onTimeout: () {
+          print('⏱️ Lichess: Request timeout after 8 seconds for $fen');
+          throw TimeoutException('Lichess API timeout');
+        },
+      );
 
-      // Convert Lichess evaluations to white's perspective for consistency
-      return _convertToWhitePerspective(cloudEval, fen, multiPv);
+      print('📡 Lichess: Response status ${resp.statusCode} for $fen');
+
+      if (resp.statusCode == 200) {
+        final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
+        final cloudEval = CloudEval.fromJson(decoded);
+
+        // Convert Lichess evaluations to white's perspective for consistency
+        return _convertToWhitePerspective(cloudEval, fen, multiPv);
+      }
+
+      if (resp.statusCode == 404) {
+        print('📭 Lichess: No cloud eval for $fen');
+        throw NoEvalException('No evaluation');
+      }
+
+      // 429 = Lichess rate limiting - just throw exception, cascade will fallback to Stockfish
+      if (resp.statusCode == 429) {
+        print('⚡ Lichess: Rate limited (429), falling back to Stockfish');
+        throw RateLimitException('Rate limited by Lichess');
+      }
+
+      print('❌ Lichess: Unexpected status ${resp.statusCode}');
+      throw HttpException('Unexpected status ${resp.statusCode}');
+    } on SocketException catch (e) {
+      print('🔌 Lichess: Network error (SocketException) - $e');
+      throw HttpException('Network connection failed: ${e.message}');
+    } on TimeoutException catch (e) {
+      print('⏱️ Lichess: Timeout - $e');
+      rethrow;
+    } catch (e) {
+      print('❌ Lichess: Unexpected error - $e');
+      rethrow;
     }
-
-    if (resp.statusCode == 404) {
-      print('📭 Lichess: No cloud eval for $fen');
-      throw NoEvalException('No evaluation');
-    }
-
-    // 429 = Lichess rate limiting - just throw exception, cascade will fallback to Stockfish
-    if (resp.statusCode == 429) {
-      print('⚡ Lichess: Rate limited (429), falling back to Stockfish');
-      throw RateLimitException('Rate limited by Lichess');
-    }
-
-    throw HttpException('Unexpected status ${resp.statusCode}');
   }
 
   /// Lichess API returns evaluations ALREADY in white's perspective

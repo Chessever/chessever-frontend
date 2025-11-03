@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Base configuration for all domains -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <!-- Trust system certificate authorities -->
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- Domain-specific configurations -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">lichess.org</domain>
+        <trust-anchors>
+            <!-- Trust system certificates for Lichess -->
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+
+    <!-- Supabase domain configuration -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">supabase.co</domain>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+
+    <!-- Debug config - remove in production if needed -->
+    <debug-overrides>
+        <trust-anchors>
+            <!-- Trust user-added certificates for debugging -->
+            <certificates src="user" />
+            <certificates src="system" />
+        </trust-anchors>
+    </debug-overrides>
+</network-security-config>
