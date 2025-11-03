@@ -8,7 +8,6 @@ import 'package:chessever2/widgets/hamburger_menu/hamburger_menu_dialogs.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:country_flags/country_flags.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -21,7 +20,6 @@ class HamburgerMenuCallbacks {
   final VoidCallback onSupportPressed;
   final VoidCallback onPremiumPressed;
   final VoidCallback onLogoutPressed;
-  final VoidCallback? onClearCachePressed; // DEBUG ONLY: Clear eval caches
 
   const HamburgerMenuCallbacks({
     required this.onPlayersPressed,
@@ -31,7 +29,6 @@ class HamburgerMenuCallbacks {
     required this.onSupportPressed,
     required this.onPremiumPressed,
     required this.onLogoutPressed,
-    this.onClearCachePressed, // Optional - only for debug
   });
 }
 
@@ -102,18 +99,6 @@ class HamburgerMenu extends StatelessWidget {
                       },
                     ),
                     SizedBox(height: 12.h),
-                    // DEBUG ONLY: Clear evaluation caches button
-                    if (kDebugMode && callbacks.onClearCachePressed != null) ...[
-                      _MenuItem(
-                        icon: Icons.delete_forever,
-                        title: '🧹 Clear Eval Cache',
-                        onPressed: () {
-                          Navigator.pop(context); // Close drawer first
-                          callbacks.onClearCachePressed!();
-                        },
-                      ),
-                      SizedBox(height: 12.h),
-                    ],
                     // _MenuItem(
                     //   customIcon: AnalysisBoardIcon(size: 20.ic),
                     //   title: 'Board',

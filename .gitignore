@@ -166,3 +166,4 @@ app.*.symbols
 .gclient_previous_sync_commits
 # MCP configuration (personal development tools)
 .mcp.json
+openapi.json

@@ -5,10 +5,8 @@ import 'package:chessever2/screens/calendar/calendar_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/premium/premium_screen.dart'; // Import premium screen
 import 'package:chessever2/screens/premium/provider/premium_screen_provider.dart';
-import 'package:chessever2/utils/clear_eval_cache.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../group_event/group_event_screen.dart';
@@ -113,34 +111,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ),
             );
           },
-
-          // DEBUG ONLY: Clear all evaluation caches (SharedPreferences + Supabase)
-          onClearCachePressed: kDebugMode
-              ? () async {
-                  try {
-                    await clearAllEvaluationCaches(ref);
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            '✅ All evaluation caches cleared! Please restart the app.',
-                          ),
-                          duration: Duration(seconds: 5),
-                        ),
-                      );
-                    }
-                  } catch (e) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('❌ Error clearing caches: $e'),
-                          duration: const Duration(seconds: 5),
-                        ),
-                      );
-                    }
-                  }
-                }
-              : null,
         ),
       ),
       bottomNavigationBar: BottomNavBar(),
