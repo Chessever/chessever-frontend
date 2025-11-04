@@ -55,26 +55,27 @@ class ChessSvgBottomNavbar extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: SizedBox(
         width: width,
-        height: 48.h,
-        child: Padding(
-          padding: EdgeInsets.symmetric(vertical: 8.h, horizontal: 4.w),
-          child: Stack(
-            clipBehavior: Clip.none,
-            alignment: Alignment.center,
-            children: [
-              SvgWidget(
+        height: 40.h, // Button container height - no space for text
+        child: Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.center,
+          children: [
+            // Center the icon vertically in the button area
+            Center(
+              child: SvgWidget(
                 svgPath,
                 height: 24.h,
                 width: 24.w,
                 colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
               ),
-              if (showDepth)
-                Positioned(
-                  bottom: 2.h,
-                  child: Text(depthText!, style: depthStyle),
-                ),
-            ],
-          ),
+            ),
+            // Position depth text BELOW the button area (outside safe area)
+            if (showDepth)
+              Positioned(
+                bottom: -15.h, // Push below with nice gap
+                child: Text(depthText!, style: depthStyle),
+              ),
+          ],
         ),
       ),
     );
@@ -107,28 +108,27 @@ class ChessSvgBottomNavbarWithLongPress extends StatelessWidget {
           onLongPressStart != null ? (_) => onLongPressStart!() : null,
       onLongPressEnd: onLongPressEnd != null ? (_) => onLongPressEnd!() : null,
       onLongPressCancel: onLongPressEnd,
-      child: Container(
-        color: Colors.transparent,
-        alignment: Alignment.center,
-        height: 40.h,
+      child: SizedBox(
         width: width,
-        padding: EdgeInsets.all(8.sp),
+        height: 40.h, // Match ChessSvgBottomNavbar height
         child: Stack(
           clipBehavior: Clip.none,
           alignment: Alignment.center,
           children: [
-            SvgWidget(
-              svgPath,
-              height: 24.h,
-              width: 24.w,
-              colorFilter: ColorFilter.mode(
-                onPressed != null ? kWhiteColor : kWhiteColor70,
-                BlendMode.srcIn,
+            Center(
+              child: SvgWidget(
+                svgPath,
+                height: 24.h,
+                width: 24.w,
+                colorFilter: ColorFilter.mode(
+                  onPressed != null ? kWhiteColor : kWhiteColor70,
+                  BlendMode.srcIn,
+                ),
               ),
             ),
             // Show red dot badge on top-right corner if showBadge is true
             if (showBadge && onPressed != null)
-              Positioned(top: 0, right: 0, child: _UnseenMovesBadge()),
+              Positioned(top: -4.h, right: 4.w, child: _UnseenMovesBadge()),
           ],
         ),
       ),

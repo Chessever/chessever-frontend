@@ -47,10 +47,12 @@ class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
       loading: () {
         // Show loading state with last known evaluation if available
         _isCurrentlyLoading = true;
+        // OPTIMIZATION: Show last valid evaluation text immediately during loading
+        // Only show "..." if we have NO previous evaluation
         return _buildBar(
           evaluation: _lastValidEvaluation ?? 0.0,
           mate: _lastValidMate ?? 0,
-          isLoading: true,
+          isLoading: _lastValidEvaluation == null, // Only show "..." if no cached value
           shouldAnimate: false,
         );
       },
