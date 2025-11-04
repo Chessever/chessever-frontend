@@ -1,6 +1,7 @@
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -69,7 +70,10 @@ class RoundHeader extends ConsumerWidget {
 
     // Check if this is a knockout match format
     final isKnockout = KnockoutMatchDetector.isKnockoutMatchFormat(games);
-    final isSyntheticKnockoutRound = round.id.startsWith('knockout-round');
+    final roundIdLower = round.id.toLowerCase();
+    final isSyntheticKnockoutRound =
+        roundIdLower.startsWith('$kKnockoutStagePrefix-') ||
+        roundIdLower.startsWith('knockout-round-');
 
     // When we're showing a synthetic knockout round (e.g., "Round 1"),
     // keep the tournament stage name instead of downgrading to game slug labels.

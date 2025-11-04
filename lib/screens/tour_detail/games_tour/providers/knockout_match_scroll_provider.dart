@@ -2,6 +2,9 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_v
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Provider to track and manage scroll position for knockout tournament matches
@@ -75,11 +78,10 @@ class KnockoutMatchScrollNotifier extends StateNotifier<KnockoutMatchScrollState
   /// - Expanded/collapsed state
   /// - Grid vs List mode
   int calculateMatchHeaderIndex(String matchKey) {
-    final gamesData = ref.read(gamesTourScreenProvider).valueOrNull;
-    if (gamesData == null) return 0;
+    final referenceGames = _getReferenceGames();
+    if (referenceGames.isEmpty) return 0;
 
-    final allGames = gamesData.gamesTourModels;
-    final matches = KnockoutMatchDetector.groupByMatchesAcrossAllRounds(allGames);
+    final matches = KnockoutMatchDetector.groupByMatchesAcrossAllRounds(referenceGames);
     final expansionState = ref.read(matchExpansionProvider);
     final isGrid = ref.read(gamesListViewModeProvider) == GamesListViewMode.chessBoardGrid;
 
@@ -114,11 +116,10 @@ class KnockoutMatchScrollNotifier extends StateNotifier<KnockoutMatchScrollState
   /// Get the match key from a given item index in the list
   /// Used to determine which match is visible during scrolling
   String? getMatchKeyFromIndex(int itemIndex) {
-    final gamesData = ref.read(gamesTourScreenProvider).valueOrNull;
-    if (gamesData == null) return null;
+    final referenceGames = _getReferenceGames();
+    if (referenceGames.isEmpty) return null;
 
-    final allGames = gamesData.gamesTourModels;
-    final matches = KnockoutMatchDetector.groupByMatchesAcrossAllRounds(allGames);
+    final matches = KnockoutMatchDetector.groupByMatchesAcrossAllRounds(referenceGames);
     final expansionState = ref.read(matchExpansionProvider);
     final isGrid = ref.read(gamesListViewModeProvider) == GamesListViewMode.chessBoardGrid;
 
@@ -156,11 +157,10 @@ class KnockoutMatchScrollNotifier extends StateNotifier<KnockoutMatchScrollState
 
   /// Get sorted list of all matches with their metadata
   List<MatchHeaderModel> getMatchHeaders() {
-    final gamesData = ref.read(gamesTourScreenProvider).valueOrNull;
-    if (gamesData == null) return [];
+    final referenceGames = _getReferenceGames();
+    if (referenceGames.isEmpty) return [];
 
-    final allGames = gamesData.gamesTourModels;
-    final matches = KnockoutMatchDetector.groupByMatchesAcrossAllRounds(allGames);
+    final matches = KnockoutMatchDetector.groupByMatchesAcrossAllRounds(referenceGames);
 
     final headers = matches.entries.map((entry) {
       return KnockoutMatchDetector.createMatchHeader(entry.key, entry.value);
@@ -175,5 +175,23 @@ class KnockoutMatchScrollNotifier extends StateNotifier<KnockoutMatchScrollState
     });
 
     return headers;
+  }
+
+  List<GamesTourModel> _getReferenceGames() {
+    final tourId =
+        ref.read(tourDetailScreenProvider).value?.aboutTourModel.id;
+    if (tourId != null) {
+      final knockoutState =
+          ref.read(knockoutTournamentStateProvider(tourId));
+      if (knockoutState.isKnockout && knockoutState.allGames.isNotEmpty) {
+        return knockoutState.allGames;
+      }
+    }
+
+    return ref
+            .read(gamesTourScreenProvider)
+            .valueOrNull
+            ?.gamesTourModels ??
+        const <GamesTourModel>[];
   }
 }
