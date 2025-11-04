@@ -62,22 +62,15 @@ class ChessSvgBottomNavbar extends StatelessWidget {
             clipBehavior: Clip.none,
             alignment: Alignment.center,
             children: [
-              Align(
-                alignment:
-                    showDepth ? Alignment.topCenter : Alignment.center,
-                child: Padding(
-                  padding: EdgeInsets.only(bottom: showDepth ? 10.h : 0),
-                  child: SvgWidget(
-                    svgPath,
-                    height: 24.h,
-                    width: 24.w,
-                    colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
-                  ),
-                ),
+              SvgWidget(
+                svgPath,
+                height: 24.h,
+                width: 24.w,
+                colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
               ),
               if (showDepth)
                 Positioned(
-                  bottom: 0,
+                  bottom: 2.h,
                   child: Text(depthText!, style: depthStyle),
                 ),
             ],
