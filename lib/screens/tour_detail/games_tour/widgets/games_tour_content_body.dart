@@ -50,22 +50,16 @@ class GamesTourContentBody extends ConsumerWidget {
       gamesByRound[round.id] = [];
     }
 
-    String? knockoutRoundId;
-    if (isKnockoutTournament) {
+    if (isKnockoutTournament && rounds.any((r) => r.id.startsWith('$kKnockoutStagePrefix-'))) {
+      // For knockout tournaments with stage-based rounds, all games belong to the single stage
+      // Since rounds are already pre-filtered by games_app_bar_provider, assign all games to each stage round
       for (final round in rounds) {
-        final idLower = round.id.toLowerCase();
-        if (idLower.startsWith('$kKnockoutStagePrefix-') ||
-            idLower.startsWith('knockout-round-')) {
-          knockoutRoundId = round.id;
-          break;
+        if (round.id.startsWith('$kKnockoutStagePrefix-')) {
+          gamesByRound[round.id] = List<GamesTourModel>.from(allGames);
         }
       }
-    }
-
-    if (isKnockoutTournament && knockoutRoundId != null) {
-      gamesByRound[knockoutRoundId] = List<GamesTourModel>.from(allGames);
     } else {
-      // Add games to their respective rounds in the order they appear in the sorted list
+      // For regular tournaments, add games to their respective rounds
       for (final game in allGames) {
         if (gamesByRound.containsKey(game.roundId)) {
           gamesByRound[game.roundId]!.add(game);
