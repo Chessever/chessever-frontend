@@ -83,10 +83,11 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
       width: MediaQuery.of(context).size.width,
       decoration: const BoxDecoration(color: kBlackColor),
       child: SafeArea(
+        bottom: false, // Allow depth text to extend below safe area
         child: Padding(
-          padding: EdgeInsets.only(top: 8.h),
+          padding: EdgeInsets.only(top: 8.h, bottom: 8.h),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               // Computer/Engine Analysis Toggle Button
               ChessSvgBottomNavbar(
