@@ -1,14 +1,14 @@
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/round_header_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/match_header_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
-import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -23,6 +23,7 @@ class GamesListView extends ConsumerWidget {
     required this.rounds,
     required this.gamesByRound,
     required this.gamesData,
+    required this.isKnockoutTournament,
     required this.gamesListViewMode,
     required this.itemScrollController,
     required this.itemPositionsListener,
@@ -32,6 +33,7 @@ class GamesListView extends ConsumerWidget {
   final List<GamesAppBarModel> rounds;
   final Map<String, List<GamesTourModel>> gamesByRound;
   final GamesScreenModel gamesData;
+  final bool isKnockoutTournament;
   final GamesListViewMode gamesListViewMode;
   final ItemScrollController itemScrollController;
   final ItemPositionsListener itemPositionsListener;
@@ -42,22 +44,10 @@ class GamesListView extends ConsumerWidget {
     // Get expansion state for knockout tournaments
     final expansionState = ref.watch(matchExpansionProvider);
 
-    // Check if this is a knockout tournament by analyzing ALL games
-    final allGames = gamesData.gamesTourModels;
-    final isKnockoutTournament = KnockoutMatchDetector.isKnockoutMatchFormat(allGames);
-
-    // Get the tour name for knockout tournaments
-    final tourName = ref.read(tourDetailScreenProvider).value?.aboutTourModel.name ?? '';
-
-    // For knockout tournaments, group all sub-rounds into logical rounds
-    final processedData = isKnockoutTournament
-        ? _groupKnockoutRounds(rounds, gamesByRound, allGames, tourName)
-        : _KnockoutProcessedData(rounds: rounds, gamesByRound: gamesByRound);
-
     final itemCount = _computeItemCount(
       gamesListViewMode,
-      processedData.rounds,
-      processedData.gamesByRound,
+      rounds,
+      gamesByRound,
       expansionState,
       isKnockoutTournament,
     );
@@ -73,8 +63,8 @@ class GamesListView extends ConsumerWidget {
       itemBuilder: (context, index) {
         final lookup = _lookupItem(
           index: index,
-          rounds: processedData.rounds,
-          gamesByRound: processedData.gamesByRound,
+          rounds: rounds,
+          gamesByRound: gamesByRound,
           mode: gamesListViewMode,
           expansionState: expansionState,
           isKnockoutTournament: isKnockoutTournament,
@@ -207,6 +197,7 @@ class GamesListView extends ConsumerWidget {
       rounds: rounds,
       gamesByRound: gamesByRound,
       mode: mode,
+      isKnockoutTournament: isKnockoutTournament,
     );
     if (listIndex != null) {
       itemScrollController.scrollTo(
@@ -232,7 +223,7 @@ int _computeItemCount(
     final roundGames = gamesByRound[round.id] ?? const <GamesTourModel>[];
     if (roundGames.isEmpty) continue;
 
-    if (isKnockoutTournament) {
+    if (_isKnockoutRound(isKnockoutTournament, round)) {
       // For knockout format: round header + match headers + games
       count++; // round header
 
@@ -291,7 +282,7 @@ Object? _lookupItem({
 
     currentIndex++; // move past round header
 
-    if (isKnockoutTournament) {
+    if (_isKnockoutRound(isKnockoutTournament, round)) {
       // Handle knockout match format with match headers
       final matches = KnockoutMatchDetector.groupByMatches(roundGames);
       final matchHeaders = matches.entries.map((entry) {
@@ -395,6 +386,7 @@ int? _listIndexForGameIndex({
   required List<GamesAppBarModel> rounds,
   required Map<String, List<GamesTourModel>> gamesByRound,
   required GamesListViewMode mode,
+  required bool isKnockoutTournament,
 }) {
   if (gameIndex < 0) return null;
 
@@ -407,7 +399,7 @@ int? _listIndexForGameIndex({
     if (roundGames.isEmpty) continue;
 
     final roundStartIndex = globalGameIndex;
-    final isKnockoutFormat = KnockoutMatchDetector.isKnockoutMatchFormat(roundGames);
+    final isKnockoutFormat = _isKnockoutRound(isKnockoutTournament, round);
 
     // skip round header
     currentIndex++;
@@ -473,79 +465,10 @@ int? _listIndexForGameIndex({
   return null;
 }
 
-// ============================================================================
-// KNOCKOUT ROUND GROUPING
-// ============================================================================
-
-/// Groups sub-rounds (game-1, game-2, tiebreak-*) into logical rounds for knockout tournaments
-/// Groups sub-rounds (game-1, game-2, tiebreak-*) into a single logical tournament round
-/// For knockout tournaments, all sub-rounds belong to the same tournament round
-_KnockoutProcessedData _groupKnockoutRounds(
-  List<GamesAppBarModel> rounds,
-  Map<String, List<GamesTourModel>> gamesByRound,
-  List<GamesTourModel> allGames,
-  String tourName,
-) {
-  if (rounds.isEmpty) {
-    return _KnockoutProcessedData(rounds: rounds, gamesByRound: gamesByRound);
-  }
-
-  // Extract the tournament round name from tour metadata
-  // Examples:
-  // - "FIDE World Cup 2025 | Quarterfinals" → "Quarterfinals"
-  // - "Tournament | Round 1" → "Round 1"
-  final roundName = KnockoutMatchDetector.extractTournamentRoundName(tourName);
-
-  // All games in a knockout tournament belong to the same logical tournament round
-  final allGamesInRound = allGames.toList();
-
-  // Determine the round status based on existing rounds
-  RoundStatus roundStatus = RoundStatus.ongoing;
-  DateTime? startsAt;
-
-  if (rounds.isNotEmpty) {
-    // Use the earliest start time and most relevant status
-    startsAt = rounds.map((r) => r.startsAt).whereType<DateTime>().reduce((a, b) => a.isBefore(b) ? a : b);
-
-    // If any round is live, the logical round is live
-    if (rounds.any((r) => r.roundStatus == RoundStatus.live)) {
-      roundStatus = RoundStatus.live;
-    } else if (rounds.any((r) => r.roundStatus == RoundStatus.ongoing)) {
-      roundStatus = RoundStatus.ongoing;
-    } else if (rounds.every((r) => r.roundStatus == RoundStatus.completed)) {
-      roundStatus = RoundStatus.completed;
-    } else if (rounds.every((r) => r.roundStatus == RoundStatus.upcoming)) {
-      roundStatus = RoundStatus.upcoming;
-    }
-  }
-
-  // Create a single logical tournament round from all sub-rounds
-  final logicalRound = GamesAppBarModel(
-    id: 'knockout-round-1',
-    name: roundName,
-    startsAt: startsAt,
-    roundStatus: roundStatus,
-  );
-
-  return _KnockoutProcessedData(
-    rounds: [logicalRound],
-    gamesByRound: {logicalRound.id: allGamesInRound},
-  );
-}
-
-
-// ============================================================================
-// DATA CLASSES
-// ============================================================================
-
-class _KnockoutProcessedData {
-  final List<GamesAppBarModel> rounds;
-  final Map<String, List<GamesTourModel>> gamesByRound;
-
-  _KnockoutProcessedData({
-    required this.rounds,
-    required this.gamesByRound,
-  });
+bool _isKnockoutRound(bool isKnockoutTournament, GamesAppBarModel round) {
+  if (!isKnockoutTournament) return false;
+  final id = round.id.toLowerCase();
+  return id.startsWith('$kKnockoutStagePrefix-') || id.startsWith('knockout-round-');
 }
 
 class _HeaderData {

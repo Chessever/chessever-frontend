@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final gamesTourContentProvider = AutoDisposeProvider(
@@ -87,7 +88,9 @@ class _GamesTourContentProvider {
     required String roundId,
     required GamesScreenModel gamesScreenModel,
   }) {
-    if (roundId.startsWith('knockout-round')) {
+    final idLower = roundId.toLowerCase();
+    if (idLower.startsWith('$kKnockoutStagePrefix-') ||
+        idLower.startsWith('knockout-round-')) {
       return List<GamesTourModel>.from(gamesScreenModel.gamesTourModels);
     }
 

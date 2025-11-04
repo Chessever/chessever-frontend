@@ -3,7 +3,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:flutter/animation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
@@ -41,26 +41,18 @@ class _GamesAppBarNotifier
       },
     );
 
-    ref.listen<AsyncValue<GamesScreenModel>>(
-      gamesTourScreenProvider,
-      (previous, next) {
-        final games =
-            next.valueOrNull?.gamesTourModels ?? const <GamesTourModel>[];
-        if (games.isEmpty) return;
-
-        final detectedKnockout =
-            KnockoutMatchDetector.isKnockoutMatchFormat(games);
-        final knockoutStateChanged = detectedKnockout != _isKnockoutTournament;
-        final shouldApplyPending =
-            _awaitingKnockoutGames && detectedKnockout;
-
-        if (knockoutStateChanged || shouldApplyPending) {
-          _isKnockoutTournament = detectedKnockout;
-          _awaitingKnockoutGames = false;
-          _load();
-        }
-      },
-    );
+    if (tourId != null) {
+      ref.listen<KnockoutTournamentState>(
+        knockoutTournamentStateProvider(tourId!),
+        (previous, next) {
+          if (previous == null) return;
+          if (previous.isKnockout != next.isKnockout ||
+              previous.stageName != next.stageName) {
+            _load();
+          }
+        },
+      );
+    }
 
     _load();
   }
@@ -70,8 +62,6 @@ class _GamesAppBarNotifier
   final String? tourId;
   List<String> _liveRounds;
   final Map<String, _RoundSortMeta> _roundSortMeta;
-  bool _isKnockoutTournament = false;
-  bool _awaitingKnockoutGames = false;
 
   Future<void> refresh() async {
     await _load();
@@ -341,34 +331,17 @@ class _GamesAppBarNotifier
   ) async {
     if (models.isEmpty) return models;
 
-    // Get all games to check if this is a knockout tournament
-    final allGames =
-        ref.read(gamesTourScreenProvider).valueOrNull?.gamesTourModels ?? [];
+    final knockoutState =
+        tourId != null
+            ? ref.read(knockoutTournamentStateProvider(tourId!))
+            : const KnockoutTournamentState.empty();
 
-    if (allGames.isEmpty) {
-      _awaitingKnockoutGames = true;
-      _isKnockoutTournament = false;
-      return models;
-    }
+    if (!knockoutState.isKnockout) return models;
 
-    // Check if this is a knockout tournament
-    final isKnockoutTournament =
-        KnockoutMatchDetector.isKnockoutMatchFormat(allGames);
-
-    _isKnockoutTournament = isKnockoutTournament;
-    _awaitingKnockoutGames = false;
-
-    if (!isKnockoutTournament) return models;
-
-    // Get the tour name to extract the round name
-    final tourAsync = ref.read(tourDetailScreenProvider);
-    final tourName = tourAsync.value?.aboutTourModel.name ?? '';
-
-    // Extract the tournament round name from tour metadata
-    // Examples:
-    // - "FIDE World Cup 2025 | Quarterfinals" → "Quarterfinals"
-    // - "Tournament | Round 1" → "Round 1"
-    final roundName = KnockoutMatchDetector.extractTournamentRoundName(tourName);
+    final roundName =
+        knockoutState.stageName ??
+        ref.read(tourDetailScreenProvider).value?.aboutTourModel.name ??
+        'Round';
 
     // Determine the aggregated round status
     RoundStatus roundStatus = RoundStatus.ongoing;
@@ -393,7 +366,7 @@ class _GamesAppBarNotifier
 
     // Create a single logical tournament round from all sub-rounds
     final logicalRound = GamesAppBarModel(
-      id: 'knockout-round-1',
+      id: '${kKnockoutStagePrefix}-${tourId ?? 'stage'}',
       name: roundName,
       startsAt: startsAt,
       roundStatus: roundStatus,
@@ -411,9 +384,14 @@ class _GamesAppBarNotifier
 
     final counts = <String, int>{};
 
-    if (_isKnockoutTournament) {
-      // For knockout tournaments, all games belong to the logical 'knockout-round-1'
-      counts['knockout-round-1'] = games.length;
+    final isKnockout =
+        tourId != null
+            ? ref.read(knockoutTournamentStateProvider(tourId!)).isKnockout
+            : false;
+
+    if (isKnockout) {
+      // For knockout tournaments, all games belong to the logical aggregated stage
+      counts['${kKnockoutStagePrefix}-${tourId ?? 'stage'}'] = games.length;
     } else {
       // For regular tournaments, count by actual round ID
       for (final game in games) {

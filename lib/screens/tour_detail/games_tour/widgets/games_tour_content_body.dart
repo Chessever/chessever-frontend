@@ -4,8 +4,9 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_list_vie
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -33,10 +34,13 @@ class GamesTourContentBody extends ConsumerWidget {
     final selectedRoundId = gamesAppBar.value?.selectedId;
     final userSelected = gamesAppBar.value?.userSelectedId ?? false;
 
+    final tourId =
+        ref.read(tourDetailScreenProvider).value?.aboutTourModel.id;
+    final knockoutState =
+        ref.watch(knockoutTournamentStateProvider(tourId));
+    final isKnockoutTournament = knockoutState.isKnockout;
+
     final allGames = gamesScreenModel.gamesTourModels;
-    final isKnockoutTournament =
-        allGames.isNotEmpty &&
-        KnockoutMatchDetector.isKnockoutMatchFormat(allGames);
 
     // Group games by round while preserving the original sorting within each round
     final gamesByRound = <String, List<GamesTourModel>>{};
@@ -46,9 +50,20 @@ class GamesTourContentBody extends ConsumerWidget {
       gamesByRound[round.id] = [];
     }
 
-    if (isKnockoutTournament && rounds.length == 1) {
-      final logicalRoundId = rounds.first.id;
-      gamesByRound[logicalRoundId] = List<GamesTourModel>.from(allGames);
+    String? knockoutRoundId;
+    if (isKnockoutTournament) {
+      for (final round in rounds) {
+        final idLower = round.id.toLowerCase();
+        if (idLower.startsWith('$kKnockoutStagePrefix-') ||
+            idLower.startsWith('knockout-round-')) {
+          knockoutRoundId = round.id;
+          break;
+        }
+      }
+    }
+
+    if (isKnockoutTournament && knockoutRoundId != null) {
+      gamesByRound[knockoutRoundId] = List<GamesTourModel>.from(allGames);
     } else {
       // Add games to their respective rounds in the order they appear in the sorted list
       for (final game in allGames) {
@@ -125,6 +140,7 @@ class GamesTourContentBody extends ConsumerWidget {
       rounds: visibleRounds,
       gamesByRound: gamesByRound,
       gamesData: orderedGamesData,
+      isKnockoutTournament: isKnockoutTournament,
       gamesListViewMode: gamesListViewMode,
       itemScrollController: itemScrollController,
       itemPositionsListener: itemPositionsListener,

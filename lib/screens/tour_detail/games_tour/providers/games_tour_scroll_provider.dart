@@ -10,6 +10,8 @@ import 'package:flutter/widgets.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 
 final gamesTourScrollProvider =
     StateNotifierProvider<_GamesTourScrollProvider, ItemScrollController>(
@@ -306,18 +308,19 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
       return _getTeamMatchupCardsInRound(roundId);
     }
 
-    // Check if this might be a knockout tournament
-    // Knockout tournaments render differently (match-grouped), not by database rounds
-    // For scroll tracking, we need to handle this specially
+    final tourId =
+        _ref.read(tourDetailScreenProvider).value?.aboutTourModel.id;
+    final isKnockoutTournament =
+        tourId != null
+            ? _ref.read(knockoutTournamentStateProvider(tourId)).isKnockout
+            : false;
+
     final roundGames = _getGamesForRound(roundId);
 
-    // Simple heuristic: check if round slug has knockout pattern
-    final hasKnockoutPattern = roundGames.isNotEmpty &&
-        roundGames.any(
-          (g) => g.roundSlug?.toLowerCase().contains(RegExp(r'game-\d+')) ?? false,
-        );
+    final isKnockoutRound =
+        isKnockoutTournament && _isKnockoutRoundId(roundId);
 
-    if (hasKnockoutPattern) {
+    if (isKnockoutRound) {
       // For knockout tournaments, count match headers + games
       // Group by player pairs to get match count
       final matches = <String, List<dynamic>>{};
@@ -373,11 +376,17 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
     if (gamesData == null) return const [];
 
     final allGames = gamesData.gamesTourModels;
-    if (roundId.startsWith('knockout-round')) {
+    if (_isKnockoutRoundId(roundId)) {
       return allGames;
     }
 
     return allGames.where((g) => g.roundId == roundId).toList();
+  }
+
+  bool _isKnockoutRoundId(String roundId) {
+    final idLower = roundId.toLowerCase();
+    return idLower.startsWith('$kKnockoutStagePrefix-') ||
+        idLower.startsWith('knockout-round-');
   }
 
   @override
