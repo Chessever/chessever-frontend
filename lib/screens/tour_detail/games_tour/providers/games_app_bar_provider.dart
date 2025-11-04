@@ -41,6 +41,27 @@ class _GamesAppBarNotifier
       },
     );
 
+    ref.listen<AsyncValue<GamesScreenModel>>(
+      gamesTourScreenProvider,
+      (previous, next) {
+        final games =
+            next.valueOrNull?.gamesTourModels ?? const <GamesTourModel>[];
+        if (games.isEmpty) return;
+
+        final detectedKnockout =
+            KnockoutMatchDetector.isKnockoutMatchFormat(games);
+        final knockoutStateChanged = detectedKnockout != _isKnockoutTournament;
+        final shouldApplyPending =
+            _awaitingKnockoutGames && detectedKnockout;
+
+        if (knockoutStateChanged || shouldApplyPending) {
+          _isKnockoutTournament = detectedKnockout;
+          _awaitingKnockoutGames = false;
+          _load();
+        }
+      },
+    );
+
     _load();
   }
 
@@ -49,6 +70,8 @@ class _GamesAppBarNotifier
   final String? tourId;
   List<String> _liveRounds;
   final Map<String, _RoundSortMeta> _roundSortMeta;
+  bool _isKnockoutTournament = false;
+  bool _awaitingKnockoutGames = false;
 
   Future<void> refresh() async {
     await _load();
@@ -146,18 +169,7 @@ class _GamesAppBarNotifier
     // TODO: Consider hiding/adapting the dropdown for knockout tournaments
 
     // Smart filtering: Match the logic in games_tour_content_body.dart
-    final gamesByRound = <String, int>{};
-    for (final round in allRounds) {
-      final gamesInRound =
-          ref
-              .read(gamesTourScreenProvider)
-              .valueOrNull
-              ?.gamesTourModels
-              .where((g) => g.roundId == round.id)
-              .length ??
-          0;
-      gamesByRound[round.id] = gamesInRound;
-    }
+    final gamesByRound = _buildRoundGameCounts();
 
     final hasLiveOrOngoing = allRounds.any(
       (r) =>
@@ -322,6 +334,8 @@ class _GamesAppBarNotifier
   }
 
   /// Process knockout tournament rounds: group sub-rounds into logical tournament rounds
+  /// For knockout tournaments, all sub-rounds (game-1, game-2, tiebreak-*) are grouped
+  /// into a single logical tournament round with a name extracted from the tour metadata
   Future<List<GamesAppBarModel>> _processKnockoutRoundsIfNeeded(
     List<GamesAppBarModel> models,
   ) async {
@@ -331,15 +345,30 @@ class _GamesAppBarNotifier
     final allGames =
         ref.read(gamesTourScreenProvider).valueOrNull?.gamesTourModels ?? [];
 
-    if (allGames.isEmpty) return models;
+    if (allGames.isEmpty) {
+      _awaitingKnockoutGames = true;
+      _isKnockoutTournament = false;
+      return models;
+    }
 
     // Check if this is a knockout tournament
-    final isKnockoutTournament = KnockoutMatchDetector.isKnockoutMatchFormat(allGames);
+    final isKnockoutTournament =
+        KnockoutMatchDetector.isKnockoutMatchFormat(allGames);
+
+    _isKnockoutTournament = isKnockoutTournament;
+    _awaitingKnockoutGames = false;
 
     if (!isKnockoutTournament) return models;
 
-    // For knockout tournaments, group all sub-rounds into one logical "Round 1"
-    // All current games are part of Round 1 (game-1, game-2, tiebreaks, etc.)
+    // Get the tour name to extract the round name
+    final tourAsync = ref.read(tourDetailScreenProvider);
+    final tourName = tourAsync.value?.aboutTourModel.name ?? '';
+
+    // Extract the tournament round name from tour metadata
+    // Examples:
+    // - "FIDE World Cup 2025 | Quarterfinals" → "Quarterfinals"
+    // - "Tournament | Round 1" → "Round 1"
+    final roundName = KnockoutMatchDetector.extractTournamentRoundName(tourName);
 
     // Determine the aggregated round status
     RoundStatus roundStatus = RoundStatus.ongoing;
@@ -362,10 +391,10 @@ class _GamesAppBarNotifier
       return date.isBefore(earliest) ? date : earliest;
     });
 
-    // Create a single logical round
+    // Create a single logical tournament round from all sub-rounds
     final logicalRound = GamesAppBarModel(
       id: 'knockout-round-1',
-      name: 'Round 1',
+      name: roundName,
       startsAt: startsAt,
       roundStatus: roundStatus,
     );
@@ -380,12 +409,9 @@ class _GamesAppBarNotifier
 
     if (games.isEmpty) return {};
 
-    // Check if this is a knockout tournament
-    final isKnockoutTournament = KnockoutMatchDetector.isKnockoutMatchFormat(games);
-
     final counts = <String, int>{};
 
-    if (isKnockoutTournament) {
+    if (_isKnockoutTournament) {
       // For knockout tournaments, all games belong to the logical 'knockout-round-1'
       counts['knockout-round-1'] = games.length;
     } else {

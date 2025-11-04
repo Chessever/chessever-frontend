@@ -8,6 +8,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/round_header_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/match_header_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -45,9 +46,12 @@ class GamesListView extends ConsumerWidget {
     final allGames = gamesData.gamesTourModels;
     final isKnockoutTournament = KnockoutMatchDetector.isKnockoutMatchFormat(allGames);
 
+    // Get the tour name for knockout tournaments
+    final tourName = ref.read(tourDetailScreenProvider).value?.aboutTourModel.name ?? '';
+
     // For knockout tournaments, group all sub-rounds into logical rounds
     final processedData = isKnockoutTournament
-        ? _groupKnockoutRounds(rounds, gamesByRound, allGames)
+        ? _groupKnockoutRounds(rounds, gamesByRound, allGames, tourName)
         : _KnockoutProcessedData(rounds: rounds, gamesByRound: gamesByRound);
 
     final itemCount = _computeItemCount(
@@ -474,24 +478,25 @@ int? _listIndexForGameIndex({
 // ============================================================================
 
 /// Groups sub-rounds (game-1, game-2, tiebreak-*) into logical rounds for knockout tournaments
+/// Groups sub-rounds (game-1, game-2, tiebreak-*) into a single logical tournament round
+/// For knockout tournaments, all sub-rounds belong to the same tournament round
 _KnockoutProcessedData _groupKnockoutRounds(
   List<GamesAppBarModel> rounds,
   Map<String, List<GamesTourModel>> gamesByRound,
   List<GamesTourModel> allGames,
+  String tourName,
 ) {
   if (rounds.isEmpty) {
     return _KnockoutProcessedData(rounds: rounds, gamesByRound: gamesByRound);
   }
 
-  // Group games by player matchups to determine which sub-rounds belong together
-  final matchupToGames = <String, List<GamesTourModel>>{};
-  for (final game in allGames) {
-    final key = _getMatchupKey(game.whitePlayer.name, game.blackPlayer.name);
-    matchupToGames.putIfAbsent(key, () => []).add(game);
-  }
+  // Extract the tournament round name from tour metadata
+  // Examples:
+  // - "FIDE World Cup 2025 | Quarterfinals" → "Quarterfinals"
+  // - "Tournament | Round 1" → "Round 1"
+  final roundName = KnockoutMatchDetector.extractTournamentRoundName(tourName);
 
-  // All games with same matchups are part of the same logical round
-  // Since this is a knockout tournament, all current games are in Round 1
+  // All games in a knockout tournament belong to the same logical tournament round
   final allGamesInRound = allGames.toList();
 
   // Determine the round status based on existing rounds
@@ -514,10 +519,10 @@ _KnockoutProcessedData _groupKnockoutRounds(
     }
   }
 
-  // Create a single logical round that contains all games
+  // Create a single logical tournament round from all sub-rounds
   final logicalRound = GamesAppBarModel(
     id: 'knockout-round-1',
-    name: 'Round 1',
+    name: roundName,
     startsAt: startsAt,
     roundStatus: roundStatus,
   );
@@ -528,10 +533,6 @@ _KnockoutProcessedData _groupKnockoutRounds(
   );
 }
 
-String _getMatchupKey(String player1, String player2) {
-  final sorted = [player1.trim(), player2.trim()]..sort();
-  return '${sorted[0]}|${sorted[1]}';
-}
 
 // ============================================================================
 // DATA CLASSES
