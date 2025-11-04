@@ -68,17 +68,9 @@ class _GamesAppBarNotifier
   }
 
   void select(GamesAppBarModel model) {
-    // Check if this is a knockout stage from a different tour
-    if (model.id.startsWith('$kKnockoutStagePrefix-')) {
-      final stageTourId = model.id.replaceFirst('$kKnockoutStagePrefix-', '');
-
-      // If selecting a stage from a different tour, navigate to that tour
-      if (stageTourId != tourId) {
-        // Navigate to the selected tour
-        ref.read(tourDetailScreenProvider.notifier).updateSelection(stageTourId);
-        return;
-      }
-    }
+    // For multi-stage knockouts, dropdown selection should just scroll to that stage
+    // NOT navigate to a different tour (all stages are already in the listview)
+    // This matches the behavior of regular and group events
 
     ref.read(userSelectedRoundProvider.notifier).state = (
       id: model.id,
@@ -258,14 +250,25 @@ class _GamesAppBarNotifier
         }
       } else {
         // For regular events, count games
-        final gamesInRound =
-            ref
-                .read(gamesTourScreenProvider)
-                .valueOrNull
-                ?.gamesTourModels
-                .where((g) => g.roundId == round.id)
-                .length ??
-            0;
+        int gamesInRound;
+
+        // Special handling for knockout stage-based rounds
+        if (round.id.startsWith('$kKnockoutStagePrefix-')) {
+          // For stage-based rounds, get games from knockoutTournamentStateProvider
+          final stageTourId = round.id.replaceFirst('$kKnockoutStagePrefix-', '');
+          final stageKnockoutState = ref.read(knockoutTournamentStateProvider(stageTourId));
+          gamesInRound = stageKnockoutState.allGames.length;
+        } else {
+          // Regular rounds: match by round ID
+          gamesInRound =
+              ref
+                  .read(gamesTourScreenProvider)
+                  .valueOrNull
+                  ?.gamesTourModels
+                  .where((g) => g.roundId == round.id)
+                  .length ??
+              0;
+        }
 
         if (isGrid) {
           // grid: ceil(games/2) rows (each row holds up to 2 games)
@@ -355,15 +358,24 @@ class _GamesAppBarNotifier
     final tourDetail = ref.read(tourDetailScreenProvider).valueOrNull;
     final allTours = tourDetail?.tours ?? [];
 
+    print('🔍 Total tours in tourDetail: ${allTours.length}');
+    for (final t in allTours) {
+      print('    - ${t.tour.name} (ID: ${t.tour.id}, groupBroadcastId: ${t.tour.groupBroadcastId})');
+    }
+
     // If there are multiple tours with the same group_broadcast_id, treat each as a stage
     final currentTour = allTours.where((t) => t.tour.id == tourId).firstOrNull?.tour;
     final groupBroadcastId = currentTour?.groupBroadcastId;
+
+    print('🔑 Current tour ID: $tourId, groupBroadcastId: $groupBroadcastId');
 
     if (groupBroadcastId != null && groupBroadcastId.isNotEmpty) {
       // Get all tours in this group that are knockout tournaments
       final groupTours = allTours
           .where((t) => t.tour.groupBroadcastId == groupBroadcastId)
           .toList();
+
+      print('📊 Found ${groupTours.length} tours with groupBroadcastId: $groupBroadcastId');
 
       if (groupTours.length > 1) {
         // Multiple stages detected - create separate dropdown items for each
@@ -375,21 +387,7 @@ class _GamesAppBarNotifier
           final tour = tourModel.tour;
           print('  📋 Tour: ${tour.name} (ID: ${tour.id})');
 
-          final stageKnockoutState = ref.read(knockoutTournamentStateProvider(tour.id));
-
-          // Only include tours that are actually knockout format AND have games
-          if (!stageKnockoutState.isKnockout) {
-            print('    ❌ Not knockout format, skipping');
-            continue;
-          }
-
-          final hasGames = stageKnockoutState.allGames.isNotEmpty;
-          if (!hasGames) {
-            print('    ❌ No games found, skipping');
-            continue;
-          }
-
-          // Get rounds for this specific tour to determine status and start time
+          // Get rounds for this specific tour first
           final repo = ref.read(roundRepositoryProvider);
           final stageRounds = await repo.getRoundsByTourId(tour.id);
           final stageRoundModels = stageRounds
@@ -400,6 +398,28 @@ class _GamesAppBarNotifier
             print('    ❌ No rounds found, skipping');
             continue;
           }
+
+          // Check if this tour is knockout format AND has games
+          final stageKnockoutState = ref.read(knockoutTournamentStateProvider(tour.id));
+
+          if (!stageKnockoutState.isKnockout) {
+            print('    ❌ Not knockout format, skipping');
+            continue;
+          }
+
+          // For checking games, use the tour status which is more reliable
+          final tourStatus = tourModel.roundStatus;
+          final hasGames = (tourStatus == RoundStatus.completed ||
+                           tourStatus == RoundStatus.ongoing ||
+                           tourStatus == RoundStatus.live ||
+                           stageKnockoutState.allGames.isNotEmpty);
+
+          if (!hasGames) {
+            print('    ❌ No games found (status: $tourStatus, games: ${stageKnockoutState.allGames.length}), skipping');
+            continue;
+          }
+
+          print('    ✓ Has ${stageRoundModels.length} rounds, ${stageKnockoutState.allGames.length} games, status: $tourStatus');
 
           // Determine aggregated status for this stage
           RoundStatus stageStatus = RoundStatus.ongoing;
@@ -442,6 +462,8 @@ class _GamesAppBarNotifier
           print('   - ${stage.name} (${stage.roundStatus})');
         }
 
+        // Return all stages - dropdown shows all, listview shows current
+        // When user selects different stage, navigation happens via select() method
         if (allStageModels.isNotEmpty) {
           return allStageModels;
         }

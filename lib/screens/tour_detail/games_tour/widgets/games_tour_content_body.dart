@@ -51,11 +51,21 @@ class GamesTourContentBody extends ConsumerWidget {
     }
 
     if (isKnockoutTournament && rounds.any((r) => r.id.startsWith('$kKnockoutStagePrefix-'))) {
-      // For knockout tournaments with stage-based rounds, all games belong to the single stage
-      // Since rounds are already pre-filtered by games_app_bar_provider, assign all games to each stage round
+      // For knockout tournaments with stage-based rounds (multi-stage knockouts),
+      // fetch and assign games for EACH stage from ALL tours in the group broadcast
+      print('🎮 Multi-stage knockout detected, loading games for ${rounds.length} stages');
       for (final round in rounds) {
         if (round.id.startsWith('$kKnockoutStagePrefix-')) {
-          gamesByRound[round.id] = List<GamesTourModel>.from(allGames);
+          // Extract the tour ID from the stage ID: "knockout-stage-{tourId}"
+          final stageTourId = round.id.replaceFirst('$kKnockoutStagePrefix-', '');
+
+          // Get the knockout state for this specific tour to access its games
+          // Changed from ref.read to ref.watch to properly handle async loading
+          final stageKnockoutState = ref.watch(knockoutTournamentStateProvider(stageTourId));
+
+          // Assign all games from this stage's tour
+          gamesByRound[round.id] = List<GamesTourModel>.from(stageKnockoutState.allGames);
+          print('  📦 Stage "${round.name}" (tourId: $stageTourId): ${stageKnockoutState.allGames.length} games');
         }
       }
     } else {
@@ -68,33 +78,55 @@ class GamesTourContentBody extends ConsumerWidget {
     }
 
     // Smart filtering: Show upcoming rounds intelligently
+    // FOR MULTI-STAGE KNOCKOUTS: Show ALL stages with games (no status filtering)
+    // FOR REGULAR EVENTS:
     // 1. If there are live/ongoing rounds → hide upcoming rounds (unless explicitly selected)
     // 2. If only completed rounds exist → show next upcoming round
     // 3. If all rounds are upcoming → show all upcoming rounds
 
-    final hasLiveOrOngoing = rounds.any((r) =>
-      r.roundStatus == RoundStatus.live || r.roundStatus == RoundStatus.ongoing
-    );
-
-    final hasCompleted = rounds.any((r) => r.roundStatus == RoundStatus.completed);
-
-    final allAreUpcoming = rounds.every((r) =>
-      r.roundStatus == RoundStatus.upcoming || gamesByRound[r.id]?.isEmpty == true
-    );
+    final isMultiStageKnockout = isKnockoutTournament && rounds.any((r) => r.id.startsWith('$kKnockoutStagePrefix-'));
 
     final visibleRounds = rounds.where((round) {
       final roundGames = gamesByRound[round.id] ?? [];
-      if (roundGames.isEmpty) return false;
+      if (roundGames.isEmpty) {
+        print('❌ Filtering out "${round.name}" - no games');
+        return false;
+      }
+
+      // For multi-stage knockouts, show ALL stages with games (no status filtering)
+      if (isMultiStageKnockout) {
+        print('✅ Including "${round.name}" - multi-stage knockout (${roundGames.length} games)');
+        return true;
+      }
+
+      // Regular tournament filtering logic below
+      final hasLiveOrOngoing = rounds.any((r) =>
+        r.roundStatus == RoundStatus.live || r.roundStatus == RoundStatus.ongoing
+      );
+
+      final hasCompleted = rounds.any((r) => r.roundStatus == RoundStatus.completed);
+
+      final allAreUpcoming = rounds.every((r) =>
+        r.roundStatus == RoundStatus.upcoming || gamesByRound[r.id]?.isEmpty == true
+      );
 
       // Always include explicitly user-selected round
-      if (userSelected && round.id == selectedRoundId) return true;
+      if (userSelected && round.id == selectedRoundId) {
+        print('✅ Including "${round.name}" - user selected');
+        return true;
+      }
 
       // If all rounds are upcoming, show them all
-      if (allAreUpcoming) return true;
+      if (allAreUpcoming) {
+        print('✅ Including "${round.name}" - all are upcoming');
+        return true;
+      }
 
       // If there are live/ongoing rounds, hide upcoming
       if (hasLiveOrOngoing) {
-        return round.roundStatus != RoundStatus.upcoming;
+        final include = round.roundStatus != RoundStatus.upcoming;
+        print('${include ? "✅" : "❌"} "${round.name}" - hasLiveOrOngoing, status: ${round.roundStatus}');
+        return include;
       }
 
       // If only completed rounds exist, show completed + first upcoming
@@ -104,12 +136,21 @@ class GamesTourContentBody extends ConsumerWidget {
           r.roundStatus == RoundStatus.upcoming &&
           (gamesByRound[r.id]?.isNotEmpty ?? false)
         ).toList();
-        return upcomingRounds.isNotEmpty && upcomingRounds.first.id == round.id;
+        final include = upcomingRounds.isNotEmpty && upcomingRounds.first.id == round.id;
+        print('${include ? "✅" : "❌"} "${round.name}" - first upcoming round check');
+        return include;
       }
 
       // Show completed/ongoing/live rounds
-      return round.roundStatus != RoundStatus.upcoming;
+      final include = round.roundStatus != RoundStatus.upcoming;
+      print('${include ? "✅" : "❌"} "${round.name}" - default filter, status: ${round.roundStatus}');
+      return include;
     }).toList();
+
+    print('🎯 Final visible rounds: ${visibleRounds.length}');
+    for (final r in visibleRounds) {
+      print('   - ${r.name}: ${gamesByRound[r.id]?.length ?? 0} games');
+    }
 
     // Create a properly ordered flat list that matches the ListView display order
     final orderedGamesForChessBoard = <GamesTourModel>[];
