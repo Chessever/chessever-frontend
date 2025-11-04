@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
@@ -92,6 +93,45 @@ class ChessBoardScreenNotifierNew
       ),
     );
     parseMoves();
+
+    // Listen for engine settings changes and clear cache to force re-evaluation
+    ref.listen<AsyncValue<EngineSettings>>(
+      engineSettingsProviderNew,
+      (previous, next) {
+        final prevValue = previous?.value;
+        final nextValue = next.value;
+
+        if (prevValue != nextValue && nextValue != null) {
+          debugPrint('');
+          debugPrint('🔄 ═══ ENGINE SETTINGS CHANGED ═══');
+          debugPrint('   Previous:');
+          debugPrint('     - Search Time: ${prevValue?.searchTimeLabel() ?? "null"}');
+          debugPrint('     - PV Count: ${prevValue?.principalVariationCount ?? "null"}');
+          debugPrint('   New:');
+          debugPrint('     - Search Time: ${nextValue.searchTimeLabel()}');
+          debugPrint('     - PV Count: ${nextValue.principalVariationCount}');
+          debugPrint('     - Search Duration: ${nextValue.searchDurationFor(EngineComponent.evaluationGauge)?.inSeconds}s');
+          debugPrint('     - Max Depth: ${nextValue.maxDepthFor(EngineComponent.evaluationGauge)}');
+          debugPrint('');
+
+          _clearEvaluationCache();
+
+          // Force re-evaluation with new settings
+          debugPrint('   → Forcing re-evaluation with new MultiPV=${nextValue.principalVariationCount}...');
+          _evaluatePosition(force: true);
+          debugPrint('   ✅ Re-evaluation triggered');
+        }
+      },
+    );
+  }
+
+  /// Clear all evaluation caches to force fresh evaluations
+  void _clearEvaluationCache() {
+    final totalItems = _evaluationCache.length + _pvCache.length + _mateCache.length;
+    _evaluationCache.clear();
+    _pvCache.clear();
+    _mateCache.clear();
+    debugPrint('🗑️  Cleared evaluation cache ($totalItems items removed)');
   }
 
   /// Get evaluation with consistent perspective for evaluation bar display
@@ -2399,22 +2439,64 @@ class ChessBoardScreenNotifierNew
         debugPrint('🎯 EVAL ERROR: Cascade failed for $fen: $e');
       }
 
-      // SUPPLEMENT/FALLBACK: Use Stockfish if cloud sources returned < 3 PVs
-      // Cloud sources (Lichess multiPv=3) should usually return 3 PVs, but might return fewer for:
+      // Get engine settings FIRST to check configured PV count
+      final engineSettingsAsync = ref.read(engineSettingsProviderNew);
+      final engineSettings = engineSettingsAsync.value;
+      final configuredMultiPV = engineSettings?.principalVariationCount ?? 3;
+
+      // SUPPLEMENT/FALLBACK: Use Stockfish if cloud sources returned fewer PVs than configured
+      // Cloud sources might return fewer for:
       // - Uncommon positions not yet fully analyzed
       // - Positions with forced mates (only one line matters)
       // - API rate limiting or temporary unavailability
-      if (evaluation == null || pvLines.length < 3) {
+      if (evaluation == null || pvLines.length < configuredMultiPV) {
         final needsEval = evaluation == null;
-        final needsMorePvs = pvLines.length < 3;
+        final needsMorePvs = pvLines.length < configuredMultiPV;
 
         try {
-          debugPrint(
-            '🎯 EVAL: Need ${needsEval ? "eval + " : ""}${needsMorePvs ? "more PVs (have ${pvLines.length}/3)" : ""}, running Stockfish...',
-          );
+          final searchDuration = engineSettings?.searchDurationFor(EngineComponent.evaluationGauge);
+          final maxDepth = engineSettings?.maxDepthFor(EngineComponent.evaluationGauge);
+          final multiPV = configuredMultiPV;
+
+          debugPrint('');
+          debugPrint('🎯 ═══ STARTING STOCKFISH EVALUATION ═══');
+          debugPrint('   FEN: ${fen.substring(0, 50)}...');
+          debugPrint('   Reason: ${needsEval ? "Need eval" : ""}${needsEval && needsMorePvs ? " + " : ""}${needsMorePvs ? "Need more PVs (have ${pvLines.length}/$multiPV)" : ""}');
+          debugPrint('   Settings loaded: ${engineSettings != null}');
+          debugPrint('   SearchDuration: ${searchDuration?.inSeconds}s (${searchDuration != null ? "DYNAMIC" : "STATIC"})');
+          debugPrint('   MaxDepth: $maxDepth');
+          debugPrint('   MultiPV: $multiPV lines');
+          debugPrint('   Fallback depth: 15');
+
+          // Get depth tracker notifier to report progress
+          final depthTracker = ref.read(engineDepthTrackerProvider.notifier);
+
           final localEval = await StockfishSingleton().evaluatePosition(
             fen,
-            depth: 15, // Consistent depth matching working commit a85edea
+            depth: 15, // Fallback depth if settings not loaded
+            searchDuration: searchDuration,
+            maxDepth: maxDepth,
+            multiPV: multiPV,
+            onDepthUpdate: (depth, knodes) {
+              // CRITICAL: Only update depth tracker if this is the currently visible game
+              // This prevents depth flickering when swiping between games in PageView
+              final currentVisiblePage = ref.read(currentlyVisiblePageIndexProvider);
+              if (index != currentVisiblePage) {
+                debugPrint('🚫 EVAL: Skipping depth update for non-visible game (page $index, visible: $currentVisiblePage)');
+                return;
+              }
+
+              debugPrint('💡 EVAL: Depth update callback -> depth=$depth knodes=${knodes}k');
+              depthTracker.update(
+                component: EngineComponent.evaluationGauge,
+                progress: EngineSearchProgress(
+                  depth: depth,
+                  kiloNodes: knodes,
+                  fenFragment: fen,
+                ),
+                context: 'evaluating position',
+              );
+            },
           );
           debugPrint(
             '🎯 EVAL: Stockfish completed, isCancelled=${localEval.isCancelled}, pvs.length=${localEval.pvs.length}',
@@ -2529,6 +2611,17 @@ class ChessBoardScreenNotifierNew
                 '🎯 EVAL: STOCKFISH ONLY - returned ${pvLines.length} variants, eval=$evaluation',
               );
             }
+
+            // Record final MultiPV depth for principal variation tracking
+            depthTracker.update(
+              component: EngineComponent.principalVariation,
+              progress: EngineSearchProgress(
+                depth: localEval.depth,
+                kiloNodes: localEval.knodes,
+                fenFragment: fen,
+              ),
+              context: 'multiPV=$multiPV',
+            );
           } else {
             debugPrint('🎯 EVAL: Stockfish returned cancelled or empty result');
           }
@@ -2684,6 +2777,19 @@ class ChessBoardScreenNotifierNew
         // Don't clear isEvaluating - another request is handling it
         return;
       }
+
+      // Normalize PV list size to match configured MultiPV whenever possible
+      if (pvLines.length > configuredMultiPV) {
+        debugPrint(
+          '🎯 EVAL: Trimming PV list from ${pvLines.length} to $configuredMultiPV as per settings',
+        );
+        pvLines = pvLines.take(configuredMultiPV).toList(growable: false);
+      } else if (pvLines.length < configuredMultiPV) {
+        debugPrint(
+          '🎯 EVAL: Only ${pvLines.length} PV lines available (requested $configuredMultiPV)',
+        );
+      }
+
       var currentSnapshot = state.value;
       if (currentSnapshot == null) {
         // CRITICAL FIX: Clear evaluating state on early return

@@ -7,14 +7,18 @@ class ChessSvgBottomNavbar extends StatelessWidget {
   final String svgPath;
   final double width;
   final VoidCallback? onPressed;
+  final VoidCallback? onLongPress;
   final bool isActive;
+  final String? depthText;
 
   const ChessSvgBottomNavbar({
     super.key,
     required this.svgPath,
     required this.width,
     required this.onPressed,
+    this.onLongPress,
     this.isActive = false,
+    this.depthText,
   });
 
   @override
@@ -29,20 +33,47 @@ class ChessSvgBottomNavbar extends StatelessWidget {
       iconColor = kWhiteColor70; // Use transparent white when inactive
     }
 
-    return InkWell(
+    return GestureDetector(
       onTap: onPressed,
-      child: Container(
-        alignment: Alignment.center,
-        height: 40.h,
+      onLongPress: onLongPress,
+      child: SizedBox(
         width: width,
-        padding: EdgeInsets.all(8.sp),
-        child: SvgWidget(
-          svgPath,
-          height: 24.h,
-          width: 24.w,
-          colorFilter: ColorFilter.mode(
-            iconColor,
-            BlendMode.srcIn,
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 8.h),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SvgWidget(
+                svgPath,
+                height: 24.h,
+                width: 24.w,
+                colorFilter: ColorFilter.mode(
+                  iconColor,
+                  BlendMode.srcIn,
+                ),
+              ),
+              if (depthText != null) ...[
+                SizedBox(height: 2.h),
+                Text(
+                  depthText!,
+                  style: TextStyle(
+                    // Match icon color: bright when active, dimmed when inactive
+                    color: iconColor,
+                    fontSize: 9.f,
+                    fontWeight: FontWeight.w600,
+                    height: 1.0,
+                    shadows: [
+                      Shadow(
+                        color: Colors.black.withValues(alpha: 0.35),
+                        offset: Offset(0, 1.sp),
+                        blurRadius: 2.sp,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ),

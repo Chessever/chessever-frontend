@@ -1,3 +1,4 @@
+import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_navbar.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -11,6 +12,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
   final VoidCallback? onRightMove;
   final VoidCallback onFlip;
   final VoidCallback? toggleEngineVisibility;
+  final VoidCallback? onEngineSettingsLongPress;
   final VoidCallback? onLongPressBackwardStart;
   final VoidCallback? onLongPressBackwardEnd;
   final VoidCallback? onLongPressForwardStart;
@@ -31,6 +33,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
     required this.showEngineAnalysis,
     required this.showUnseenMoveBadge,
     this.toggleEngineVisibility,
+    this.onEngineSettingsLongPress,
     this.onLongPressBackwardStart,
     this.onLongPressBackwardEnd,
     this.onLongPressForwardStart,
@@ -40,6 +43,48 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final width = MediaQuery.of(context).size.width / 4; // 4 buttons now
+
+    // Watch engine depth tracker for live depth display
+    final progressMap = ref.watch(engineDepthTrackerProvider);
+
+    EngineComponent? activeComponent;
+    EngineSearchProgress? gaugeProgress;
+
+    if (progressMap.containsKey(EngineComponent.evaluationGauge)) {
+      activeComponent = EngineComponent.evaluationGauge;
+      gaugeProgress = progressMap[EngineComponent.evaluationGauge];
+    } else if (progressMap.containsKey(EngineComponent.cascadeEval)) {
+      activeComponent = EngineComponent.cascadeEval;
+      gaugeProgress = progressMap[EngineComponent.cascadeEval];
+    } else if (progressMap.containsKey(EngineComponent.principalVariation)) {
+      activeComponent = EngineComponent.principalVariation;
+      gaugeProgress = progressMap[EngineComponent.principalVariation];
+    }
+
+    // Format depth text like "D:12"
+    final depthText = gaugeProgress != null
+        ? 'D:${gaugeProgress.depth.clamp(0, 99).toString().padLeft(2, '0')}'
+        : null;
+
+    // COMPREHENSIVE DEBUG LOGGING - Verify dynamic depth search is working
+    if (showEngineAnalysis) {
+      if (depthText != null) {
+        debugPrint(
+          '📊 ═══ DEPTH DISPLAY UPDATE (Game $gameIndex) ═══\n'
+          '   Depth: ${gaugeProgress!.depth}\n'
+          '   Nodes: ${gaugeProgress.kiloNodes}k\n'
+          '   Display: $depthText\n'
+          '   Component: ${activeComponent ?? EngineComponent.evaluationGauge}\n'
+          '   FEN Fragment: ${gaugeProgress.fenFragment.substring(0, 20)}...\n'
+          '   ═══════════════════════════════════════',
+        );
+      } else {
+        debugPrint(
+          '⚠️  BottomNav (Game $gameIndex): Engine analysis ON but NO depth data available yet',
+        );
+      }
+    }
+
     return Container(
       width: MediaQuery.of(context).size.width,
       decoration: const BoxDecoration(color: kBlackColor),
@@ -54,7 +99,9 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
                 width: width,
                 svgPath: SvgAsset.laptop,
                 onPressed: toggleEngineVisibility,
+                onLongPress: onEngineSettingsLongPress,
                 isActive: showEngineAnalysis,
+                depthText: showEngineAnalysis ? depthText : null,
               ),
 
               // Flip Board Button
