@@ -39,10 +39,14 @@ class StockfishSingleton {
   Future<EnhancedCloudEval> evaluatePosition(
     String fen, {
     int depth = 15,
+    Duration? searchDuration,
+    int? maxDepth,
+    int multiPV = 3,
+    Function(int depth, int knodes)? onDepthUpdate,
   }) async {
-    // Validate depth range
-    if (depth < 1 || depth > 25) {
-      throw ArgumentError('Depth must be between 1 and 25, got: $depth');
+    // Validate depth range (only if using depth-based search)
+    if (searchDuration == null && (depth < 1 || depth > 99)) {
+      throw ArgumentError('Depth must be between 1 and 99, got: $depth');
     }
 
     // Validate FEN string
@@ -53,7 +57,8 @@ class StockfishSingleton {
     // Create cache key including side to move for perspective-aware caching
     final fenParts = fen.split(' ');
     final sideToMove = fenParts.length > 1 ? fenParts[1] : 'w';
-    final cacheKey = '${fen}_${depth}_$sideToMove';
+    final searchMode = searchDuration != null ? 'time_${searchDuration.inMilliseconds}' : 'depth_$depth';
+    final cacheKey = '${fen}_${searchMode}_pv${multiPV}_$sideToMove';
 
     if (_evaluationCache.containsKey(cacheKey)) {
       debugPrint('📦 CACHE HIT for $fen');
@@ -73,7 +78,16 @@ class StockfishSingleton {
 
     // Create job and add to queue
     final completer = Completer<EnhancedCloudEval>();
-    final job = _EvalJob(fen, depth, cacheKey, completer);
+    final job = _EvalJob(
+      fen,
+      depth,
+      cacheKey,
+      completer,
+      searchDuration: searchDuration,
+      maxDepth: maxDepth,
+      multiPV: multiPV,
+      onDepthUpdate: onDepthUpdate,
+    );
 
     _jobQueue.add(job);
     _pendingJobs[cacheKey] = job;
@@ -184,6 +198,10 @@ class StockfishSingleton {
     final job = _currentJob!;
     final fen = job.fen;
     final depth = job.depth;
+    final searchDuration = job.searchDuration;
+    final maxDepth = job.maxDepth;
+    final multiPV = job.multiPV;
+    final onDepthUpdate = job.onDepthUpdate;
     final completer = job.completer;
 
     // Ensure engine is ready
@@ -201,7 +219,9 @@ class StockfishSingleton {
     int finalDepth = 0;
     bool evaluationComplete = false;
 
-    debugPrint('🔍 STOCKFISH: Analyzing $fen');
+    final isDynamicSearch = searchDuration != null;
+    debugPrint('🔍 STOCKFISH: Analyzing $fen ${isDynamicSearch ? "(dynamic ${searchDuration.inSeconds}s)" : "(depth $depth)"}');
+
     _currentSubscription = _engine!.stdout.listen((line) {
       // Check if this is still the current job
       if (_currentJob != job || completer.isCompleted) return;
@@ -209,11 +229,34 @@ class StockfishSingleton {
       // Parse info lines for analysis data
       if (line.startsWith('info depth')) {
         final depthMatch = RegExp(r'depth (\d+)').firstMatch(line);
+        final knodesMatch = RegExp(r'nodes (\d+)').firstMatch(line);
+
         if (depthMatch != null) {
-          finalDepth = int.parse(depthMatch.group(1)!);
+          final currentDepth = int.parse(depthMatch.group(1)!);
+          final int currentKnodes =
+              knodesMatch != null
+                  ? (int.parse(knodesMatch.group(1)!) / 1000).round()
+                  : 0;
+
+          finalDepth = currentDepth;
+
+          if (onDepthUpdate != null) {
+            final searchLabel = isDynamicSearch
+                ? 'Time-based (${searchDuration!.inSeconds}s)'
+                : 'Depth-based (target $depth)';
+            debugPrint(
+              '⚡ ═══ ENGINE DEPTH UPDATE ═══\n'
+              '   Current Depth: $currentDepth\n'
+              '   Nodes: ${currentKnodes}k\n'
+              '   Search Mode: $searchLabel\n'
+              '   Max Depth: ${maxDepth ?? "-"}\n'
+              '   UCI Output: ${line.substring(0, line.length.clamp(0, 80).toInt())}\n'
+              '   ════════════════════════════════════',
+            );
+            onDepthUpdate(currentDepth, currentKnodes);
+          }
         }
 
-        final knodesMatch = RegExp(r'nodes (\d+)').firstMatch(line);
         if (knodesMatch != null) {
           knodes = (int.parse(knodesMatch.group(1)!) / 1000).round();
         }
@@ -270,6 +313,10 @@ class StockfishSingleton {
           );
         }
 
+        if (onDepthUpdate != null && finalDepth > 0) {
+          onDepthUpdate(finalDepth, knodes);
+        }
+
         final result = EnhancedCloudEval(
           fen: fen,
           knodes: knodes,
@@ -285,10 +332,21 @@ class StockfishSingleton {
     });
 
     try {
-      debugPrint('   → Sending: MultiPV 3, depth $depth');
-      _engine!.stdin = 'setoption name MultiPV value 3';
+      _engine!.stdin = 'setoption name MultiPV value $multiPV';
       _engine!.stdin = 'position fen $fen';
-      _engine!.stdin = 'go depth $depth';
+
+      if (isDynamicSearch) {
+        final moveTimeMs = searchDuration!.inMilliseconds;
+        debugPrint('   → Sending: MultiPV $multiPV, movetime ${moveTimeMs}ms${maxDepth != null ? ", depth $maxDepth" : ""}');
+        if (maxDepth != null) {
+          _engine!.stdin = 'go movetime $moveTimeMs depth $maxDepth';
+        } else {
+          _engine!.stdin = 'go movetime $moveTimeMs';
+        }
+      } else {
+        debugPrint('   → Sending: MultiPV $multiPV, depth $depth');
+        _engine!.stdin = 'go depth $depth';
+      }
     } catch (e) {
       debugPrint('❌ ERROR sending commands to Stockfish: $e');
       if (!completer.isCompleted) {
@@ -306,8 +364,12 @@ class StockfishSingleton {
       return;
     }
 
-    // Set up timeout
-    Timer(const Duration(seconds: 10), () {
+    // Set up timeout - use dynamic timeout if specified, otherwise default 10s
+    final timeoutDuration = isDynamicSearch
+        ? Duration(milliseconds: searchDuration!.inMilliseconds + 2000) // Add 2s buffer
+        : const Duration(seconds: 10);
+
+    Timer(timeoutDuration, () {
       if (_currentJob == job && !completer.isCompleted && !evaluationComplete) {
         debugPrint('⏱️ STOCKFISH TIMEOUT: Job for $fen timed out after 10s');
         final filteredPvs = pvs
@@ -415,9 +477,23 @@ class StockfishSingleton {
 }
 
 class _EvalJob {
+  _EvalJob(
+    this.fen,
+    this.depth,
+    this.key,
+    this.completer, {
+    this.searchDuration,
+    this.maxDepth,
+    this.multiPV = 3,
+    this.onDepthUpdate,
+  });
+
   final String fen;
   final int depth;
   final String key;
   final Completer<EnhancedCloudEval> completer;
-  _EvalJob(this.fen, this.depth, this.key, this.completer);
+  final Duration? searchDuration;
+  final int? maxDepth;
+  final int multiPV;
+  final Function(int depth, int knodes)? onDepthUpdate;
 }

@@ -13,6 +13,8 @@ import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/move_annotation_overlay.dart';
 import 'package:chessever2/screens/chessboard/widgets/share_game_card_overlay.dart';
+import 'package:chessever2/screens/chessboard/chess_board_settings_page.dart';
+import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
@@ -1038,10 +1040,22 @@ class _AppBar extends ConsumerWidget implements PreferredSizeWidget {
           onSelected: (value) {
             if (value == 'share') {
               shareGameBtnClicked(context, ref);
+            } else if (value == 'board_settings') {
+              Navigator.of(context).push(ChessBoardSettingsPage.route());
             }
           },
           itemBuilder:
               (context) => [
+                PopupMenuItem(
+                  value: 'board_settings',
+                  child: Row(
+                    children: [
+                      Icon(Icons.settings, color: kWhiteColor),
+                      SizedBox(width: 8.w),
+                      const Text('Board Settings'),
+                    ],
+                  ),
+                ),
                 PopupMenuItem(
                   value: 'share',
                   child: Row(
@@ -1387,6 +1401,9 @@ class _BottomNavBar extends ConsumerWidget {
       gameIndex: index,
       onFlip: () => notifier.flipBoard(),
       toggleEngineVisibility: () => notifier.toggleEngineVisibility(),
+      onEngineSettingsLongPress: () {
+        Navigator.of(context).push(ChessBoardSettingsPage.route());
+      },
       onRightMove:
           canMoveForward
               ? () {
@@ -1411,7 +1428,7 @@ class _BottomNavBar extends ConsumerWidget {
       onLongPressForwardEnd: () => notifier.stopLongPress(),
       canMoveForward: canMoveForward,
       canMoveBackward: canMoveBackward,
-      showEngineAnalysis: state.showPrincipalVariations,
+      showEngineAnalysis: state.showEngineAnalysis,
       showUnseenMoveBadge: state.hasUnseenMoves,
     );
   }
@@ -1654,9 +1671,13 @@ class _BoardWithSidebar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Read engine settings to control visibility
+    final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
+    final showEngineGauge = engineSettings?.showEngineGauge ?? true;
+
     return LayoutBuilder(
       builder: (context, constraints) {
-        final sideBarWidth = 20.w;
+        final sideBarWidth = showEngineGauge ? 20.w : 0.w;
         final screenWidth = MediaQuery.of(context).size.width;
         final boardSize = screenWidth - sideBarWidth - 32.w;
 
@@ -1685,17 +1706,19 @@ class _BoardWithSidebar extends ConsumerWidget {
           margin: EdgeInsets.symmetric(horizontal: 16.sp),
           child: Row(
             children: [
-              SizedBox(
-                width: sideBarWidth,
-                height: boardSize,
-                child: EvaluationBarWidget(
+              // Conditionally show evaluation bar based on settings
+              if (showEngineGauge)
+                SizedBox(
                   width: sideBarWidth,
                   height: boardSize,
-                  // REACTIVE: Just pass FEN, eval bar watches provider directly
-                  fen: state.analysisState.position.fen,
-                  isFlipped: state.isBoardFlipped,
+                  child: EvaluationBarWidget(
+                    width: sideBarWidth,
+                    height: boardSize,
+                    // REACTIVE: Just pass FEN, eval bar watches provider directly
+                    fen: state.analysisState.position.fen,
+                    isFlipped: state.isBoardFlipped,
+                  ),
                 ),
-              ),
               Stack(
                 children: [
                   // Analysis mode is always active, always use analysis board
@@ -1716,6 +1739,12 @@ class _BoardWithSidebar extends ConsumerWidget {
                       isFlipped: state.isBoardFlipped,
                       lastMoveSquare: _getLastMoveSquare(),
                     ),
+                  // Engine depth overlay - show in bottom-right corner when enabled
+                  _DepthOverlay(
+                    boardSize: boardSize,
+                    isFlipped: state.isBoardFlipped,
+                    showEngineAnalysis: state.showEngineAnalysis,
+                  ),
                 ],
               ),
             ],
@@ -1751,6 +1780,10 @@ class _AnalysisBoard extends ConsumerWidget {
         .getBoardTheme(boardSettingsValue.boardColor);
     // final params = ChessBoardProviderParams(game: game, index: index);
     // final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+
+    // Read engine settings to control PV arrows visibility
+    final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
+    final showPvArrows = engineSettings?.showPvArrows ?? true;
 
     return Chessboard(
       size: size,
@@ -1793,9 +1826,11 @@ class _AnalysisBoard extends ConsumerWidget {
       orientation: isFlipped ? Side.black : Side.white,
       fen: chessBoardState.analysisState.position.fen,
       lastMove: chessBoardState.analysisState.lastMove,
-      // Only show shapes (arrows) when principal variations are enabled
+      // Only show shapes (arrows) when BOTH conditions are met:
+      // 1. Principal variations are enabled in board state
+      // 2. PV arrows are enabled in engine settings
       shapes:
-          chessBoardState.showPrincipalVariations
+          (chessBoardState.showPrincipalVariations && showPvArrows)
               ? chessBoardState.shapes
               : const ISet.empty(),
       // DISABLED: Manual piece movement disabled in analysis mode
@@ -1812,6 +1847,92 @@ class _AnalysisBoard extends ConsumerWidget {
       //   onPromotionSelection: notifier.onAnalysisPromotionSelection,
       // ),
       game: null, // Board is now read-only in analysis mode
+    );
+  }
+}
+
+class _DepthOverlay extends ConsumerWidget {
+  final double boardSize;
+  final bool isFlipped;
+  final bool showEngineAnalysis;
+
+  const _DepthOverlay({
+    required this.boardSize,
+    required this.isFlipped,
+    required this.showEngineAnalysis,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Read engine settings to check if depth overlay is enabled
+    final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
+    final showDepthOverlay = engineSettings?.showDepthOverlay ?? false;
+
+    // Don't show if either engine analysis or depth overlay is disabled
+    if (!showEngineAnalysis || !showDepthOverlay) {
+      return const SizedBox.shrink();
+    }
+
+    // Watch engine depth tracker for live depth display
+    final progressMap = ref.watch(engineDepthTrackerProvider);
+    EngineSearchProgress? gaugeProgress;
+    if (progressMap.containsKey(EngineComponent.evaluationGauge)) {
+      gaugeProgress = progressMap[EngineComponent.evaluationGauge];
+    } else if (progressMap.containsKey(EngineComponent.cascadeEval)) {
+      gaugeProgress = progressMap[EngineComponent.cascadeEval];
+    } else if (progressMap.containsKey(EngineComponent.principalVariation)) {
+      gaugeProgress = progressMap[EngineComponent.principalVariation];
+    }
+
+    // Don't show if no depth data available
+    if (gaugeProgress == null) {
+      return const SizedBox.shrink();
+    }
+
+    final depth = gaugeProgress.depth;
+    final knodes = gaugeProgress.kiloNodes;
+
+    return Positioned(
+      // Position in corner based on board orientation
+      bottom: isFlipped ? null : 8.h,
+      top: isFlipped ? 8.h : null,
+      right: 8.w,
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+        decoration: BoxDecoration(
+          color: kBlackColor.withValues(alpha: 0.7),
+          borderRadius: BorderRadius.circular(4.sp),
+          border: Border.all(
+            color: kWhiteColor.withValues(alpha: 0.2),
+            width: 1,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              'D:$depth',
+              style: TextStyle(
+                color: kWhiteColor,
+                fontSize: 11.f,
+                fontWeight: FontWeight.w700,
+                height: 1.0,
+              ),
+            ),
+            SizedBox(height: 2.h),
+            Text(
+              '${knodes}k',
+              style: TextStyle(
+                color: kWhiteColor.withValues(alpha: 0.7),
+                fontSize: 9.f,
+                fontWeight: FontWeight.w500,
+                height: 1.0,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

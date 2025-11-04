@@ -1,0 +1,448 @@
+import 'dart:convert';
+import 'package:chessever2/repository/engine_settings/models/engine_settings_model.dart';
+import 'package:flutter/foundation.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+/// Enum to identify which engine component is making the analysis request
+enum EngineComponent {
+  evaluationGauge,
+  principalVariation,
+  moveImpact,
+  cascadeEval,
+}
+
+/// Track the progress of an engine search
+class EngineSearchProgress {
+  static const int minReportDepth = 12;
+
+  EngineSearchProgress({
+    required int depth,
+    required this.kiloNodes,
+    this.fenFragment = '',
+    DateTime? timestamp,
+  })  : depth = depth < minReportDepth ? minReportDepth : depth,
+        timestamp = timestamp ?? DateTime.now();
+
+  final int depth;
+  final int kiloNodes;
+  final String fenFragment;
+  final DateTime timestamp;
+
+  EngineSearchProgress copyWith({
+    int? depth,
+    int? kiloNodes,
+    String? fenFragment,
+    DateTime? timestamp,
+  }) {
+    return EngineSearchProgress(
+      depth: depth ?? this.depth,
+      kiloNodes: kiloNodes ?? this.kiloNodes,
+      fenFragment: fenFragment ?? this.fenFragment,
+      timestamp: timestamp ?? this.timestamp,
+    );
+  }
+}
+
+String _componentLabel(EngineComponent component) {
+  switch (component) {
+    case EngineComponent.evaluationGauge:
+      return 'EvaluationGauge';
+    case EngineComponent.principalVariation:
+      return 'PrincipalVariation';
+    case EngineComponent.moveImpact:
+      return 'MoveImpact';
+    case EngineComponent.cascadeEval:
+      return 'CascadeEval';
+  }
+}
+
+/// Provider to track engine depth for each component
+class EngineDepthTrackerNotifier
+    extends StateNotifier<Map<EngineComponent, EngineSearchProgress>> {
+  EngineDepthTrackerNotifier() : super(const {});
+
+  void update({
+    required EngineComponent component,
+    required EngineSearchProgress progress,
+    String? context,
+  }) {
+    final label = _componentLabel(component);
+    final fenInfo = progress.fenFragment.isEmpty
+        ? ''
+        : ' (${progress.fenFragment.substring(0, 20.clamp(0, progress.fenFragment.length))})';
+    final ctx = (context == null || context.isEmpty) ? '' : ' [$context]';
+    debugPrint(
+      '🧠 DepthTracker: $label depth=${progress.depth} knodes=${progress.kiloNodes}$fenInfo$ctx',
+    );
+    state = {...state, component: progress};
+  }
+
+  void clear(EngineComponent component, {String? reason}) {
+    if (!state.containsKey(component)) return;
+    final label = _componentLabel(component);
+    final ctx = (reason == null || reason.isEmpty) ? '' : ' ($reason)';
+    debugPrint('🧠 DepthTracker: cleared $label$ctx');
+    state = Map.from(state)..remove(component);
+  }
+
+  void clearAll({String? reason}) {
+    if (state.isEmpty) return;
+    final ctx = (reason == null || reason.isEmpty) ? '' : ' ($reason)';
+    debugPrint('🧠 DepthTracker: cleared all$ctx');
+    state = const {};
+  }
+}
+
+final engineDepthTrackerProvider = StateNotifierProvider<
+    EngineDepthTrackerNotifier,
+    Map<EngineComponent, EngineSearchProgress>>((ref) => EngineDepthTrackerNotifier());
+
+/// Engine settings configuration class
+class EngineSettings {
+  const EngineSettings({
+    this.showEngineGauge = true,
+    this.showDepthOverlay = true,
+    this.showPvArrows = true,
+    this.searchTimeIndex = 2,
+    this.principalVariationCount = 3,
+  });
+
+  final bool showEngineGauge;
+  final bool showDepthOverlay;
+  final bool showPvArrows;
+  final int searchTimeIndex;
+  final int principalVariationCount;
+
+  static const int minPrincipalVariation = 1;
+  static const int maxPrincipalVariation = 5;
+
+  static const List<int?> _searchTimeSecondsOptions = <int?>[
+    5,
+    10,
+    20,
+    30,
+    60,
+    null, // null represents "unlimited" (infinite search)
+  ];
+
+  static const List<String> searchTimeLabels = <String>[
+    '5s',
+    '10s',
+    '20s',
+    '30s',
+    '60s',
+    '∞',
+  ];
+
+  static const Map<EngineComponent, double> _componentTimeMultipliers = {
+    EngineComponent.evaluationGauge: 1.0,
+    EngineComponent.principalVariation: 1.0,
+    EngineComponent.cascadeEval: 0.6,
+    EngineComponent.moveImpact: 0.4,
+  };
+
+  static const Map<EngineComponent, int?> _componentUnlimitedCaps = {
+    EngineComponent.evaluationGauge: null, // Allow true infinite search
+    EngineComponent.principalVariation: null, // Allow true infinite search
+    EngineComponent.cascadeEval: 45, // Cap at 45s for cascade
+    EngineComponent.moveImpact: 30, // Cap at 30s for move impact
+  };
+
+  /// Maximum depth limits for each component
+  static const Map<EngineComponent, int> _componentMaxDepth = {
+    EngineComponent.evaluationGauge: 99, // Eval bar can go deep
+    EngineComponent.principalVariation: 25, // PV analysis capped at 25 (50 half-moves)
+    EngineComponent.cascadeEval: 99, // Fallback eval can go deep
+    EngineComponent.moveImpact: 20, // Move impact doesn't need deep analysis
+  };
+
+  int maxDepthFor(EngineComponent component) {
+    return _componentMaxDepth[component] ?? 99;
+  }
+
+  EngineSettings copyWith({
+    bool? showEngineGauge,
+    bool? showDepthOverlay,
+    bool? showPvArrows,
+    int? searchTimeIndex,
+    int? principalVariationCount,
+  }) {
+    return EngineSettings(
+      showEngineGauge: showEngineGauge ?? this.showEngineGauge,
+      showDepthOverlay: showDepthOverlay ?? this.showDepthOverlay,
+      showPvArrows: showPvArrows ?? this.showPvArrows,
+      searchTimeIndex: searchTimeIndex ?? this.searchTimeIndex,
+      principalVariationCount:
+          (principalVariationCount ?? this.principalVariationCount)
+              .clamp(minPrincipalVariation, maxPrincipalVariation),
+    );
+  }
+
+  int? baseSearchTimeSeconds() {
+    final safeIndex =
+        searchTimeIndex.clamp(0, _searchTimeSecondsOptions.length - 1);
+    return _searchTimeSecondsOptions[safeIndex];
+  }
+
+  Duration? searchDurationFor(EngineComponent component) {
+    final baseSeconds = baseSearchTimeSeconds();
+    final multiplier = _componentTimeMultipliers[component] ?? 1.0;
+
+    if (baseSeconds == null) {
+      // Infinite search selected
+      final cappedSeconds = _componentUnlimitedCaps[component];
+      if (cappedSeconds == null) {
+        return null; // True infinite search
+      }
+      final cappedDuration = Duration(seconds: cappedSeconds);
+      return cappedDuration;
+    }
+
+    // Apply multiplier and clamp to reasonable range
+    final scaledMs =
+        (baseSeconds * 1000 * multiplier).round().clamp(2000, 180000);
+    return Duration(milliseconds: scaledMs);
+  }
+
+  String searchTimeLabel() {
+    final safeIndex = searchTimeIndex.clamp(0, searchTimeLabels.length - 1);
+    return searchTimeLabels[safeIndex];
+  }
+}
+
+/// Provider for managing engine settings with Supabase + SharedPreferences sync
+final engineSettingsProviderNew =
+    AsyncNotifierProvider<EngineSettingsNotifierNew, EngineSettings>(
+  EngineSettingsNotifierNew.new,
+);
+
+class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
+  static const String _cacheKey = 'cached_engine_settings';
+
+  SupabaseClient get _supabase => Supabase.instance.client;
+
+  @override
+  Future<EngineSettings> build() async {
+    return await _loadSettings();
+  }
+
+  Future<EngineSettings> _loadSettings() async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) {
+        debugPrint('[EngineSettings] No user logged in, returning defaults');
+        return const EngineSettings();
+      }
+
+      // Fetch from Supabase (source of truth)
+      final response = await _supabase
+          .from('user_engine_settings')
+          .select()
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      if (response == null) {
+        debugPrint('[EngineSettings] No settings found in Supabase, creating defaults');
+        // Save defaults to Supabase (upsert handles race conditions)
+        try {
+          await _saveToSupabase(const EngineSettings(), userId);
+        } catch (e) {
+          // Ignore duplicate errors - another process may have created it
+          debugPrint('[EngineSettings] Info: ${e.toString().contains('duplicate') ? 'Settings already exist' : 'Error creating defaults: $e'}');
+        }
+        return const EngineSettings();
+      }
+
+      final model = EngineSettingsModel.fromSupabase(response);
+      final settings = EngineSettings(
+        showEngineGauge: model.showEngineGauge,
+        showDepthOverlay: model.showDepthOverlay,
+        showPvArrows: model.showPvArrows,
+        searchTimeIndex: model.searchTimeIndex,
+        principalVariationCount: model.principalVariationCount,
+      );
+
+      // Cache locally
+      await _cacheSettings(settings);
+
+      debugPrint('[EngineSettings] Fetched settings from Supabase');
+      return settings;
+    } catch (e, st) {
+      debugPrint('[EngineSettings] Error fetching from Supabase: $e');
+      debugPrint('[EngineSettings] Stack: $st');
+
+      // Fallback to local cache
+      return await _getCachedSettings();
+    }
+  }
+
+  /// Toggle engine gauge visibility
+  Future<void> toggleEngineGauge(bool value) async {
+    final currentState = state.valueOrNull ?? const EngineSettings();
+    final newSettings = currentState.copyWith(showEngineGauge: value);
+    state = AsyncValue.data(newSettings);
+    await _persist(newSettings);
+  }
+
+  /// Toggle depth overlay visibility
+  Future<void> toggleDepthOverlay(bool value) async {
+    final currentState = state.valueOrNull ?? const EngineSettings();
+    final newSettings = currentState.copyWith(showDepthOverlay: value);
+    state = AsyncValue.data(newSettings);
+    await _persist(newSettings);
+  }
+
+  /// Toggle PV arrows visibility
+  Future<void> togglePvArrows(bool value) async {
+    final currentState = state.valueOrNull ?? const EngineSettings();
+    final newSettings = currentState.copyWith(showPvArrows: value);
+    state = AsyncValue.data(newSettings);
+    await _persist(newSettings);
+  }
+
+  /// Set search time index
+  Future<void> setSearchTimeIndex(int index) async {
+    final clamped = index.clamp(0, EngineSettings.searchTimeLabels.length - 1);
+    final currentState = state.valueOrNull ?? const EngineSettings();
+    final newSettings = currentState.copyWith(searchTimeIndex: clamped);
+    debugPrint('🔧 EngineSettings: Search time changed to ${newSettings.searchTimeLabel()}');
+    state = AsyncValue.data(newSettings);
+    await _persist(newSettings);
+
+    // Clear depth tracker when settings change to force fresh evaluation
+    ref.read(engineDepthTrackerProvider.notifier).clearAll(reason: 'settings changed');
+  }
+
+  /// Set principal variation count
+  Future<void> setPrincipalVariationCount(int count) async {
+    final clamped = count.clamp(
+      EngineSettings.minPrincipalVariation,
+      EngineSettings.maxPrincipalVariation,
+    );
+    final currentState = state.valueOrNull ?? const EngineSettings();
+    final newSettings = currentState.copyWith(principalVariationCount: clamped);
+    debugPrint('🔧 EngineSettings: PV count changed to $clamped lines');
+    state = AsyncValue.data(newSettings);
+    await _persist(newSettings);
+
+    // Clear depth tracker when settings change to force fresh evaluation
+    ref.read(engineDepthTrackerProvider.notifier).clearAll(reason: 'PV count changed');
+  }
+
+  /// Refresh settings from Supabase
+  Future<void> refresh() async {
+    state = const AsyncValue.loading();
+    state = await AsyncValue.guard(() => _loadSettings());
+  }
+
+  /// Sync settings from Supabase to local cache
+  Future<void> syncFromSupabase() async {
+    debugPrint('[EngineSettings] Starting sync...');
+    try {
+      await refresh();
+      debugPrint('[EngineSettings] Sync complete');
+    } catch (e, st) {
+      debugPrint('[EngineSettings] Error syncing: $e');
+      debugPrint('[EngineSettings] Stack: $st');
+    }
+  }
+
+  // Private methods
+
+  Future<void> _persist(EngineSettings settings) async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) {
+        debugPrint('[EngineSettings] No user logged in, skipping persist');
+        return;
+      }
+
+      // Save to Supabase
+      await _saveToSupabase(settings, userId);
+
+      // Cache locally
+      await _cacheSettings(settings);
+    } catch (e, st) {
+      debugPrint('[EngineSettings] Error persisting settings: $e');
+      debugPrint('[EngineSettings] Stack: $st');
+      rethrow;
+    }
+  }
+
+  Future<void> _saveToSupabase(EngineSettings settings, String userId) async {
+    try {
+      // Use upsert with onConflict to handle existing records
+      await _supabase.from('user_engine_settings').upsert(
+        {
+          'user_id': userId,
+          'show_engine_gauge': settings.showEngineGauge,
+          'show_depth_overlay': settings.showDepthOverlay,
+          'show_pv_arrows': settings.showPvArrows,
+          'search_time_index': settings.searchTimeIndex,
+          'principal_variation_count': settings.principalVariationCount,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        },
+        onConflict: 'user_id', // Specify conflict column
+      );
+      debugPrint('[EngineSettings] ✅ Saved to Supabase');
+    } catch (e) {
+      debugPrint('[EngineSettings] ❌ Error saving to Supabase: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> _cacheSettings(EngineSettings settings) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode({
+        'showEngineGauge': settings.showEngineGauge,
+        'showDepthOverlay': settings.showDepthOverlay,
+        'showPvArrows': settings.showPvArrows,
+        'searchTimeIndex': settings.searchTimeIndex,
+        'principalVariationCount': settings.principalVariationCount,
+      });
+      await prefs.setString(_cacheKey, json);
+      debugPrint('[EngineSettings] Cached settings locally');
+    } catch (e) {
+      debugPrint('[EngineSettings] Error caching settings: $e');
+    }
+  }
+
+  Future<EngineSettings> _getCachedSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString(_cacheKey);
+      if (json == null) {
+        debugPrint('[EngineSettings] No cached settings, using defaults');
+        return const EngineSettings();
+      }
+
+      final map = jsonDecode(json) as Map<String, dynamic>;
+      final settings = EngineSettings(
+        showEngineGauge: map['showEngineGauge'] as bool? ?? true,
+        showDepthOverlay: map['showDepthOverlay'] as bool? ?? true,
+        showPvArrows: map['showPvArrows'] as bool? ?? true,
+        searchTimeIndex: map['searchTimeIndex'] as int? ?? 2,
+        principalVariationCount: map['principalVariationCount'] as int? ?? 3,
+      );
+      debugPrint('[EngineSettings] Loaded settings from cache');
+      return settings;
+    } catch (e) {
+      debugPrint('[EngineSettings] Error getting cached settings: $e');
+      return const EngineSettings();
+    }
+  }
+
+  /// Clear cache (useful on sign out)
+  Future<void> clearCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_cacheKey);
+      debugPrint('[EngineSettings] Cleared cache');
+    } catch (e) {
+      debugPrint('[EngineSettings] Error clearing cache: $e');
+    }
+  }
+}

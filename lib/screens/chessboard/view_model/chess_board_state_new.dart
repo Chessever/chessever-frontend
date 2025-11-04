@@ -1,11 +1,15 @@
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:collection/collection.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:fast_immutable_collections/fast_immutable_collections.dart';
 
 class AnalysisLine {
+  static const ListEquality<String> _stringListEquality =
+      ListEquality<String>();
+
   final List<Move> moves;
   final List<String> sanMoves;
   final double? evaluation;
@@ -41,24 +45,40 @@ class AnalysisLine {
     );
   }
 
+  List<String> _uciMoves() =>
+      moves.map((move) => move.uci).toList(growable: false);
+
   @override
   bool operator ==(Object other) {
-    if (identical(this, other)) return true;
-    return other is AnalysisLine &&
-        other.evaluation == evaluation &&
+    if (identical(this, other)) {
+      return true;
+    }
+    if (other is! AnalysisLine) {
+      return false;
+    }
+    return other.evaluation == evaluation &&
         other.mate == mate &&
-        other.sanMoves.length == sanMoves.length;
+        _stringListEquality.equals(other.sanMoves, sanMoves) &&
+        _stringListEquality.equals(other._uciMoves(), _uciMoves());
   }
 
   @override
   int get hashCode {
-    return (evaluation?.hashCode ?? 0) ^
-        (mate?.hashCode ?? 0) ^
-        sanMoves.length.hashCode;
+    return Object.hash(
+      evaluation,
+      mate,
+      Object.hashAll(_uciMoves()),
+      Object.hashAll(sanMoves),
+    );
   }
 }
 
 class AnalysisBoardState {
+  static const ListEquality<String> _stringListEquality =
+      ListEquality<String>();
+  static const ListEquality<AnalysisLine> _analysisLineListEquality =
+      ListEquality<AnalysisLine>();
+
   final Move? lastMove;
   final NormalMove? promotionMove;
   final ValidMoves validMoves;
@@ -197,28 +217,74 @@ class AnalysisBoardState {
     ];
   }
 
+  static List<String> _movesToUci(List<Move> moves) =>
+      moves.map((move) => move.uci).toList(growable: false);
+
+  static List<String> _positionsToFen(List<Position> positions) =>
+      positions.map((position) => position.fen).toList(growable: false);
+
   @override
   bool operator ==(Object other) {
-    if (identical(this, other)) return true;
-    return other is AnalysisBoardState &&
-        other.currentMoveIndex == currentMoveIndex &&
-        other.position.fen == position.fen &&
-        other.moveSans.length == moveSans.length &&
+    if (identical(this, other)) {
+      return true;
+    }
+    if (other is! AnalysisBoardState) {
+      return false;
+    }
+
+    return other.currentMoveIndex == currentMoveIndex &&
         other.branchPointMoveIndex == branchPointMoveIndex &&
-        other.analysisMoves.length == analysisMoves.length;
+        other.position.fen == position.fen &&
+        _stringListEquality.equals(other.moveSans, moveSans) &&
+        _stringListEquality.equals(
+          _movesToUci(other.allMoves),
+          _movesToUci(allMoves),
+        ) &&
+        _stringListEquality.equals(
+          _positionsToFen(other.positionHistory),
+          _positionsToFen(positionHistory),
+        ) &&
+        _stringListEquality.equals(other.analysisMoveSans, analysisMoveSans) &&
+        _stringListEquality.equals(
+          _movesToUci(other.analysisMoves),
+          _movesToUci(analysisMoves),
+        ) &&
+        _stringListEquality.equals(
+          _positionsToFen(other.analysisPositionHistory),
+          _positionsToFen(analysisPositionHistory),
+        ) &&
+        _analysisLineListEquality.equals(
+          other.suggestionLines,
+          suggestionLines,
+        );
   }
 
   @override
   int get hashCode {
-    return currentMoveIndex.hashCode ^
-        position.fen.hashCode ^
-        moveSans.length.hashCode ^
-        (branchPointMoveIndex?.hashCode ?? 0) ^
-        analysisMoves.length.hashCode;
+    return Object.hashAll([
+      currentMoveIndex,
+      branchPointMoveIndex,
+      position.fen,
+      Object.hashAll(moveSans),
+      Object.hashAll(_movesToUci(allMoves)),
+      Object.hashAll(_positionsToFen(positionHistory)),
+      Object.hashAll(analysisMoveSans),
+      Object.hashAll(_movesToUci(analysisMoves)),
+      Object.hashAll(_positionsToFen(analysisPositionHistory)),
+      Object.hashAll(suggestionLines),
+    ]);
   }
 }
 
 class ChessBoardStateNew {
+  static const ListEquality<String> _stringListEquality =
+      ListEquality<String>();
+  static const ListEquality<int> _intListEquality = ListEquality<int>();
+  static const ListEquality<AnalysisLine> _analysisLineListEquality =
+      ListEquality<AnalysisLine>();
+  static const ListEquality<dynamic> _dynamicListEquality =
+      ListEquality<dynamic>();
+
   final Position? position;
   final Position? startingPosition;
   final Move? lastMove;
@@ -302,6 +368,9 @@ class ChessBoardStateNew {
   });
 
   static const _noChange = Object();
+
+  static List<String> _movesToUci(List<Move> moves) =>
+      moves.map((move) => move.uci).toList(growable: false);
 
   ChessBoardStateNew copyWith({
     Object? position = _noChange,
@@ -399,48 +468,111 @@ class ChessBoardStateNew {
 
   @override
   bool operator ==(Object other) {
-    if (identical(this, other)) return true;
-    return other is ChessBoardStateNew &&
-        other.game == game &&
+    if (identical(this, other)) {
+      return true;
+    }
+    if (other is! ChessBoardStateNew) {
+      return false;
+    }
+
+    final positionsEqual =
+        (other.position == null && position == null) ||
+        (other.position != null &&
+            position != null &&
+            other.position!.fen == position!.fen);
+    final startingPositionsEqual =
+        (other.startingPosition == null && startingPosition == null) ||
+        (other.startingPosition != null &&
+            startingPosition != null &&
+            other.startingPosition!.fen == startingPosition!.fen);
+    final lastMovesEqual =
+        (other.lastMove == null && lastMove == null) ||
+        (other.lastMove != null &&
+            lastMove != null &&
+            other.lastMove!.uci == lastMove!.uci);
+    final variantLastMovesEqual =
+        (other.variantBaseLastMove == null && variantBaseLastMove == null) ||
+        (other.variantBaseLastMove != null &&
+            variantBaseLastMove != null &&
+            other.variantBaseLastMove!.uci == variantBaseLastMove!.uci);
+
+    return other.game == game &&
+        positionsEqual &&
+        startingPositionsEqual &&
+        lastMovesEqual &&
         other.currentMoveIndex == currentMoveIndex &&
         other.isPlaying == isPlaying &&
         other.isBoardFlipped == isBoardFlipped &&
         other.isLoadingMoves == isLoadingMoves &&
         other.evaluation == evaluation &&
         other.isEvaluating == isEvaluating &&
+        other.mate == mate &&
         other.pgnData == pgnData &&
         other.fenData == fenData &&
         other.isAnalysisMode == isAnalysisMode &&
-        other.mate == mate &&
-        other.selectedVariantIndex == selectedVariantIndex &&
         other.showEngineAnalysis == showEngineAnalysis &&
         other.showPrincipalVariations == showPrincipalVariations &&
         other.hasUnseenMoves == hasUnseenMoves &&
         other.variantBaseFen == variantBaseFen &&
-        other.principalVariations.length == principalVariations.length &&
-        other.analysisState.suggestionLines.length ==
-            analysisState.suggestionLines.length;
+        _dynamicListEquality.equals(
+          other.variantBaseMovePointer,
+          variantBaseMovePointer,
+        ) &&
+        variantLastMovesEqual &&
+        other.variantBaseMoveIndex == variantBaseMoveIndex &&
+        other.selectedVariantIndex == selectedVariantIndex &&
+        other.shapes == shapes &&
+        other.analysisState == analysisState &&
+        _stringListEquality.equals(other.moveSans, moveSans) &&
+        _stringListEquality.equals(other.moveTimes, moveTimes) &&
+        _stringListEquality.equals(
+          _movesToUci(other.allMoves),
+          _movesToUci(allMoves),
+        ) &&
+        _analysisLineListEquality.equals(
+          other.principalVariations,
+          principalVariations,
+        ) &&
+        _intListEquality.equals(
+          other.variantMovePointer,
+          variantMovePointer,
+        );
   }
 
   @override
   int get hashCode {
-    return game.hashCode ^
-        currentMoveIndex.hashCode ^
-        isPlaying.hashCode ^
-        isBoardFlipped.hashCode ^
-        isLoadingMoves.hashCode ^
-        (evaluation?.hashCode ?? 0) ^
-        isEvaluating.hashCode ^
-        (pgnData?.hashCode ?? 0) ^
-        (fenData?.hashCode ?? 0) ^
-        isAnalysisMode.hashCode ^
-        (mate?.hashCode ?? 0) ^
-        (selectedVariantIndex?.hashCode ?? 0) ^
-        showEngineAnalysis.hashCode ^
-        showPrincipalVariations.hashCode ^
-        hasUnseenMoves.hashCode ^
-        (variantBaseFen?.hashCode ?? 0) ^
-        principalVariations.length.hashCode ^
-        analysisState.suggestionLines.length.hashCode;
+    return Object.hashAll([
+      game,
+      position?.fen,
+      startingPosition?.fen,
+      lastMove?.uci,
+      currentMoveIndex,
+      isPlaying,
+      isBoardFlipped,
+      isLoadingMoves,
+      evaluation,
+      isEvaluating,
+      mate,
+      pgnData,
+      fenData,
+      isAnalysisMode,
+      showEngineAnalysis,
+      showPrincipalVariations,
+      hasUnseenMoves,
+      variantBaseFen,
+      variantBaseMovePointer == null
+          ? null
+          : Object.hashAll(variantBaseMovePointer!),
+      variantBaseLastMove?.uci,
+      variantBaseMoveIndex,
+      selectedVariantIndex,
+      shapes,
+      analysisState,
+      Object.hashAll(_movesToUci(allMoves)),
+      Object.hashAll(moveSans),
+      Object.hashAll(moveTimes),
+      Object.hashAll(principalVariations),
+      Object.hashAll(variantMovePointer),
+    ]);
   }
 }
