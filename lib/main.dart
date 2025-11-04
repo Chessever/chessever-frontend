@@ -197,7 +197,7 @@ Future<void> _initRevenueCat() async {
 /// Update CACHE_VERSION number to trigger cache clearing
 Future<void> _clearEvaluationCache() async {
   try {
-    const int cacheVersion = 4; // Update this number to clear cache
+    const int cacheVersion = 5; // Update this number to clear cache
     const String versionKey = 'eval_cache_clear_version';
     const String evalPrefix = 'cloud_eval_';
 
@@ -234,7 +234,7 @@ Future<void> _clearEvaluationCache() async {
 /// This is a one-time reset for beta users to ensure clean transition
 Future<void> _resetFavoritesForMigration() async {
   try {
-    const int migrationVersion = 1; // Update this to trigger reset
+    const int migrationVersion = 2; // Update this to trigger reset
     const String versionKey = 'favorites_reset_version';
 
     final prefs = await SharedPreferences.getInstance();

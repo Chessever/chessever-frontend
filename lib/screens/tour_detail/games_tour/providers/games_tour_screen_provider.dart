@@ -214,25 +214,7 @@ class GamesTourScreenProvider
 
       final sortedGames = List<Games>.from(allGames);
       sortedGames.sort((a, b) {
-        // FIRST PRIORITY: Live games always at top (status "*")
-        final aLive = a.status == "*";
-        final bLive = b.status == "*";
-        if (aLive && !bLive) return -1;
-        if (!aLive && bLive) return 1;
-
-        // SECOND PRIORITY: If no live games, show upcoming round at top
-        if (!hasLiveGames && upcomingRoundNumber != null) {
-          final (roundA, _) = gameInfo[a.id] ?? (0, 0);
-          final (roundB, _) = gameInfo[b.id] ?? (0, 0);
-
-          final aUpcoming = roundA == upcomingRoundNumber;
-          final bUpcoming = roundB == upcomingRoundNumber;
-
-          if (aUpcoming && !bUpcoming) return -1;
-          if (!aUpcoming && bUpcoming) return 1;
-        }
-
-        // THIRD PRIORITY: Pinned games (only in non-search mode)
+        // FIRST PRIORITY: Pinned games (only in non-search mode)
         if (!isSearchMode) {
           final aPinned = pinnedIds.contains(a.id);
           final bPinned = pinnedIds.contains(b.id);
@@ -244,7 +226,7 @@ class GamesTourScreenProvider
         final (roundA, gameA) = gameInfo[a.id] ?? (0, 0);
         final (roundB, gameB) = gameInfo[b.id] ?? (0, 0);
 
-        // Fourth, sort by round number DESCENDING (to match the round list order)
+        // Second, sort by round number DESCENDING (to match the round list order)
         if (roundA != roundB) return roundB.compareTo(roundA);
 
         // Within same round, sort by game number DESCENDING (Game 2 before Game 1)
@@ -447,13 +429,7 @@ class GamesTourScreenProvider
 
     final sortedGames = List<Games>.from(games);
     sortedGames.sort((a, b) {
-      // FIRST PRIORITY: Live games always at top
-      final aLive = a.status == "*";
-      final bLive = b.status == "*";
-      if (aLive && !bLive) return -1;
-      if (!aLive && bLive) return 1;
-
-      // SECOND PRIORITY: Pinned games
+      // FIRST PRIORITY: Pinned games
       final aPinned = pinnedIds.contains(a.id);
       final bPinned = pinnedIds.contains(b.id);
       if (aPinned && !bPinned) return -1;

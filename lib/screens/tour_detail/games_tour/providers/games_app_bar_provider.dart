@@ -3,6 +3,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
 import 'package:flutter/animation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
@@ -138,6 +139,11 @@ class _GamesAppBarNotifier
     final allRounds = vm?.gamesAppBarModels ?? [];
     final selectedId = vm?.selectedId;
     final userSelected = vm?.userSelectedId ?? false;
+
+    // NOTE: For knockout tournaments, the dropdown and scroll behavior needs special handling
+    // Knockout tournaments render ALL games grouped by matches (player pairs) in one section,
+    // not split by database rounds. This makes round-based scrolling less meaningful.
+    // TODO: Consider hiding/adapting the dropdown for knockout tournaments
 
     // Smart filtering: Match the logic in games_tour_content_body.dart
     final gamesByRound = <String, int>{};
@@ -304,22 +310,91 @@ class _GamesAppBarNotifier
               .map((r) => GamesAppBarModel.fromRound(r, _liveRounds))
               .toList();
 
-      _sortRounds(models);
+      // Check if this is a knockout tournament and group sub-rounds
+      final processedModels = await _processKnockoutRoundsIfNeeded(models);
 
-      await _applySelectionFrom(models, tourId!);
+      _sortRounds(processedModels);
+
+      await _applySelectionFrom(processedModels, tourId!);
     } catch (e, st) {
       state = AsyncValue.error(e, st);
     }
+  }
+
+  /// Process knockout tournament rounds: group sub-rounds into logical tournament rounds
+  Future<List<GamesAppBarModel>> _processKnockoutRoundsIfNeeded(
+    List<GamesAppBarModel> models,
+  ) async {
+    if (models.isEmpty) return models;
+
+    // Get all games to check if this is a knockout tournament
+    final allGames =
+        ref.read(gamesTourScreenProvider).valueOrNull?.gamesTourModels ?? [];
+
+    if (allGames.isEmpty) return models;
+
+    // Check if this is a knockout tournament
+    final isKnockoutTournament = KnockoutMatchDetector.isKnockoutMatchFormat(allGames);
+
+    if (!isKnockoutTournament) return models;
+
+    // For knockout tournaments, group all sub-rounds into one logical "Round 1"
+    // All current games are part of Round 1 (game-1, game-2, tiebreaks, etc.)
+
+    // Determine the aggregated round status
+    RoundStatus roundStatus = RoundStatus.ongoing;
+    if (models.any((m) => m.roundStatus == RoundStatus.live)) {
+      roundStatus = RoundStatus.live;
+    } else if (models.any((m) => m.roundStatus == RoundStatus.ongoing)) {
+      roundStatus = RoundStatus.ongoing;
+    } else if (models.every((m) => m.roundStatus == RoundStatus.completed)) {
+      roundStatus = RoundStatus.completed;
+    } else if (models.every((m) => m.roundStatus == RoundStatus.upcoming)) {
+      roundStatus = RoundStatus.upcoming;
+    }
+
+    // Use the earliest start time
+    final startsAt = models
+        .map((m) => m.startsAt)
+        .whereType<DateTime>()
+        .fold<DateTime?>(null, (earliest, date) {
+      if (earliest == null) return date;
+      return date.isBefore(earliest) ? date : earliest;
+    });
+
+    // Create a single logical round
+    final logicalRound = GamesAppBarModel(
+      id: 'knockout-round-1',
+      name: 'Round 1',
+      startsAt: startsAt,
+      roundStatus: roundStatus,
+    );
+
+    return [logicalRound];
   }
 
   Map<String, int> _buildRoundGameCounts() {
     final games =
         ref.read(gamesTourScreenProvider).valueOrNull?.gamesTourModels ??
         const <GamesTourModel>[];
+
+    if (games.isEmpty) return {};
+
+    // Check if this is a knockout tournament
+    final isKnockoutTournament = KnockoutMatchDetector.isKnockoutMatchFormat(games);
+
     final counts = <String, int>{};
-    for (final game in games) {
-      counts.update(game.roundId, (value) => value + 1, ifAbsent: () => 1);
+
+    if (isKnockoutTournament) {
+      // For knockout tournaments, all games belong to the logical 'knockout-round-1'
+      counts['knockout-round-1'] = games.length;
+    } else {
+      // For regular tournaments, count by actual round ID
+      for (final game in games) {
+        counts.update(game.roundId, (value) => value + 1, ifAbsent: () => 1);
+      }
     }
+
     return counts;
   }
 
