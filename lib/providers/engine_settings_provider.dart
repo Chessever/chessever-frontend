@@ -22,8 +22,8 @@ class EngineSearchProgress {
     required this.kiloNodes,
     this.fenFragment = '',
     DateTime? timestamp,
-  })  : depth = depth < minReportDepth ? minReportDepth : depth,
-        timestamp = timestamp ?? DateTime.now();
+  }) : depth = depth < minReportDepth ? minReportDepth : depth,
+       timestamp = timestamp ?? DateTime.now();
 
   final int depth;
   final int kiloNodes;
@@ -69,9 +69,12 @@ class EngineDepthTrackerNotifier
     String? context,
   }) {
     final label = _componentLabel(component);
-    final fenInfo = progress.fenFragment.isEmpty
-        ? ''
-        : ' (${progress.fenFragment.substring(0, 20.clamp(0, progress.fenFragment.length))})';
+    final fragment = progress.fenFragment;
+    final fragmentLength = fragment.length < 20 ? fragment.length : 20;
+    final fragmentPreview = fragment.substring(0, fragmentLength);
+    final fragmentSuffix = fragment.length > fragmentLength ? '...' : '';
+    final fenInfo =
+        fragment.isEmpty ? '' : ' ($fragmentPreview$fragmentSuffix)';
     final ctx = (context == null || context.isEmpty) ? '' : ' [$context]';
     debugPrint(
       '🧠 DepthTracker: $label depth=${progress.depth} knodes=${progress.kiloNodes}$fenInfo$ctx',
@@ -96,8 +99,60 @@ class EngineDepthTrackerNotifier
 }
 
 final engineDepthTrackerProvider = StateNotifierProvider<
-    EngineDepthTrackerNotifier,
-    Map<EngineComponent, EngineSearchProgress>>((ref) => EngineDepthTrackerNotifier());
+  EngineDepthTrackerNotifier,
+  Map<EngineComponent, EngineSearchProgress>
+>((ref) => EngineDepthTrackerNotifier());
+
+/// Represents the most relevant engine depth snapshot at a moment in time.
+class EngineDepthSnapshot {
+  final EngineComponent component;
+  final EngineSearchProgress progress;
+
+  const EngineDepthSnapshot({required this.component, required this.progress});
+}
+
+/// Priority order for selecting the most relevant engine component.
+const List<EngineComponent> _engineDepthPriority = <EngineComponent>[
+  EngineComponent.evaluationGauge,
+  EngineComponent.principalVariation,
+  EngineComponent.cascadeEval,
+  EngineComponent.moveImpact,
+];
+
+/// Central provider exposing the latest engine depth snapshot regardless of source.
+final engineDepthStatusProvider = Provider<EngineDepthSnapshot?>((ref) {
+  final depthMap = ref.watch(engineDepthTrackerProvider);
+  if (depthMap.isEmpty) {
+    return null;
+  }
+
+  for (final component in _engineDepthPriority) {
+    final progress = depthMap[component];
+    if (progress != null) {
+      return EngineDepthSnapshot(component: component, progress: progress);
+    }
+  }
+
+  // Fallback: return the most recent entry by timestamp when priority components are absent
+  EngineComponent? latestComponent;
+  EngineSearchProgress? latestProgress;
+  for (final entry in depthMap.entries) {
+    if (latestProgress == null ||
+        entry.value.timestamp.isAfter(latestProgress.timestamp)) {
+      latestComponent = entry.key;
+      latestProgress = entry.value;
+    }
+  }
+
+  if (latestComponent == null || latestProgress == null) {
+    return null;
+  }
+
+  return EngineDepthSnapshot(
+    component: latestComponent,
+    progress: latestProgress,
+  );
+});
 
 /// Engine settings configuration class
 class EngineSettings {
@@ -153,7 +208,8 @@ class EngineSettings {
   /// Maximum depth limits for each component
   static const Map<EngineComponent, int> _componentMaxDepth = {
     EngineComponent.evaluationGauge: 99, // Eval bar can go deep
-    EngineComponent.principalVariation: 25, // PV analysis capped at 25 (50 half-moves)
+    EngineComponent.principalVariation:
+        25, // PV analysis capped at 25 (50 half-moves)
     EngineComponent.cascadeEval: 99, // Fallback eval can go deep
     EngineComponent.moveImpact: 20, // Move impact doesn't need deep analysis
   };
@@ -174,15 +230,17 @@ class EngineSettings {
       showDepthOverlay: showDepthOverlay ?? this.showDepthOverlay,
       showPvArrows: showPvArrows ?? this.showPvArrows,
       searchTimeIndex: searchTimeIndex ?? this.searchTimeIndex,
-      principalVariationCount:
-          (principalVariationCount ?? this.principalVariationCount)
-              .clamp(minPrincipalVariation, maxPrincipalVariation),
+      principalVariationCount: (principalVariationCount ??
+              this.principalVariationCount)
+          .clamp(minPrincipalVariation, maxPrincipalVariation),
     );
   }
 
   int? baseSearchTimeSeconds() {
-    final safeIndex =
-        searchTimeIndex.clamp(0, _searchTimeSecondsOptions.length - 1);
+    final safeIndex = searchTimeIndex.clamp(
+      0,
+      _searchTimeSecondsOptions.length - 1,
+    );
     return _searchTimeSecondsOptions[safeIndex];
   }
 
@@ -201,8 +259,10 @@ class EngineSettings {
     }
 
     // Apply multiplier and clamp to reasonable range
-    final scaledMs =
-        (baseSeconds * 1000 * multiplier).round().clamp(2000, 180000);
+    final scaledMs = (baseSeconds * 1000 * multiplier).round().clamp(
+      2000,
+      180000,
+    );
     return Duration(milliseconds: scaledMs);
   }
 
@@ -215,8 +275,8 @@ class EngineSettings {
 /// Provider for managing engine settings with Supabase + SharedPreferences sync
 final engineSettingsProviderNew =
     AsyncNotifierProvider<EngineSettingsNotifierNew, EngineSettings>(
-  EngineSettingsNotifierNew.new,
-);
+      EngineSettingsNotifierNew.new,
+    );
 
 class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
   static const String _cacheKey = 'cached_engine_settings';
@@ -237,20 +297,25 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
       }
 
       // Fetch from Supabase (source of truth)
-      final response = await _supabase
-          .from('user_engine_settings')
-          .select()
-          .eq('user_id', userId)
-          .maybeSingle();
+      final response =
+          await _supabase
+              .from('user_engine_settings')
+              .select()
+              .eq('user_id', userId)
+              .maybeSingle();
 
       if (response == null) {
-        debugPrint('[EngineSettings] No settings found in Supabase, creating defaults');
+        debugPrint(
+          '[EngineSettings] No settings found in Supabase, creating defaults',
+        );
         // Save defaults to Supabase (upsert handles race conditions)
         try {
           await _saveToSupabase(const EngineSettings(), userId);
         } catch (e) {
           // Ignore duplicate errors - another process may have created it
-          debugPrint('[EngineSettings] Info: ${e.toString().contains('duplicate') ? 'Settings already exist' : 'Error creating defaults: $e'}');
+          debugPrint(
+            '[EngineSettings] Info: ${e.toString().contains('duplicate') ? 'Settings already exist' : 'Error creating defaults: $e'}',
+          );
         }
         return const EngineSettings();
       }
@@ -307,12 +372,16 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
     final clamped = index.clamp(0, EngineSettings.searchTimeLabels.length - 1);
     final currentState = state.valueOrNull ?? const EngineSettings();
     final newSettings = currentState.copyWith(searchTimeIndex: clamped);
-    debugPrint('🔧 EngineSettings: Search time changed to ${newSettings.searchTimeLabel()}');
+    debugPrint(
+      '🔧 EngineSettings: Search time changed to ${newSettings.searchTimeLabel()}',
+    );
     state = AsyncValue.data(newSettings);
     await _persist(newSettings);
 
     // Clear depth tracker when settings change to force fresh evaluation
-    ref.read(engineDepthTrackerProvider.notifier).clearAll(reason: 'settings changed');
+    ref
+        .read(engineDepthTrackerProvider.notifier)
+        .clearAll(reason: 'settings changed');
   }
 
   /// Set principal variation count
@@ -328,7 +397,9 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
     await _persist(newSettings);
 
     // Clear depth tracker when settings change to force fresh evaluation
-    ref.read(engineDepthTrackerProvider.notifier).clearAll(reason: 'PV count changed');
+    ref
+        .read(engineDepthTrackerProvider.notifier)
+        .clearAll(reason: 'PV count changed');
   }
 
   /// Refresh settings from Supabase

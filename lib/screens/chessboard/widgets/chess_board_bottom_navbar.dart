@@ -33,46 +33,53 @@ class ChessSvgBottomNavbar extends StatelessWidget {
       iconColor = kWhiteColor70; // Use transparent white when inactive
     }
 
+    final depthStyle = TextStyle(
+      color: iconColor,
+      fontSize: 9.f,
+      fontWeight: FontWeight.w600,
+      height: 1.0,
+      shadows: [
+        Shadow(
+          color: Colors.black.withValues(alpha: 0.35),
+          offset: Offset(0, 1.sp),
+          blurRadius: 2.sp,
+        ),
+      ],
+    );
+
+    final bool showDepth = depthText != null && depthText!.isNotEmpty;
+
     return GestureDetector(
       onTap: onPressed,
       onLongPress: onLongPress,
+      behavior: HitTestBehavior.opaque,
       child: SizedBox(
         width: width,
+        height: 48.h,
         child: Padding(
-          padding: EdgeInsets.symmetric(vertical: 8.h),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
+          padding: EdgeInsets.symmetric(vertical: 8.h, horizontal: 4.w),
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.center,
             children: [
-              SvgWidget(
-                svgPath,
-                height: 24.h,
-                width: 24.w,
-                colorFilter: ColorFilter.mode(
-                  iconColor,
-                  BlendMode.srcIn,
-                ),
-              ),
-              if (depthText != null) ...[
-                SizedBox(height: 2.h),
-                Text(
-                  depthText!,
-                  style: TextStyle(
-                    // Match icon color: bright when active, dimmed when inactive
-                    color: iconColor,
-                    fontSize: 9.f,
-                    fontWeight: FontWeight.w600,
-                    height: 1.0,
-                    shadows: [
-                      Shadow(
-                        color: Colors.black.withValues(alpha: 0.35),
-                        offset: Offset(0, 1.sp),
-                        blurRadius: 2.sp,
-                      ),
-                    ],
+              Align(
+                alignment:
+                    showDepth ? Alignment.topCenter : Alignment.center,
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: showDepth ? 10.h : 0),
+                  child: SvgWidget(
+                    svgPath,
+                    height: 24.h,
+                    width: 24.w,
+                    colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
                   ),
                 ),
-              ],
+              ),
+              if (showDepth)
+                Positioned(
+                  bottom: 0,
+                  child: Text(depthText!, style: depthStyle),
+                ),
             ],
           ),
         ),
@@ -128,11 +135,7 @@ class ChessSvgBottomNavbarWithLongPress extends StatelessWidget {
             ),
             // Show red dot badge on top-right corner if showBadge is true
             if (showBadge && onPressed != null)
-              Positioned(
-                top: 0,
-                right: 0,
-                child: _UnseenMovesBadge(),
-              ),
+              Positioned(top: 0, right: 0, child: _UnseenMovesBadge()),
           ],
         ),
       ),
@@ -160,9 +163,10 @@ class _UnseenMovesBadgeState extends State<_UnseenMovesBadge>
       duration: const Duration(milliseconds: 800),
       vsync: this,
     );
-    _animation = Tween<double>(begin: 0.3, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
+    _animation = Tween<double>(
+      begin: 0.3,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
     _controller.repeat(reverse: true);
   }
 

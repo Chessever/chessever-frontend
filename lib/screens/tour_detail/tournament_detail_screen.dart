@@ -182,11 +182,13 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   }
 
   Widget _buildErrorAppBar(Object error) {
+    final errorString = error.toString();
+    final previewLength = errorString.length < 20 ? errorString.length : 20;
+    final errorPreview = errorString.substring(0, previewLength);
+    final suffix = errorString.length > previewLength ? '...' : '';
     return Column(
       children: [
-        _LoadingAppBarWithTitle(
-          title: "Error: ${error.toString().substring(0, 20)}...",
-        ),
+        _LoadingAppBarWithTitle(title: "Error: $errorPreview$suffix"),
         SizedBox(height: 8.h),
         _buildSegmentedSwitcher(TournamentDetailScreenMode.games, (index) {}),
       ],

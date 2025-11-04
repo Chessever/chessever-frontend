@@ -44,38 +44,32 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final width = MediaQuery.of(context).size.width / 4; // 4 buttons now
 
-    // Watch engine depth tracker for live depth display
-    final progressMap = ref.watch(engineDepthTrackerProvider);
-
-    EngineComponent? activeComponent;
-    EngineSearchProgress? gaugeProgress;
-
-    if (progressMap.containsKey(EngineComponent.evaluationGauge)) {
-      activeComponent = EngineComponent.evaluationGauge;
-      gaugeProgress = progressMap[EngineComponent.evaluationGauge];
-    } else if (progressMap.containsKey(EngineComponent.cascadeEval)) {
-      activeComponent = EngineComponent.cascadeEval;
-      gaugeProgress = progressMap[EngineComponent.cascadeEval];
-    } else if (progressMap.containsKey(EngineComponent.principalVariation)) {
-      activeComponent = EngineComponent.principalVariation;
-      gaugeProgress = progressMap[EngineComponent.principalVariation];
-    }
+    // Watch the centralized engine depth status provider
+    final depthSnapshot = ref.watch(engineDepthStatusProvider);
+    final activeComponent = depthSnapshot?.component;
+    final gaugeProgress = depthSnapshot?.progress;
 
     // Format depth text like "D:12"
-    final depthText = gaugeProgress != null
-        ? 'D:${gaugeProgress.depth.clamp(0, 99).toString().padLeft(2, '0')}'
-        : null;
+    final depthText =
+        gaugeProgress != null
+            ? 'D:${gaugeProgress.depth.clamp(0, 99).toString().padLeft(2, '0')}'
+            : null;
 
     // COMPREHENSIVE DEBUG LOGGING - Verify dynamic depth search is working
     if (showEngineAnalysis) {
       if (depthText != null) {
+        final fenFragment = gaugeProgress!.fenFragment;
+        final fragmentLength =
+            fenFragment.length < 20 ? fenFragment.length : 20;
+        final fragmentPreview = fenFragment.substring(0, fragmentLength);
+        final fragmentSuffix = fenFragment.length > fragmentLength ? '...' : '';
         debugPrint(
           '📊 ═══ DEPTH DISPLAY UPDATE (Game $gameIndex) ═══\n'
-          '   Depth: ${gaugeProgress!.depth}\n'
+          '   Depth: ${gaugeProgress.depth}\n'
           '   Nodes: ${gaugeProgress.kiloNodes}k\n'
           '   Display: $depthText\n'
           '   Component: ${activeComponent ?? EngineComponent.evaluationGauge}\n'
-          '   FEN Fragment: ${gaugeProgress.fenFragment.substring(0, 20)}...\n'
+          '   FEN Fragment: $fragmentPreview$fragmentSuffix\n'
           '   ═══════════════════════════════════════',
         );
       } else {

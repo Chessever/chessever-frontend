@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.dart';
@@ -95,39 +96,50 @@ class ChessBoardScreenNotifierNew
     parseMoves();
 
     // Listen for engine settings changes and clear cache to force re-evaluation
-    ref.listen<AsyncValue<EngineSettings>>(
-      engineSettingsProviderNew,
-      (previous, next) {
-        final prevValue = previous?.value;
-        final nextValue = next.value;
+    ref.listen<AsyncValue<EngineSettings>>(engineSettingsProviderNew, (
+      previous,
+      next,
+    ) {
+      final prevValue = previous?.value;
+      final nextValue = next.value;
 
-        if (prevValue != nextValue && nextValue != null) {
-          debugPrint('');
-          debugPrint('🔄 ═══ ENGINE SETTINGS CHANGED ═══');
-          debugPrint('   Previous:');
-          debugPrint('     - Search Time: ${prevValue?.searchTimeLabel() ?? "null"}');
-          debugPrint('     - PV Count: ${prevValue?.principalVariationCount ?? "null"}');
-          debugPrint('   New:');
-          debugPrint('     - Search Time: ${nextValue.searchTimeLabel()}');
-          debugPrint('     - PV Count: ${nextValue.principalVariationCount}');
-          debugPrint('     - Search Duration: ${nextValue.searchDurationFor(EngineComponent.evaluationGauge)?.inSeconds}s');
-          debugPrint('     - Max Depth: ${nextValue.maxDepthFor(EngineComponent.evaluationGauge)}');
-          debugPrint('');
+      if (prevValue != nextValue && nextValue != null) {
+        debugPrint('');
+        debugPrint('🔄 ═══ ENGINE SETTINGS CHANGED ═══');
+        debugPrint('   Previous:');
+        debugPrint(
+          '     - Search Time: ${prevValue?.searchTimeLabel() ?? "null"}',
+        );
+        debugPrint(
+          '     - PV Count: ${prevValue?.principalVariationCount ?? "null"}',
+        );
+        debugPrint('   New:');
+        debugPrint('     - Search Time: ${nextValue.searchTimeLabel()}');
+        debugPrint('     - PV Count: ${nextValue.principalVariationCount}');
+        debugPrint(
+          '     - Search Duration: ${nextValue.searchDurationFor(EngineComponent.evaluationGauge)?.inSeconds}s',
+        );
+        debugPrint(
+          '     - Max Depth: ${nextValue.maxDepthFor(EngineComponent.evaluationGauge)}',
+        );
+        debugPrint('');
 
-          _clearEvaluationCache();
+        _clearEvaluationCache();
 
-          // Force re-evaluation with new settings
-          debugPrint('   → Forcing re-evaluation with new MultiPV=${nextValue.principalVariationCount}...');
-          _evaluatePosition(force: true);
-          debugPrint('   ✅ Re-evaluation triggered');
-        }
-      },
-    );
+        // Force re-evaluation with new settings
+        debugPrint(
+          '   → Forcing re-evaluation with new MultiPV=${nextValue.principalVariationCount}...',
+        );
+        _evaluatePosition(force: true);
+        debugPrint('   ✅ Re-evaluation triggered');
+      }
+    });
   }
 
   /// Clear all evaluation caches to force fresh evaluations
   void _clearEvaluationCache() {
-    final totalItems = _evaluationCache.length + _pvCache.length + _mateCache.length;
+    final totalItems =
+        _evaluationCache.length + _pvCache.length + _mateCache.length;
     _evaluationCache.clear();
     _pvCache.clear();
     _mateCache.clear();
@@ -214,13 +226,9 @@ class ChessBoardScreenNotifierNew
                 gameData['last_move_time'] != null
                     ? DateTime.tryParse(gameData['last_move_time'] as String)
                     : game.lastMoveTime,
-            whiteClockSeconds:
-                (gameData['last_clock_white'] as num?)?.round(),
-            blackClockSeconds:
-                (gameData['last_clock_black'] as num?)?.round(),
-            gameStatus: _parseGameStatus(
-              gameData['status'] as String? ?? '*',
-            ),
+            whiteClockSeconds: (gameData['last_clock_white'] as num?)?.round(),
+            blackClockSeconds: (gameData['last_clock_black'] as num?)?.round(),
+            gameStatus: _parseGameStatus(gameData['status'] as String? ?? '*'),
           );
 
           // CRITICAL: Update state immediately with new game object to show clock changes
@@ -1667,11 +1675,15 @@ class ChessBoardScreenNotifierNew
     // This prevents cloud cache pollution from breaking the entire cascade
     final validPvs = pvs.where((pv) => pv.moves.trim().isNotEmpty).toList();
     if (validPvs.isEmpty) {
-      debugPrint('⚠️ BUILD PV: All PVs have empty moves - likely stale cloud cache');
+      debugPrint(
+        '⚠️ BUILD PV: All PVs have empty moves - likely stale cloud cache',
+      );
       return const [];
     }
 
-    debugPrint('🎯 BUILD PV: Starting with ${validPvs.length} valid PVs (filtered ${pvs.length - validPvs.length} empty) for $fen');
+    debugPrint(
+      '🎯 BUILD PV: Starting with ${validPvs.length} valid PVs (filtered ${pvs.length - validPvs.length} empty) for $fen',
+    );
 
     // OPTIMIZATION: Skip validation check - worker will filter out invalid moves
     // The validation was making PV cards load slowly by doing upfront position creation
@@ -2190,10 +2202,24 @@ class ChessBoardScreenNotifierNew
         return;
       }
 
+      final depthTracker = ref.read(engineDepthTrackerProvider.notifier);
+
       // CHECKMATE DETECTION: If position is checkmate, set mate=0 and high eval immediately
       if (currentPosition!.isCheckmate) {
         debugPrint('🎯 EVAL: Position is checkmate, setting mate=0');
-        final checkmateEval = currentPosition.turn == Side.white ? -100.0 : 100.0; // Side that got mated loses
+        depthTracker.clear(
+          EngineComponent.evaluationGauge,
+          reason: 'checkmate',
+        );
+        depthTracker.clear(
+          EngineComponent.principalVariation,
+          reason: 'checkmate',
+        );
+        depthTracker.clear(EngineComponent.cascadeEval, reason: 'checkmate');
+        final checkmateEval =
+            currentPosition.turn == Side.white
+                ? -100.0
+                : 100.0; // Side that got mated loses
         state = AsyncValue.data(
           initialState.copyWith(
             evaluation: checkmateEval,
@@ -2214,12 +2240,27 @@ class ChessBoardScreenNotifierNew
         // PERFORMANCE: Return cached result immediately - no artificial delay
         // The "..." indicator will briefly flash, giving visual feedback
 
+        depthTracker.clear(
+          EngineComponent.evaluationGauge,
+          reason: 'cached result',
+        );
+        depthTracker.clear(
+          EngineComponent.principalVariation,
+          reason: 'cached result',
+        );
+        depthTracker.clear(
+          EngineComponent.cascadeEval,
+          reason: 'cached result',
+        );
+
         // Check if evaluation was cancelled
         if (!mounted || _cancelEvaluation) {
           // CRITICAL FIX: Clear evaluating state on early return
           final fallbackState = state.value;
           if (fallbackState != null && fallbackState.isEvaluating) {
-            state = AsyncValue.data(fallbackState.copyWith(isEvaluating: false));
+            state = AsyncValue.data(
+              fallbackState.copyWith(isEvaluating: false),
+            );
           }
           return;
         }
@@ -2251,9 +2292,7 @@ class ChessBoardScreenNotifierNew
                 : cachedMate;
 
         if (cachedMate == 0 && !currentPosition.isCheckmate) {
-          debugPrint(
-            '⚠️ EVAL: Cached mate=0 invalid for position, ignoring',
-          );
+          debugPrint('⚠️ EVAL: Cached mate=0 invalid for position, ignoring');
         }
 
         // BUG FIX: Set principalVariations immediately when returning cached data
@@ -2312,7 +2351,8 @@ class ChessBoardScreenNotifierNew
           _activeEvalKey == cacheKey &&
           _activeEvalRequestId != null) {
         // Check if the active request is stale (started more than 10 seconds ago)
-        final isStale = _activeEvalStartTime != null &&
+        final isStale =
+            _activeEvalStartTime != null &&
             DateTime.now().difference(_activeEvalStartTime!) >
                 const Duration(seconds: 10);
 
@@ -2336,6 +2376,19 @@ class ChessBoardScreenNotifierNew
           return;
         }
       }
+
+      depthTracker.clear(
+        EngineComponent.evaluationGauge,
+        reason: 'new evaluation request',
+      );
+      depthTracker.clear(
+        EngineComponent.principalVariation,
+        reason: 'new evaluation request',
+      );
+      depthTracker.clear(
+        EngineComponent.cascadeEval,
+        reason: 'new evaluation request',
+      );
 
       final currentRequestId = requestId = ++_evalRequestCounter;
       _activeEvalKey = cacheKey;
@@ -2363,6 +2416,15 @@ class ChessBoardScreenNotifierNew
           cascadeEvalProviderForBoard(fen).future,
         );
         if (cascadeEval.pvs.isNotEmpty) {
+          depthTracker.update(
+            component: EngineComponent.evaluationGauge,
+            progress: EngineSearchProgress(
+              depth: cascadeEval.depth,
+              kiloNodes: cascadeEval.knodes,
+              fenFragment: fen,
+            ),
+            context: 'cascade evaluation',
+          );
           primaryEval = cascadeEval;
           final rawCp = cascadeEval.pvs.first.cp;
           final rawEval = rawCp / 100.0;
@@ -2412,7 +2474,9 @@ class ChessBoardScreenNotifierNew
                   );
                   // CRITICAL FIX: Clear evaluating state on early return
                   if (currentState.isEvaluating) {
-                    state = AsyncValue.data(currentState.copyWith(isEvaluating: false));
+                    state = AsyncValue.data(
+                      currentState.copyWith(isEvaluating: false),
+                    );
                   }
                   return;
                 }
@@ -2442,7 +2506,8 @@ class ChessBoardScreenNotifierNew
       // Get engine settings FIRST to check configured PV count
       final engineSettingsAsync = ref.read(engineSettingsProviderNew);
       final engineSettings = engineSettingsAsync.value;
-      final configuredMultiPV = engineSettings?.principalVariationCount ?? 3;
+      final effectiveEngineSettings = engineSettings ?? const EngineSettings();
+      final configuredMultiPV = effectiveEngineSettings.principalVariationCount;
 
       // SUPPLEMENT/FALLBACK: Use Stockfish if cloud sources returned fewer PVs than configured
       // Cloud sources might return fewer for:
@@ -2454,47 +2519,79 @@ class ChessBoardScreenNotifierNew
         final needsMorePvs = pvLines.length < configuredMultiPV;
 
         try {
-          final searchDuration = engineSettings?.searchDurationFor(EngineComponent.evaluationGauge);
-          final maxDepth = engineSettings?.maxDepthFor(EngineComponent.evaluationGauge);
+          final searchDuration = effectiveEngineSettings.searchDurationFor(
+            EngineComponent.evaluationGauge,
+          );
+          final maxDepth = effectiveEngineSettings.maxDepthFor(
+            EngineComponent.evaluationGauge,
+          );
+          final fallbackDepth = maxDepth;
           final multiPV = configuredMultiPV;
 
           debugPrint('');
           debugPrint('🎯 ═══ STARTING STOCKFISH EVALUATION ═══');
-          debugPrint('   FEN: ${fen.substring(0, 50)}...');
-          debugPrint('   Reason: ${needsEval ? "Need eval" : ""}${needsEval && needsMorePvs ? " + " : ""}${needsMorePvs ? "Need more PVs (have ${pvLines.length}/$multiPV)" : ""}');
+          final previewLength = fen.length < 50 ? fen.length : 50;
+          final fenPreview = fen.substring(0, previewLength);
+          final previewSuffix = fen.length > previewLength ? '...' : '';
+          debugPrint('   FEN: $fenPreview$previewSuffix');
+          debugPrint(
+            '   Reason: ${needsEval ? "Need eval" : ""}${needsEval && needsMorePvs ? " + " : ""}${needsMorePvs ? "Need more PVs (have ${pvLines.length}/$multiPV)" : ""}',
+          );
           debugPrint('   Settings loaded: ${engineSettings != null}');
-          debugPrint('   SearchDuration: ${searchDuration?.inSeconds}s (${searchDuration != null ? "DYNAMIC" : "STATIC"})');
+          debugPrint(
+            '   SearchDuration: ${searchDuration?.inSeconds}s (${searchDuration != null ? "DYNAMIC" : "STATIC"})',
+          );
           debugPrint('   MaxDepth: $maxDepth');
           debugPrint('   MultiPV: $multiPV lines');
-          debugPrint('   Fallback depth: 15');
+          debugPrint('   Fallback depth: $fallbackDepth');
+          final baselineDepth = primaryEval?.depth ?? 0;
+          final baselineKnodes = primaryEval?.knodes ?? 0;
+          if (baselineDepth > 0) {
+            debugPrint(
+              '   Baseline depth from cloud: $baselineDepth (knodes=$baselineKnodes)',
+            );
+          }
 
           // Get depth tracker notifier to report progress
-          final depthTracker = ref.read(engineDepthTrackerProvider.notifier);
-
           final localEval = await StockfishSingleton().evaluatePosition(
             fen,
-            depth: 15, // Fallback depth if settings not loaded
+            depth: fallbackDepth,
             searchDuration: searchDuration,
             maxDepth: maxDepth,
             multiPV: multiPV,
             onDepthUpdate: (depth, knodes) {
               // CRITICAL: Only update depth tracker if this is the currently visible game
               // This prevents depth flickering when swiping between games in PageView
-              final currentVisiblePage = ref.read(currentlyVisiblePageIndexProvider);
+              final currentVisiblePage = ref.read(
+                currentlyVisiblePageIndexProvider,
+              );
               if (index != currentVisiblePage) {
-                debugPrint('🚫 EVAL: Skipping depth update for non-visible game (page $index, visible: $currentVisiblePage)');
+                debugPrint(
+                  '🚫 EVAL: Skipping depth update for non-visible game (page $index, visible: $currentVisiblePage)',
+                );
                 return;
               }
 
-              debugPrint('💡 EVAL: Depth update callback -> depth=$depth knodes=${knodes}k');
+              debugPrint(
+                '💡 EVAL: Depth update callback -> depth=$depth knodes=${knodes}k',
+              );
+              final adjustedDepth =
+                  baselineDepth > 0 ? math.max(depth, baselineDepth) : depth;
+              final adjustedKnodes =
+                  baselineKnodes > 0
+                      ? math.max(knodes, baselineKnodes)
+                      : knodes;
               depthTracker.update(
                 component: EngineComponent.evaluationGauge,
                 progress: EngineSearchProgress(
-                  depth: depth,
-                  kiloNodes: knodes,
+                  depth: adjustedDepth,
+                  kiloNodes: adjustedKnodes,
                   fenFragment: fen,
                 ),
-                context: 'evaluating position',
+                context:
+                    baselineDepth > 0
+                        ? 'continuation ≥$baselineDepth'
+                        : 'evaluating position',
               );
             },
           );
@@ -2503,27 +2600,38 @@ class ChessBoardScreenNotifierNew
           );
 
           if (!localEval.isCancelled && localEval.pvs.isNotEmpty) {
-            // Use Stockfish eval if we don't have one from cloud
-            if (needsEval) {
-              primaryEval = CloudEval(
-                fen: fen,
-                knodes: localEval.knodes,
-                depth: localEval.depth,
-                pvs: localEval.pvs,
-              );
-              final rawCp = localEval.pvs.first.cp;
-              final rawEval = rawCp / 100.0;
-              evaluation = _getConsistentEvaluation(rawEval, fen);
+            final finalDepth =
+                baselineDepth > 0
+                    ? math.max(localEval.depth, baselineDepth)
+                    : localEval.depth;
+            final finalKnodes =
+                baselineKnodes > 0
+                    ? math.max(localEval.knodes, baselineKnodes)
+                    : localEval.knodes;
 
-              // DEBUG: Track Stockfish evaluation through pipeline
-              final fenParts = fen.split(' ');
-              final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
-              final whitePerspectiveFlag = localEval.pvs.first.whitePerspective;
-              debugPrint(
-                '🔍 STOCKFISH PIPELINE: fen=$fen, side=$sideToMove, rawCp=$rawCp, rawEval=$rawEval, evaluation=$evaluation, whitePerspective=$whitePerspectiveFlag',
-              );
+            final rawCp = localEval.pvs.first.cp;
+            final rawEval = rawCp / 100.0;
+            final stockfishEval = _getConsistentEvaluation(rawEval, fen);
+            final bool shouldAdoptStockfishEval =
+                needsEval || localEval.depth > baselineDepth;
+            if (shouldAdoptStockfishEval) {
+              evaluation = stockfishEval;
             }
 
+            primaryEval = CloudEval(
+              fen: fen,
+              knodes: finalKnodes,
+              depth: finalDepth,
+              pvs: localEval.pvs,
+            );
+
+            // DEBUG: Track Stockfish evaluation through pipeline
+            final fenParts = fen.split(' ');
+            final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
+            final whitePerspectiveFlag = localEval.pvs.first.whitePerspective;
+            debugPrint(
+              '🔍 STOCKFISH PIPELINE: fen=$fen, side=$sideToMove, rawCp=$rawCp, rawEval=$rawEval, evaluation=$evaluation, whitePerspective=$whitePerspectiveFlag',
+            );
             // Build PVs from Stockfish with retry on failure
             debugPrint(
               '🎯 EVAL: Building principal variations from Stockfish MultiPV...',
@@ -2616,11 +2724,14 @@ class ChessBoardScreenNotifierNew
             depthTracker.update(
               component: EngineComponent.principalVariation,
               progress: EngineSearchProgress(
-                depth: localEval.depth,
-                kiloNodes: localEval.knodes,
+                depth: finalDepth,
+                kiloNodes: finalKnodes,
                 fenFragment: fen,
               ),
-              context: 'multiPV=$multiPV',
+              context:
+                  baselineDepth > 0
+                      ? 'multiPV=$multiPV (baseline≥$baselineDepth)'
+                      : 'multiPV=$multiPV',
             );
           } else {
             debugPrint('🎯 EVAL: Stockfish returned cancelled or empty result');
@@ -2664,7 +2775,9 @@ class ChessBoardScreenNotifierNew
           '⚠️ EVAL: Have evaluation ($evaluation) but PV conversion failed',
         );
         debugPrint('   primaryEval.pvs.length=${primaryEval.pvs.length}');
-        debugPrint('   First PV: moves=${primaryEval.pvs.first.moves}, cp=${primaryEval.pvs.first.cp}');
+        debugPrint(
+          '   First PV: moves=${primaryEval.pvs.first.moves}, cp=${primaryEval.pvs.first.cp}',
+        );
 
         // IMMEDIATE UPDATE: Show eval bar with loading PVs indicator
         final currentSnapshot = state.value;
@@ -2702,7 +2815,10 @@ class ChessBoardScreenNotifierNew
               currentState.principalVariations.isEmpty &&
               evalForRetry.pvs.isNotEmpty) {
             debugPrint('🔄 RETRY: Re-building PVs for position $targetFenBase');
-            final retryPvLines = await _buildPrincipalVariations(fen, evalForRetry.pvs);
+            final retryPvLines = await _buildPrincipalVariations(
+              fen,
+              evalForRetry.pvs,
+            );
 
             if (retryPvLines.isNotEmpty && mounted) {
               final latestState = state.value;
@@ -2711,11 +2827,16 @@ class ChessBoardScreenNotifierNew
                     latestState.isAnalysisMode
                         ? latestState.analysisState.position
                         : latestState.position;
-                final latestFenBase = latestPos?.fen.split(' ').take(3).join(' ');
+                final latestFenBase = latestPos?.fen
+                    .split(' ')
+                    .take(3)
+                    .join(' ');
 
                 // Only apply if position hasn't changed
                 if (latestFenBase == targetFenBase) {
-                  debugPrint('✅ RETRY SUCCESS: Applying ${retryPvLines.length} PVs');
+                  debugPrint(
+                    '✅ RETRY SUCCESS: Applying ${retryPvLines.length} PVs',
+                  );
                   final basePointer =
                       latestState.isAnalysisMode
                           ? latestState.analysisState.movePointer
@@ -2740,7 +2861,9 @@ class ChessBoardScreenNotifierNew
                     pvLines: retryPvLines,
                   );
                 } else {
-                  debugPrint('🚫 RETRY CANCELLED: Position changed during retry');
+                  debugPrint(
+                    '🚫 RETRY CANCELLED: Position changed during retry',
+                  );
                 }
               }
             } else {
@@ -2820,7 +2943,11 @@ class ChessBoardScreenNotifierNew
         // CRITICAL: Still cache the evaluation result even if position changed
         // This prevents wasted computation and speeds up navigation
         _evaluationCache[cacheKey] = evaluation;
-        _mateCache[cacheKey] = primaryEval.pvs.first.mate; // Use engine mate directly, null if no mate
+        _mateCache[cacheKey] =
+            primaryEval
+                .pvs
+                .first
+                .mate; // Use engine mate directly, null if no mate
         _pvCache[cacheKey] = pvLines;
 
         // EDGE CASE FIX: Check if we have cached evaluation for the CURRENT position
@@ -2925,13 +3052,18 @@ class ChessBoardScreenNotifierNew
 
       final basePointer =
           inAnalysis ? currentSnapshot.analysisState.movePointer : null;
-      final rawMateScore = primaryEval.pvs.first.mate; // Use engine mate directly, null if no mate
+      final rawMateScore =
+          primaryEval
+              .pvs
+              .first
+              .mate; // Use engine mate directly, null if no mate
 
       // BUG FIX: Validate mate=0 - only allow it if position is actually checkmate
       // This fixes the bug where "M" appears on regular positions
-      final mateScore = (rawMateScore == 0 && !position.isCheckmate)
-          ? null // Invalid mate=0, treat as regular position
-          : rawMateScore;
+      final mateScore =
+          (rawMateScore == 0 && !position.isCheckmate)
+              ? null // Invalid mate=0, treat as regular position
+              : rawMateScore;
 
       if (rawMateScore == 0 && !position.isCheckmate) {
         debugPrint(
@@ -3492,7 +3624,17 @@ List<Map<String, dynamic>> _analysisLinesWorker(Map<String, dynamic> payload) {
           uciMoves.add(token);
           sanMoves.add(san);
         } catch (e) {
-          debugPrint('⚠️ UCI->SAN failed: "$token" on ${position.fen}');
+          Square? origin;
+          if (parsedMove is NormalMove) {
+            origin = parsedMove.from;
+          }
+          final piece = origin != null ? position.board.pieceAt(origin) : null;
+          debugPrint('⚠️ UCI->SAN failed: "$token" on ${position.fen} -> $e');
+          if (origin != null) {
+            debugPrint(
+              '   Piece at ${origin.name}: ${piece?.role.name ?? 'none'} ${piece?.color.name ?? ''}',
+            );
+          }
           valid = false;
           break;
         }
