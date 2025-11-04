@@ -88,6 +88,42 @@ class KnockoutMatchDetector {
     return matches;
   }
 
+  /// Extracts the tournament round name from tour name
+  /// Examples:
+  /// - "FIDE World Cup 2025 | Quarterfinals" → "Quarterfinals"
+  /// - "Tournament Name | Round 1" → "Round 1"
+  /// - "Tournament Name | Semifinals" → "Semifinals"
+  /// - "Tournament Name" → "Round 1" (default if no separator found)
+  static String extractTournamentRoundName(String tourName) {
+    // Look for pipe separator
+    if (tourName.contains('|')) {
+      final parts = tourName.split('|');
+      if (parts.length >= 2) {
+        // Return the part after the last pipe, trimmed
+        return parts.last.trim();
+      }
+    }
+
+    // Check if the tour name itself contains round indicators
+    final roundMatch = RegExp(r'round\s+(\d+)', caseSensitive: false).firstMatch(tourName);
+    if (roundMatch != null) {
+      return 'Round ${roundMatch.group(1)}';
+    }
+
+    // Check for common stage names in the tour name
+    final lowerName = tourName.toLowerCase();
+    if (lowerName.contains('final') && !lowerName.contains('semifinal')) {
+      return 'Finals';
+    } else if (lowerName.contains('semifinal')) {
+      return 'Semifinals';
+    } else if (lowerName.contains('quarterfinal')) {
+      return 'Quarterfinals';
+    }
+
+    // Default fallback
+    return 'Round 1';
+  }
+
   /// Determines the actual tournament round/stage for a match
   /// (e.g., "Round 1", "Quarterfinals", "Semifinals", "Finals")
   /// Currently extracts from roundId, but could be enhanced to detect stage from number of players

@@ -9,6 +9,7 @@ import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:flutter/widgets.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 
 final gamesTourScrollProvider =
     StateNotifierProvider<_GamesTourScrollProvider, ItemScrollController>(
@@ -308,10 +309,7 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
     // Check if this might be a knockout tournament
     // Knockout tournaments render differently (match-grouped), not by database rounds
     // For scroll tracking, we need to handle this specially
-    final gamesData = _ref.read(gamesTourScreenProvider).valueOrNull;
-    final roundGames =
-        gamesData?.gamesTourModels.where((g) => g.roundId == roundId).toList() ??
-        [];
+    final roundGames = _getGamesForRound(roundId);
 
     // Simple heuristic: check if round slug has knockout pattern
     final hasKnockoutPattern = roundGames.isNotEmpty &&
@@ -354,8 +352,7 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
     final gamesData = _ref.read(gamesTourScreenProvider).valueOrNull;
     if (gamesData == null) return 0;
 
-    final roundGames =
-        gamesData.gamesTourModels.where((g) => g.roundId == roundId).toList();
+    final roundGames = _getGamesForRound(roundId);
     if (roundGames.isEmpty) return 0;
 
     // Use the same grouping logic as the UI
@@ -368,13 +365,19 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
   }
 
   int _getGamesInRound(String roundId) {
-    return _ref
-            .read(gamesTourScreenProvider)
-            .valueOrNull
-            ?.gamesTourModels
-            .where((g) => g.roundId == roundId)
-            .length ??
-        0;
+    return _getGamesForRound(roundId).length;
+  }
+
+  List<GamesTourModel> _getGamesForRound(String roundId) {
+    final gamesData = _ref.read(gamesTourScreenProvider).valueOrNull;
+    if (gamesData == null) return const [];
+
+    final allGames = gamesData.gamesTourModels;
+    if (roundId.startsWith('knockout-round')) {
+      return allGames;
+    }
+
+    return allGames.where((g) => g.roundId == roundId).toList();
   }
 
   @override

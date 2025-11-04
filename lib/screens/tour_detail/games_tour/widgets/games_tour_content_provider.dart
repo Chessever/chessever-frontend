@@ -24,10 +24,10 @@ class _GamesTourContentProvider {
   }) {
     final orderedGamesForChessBoard = <GamesTourModel>[];
     for (var a = 0; a < rounds.length; a++) {
-      final allGamesForRound =
-          gamesScreenModel.gamesTourModels
-              .where((game) => game.roundId == rounds[a].id)
-              .toList();
+      final allGamesForRound = _gamesForRound(
+        roundId: rounds[a].id,
+        gamesScreenModel: gamesScreenModel,
+      );
       orderedGamesForChessBoard.addAll(allGamesForRound);
     }
 
@@ -43,10 +43,10 @@ class _GamesTourContentProvider {
   }) {
     final grouped = <String, List<MatchWithComparison>>{};
 
-    final gamesPerRound =
-        gamesScreenModel.gamesTourModels
-            .where((game) => game.roundId == selectedRoundId)
-            .toList();
+    final gamesPerRound = _gamesForRound(
+      roundId: selectedRoundId,
+      gamesScreenModel: gamesScreenModel,
+    );
 
     for (var game in gamesPerRound) {
       final whiteTeam = game.whitePlayer.team ?? game.whitePlayer.countryCode;
@@ -81,6 +81,19 @@ class _GamesTourContentProvider {
       }
     }
     return grouped;
+  }
+
+  List<GamesTourModel> _gamesForRound({
+    required String roundId,
+    required GamesScreenModel gamesScreenModel,
+  }) {
+    if (roundId.startsWith('knockout-round')) {
+      return List<GamesTourModel>.from(gamesScreenModel.gamesTourModels);
+    }
+
+    return gamesScreenModel.gamesTourModels
+        .where((game) => game.roundId == roundId)
+        .toList();
   }
 
   MatchComparison _compareAllWithOne(List<String> headers, String compare) {
