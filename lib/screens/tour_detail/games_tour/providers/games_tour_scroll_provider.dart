@@ -305,6 +305,41 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
       return _getTeamMatchupCardsInRound(roundId);
     }
 
+    // Check if this might be a knockout tournament
+    // Knockout tournaments render differently (match-grouped), not by database rounds
+    // For scroll tracking, we need to handle this specially
+    final gamesData = _ref.read(gamesTourScreenProvider).valueOrNull;
+    final roundGames =
+        gamesData?.gamesTourModels.where((g) => g.roundId == roundId).toList() ??
+        [];
+
+    // Simple heuristic: check if round slug has knockout pattern
+    final hasKnockoutPattern = roundGames.isNotEmpty &&
+        roundGames.any(
+          (g) => g.roundSlug?.toLowerCase().contains(RegExp(r'game-\d+')) ?? false,
+        );
+
+    if (hasKnockoutPattern) {
+      // For knockout tournaments, count match headers + games
+      // Group by player pairs to get match count
+      final matches = <String, List<dynamic>>{};
+      for (final game in roundGames) {
+        final key = '${game.whitePlayer.name}|${game.blackPlayer.name}';
+        matches.putIfAbsent(key, () => []).add(game);
+      }
+
+      final matchCount = matches.length;
+      final gamesCount = roundGames.length;
+
+      if (_ref.read(gamesListViewModeProvider) ==
+          GamesListViewMode.chessBoardGrid) {
+        // Match headers + grid rows of games
+        return matchCount + (gamesCount / 2).ceil();
+      }
+      // Match headers + individual games
+      return matchCount + gamesCount;
+    }
+
     // For regular events, count games (grid or list)
     final gamesCount = _getGamesInRound(roundId);
     if (_ref.read(gamesListViewModeProvider) ==

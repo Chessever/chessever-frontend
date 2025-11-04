@@ -152,7 +152,7 @@ class TournamentSortingService {
   }
 
   /// Sorts events with priority: Starred > Hearted (by count) > Regular
-  /// Within each group, sorts by timestamp (most recent first)
+  /// Within each group, sorts by timestamp (most recent first), then by event date (latest event first)
   List<GroupEventCardModel> _sortWithHeartPriority(
     List<GroupEventCardModel> tours,
     List<String> starredFavorites,
@@ -189,25 +189,36 @@ class TournamentSortingService {
       }
     }
 
-    // Sort starred events by timestamp (most recent first)
+    // Sort starred events by timestamp (most recent first), then by event date
     starredEvents.sort((a, b) {
       final timestampA = favoriteTimestamps?[a.id];
       final timestampB = favoriteTimestamps?[b.id];
 
-      // If both have timestamps, sort by timestamp (newest first)
+      // Primary sort: by favorite timestamp (newest first)
       if (timestampA != null && timestampB != null) {
-        return timestampB.compareTo(timestampA);
+        final timestampComparison = timestampB.compareTo(timestampA);
+        if (timestampComparison != 0) return timestampComparison;
       }
 
       // If only one has timestamp, prioritize it
       if (timestampA != null) return -1;
       if (timestampB != null) return 1;
 
-      // Otherwise maintain current order
+      // Tertiary sort: by event date (latest event first)
+      // For starred events, use startDate primarily (for upcoming) or endDate (for past)
+      final dateA = a.startDate ?? a.endDate;
+      final dateB = b.startDate ?? b.endDate;
+
+      if (dateA != null && dateB != null) {
+        return dateB.compareTo(dateA); // Latest event first
+      }
+      if (dateA != null) return -1;
+      if (dateB != null) return 1;
+
       return 0;
     });
 
-    // Sort hearted events by favorite player count (descending), then by timestamp
+    // Sort hearted events by favorite player count (descending), then by timestamp, then by event date
     heartedEvents.sort((a, b) {
       final countA = eventFavoritePlayerCounts[a.id] ?? 0;
       final countB = eventFavoritePlayerCounts[b.id] ?? 0;
@@ -222,8 +233,19 @@ class TournamentSortingService {
       final timestampB = favoriteTimestamps?[b.id];
 
       if (timestampA != null && timestampB != null) {
-        return timestampB.compareTo(timestampA);
+        final timestampComparison = timestampB.compareTo(timestampA);
+        if (timestampComparison != 0) return timestampComparison;
       }
+
+      // Tertiary sort: by event date (latest event first)
+      final dateA = a.startDate ?? a.endDate;
+      final dateB = b.startDate ?? b.endDate;
+
+      if (dateA != null && dateB != null) {
+        return dateB.compareTo(dateA); // Latest event first
+      }
+      if (dateA != null) return -1;
+      if (dateB != null) return 1;
 
       return 0;
     });
