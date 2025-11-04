@@ -87,6 +87,19 @@ class _TourDetailScreenNotifier
     List<String> newLiveTourIds,
   ) {
     try {
+      // Check if any new tour IDs appeared that we don't have yet
+      final currentTourIds = currentState.tours.map((t) => t.tour.id).toSet();
+      final hasNewTours = newLiveTourIds.any((id) => !currentTourIds.contains(id));
+
+      // If new tours appeared, reload everything to fetch them
+      if (hasNewTours) {
+        debugPrint(
+          '🔄 TourDetailScreenNotifier: New tours detected in live_tour_ids! Reloading...',
+        );
+        loadTourDetails();
+        return;
+      }
+
       final now = DateTime.now();
       final updatedTourModels =
           currentState.tours.map((tourModel) {
