@@ -22,7 +22,7 @@ class MatchHeader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Container(
-      margin: EdgeInsets.only(bottom: 8.h, left: 4.w, right: 4.w),
+      margin: EdgeInsets.zero,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12.br),
         boxShadow: [
@@ -37,7 +37,7 @@ class MatchHeader extends ConsumerWidget {
         onTap: onToggle,
         borderRadius: BorderRadius.circular(12.br),
         child: Container(
-          padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 12.sp),
+          padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 14.sp),
           decoration: BoxDecoration(
             color: kBlack2Color,
             borderRadius: BorderRadius.circular(12.br),
@@ -185,8 +185,8 @@ class CompactMatchHeader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Container(
-      margin: EdgeInsets.only(bottom: 6.h, left: 4.w, right: 4.w),
-      padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 8.sp),
+      margin: EdgeInsets.zero,
+      padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 10.sp),
       decoration: BoxDecoration(
         color: kBlack2Color.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(10.br),
