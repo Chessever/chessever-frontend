@@ -38,6 +38,7 @@ class ChessSvgBottomNavbar extends StatelessWidget {
       fontSize: 9.f,
       fontWeight: FontWeight.w600,
       height: 1.0,
+      leadingDistribution: TextLeadingDistribution.even,
       shadows: [
         Shadow(
           color: Colors.black.withValues(alpha: 0.35),
@@ -53,27 +54,38 @@ class ChessSvgBottomNavbar extends StatelessWidget {
       onTap: onPressed,
       onLongPress: onLongPress,
       behavior: HitTestBehavior.opaque,
-      child: SizedBox(
+      child: Container(
         width: width,
-        height: 40.h, // Button container height - no space for text
+        height: 40.h, // Fixed button container height
+        alignment: Alignment.center, // Ensure content is centered
         child: Stack(
           clipBehavior: Clip.none,
           alignment: Alignment.center,
           children: [
-            // Center the icon vertically in the button area
-            Center(
-              child: SvgWidget(
-                svgPath,
-                height: 24.h,
-                width: 24.w,
-                colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
+            // Center the icon vertically and horizontally
+            Positioned(
+              top: 0,
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: SvgWidget(
+                  svgPath,
+                  height: 24.h,
+                  width: 24.w,
+                  colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
+                ),
               ),
             ),
-            // Position depth text BELOW the button area (outside safe area)
+            // Position depth text BELOW the button area (completely outside layout)
             if (showDepth)
               Positioned(
-                bottom: -15.h, // Push below with nice gap
-                child: Text(depthText!, style: depthStyle),
+                bottom: -16.h, // Push below button with gap
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Text(depthText!, style: depthStyle),
+                ),
               ),
           ],
         ),
@@ -108,21 +120,29 @@ class ChessSvgBottomNavbarWithLongPress extends StatelessWidget {
           onLongPressStart != null ? (_) => onLongPressStart!() : null,
       onLongPressEnd: onLongPressEnd != null ? (_) => onLongPressEnd!() : null,
       onLongPressCancel: onLongPressEnd,
-      child: SizedBox(
+      child: Container(
         width: width,
-        height: 40.h, // Match ChessSvgBottomNavbar height
+        height: 40.h, // Match ChessSvgBottomNavbar height exactly
+        alignment: Alignment.center, // Ensure content is centered
         child: Stack(
           clipBehavior: Clip.none,
           alignment: Alignment.center,
           children: [
-            Center(
-              child: SvgWidget(
-                svgPath,
-                height: 24.h,
-                width: 24.w,
-                colorFilter: ColorFilter.mode(
-                  onPressed != null ? kWhiteColor : kWhiteColor70,
-                  BlendMode.srcIn,
+            // Center the icon vertically and horizontally
+            Positioned(
+              top: 0,
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: SvgWidget(
+                  svgPath,
+                  height: 24.h,
+                  width: 24.w,
+                  colorFilter: ColorFilter.mode(
+                    onPressed != null ? kWhiteColor : kWhiteColor70,
+                    BlendMode.srcIn,
+                  ),
                 ),
               ),
             ),

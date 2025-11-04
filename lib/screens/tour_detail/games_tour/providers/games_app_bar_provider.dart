@@ -68,6 +68,18 @@ class _GamesAppBarNotifier
   }
 
   void select(GamesAppBarModel model) {
+    // Check if this is a knockout stage from a different tour
+    if (model.id.startsWith('$kKnockoutStagePrefix-')) {
+      final stageTourId = model.id.replaceFirst('$kKnockoutStagePrefix-', '');
+
+      // If selecting a stage from a different tour, navigate to that tour
+      if (stageTourId != tourId) {
+        // Navigate to the selected tour
+        ref.read(tourDetailScreenProvider.notifier).updateSelection(stageTourId);
+        return;
+      }
+    }
+
     ref.read(userSelectedRoundProvider.notifier).state = (
       id: model.id,
       userSelected: true,
@@ -324,8 +336,9 @@ class _GamesAppBarNotifier
   }
 
   /// Process knockout tournament rounds: group sub-rounds into logical tournament rounds
-  /// For knockout tournaments, all sub-rounds (game-1, game-2, tiebreak-*) are grouped
-  /// into a single logical tournament round with a name extracted from the tour metadata
+  /// For knockout tournaments, check if we're in a group event with multiple stages.
+  /// If so, create separate dropdown items for each stage (Round 1, Round 2, etc.).
+  /// Otherwise, aggregate all sub-rounds (game-1, game-2, tiebreak-*) into a single item.
   Future<List<GamesAppBarModel>> _processKnockoutRoundsIfNeeded(
     List<GamesAppBarModel> models,
   ) async {
@@ -338,6 +351,104 @@ class _GamesAppBarNotifier
 
     if (!knockoutState.isKnockout) return models;
 
+    // Check if we're in a group event with multiple tours (stages)
+    final tourDetail = ref.read(tourDetailScreenProvider).valueOrNull;
+    final allTours = tourDetail?.tours ?? [];
+
+    // If there are multiple tours with the same group_broadcast_id, treat each as a stage
+    final currentTour = allTours.where((t) => t.tour.id == tourId).firstOrNull?.tour;
+    final groupBroadcastId = currentTour?.groupBroadcastId;
+
+    if (groupBroadcastId != null && groupBroadcastId.isNotEmpty) {
+      // Get all tours in this group that are knockout tournaments
+      final groupTours = allTours
+          .where((t) => t.tour.groupBroadcastId == groupBroadcastId)
+          .toList();
+
+      if (groupTours.length > 1) {
+        // Multiple stages detected - create separate dropdown items for each
+        final allStageModels = <GamesAppBarModel>[];
+
+        print('🏆 Processing ${groupTours.length} tours in group broadcast');
+
+        for (final tourModel in groupTours) {
+          final tour = tourModel.tour;
+          print('  📋 Tour: ${tour.name} (ID: ${tour.id})');
+
+          final stageKnockoutState = ref.read(knockoutTournamentStateProvider(tour.id));
+
+          // Only include tours that are actually knockout format AND have games
+          if (!stageKnockoutState.isKnockout) {
+            print('    ❌ Not knockout format, skipping');
+            continue;
+          }
+
+          final hasGames = stageKnockoutState.allGames.isNotEmpty;
+          if (!hasGames) {
+            print('    ❌ No games found, skipping');
+            continue;
+          }
+
+          // Get rounds for this specific tour to determine status and start time
+          final repo = ref.read(roundRepositoryProvider);
+          final stageRounds = await repo.getRoundsByTourId(tour.id);
+          final stageRoundModels = stageRounds
+              .map((r) => GamesAppBarModel.fromRound(r, _liveRounds))
+              .toList();
+
+          if (stageRoundModels.isEmpty) {
+            print('    ❌ No rounds found, skipping');
+            continue;
+          }
+
+          // Determine aggregated status for this stage
+          RoundStatus stageStatus = RoundStatus.ongoing;
+          if (stageRoundModels.any((m) => m.roundStatus == RoundStatus.live)) {
+            stageStatus = RoundStatus.live;
+          } else if (stageRoundModels.any((m) => m.roundStatus == RoundStatus.ongoing)) {
+            stageStatus = RoundStatus.ongoing;
+          } else if (stageRoundModels.every((m) => m.roundStatus == RoundStatus.completed)) {
+            stageStatus = RoundStatus.completed;
+          } else if (stageRoundModels.every((m) => m.roundStatus == RoundStatus.upcoming)) {
+            stageStatus = RoundStatus.upcoming;
+          }
+
+          // Get earliest start time
+          final stageStartsAt = stageRoundModels
+              .map((m) => m.startsAt)
+              .whereType<DateTime>()
+              .fold<DateTime?>(null, (earliest, date) {
+            if (earliest == null) return date;
+            return date.isBefore(earliest) ? date : earliest;
+          });
+
+          // Extract stage name directly from tour name (e.g., "FIDE World Cup 2025 | Round 1" -> "Round 1")
+          final stageName = tour.name.contains('|')
+              ? tour.name.split('|').last.trim()
+              : tour.name;
+
+          print('    ✅ Created stage: "$stageName" (status: $stageStatus, games: ${stageKnockoutState.allGames.length})');
+
+          allStageModels.add(GamesAppBarModel(
+            id: '$kKnockoutStagePrefix-${tour.id}',
+            name: stageName,
+            startsAt: stageStartsAt,
+            roundStatus: stageStatus,
+          ));
+        }
+
+        print('🎯 Total stages created: ${allStageModels.length}');
+        for (final stage in allStageModels) {
+          print('   - ${stage.name} (${stage.roundStatus})');
+        }
+
+        if (allStageModels.isNotEmpty) {
+          return allStageModels;
+        }
+      }
+    }
+
+    // Fallback: Single-stage knockout - aggregate all rounds into one
     final roundName =
         knockoutState.stageName ??
         ref.read(tourDetailScreenProvider).value?.aboutTourModel.name ??
@@ -366,7 +477,7 @@ class _GamesAppBarNotifier
 
     // Create a single logical tournament round from all sub-rounds
     final logicalRound = GamesAppBarModel(
-      id: '${kKnockoutStagePrefix}-${tourId ?? 'stage'}',
+      id: '$kKnockoutStagePrefix-${tourId ?? 'stage'}',
       name: roundName,
       startsAt: startsAt,
       roundStatus: roundStatus,
@@ -376,30 +487,58 @@ class _GamesAppBarNotifier
   }
 
   Map<String, int> _buildRoundGameCounts() {
-    final games =
-        ref.read(gamesTourScreenProvider).valueOrNull?.gamesTourModels ??
-        const <GamesTourModel>[];
-
-    if (games.isEmpty) return {};
-
-    final counts = <String, int>{};
-
     final isKnockout =
         tourId != null
             ? ref.read(knockoutTournamentStateProvider(tourId!)).isKnockout
             : false;
 
     if (isKnockout) {
-      // For knockout tournaments, all games belong to the logical aggregated stage
-      counts['${kKnockoutStagePrefix}-${tourId ?? 'stage'}'] = games.length;
+      // For knockout tournaments, check if we have multiple stages
+      final tourDetail = ref.read(tourDetailScreenProvider).valueOrNull;
+      final allTours = tourDetail?.tours ?? [];
+      final currentTour = allTours.where((t) => t.tour.id == tourId).firstOrNull?.tour;
+      final groupBroadcastId = currentTour?.groupBroadcastId;
+
+      if (groupBroadcastId != null && groupBroadcastId.isNotEmpty) {
+        final groupTours = allTours
+            .where((t) => t.tour.groupBroadcastId == groupBroadcastId)
+            .toList();
+
+        if (groupTours.length > 1) {
+          // Multiple stages - count games per stage (tour)
+          final counts = <String, int>{};
+
+          for (final tourModel in groupTours) {
+            final tour = tourModel.tour;
+            final stageKnockoutState = ref.read(knockoutTournamentStateProvider(tour.id));
+
+            if (!stageKnockoutState.isKnockout) continue;
+
+            final stageId = '$kKnockoutStagePrefix-${tour.id}';
+            counts[stageId] = stageKnockoutState.allGames.length;
+          }
+
+          return counts;
+        }
+      }
+
+      // Single-stage knockout - all games belong to the aggregated stage
+      final games =
+          ref.read(gamesTourScreenProvider).valueOrNull?.gamesTourModels ??
+          const <GamesTourModel>[];
+      return {'$kKnockoutStagePrefix-${tourId ?? 'stage'}': games.length};
     } else {
-      // For regular tournaments, count by actual round ID
+      // Regular tournaments - count by actual round ID
+      final games =
+          ref.read(gamesTourScreenProvider).valueOrNull?.gamesTourModels ??
+          const <GamesTourModel>[];
+
+      final counts = <String, int>{};
       for (final game in games) {
         counts.update(game.roundId, (value) => value + 1, ifAbsent: () => 1);
       }
+      return counts;
     }
-
-    return counts;
   }
 
   bool _hasGames(String roundId, Map<String, int> counts) =>
