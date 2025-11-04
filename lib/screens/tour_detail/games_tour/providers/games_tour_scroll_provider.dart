@@ -184,14 +184,8 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
       }
       currentIndex++; // skip header
 
-      final games =
-          _ref
-              .read(gamesTourScreenProvider)
-              .valueOrNull
-              ?.gamesTourModels
-              .where((g) => g.roundId == round.id)
-              .toList() ??
-          [];
+      // Get games for this round (handles multi-stage knockouts)
+      final games = _getGamesForRound(round.id);
 
       if (_ref.read(gamesListViewModeProvider) ==
           GamesListViewMode.chessBoardGrid) {
@@ -232,14 +226,8 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
       // header
       currentIndex++;
 
-      final games =
-          _ref
-              .read(gamesTourScreenProvider)
-              .valueOrNull
-              ?.gamesTourModels
-              .where((g) => g.roundId == round.id)
-              .toList() ??
-          [];
+      // Get games for this round (handles multi-stage knockouts)
+      final games = _getGamesForRound(round.id);
 
       if (_ref.read(gamesListViewModeProvider) ==
           GamesListViewMode.chessBoardGrid) {
@@ -376,6 +364,15 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
     if (gamesData == null) return const [];
 
     final allGames = gamesData.gamesTourModels;
+
+    // For multi-stage knockout rounds (knockout-stage-{tourId}), get games from that specific stage
+    if (roundId.startsWith('$kKnockoutStagePrefix-')) {
+      final stageTourId = roundId.replaceFirst('$kKnockoutStagePrefix-', '');
+      final stageKnockoutState = _ref.read(knockoutTournamentStateProvider(stageTourId));
+      return stageKnockoutState.allGames;
+    }
+
+    // For legacy knockout rounds or regular rounds
     if (_isKnockoutRoundId(roundId)) {
       return allGames;
     }
