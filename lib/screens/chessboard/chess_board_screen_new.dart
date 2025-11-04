@@ -1739,12 +1739,6 @@ class _BoardWithSidebar extends ConsumerWidget {
                       isFlipped: state.isBoardFlipped,
                       lastMoveSquare: _getLastMoveSquare(),
                     ),
-                  // Engine depth overlay - show in bottom-right corner when enabled
-                  _DepthOverlay(
-                    boardSize: boardSize,
-                    isFlipped: state.isBoardFlipped,
-                    showEngineAnalysis: state.showEngineAnalysis,
-                  ),
                 ],
               ),
             ],
@@ -1847,92 +1841,6 @@ class _AnalysisBoard extends ConsumerWidget {
       //   onPromotionSelection: notifier.onAnalysisPromotionSelection,
       // ),
       game: null, // Board is now read-only in analysis mode
-    );
-  }
-}
-
-class _DepthOverlay extends ConsumerWidget {
-  final double boardSize;
-  final bool isFlipped;
-  final bool showEngineAnalysis;
-
-  const _DepthOverlay({
-    required this.boardSize,
-    required this.isFlipped,
-    required this.showEngineAnalysis,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // Read engine settings to check if depth overlay is enabled
-    final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
-    final showDepthOverlay = engineSettings?.showDepthOverlay ?? false;
-
-    // Don't show if either engine analysis or depth overlay is disabled
-    if (!showEngineAnalysis || !showDepthOverlay) {
-      return const SizedBox.shrink();
-    }
-
-    // Watch engine depth tracker for live depth display
-    final progressMap = ref.watch(engineDepthTrackerProvider);
-    EngineSearchProgress? gaugeProgress;
-    if (progressMap.containsKey(EngineComponent.evaluationGauge)) {
-      gaugeProgress = progressMap[EngineComponent.evaluationGauge];
-    } else if (progressMap.containsKey(EngineComponent.cascadeEval)) {
-      gaugeProgress = progressMap[EngineComponent.cascadeEval];
-    } else if (progressMap.containsKey(EngineComponent.principalVariation)) {
-      gaugeProgress = progressMap[EngineComponent.principalVariation];
-    }
-
-    // Don't show if no depth data available
-    if (gaugeProgress == null) {
-      return const SizedBox.shrink();
-    }
-
-    final depth = gaugeProgress.depth;
-    final knodes = gaugeProgress.kiloNodes;
-
-    return Positioned(
-      // Position in corner based on board orientation
-      bottom: isFlipped ? null : 8.h,
-      top: isFlipped ? 8.h : null,
-      right: 8.w,
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
-        decoration: BoxDecoration(
-          color: kBlackColor.withValues(alpha: 0.7),
-          borderRadius: BorderRadius.circular(4.sp),
-          border: Border.all(
-            color: kWhiteColor.withValues(alpha: 0.2),
-            width: 1,
-          ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              'D:$depth',
-              style: TextStyle(
-                color: kWhiteColor,
-                fontSize: 11.f,
-                fontWeight: FontWeight.w700,
-                height: 1.0,
-              ),
-            ),
-            SizedBox(height: 2.h),
-            Text(
-              '${knodes}k',
-              style: TextStyle(
-                color: kWhiteColor.withValues(alpha: 0.7),
-                fontSize: 9.f,
-                fontWeight: FontWeight.w500,
-                height: 1.0,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -2370,11 +2278,15 @@ class _PrincipalVariationListState
     evalAsync.when(
       loading: () {
         isEvaluating = true;
-        lines = widget.state.principalVariations.toList(growable: false); // Use cached while loading
+        lines = widget.state.principalVariations.toList(
+          growable: false,
+        ); // Use cached while loading
       },
       error: (_, __) {
         isEvaluating = false;
-        lines = widget.state.principalVariations.toList(growable: false); // Use cached on error
+        lines = widget.state.principalVariations.toList(
+          growable: false,
+        ); // Use cached on error
       },
       data: (cloudEval) {
         isEvaluating = false;
@@ -2553,7 +2465,8 @@ class _PrincipalVariationListState
                                     vertical: 10.sp,
                                   ),
                                   child: Row(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Container(
                                         margin: EdgeInsets.only(right: 10.sp),

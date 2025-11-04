@@ -57,7 +57,10 @@ class StockfishSingleton {
     // Create cache key including side to move for perspective-aware caching
     final fenParts = fen.split(' ');
     final sideToMove = fenParts.length > 1 ? fenParts[1] : 'w';
-    final searchMode = searchDuration != null ? 'time_${searchDuration.inMilliseconds}' : 'depth_$depth';
+    final searchMode =
+        searchDuration != null
+            ? 'time_${searchDuration.inMilliseconds}'
+            : 'depth_$depth';
     final cacheKey = '${fen}_${searchMode}_pv${multiPV}_$sideToMove';
 
     if (_evaluationCache.containsKey(cacheKey)) {
@@ -126,9 +129,13 @@ class StockfishSingleton {
         result.pvs.isNotEmpty &&
         result.pvs.first.moves.isNotEmpty) {
       _evaluationCache[cacheKey] = result;
-      debugPrint('✅ CACHED: Stockfish eval for $fen (depth=${result.depth}, cp=${result.pvs.first.cp})');
+      debugPrint(
+        '✅ CACHED: Stockfish eval for $fen (depth=${result.depth}, cp=${result.pvs.first.cp})',
+      );
     } else if (result.pvs.isEmpty || result.pvs.first.moves.isEmpty) {
-      debugPrint('⚠️ NOT CACHED: Stockfish returned empty/partial result for $fen');
+      debugPrint(
+        '⚠️ NOT CACHED: Stockfish returned empty/partial result for $fen',
+      );
     }
 
     return result;
@@ -169,7 +176,6 @@ class StockfishSingleton {
       _currentJob = null;
     }
   }
-
 
   Future<void> _processQueue() async {
     if (_isProcessing || _jobQueue.isEmpty) return;
@@ -220,7 +226,9 @@ class StockfishSingleton {
     bool evaluationComplete = false;
 
     final isDynamicSearch = searchDuration != null;
-    debugPrint('🔍 STOCKFISH: Analyzing $fen ${isDynamicSearch ? "(dynamic ${searchDuration.inSeconds}s)" : "(depth $depth)"}');
+    debugPrint(
+      '🔍 STOCKFISH: Analyzing $fen ${isDynamicSearch ? "(dynamic ${searchDuration.inSeconds}s)" : "(depth $depth)"}',
+    );
 
     _currentSubscription = _engine!.stdout.listen((line) {
       // Check if this is still the current job
@@ -241,9 +249,10 @@ class StockfishSingleton {
           finalDepth = currentDepth;
 
           if (onDepthUpdate != null) {
-            final searchLabel = isDynamicSearch
-                ? 'Time-based (${searchDuration!.inSeconds}s)'
-                : 'Depth-based (target $depth)';
+            final searchLabel =
+                isDynamicSearch
+                    ? 'Time-based (${searchDuration!.inSeconds}s)'
+                    : 'Depth-based (target $depth)';
             debugPrint(
               '⚡ ═══ ENGINE DEPTH UPDATE ═══\n'
               '   Current Depth: $currentDepth\n'
@@ -300,6 +309,9 @@ class StockfishSingleton {
             .where((pv) => pv.moves.isNotEmpty)
             .toList(growable: false);
 
+        debugPrint(
+          '♟️ STOCKFISH RAW PVs (@depth=$finalDepth): ${filteredPvs.map((pv) => pv.moves).join(' | ')}',
+        );
         final normalizedPvs = _normalizeToWhitePerspective(filteredPvs, fen);
 
         debugPrint(
@@ -332,12 +344,15 @@ class StockfishSingleton {
     });
 
     try {
+      _engine!.stdin = 'ucinewgame';
       _engine!.stdin = 'setoption name MultiPV value $multiPV';
       _engine!.stdin = 'position fen $fen';
 
       if (isDynamicSearch) {
         final moveTimeMs = searchDuration!.inMilliseconds;
-        debugPrint('   → Sending: MultiPV $multiPV, movetime ${moveTimeMs}ms${maxDepth != null ? ", depth $maxDepth" : ""}');
+        debugPrint(
+          '   → Sending: MultiPV $multiPV, movetime ${moveTimeMs}ms${maxDepth != null ? ", depth $maxDepth" : ""}',
+        );
         if (maxDepth != null) {
           _engine!.stdin = 'go movetime $moveTimeMs depth $maxDepth';
         } else {
@@ -364,41 +379,7 @@ class StockfishSingleton {
       return;
     }
 
-    // Set up timeout - use dynamic timeout if specified, otherwise default 10s
-    final timeoutDuration = isDynamicSearch
-        ? Duration(milliseconds: searchDuration!.inMilliseconds + 2000) // Add 2s buffer
-        : const Duration(seconds: 10);
-
-    Timer(timeoutDuration, () {
-      if (_currentJob == job && !completer.isCompleted && !evaluationComplete) {
-        debugPrint('⏱️ STOCKFISH TIMEOUT: Job for $fen timed out after 10s');
-        final filteredPvs = pvs
-            .where((pv) => pv.moves.isNotEmpty)
-            .toList(growable: false);
-        final normalizedPvs = _normalizeToWhitePerspective(filteredPvs, fen);
-
-        // If we have at least SOME results, return them
-        // Otherwise return a minimal valid result to unblock the UI
-        final fallbackResult = EnhancedCloudEval(
-          fen: fen,
-          knodes: knodes,
-          depth: finalDepth > 0 ? finalDepth : 0,
-          pvs: normalizedPvs.isEmpty ? [Pv(moves: '', cp: 0)] : normalizedPvs,
-          isCancelled: false,
-        );
-        completer.complete(fallbackResult);
-        _currentJob = null;
-        _currentSubscription?.cancel();
-        _currentSubscription = null;
-
-        // Send stop command to free up the engine
-        try {
-          _engine?.stdin = 'stop';
-        } catch (e) {
-          debugPrint('Error stopping engine on timeout: $e');
-        }
-      }
-    });
+    // No extra timeout: rely exclusively on UCI go command to stop search
 
     // CRITICAL FIX: Wait for the completer to complete before returning
     // This ensures the queue processor doesn't move to the next job until this one is done
@@ -412,7 +393,9 @@ class StockfishSingleton {
     final isBlackToMove = fenParts.length >= 2 && fenParts[1] == 'b';
     if (!isBlackToMove) {
       // White to move - no conversion needed
-      debugPrint('🔧 STOCKFISH NORMALIZE: White to move, NO conversion, cp=${pvs.first.cp}');
+      debugPrint(
+        '🔧 STOCKFISH NORMALIZE: White to move, NO conversion, cp=${pvs.first.cp}',
+      );
       return pvs
           .map(
             (pv) => Pv(
@@ -427,7 +410,9 @@ class StockfishSingleton {
     }
 
     // Black to move - negate to convert to white's perspective
-    debugPrint('🔧 STOCKFISH NORMALIZE: Black to move, converting ${pvs.first.cp} -> ${-pvs.first.cp}');
+    debugPrint(
+      '🔧 STOCKFISH NORMALIZE: Black to move, converting ${pvs.first.cp} -> ${-pvs.first.cp}',
+    );
     return pvs
         .map(
           (pv) => Pv(
