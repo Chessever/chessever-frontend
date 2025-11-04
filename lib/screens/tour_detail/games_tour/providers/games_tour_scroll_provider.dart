@@ -9,6 +9,9 @@ import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:flutter/widgets.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 
 final gamesTourScrollProvider =
     StateNotifierProvider<_GamesTourScrollProvider, ItemScrollController>(
@@ -305,6 +308,39 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
       return _getTeamMatchupCardsInRound(roundId);
     }
 
+    final tourId =
+        _ref.read(tourDetailScreenProvider).value?.aboutTourModel.id;
+    final isKnockoutTournament =
+        tourId != null
+            ? _ref.read(knockoutTournamentStateProvider(tourId)).isKnockout
+            : false;
+
+    final roundGames = _getGamesForRound(roundId);
+
+    final isKnockoutRound =
+        isKnockoutTournament && _isKnockoutRoundId(roundId);
+
+    if (isKnockoutRound) {
+      // For knockout tournaments, count match headers + games
+      // Group by player pairs to get match count
+      final matches = <String, List<dynamic>>{};
+      for (final game in roundGames) {
+        final key = '${game.whitePlayer.name}|${game.blackPlayer.name}';
+        matches.putIfAbsent(key, () => []).add(game);
+      }
+
+      final matchCount = matches.length;
+      final gamesCount = roundGames.length;
+
+      if (_ref.read(gamesListViewModeProvider) ==
+          GamesListViewMode.chessBoardGrid) {
+        // Match headers + grid rows of games
+        return matchCount + (gamesCount / 2).ceil();
+      }
+      // Match headers + individual games
+      return matchCount + gamesCount;
+    }
+
     // For regular events, count games (grid or list)
     final gamesCount = _getGamesInRound(roundId);
     if (_ref.read(gamesListViewModeProvider) ==
@@ -319,8 +355,7 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
     final gamesData = _ref.read(gamesTourScreenProvider).valueOrNull;
     if (gamesData == null) return 0;
 
-    final roundGames =
-        gamesData.gamesTourModels.where((g) => g.roundId == roundId).toList();
+    final roundGames = _getGamesForRound(roundId);
     if (roundGames.isEmpty) return 0;
 
     // Use the same grouping logic as the UI
@@ -333,13 +368,25 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
   }
 
   int _getGamesInRound(String roundId) {
-    return _ref
-            .read(gamesTourScreenProvider)
-            .valueOrNull
-            ?.gamesTourModels
-            .where((g) => g.roundId == roundId)
-            .length ??
-        0;
+    return _getGamesForRound(roundId).length;
+  }
+
+  List<GamesTourModel> _getGamesForRound(String roundId) {
+    final gamesData = _ref.read(gamesTourScreenProvider).valueOrNull;
+    if (gamesData == null) return const [];
+
+    final allGames = gamesData.gamesTourModels;
+    if (_isKnockoutRoundId(roundId)) {
+      return allGames;
+    }
+
+    return allGames.where((g) => g.roundId == roundId).toList();
+  }
+
+  bool _isKnockoutRoundId(String roundId) {
+    final idLower = roundId.toLowerCase();
+    return idLower.startsWith('$kKnockoutStagePrefix-') ||
+        idLower.startsWith('knockout-round-');
   }
 
   @override

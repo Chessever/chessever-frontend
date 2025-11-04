@@ -3,6 +3,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:flutter/animation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
@@ -39,6 +40,19 @@ class _GamesAppBarNotifier
         if (next != null) _onLiveRoundsChanged(next);
       },
     );
+
+    if (tourId != null) {
+      ref.listen<KnockoutTournamentState>(
+        knockoutTournamentStateProvider(tourId!),
+        (previous, next) {
+          if (previous == null) return;
+          if (previous.isKnockout != next.isKnockout ||
+              previous.stageName != next.stageName) {
+            _load();
+          }
+        },
+      );
+    }
 
     _load();
   }
@@ -139,19 +153,13 @@ class _GamesAppBarNotifier
     final selectedId = vm?.selectedId;
     final userSelected = vm?.userSelectedId ?? false;
 
+    // NOTE: For knockout tournaments, the dropdown and scroll behavior needs special handling
+    // Knockout tournaments render ALL games grouped by matches (player pairs) in one section,
+    // not split by database rounds. This makes round-based scrolling less meaningful.
+    // TODO: Consider hiding/adapting the dropdown for knockout tournaments
+
     // Smart filtering: Match the logic in games_tour_content_body.dart
-    final gamesByRound = <String, int>{};
-    for (final round in allRounds) {
-      final gamesInRound =
-          ref
-              .read(gamesTourScreenProvider)
-              .valueOrNull
-              ?.gamesTourModels
-              .where((g) => g.roundId == round.id)
-              .length ??
-          0;
-      gamesByRound[round.id] = gamesInRound;
-    }
+    final gamesByRound = _buildRoundGameCounts();
 
     final hasLiveOrOngoing = allRounds.any(
       (r) =>
@@ -304,22 +312,93 @@ class _GamesAppBarNotifier
               .map((r) => GamesAppBarModel.fromRound(r, _liveRounds))
               .toList();
 
-      _sortRounds(models);
+      // Check if this is a knockout tournament and group sub-rounds
+      final processedModels = await _processKnockoutRoundsIfNeeded(models);
 
-      await _applySelectionFrom(models, tourId!);
+      _sortRounds(processedModels);
+
+      await _applySelectionFrom(processedModels, tourId!);
     } catch (e, st) {
       state = AsyncValue.error(e, st);
     }
+  }
+
+  /// Process knockout tournament rounds: group sub-rounds into logical tournament rounds
+  /// For knockout tournaments, all sub-rounds (game-1, game-2, tiebreak-*) are grouped
+  /// into a single logical tournament round with a name extracted from the tour metadata
+  Future<List<GamesAppBarModel>> _processKnockoutRoundsIfNeeded(
+    List<GamesAppBarModel> models,
+  ) async {
+    if (models.isEmpty) return models;
+
+    final knockoutState =
+        tourId != null
+            ? ref.read(knockoutTournamentStateProvider(tourId!))
+            : const KnockoutTournamentState.empty();
+
+    if (!knockoutState.isKnockout) return models;
+
+    final roundName =
+        knockoutState.stageName ??
+        ref.read(tourDetailScreenProvider).value?.aboutTourModel.name ??
+        'Round';
+
+    // Determine the aggregated round status
+    RoundStatus roundStatus = RoundStatus.ongoing;
+    if (models.any((m) => m.roundStatus == RoundStatus.live)) {
+      roundStatus = RoundStatus.live;
+    } else if (models.any((m) => m.roundStatus == RoundStatus.ongoing)) {
+      roundStatus = RoundStatus.ongoing;
+    } else if (models.every((m) => m.roundStatus == RoundStatus.completed)) {
+      roundStatus = RoundStatus.completed;
+    } else if (models.every((m) => m.roundStatus == RoundStatus.upcoming)) {
+      roundStatus = RoundStatus.upcoming;
+    }
+
+    // Use the earliest start time
+    final startsAt = models
+        .map((m) => m.startsAt)
+        .whereType<DateTime>()
+        .fold<DateTime?>(null, (earliest, date) {
+      if (earliest == null) return date;
+      return date.isBefore(earliest) ? date : earliest;
+    });
+
+    // Create a single logical tournament round from all sub-rounds
+    final logicalRound = GamesAppBarModel(
+      id: '${kKnockoutStagePrefix}-${tourId ?? 'stage'}',
+      name: roundName,
+      startsAt: startsAt,
+      roundStatus: roundStatus,
+    );
+
+    return [logicalRound];
   }
 
   Map<String, int> _buildRoundGameCounts() {
     final games =
         ref.read(gamesTourScreenProvider).valueOrNull?.gamesTourModels ??
         const <GamesTourModel>[];
+
+    if (games.isEmpty) return {};
+
     final counts = <String, int>{};
-    for (final game in games) {
-      counts.update(game.roundId, (value) => value + 1, ifAbsent: () => 1);
+
+    final isKnockout =
+        tourId != null
+            ? ref.read(knockoutTournamentStateProvider(tourId!)).isKnockout
+            : false;
+
+    if (isKnockout) {
+      // For knockout tournaments, all games belong to the logical aggregated stage
+      counts['${kKnockoutStagePrefix}-${tourId ?? 'stage'}'] = games.length;
+    } else {
+      // For regular tournaments, count by actual round ID
+      for (final game in games) {
+        counts.update(game.roundId, (value) => value + 1, ifAbsent: () => 1);
+      }
     }
+
     return counts;
   }
 

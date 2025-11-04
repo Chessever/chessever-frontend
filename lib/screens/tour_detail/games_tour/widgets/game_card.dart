@@ -169,7 +169,7 @@ class _TopSection extends ConsumerWidget {
             : matchComparison.game.whitePlayer;
     return Container(
       height: 60.h,
-      padding: EdgeInsets.only(left: 12.sp, right: 12.sp),
+      padding: EdgeInsets.symmetric(horizontal: 16.sp),
       decoration: BoxDecoration(
         color: kWhiteColor70,
         borderRadius: BorderRadius.only(
@@ -232,7 +232,7 @@ class _BottomSection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return Container(
       height: 24.h,
-      padding: EdgeInsets.symmetric(horizontal: 10.sp),
+      padding: EdgeInsets.symmetric(horizontal: 16.sp),
       decoration: BoxDecoration(
         color: kBlack2Color,
         borderRadius: BorderRadius.only(

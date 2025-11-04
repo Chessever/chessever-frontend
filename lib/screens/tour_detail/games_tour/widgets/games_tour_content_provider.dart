@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final gamesTourContentProvider = AutoDisposeProvider(
@@ -24,10 +25,10 @@ class _GamesTourContentProvider {
   }) {
     final orderedGamesForChessBoard = <GamesTourModel>[];
     for (var a = 0; a < rounds.length; a++) {
-      final allGamesForRound =
-          gamesScreenModel.gamesTourModels
-              .where((game) => game.roundId == rounds[a].id)
-              .toList();
+      final allGamesForRound = _gamesForRound(
+        roundId: rounds[a].id,
+        gamesScreenModel: gamesScreenModel,
+      );
       orderedGamesForChessBoard.addAll(allGamesForRound);
     }
 
@@ -43,10 +44,10 @@ class _GamesTourContentProvider {
   }) {
     final grouped = <String, List<MatchWithComparison>>{};
 
-    final gamesPerRound =
-        gamesScreenModel.gamesTourModels
-            .where((game) => game.roundId == selectedRoundId)
-            .toList();
+    final gamesPerRound = _gamesForRound(
+      roundId: selectedRoundId,
+      gamesScreenModel: gamesScreenModel,
+    );
 
     for (var game in gamesPerRound) {
       final whiteTeam = game.whitePlayer.team ?? game.whitePlayer.countryCode;
@@ -81,6 +82,21 @@ class _GamesTourContentProvider {
       }
     }
     return grouped;
+  }
+
+  List<GamesTourModel> _gamesForRound({
+    required String roundId,
+    required GamesScreenModel gamesScreenModel,
+  }) {
+    final idLower = roundId.toLowerCase();
+    if (idLower.startsWith('$kKnockoutStagePrefix-') ||
+        idLower.startsWith('knockout-round-')) {
+      return List<GamesTourModel>.from(gamesScreenModel.gamesTourModels);
+    }
+
+    return gamesScreenModel.gamesTourModels
+        .where((game) => game.roundId == roundId)
+        .toList();
   }
 
   MatchComparison _compareAllWithOne(List<String> headers, String compare) {
