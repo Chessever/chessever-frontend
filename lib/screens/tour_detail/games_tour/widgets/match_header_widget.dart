@@ -1,7 +1,11 @@
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/location_service_provider.dart';
+import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -21,6 +25,11 @@ class MatchHeader extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final player1Card = _matchPlayerCard(match, match.player1);
+    final player2Card = _matchPlayerCard(match, match.player2);
+    final player1Flag = _playerFlag(ref, player1Card);
+    final player2Flag = _playerFlag(ref, player2Card);
+
     return Container(
       margin: EdgeInsets.zero,
       decoration: BoxDecoration(
@@ -65,14 +74,25 @@ class MatchHeader extends ConsumerWidget {
                     Row(
                       children: [
                         Expanded(
-                          child: Text(
-                            match.player1,
-                            style: AppTypography.textSmMedium.copyWith(
-                              color: kWhiteColor,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              if (player1Flag != null) ...[
+                                player1Flag,
+                                SizedBox(width: 6.w),
+                              ],
+                              Expanded(
+                                child: Text(
+                                  match.player1,
+                                  style: AppTypography.textSmMedium.copyWith(
+                                    color: kWhiteColor,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                         SizedBox(width: 8.w),
@@ -101,14 +121,25 @@ class MatchHeader extends ConsumerWidget {
                     Row(
                       children: [
                         Expanded(
-                          child: Text(
-                            match.player2,
-                            style: AppTypography.textSmMedium.copyWith(
-                              color: kWhiteColor,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              if (player2Flag != null) ...[
+                                player2Flag,
+                                SizedBox(width: 6.w),
+                              ],
+                              Expanded(
+                                child: Text(
+                                  match.player2,
+                                  style: AppTypography.textSmMedium.copyWith(
+                                    color: kWhiteColor,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                         SizedBox(width: 8.w),
@@ -184,6 +215,11 @@ class CompactMatchHeader extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final player1Card = _matchPlayerCard(match, match.player1);
+    final player2Card = _matchPlayerCard(match, match.player2);
+    final player1Flag = _playerFlag(ref, player1Card);
+    final player2Flag = _playerFlag(ref, player2Card);
+
     return Container(
       margin: EdgeInsets.zero,
       padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 10.sp),
@@ -203,14 +239,49 @@ class CompactMatchHeader extends ConsumerWidget {
           ),
           SizedBox(width: 10.w),
           Expanded(
-            child: Text(
-              match.matchTitle,
-              style: AppTypography.textXsMedium.copyWith(
-                color: kWhiteColor,
-                fontWeight: FontWeight.w500,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            child: Row(
+              children: [
+                if (player1Flag != null) ...[
+                  player1Flag,
+                  SizedBox(width: 4.w),
+                ],
+                Flexible(
+                  child: Text(
+                    match.player1,
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: kWhiteColor,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                SizedBox(width: 6.w),
+                Text(
+                  'vs',
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: kWhiteColor.withValues(alpha: 0.6),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                SizedBox(width: 6.w),
+                if (player2Flag != null) ...[
+                  player2Flag,
+                  SizedBox(width: 4.w),
+                ],
+                Flexible(
+                  child: Text(
+                    match.player2,
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: kWhiteColor,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
+                  ),
+                ),
+              ],
             ),
           ),
           SizedBox(width: 8.w),
@@ -225,4 +296,47 @@ class CompactMatchHeader extends ConsumerWidget {
       ),
     );
   }
+}
+
+PlayerCard? _matchPlayerCard(MatchHeaderModel match, String playerName) {
+  for (final game in match.games) {
+    final white = game.whitePlayer;
+    if (white.name == playerName) return white;
+
+    final black = game.blackPlayer;
+    if (black.name == playerName) return black;
+  }
+  return null;
+}
+
+Widget? _playerFlag(WidgetRef ref, PlayerCard? player) {
+  if (player == null) return null;
+
+  final countryCode = player.countryCode.trim();
+  if (countryCode.isEmpty) return null;
+
+  // Check for FIDE flag
+  if (countryCode.toUpperCase() == 'FID') {
+    return Image.asset(
+      PngAsset.fideLogo,
+      height: 12.h,
+      width: 16.w,
+      fit: BoxFit.cover,
+      cacheWidth: 48,
+      cacheHeight: 36,
+    );
+  }
+
+  // Validate country code using the location service
+  final validCountryCode = ref
+      .read(locationServiceProvider)
+      .getValidCountryCode(countryCode);
+
+  if (validCountryCode.isEmpty) return null;
+
+  return CountryFlag.fromCountryCode(
+    validCountryCode,
+    height: 12.h,
+    width: 16.w,
+  );
 }
