@@ -849,7 +849,10 @@ class PositionFensParams {
 final fullPositionEvalProvider = FutureProvider.family<CloudEval?, String>((ref, fen) async {
   try {
     // Use the cascade eval provider for this position
-    final evalResult = await ref.read(cascadeEvalProviderForBoard(fen).future);
+    // Request 3 PVs for move impact analysis
+    final evalResult = await ref.read(cascadeEvalProviderForBoard(
+      CascadeEvalParams(fen: fen, multiPV: 3),
+    ).future);
     return evalResult;
   } catch (e) {
     debugPrint('Error evaluating position $fen: $e');
@@ -886,15 +889,8 @@ final allMovesImpactFromPositionsProvider = FutureProvider.family<Map<int, MoveI
 
     for (String fen in params.positionFens) {
       // Read full position eval provider - returns CloudEval with all PVs
-      // Add timeout to prevent hanging indefinitely
-      final evalFuture = ref.read(fullPositionEvalProvider(fen).future)
-        .timeout(
-          const Duration(seconds: 30),
-          onTimeout: () {
-            debugPrint('⏱️ TIMEOUT evaluating position: ${fen.substring(0, 30)}...');
-            return null;
-          },
-        );
+      // NO TIMEOUT - respects user's search time settings from engine settings
+      final evalFuture = ref.read(fullPositionEvalProvider(fen).future);
       evalTasks.add(evalFuture);
     }
 

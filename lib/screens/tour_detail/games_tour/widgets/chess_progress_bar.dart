@@ -24,8 +24,11 @@ class _ChessProgressBarState extends ConsumerState<ChessProgressBar> {
 
   @override
   Widget build(BuildContext context) {
+    // Chess progress bar only needs 1 PV for evaluation
     final evalAsync = ref.watch(
-      cascadeEvalProvider(widget.gamesTourModel.fen ?? ''),
+      cascadeEvalProvider(
+        CascadeEvalParams(fen: widget.gamesTourModel.fen ?? '', multiPV: 1),
+      ),
     );
 
     final evaluation = evalAsync.when(

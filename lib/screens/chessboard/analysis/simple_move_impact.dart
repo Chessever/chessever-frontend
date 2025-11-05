@@ -61,8 +61,13 @@ final singleMoveImpactProvider = FutureProvider.family.autoDispose<MoveImpactAna
     try {
       // Get evaluations for the two positions
       // OPTIMIZATION: Query both positions in parallel
-      final evalBefore = await ref.read(cascadeEvalProvider(params.fenBefore).future);
-      final evalAfter = await ref.read(cascadeEvalProvider(params.fenAfter).future);
+      // Request 3 PVs for move impact analysis to compare alternatives
+      final evalBefore = await ref.read(cascadeEvalProvider(
+        CascadeEvalParams(fen: params.fenBefore, multiPV: 3),
+      ).future);
+      final evalAfter = await ref.read(cascadeEvalProvider(
+        CascadeEvalParams(fen: params.fenAfter, multiPV: 3),
+      ).future);
 
       // Use worker_manager with LOW priority to not block eval bar
       final analysis = await workerManager.execute<MoveImpactAnalysis?>(
@@ -218,18 +223,12 @@ Future<List<CloudEval?>> _evaluatePositions(
       final fen = fens[fenIndex];
       chunk.add(() async {
         try {
-          // Add timeout to prevent individual eval from hanging forever
+          // NO TIMEOUT - respects user's search time settings
           results[fenIndex] = await _fetchEvalWithRetry(
             ref,
             fen,
             gameId,
             fenIndex,
-          ).timeout(
-            const Duration(seconds: 30),
-            onTimeout: () {
-              debugPrint('⏱️ COMPREHENSIVE IMPACT: Timeout fetching eval for position $fenIndex in $gameId');
-              return null;
-            },
           );
         } catch (e) {
           debugPrint('⚠️ COMPREHENSIVE IMPACT: Error fetching eval for position $fenIndex in $gameId: $e');
@@ -238,15 +237,9 @@ Future<List<CloudEval?>> _evaluatePositions(
       }());
     }
 
-    // Add timeout to chunk processing to prevent entire batch from hanging
+    // Process chunk without hardcoded timeout - respects user's search time settings
     try {
-      await Future.wait(chunk, eagerError: false).timeout(
-        const Duration(seconds: 45),
-        onTimeout: () {
-          debugPrint('⏱️ COMPREHENSIVE IMPACT: Chunk timeout for positions $chunkStart-$end in $gameId');
-          return <void>[];
-        },
-      );
+      await Future.wait(chunk, eagerError: false);
     } catch (e) {
       debugPrint('⚠️ COMPREHENSIVE IMPACT: Chunk error for positions $chunkStart-$end in $gameId: $e');
     }
@@ -271,7 +264,10 @@ Future<CloudEval?> _fetchEvalWithRetry(
 
   for (int attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      return await ref.read(cascadeEvalProviderForBoard(fen).future);
+      // Request 3 PVs for position evaluation
+      return await ref.read(cascadeEvalProviderForBoard(
+        CascadeEvalParams(fen: fen, multiPV: 3),
+      ).future);
     } catch (e) {
       final bool rateLimited = _isRateLimitError(e);
       if (!rateLimited || attempt == maxAttempts) {

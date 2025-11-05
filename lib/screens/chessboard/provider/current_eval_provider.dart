@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/lichess_eval_repository.dart';
 import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.dart';
@@ -8,12 +6,32 @@ import 'package:chessever2/repository/supabase/evals/persist_cloud_eval.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart' show FutureProvider;
 import 'stockfish_singleton.dart';
 
+/// Parameters for cascade eval with configurable multiPV
+class CascadeEvalParams {
+  final String fen;
+  final int multiPV;
+  
+  const CascadeEvalParams({required this.fen, this.multiPV = 3});
+  
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CascadeEvalParams &&
+          other.fen == fen &&
+          other.multiPV == multiPV;
+  
+  @override
+  int get hashCode => Object.hash(fen, multiPV);
+}
+
 /// 1. local → 2. Supabase → 3. lichess
 /// Uses autoDispose to cancel evaluations when switching games
-final cascadeEvalProvider = FutureProvider.family.autoDispose<CloudEval, String>((
+final cascadeEvalProvider = FutureProvider.family.autoDispose<CloudEval, CascadeEvalParams>((
   ref,
-  fen,
+  params,
 ) async {
+  final fen = params.fen;
+  final multiPV = params.multiPV;
   final local = ref.read(localEvalCacheProvider);
   final persist = ref.read(persistCloudEvalProvider);
   final lichess = ref.read(lichessEvalRepoProvider);
@@ -51,9 +69,9 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<CloudEval, String>
       return cloud;
     }
 
-    // 3️⃣  Lichess → Supabase → local (request 3 PVs for analysis)
+    // 3️⃣  Lichess → Supabase → local (request multiPV from user settings)
 
-    final cloud = await lichess.getEval(fen, multiPv: 3);
+    final cloud = await lichess.getEval(fen, multiPv: multiPV);
     final fenParts = fen.split(' ');
     final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
     final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
@@ -65,13 +83,16 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<CloudEval, String>
         .catchError((e) => <void>[]);
     return cloud;
   } catch (_) {
-    final sfEval = await StockfishSingleton().evaluatePosition(fen, depth: 15);
+    // Use progressive depth strategy here too
+    final sfEval = await StockfishSingleton().evaluatePosition(fen, depth: 12, multiPV: multiPV);
     final cloudFromSF = CloudEval(
       fen: fen,
       knodes: sfEval.knodes,
       depth: sfEval.depth,
       pvs: sfEval.pvs,
     );
+    // Trigger background upgrade to depth 20
+    _upgradeEvaluationInBackground(fen, persist, local, multiPV);
     // OPTIMIZATION: Save to caches in background (unawaited)
     Future.wait<void>([
       persist.call(fen, cloudFromSF),
@@ -104,10 +125,12 @@ bool _isValidEvaluation(CloudEval cloud) {
 /// SEQUENTIAL cascade: local → Supabase → Lichess → Stockfish
 /// Respects Lichess API rate limits by querying sequentially
 /// Uses autoDispose to cancel evaluations when switching games
-final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval, String>((
+final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval, CascadeEvalParams>((
   ref,
-  fen,
+  params,
 ) async {
+  final fen = params.fen;
+  final multiPV = params.multiPV;
   final local = ref.read(localEvalCacheProvider);
   final persist = ref.read(persistCloudEvalProvider);
   final lichess = ref.read(lichessEvalRepoProvider);
@@ -151,7 +174,7 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval,
         });
 
     final lichessFuture = lichess
-        .getEval(fen, multiPv: 3)
+        .getEval(fen, multiPv: multiPV)
         .then((cloud) {
           if (_isValidEvaluation(cloud)) {
             final fenParts = fen.split(' ');
@@ -183,19 +206,13 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval,
     }
 
     // 3️⃣ FALLBACK: All cloud sources failed, use Stockfish with progressive depth
-    // STRATEGY: Start with depth 5 for instant results, then upgrade to depth 15 in background
-    print('⚡ EVAL SOURCE: STOCKFISH FALLBACK (depth 5→15) for $fen');
+    // STRATEGY: Start with depth 12 for fast results with good move count, then upgrade to depth 20
+    print('⚡ EVAL SOURCE: STOCKFISH FALLBACK (depth 12→20) for $fen');
     try {
-      // QUICK EVAL: depth 5 gives instant results (~300-500ms)
+      // QUICK EVAL: depth 12 gives fast results with 8-12 moves typically
+      // NO TIMEOUT - respects user's search time settings from engine settings
       final sfEval = await StockfishSingleton()
-          .evaluatePosition(fen, depth: 5, multiPV: 3)
-          .timeout(
-            const Duration(seconds: 5),
-            onTimeout: () {
-              print('⏱️ Stockfish quick eval timeout for $fen');
-              throw TimeoutException('Stockfish quick evaluation took too long');
-            },
-          );
+          .evaluatePosition(fen, depth: 12, multiPV: multiPV);
       final quickCloudFromSF = CloudEval(
         fen: fen,
         knodes: sfEval.knodes,
@@ -203,11 +220,11 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval,
         pvs: sfEval.pvs,
       );
       
-      print('✅ QUICK EVAL: Returning depth ${sfEval.depth} result immediately for $fen');
+      print('✅ QUICK EVAL: Returning depth ${sfEval.depth} result with ${sfEval.pvs.first.moves.split(' ').length} moves');
       
-      // BACKGROUND UPGRADE: Trigger deeper analysis (depth 15) without blocking
-      // This will cache the better result for future use
-      _upgradeEvaluationInBackground(fen, persist, local);
+      // BACKGROUND UPGRADE: Trigger deeper analysis (depth 20) for more moves & accuracy
+      // This will cache the better result with 15-20+ moves per line
+      _upgradeEvaluationInBackground(fen, persist, local, multiPV);
       
       // Save quick result to cache (will be replaced by deeper eval)
       local.save(fen, quickCloudFromSF).catchError((e) => null);
@@ -227,20 +244,15 @@ void _upgradeEvaluationInBackground(
   String fen,
   PersistCloudEval persist,
   LocalEvalCache local,
+  int multiPV,
 ) {
   // Fire and forget - run deeper analysis in background
   Future.delayed(Duration.zero, () async {
     try {
-      print('🔄 BACKGROUND UPGRADE: Starting depth 15 eval for $fen');
+      print('🔄 BACKGROUND UPGRADE: Starting depth 20 eval for $fen with $multiPV PVs');
+      // NO TIMEOUT - respects user's search time settings from engine settings
       final deepEval = await StockfishSingleton()
-          .evaluatePosition(fen, depth: 15, multiPV: 3)
-          .timeout(
-            const Duration(seconds: 20),
-            onTimeout: () {
-              print('⏱️ Background deep eval timeout for $fen');
-              throw TimeoutException('Deep evaluation took too long');
-            },
-          );
+          .evaluatePosition(fen, depth: 20, multiPV: multiPV);
       
       final deepCloud = CloudEval(
         fen: fen,
@@ -255,7 +267,7 @@ void _upgradeEvaluationInBackground(
         local.save(fen, deepCloud),
       ]);
       
-      print('✅ BACKGROUND UPGRADE: Cached depth ${deepEval.depth} result for $fen');
+      print('✅ BACKGROUND UPGRADE: Cached depth ${deepEval.depth} result with ${deepEval.pvs.first.moves.split(' ').length} moves');
     } catch (e) {
       print('⚠️ Background upgrade failed for $fen: $e');
       // Don't crash - quick eval is already showing
