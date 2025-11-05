@@ -41,7 +41,10 @@ class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
   @override
   Widget build(BuildContext context) {
     // REACTIVE: Watch the cascade provider directly for this FEN
-    final evalAsync = ref.watch(cascadeEvalProviderForBoard(widget.fen));
+    // Evaluation bar only needs 1 PV line for the primary evaluation
+    final evalAsync = ref.watch(cascadeEvalProviderForBoard(
+      CascadeEvalParams(fen: widget.fen, multiPV: 1),
+    ));
 
     return evalAsync.when(
       loading: () {
@@ -203,8 +206,11 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Game card evaluation bar only needs 1 PV
     return ref
-        .watch(cascadeEvalProvider(fen))
+        .watch(cascadeEvalProvider(
+          CascadeEvalParams(fen: fen, multiPV: 1),
+        ))
         .when(
           loading: () {
             return SkeletonWidget(

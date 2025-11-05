@@ -2435,15 +2435,24 @@ class ChessBoardScreenNotifierNew
 
       debugPrint('🎯 EVAL START: Evaluating position $fen');
 
+      // Get engine settings FIRST to check configured PV count
+      final engineSettingsAsync = ref.read(engineSettingsProviderNew);
+      final engineSettings = engineSettingsAsync.value;
+      final effectiveEngineSettings = engineSettings ?? const EngineSettings();
+      final configuredMultiPV = effectiveEngineSettings.principalVariationCount;
+
       // OPTIMIZED: Try cascade (cloud sources) FIRST for speed
       // Cascade queries local DB → Supabase → Lichess → Stockfish sequentially
       // Each source has its own timeout, so no need for overall cascade timeout
       try {
         debugPrint(
-          '🎯 EVAL: Requesting cascade evaluation (local → Supabase → Lichess → Stockfish)...',
+          '🎯 EVAL: Requesting cascade evaluation (local → Supabase → Lichess → Stockfish) with $configuredMultiPV PVs...',
         );
+        // Use configured multiPV from user settings
         final cascadeEval = await ref.read(
-          cascadeEvalProviderForBoard(fen).future,
+          cascadeEvalProviderForBoard(
+            CascadeEvalParams(fen: fen, multiPV: configuredMultiPV),
+          ).future,
         );
         if (cascadeEval.pvs.isNotEmpty) {
           depthTracker.update(
@@ -2532,12 +2541,6 @@ class ChessBoardScreenNotifierNew
       } catch (e) {
         debugPrint('🎯 EVAL ERROR: Cascade failed for $fen: $e');
       }
-
-      // Get engine settings FIRST to check configured PV count
-      final engineSettingsAsync = ref.read(engineSettingsProviderNew);
-      final engineSettings = engineSettingsAsync.value;
-      final effectiveEngineSettings = engineSettings ?? const EngineSettings();
-      final configuredMultiPV = effectiveEngineSettings.principalVariationCount;
 
       // SUPPLEMENT/FALLBACK: Use Stockfish if cloud sources returned fewer PVs than configured
       // Cloud sources might return fewer for:

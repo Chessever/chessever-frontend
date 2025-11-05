@@ -9,12 +9,12 @@ import 'package:chessever2/screens/chessboard/analysis/simple_move_impact.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
+import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/move_annotation_overlay.dart';
 import 'package:chessever2/screens/chessboard/widgets/share_game_card_overlay.dart';
 import 'package:chessever2/screens/chessboard/chess_board_settings_page.dart';
-import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
@@ -2262,8 +2262,13 @@ class _PrincipalVariationListState
     final isWhiteToMove = (position?.turn ?? Side.white) == Side.white;
 
     // REACTIVE: Watch cascade provider directly for current FEN
+    // Get user's PV count setting to request correct number of lines
+    final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
+    final multiPV = engineSettings?.principalVariationCount ?? 3;
     final currentFen = position?.fen ?? '';
-    final evalAsync = ref.watch(cascadeEvalProviderForBoard(currentFen));
+    final evalAsync = ref.watch(cascadeEvalProviderForBoard(
+      CascadeEvalParams(fen: currentFen, multiPV: multiPV),
+    ));
 
     // Check if position is terminal (game over)
     final isGameOver = position?.isGameOver ?? false;
@@ -2271,33 +2276,26 @@ class _PrincipalVariationListState
     const double _basePvHeight = 78;
     final double pvCardHeight = _basePvHeight.h;
 
-    // Determine loading state and lines from evalAsync
-    late final bool isEvaluating;
+    // Get PV lines from state - evalAsync is only watched to trigger rebuilds
     late final List<AnalysisLine> lines;
 
     evalAsync.when(
       loading: () {
-        isEvaluating = true;
         lines = widget.state.principalVariations.toList(
           growable: false,
         ); // Use cached while loading
       },
       error: (_, __) {
-        isEvaluating = false;
         lines = widget.state.principalVariations.toList(
           growable: false,
         ); // Use cached on error
       },
       data: (cloudEval) {
-        isEvaluating = false;
         // Use board provider's cached PVs if they match this FEN
         // Otherwise show empty (will trigger recalculation in provider)
         lines = widget.state.principalVariations.toList(growable: false);
       },
     );
-
-    // Never show skeleton - always show data immediately and update silently
-    final showSkeleton = false;
 
     // Show end of game message when position is terminal
     final showEndOfGame = isGameOver && widget.state.isAnalysisMode;
@@ -2354,7 +2352,7 @@ class _PrincipalVariationListState
                       ),
                     )
                     : lines.isEmpty
-                    ? const SizedBox.shrink() // Show nothing if no lines yet
+                    ? const SizedBox.shrink() // Temporarily empty - eval is loading in background
                     : PageView.builder(
                         controller: _pageController,
                         onPageChanged: (pageIndex) {
@@ -2395,7 +2393,6 @@ class _PrincipalVariationListState
                               .withValues(alpha: 0.6);
 
                           // Never darken cards - show data immediately and update silently
-                          final shouldDarken = false;
 
                           return GestureDetector(
                             // DISABLED: PV cards are now read-only
@@ -2412,80 +2409,76 @@ class _PrincipalVariationListState
                             //             );
                             //           }
                             //         },
-                            child: AnimatedOpacity(
-                              opacity: shouldDarken ? 0.4 : 1.0,
-                              duration: const Duration(milliseconds: 200),
-                              child: Container(
-                                width:
-                                    MediaQuery.of(context).size.width - 40.sp,
-                                margin: EdgeInsets.symmetric(horizontal: 2.sp),
-                                decoration: BoxDecoration(
-                                  border: Border.all(
-                                    color: borderColor,
-                                    width: isSelected ? 2.0 : 1.5,
-                                  ),
-                                  borderRadius: BorderRadius.circular(6.sp),
-                                  color: backgroundColor,
+                            child: Container(
+                              width:
+                                  MediaQuery.of(context).size.width - 40.sp,
+                              margin: EdgeInsets.symmetric(horizontal: 2.sp),
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: borderColor,
+                                  width: isSelected ? 2.0 : 1.5,
                                 ),
-                                clipBehavior: Clip.hardEdge,
-                                child: SingleChildScrollView(
-                                  scrollDirection: Axis.vertical,
-                                  physics: const BouncingScrollPhysics(),
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: 12.sp,
-                                    vertical: 10.sp,
-                                  ),
-                                  child: Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Container(
-                                        margin: EdgeInsets.only(right: 10.sp),
-                                        padding: EdgeInsets.symmetric(
-                                          horizontal: 8.sp,
-                                          vertical: 4.sp,
+                                borderRadius: BorderRadius.circular(6.sp),
+                                color: backgroundColor,
+                              ),
+                              clipBehavior: Clip.hardEdge,
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.vertical,
+                                physics: const BouncingScrollPhysics(),
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 12.sp,
+                                  vertical: 10.sp,
+                                ),
+                                child: Row(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Container(
+                                      margin: EdgeInsets.only(right: 10.sp),
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: 8.sp,
+                                        vertical: 4.sp,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: badgeBackgroundColor,
+                                        borderRadius: BorderRadius.circular(
+                                          4.sp,
                                         ),
-                                        decoration: BoxDecoration(
-                                          color: badgeBackgroundColor,
-                                          borderRadius: BorderRadius.circular(
-                                            4.sp,
-                                          ),
-                                          border: Border.all(
-                                            color: badgeBorderColor,
-                                            width: 1.0,
-                                          ),
-                                        ),
-                                        alignment: Alignment.center,
-                                        child: AnimatedSwitcher(
-                                          duration: const Duration(
-                                            milliseconds: 200,
-                                          ),
-                                          child: Text(
-                                            evalText,
-                                            key: ValueKey(evalText),
-                                            style: AppTypography.textXsMedium
-                                                .copyWith(
-                                                  color: kWhiteColor,
-                                                  fontWeight: FontWeight.w600,
-                                                ),
-                                          ),
+                                        border: Border.all(
+                                          color: badgeBorderColor,
+                                          width: 1.0,
                                         ),
                                       ),
-                                      Expanded(
+                                      alignment: Alignment.center,
+                                      child: AnimatedSwitcher(
+                                        duration: const Duration(
+                                          milliseconds: 200,
+                                        ),
                                         child: Text(
-                                          sanMoves.join(' '),
-                                          softWrap: true,
+                                          evalText,
+                                          key: ValueKey(evalText),
                                           style: AppTypography.textXsMedium
                                               .copyWith(
-                                                color: kWhiteColor.withValues(
-                                                  alpha: 0.9,
-                                                ),
+                                                color: kWhiteColor,
                                                 fontWeight: FontWeight.w600,
                                               ),
                                         ),
                                       ),
-                                    ],
-                                  ),
+                                    ),
+                                    Expanded(
+                                      child: Text(
+                                        sanMoves.join(' '),
+                                        softWrap: true,
+                                        style: AppTypography.textXsMedium
+                                            .copyWith(
+                                              color: kWhiteColor.withValues(
+                                                alpha: 0.9,
+                                              ),
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
