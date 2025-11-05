@@ -1,7 +1,5 @@
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
-import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 enum GamesTourScreenMode { normal, groupEvent }
@@ -42,26 +40,13 @@ class _GamesTourScreenModeNotifier
   final Ref ref;
 
   void _setupListeners() {
-    final tourDetail = ref.read(tourDetailScreenProvider).value;
-    if (tourDetail == null) return;
-
-    // Listen to games changes and re-evaluate mode when games are loaded
-    ref.listen(gamesTourProvider(tourDetail.aboutTourModel.id), (
-      previous,
-      next,
-    ) {
-      if (next.hasValue && next.value != null && next.value!.isNotEmpty) {
-        _evaluateMode();
-      }
-    });
-
-    ref.listen(
-      knockoutTournamentStateProvider(tourDetail.aboutTourModel.id),
-      (_, __) => _evaluateMode(),
-    );
+    // No listeners needed - tournament mode is structural and never changes
+    // Once a knockout tournament, always a knockout tournament
+    // Once a team tournament, always a team tournament
   }
 
   Future<void> _init() async {
+    // Evaluate mode ONLY ONCE - the tournament structure never changes
     _evaluateMode();
   }
 
@@ -69,20 +54,14 @@ class _GamesTourScreenModeNotifier
     final tourDetail = ref.read(tourDetailScreenProvider).value;
     if (tourDetail == null) return;
 
-    debugPrint(
-      '🔍 Evaluating tournament mode for: ${tourDetail.aboutTourModel.id}',
-    );
+    print('🔍 Evaluating tournament mode for: ${tourDetail.aboutTourModel.id}');
 
     final tourId = tourDetail.aboutTourModel.id;
     final knockoutState = ref.read(knockoutTournamentStateProvider(tourId));
-    debugPrint(
-      '🥊 Knockout state: isKnockout=${knockoutState.isKnockout}, games=${knockoutState.allGames.length}',
-    );
+    print('🥊 Knockout state: isKnockout=${knockoutState.isKnockout}, games=${knockoutState.allGames.length}');
 
     if (knockoutState.isKnockout) {
-      debugPrint(
-        '🥊 Knockout format active - Using normal mode for match-based display',
-      );
+      print('🥊 Knockout format active - Using normal mode for match-based display');
       state = const AsyncValue.data(GamesTourScreenMode.normal);
       return;
     }
@@ -95,13 +74,13 @@ class _GamesTourScreenModeNotifier
             .length ==
         tourDetail.aboutTourModel.players.length;
 
-    debugPrint('👥 All players have teams: $hasAllTeams');
+    print('👥 All players have teams: $hasAllTeams');
 
     if (hasAllTeams) {
-      debugPrint('📋 Setting mode to: groupEvent');
+      print('📋 Setting mode to: groupEvent');
       state = AsyncValue.data(GamesTourScreenMode.groupEvent);
     } else {
-      debugPrint('📋 Setting mode to: normal');
+      print('📋 Setting mode to: normal');
       state = AsyncValue.data(GamesTourScreenMode.normal);
     }
   }

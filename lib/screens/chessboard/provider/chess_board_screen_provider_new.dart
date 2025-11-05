@@ -126,12 +126,19 @@ class ChessBoardScreenNotifierNew
 
         _clearEvaluationCache();
 
-        // Force re-evaluation with new settings
-        debugPrint(
-          '   → Forcing re-evaluation with new MultiPV=${nextValue.principalVariationCount}...',
-        );
-        _evaluatePosition(force: true);
-        debugPrint('   ✅ Re-evaluation triggered');
+        // Force re-evaluation with new settings ONLY if this is the currently visible game
+        final currentVisiblePage = ref.read(currentlyVisiblePageIndexProvider);
+        if (index == currentVisiblePage) {
+          debugPrint(
+            '   → Forcing re-evaluation with new MultiPV=${nextValue.principalVariationCount}...',
+          );
+          _evaluatePosition(force: true);
+          debugPrint('   ✅ Re-evaluation triggered');
+        } else {
+          debugPrint(
+            '   🚫 Skipping re-evaluation for non-visible game (page $index, visible: $currentVisiblePage)',
+          );
+        }
       }
     });
   }
@@ -426,7 +433,16 @@ class ChessBoardScreenNotifierNew
       // Analysis board is always initialized since analysis mode is always active
       await _initializeAnalysisBoard();
 
-      _updateEvaluation();
+      // CRITICAL: Only trigger evaluation if this is the currently visible game
+      // This prevents resource-intensive analysis from running for off-screen games in PageView
+      final currentVisiblePage = ref.read(currentlyVisiblePageIndexProvider);
+      if (index == currentVisiblePage) {
+        _updateEvaluation();
+      } else {
+        debugPrint(
+          '🚫 PARSE: Skipping evaluation for non-visible game (page $index, visible: $currentVisiblePage)',
+        );
+      }
     } catch (e, st) {
       if (mounted) {
         state = AsyncValue.error(e, st);
@@ -2186,6 +2202,20 @@ class ChessBoardScreenNotifierNew
       if (initialState == null || initialState.isLoadingMoves) {
         // CRITICAL FIX: Clear evaluating state on early return
         if (initialState != null && initialState.isEvaluating) {
+          state = AsyncValue.data(initialState.copyWith(isEvaluating: false));
+        }
+        return;
+      }
+
+      // CRITICAL: Skip evaluation entirely if this is not the currently visible game
+      // This prevents resource-intensive Stockfish analysis from running for off-screen games
+      final currentVisiblePage = ref.read(currentlyVisiblePageIndexProvider);
+      if (index != currentVisiblePage && !force) {
+        debugPrint(
+          '🚫 EVAL: Skipping evaluation for non-visible game (page $index, visible: $currentVisiblePage)',
+        );
+        // Clear evaluating state if it was set
+        if (initialState.isEvaluating) {
           state = AsyncValue.data(initialState.copyWith(isEvaluating: false));
         }
         return;

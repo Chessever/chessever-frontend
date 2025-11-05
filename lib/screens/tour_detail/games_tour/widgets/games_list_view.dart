@@ -44,6 +44,9 @@ class GamesListView extends ConsumerWidget {
     // Get expansion state for knockout tournaments
     final expansionState = ref.watch(matchExpansionProvider);
 
+    // For multi-stage knockouts, build ordered games list from gamesByRound
+    final orderedGamesList = _buildOrderedGamesList(rounds, gamesByRound, isKnockoutTournament);
+
     final itemCount = _computeItemCount(
       gamesListViewMode,
       rounds,
@@ -107,8 +110,8 @@ class GamesListView extends ConsumerWidget {
             ),
             child:
                 gamesListViewMode == GamesListViewMode.chessBoardGrid
-                    ? _buildGridRow(context, ref, lookup)
-                    : _buildCardRow(context, ref, lookup),
+                    ? _buildGridRow(context, ref, lookup, orderedGamesList)
+                    : _buildCardRow(context, ref, lookup, orderedGamesList),
           );
         }
 
@@ -123,13 +126,18 @@ class GamesListView extends ConsumerWidget {
     );
   }
 
-  Widget _buildGridRow(BuildContext context, WidgetRef ref, _GameRowData item) {
+  Widget _buildGridRow(
+    BuildContext context,
+    WidgetRef ref,
+    _GameRowData item,
+    List<GamesTourModel> orderedGamesList,
+  ) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        _buildGridGame(context, ref, item.game1, item.globalIndex1),
+        _buildGridGame(context, ref, item.game1, item.globalIndex1, orderedGamesList),
         if (item.game2 != null)
-          _buildGridGame(context, ref, item.game2!, item.globalIndex2!),
+          _buildGridGame(context, ref, item.game2!, item.globalIndex2!, orderedGamesList),
       ],
     );
   }
@@ -139,6 +147,7 @@ class GamesListView extends ConsumerWidget {
     WidgetRef ref,
     GamesTourModel game,
     int globalIndex,
+    List<GamesTourModel> orderedGamesList,
   ) {
     return GridChessBoardFromFENNew(
       key: ValueKey('game_${game.gameId}'),
@@ -148,7 +157,7 @@ class GamesListView extends ConsumerWidget {
               .read(gameCardWrapperProvider)
               .navigateToChessBoard(
                 context: context,
-                orderedGames: gamesData.gamesTourModels,
+                orderedGames: orderedGamesList,
                 gameIndex: globalIndex,
                 onReturnFromChessboard: (returnedIndex) {
                   _scrollToGameIndex(
@@ -168,10 +177,21 @@ class GamesListView extends ConsumerWidget {
     );
   }
 
-  Widget _buildCardRow(BuildContext context, WidgetRef ref, _GameRowData item) {
+  Widget _buildCardRow(
+    BuildContext context,
+    WidgetRef ref,
+    _GameRowData item,
+    List<GamesTourModel> orderedGamesList,
+  ) {
+    // Create modified gamesData with correct orderedGames for multi-stage knockouts
+    final modifiedGamesData = GamesScreenModel(
+      gamesTourModels: orderedGamesList,
+      pinnedGamedIs: gamesData.pinnedGamedIs,
+    );
+
     return GameCardWrapperWidget(
       game: item.game1,
-      gamesData: gamesData,
+      gamesData: modifiedGamesData,
       gameIndex: item.globalIndex1,
       isChessBoardVisible: gamesListViewMode == GamesListViewMode.chessBoard,
       onReturnFromChessboard: (returnedIndex) {
@@ -469,6 +489,34 @@ bool _isKnockoutRound(bool isKnockoutTournament, GamesAppBarModel round) {
   if (!isKnockoutTournament) return false;
   final id = round.id.toLowerCase();
   return id.startsWith('$kKnockoutStagePrefix-') || id.startsWith('knockout-round-');
+}
+
+/// Build ordered list of ALL games from ALL visible rounds
+/// This is critical for correct navigation in multi-stage knockouts
+List<GamesTourModel> _buildOrderedGamesList(
+  List<GamesAppBarModel> rounds,
+  Map<String, List<GamesTourModel>> gamesByRound,
+  bool isKnockoutTournament,
+) {
+  final orderedGames = <GamesTourModel>[];
+
+  for (final round in rounds) {
+    final roundGames = gamesByRound[round.id] ?? const <GamesTourModel>[];
+    if (roundGames.isEmpty) continue;
+
+    if (_isKnockoutRound(isKnockoutTournament, round)) {
+      // For knockout format, add games in match order
+      final matches = KnockoutMatchDetector.groupByMatches(roundGames);
+      for (final matchGames in matches.values) {
+        orderedGames.addAll(matchGames);
+      }
+    } else {
+      // For regular format, add games as-is
+      orderedGames.addAll(roundGames);
+    }
+  }
+
+  return orderedGames;
 }
 
 class _HeaderData {

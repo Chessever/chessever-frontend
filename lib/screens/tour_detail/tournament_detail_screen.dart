@@ -267,43 +267,113 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
         ref.watch(tourDetailScreenProvider).value?.aboutTourModel.id ??
         defaultTourId;
 
-    return Row(
-      children: [
-        SizedBox(width: 16.w),
-        IconButton(
-          iconSize: 24.ic,
-          padding: EdgeInsets.zero,
-          onPressed: () => _handleBackPress(context),
-          icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24.ic),
-        ),
-        const Spacer(),
-        SizedBox(
-          height: 44.h,
-          width: 280.w,
-          child: TextDropDownWidget(
-            items: _buildDropdownItems(data.tours),
-            selectedId: selectedTourId,
-            onChanged: (value) => _handleDropdownChange(ref, value),
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16.w),
+      child: Row(
+        children: [
+          IconButton(
+            iconSize: 24.ic,
+            padding: EdgeInsets.zero,
+            onPressed: () => _handleBackPress(context),
+            icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24.ic),
           ),
-        ),
-        const Spacer(),
-        SizedBox(width: 16.w),
-      ],
+          SizedBox(width: 12.w),
+          Expanded(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: 340.w),
+              child: SizedBox(
+                height: 44.h,
+                child: TextDropDownWidget(
+                  items: _buildDropdownItems(data.tours),
+                  selectedId: selectedTourId,
+                  onChanged: (value) => _handleDropdownChange(ref, value),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   List<Map<String, String>> _buildDropdownItems(List<TourModel> tours) {
-    // Sort tours by date in descending order (most recent first), then by status
-    final sortedTours = List<TourModel>.from(tours)..sort((a, b) {
-      // Get start dates (first date in the dates list)
-      final aStartDate = a.tour.dates.isNotEmpty ? a.tour.dates.first : DateTime(1970);
-      final bStartDate = b.tour.dates.isNotEmpty ? b.tour.dates.first : DateTime(1970);
+    DateTime _latestDate(TourModel model) {
+      final candidates = <DateTime>[];
+      candidates.addAll(model.tour.dates);
+      candidates.add(model.tour.createdAt);
 
-      // Sort by date descending (most recent first)
-      final dateCompare = bStartDate.compareTo(aStartDate);
+      if (candidates.isEmpty) {
+        return DateTime.fromMillisecondsSinceEpoch(0);
+      }
+
+      return candidates.reduce(
+        (latest, date) => date.isAfter(latest) ? date : latest,
+      );
+    }
+
+    int? _extractRoundNumber(String value) {
+      final match = RegExp(
+        r'round\s*(\d+)',
+        caseSensitive: false,
+      ).firstMatch(value);
+      if (match == null) return null;
+      return int.tryParse(match.group(1) ?? '');
+    }
+
+    int? _stageSortRank(TourModel model) {
+      final name = _extractTourName(model.tour.name).toLowerCase();
+
+      if (name.contains('final')) return 0;
+      if (name.contains('semi')) return 1;
+      if (name.contains('quarter')) return 2;
+
+      final roundNumber = _extractRoundNumber(name);
+      if (roundNumber != null) {
+        return 100 - roundNumber;
+      }
+
+      return null;
+    }
+
+    int _compareStageRank(int? a, int? b) {
+      if (a == null && b == null) return 0;
+      if (a == null) return 1;
+      if (b == null) return -1;
+      return a.compareTo(b);
+    }
+
+    bool _isKnockoutStage(TourModel model) =>
+        (model.tour.groupBroadcastId ?? '').isNotEmpty;
+
+    // Sort tours so the most recent knockout stages surface first, then fall back
+    final sortedTours = List<TourModel>.from(tours)..sort((a, b) {
+      final aIsStage = _isKnockoutStage(a);
+      final bIsStage = _isKnockoutStage(b);
+      final aDate = _latestDate(a);
+      final bDate = _latestDate(b);
+      final stageRankCompare = _compareStageRank(
+        _stageSortRank(a),
+        _stageSortRank(b),
+      );
+
+      if (aIsStage && bIsStage) {
+        final dateCompare = bDate.compareTo(aDate);
+        if (dateCompare != 0) return dateCompare;
+
+        if (stageRankCompare != 0) return stageRankCompare;
+      }
+
+      if (aIsStage != bIsStage) {
+        final dateCompare = bDate.compareTo(aDate);
+        if (dateCompare != 0) return dateCompare;
+        return aIsStage ? -1 : 1;
+      }
+
+      final dateCompare = bDate.compareTo(aDate);
       if (dateCompare != 0) return dateCompare;
 
-      // If dates are equal, sort by status priority
+      if (stageRankCompare != 0) return stageRankCompare;
+
       const statusPriority = {
         RoundStatus.live: 0,
         RoundStatus.ongoing: 1,
@@ -313,8 +383,13 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
 
       final aPriority = statusPriority[a.roundStatus] ?? 4;
       final bPriority = statusPriority[b.roundStatus] ?? 4;
+      if (aPriority != bPriority) {
+        return aPriority.compareTo(bPriority);
+      }
 
-      return aPriority.compareTo(bPriority);
+      return _extractTourName(
+        b.tour.name,
+      ).compareTo(_extractTourName(a.tour.name));
     });
 
     return sortedTours
