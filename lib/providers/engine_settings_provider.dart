@@ -161,17 +161,35 @@ class EngineSettings {
     this.showDepthOverlay = true,
     this.showPvArrows = true,
     this.searchTimeIndex = 2,
-    this.principalVariationCount = 3,
-  });
+    int principalVariationIndex = 2, // Default to 3 lines (index 2)
+  }) : principalVariationIndex = principalVariationIndex < 0 
+           ? 0 
+           : (principalVariationIndex > 4 // Max index is 4 (we have 5 labels: 0-4)
+               ? 4 
+               : principalVariationIndex);
 
   final bool showEngineGauge;
   final bool showDepthOverlay;
   final bool showPvArrows;
   final int searchTimeIndex;
-  final int principalVariationCount;
+  final int principalVariationIndex;
 
-  static const int minPrincipalVariation = 1;
-  static const int maxPrincipalVariation = 5;
+  // Principal variation options: 1, 2, 3, 4, 5 (max 5)
+  static const List<int?> _principalVariationOptions = <int?>[
+    1,
+    2,
+    3,
+    4,
+    5,
+  ];
+
+  static const List<String> principalVariationLabels = <String>[
+    '1',
+    '2',
+    '3',
+    '4',
+    '5',
+  ];
 
   static const List<int?> _searchTimeSecondsOptions = <int?>[
     5,
@@ -190,6 +208,44 @@ class EngineSettings {
     '60s',
     '∞',
   ];
+
+  /// Get the multiPV count for Lichess API requests
+  /// Lichess only supports up to 5 variations, max is 5
+  int multiPvForLichess() {
+    final safeIndex = principalVariationIndex.clamp(
+      0,
+      _principalVariationOptions.length - 1,
+    );
+    final value = _principalVariationOptions[safeIndex];
+    // Cap at 5 for Lichess (their API maximum)
+    return (value ?? 5).clamp(1, 5);
+  }
+
+  /// Get the multiPV count for Stockfish evaluation
+  /// Returns requested count (1-5)
+  int multiPvForStockfish() {
+    final safeIndex = principalVariationIndex.clamp(
+      0,
+      _principalVariationOptions.length - 1,
+    );
+    final value = _principalVariationOptions[safeIndex];
+    // Max is 5 since we removed the "All" option
+    return (value ?? 5).clamp(1, 5);
+  }
+
+  /// Check if user selected "All" variations (always false now, kept for compatibility)
+  bool isShowingAllPvs() {
+    return false; // "All" option removed, max is 5
+  }
+
+  /// Get display label for current PV setting
+  String principalVariationLabel() {
+    final safeIndex = principalVariationIndex.clamp(
+      0,
+      principalVariationLabels.length - 1,
+    );
+    return principalVariationLabels[safeIndex];
+  }
 
   static const Map<EngineComponent, double> _componentTimeMultipliers = {
     EngineComponent.evaluationGauge: 1.0,
@@ -223,16 +279,16 @@ class EngineSettings {
     bool? showDepthOverlay,
     bool? showPvArrows,
     int? searchTimeIndex,
-    int? principalVariationCount,
+    int? principalVariationIndex,
   }) {
     return EngineSettings(
       showEngineGauge: showEngineGauge ?? this.showEngineGauge,
       showDepthOverlay: showDepthOverlay ?? this.showDepthOverlay,
       showPvArrows: showPvArrows ?? this.showPvArrows,
       searchTimeIndex: searchTimeIndex ?? this.searchTimeIndex,
-      principalVariationCount: (principalVariationCount ??
-              this.principalVariationCount)
-          .clamp(minPrincipalVariation, maxPrincipalVariation),
+      principalVariationIndex: (principalVariationIndex ??
+              this.principalVariationIndex)
+          .clamp(0, principalVariationLabels.length - 1),
     );
   }
 
@@ -326,7 +382,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
         showDepthOverlay: model.showDepthOverlay,
         showPvArrows: model.showPvArrows,
         searchTimeIndex: model.searchTimeIndex,
-        principalVariationCount: model.principalVariationCount,
+        principalVariationIndex: model.principalVariationIndex,
       );
 
       // Cache locally
@@ -384,22 +440,23 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
         .clearAll(reason: 'settings changed');
   }
 
-  /// Set principal variation count
-  Future<void> setPrincipalVariationCount(int count) async {
-    final clamped = count.clamp(
-      EngineSettings.minPrincipalVariation,
-      EngineSettings.maxPrincipalVariation,
+  /// Set principal variation index
+  Future<void> setPrincipalVariationIndex(int index) async {
+    final clamped = index.clamp(
+      0,
+      EngineSettings.principalVariationLabels.length - 1,
     );
     final currentState = state.valueOrNull ?? const EngineSettings();
-    final newSettings = currentState.copyWith(principalVariationCount: clamped);
-    debugPrint('🔧 EngineSettings: PV count changed to $clamped lines');
+    final newSettings = currentState.copyWith(principalVariationIndex: clamped);
+    final label = newSettings.principalVariationLabel();
+    debugPrint('🔧 EngineSettings: PV setting changed to $label');
     state = AsyncValue.data(newSettings);
     await _persist(newSettings);
 
     // Clear depth tracker when settings change to force fresh evaluation
     ref
         .read(engineDepthTrackerProvider.notifier)
-        .clearAll(reason: 'PV count changed');
+        .clearAll(reason: 'PV setting changed');
   }
 
   /// Refresh settings from Supabase
@@ -452,7 +509,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
           'show_depth_overlay': settings.showDepthOverlay,
           'show_pv_arrows': settings.showPvArrows,
           'search_time_index': settings.searchTimeIndex,
-          'principal_variation_count': settings.principalVariationCount,
+          'principal_variation_index': settings.principalVariationIndex,
           'updated_at': DateTime.now().toUtc().toIso8601String(),
         },
         onConflict: 'user_id', // Specify conflict column
@@ -472,7 +529,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
         'showDepthOverlay': settings.showDepthOverlay,
         'showPvArrows': settings.showPvArrows,
         'searchTimeIndex': settings.searchTimeIndex,
-        'principalVariationCount': settings.principalVariationCount,
+        'principalVariationIndex': settings.principalVariationIndex,
       });
       await prefs.setString(_cacheKey, json);
       debugPrint('[EngineSettings] Cached settings locally');
@@ -496,7 +553,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
         showDepthOverlay: map['showDepthOverlay'] as bool? ?? true,
         showPvArrows: map['showPvArrows'] as bool? ?? true,
         searchTimeIndex: map['searchTimeIndex'] as int? ?? 2,
-        principalVariationCount: map['principalVariationCount'] as int? ?? 3,
+        principalVariationIndex: map['principalVariationIndex'] as int? ?? 2,
       );
       debugPrint('[EngineSettings] Loaded settings from cache');
       return settings;

@@ -48,10 +48,10 @@ class EngineSettingsModelMapper extends ClassMapperBase<EngineSettingsModel> {
     'searchTimeIndex',
     _$searchTimeIndex,
   );
-  static int _$principalVariationCount(EngineSettingsModel v) =>
-      v.principalVariationCount;
-  static const Field<EngineSettingsModel, int> _f$principalVariationCount =
-      Field('principalVariationCount', _$principalVariationCount);
+  static int _$principalVariationIndex(EngineSettingsModel v) =>
+      v.principalVariationIndex;
+  static const Field<EngineSettingsModel, int> _f$principalVariationIndex =
+      Field('principalVariationIndex', _$principalVariationIndex);
   static DateTime _$createdAt(EngineSettingsModel v) => v.createdAt;
   static const Field<EngineSettingsModel, DateTime> _f$createdAt = Field(
     'createdAt',
@@ -71,7 +71,7 @@ class EngineSettingsModelMapper extends ClassMapperBase<EngineSettingsModel> {
     #showDepthOverlay: _f$showDepthOverlay,
     #showPvArrows: _f$showPvArrows,
     #searchTimeIndex: _f$searchTimeIndex,
-    #principalVariationCount: _f$principalVariationCount,
+    #principalVariationIndex: _f$principalVariationIndex,
     #createdAt: _f$createdAt,
     #updatedAt: _f$updatedAt,
   };
@@ -84,7 +84,7 @@ class EngineSettingsModelMapper extends ClassMapperBase<EngineSettingsModel> {
       showDepthOverlay: data.dec(_f$showDepthOverlay),
       showPvArrows: data.dec(_f$showPvArrows),
       searchTimeIndex: data.dec(_f$searchTimeIndex),
-      principalVariationCount: data.dec(_f$principalVariationCount),
+      principalVariationIndex: data.dec(_f$principalVariationIndex),
       createdAt: data.dec(_f$createdAt),
       updatedAt: data.dec(_f$updatedAt),
     );
@@ -167,7 +167,7 @@ abstract class EngineSettingsModelCopyWith<
     bool? showDepthOverlay,
     bool? showPvArrows,
     int? searchTimeIndex,
-    int? principalVariationCount,
+    int? principalVariationIndex,
     DateTime? createdAt,
     DateTime? updatedAt,
   });
@@ -192,7 +192,7 @@ class _EngineSettingsModelCopyWithImpl<$R, $Out>
     bool? showDepthOverlay,
     bool? showPvArrows,
     int? searchTimeIndex,
-    int? principalVariationCount,
+    int? principalVariationIndex,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => $apply(
@@ -203,8 +203,8 @@ class _EngineSettingsModelCopyWithImpl<$R, $Out>
       if (showDepthOverlay != null) #showDepthOverlay: showDepthOverlay,
       if (showPvArrows != null) #showPvArrows: showPvArrows,
       if (searchTimeIndex != null) #searchTimeIndex: searchTimeIndex,
-      if (principalVariationCount != null)
-        #principalVariationCount: principalVariationCount,
+      if (principalVariationIndex != null)
+        #principalVariationIndex: principalVariationIndex,
       if (createdAt != null) #createdAt: createdAt,
       if (updatedAt != null) #updatedAt: updatedAt,
     }),
@@ -217,9 +217,9 @@ class _EngineSettingsModelCopyWithImpl<$R, $Out>
     showDepthOverlay: data.get(#showDepthOverlay, or: $value.showDepthOverlay),
     showPvArrows: data.get(#showPvArrows, or: $value.showPvArrows),
     searchTimeIndex: data.get(#searchTimeIndex, or: $value.searchTimeIndex),
-    principalVariationCount: data.get(
-      #principalVariationCount,
-      or: $value.principalVariationCount,
+    principalVariationIndex: data.get(
+      #principalVariationIndex,
+      or: $value.principalVariationIndex,
     ),
     createdAt: data.get(#createdAt, or: $value.createdAt),
     updatedAt: data.get(#updatedAt, or: $value.updatedAt),

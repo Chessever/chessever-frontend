@@ -1,7 +1,6 @@
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_navbar.dart';
 import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -49,9 +48,13 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
     final activeComponent = depthSnapshot?.component;
     final gaugeProgress = depthSnapshot?.progress;
 
-    // Format depth text like "D:12"
+    // Check if user wants to see depth overlay
+    final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
+    final showDepthOverlay = engineSettings?.showDepthOverlay ?? true;
+
+    // Format depth text like "D:12" - only if overlay setting is enabled
     final depthText =
-        gaugeProgress != null
+        (gaugeProgress != null && showDepthOverlay)
             ? 'D:${gaugeProgress.depth.clamp(0, 99).toString().padLeft(2, '0')}'
             : null;
 
@@ -74,7 +77,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
         );
       } else {
         debugPrint(
-          '⚠️  BottomNav (Game $gameIndex): Engine analysis ON but NO depth data available yet',
+          '⚠️  BottomNav (Game $gameIndex): Engine analysis ON but NO depth data available yet (overlay=${showDepthOverlay})',
         );
       }
     }
@@ -84,10 +87,10 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
       decoration: const BoxDecoration(color: kBlackColor),
       child: SafeArea(
         top: false, // Allow navbar to extend below app bar
-        child: Padding(
-          padding: EdgeInsets.only(top: 8.h, bottom: 8.h),
+        child: SizedBox(
+          height: kBottomNavigationBarHeight,
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // Computer/Engine Analysis Toggle Button
               ChessSvgBottomNavbar(

@@ -6,6 +6,32 @@ import 'package:chessever2/repository/supabase/evals/persist_cloud_eval.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart' show FutureProvider;
 import 'stockfish_singleton.dart';
 
+/// Track Lichess API rate limiting to avoid abuse
+class _LichessRateLimitTracker {
+  static DateTime? _lastRateLimitTime;
+  static const _cooldownDuration = Duration(minutes: 2);
+  
+  static bool isInCooldown() {
+    if (_lastRateLimitTime == null) return false;
+    final now = DateTime.now();
+    final cooldownEnds = _lastRateLimitTime!.add(_cooldownDuration);
+    return now.isBefore(cooldownEnds);
+  }
+  
+  static void recordRateLimit() {
+    _lastRateLimitTime = DateTime.now();
+    print('⚠️ LICHESS: Rate limited, entering ${_cooldownDuration.inMinutes}min cooldown');
+  }
+  
+  static void reset() {
+    _lastRateLimitTime = null;
+    print('✅ LICHESS: Rate limit cooldown cleared');
+  }
+}
+
+/// Track background upgrades to prevent duplicates
+final Set<String> _activeBackgroundUpgrades = {};
+
 /// Parameters for cascade eval with configurable multiPV and priority
 class CascadeEvalParams {
   final String fen;
@@ -135,7 +161,7 @@ bool _isValidEvaluation(CloudEval cloud) {
 }
 
 /// SEQUENTIAL cascade: local → Supabase → Lichess → Stockfish
-/// Respects Lichess API rate limits by querying sequentially
+/// Respects Lichess API rate limits by querying SEQUENTIALLY (not parallel)
 /// Uses autoDispose to cancel evaluations when switching games
 final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval, CascadeEvalParams>((
   ref,
@@ -162,63 +188,58 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval,
       return cached;
     }
 
-    // 2️⃣ Query Supabase AND Lichess in parallel for maximum speed
-    print('🚀 EVAL: Querying Supabase and Lichess in parallel for $fen');
-
-    final supabaseFuture = evalsRepo
-        .fetchFromSupabase(fen)
-        .then((supabaseEval) {
-          if (supabaseEval == null) return null;
-          final cloud = evalsRepo.evalsToCloudEval(fen, supabaseEval);
-          if (_isValidEvaluation(cloud)) {
-            final fenParts = fen.split(' ');
-            final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
-            final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
-            print("🟡 EVAL SOURCE: SUPABASE - fen=$fen, side=$sideToMove, cp=$cp");
-            // Background save to local cache
-            local.save(fen, cloud).catchError((e) => null);
-            return cloud;
-          }
-          return null;
-        })
-        .catchError((e) {
-          print('Supabase eval failed: $e');
-          return null;
-        });
-
-    final lichessFuture = lichess
-        .getEval(fen, multiPv: multiPV)
-        .then((cloud) {
-          if (_isValidEvaluation(cloud)) {
-            final fenParts = fen.split(' ');
-            final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
-            final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
-            print("🟢 EVAL SOURCE: LICHESS (${cloud.pvs.length} PVs) - fen=$fen, side=$sideToMove, cp=$cp");
-            // Background save to both caches
-            Future.wait<void>([
-              persist.call(fen, cloud),
-              local.save(fen, cloud),
-            ]).catchError((e) => <void>[]);
-            return cloud;
-          }
-          return null;
-        })
-        .catchError((e) {
-          if (e is! NoEvalException) {
-            print('Lichess eval failed: $e');
-          }
-          return null;
-        });
-
-    // Wait for both cloud sources to complete in parallel
-    final results = await Future.wait([supabaseFuture, lichessFuture]);
-
-    // Return first valid result (Supabase is first in array, so prioritized)
-    for (final result in results) {
-      if (result != null) return result;
+    // 2️⃣ Query Supabase FIRST (our database, no rate limits)
+    print('🔍 EVAL: Checking Supabase for $fen');
+    try {
+      final supabaseEval = await evalsRepo.fetchFromSupabase(fen);
+      if (supabaseEval != null) {
+        final cloud = evalsRepo.evalsToCloudEval(fen, supabaseEval);
+        if (_isValidEvaluation(cloud)) {
+          final fenParts = fen.split(' ');
+          final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
+          final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
+          print("🟡 EVAL SOURCE: SUPABASE - fen=$fen, side=$sideToMove, cp=$cp");
+          // Background save to local cache
+          local.save(fen, cloud).catchError((e) => null);
+          return cloud;
+        }
+      }
+    } catch (e) {
+      print('⚠️ Supabase eval failed: $e, continuing to Lichess...');
     }
 
-    // 3️⃣ FALLBACK: All cloud sources failed, use Stockfish with progressive depth
+    // 3️⃣ Query Lichess ONLY if Supabase doesn't have it (respect rate limits)
+    // Check if we're in cooldown from previous rate limiting
+    if (_LichessRateLimitTracker.isInCooldown()) {
+      print('⏸️ LICHESS: Skipping due to rate limit cooldown, using Stockfish');
+      // Skip directly to Stockfish
+    } else {
+      print('🔍 EVAL: Checking Lichess for $fen');
+      try {
+        final cloud = await lichess.getEval(fen, multiPv: multiPV);
+        if (_isValidEvaluation(cloud)) {
+          final fenParts = fen.split(' ');
+          final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
+          final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
+          print("🟢 EVAL SOURCE: LICHESS (${cloud.pvs.length} PVs) - fen=$fen, side=$sideToMove, cp=$cp");
+          // Background save to both caches
+          Future.wait<void>([
+            persist.call(fen, cloud),
+            local.save(fen, cloud),
+          ]).catchError((e) => <void>[]);
+          return cloud;
+        }
+      } catch (e) {
+        if (e is RateLimitException) {
+          _LichessRateLimitTracker.recordRateLimit();
+          print('🚨 LICHESS: Rate limited! Entering cooldown and falling back to Stockfish');
+        } else if (e is! NoEvalException) {
+          print('⚠️ Lichess eval failed: $e');
+        }
+      }
+    }
+
+    // 4️⃣ FALLBACK: All cloud sources failed, use Stockfish with progressive depth
     // STRATEGY: Start with depth 12 for fast results with good move count, then upgrade to depth 20
     print('⚡ EVAL SOURCE: STOCKFISH FALLBACK (depth 12→20) for $fen');
     try {
@@ -257,6 +278,7 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval,
 });
 
 /// Background helper to upgrade evaluation depth without blocking UI
+/// Prevents duplicate upgrades for the same position
 void _upgradeEvaluationInBackground(
   String fen,
   PersistCloudEval persist,
@@ -264,6 +286,15 @@ void _upgradeEvaluationInBackground(
   int multiPV,
   bool isCurrentPosition,
 ) {
+  // Prevent duplicate background upgrades for the same position
+  final upgradeKey = '${fen}_pv${multiPV}';
+  if (_activeBackgroundUpgrades.contains(upgradeKey)) {
+    print('⏭️ BACKGROUND UPGRADE: Skipping duplicate upgrade for $fen');
+    return;
+  }
+  
+  _activeBackgroundUpgrades.add(upgradeKey);
+  
   // Fire and forget - run deeper analysis in background
   Future.delayed(Duration.zero, () async {
     try {
@@ -293,6 +324,8 @@ void _upgradeEvaluationInBackground(
     } catch (e) {
       print('⚠️ Background upgrade failed for $fen: $e');
       // Don't crash - quick eval is already showing
+    } finally {
+      _activeBackgroundUpgrades.remove(upgradeKey);
     }
   });
 }

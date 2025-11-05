@@ -10,7 +10,7 @@ class EngineSettingsModel with EngineSettingsModelMappable {
   final bool showDepthOverlay;
   final bool showPvArrows;
   final int searchTimeIndex;
-  final int principalVariationCount;
+  final int principalVariationIndex;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -21,7 +21,7 @@ class EngineSettingsModel with EngineSettingsModelMappable {
     required this.showDepthOverlay,
     required this.showPvArrows,
     required this.searchTimeIndex,
-    required this.principalVariationCount,
+    required this.principalVariationIndex,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -35,7 +35,7 @@ class EngineSettingsModel with EngineSettingsModelMappable {
       showDepthOverlay: json['show_depth_overlay'] as bool? ?? true,
       showPvArrows: json['show_pv_arrows'] as bool? ?? true,
       searchTimeIndex: json['search_time_index'] as int? ?? 2,
-      principalVariationCount: json['principal_variation_count'] as int? ?? 3,
+      principalVariationIndex: json['principal_variation_index'] as int? ?? 2,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
@@ -50,7 +50,7 @@ class EngineSettingsModel with EngineSettingsModelMappable {
       'show_depth_overlay': showDepthOverlay,
       'show_pv_arrows': showPvArrows,
       'search_time_index': searchTimeIndex,
-      'principal_variation_count': principalVariationCount,
+      'principal_variation_index': principalVariationIndex,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };
@@ -64,7 +64,7 @@ class EngineSettingsModel with EngineSettingsModelMappable {
       'show_depth_overlay': showDepthOverlay,
       'show_pv_arrows': showPvArrows,
       'search_time_index': searchTimeIndex,
-      'principal_variation_count': principalVariationCount,
+      'principal_variation_index': principalVariationIndex,
     };
   }
 
@@ -77,7 +77,7 @@ class EngineSettingsModel with EngineSettingsModelMappable {
       showDepthOverlay: true,
       showPvArrows: true,
       searchTimeIndex: 2, // 20s default
-      principalVariationCount: 3,
+      principalVariationIndex: 2, // Default to 3 lines (index 2)
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );
