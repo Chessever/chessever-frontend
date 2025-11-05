@@ -157,58 +157,62 @@ class _GamesAppBarNotifier
     final selectedId = vm?.selectedId;
     final userSelected = vm?.userSelectedId ?? false;
 
-    // NOTE: For knockout tournaments, the dropdown and scroll behavior needs special handling
-    // Knockout tournaments render ALL games grouped by matches (player pairs) in one section,
-    // not split by database rounds. This makes round-based scrolling less meaningful.
-    // TODO: Consider hiding/adapting the dropdown for knockout tournaments
-
-    // Smart filtering: Match the logic in games_tour_content_body.dart
+    // Smart filtering: Match the EXACT logic in games_tour_content_body.dart
     final gamesByRound = _buildRoundGameCounts();
 
-    final hasLiveOrOngoing = allRounds.any(
-      (r) =>
-          r.roundStatus == RoundStatus.live ||
-          r.roundStatus == RoundStatus.ongoing,
-    );
+    // Check if this is a multi-stage knockout (same check as in games_tour_content_body.dart)
+    final isMultiStageKnockout = allRounds.any((r) => r.id.startsWith('$kKnockoutStagePrefix-'));
 
-    final hasCompleted = allRounds.any(
-      (r) => r.roundStatus == RoundStatus.completed,
-    );
+    final rounds = allRounds.where((round) {
+      final gamesInRound = gamesByRound[round.id] ?? 0;
+      if (gamesInRound == 0) return false;
 
-    final allAreUpcoming = allRounds.every(
-      (r) =>
-          r.roundStatus == RoundStatus.upcoming ||
-          (gamesByRound[r.id] ?? 0) == 0,
-    );
+      // For multi-stage knockouts, show ALL stages with games (no status filtering)
+      // This matches the logic in games_tour_content_body.dart line 115-117
+      if (isMultiStageKnockout) {
+        return true;
+      }
 
-    final rounds =
-        allRounds.where((round) {
-          final gamesInRound = gamesByRound[round.id] ?? 0;
-          if (gamesInRound == 0) return false;
+      // Regular tournament filtering logic below
+      final hasLiveOrOngoing = allRounds.any(
+        (r) =>
+            r.roundStatus == RoundStatus.live ||
+            r.roundStatus == RoundStatus.ongoing,
+      );
 
-          if (userSelected && selectedId == round.id) return true;
+      final hasCompleted = allRounds.any(
+        (r) => r.roundStatus == RoundStatus.completed,
+      );
 
-          if (allAreUpcoming) return true;
+      final allAreUpcoming = allRounds.every(
+        (r) =>
+            r.roundStatus == RoundStatus.upcoming ||
+            (gamesByRound[r.id] ?? 0) == 0,
+      );
 
-          if (hasLiveOrOngoing) {
-            return round.roundStatus != RoundStatus.upcoming;
-          }
+      if (userSelected && selectedId == round.id) return true;
 
-          if (hasCompleted && round.roundStatus == RoundStatus.upcoming) {
-            final upcomingRounds =
-                allRounds
-                    .where(
-                      (r) =>
-                          r.roundStatus == RoundStatus.upcoming &&
-                          (gamesByRound[r.id] ?? 0) > 0,
-                    )
-                    .toList();
-            return upcomingRounds.isNotEmpty &&
-                upcomingRounds.first.id == round.id;
-          }
+      if (allAreUpcoming) return true;
 
-          return round.roundStatus != RoundStatus.upcoming;
-        }).toList();
+      if (hasLiveOrOngoing) {
+        return round.roundStatus != RoundStatus.upcoming;
+      }
+
+      if (hasCompleted && round.roundStatus == RoundStatus.upcoming) {
+        final upcomingRounds =
+            allRounds
+                .where(
+                  (r) =>
+                      r.roundStatus == RoundStatus.upcoming &&
+                      (gamesByRound[r.id] ?? 0) > 0,
+                )
+                .toList();
+        return upcomingRounds.isNotEmpty &&
+            upcomingRounds.first.id == round.id;
+      }
+
+      return round.roundStatus != RoundStatus.upcoming;
+    }).toList();
 
     // Check if we're in group event mode
     final screenMode = ref.read(gamesTourScreenModeProvider).valueOrNull;
@@ -381,7 +385,14 @@ class _GamesAppBarNotifier
         // Multiple stages detected - create separate dropdown items for each
         final allStageModels = <GamesAppBarModel>[];
 
-        print('🏆 Processing ${groupTours.length} tours in group broadcast');
+        // Sort group tours by start date (descending - most recent first) for proper dropdown order
+        groupTours.sort((a, b) {
+          final aDate = a.tour.dates.isNotEmpty ? a.tour.dates.first : DateTime(1970);
+          final bDate = b.tour.dates.isNotEmpty ? b.tour.dates.first : DateTime(1970);
+          return bDate.compareTo(aDate); // Descending order
+        });
+
+        print('🏆 Processing ${groupTours.length} tours in group broadcast (sorted by date descending)');
 
         for (final tourModel in groupTours) {
           final tour = tourModel.tour;
@@ -399,7 +410,7 @@ class _GamesAppBarNotifier
             continue;
           }
 
-          // Check if this tour is knockout format AND has games
+          // Check if this tour is knockout format
           final stageKnockoutState = ref.read(knockoutTournamentStateProvider(tour.id));
 
           if (!stageKnockoutState.isKnockout) {
@@ -407,18 +418,8 @@ class _GamesAppBarNotifier
             continue;
           }
 
-          // For checking games, use the tour status which is more reliable
+          // Show ALL stages in dropdown, regardless of games (like 'about' tab does)
           final tourStatus = tourModel.roundStatus;
-          final hasGames = (tourStatus == RoundStatus.completed ||
-                           tourStatus == RoundStatus.ongoing ||
-                           tourStatus == RoundStatus.live ||
-                           stageKnockoutState.allGames.isNotEmpty);
-
-          if (!hasGames) {
-            print('    ❌ No games found (status: $tourStatus, games: ${stageKnockoutState.allGames.length}), skipping');
-            continue;
-          }
-
           print('    ✓ Has ${stageRoundModels.length} rounds, ${stageKnockoutState.allGames.length} games, status: $tourStatus');
 
           // Determine aggregated status for this stage
@@ -433,14 +434,9 @@ class _GamesAppBarNotifier
             stageStatus = RoundStatus.upcoming;
           }
 
-          // Get earliest start time
-          final stageStartsAt = stageRoundModels
-              .map((m) => m.startsAt)
-              .whereType<DateTime>()
-              .fold<DateTime?>(null, (earliest, date) {
-            if (earliest == null) return date;
-            return date.isBefore(earliest) ? date : earliest;
-          });
+          // Use tour's dates directly for proper sorting (descending by date)
+          // tour.dates.first is the start date of this stage
+          final stageStartsAt = tour.dates.isNotEmpty ? tour.dates.first : null;
 
           // Extract stage name directly from tour name (e.g., "FIDE World Cup 2025 | Round 1" -> "Round 1")
           final stageName = tour.name.contains('|')
@@ -449,8 +445,19 @@ class _GamesAppBarNotifier
 
           print('    ✅ Created stage: "$stageName" (status: $stageStatus, games: ${stageKnockoutState.allGames.length})');
 
+          final stageId = '$kKnockoutStagePrefix-${tour.id}';
+
+          // Add metadata for this synthetic stage ID to enable proper sorting
+          _roundSortMeta[stageId] = _RoundSortMeta(
+            slug: tour.slug,
+            createdAt: tour.createdAt,
+            startsAt: stageStartsAt,
+            roundNumber: _parseRoundNumber(stageName),
+            gameNumber: null,
+          );
+
           allStageModels.add(GamesAppBarModel(
-            id: '$kKnockoutStagePrefix-${tour.id}',
+            id: stageId,
             name: stageName,
             startsAt: stageStartsAt,
             roundStatus: stageStatus,
@@ -497,9 +504,29 @@ class _GamesAppBarNotifier
       return date.isBefore(earliest) ? date : earliest;
     });
 
+    // Get created date from earliest sub-round
+    final createdAt = models
+        .map((m) => _roundSortMeta[m.id]?.createdAt)
+        .whereType<DateTime>()
+        .fold<DateTime?>(null, (earliest, date) {
+      if (earliest == null) return date;
+      return date.isBefore(earliest) ? date : earliest;
+    }) ?? DateTime.now();
+
+    final logicalRoundId = '$kKnockoutStagePrefix-${tourId ?? 'stage'}';
+
+    // Add metadata for this synthetic single-stage ID to enable proper sorting
+    _roundSortMeta[logicalRoundId] = _RoundSortMeta(
+      slug: models.firstOrNull != null ? _roundSortMeta[models.first.id]?.slug ?? '' : '',
+      createdAt: createdAt,
+      startsAt: startsAt,
+      roundNumber: _parseRoundNumber(roundName),
+      gameNumber: null,
+    );
+
     // Create a single logical tournament round from all sub-rounds
     final logicalRound = GamesAppBarModel(
-      id: '$kKnockoutStagePrefix-${tourId ?? 'stage'}',
+      id: logicalRoundId,
       name: roundName,
       startsAt: startsAt,
       roundStatus: roundStatus,
@@ -659,30 +686,58 @@ class _GamesAppBarNotifier
   }
 
   int _compareRounds(GamesAppBarModel a, GamesAppBarModel b) {
-    final aPriority = _statusPriorityMap[a.roundStatus] ?? _defaultStatusRank;
-    final bPriority = _statusPriorityMap[b.roundStatus] ?? _defaultStatusRank;
-
-    if (aPriority != bPriority) {
-      return aPriority.compareTo(bPriority);
-    }
+    // For multi-stage knockouts, sort by DATE first, ignoring status
+    // This ensures "Finals" (24 Nov) appears before "Round 5" (14 Nov)
+    final isMultiStageKnockout = a.id.startsWith('$kKnockoutStagePrefix-') &&
+                                  b.id.startsWith('$kKnockoutStagePrefix-');
 
     final aMeta = _roundSortMeta[a.id];
     final bMeta = _roundSortMeta[b.id];
 
-    final aRoundNum = aMeta?.roundNumber ?? _extractRoundNumber(a.name);
-    final bRoundNum = bMeta?.roundNumber ?? _extractRoundNumber(b.name);
-    final roundCompare = _compareIntsDesc(aRoundNum, bRoundNum);
-    if (roundCompare != 0) return roundCompare;
+    if (isMultiStageKnockout) {
+      // For multi-stage knockouts: Sort by DATE first (most recent first), skip status priority
+      final aStarts = aMeta?.startsAt ?? a.startsAt;
+      final bStarts = bMeta?.startsAt ?? b.startsAt;
+      final startCompare = _compareDatesDesc(aStarts, bStarts);
+      if (startCompare != 0) return startCompare;
+
+      // Then by status if dates are equal
+      final aPriority = _statusPriorityMap[a.roundStatus] ?? _defaultStatusRank;
+      final bPriority = _statusPriorityMap[b.roundStatus] ?? _defaultStatusRank;
+      if (aPriority != bPriority) {
+        return aPriority.compareTo(bPriority);
+      }
+
+      // Then by round number if status is also equal
+      final aRoundNum = aMeta?.roundNumber ?? _extractRoundNumber(a.name);
+      final bRoundNum = bMeta?.roundNumber ?? _extractRoundNumber(b.name);
+      final roundCompare = _compareIntsDesc(aRoundNum, bRoundNum);
+      if (roundCompare != 0) return roundCompare;
+    } else {
+      // For regular rounds: Sort by status first
+      final aPriority = _statusPriorityMap[a.roundStatus] ?? _defaultStatusRank;
+      final bPriority = _statusPriorityMap[b.roundStatus] ?? _defaultStatusRank;
+
+      if (aPriority != bPriority) {
+        return aPriority.compareTo(bPriority);
+      }
+      // For regular rounds: Sort by round number first (higher rounds first)
+      final aRoundNum = aMeta?.roundNumber ?? _extractRoundNumber(a.name);
+      final bRoundNum = bMeta?.roundNumber ?? _extractRoundNumber(b.name);
+      final roundCompare = _compareIntsDesc(aRoundNum, bRoundNum);
+      if (roundCompare != 0) return roundCompare;
+
+      // Then by date
+      final aStarts = aMeta?.startsAt ?? a.startsAt;
+      final bStarts = bMeta?.startsAt ?? b.startsAt;
+      final startCompare = _compareDatesDesc(aStarts, bStarts);
+      if (startCompare != 0) return startCompare;
+    }
 
     final aGameNum = aMeta?.gameNumber ?? _extractGameNumber(a.name);
     final bGameNum = bMeta?.gameNumber ?? _extractGameNumber(b.name);
     final gameCompare = _compareIntsDesc(aGameNum, bGameNum);
     if (gameCompare != 0) return gameCompare;
-
-    final aStarts = aMeta?.startsAt ?? a.startsAt;
-    final bStarts = bMeta?.startsAt ?? b.startsAt;
-    final startCompare = _compareDatesDesc(aStarts, bStarts);
-    if (startCompare != 0) return startCompare;
 
     final createdCompare = _compareDatesDesc(
       aMeta?.createdAt,

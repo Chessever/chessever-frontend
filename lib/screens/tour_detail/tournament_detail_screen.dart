@@ -13,6 +13,7 @@ import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_pr
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_app_bar_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/widget/text_dropdown_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -292,7 +293,31 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
   }
 
   List<Map<String, String>> _buildDropdownItems(List<TourModel> tours) {
-    return tours
+    // Sort tours by date in descending order (most recent first), then by status
+    final sortedTours = List<TourModel>.from(tours)..sort((a, b) {
+      // Get start dates (first date in the dates list)
+      final aStartDate = a.tour.dates.isNotEmpty ? a.tour.dates.first : DateTime(1970);
+      final bStartDate = b.tour.dates.isNotEmpty ? b.tour.dates.first : DateTime(1970);
+
+      // Sort by date descending (most recent first)
+      final dateCompare = bStartDate.compareTo(aStartDate);
+      if (dateCompare != 0) return dateCompare;
+
+      // If dates are equal, sort by status priority
+      const statusPriority = {
+        RoundStatus.live: 0,
+        RoundStatus.ongoing: 1,
+        RoundStatus.upcoming: 2,
+        RoundStatus.completed: 3,
+      };
+
+      final aPriority = statusPriority[a.roundStatus] ?? 4;
+      final bPriority = statusPriority[b.roundStatus] ?? 4;
+
+      return aPriority.compareTo(bPriority);
+    });
+
+    return sortedTours
         .map(
           (tourModel) => {
             'key': tourModel.tour.id,

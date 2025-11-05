@@ -155,6 +155,7 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
       dropdownColor: kBlack2Color,
       borderRadius: BorderRadius.circular(20.br),
       isExpanded: true,
+      menuMaxHeight: 400.h, // Adaptive height to prevent overflow
       style: AppTypography.textMdBold,
       selectedItemBuilder: (BuildContext context) {
         return widget.items.map((item) {
