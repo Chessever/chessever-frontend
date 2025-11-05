@@ -182,33 +182,37 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval,
       if (result != null) return result;
     }
 
-    // 3️⃣ FALLBACK: All cloud sources failed, use Stockfish as last resort
-    print('⚡ EVAL SOURCE: STOCKFISH FALLBACK for $fen (cloud sources unavailable)');
+    // 3️⃣ FALLBACK: All cloud sources failed, use Stockfish with progressive depth
+    // STRATEGY: Start with depth 5 for instant results, then upgrade to depth 15 in background
+    print('⚡ EVAL SOURCE: STOCKFISH FALLBACK (depth 5→15) for $fen');
     try {
+      // QUICK EVAL: depth 5 gives instant results (~300-500ms)
       final sfEval = await StockfishSingleton()
-          .evaluatePosition(fen, depth: 15)
+          .evaluatePosition(fen, depth: 5, multiPV: 3)
           .timeout(
-            const Duration(seconds: 20),
+            const Duration(seconds: 5),
             onTimeout: () {
-              print('⏱️ Stockfish evaluation timeout for $fen');
-              throw TimeoutException('Stockfish evaluation took too long');
+              print('⏱️ Stockfish quick eval timeout for $fen');
+              throw TimeoutException('Stockfish quick evaluation took too long');
             },
           );
-      final cloudFromSF = CloudEval(
+      final quickCloudFromSF = CloudEval(
         fen: fen,
         knodes: sfEval.knodes,
         depth: sfEval.depth,
         pvs: sfEval.pvs,
       );
-      // Save to cache for future use (background)
-      Future.wait<void>([
-        persist.call(fen, cloudFromSF),
-        local.save(fen, cloudFromSF),
-      ]).catchError((e) {
-        print('Background save failed for Stockfish eval $fen: $e');
-        return <void>[];
-      });
-      return cloudFromSF;
+      
+      print('✅ QUICK EVAL: Returning depth ${sfEval.depth} result immediately for $fen');
+      
+      // BACKGROUND UPGRADE: Trigger deeper analysis (depth 15) without blocking
+      // This will cache the better result for future use
+      _upgradeEvaluationInBackground(fen, persist, local);
+      
+      // Save quick result to cache (will be replaced by deeper eval)
+      local.save(fen, quickCloudFromSF).catchError((e) => null);
+      
+      return quickCloudFromSF;
     } catch (e) {
       print('❌ Stockfish fallback failed for $fen: $e');
       rethrow;
@@ -217,3 +221,44 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval,
     rethrow;
   }
 });
+
+/// Background helper to upgrade evaluation depth without blocking UI
+void _upgradeEvaluationInBackground(
+  String fen,
+  PersistCloudEval persist,
+  LocalEvalCache local,
+) {
+  // Fire and forget - run deeper analysis in background
+  Future.delayed(Duration.zero, () async {
+    try {
+      print('🔄 BACKGROUND UPGRADE: Starting depth 15 eval for $fen');
+      final deepEval = await StockfishSingleton()
+          .evaluatePosition(fen, depth: 15, multiPV: 3)
+          .timeout(
+            const Duration(seconds: 20),
+            onTimeout: () {
+              print('⏱️ Background deep eval timeout for $fen');
+              throw TimeoutException('Deep evaluation took too long');
+            },
+          );
+      
+      final deepCloud = CloudEval(
+        fen: fen,
+        knodes: deepEval.knodes,
+        depth: deepEval.depth,
+        pvs: deepEval.pvs,
+      );
+      
+      // Cache the improved result
+      await Future.wait<void>([
+        persist.call(fen, deepCloud),
+        local.save(fen, deepCloud),
+      ]);
+      
+      print('✅ BACKGROUND UPGRADE: Cached depth ${deepEval.depth} result for $fen');
+    } catch (e) {
+      print('⚠️ Background upgrade failed for $fen: $e');
+      // Don't crash - quick eval is already showing
+    }
+  });
+}
