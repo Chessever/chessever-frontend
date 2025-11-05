@@ -54,49 +54,63 @@ class SingleMoveImpactParams {
 /// Uses .family for automatic caching and atomicity
 /// Does NOT block eval bar by flooding Stockfish queue
 /// Uses autoDispose to cancel when switching games
-final singleMoveImpactProvider = FutureProvider.family.autoDispose<MoveImpactAnalysis?, SingleMoveImpactParams>(
-  (ref, params) async {
-    debugPrint('🎨 LAZY IMPACT: Calculating for move ${params.moveIndex} in ${params.gameId}');
+final singleMoveImpactProvider = FutureProvider.family.autoDispose<
+  MoveImpactAnalysis?,
+  SingleMoveImpactParams
+>((ref, params) async {
+  debugPrint(
+    '🎨 LAZY IMPACT: Calculating for move ${params.moveIndex} in ${params.gameId}',
+  );
 
-    try {
-      // Get evaluations for the two positions
-      // OPTIMIZATION: Query both positions in parallel
-      // Request 3 PVs for move impact analysis to compare alternatives
-      final evalBefore = await ref.read(cascadeEvalProvider(
+  try {
+    // Get evaluations for the two positions
+    // OPTIMIZATION: Query both positions in parallel
+    // Request 3 PVs for move impact analysis to compare alternatives
+    final evalBefore = await ref.read(
+      cascadeEvalProvider(
         CascadeEvalParams(fen: params.fenBefore, multiPV: 3),
-      ).future);
-      final evalAfter = await ref.read(cascadeEvalProvider(
+      ).future,
+    );
+    final evalAfter = await ref.read(
+      cascadeEvalProvider(
         CascadeEvalParams(fen: params.fenAfter, multiPV: 3),
-      ).future);
+      ).future,
+    );
 
-      // Use worker_manager with LOW priority to not block eval bar
-      final analysis = await workerManager.execute<MoveImpactAnalysis?>(
-        () => calculateMoveImpact(
-          positionEvalBeforeMove: evalBefore,
-          positionEvalAfterMove: evalAfter,
-          positionFenBeforeMove: params.fenBefore,
-          positionFenAfterMove: params.fenAfter,
-          playerMoveSan: params.moveSan,
-          moveNumber: params.moveIndex,
-        ),
-        priority: WorkPriority.low, // LOW priority - don't block eval bar!
-      );
+    // Use worker_manager with LOW priority to not block eval bar
+    final analysis = await workerManager.execute<MoveImpactAnalysis?>(
+      () => calculateMoveImpact(
+        positionEvalBeforeMove: evalBefore,
+        positionEvalAfterMove: evalAfter,
+        positionFenBeforeMove: params.fenBefore,
+        positionFenAfterMove: params.fenAfter,
+        playerMoveSan: params.moveSan,
+        moveNumber: params.moveIndex,
+      ),
+      priority: WorkPriority.low, // LOW priority - don't block eval bar!
+    );
 
-      debugPrint('🎨 LAZY IMPACT: Move ${params.moveIndex} classified as ${analysis?.impact.symbol}');
-      return analysis;
-    } catch (e) {
-      debugPrint('⚠️ LAZY IMPACT: Error calculating move ${params.moveIndex}: $e');
-      return null;
-    }
-  },
-);
+    debugPrint(
+      '🎨 LAZY IMPACT: Move ${params.moveIndex} classified as ${analysis?.impact.symbol}',
+    );
+    return analysis;
+  } catch (e) {
+    debugPrint(
+      '⚠️ LAZY IMPACT: Error calculating move ${params.moveIndex}: $e',
+    );
+    return null;
+  }
+});
 
 // DEPRECATED: Old bulk evaluation approach that blocks eval bar
 // Kept for backward compatibility but should not be used for new code
 class SimpleMoveImpactParams {
-  final List<String> positionFens; // FENs for each position (length = moves + 1)
-  final List<bool> isWhiteMoves; // Whether each move is white's (length = moves)
-  final List<String> moveSans; // SAN notation of actual moves played (length = moves)
+  final List<String>
+  positionFens; // FENs for each position (length = moves + 1)
+  final List<bool>
+  isWhiteMoves; // Whether each move is white's (length = moves)
+  final List<String>
+  moveSans; // SAN notation of actual moves played (length = moves)
   final String gameId;
 
   SimpleMoveImpactParams({
@@ -122,24 +136,39 @@ const int _kClassificationBatchSize = 16;
 
 /// Provider that calculates move impacts by analyzing engine alternatives
 /// Uses the cascade eval provider to get multiple PV lines for each position
-final simpleMoveImpactProvider = FutureProvider.family<Map<int, MoveImpactAnalysis>, SimpleMoveImpactParams>((ref, params) async {
+final simpleMoveImpactProvider = FutureProvider.family<
+  Map<int, MoveImpactAnalysis>,
+  SimpleMoveImpactParams
+>((ref, params) async {
   final Map<int, MoveImpactAnalysis> impactResults = {};
   final moveCount = params.moveSans.length;
   if (moveCount == 0) {
-    debugPrint('🎨 COMPREHENSIVE IMPACT: No moves to analyze for ${params.gameId}');
+    debugPrint(
+      '🎨 COMPREHENSIVE IMPACT: No moves to analyze for ${params.gameId}',
+    );
     return impactResults;
   }
 
   if (params.positionFens.length != moveCount + 1) {
-    debugPrint('⚠️ COMPREHENSIVE IMPACT: FEN count mismatch for ${params.gameId} (fens=${params.positionFens.length}, moves=$moveCount)');
+    debugPrint(
+      '⚠️ COMPREHENSIVE IMPACT: FEN count mismatch for ${params.gameId} (fens=${params.positionFens.length}, moves=$moveCount)',
+    );
   }
 
-  debugPrint('🎨 COMPREHENSIVE IMPACT: Starting for ${params.positionFens.length} positions, $moveCount moves');
+  debugPrint(
+    '🎨 COMPREHENSIVE IMPACT: Starting for ${params.positionFens.length} positions, $moveCount moves',
+  );
 
-  final evaluations = await _evaluatePositions(ref, params.positionFens, params.gameId);
+  final evaluations = await _evaluatePositions(
+    ref,
+    params.positionFens,
+    params.gameId,
+  );
 
   final availableEvalCount = evaluations.where((eval) => eval != null).length;
-  debugPrint('🎨 COMPREHENSIVE IMPACT: Retrieved $availableEvalCount/${evaluations.length} position evals');
+  debugPrint(
+    '🎨 COMPREHENSIVE IMPACT: Retrieved $availableEvalCount/${evaluations.length} position evals',
+  );
 
   final tasks = <Future<List<_BatchClassificationResult>>>[];
   for (int start = 0; start < moveCount; start += _kClassificationBatchSize) {
@@ -198,8 +227,12 @@ final simpleMoveImpactProvider = FutureProvider.family<Map<int, MoveImpactAnalys
     typeCounts.update(analysis.impact, (value) => value + 1, ifAbsent: () => 1);
   }
 
-  debugPrint('🎨 COMPREHENSIVE IMPACT: Classified ${impactResults.length} moves for ${params.gameId}');
-  debugPrint('🎨 IMPACT DISTRIBUTION: ${typeCounts.map((k, v) => MapEntry(k.symbol.isEmpty ? 'regular' : k.symbol, v))}');
+  debugPrint(
+    '🎨 COMPREHENSIVE IMPACT: Classified ${impactResults.length} moves for ${params.gameId}',
+  );
+  debugPrint(
+    '🎨 IMPACT DISTRIBUTION: ${typeCounts.map((k, v) => MapEntry(k.symbol.isEmpty ? 'regular' : k.symbol, v))}',
+  );
   return impactResults;
 });
 
@@ -214,7 +247,11 @@ Future<List<CloudEval?>> _evaluatePositions(
   final indices = List<int>.generate(fens.length, (i) => fens.length - 1 - i);
 
   // Process sequentially in chunks to avoid overwhelming Lichess API
-  for (int chunkStart = 0; chunkStart < indices.length; chunkStart += _kEvalConcurrency) {
+  for (
+    int chunkStart = 0;
+    chunkStart < indices.length;
+    chunkStart += _kEvalConcurrency
+  ) {
     final end = math.min(chunkStart + _kEvalConcurrency, indices.length);
     final chunk = <Future<void>>[];
 
@@ -231,7 +268,9 @@ Future<List<CloudEval?>> _evaluatePositions(
             fenIndex,
           );
         } catch (e) {
-          debugPrint('⚠️ COMPREHENSIVE IMPACT: Error fetching eval for position $fenIndex in $gameId: $e');
+          debugPrint(
+            '⚠️ COMPREHENSIVE IMPACT: Error fetching eval for position $fenIndex in $gameId: $e',
+          );
           results[fenIndex] = null;
         }
       }());
@@ -241,12 +280,16 @@ Future<List<CloudEval?>> _evaluatePositions(
     try {
       await Future.wait(chunk, eagerError: false);
     } catch (e) {
-      debugPrint('⚠️ COMPREHENSIVE IMPACT: Chunk error for positions $chunkStart-$end in $gameId: $e');
+      debugPrint(
+        '⚠️ COMPREHENSIVE IMPACT: Chunk error for positions $chunkStart-$end in $gameId: $e',
+      );
     }
 
     // Log progress every chunk
     final completedSoFar = results.where((e) => e != null).length;
-    debugPrint('🎨 COMPREHENSIVE IMPACT: Progress $completedSoFar/${fens.length} evals completed');
+    debugPrint(
+      '🎨 COMPREHENSIVE IMPACT: Progress $completedSoFar/${fens.length} evals completed',
+    );
   }
 
   return results;
@@ -265,13 +308,17 @@ Future<CloudEval?> _fetchEvalWithRetry(
   for (int attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       // Request 3 PVs for position evaluation
-      return await ref.read(cascadeEvalProviderForBoard(
-        CascadeEvalParams(fen: fen, multiPV: 3),
-      ).future);
+      return await ref.read(
+        cascadeEvalProviderForBoard(
+          CascadeEvalParams(fen: fen, multiPV: 3),
+        ).future,
+      );
     } catch (e) {
       final bool rateLimited = _isRateLimitError(e);
       if (!rateLimited || attempt == maxAttempts) {
-        debugPrint('⚠️ COMPREHENSIVE IMPACT: Failed to get eval for position $index in $gameId: $e');
+        debugPrint(
+          '⚠️ COMPREHENSIVE IMPACT: Failed to get eval for position $index in $gameId: $e',
+        );
         return null;
       }
 
@@ -289,7 +336,8 @@ Future<CloudEval?> _fetchEvalWithRetry(
 
 bool _isRateLimitError(Object error) {
   if (error is HttpException) {
-    return error.message.contains('429') || error.message.contains('Too Many Requests');
+    return error.message.contains('429') ||
+        error.message.contains('Too Many Requests');
   }
 
   final message = error.toString();
@@ -324,15 +372,25 @@ class _BatchClassificationResult {
   });
 }
 
-List<_BatchClassificationResult> _runBatchClassification(_BatchClassificationParams params) {
+List<_BatchClassificationResult> _runBatchClassification(
+  _BatchClassificationParams params,
+) {
   final results = <_BatchClassificationResult>[];
 
   for (int index = params.startIndex; index < params.endIndex; index++) {
-    final evalBefore = index < params.evaluations.length ? params.evaluations[index] : null;
-    final evalAfter = (index + 1) < params.evaluations.length ? params.evaluations[index + 1] : null;
+    final evalBefore =
+        index < params.evaluations.length ? params.evaluations[index] : null;
+    final evalAfter =
+        (index + 1) < params.evaluations.length
+            ? params.evaluations[index + 1]
+            : null;
     final moveSan = params.moveSans[index];
-    final fenBefore = index < params.positionFens.length ? params.positionFens[index] : '';
-    final fenAfter = (index + 1) < params.positionFens.length ? params.positionFens[index + 1] : null;
+    final fenBefore =
+        index < params.positionFens.length ? params.positionFens[index] : '';
+    final fenAfter =
+        (index + 1) < params.positionFens.length
+            ? params.positionFens[index + 1]
+            : null;
 
     MoveImpactAnalysis? analysis;
     if (evalBefore != null) {
@@ -345,10 +403,14 @@ List<_BatchClassificationResult> _runBatchClassification(_BatchClassificationPar
         moveNumber: index,
       );
     } else {
-      debugPrint('⚠️ COMPREHENSIVE IMPACT: Missing eval before move $index in ${params.gameId}');
+      debugPrint(
+        '⚠️ COMPREHENSIVE IMPACT: Missing eval before move $index in ${params.gameId}',
+      );
     }
 
-    results.add(_BatchClassificationResult(moveIndex: index, analysis: analysis));
+    results.add(
+      _BatchClassificationResult(moveIndex: index, analysis: analysis),
+    );
   }
 
   return results;
