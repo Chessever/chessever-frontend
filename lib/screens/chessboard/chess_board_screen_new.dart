@@ -12,7 +12,8 @@ import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.d
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
-import 'package:chessever2/screens/chessboard/widgets/move_annotation_overlay.dart';
+// DISABLED: Move annotation overlay (requires move impact analysis)
+// import 'package:chessever2/screens/chessboard/widgets/move_annotation_overlay.dart';
 import 'package:chessever2/screens/chessboard/widgets/share_game_card_overlay.dart';
 import 'package:chessever2/screens/chessboard/chess_board_settings_page.dart';
 import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
@@ -99,7 +100,6 @@ final lazyMoveImpactProvider = FutureProvider.family
       final boardStateAsync = ref.watch(
         chessBoardScreenProviderNew(params.boardParams),
       );
-
       final boardState = boardStateAsync.valueOrNull;
       if (boardState == null) {
         return null;
@@ -1659,15 +1659,16 @@ class _BoardWithSidebar extends ConsumerWidget {
     required this.game,
   });
 
-  String? _getLastMoveSquare() {
-    // Analysis mode is always active, always use analysis state
-    final lastMove = state.analysisState.lastMove;
-    if (lastMove == null) return null;
-    if (lastMove is NormalMove) {
-      return lastMove.to.name;
-    }
-    return null;
-  }
+  // DISABLED: Only used for move annotation overlay
+  // String? _getLastMoveSquare() {
+  //   // Analysis mode is always active, always use analysis state
+  //   final lastMove = state.analysisState.lastMove;
+  //   if (lastMove == null) return null;
+  //   if (lastMove is NormalMove) {
+  //     return lastMove.to.name;
+  //   }
+  //   return null;
+  // }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1682,25 +1683,28 @@ class _BoardWithSidebar extends ConsumerWidget {
         final boardSize = screenWidth - sideBarWidth - 32.w;
 
         // Analysis mode is always active, always use analysis state
-        final currentIndex = state.analysisState.currentMoveIndex;
+        // DISABLED: currentIndex only used for move impact analysis
+        // final currentIndex = state.analysisState.currentMoveIndex;
 
-        // LAZY IMPACT: Only calculate impact for the CURRENT move, not all moves
-        // This prevents blocking the eval bar by not flooding Stockfish queue
-        MoveImpactAnalysis? currentMoveImpact;
-        if (index == currentPageIndex &&
-            state.allMoves.isNotEmpty &&
-            currentIndex >= 0) {
-          final boardParams = ChessBoardProviderParams(
-            game: game,
-            index: index,
-          );
-          final lazyParams = LazyMoveImpactParams(
-            boardParams: boardParams,
-            moveIndex: currentIndex,
-          );
-          final impactAsync = ref.watch(lazyMoveImpactProvider(lazyParams));
-          currentMoveImpact = impactAsync.whenOrNull(data: (data) => data);
-        }
+        // DISABLED: Move impact analysis causes Lichess 429 rate limits
+        // TODO: Re-enable when we have better rate limiting or use only Stockfish
+        // // LAZY IMPACT: Only calculate impact for the CURRENT move, not all moves
+        // // This prevents blocking the eval bar by not flooding Stockfish queue
+        // MoveImpactAnalysis? currentMoveImpact;
+        // if (index == currentPageIndex &&
+        //     state.allMoves.isNotEmpty &&
+        //     currentIndex >= 0) {
+        //   final boardParams = ChessBoardProviderParams(
+        //     game: game,
+        //     index: index,
+        //   );
+        //   final lazyParams = LazyMoveImpactParams(
+        //     boardParams: boardParams,
+        //     moveIndex: currentIndex,
+        //   );
+        //   final impactAsync = ref.watch(lazyMoveImpactProvider(lazyParams));
+        //   currentMoveImpact = impactAsync.whenOrNull(data: (data) => data);
+        // }
 
         return Container(
           margin: EdgeInsets.symmetric(horizontal: 16.sp),
@@ -1729,16 +1733,17 @@ class _BoardWithSidebar extends ConsumerWidget {
                     index: index,
                     game: state.game,
                   ),
-                  // Add move annotation overlay - only show if impact is not normal and not exploring a variant
-                  if (currentMoveImpact != null &&
-                      currentMoveImpact.impact != MoveImpactType.normal &&
-                      state.selectedVariantIndex == null)
-                    BoardMoveAnnotation(
-                      moveImpact: currentMoveImpact,
-                      boardSize: boardSize,
-                      isFlipped: state.isBoardFlipped,
-                      lastMoveSquare: _getLastMoveSquare(),
-                    ),
+                  // DISABLED: Move annotation overlay (requires move impact analysis)
+                  // // Add move annotation overlay - only show if impact is not normal and not exploring a variant
+                  // if (currentMoveImpact != null &&
+                  //     currentMoveImpact.impact != MoveImpactType.normal &&
+                  //     state.selectedVariantIndex == null)
+                  //   BoardMoveAnnotation(
+                  //     moveImpact: currentMoveImpact,
+                  //     boardSize: boardSize,
+                  //     isFlipped: state.isBoardFlipped,
+                  //     lastMoveSquare: _getLastMoveSquare(),
+                  //   ),
                 ],
               ),
             ],
@@ -2210,6 +2215,7 @@ class _PrincipalVariationListState
     extends ConsumerState<_PrincipalVariationList> {
   late PageController _pageController;
   int _currentPage = 0;
+  List<AnalysisLine> _lastNonEmptyLines = const [];
 
   @override
   void initState() {
@@ -2277,7 +2283,7 @@ class _PrincipalVariationListState
     final double pvCardHeight = _basePvHeight.h;
 
     // Get PV lines from state - evalAsync is only watched to trigger rebuilds
-    late final List<AnalysisLine> lines;
+    late List<AnalysisLine> lines;
 
     evalAsync.when(
       loading: () {
@@ -2352,7 +2358,22 @@ class _PrincipalVariationListState
                       ),
                     )
                     : lines.isEmpty
-                    ? const SizedBox.shrink() // Temporarily empty - eval is loading in background
+                    ? Container(
+                        width: MediaQuery.of(context).size.width - 40.sp,
+                        margin: EdgeInsets.symmetric(horizontal: 2.sp),
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: kWhiteColor.withValues(alpha: 0.2),
+                            width: 1.5,
+                          ),
+                          borderRadius: BorderRadius.circular(6.sp),
+                          color: kDarkGreyColor.withValues(alpha: 0.1),
+                        ),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 12.sp,
+                          vertical: 10.sp,
+                        ),
+                      )
                     : PageView.builder(
                         controller: _pageController,
                         onPageChanged: (pageIndex) {

@@ -1704,7 +1704,7 @@ class ChessBoardScreenNotifierNew
     // OPTIMIZATION: Skip validation check - worker will filter out invalid moves
     // The validation was making PV cards load slowly by doing upfront position creation
     // If worker returns empty, we'll handle it gracefully below
-    final limitedPvs = validPvs.take(_kMaxPrincipalVariations).toList();
+    final limitedPvs = validPvs;
     final payload = {
       'fen': fen,
       'pvs':
