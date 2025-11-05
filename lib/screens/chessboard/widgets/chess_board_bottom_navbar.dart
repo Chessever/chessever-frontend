@@ -54,33 +54,26 @@ class ChessSvgBottomNavbar extends StatelessWidget {
       onTap: onPressed,
       onLongPress: onLongPress,
       behavior: HitTestBehavior.opaque,
-      child: Container(
+      child: SizedBox(
         width: width,
-        height: 40.h, // Fixed button container height
-        alignment: Alignment.center, // Ensure content is centered
+        height: double.infinity,
         child: Stack(
           clipBehavior: Clip.none,
           alignment: Alignment.center,
           children: [
             // Center the icon vertically and horizontally
-            Positioned(
-              top: 0,
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: SvgWidget(
-                  svgPath,
-                  height: 24.h,
-                  width: 24.w,
-                  colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
-                ),
+            Center(
+              child: SvgWidget(
+                svgPath,
+                height: 24.h,
+                width: 24.w,
+                colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
               ),
             ),
-            // Position depth text BELOW the button area (completely outside layout)
+            // Position depth text BELOW the button area with proper gap
             if (showDepth)
               Positioned(
-                bottom: -16.h, // Push below button with gap
+                bottom: 4.h, // keep within bar bounds
                 left: 0,
                 right: 0,
                 child: Center(
@@ -120,29 +113,23 @@ class ChessSvgBottomNavbarWithLongPress extends StatelessWidget {
           onLongPressStart != null ? (_) => onLongPressStart!() : null,
       onLongPressEnd: onLongPressEnd != null ? (_) => onLongPressEnd!() : null,
       onLongPressCancel: onLongPressEnd,
-      child: Container(
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
         width: width,
-        height: 40.h, // Match ChessSvgBottomNavbar height exactly
-        alignment: Alignment.center, // Ensure content is centered
+        height: double.infinity,
         child: Stack(
           clipBehavior: Clip.none,
           alignment: Alignment.center,
           children: [
             // Center the icon vertically and horizontally
-            Positioned(
-              top: 0,
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: SvgWidget(
-                  svgPath,
-                  height: 24.h,
-                  width: 24.w,
-                  colorFilter: ColorFilter.mode(
-                    onPressed != null ? kWhiteColor : kWhiteColor70,
-                    BlendMode.srcIn,
-                  ),
+            Center(
+              child: SvgWidget(
+                svgPath,
+                height: 24.h,
+                width: 24.w,
+                colorFilter: ColorFilter.mode(
+                  onPressed != null ? kWhiteColor : kWhiteColor70,
+                  BlendMode.srcIn,
                 ),
               ),
             ),

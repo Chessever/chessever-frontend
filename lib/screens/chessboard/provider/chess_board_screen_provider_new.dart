@@ -111,11 +111,11 @@ class ChessBoardScreenNotifierNew
           '     - Search Time: ${prevValue?.searchTimeLabel() ?? "null"}',
         );
         debugPrint(
-          '     - PV Count: ${prevValue?.principalVariationCount ?? "null"}',
+          '     - PV Setting: ${prevValue?.principalVariationLabel() ?? "null"}',
         );
         debugPrint('   New:');
         debugPrint('     - Search Time: ${nextValue.searchTimeLabel()}');
-        debugPrint('     - PV Count: ${nextValue.principalVariationCount}');
+        debugPrint('     - PV Setting: ${nextValue.principalVariationLabel()}');
         debugPrint(
           '     - Search Duration: ${nextValue.searchDurationFor(EngineComponent.evaluationGauge)?.inSeconds}s',
         );
@@ -126,18 +126,46 @@ class ChessBoardScreenNotifierNew
 
         _clearEvaluationCache();
 
-        // Force re-evaluation with new settings ONLY if this is the currently visible game
-        final currentVisiblePage = ref.read(currentlyVisiblePageIndexProvider);
-        if (index == currentVisiblePage) {
+        // Clear state's PVs immediately to show loading state
+        final currentState = state.valueOrNull;
+        if (currentState != null && currentState.principalVariations.isNotEmpty) {
+          debugPrint('   🗑️  Clearing ${currentState.principalVariations.length} cached PVs from state');
+          state = AsyncValue.data(
+            currentState.copyWith(
+              principalVariations: const [],
+              selectedVariantIndex: null,
+              variantBaseFen: null,
+              variantMovePointer: const [],
+            ),
+          );
+        }
+
+        // Check if PV setting specifically changed (not just search time)
+        final pvSettingChanged = 
+            prevValue?.principalVariationIndex != nextValue.principalVariationIndex;
+        
+        if (pvSettingChanged) {
+          // ALWAYS trigger re-evaluation when PV setting changes
+          // This ensures new PVs are fetched even if user navigates away and back
           debugPrint(
-            '   → Forcing re-evaluation with new MultiPV=${nextValue.principalVariationCount}...',
+            '   → Forcing re-evaluation with new PV setting=${nextValue.principalVariationLabel()} (was ${prevValue?.principalVariationLabel() ?? "null"})...',
           );
           _evaluatePosition(force: true);
-          debugPrint('   ✅ Re-evaluation triggered');
+          debugPrint('   ✅ Re-evaluation triggered for PV setting change');
         } else {
-          debugPrint(
-            '   🚫 Skipping re-evaluation for non-visible game (page $index, visible: $currentVisiblePage)',
-          );
+          // For other settings (like search time), only re-evaluate if currently visible
+          final currentVisiblePage = ref.read(currentlyVisiblePageIndexProvider);
+          if (index == currentVisiblePage) {
+            debugPrint(
+              '   → Forcing re-evaluation with new settings...',
+            );
+            _evaluatePosition(force: true);
+            debugPrint('   ✅ Re-evaluation triggered');
+          } else {
+            debugPrint(
+              '   🚫 Skipping re-evaluation for non-visible game (page $index, visible: $currentVisiblePage)',
+            );
+          }
         }
       }
     });
@@ -2439,7 +2467,8 @@ class ChessBoardScreenNotifierNew
       final engineSettingsAsync = ref.read(engineSettingsProviderNew);
       final engineSettings = engineSettingsAsync.value;
       final effectiveEngineSettings = engineSettings ?? const EngineSettings();
-      final configuredMultiPV = effectiveEngineSettings.principalVariationCount;
+      // Use multiPvForLichess() which caps at 5 to avoid abusing Lichess API
+      final configuredMultiPV = effectiveEngineSettings.multiPvForLichess();
 
       // OPTIMIZED: Try cascade (cloud sources) FIRST for speed
       // Cascade queries local DB → Supabase → Lichess → Stockfish sequentially
@@ -3389,16 +3418,18 @@ class ChessBoardScreenNotifierNew
     }
   }
 
-  /// Show all 3 variant first moves as arrows with different opacity
+  /// Show all 5 variant first moves as arrows with different opacity
   /// Stable variant colors - always in this order regardless of evaluations
   static const List<Color> _variantColors = [
     Color.fromARGB(180, 152, 179, 154), // Green - Always 1st variant
     Color.fromARGB(180, 100, 149, 237), // Blue - Always 2nd variant
     Color.fromARGB(180, 255, 165, 0), // Orange - Always 3rd variant
+    Color.fromARGB(180, 255, 105, 180), // Pink - Always 4th variant
+    Color.fromARGB(180, 147, 112, 219), // Purple - Always 5th variant
   ];
 
   /// Get color for a variant index (used for both arrows and card borders)
-  /// Always returns the static variant color (Green/Blue/Orange)
+  /// Always returns the static variant color (Green/Blue/Orange/Pink/Purple)
   /// Selection is indicated by higher opacity, not different color
   Color getVariantColor(int variantIndex, bool isSelected) {
     if (variantIndex >= 0 && variantIndex < _variantColors.length) {
@@ -3407,7 +3438,11 @@ class ChessBoardScreenNotifierNew
         alpha: isSelected ? 0.95 : 0.7,
       );
     }
-    return const Color.fromARGB(100, 152, 179, 154);
+    // Cycle through colors for any index beyond 5
+    final colorIndex = variantIndex % _variantColors.length;
+    return _variantColors[colorIndex].withValues(
+      alpha: isSelected ? 0.95 : 0.7,
+    );
   }
 
   ISet<Shape> _getAllVariantArrowShapes(
@@ -3416,7 +3451,7 @@ class ChessBoardScreenNotifierNew
   ) {
     final arrows = <Arrow>[];
 
-    for (int i = 0; i < variants.length && i < 3; i++) {
+    for (int i = 0; i < variants.length && i < 5; i++) {
       final variant = variants[i];
       if (variant.moves.isEmpty) continue;
 

@@ -3,6 +3,8 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_v
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:flutter/animation.dart';
@@ -153,6 +155,12 @@ class _GamesAppBarNotifier
     return _parseGameNumber(roundName);
   }
 
+  /// Helper to check if a round ID indicates a knockout format
+  bool _isKnockoutRound(String roundId) {
+    final id = roundId.toLowerCase();
+    return id.startsWith('$kKnockoutStagePrefix-') || id.startsWith('knockout-round-');
+  }
+
   int _calculateRoundHeaderIndex(String roundId) {
     final vm = state.valueOrNull;
     final allRounds = vm?.gamesAppBarModels ?? [];
@@ -258,8 +266,8 @@ class _GamesAppBarNotifier
           );
         }
       } else {
-        // For regular events, count games
-        int gamesInRound;
+        // For regular events, need to check if it's a knockout round
+        List<GamesTourModel> roundGames;
 
         // Special handling for knockout stage-based rounds
         if (round.id.startsWith('$kKnockoutStagePrefix-')) {
@@ -271,32 +279,65 @@ class _GamesAppBarNotifier
           final stageKnockoutState = ref.read(
             knockoutTournamentStateProvider(stageTourId),
           );
-          gamesInRound = stageKnockoutState.allGames.length;
+          roundGames = stageKnockoutState.allGames;
         } else {
           // Regular rounds: match by round ID
-          gamesInRound =
+          roundGames =
               ref
                   .read(gamesTourScreenProvider)
                   .valueOrNull
                   ?.gamesTourModels
                   .where((g) => g.roundId == round.id)
-                  .length ??
-              0;
+                  .toList() ??
+              [];
         }
 
-        if (isGrid) {
-          // grid: ceil(games/2) rows (each row holds up to 2 games)
-          final rows = (gamesInRound / 2).ceil();
-          itemCount += rows;
+        // Check if this is a knockout round (needs match headers)
+        final isKnockoutRound = _isKnockoutRound(round.id);
+
+        if (isKnockoutRound && roundGames.isNotEmpty) {
+          // Knockout format: count match headers + games within each match
+          final matches = KnockoutMatchDetector.groupByMatches(roundGames);
+          final expansionState = ref.read(matchExpansionProvider);
+
+          for (final entry in matches.entries) {
+            final matchKey = entry.key;
+            final matchGames = entry.value;
+            final isExpanded = expansionState[matchKey] ?? true;
+
+            itemCount++; // match header
+
+            // Only count games if match is expanded
+            if (isExpanded) {
+              if (isGrid) {
+                itemCount += (matchGames.length / 2).ceil();
+              } else {
+                itemCount += matchGames.length;
+              }
+            }
+          }
+
           print(
-            '   Round "${round.name}": 1 header + $rows rows ($gamesInRound games) = $itemCount items',
+            '   Round "${round.name}": 1 header + ${matches.length} match headers + games = $itemCount items',
           );
         } else {
-          // list: one item per game
-          itemCount += gamesInRound;
-          print(
-            '   Round "${round.name}": 1 header + $gamesInRound games = $itemCount items',
-          );
+          // Regular format: just count games
+          final gamesInRound = roundGames.length;
+
+          if (isGrid) {
+            // grid: ceil(games/2) rows (each row holds up to 2 games)
+            final rows = (gamesInRound / 2).ceil();
+            itemCount += rows;
+            print(
+              '   Round "${round.name}": 1 header + $rows rows ($gamesInRound games) = $itemCount items',
+            );
+          } else {
+            // list: one item per game
+            itemCount += gamesInRound;
+            print(
+              '   Round "${round.name}": 1 header + $gamesInRound games = $itemCount items',
+            );
+          }
         }
       }
 

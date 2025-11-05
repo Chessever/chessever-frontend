@@ -271,33 +271,30 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
               ),
               SizedBox(height: 4.h),
               Text(
-                'Choose how many engine lines to surface (1-5).',
+                'Choose how many engine lines to display.',
                 style: AppTypography.textSmRegular.copyWith(
                   color: kWhiteColor70,
                   fontSize: 11.f,
                 ),
               ),
               SizedBox(height: 14.h),
-              Slider(
-                value: settings.principalVariationCount.toDouble(),
-                min: EngineSettings.minPrincipalVariation.toDouble(),
-                max: EngineSettings.maxPrincipalVariation.toDouble(),
-                divisions: EngineSettings.maxPrincipalVariation -
-                    EngineSettings.minPrincipalVariation,
-                label: settings.principalVariationCount.toString(),
-                activeColor: kPrimaryColor,
+              _DiscreteSlider(
+                value: settings.principalVariationIndex.toDouble(),
+                divisions: EngineSettings.principalVariationLabels.length - 1,
+                labels: EngineSettings.principalVariationLabels,
                 onChanged: (value) {
-                  _trackPersist(notifier.setPrincipalVariationCount(value.round()));
+                  final index = value.toInt();
+                  final label = EngineSettings.principalVariationLabels[index];
+                  debugPrint('🎛️  Settings UI: PV setting changed to index=$index ($label)');
+                  _trackPersist(notifier.setPrincipalVariationIndex(index));
                 },
               ),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  '${settings.principalVariationCount} line${settings.principalVariationCount == 1 ? '' : 's'}',
-                  style: AppTypography.textSmMedium.copyWith(
-                    color: kWhiteColor70,
-                    fontSize: 11.f,
-                  ),
+              SizedBox(height: 6.h),
+              Text(
+                'Current: ${settings.principalVariationLabel()}',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: kWhiteColor70,
+                  fontSize: 11.f,
                 ),
               ),
             ],
@@ -359,6 +356,9 @@ class _DiscreteSlider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final clampedValue = value.clamp(0.0, divisions.toDouble()).toDouble();
+    final labelIndex = clampedValue.round().clamp(0, labels.length - 1);
+    
     return SliderTheme(
       data: SliderTheme.of(context).copyWith(
         activeTrackColor: kPrimaryColor,
@@ -370,11 +370,11 @@ class _DiscreteSlider extends StatelessWidget {
         ),
       ),
       child: Slider(
-        value: value.clamp(0, divisions.toDouble()),
+        value: clampedValue,
         min: 0,
         max: divisions.toDouble(),
         divisions: divisions,
-        label: labels[value.round()],
+        label: labels[labelIndex],
         onChanged: onChanged,
       ),
     );

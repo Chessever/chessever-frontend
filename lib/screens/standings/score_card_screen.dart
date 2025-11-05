@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/providers/player_ratings_provider.dart';
+import 'package:chessever2/screens/standings/providers/fide_ratings_provider.dart';
 import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
 import 'package:chessever2/screens/standings/widget/scoreboard_appbar.dart';
 import 'package:chessever2/screens/standings/widget/scoreboard_card_widget.dart';
@@ -355,16 +356,19 @@ class ScoreCardScreen extends ConsumerWidget {
                         children: [
                           _RatingDisplay(
                             playerName: player.name,
+                            fideId: player.fideId,
                             timeControlType: "standard",
                             assetPath: 'assets/pngs/classical.png',
                           ),
                           _RatingDisplay(
                             playerName: player.name,
+                            fideId: player.fideId,
                             timeControlType: "rapid",
                             assetPath: 'assets/pngs/rapid.png',
                           ),
                           _RatingDisplay(
                             playerName: player.name,
+                            fideId: player.fideId,
                             timeControlType: "blitz",
                             assetPath: 'assets/pngs/blitz.png',
                           ),
@@ -556,13 +560,105 @@ class ScoreCardScreen extends ConsumerWidget {
 
 class _RatingDisplay extends ConsumerWidget {
   final String playerName;
+  final int? fideId;
   final String timeControlType;
   final String assetPath;
 
   const _RatingDisplay({
     required this.playerName,
+    this.fideId,
     required this.timeControlType,
     required this.assetPath,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Try FIDE API first if we have a FIDE ID
+    if (fideId != null) {
+      final fideRequest = FideRatingRequest(
+        fideId: fideId,
+        timeControlType: timeControlType,
+      );
+      final fideRatingAsync = ref.watch(fideRatingProvider(fideRequest));
+
+      return Row(
+        children: [
+          Image.asset(
+            assetPath,
+            width: 16.sp,
+            height: 16.sp,
+            fit: BoxFit.contain,
+          ),
+          SizedBox(width: 4.w),
+          fideRatingAsync.when(
+            data: (rating) {
+              // If FIDE API returns a rating, use it
+              if (rating != null && rating > 0) {
+                return Text(
+                  rating.toString(),
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: kWhiteColor,
+                    fontSize: 14.sp,
+                  ),
+                );
+              }
+              // Fallback to PGN-based rating
+              return _FallbackRatingDisplay(
+                playerName: playerName,
+                timeControlType: timeControlType,
+              );
+            },
+            loading: () => Skeletonizer(
+              enabled: true,
+              ignoreContainers: true,
+              effect: const ShimmerEffect(
+                baseColor: Color(0xFF2A2A2A),
+                highlightColor: Color(0xFF3A3A3A),
+              ),
+              child: Text(
+                '2400',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: kWhiteColor,
+                  fontSize: 14.sp,
+                ),
+              ),
+            ),
+            error: (_, __) => _FallbackRatingDisplay(
+              playerName: playerName,
+              timeControlType: timeControlType,
+            ),
+          ),
+        ],
+      );
+    }
+
+    // No FIDE ID - use PGN-based ratings
+    return Row(
+      children: [
+        Image.asset(
+          assetPath,
+          width: 16.sp,
+          height: 16.sp,
+          fit: BoxFit.contain,
+        ),
+        SizedBox(width: 4.w),
+        _FallbackRatingDisplay(
+          playerName: playerName,
+          timeControlType: timeControlType,
+        ),
+      ],
+    );
+  }
+}
+
+/// Fallback widget using PGN-based ratings from Supabase
+class _FallbackRatingDisplay extends ConsumerWidget {
+  final String playerName;
+  final String timeControlType;
+
+  const _FallbackRatingDisplay({
+    required this.playerName,
+    required this.timeControlType,
   });
 
   @override
@@ -574,50 +670,36 @@ class _RatingDisplay extends ConsumerWidget {
 
     final ratingAsync = ref.watch(playerLatestRatingProvider(ratingRequest));
 
-    return Row(
-      children: [
-        Image.asset(
-          assetPath,
-          width: 16.sp,
-          height: 16.sp,
-          fit: BoxFit.contain,
+    return ratingAsync.when(
+      data: (rating) => Text(
+        rating?.toString() ?? '-',
+        style: AppTypography.textSmMedium.copyWith(
+          color: kWhiteColor,
+          fontSize: 14.sp,
         ),
-        SizedBox(width: 4.w),
-        ratingAsync.when(
-          data:
-              (rating) => Text(
-                rating?.toString() ?? '-',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: kWhiteColor,
-                  fontSize: 14.sp,
-                ),
-              ),
-          loading:
-              () => Skeletonizer(
-                enabled: true,
-                ignoreContainers: true,
-                effect: ShimmerEffect(
-                  baseColor: Color(0xFF2A2A2A),
-                  highlightColor: Color(0xFF3A3A3A),
-                ),
-                child: Text(
-                  '2400',
-                  style: AppTypography.textSmMedium.copyWith(
-                    color: kWhiteColor,
-                    fontSize: 14.sp,
-                  ),
-                ),
-              ),
-          error:
-              (_, __) => Text(
-                '-',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: kWhiteColor,
-                  fontSize: 14.sp,
-                ),
-              ),
+      ),
+      loading: () => Skeletonizer(
+        enabled: true,
+        ignoreContainers: true,
+        effect: const ShimmerEffect(
+          baseColor: Color(0xFF2A2A2A),
+          highlightColor: Color(0xFF3A3A3A),
         ),
-      ],
+        child: Text(
+          '2400',
+          style: AppTypography.textSmMedium.copyWith(
+            color: kWhiteColor,
+            fontSize: 14.sp,
+          ),
+        ),
+      ),
+      error: (_, __) => Text(
+        '-',
+        style: AppTypography.textSmMedium.copyWith(
+          color: kWhiteColor,
+          fontSize: 14.sp,
+        ),
+      ),
     );
   }
 }

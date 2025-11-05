@@ -2270,7 +2270,8 @@ class _PrincipalVariationListState
     // REACTIVE: Watch cascade provider directly for current FEN
     // Get user's PV count setting to request correct number of lines
     final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
-    final multiPV = engineSettings?.principalVariationCount ?? 3;
+    // Use multiPvForLichess() which caps at 5 (Lichess API maximum) to avoid abuse
+    final multiPV = engineSettings?.multiPvForLichess() ?? 3;
     final currentFen = position?.fen ?? '';
     final evalAsync = ref.watch(cascadeEvalProviderForBoard(
       CascadeEvalParams(fen: currentFen, multiPV: multiPV),
