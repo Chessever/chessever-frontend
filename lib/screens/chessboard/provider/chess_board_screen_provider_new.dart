@@ -2449,9 +2449,14 @@ class ChessBoardScreenNotifierNew
           '🎯 EVAL: Requesting cascade evaluation (local → Supabase → Lichess → Stockfish) with $configuredMultiPV PVs...',
         );
         // Use configured multiPV from user settings
+        // PRIORITY: Mark as current position since _evaluatePosition only runs for visible boards
         final cascadeEval = await ref.read(
           cascadeEvalProviderForBoard(
-            CascadeEvalParams(fen: fen, multiPV: configuredMultiPV),
+            CascadeEvalParams(
+              fen: fen,
+              multiPV: configuredMultiPV,
+              isCurrentPosition: true, // Always true here - only visible boards reach this point
+            ),
           ).future,
         );
         if (cascadeEval.pvs.isNotEmpty) {
@@ -2586,12 +2591,15 @@ class ChessBoardScreenNotifierNew
           }
 
           // Get depth tracker notifier to report progress
+          // PRIORITY: Mark this as current position if visible
+          final isCurrentlyVisible = currentVisiblePage == index;
           final localEval = await StockfishSingleton().evaluatePosition(
             fen,
             depth: fallbackDepth,
             searchDuration: searchDuration,
             maxDepth: maxDepth,
             multiPV: multiPV,
+            isCurrentPosition: isCurrentlyVisible, // Prioritize current position
             onDepthUpdate: (depth, knodes) {
               // CRITICAL: Only update depth tracker if this is the currently visible game
               // This prevents depth flickering when swiping between games in PageView

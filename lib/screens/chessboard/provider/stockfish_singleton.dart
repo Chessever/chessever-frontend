@@ -43,6 +43,7 @@ class StockfishSingleton {
     int? maxDepth,
     int multiPV = 3,
     Function(int depth, int knodes)? onDepthUpdate,
+    bool isCurrentPosition = false, // Priority flag for user's currently viewed position
   }) async {
     // Validate depth range (only if using depth-based search)
     if (searchDuration == null && (depth < 1 || depth > 99)) {
@@ -90,12 +91,19 @@ class StockfishSingleton {
       maxDepth: maxDepth,
       multiPV: multiPV,
       onDepthUpdate: onDepthUpdate,
+      isCurrentPosition: isCurrentPosition,
     );
 
-    _jobQueue.add(job);
+    // PRIORITY: Insert high-priority jobs at the front, low-priority at the back
+    if (isCurrentPosition) {
+      _jobQueue.insert(0, job); // Current position gets highest priority
+      debugPrint('🔥 PRIORITY: Current position job inserted at front');
+    } else {
+      _jobQueue.add(job); // Background jobs go to the back
+    }
     _pendingJobs[cacheKey] = job;
     debugPrint(
-      '📋 QUEUE: Added job for $fen (queue size: ${_jobQueue.length})',
+      '📋 QUEUE: Added job for $fen (queue size: ${_jobQueue.length}, priority: ${isCurrentPosition ? "HIGH" : "low"})',
     );
 
     // Enforce soft cap: drop oldest overflow jobs safely
@@ -471,6 +479,7 @@ class _EvalJob {
     this.maxDepth,
     this.multiPV = 3,
     this.onDepthUpdate,
+    this.isCurrentPosition = false,
   });
 
   final String fen;
@@ -481,4 +490,5 @@ class _EvalJob {
   final int? maxDepth;
   final int multiPV;
   final Function(int depth, int knodes)? onDepthUpdate;
+  final bool isCurrentPosition; // True if this is the user's currently viewed position
 }

@@ -5,7 +5,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-class ChessBoardSettingsPage extends ConsumerWidget {
+class ChessBoardSettingsPage extends ConsumerStatefulWidget {
   const ChessBoardSettingsPage({super.key});
 
   static Route<void> route() {
@@ -15,10 +15,41 @@ class ChessBoardSettingsPage extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ChessBoardSettingsPage> createState() => _ChessBoardSettingsPageState();
+}
+
+class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage> {
+  final Set<Future<void>> _pendingPersists = {};
+
+  void _trackPersist(Future<void> future) {
+    _pendingPersists.add(future);
+    future.whenComplete(() => _pendingPersists.remove(future));
+  }
+
+  Future<bool> _onWillPop() async {
+    // Wait for all pending persistence operations to complete before allowing navigation
+    if (_pendingPersists.isNotEmpty) {
+      debugPrint('⏳ Waiting for ${_pendingPersists.length} pending settings to persist...');
+      await Future.wait(_pendingPersists);
+      debugPrint('✅ All settings persisted, allowing navigation');
+    }
+    return true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final settingsAsync = ref.watch(engineSettingsProviderNew);
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final canPop = await _onWillPop();
+        if (canPop && context.mounted) {
+          Navigator.of(context).pop();
+        }
+      },
+      child: Scaffold(
       backgroundColor: kBackgroundColor,
       appBar: AppBar(
         title: Text(
@@ -31,20 +62,21 @@ class ChessBoardSettingsPage extends ConsumerWidget {
         backgroundColor: kBackgroundColor,
         centerTitle: false,
       ),
-      body: settingsAsync.when(
-        data: (settings) => _buildSettings(context, ref, settings),
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(
-          child: Text(
-            'Error loading settings',
-            style: AppTypography.textMdRegular.copyWith(color: kWhiteColor),
+        body: settingsAsync.when(
+          data: (settings) => _buildSettings(context, settings),
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, stack) => Center(
+            child: Text(
+              'Error loading settings',
+              style: AppTypography.textMdRegular.copyWith(color: kWhiteColor),
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildSettings(BuildContext context, WidgetRef ref, EngineSettings settings) {
+  Widget _buildSettings(BuildContext context, EngineSettings settings) {
     final notifier = ref.read(engineSettingsProviderNew.notifier);
 
     return ListView(
@@ -86,7 +118,7 @@ class ChessBoardSettingsPage extends ConsumerWidget {
                       : kDividerColor.withValues(alpha: 0.5),
                 ),
                 onChanged: (value) {
-                  notifier.toggleEngineGauge(value);
+                  _trackPersist(notifier.toggleEngineGauge(value));
                 },
               ),
             ],
@@ -131,7 +163,7 @@ class ChessBoardSettingsPage extends ConsumerWidget {
                       : kDividerColor.withValues(alpha: 0.5),
                 ),
                 onChanged: (value) {
-                  notifier.toggleDepthOverlay(value);
+                  _trackPersist(notifier.toggleDepthOverlay(value));
                 },
               ),
             ],
@@ -176,7 +208,7 @@ class ChessBoardSettingsPage extends ConsumerWidget {
                       : kDividerColor.withValues(alpha: 0.5),
                 ),
                 onChanged: (value) {
-                  notifier.togglePvArrows(value);
+                  _trackPersist(notifier.togglePvArrows(value));
                 },
               ),
             ],
@@ -211,7 +243,7 @@ class ChessBoardSettingsPage extends ConsumerWidget {
                   final index = value.toInt();
                   final label = EngineSettings.searchTimeLabels[index];
                   debugPrint('🎛️  Settings UI: Search time changed to index=$index ($label)');
-                  notifier.setSearchTimeIndex(index);
+                  _trackPersist(notifier.setSearchTimeIndex(index));
                 },
               ),
               SizedBox(height: 6.h),
@@ -255,7 +287,7 @@ class ChessBoardSettingsPage extends ConsumerWidget {
                 label: settings.principalVariationCount.toString(),
                 activeColor: kPrimaryColor,
                 onChanged: (value) {
-                  notifier.setPrincipalVariationCount(value.round());
+                  _trackPersist(notifier.setPrincipalVariationCount(value.round()));
                 },
               ),
               Align(
