@@ -83,7 +83,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
       width: MediaQuery.of(context).size.width,
       decoration: const BoxDecoration(color: kBlackColor),
       child: SafeArea(
-        bottom: false, // Allow depth text to extend below safe area
+        top: false, // Allow navbar to extend below app bar
         child: Padding(
           padding: EdgeInsets.only(top: 8.h, bottom: 8.h),
           child: Row(
