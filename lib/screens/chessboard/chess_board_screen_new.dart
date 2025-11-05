@@ -2302,6 +2302,9 @@ class _PrincipalVariationListState
     // Show end of game message when position is terminal
     final showEndOfGame = isGameOver && widget.state.isAnalysisMode;
 
+    // Show waiting message when no lines and not evaluating yet
+    final showWaiting = !isGameOver && !isEvaluating && lines.isEmpty;
+
     return Padding(
       padding: EdgeInsets.fromLTRB(20.sp, 8.sp, 20.sp, 8.sp),
       child: Column(
@@ -2347,6 +2350,47 @@ class _PrincipalVariationListState
                                 color: kWhiteColor,
                                 fontSize: 14.sp,
                                 fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                    : showWaiting
+                    ? Center(
+                      child: Container(
+                        width: MediaQuery.of(context).size.width - 40.sp,
+                        margin: EdgeInsets.symmetric(horizontal: 2.sp),
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: kWhiteColor.withValues(alpha: 0.2),
+                            width: 1.5,
+                          ),
+                          borderRadius: BorderRadius.circular(6.sp),
+                          color: kWhiteColor.withValues(alpha: 0.05),
+                        ),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 12.sp,
+                          vertical: 10.sp,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SizedBox(
+                              width: 16.sp,
+                              height: 16.sp,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: kPrimaryColor,
+                              ),
+                            ),
+                            SizedBox(width: 8.w),
+                            Text(
+                              'Analyzing position...',
+                              style: TextStyle(
+                                color: kWhiteColor.withValues(alpha: 0.7),
+                                fontSize: 13.sp,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                           ],
