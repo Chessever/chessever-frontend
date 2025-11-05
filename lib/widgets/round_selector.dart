@@ -66,8 +66,10 @@ class RoundSelector extends StatelessWidget {
                 style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
               ),
               const SizedBox(height: 16),
-              Expanded(
+              SizedBox(
+                height: 300, // Fixed height to prevent overflow
                 child: ListView.builder(
+                  shrinkWrap: true,
                   itemCount: totalRounds,
                   itemBuilder: (context, index) {
                     final roundNumber = index + 1;

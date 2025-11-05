@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_list_view.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
@@ -50,7 +51,24 @@ class GamesTourContentBody extends ConsumerWidget {
       gamesByRound[round.id] = [];
     }
 
+    // Check if this is a multi-stage knockout and ensure ALL stages have loaded before proceeding
     if (isKnockoutTournament && rounds.any((r) => r.id.startsWith('$kKnockoutStagePrefix-'))) {
+      // Extract all stage tour IDs
+      final stageTourIds = rounds
+          .where((r) => r.id.startsWith('$kKnockoutStagePrefix-'))
+          .map((r) => r.id.replaceFirst('$kKnockoutStagePrefix-', ''))
+          .toList();
+
+      // Check if ANY stage provider is still loading
+      for (final stageTourId in stageTourIds) {
+        // Check if the provider's underlying games data is still loading
+        final stageGamesAsync = ref.watch(gamesTourProvider(stageTourId));
+        if (stageGamesAsync.isLoading || !stageGamesAsync.hasValue) {
+          debugPrint('⏳ Waiting for stage $stageTourId to finish loading...');
+          return const TourLoadingWidget();
+        }
+      }
+      debugPrint('✅ All ${stageTourIds.length} stages loaded, proceeding with render');
       // For knockout tournaments with stage-based rounds (multi-stage knockouts),
       // fetch and assign games for EACH stage from ALL tours in the group broadcast
       print('🎮 Multi-stage knockout detected, loading games for ${rounds.length} stages');
