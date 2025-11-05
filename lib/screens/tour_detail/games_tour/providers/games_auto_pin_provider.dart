@@ -2,7 +2,10 @@ import 'dart:async';
 
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:country_code/country_code.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -28,8 +31,8 @@ class _AutoPinLogController {
       final countryCode = ref.read(countryDropdownProvider).value!.countryCode;
       final players = await ref.read(tournamentFavoritePlayersProvider.future);
 
-      final gamesList =
-          ref.read(gamesTourScreenProvider).value?.gamesTourModels ?? [];
+      // Collect games from ALL stages in multi-stage knockouts
+      final gamesList = _getAllGamesIncludingStages(tourId);
 
       final filteredGames =
           gamesList
@@ -70,6 +73,66 @@ class _AutoPinLogController {
 
       return (false, [...favPlayers, ...filteredGames]);
     }
+  }
+
+  /// Collects games from the main tour AND all stages in multi-stage knockouts
+  List<GamesTourModel> _getAllGamesIncludingStages(String tourId) {
+    final allGames = <GamesTourModel>[];
+
+    // Get games from the main/selected tour
+    final mainGames =
+        ref.read(gamesTourScreenProvider).value?.gamesTourModels ?? [];
+    allGames.addAll(mainGames);
+
+    // Check if this is a multi-stage knockout tournament
+    final tourDetail = ref.read(tourDetailScreenProvider).valueOrNull;
+    if (tourDetail == null) return allGames;
+
+    // Find the current tour to get its groupBroadcastId
+    final currentTour = tourDetail.tours
+        .firstWhere(
+          (t) => t.tour.id == tourId,
+          orElse: () => tourDetail.tours.first,
+        )
+        .tour;
+
+    final groupBroadcastId = currentTour.groupBroadcastId;
+    if (groupBroadcastId == null || groupBroadcastId.isEmpty) {
+      return allGames; // Not a multi-stage knockout
+    }
+
+    // Get all tours in the group broadcast
+    final allToursInGroup = tourDetail.tours
+        .where((t) => t.tour.groupBroadcastId == groupBroadcastId)
+        .toList();
+
+    if (allToursInGroup.length <= 1) {
+      return allGames; // Not multi-stage
+    }
+
+    print('🎯 Auto-pin: Detected ${allToursInGroup.length} stages in multi-stage knockout');
+
+    // Collect games from ALL stages
+    final stageGamesSet = <String>{}; // Track game IDs to avoid duplicates
+    for (final game in mainGames) {
+      stageGamesSet.add(game.gameId);
+    }
+
+    for (final tourModel in allToursInGroup) {
+      final stageTourId = tourModel.tour.id;
+      if (stageTourId == tourId) continue; // Skip main tour (already added)
+
+      final stageState = ref.read(knockoutTournamentStateProvider(stageTourId));
+      for (final game in stageState.allGames) {
+        if (!stageGamesSet.contains(game.gameId)) {
+          allGames.add(game);
+          stageGamesSet.add(game.gameId);
+        }
+      }
+    }
+
+    print('🎯 Auto-pin: Collected ${allGames.length} total games from all stages');
+    return allGames;
   }
 
   Future<void> enableAutoPin(String tourId) async {
