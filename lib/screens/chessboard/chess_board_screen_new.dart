@@ -2296,14 +2296,11 @@ class _PrincipalVariationListState
       },
     );
 
-    // Show skeleton ONLY when evaluating AND no cached lines
-    final showSkeleton = !isGameOver && isEvaluating && lines.isEmpty;
+    // Never show skeleton - always show data immediately and update silently
+    final showSkeleton = false;
 
     // Show end of game message when position is terminal
     final showEndOfGame = isGameOver && widget.state.isAnalysisMode;
-
-    // Show waiting message when no lines and not evaluating yet
-    final showWaiting = !isGameOver && !isEvaluating && lines.isEmpty;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(20.sp, 8.sp, 20.sp, 8.sp),
@@ -2356,88 +2353,19 @@ class _PrincipalVariationListState
                         ),
                       ),
                     )
-                    : showWaiting
-                    ? Center(
-                      child: Container(
-                        width: MediaQuery.of(context).size.width - 40.sp,
-                        margin: EdgeInsets.symmetric(horizontal: 2.sp),
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: kWhiteColor.withValues(alpha: 0.2),
-                            width: 1.5,
-                          ),
-                          borderRadius: BorderRadius.circular(6.sp),
-                          color: kWhiteColor.withValues(alpha: 0.05),
-                        ),
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 12.sp,
-                          vertical: 10.sp,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            SizedBox(
-                              width: 16.sp,
-                              height: 16.sp,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: kPrimaryColor,
-                              ),
-                            ),
-                            SizedBox(width: 8.w),
-                            Text(
-                              'Analyzing position...',
-                              style: TextStyle(
-                                color: kWhiteColor.withValues(alpha: 0.7),
-                                fontSize: 13.sp,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                    : Skeletonizer(
-                      enabled: showSkeleton,
-                      child: PageView.builder(
+                    : lines.isEmpty
+                    ? const SizedBox.shrink() // Show nothing if no lines yet
+                    : PageView.builder(
                         controller: _pageController,
-                        physics:
-                            showSkeleton
-                                ? const NeverScrollableScrollPhysics()
-                                : null,
-                        onPageChanged:
-                            showSkeleton
-                                ? null
-                                : (pageIndex) {
-                                  setState(() {
-                                    _currentPage = pageIndex;
-                                  });
-                                  // Update variant selection when page changes
-                                  notifier.selectVariant(pageIndex);
-                                },
-                        itemCount: showSkeleton ? 1 : lines.length,
+                        onPageChanged: (pageIndex) {
+                          setState(() {
+                            _currentPage = pageIndex;
+                          });
+                          // Update variant selection when page changes
+                          notifier.selectVariant(pageIndex);
+                        },
+                        itemCount: lines.length,
                         itemBuilder: (context, index) {
-                          // Show skeleton placeholder when evaluating
-                          if (showSkeleton) {
-                            return Container(
-                              width: MediaQuery.of(context).size.width - 40.sp,
-                              margin: EdgeInsets.symmetric(horizontal: 2.sp),
-                              decoration: BoxDecoration(
-                                border: Border.all(
-                                  color: kWhiteColor.withValues(alpha: 0.2),
-                                  width: 1.5,
-                                ),
-                                borderRadius: BorderRadius.circular(6.sp),
-                                color: kWhiteColor.withValues(alpha: 0.05),
-                              ),
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 12.sp,
-                                vertical: 10.sp,
-                              ),
-                              child: const Bone.text(words: 10),
-                            );
-                          }
-
                           final variantIndex = index;
                           final line = lines[index];
                           final isSelected =
@@ -2466,9 +2394,8 @@ class _PrincipalVariationListState
                           final badgeBorderColor = activeVariantColor
                               .withValues(alpha: 0.6);
 
-                          // CRITICAL FIX: Only consider evaluating if we don't have valid data yet
-                          // This prevents the card from staying darkened when data arrives
-                          final shouldDarken = isEvaluating && lines.isEmpty;
+                          // Never darken cards - show data immediately and update silently
+                          final shouldDarken = false;
 
                           return GestureDetector(
                             // DISABLED: PV cards are now read-only
@@ -2565,7 +2492,6 @@ class _PrincipalVariationListState
                           );
                         },
                       ),
-                    ),
           ),
           if (lines.length > 1) ...[
             SizedBox(height: 8.h),

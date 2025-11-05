@@ -209,7 +209,7 @@ class EngineSettings {
   static const Map<EngineComponent, int> _componentMaxDepth = {
     EngineComponent.evaluationGauge: 99, // Eval bar can go deep
     EngineComponent.principalVariation:
-        25, // PV analysis capped at 25 (50 half-moves)
+        50, // PV analysis capped at 50 (100 half-moves) - shows ~10-20 full moves
     EngineComponent.cascadeEval: 99, // Fallback eval can go deep
     EngineComponent.moveImpact: 20, // Move impact doesn't need deep analysis
   };
