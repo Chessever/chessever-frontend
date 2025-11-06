@@ -11,7 +11,7 @@ class LocalEvalCache {
   static const _prefix = 'cloud_eval_';
   static const _versionKey = 'cloud_eval_version';
   static const _currentVersion =
-      7; // v7: Store MultiPV-aware keys and allow fallbacks
+      8; // v8: Force clear for eval bar perspective fix
 
   Future<void> save(String fen, CloudEval eval, {int? multiPV}) async {
     final prefs = await SharedPreferences.getInstance();
