@@ -183,7 +183,9 @@ Future<void> main() async {
 
 Future<void> _initRevenueCat() async {
   // ignore: unused_element
-  await purchases.Purchases.setLogLevel(purchases.LogLevel.debug); // Enable debug logs
+  await purchases.Purchases.setLogLevel(
+    purchases.LogLevel.debug,
+  ); // Enable debug logs
   // final SupabaseClient = Supabase.instance.client;
   // final user = SupabaseClient.auth.currentUser;
   // await Purchases.setDebugLogsEnabled(true);
@@ -197,7 +199,7 @@ Future<void> _initRevenueCat() async {
 /// Update CACHE_VERSION number to trigger cache clearing
 Future<void> _clearEvaluationCache() async {
   try {
-    const int cacheVersion = 6; // v6: Clear cache missing multiPV in key
+    const int cacheVersion = 7; // v7: MultiPV-aware cache keys + defaults
     const String versionKey = 'eval_cache_clear_version';
     const String evalPrefix = 'cloud_eval_';
 
@@ -352,11 +354,12 @@ class MyApp extends HookConsumerWidget {
         navigatorKey: navigatorKey,
         navigatorObservers: [routeObserver],
         initialRoute: '/',
-        builder: (context, child) => CustomUpgradeAlert(
-          upgrader: upgrader,
-          navigatorKey: navigatorKey,
-          child: child ?? const SizedBox.shrink(),
-        ),
+        builder:
+            (context, child) => CustomUpgradeAlert(
+              upgrader: upgrader,
+              navigatorKey: navigatorKey,
+              child: child ?? const SizedBox.shrink(),
+            ),
         routes: {
           '/': (context) => const SplashScreen(),
           '/auth_screen': (context) => const AuthScreen(),

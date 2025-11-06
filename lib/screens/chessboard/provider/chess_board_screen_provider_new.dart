@@ -2364,7 +2364,21 @@ class ChessBoardScreenNotifierNew
           '⚡ CACHE HIT: Instant display for ${fen.split(' ').take(3).join(' ')}... (eval=$cachedEval, ${cachedPv.length} PVs)',
         );
 
-        // NO depth tracker clearing - cache is instant, no progress to show
+        // Clamp cached PVs to respect current settings
+        final normalizedCachedPv =
+            cachedPv.length > configuredMultiPV && configuredMultiPV > 0
+                ? cachedPv.take(configuredMultiPV).toList(growable: false)
+                : cachedPv;
+
+        final hasCompletePv =
+            configuredMultiPV <= 0 ||
+            normalizedCachedPv.length >= configuredMultiPV;
+
+        if (!hasCompletePv) {
+          debugPrint(
+            '⚡ CACHE HIT: Only ${normalizedCachedPv.length}/$configuredMultiPV PVs available, keeping evaluation active until engine fills in.',
+          );
+        }
 
         // Validate cached mate=0 before applying
         final validatedCachedMate =
@@ -2380,10 +2394,10 @@ class ChessBoardScreenNotifierNew
         var cachedState = initialState.copyWith(
           evaluation: cachedEval,
           mate: validatedCachedMate,
-          isEvaluating: false, // Already evaluated
-          principalVariations: cachedPv,
+          isEvaluating: !hasCompletePv,
+          principalVariations: normalizedCachedPv,
           analysisState: initialState.analysisState.copyWith(
-            suggestionLines: cachedPv,
+            suggestionLines: normalizedCachedPv,
           ),
         );
         state = AsyncValue.data(cachedState);
@@ -2613,15 +2627,18 @@ class ChessBoardScreenNotifierNew
               final updatedCascade = snapshot.copyWith(
                 evaluation: evaluation,
                 mate: cascadeEval.pvs.first.mate,
-                isEvaluating: false,
+                isEvaluating:
+                    pvLines.length >= configuredMultiPV ? false : true,
                 principalVariations: pvLines,
                 analysisState: snapshot.analysisState.copyWith(
                   suggestionLines: pvLines,
                 ),
               );
               state = AsyncValue.data(updatedCascade);
+              final cascadeComplete =
+                  pvLines.length >= configuredMultiPV ? 'complete' : 'partial';
               debugPrint(
-                '🎯 CASCADE APPLY: Applied ${pvLines.length} PVs to state (isEvaluating=false)',
+                '🎯 CASCADE APPLY: Applied ${pvLines.length} PVs to state ($cascadeComplete)',
               );
               if (positionCascade != null) {
                 _applyPrincipalVariationResults(
@@ -2647,9 +2664,6 @@ class ChessBoardScreenNotifierNew
         final deepTarget = combinedMaxDepth;
         final multiPV = configuredMultiPV;
         final isCurrentlyVisible = currentVisiblePage == index;
-        bool quickApplied =
-            false; // Ensure we flip isEvaluating=false once at first good depth
-
         await StockfishSingleton().evaluatePosition(
           fen,
           depth: deepTarget,
@@ -2715,17 +2729,16 @@ class ChessBoardScreenNotifierNew
                   currentState.isAnalysisMode
                       ? currentState.analysisState.movePointer
                       : null;
+              final hasCompletePv = lines.length >= multiPV;
               final nextState = currentState.copyWith(
                 evaluation: newEval,
-                isEvaluating:
-                    quickApplied ? false : false, // ensure false once we apply
+                isEvaluating: !hasCompletePv,
                 principalVariations: lines,
                 analysisState: currentState.analysisState.copyWith(
                   suggestionLines: lines,
                 ),
               );
               state = AsyncValue.data(nextState);
-              quickApplied = true;
               _applyPrincipalVariationResults(
                 currentState: nextState,
                 currentPosition: pos,
@@ -2846,10 +2859,15 @@ class ChessBoardScreenNotifierNew
                       latestState.isAnalysisMode
                           ? latestState.analysisState.movePointer
                           : null;
+                  final hasCompletePv =
+                      configuredMultiPV <= 0 ||
+                      retryPvLines.length >= configuredMultiPV;
 
                   state = AsyncValue.data(
                     latestState.copyWith(
                       principalVariations: retryPvLines,
+                      isEvaluating:
+                          hasCompletePv ? false : latestState.isEvaluating,
                       variantBaseFen: fen,
                       variantBaseMovePointer: basePointer,
                       analysisState: latestState.analysisState.copyWith(
@@ -2888,7 +2906,7 @@ class ChessBoardScreenNotifierNew
         final persist = ref.read(persistCloudEvalProvider);
         Future.wait([
           persist.call(fen, primaryEval!),
-          cache.save(fen, primaryEval!, multiPV: configuredMultiPV),
+          cache.save(fen, primaryEval!, multiPV: primaryEval!.pvs.length),
         ]).catchError((e) {
           debugPrint('Background persist failed for $fen: $e');
           return <void>[];

@@ -91,7 +91,7 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
     // 2️⃣  Supabase
     final supabaseEval = await ref
         .read(evalsRepositoryProvider)
-        .fetchFromSupabase(fen);
+        .fetchFromSupabase(fen, desiredMultiPv: multiPV);
     if (supabaseEval != null) {
       final cloud = ref
           .read(evalsRepositoryProvider)
@@ -103,7 +103,7 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
         "🟡 EVAL SOURCE (cascadeEval): SUPABASE - fen=$fen, side=$sideToMove, cp=$cp",
       );
       // OPTIMIZATION: Save to local cache in background (unawaited)
-      local.save(fen, cloud, multiPV: multiPV).catchError((e) => null);
+      local.save(fen, cloud, multiPV: cloud.pvs.length).catchError((e) => null);
       return cloud;
     }
 
@@ -119,7 +119,7 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
     // OPTIMIZATION: Save to caches in background (unawaited)
     Future.wait<void>([
       persist.call(fen, cloud),
-      local.save(fen, cloud, multiPV: multiPV),
+      local.save(fen, cloud, multiPV: cloud.pvs.length),
     ]).catchError((e) => <void>[]);
     return cloud;
   } catch (e, st) {
@@ -172,7 +172,7 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
       // Persist Stockfish result asynchronously for future reuse
       Future.wait<void>([
         persist.call(fen, cloudFromSf),
-        local.save(fen, cloudFromSf, multiPV: fallbackMultiPv),
+        local.save(fen, cloudFromSf, multiPV: cloudFromSf.pvs.length),
       ]).catchError((error) {
         print(
           '⚠️ cascadeEvalProvider: Background persist failed for $fen: $error',
@@ -244,7 +244,10 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
     // 2️⃣ Query Supabase FIRST (our database, no rate limits)
     print('🔍 EVAL: Checking Supabase for $fen');
     try {
-      final supabaseEval = await evalsRepo.fetchFromSupabase(fen);
+      final supabaseEval = await evalsRepo.fetchFromSupabase(
+        fen,
+        desiredMultiPv: multiPV,
+      );
       if (supabaseEval != null) {
         final cloud = evalsRepo.evalsToCloudEval(fen, supabaseEval);
         if (_isValidEvaluation(cloud)) {
@@ -255,7 +258,9 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
             "🟡 EVAL SOURCE: SUPABASE - fen=$fen, side=$sideToMove, cp=$cp",
           );
           // Background save to local cache
-          local.save(fen, cloud, multiPV: multiPV).catchError((e) => null);
+          local
+              .save(fen, cloud, multiPV: cloud.pvs.length)
+              .catchError((e) => null);
           return cloud;
         }
       }
@@ -270,7 +275,7 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
     // Persist in background
     Future.wait<void>([
       persist.call(fen, cloud),
-      local.save(fen, cloud, multiPV: multiPV),
+      local.save(fen, cloud, multiPV: cloud.pvs.length),
     ]).catchError((_) => <void>[]);
     return cloud;
   } catch (error, _) {

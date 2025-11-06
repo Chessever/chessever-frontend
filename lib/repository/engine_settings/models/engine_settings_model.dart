@@ -34,8 +34,8 @@ class EngineSettingsModel with EngineSettingsModelMappable {
       showEngineGauge: json['show_engine_gauge'] as bool? ?? true,
       showDepthOverlay: json['show_depth_overlay'] as bool? ?? true,
       showPvArrows: json['show_pv_arrows'] as bool? ?? true,
-      searchTimeIndex: json['search_time_index'] as int? ?? 2,
-      principalVariationIndex: json['principal_variation_index'] as int? ?? 2,
+      searchTimeIndex: json['search_time_index'] as int? ?? 5,
+      principalVariationIndex: json['principal_variation_index'] as int? ?? 4,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
@@ -76,8 +76,8 @@ class EngineSettingsModel with EngineSettingsModelMappable {
       showEngineGauge: true,
       showDepthOverlay: true,
       showPvArrows: true,
-      searchTimeIndex: 2, // 20s default
-      principalVariationIndex: 2, // Default to 3 lines (index 2)
+      searchTimeIndex: 5, // Infinite default
+      principalVariationIndex: 4, // Default to 5 lines (index 4)
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );
