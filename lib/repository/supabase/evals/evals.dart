@@ -4,6 +4,7 @@ class Evals {
   final int knodes;
   final int depth;
   final List<dynamic> pvs;
+  final int? multiPv; // Number of principal variations
 
   Evals({
     this.id,
@@ -11,6 +12,7 @@ class Evals {
     required this.knodes,
     required this.depth,
     required this.pvs,
+    this.multiPv,
   });
 
   factory Evals.fromJson(Map<String, dynamic> json) => Evals(
@@ -19,6 +21,7 @@ class Evals {
     knodes: json['knodes'],
     depth: json['depth'],
     pvs: json['pvs'] ?? [],
+    multiPv: json['multi_pv'],
   );
 
   Map<String, dynamic> toJson() => {
@@ -27,5 +30,6 @@ class Evals {
     'knodes': knodes,
     'depth': depth,
     'pvs': pvs,
+    if (multiPv != null) 'multi_pv': multiPv,
   };
 }

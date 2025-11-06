@@ -128,8 +128,11 @@ class ChessBoardScreenNotifierNew
 
         // Clear state's PVs immediately to show loading state
         final currentState = state.valueOrNull;
-        if (currentState != null && currentState.principalVariations.isNotEmpty) {
-          debugPrint('   🗑️  Clearing ${currentState.principalVariations.length} cached PVs from state');
+        if (currentState != null &&
+            currentState.principalVariations.isNotEmpty) {
+          debugPrint(
+            '   🗑️  Clearing ${currentState.principalVariations.length} cached PVs from state',
+          );
           state = AsyncValue.data(
             currentState.copyWith(
               principalVariations: const [],
@@ -141,9 +144,10 @@ class ChessBoardScreenNotifierNew
         }
 
         // Check if PV setting specifically changed (not just search time)
-        final pvSettingChanged = 
-            prevValue?.principalVariationIndex != nextValue.principalVariationIndex;
-        
+        final pvSettingChanged =
+            prevValue?.principalVariationIndex !=
+            nextValue.principalVariationIndex;
+
         if (pvSettingChanged) {
           // ALWAYS trigger re-evaluation when PV setting changes
           // This ensures new PVs are fetched even if user navigates away and back
@@ -154,11 +158,11 @@ class ChessBoardScreenNotifierNew
           debugPrint('   ✅ Re-evaluation triggered for PV setting change');
         } else {
           // For other settings (like search time), only re-evaluate if currently visible
-          final currentVisiblePage = ref.read(currentlyVisiblePageIndexProvider);
+          final currentVisiblePage = ref.read(
+            currentlyVisiblePageIndexProvider,
+          );
           if (index == currentVisiblePage) {
-            debugPrint(
-              '   → Forcing re-evaluation with new settings...',
-            );
+            debugPrint('   → Forcing re-evaluation with new settings...');
             _evaluatePosition(force: true);
             debugPrint('   ✅ Re-evaluation triggered');
           } else {
@@ -209,10 +213,19 @@ class ChessBoardScreenNotifierNew
     return evaluation;
   }
 
-  String _fenCacheKey(String fen) {
+  String _fenCacheKey(String fen, {int? multiPV}) {
     final parts = fen.split(' ');
-    if (parts.length < 4) return fen;
-    return '${parts[0]} ${parts[1]} ${parts[2]} ${parts[3]}';
+    final baseFen =
+        parts.length < 4
+            ? fen
+            : '${parts[0]} ${parts[1]} ${parts[2]} ${parts[3]}';
+
+    // Include multiPV count in cache key to prevent wrong PV count being returned
+    // e.g., cached 3-PV result shouldn't be returned when user wants 5 PVs
+    if (multiPV != null && multiPV > 0) {
+      return '${baseFen}_pv$multiPV';
+    }
+    return baseFen;
   }
 
   void _updateLastSeenMoveCount(int moveCount) {
@@ -862,10 +875,13 @@ class ChessBoardScreenNotifierNew
           );
           _resumeVariantAutoPlay = true;
           final currentFen = currentState.analysisState.position.fen;
-          final cacheKey = _fenCacheKey(currentFen);
-          _pvCache.remove(cacheKey);
-          _evaluationCache.remove(cacheKey);
-          _mateCache.remove(cacheKey);
+          // Clear cache for all PV counts when extending variant (can't know exact count)
+          for (int pv = 1; pv <= 5; pv++) {
+            final key = _fenCacheKey(currentFen, multiPV: pv);
+            _pvCache.remove(key);
+            _evaluationCache.remove(key);
+            _mateCache.remove(key);
+          }
 
           // CRITICAL: Update variant base to CURRENT position for extension
           // The new PVs will start from here, and variantMovePointer resets to []
@@ -2034,9 +2050,13 @@ class ChessBoardScreenNotifierNew
         // Keep current state, don't apply these PVs
         return;
       }
-      debugPrint('✅ PV APPLY: FEN match confirmed, applying ${pvLines.length} lines');
+      debugPrint(
+        '✅ PV APPLY: FEN match confirmed, applying ${pvLines.length} lines',
+      );
     } else {
-      debugPrint('✅ PV APPLY: No validation needed (new selection or extension), applying ${pvLines.length} lines');
+      debugPrint(
+        '✅ PV APPLY: No validation needed (new selection or extension), applying ${pvLines.length} lines',
+      );
     }
 
     // CRITICAL: Preserve evaluation, mate, and isEvaluating from currentState
@@ -2264,6 +2284,46 @@ class ChessBoardScreenNotifierNew
         return;
       }
 
+      // Get engine settings FIRST to get configured PV count for cache key
+      final engineSettingsAsync = ref.read(engineSettingsProviderNew);
+      final engineSettings = engineSettingsAsync.value;
+      final effectiveEngineSettings = engineSettings ?? const EngineSettings();
+      final configuredMultiPV = effectiveEngineSettings.multiPvForStockfish();
+
+      // Determine dynamic Stockfish search profile from engine settings
+      final gaugeDuration = effectiveEngineSettings.searchDurationFor(
+        EngineComponent.evaluationGauge,
+      );
+      final pvDuration = effectiveEngineSettings.searchDurationFor(
+        EngineComponent.principalVariation,
+      );
+
+      Duration? combinedSearchDuration;
+      if (gaugeDuration == null || pvDuration == null) {
+        // Any null duration indicates "infinite" search, so allow engine to run freely
+        combinedSearchDuration = null;
+      } else {
+        combinedSearchDuration =
+            gaugeDuration >= pvDuration ? gaugeDuration : pvDuration;
+      }
+
+      var gaugeMaxDepth = effectiveEngineSettings.maxDepthFor(
+        EngineComponent.evaluationGauge,
+      );
+      var pvMaxDepth = effectiveEngineSettings.maxDepthFor(
+        EngineComponent.principalVariation,
+      );
+      var combinedMaxDepth =
+          gaugeMaxDepth <= pvMaxDepth ? gaugeMaxDepth : pvMaxDepth;
+      if (combinedMaxDepth < 1) {
+        combinedMaxDepth = 1;
+      } else if (combinedMaxDepth > 99) {
+        combinedMaxDepth = 99;
+      }
+
+      // Generate cache key with multiPV count to avoid wrong PV count collisions
+      final cacheKey = _fenCacheKey(fen, multiPV: configuredMultiPV);
+
       final depthTracker = ref.read(engineDepthTrackerProvider.notifier);
 
       // CHECKMATE DETECTION: If position is checkmate, set mate=0 and high eval immediately
@@ -2293,61 +2353,20 @@ class ChessBoardScreenNotifierNew
         return;
       }
 
-      final cacheKey = _fenCacheKey(fen);
+      // NOTE: cacheKey is now defined above (after getting configuredMultiPV)
 
       final cachedEval = _evaluationCache[cacheKey];
       final cachedPv = _pvCache[cacheKey];
       final cachedMate = _mateCache[cacheKey];
       if (!force && cachedEval != null && cachedPv != null) {
-        // PERFORMANCE: Return cached result immediately - no artificial delay
-        // The "..." indicator will briefly flash, giving visual feedback
-
-        depthTracker.clear(
-          EngineComponent.evaluationGauge,
-          reason: 'cached result',
-        );
-        depthTracker.clear(
-          EngineComponent.principalVariation,
-          reason: 'cached result',
-        );
-        depthTracker.clear(
-          EngineComponent.cascadeEval,
-          reason: 'cached result',
+        // ⚡ INSTANT CACHE HIT: Show immediately, no delay, no loading state
+        debugPrint(
+          '⚡ CACHE HIT: Instant display for ${fen.split(' ').take(3).join(' ')}... (eval=$cachedEval, ${cachedPv.length} PVs)',
         );
 
-        // Check if evaluation was cancelled
-        if (!mounted || _cancelEvaluation) {
-          // CRITICAL FIX: Clear evaluating state on early return
-          final fallbackState = state.value;
-          if (fallbackState != null && fallbackState.isEvaluating) {
-            state = AsyncValue.data(
-              fallbackState.copyWith(isEvaluating: false),
-            );
-          }
-          return;
-        }
-        final currentState = state.value;
-        if (currentState == null) {
-          // CRITICAL FIX: Clear evaluating state on early return
-          if (initialState.isEvaluating) {
-            state = AsyncValue.data(initialState.copyWith(isEvaluating: false));
-          }
-          return;
-        }
-        final currentFen =
-            currentState.isAnalysisMode
-                ? currentState.analysisState.position.fen
-                : currentState.position?.fen;
-        if (currentFen != null && _fenCacheKey(currentFen) != cacheKey) {
-          debugPrint('🎯 EVAL: Position changed during cache delay, aborting');
-          // CRITICAL FIX: Clear evaluating state on early return
-          if (currentState.isEvaluating) {
-            state = AsyncValue.data(currentState.copyWith(isEvaluating: false));
-          }
-          return;
-        }
+        // NO depth tracker clearing - cache is instant, no progress to show
 
-        // BUG FIX: Validate cached mate=0 before applying
+        // Validate cached mate=0 before applying
         final validatedCachedMate =
             (cachedMate == 0 && !currentPosition.isCheckmate)
                 ? null // Invalid cached mate=0
@@ -2357,15 +2376,14 @@ class ChessBoardScreenNotifierNew
           debugPrint('⚠️ EVAL: Cached mate=0 invalid for position, ignoring');
         }
 
-        // BUG FIX: Set principalVariations immediately when returning cached data
-        // Don't rely solely on _applyPrincipalVariationResults which can return early
+        // Apply cached values SYNCHRONOUSLY (no await, instant)
         var cachedState = initialState.copyWith(
           evaluation: cachedEval,
-          mate: validatedCachedMate, // Use validated cached mate
-          isEvaluating: false,
-          principalVariations: cachedPv, // Set PVs immediately
+          mate: validatedCachedMate,
+          isEvaluating: false, // Already evaluated
+          principalVariations: cachedPv,
           analysisState: initialState.analysisState.copyWith(
-            suggestionLines: cachedPv, // Also set suggestion lines
+            suggestionLines: cachedPv,
           ),
         );
         state = AsyncValue.data(cachedState);
@@ -2389,13 +2407,12 @@ class ChessBoardScreenNotifierNew
         return;
       }
 
+      // OPTIMIZATION: Skip recently failed evaluations (avoid hammering engine)
       final lastFailure = _failedEvalTimestamps[cacheKey];
       if (!force &&
           lastFailure != null &&
-          DateTime.now().difference(lastFailure) < const Duration(seconds: 6)) {
-        debugPrint(
-          '🎯 EVAL: Skipping new request for $cacheKey due to recent failure',
-        );
+          DateTime.now().difference(lastFailure) < const Duration(seconds: 3)) {
+        debugPrint('⚠️ EVAL: Skipping (recent failure < 3s ago)');
         state = AsyncValue.data(
           initialState.copyWith(
             isEvaluating: false,
@@ -2406,36 +2423,27 @@ class ChessBoardScreenNotifierNew
         return;
       }
 
-      // BUG FIX: Check if there's a stale active request (older than 10 seconds)
-      // This fixes the rare bug where evaluation gets stuck in loading state
-      // INCREASED from 3s to 10s to allow for legitimate deep Stockfish analysis
+      // OPTIMIZATION: Coalesce duplicate requests for same position
       if (!force &&
           _activeEvalKey == cacheKey &&
           _activeEvalRequestId != null) {
-        // Check if the active request is stale (started more than 10 seconds ago)
+        // Check if stale (> 15s for deep staged analysis)
         final isStale =
             _activeEvalStartTime != null &&
             DateTime.now().difference(_activeEvalStartTime!) >
-                const Duration(seconds: 10);
+                const Duration(seconds: 15);
 
         if (isStale) {
           debugPrint(
-            '⚠️ EVAL: Clearing stale request for $cacheKey (started ${DateTime.now().difference(_activeEvalStartTime!).inSeconds}s ago)',
+            '⚠️ EVAL: Stale request (${DateTime.now().difference(_activeEvalStartTime!).inSeconds}s), forcing fresh eval',
           );
-          // CRITICAL BUG FIX: Clear the isEvaluating flag when clearing stale request
-          // This prevents the UI from getting stuck in loading state
           state = AsyncValue.data(initialState.copyWith(isEvaluating: false));
-
-          // Clear the stale request tracking and continue with new one
           _activeEvalRequestId = null;
           _activeEvalKey = null;
           _activeEvalStartTime = null;
         } else {
-          debugPrint(
-            '🎯 EVAL: Skipping duplicate request for $cacheKey (already running)',
-          );
-          // Don't clear isEvaluating here - another request is already running
-          return;
+          debugPrint('⏭️ EVAL: Coalescing (already evaluating same position)');
+          return; // Let existing request complete
         }
       }
 
@@ -2458,7 +2466,9 @@ class ChessBoardScreenNotifierNew
       _activeEvalStartTime = DateTime.now(); // Track when this request started
 
       // CRITICAL: Clear stale PVs immediately to prevent wrong position data displaying
-      debugPrint('🎯 EVAL: Clearing stale PVs, starting fresh evaluation for FEN: ${fen.split(' ').take(3).join(' ')}...');
+      debugPrint(
+        '🎯 EVAL: Clearing stale PVs, starting fresh evaluation for FEN: ${fen.split(' ').take(3).join(' ')}...',
+      );
       state = AsyncValue.data(
         initialState.copyWith(
           shapes: const ISet.empty(),
@@ -2474,14 +2484,9 @@ class ChessBoardScreenNotifierNew
       double? evaluation;
       List<AnalysisLine> pvLines = const [];
 
-      debugPrint('🎯 EVAL START: Evaluating position $fen');
-
-      // Get engine settings FIRST to check configured PV count
-      final engineSettingsAsync = ref.read(engineSettingsProviderNew);
-      final engineSettings = engineSettingsAsync.value;
-      final effectiveEngineSettings = engineSettings ?? const EngineSettings();
-      // Use multiPvForLichess() which caps at 5 to avoid abusing Lichess API
-      final configuredMultiPV = effectiveEngineSettings.multiPvForLichess();
+      debugPrint(
+        '🎯 EVAL START: Evaluating position $fen (requesting $configuredMultiPV PVs)',
+      );
 
       // OPTIMIZED: Try cascade (cloud sources) FIRST for speed
       // Cascade queries local DB → Supabase → Lichess → Stockfish sequentially
@@ -2497,7 +2502,8 @@ class ChessBoardScreenNotifierNew
             CascadeEvalParams(
               fen: fen,
               multiPV: configuredMultiPV,
-              isCurrentPosition: true, // Always true here - only visible boards reach this point
+              isCurrentPosition:
+                  true, // Always true here - only visible boards reach this point
             ),
           ).future,
         );
@@ -2593,6 +2599,41 @@ class ChessBoardScreenNotifierNew
           debugPrint(
             '🎯 EVAL: CASCADE SUCCESS - returned ${pvLines.length} variants from ${cascadeEval.pvs.length} cloud PVs, eval=$evaluation',
           );
+          // Apply cascade PVs immediately to render cards without waiting for Stockfish
+          if (pvLines.isNotEmpty && mounted) {
+            final snapshot = state.value;
+            if (snapshot != null) {
+              final inAnalysis = snapshot.isAnalysisMode;
+              final positionCascade =
+                  inAnalysis
+                      ? snapshot.analysisState.position
+                      : snapshot.position;
+              final basePointerCascade =
+                  inAnalysis ? snapshot.analysisState.movePointer : null;
+              final updatedCascade = snapshot.copyWith(
+                evaluation: evaluation,
+                mate: cascadeEval.pvs.first.mate,
+                isEvaluating: false,
+                principalVariations: pvLines,
+                analysisState: snapshot.analysisState.copyWith(
+                  suggestionLines: pvLines,
+                ),
+              );
+              state = AsyncValue.data(updatedCascade);
+              debugPrint(
+                '🎯 CASCADE APPLY: Applied ${pvLines.length} PVs to state (isEvaluating=false)',
+              );
+              if (positionCascade != null) {
+                _applyPrincipalVariationResults(
+                  currentState: updatedCascade,
+                  currentPosition: positionCascade,
+                  baseFen: fen,
+                  baseMovePointer: basePointerCascade,
+                  pvLines: pvLines,
+                );
+              }
+            }
+          }
         } else {
           debugPrint('🎯 EVAL: Cascade returned empty PVs');
         }
@@ -2600,234 +2641,106 @@ class ChessBoardScreenNotifierNew
         debugPrint('🎯 EVAL ERROR: Cascade failed for $fen: $e');
       }
 
-      // ALWAYS RUN STOCKFISH: Staged depth progression
-      // Even if Lichess returns depth 30, we want local Stockfish to:
-      // 1. Quick phase (depth 12): Show results IMMEDIATELY (override Lichess)
-      // 2. Staged refinement: 13,14,15,16,18,20,22,25,30,35,40,50 (gradual at start)
-      // 3. Abort if user navigates away or position changes
-      // This ensures blazing fast initial display + progressive accuracy improvement
-      final shouldRunStockfish = true; // Always run for progressive deepening
-      
-      if (shouldRunStockfish) {
-        final needsEval = evaluation == null;
-        final needsMorePvs = pvLines.length < configuredMultiPV;
+      // ALWAYS RUN STOCKFISH: Single progressive deepening run (1 job, streams updates)
+      // Even if cascade returns some PVs, local engine refines continuously via onPvUpdate.
+      try {
+        final deepTarget = combinedMaxDepth;
+        final multiPV = configuredMultiPV;
+        final isCurrentlyVisible = currentVisiblePage == index;
+        bool quickApplied =
+            false; // Ensure we flip isEvaluating=false once at first good depth
 
-        try {
-          final quickDepth = EngineSearchProgress.minReportDepth; // 12
-          final deepDepth = 50; // target
-          final multiPV = configuredMultiPV;
-
-          debugPrint('');
-          debugPrint('🎯 ═══ STARTING STOCKFISH QUICK EVAL (depth=$quickDepth) ═══');
-          final previewLength = fen.length < 50 ? fen.length : 50;
-          final fenPreview = fen.substring(0, previewLength);
-          final previewSuffix = fen.length > previewLength ? '...' : '';
-          debugPrint('   FEN: $fenPreview$previewSuffix');
-          debugPrint(
-            '   Reason: ${needsEval ? "Need eval" : ""}${needsEval && needsMorePvs ? " + " : ""}${needsMorePvs ? "Need more PVs (have ${pvLines.length}/$multiPV)" : ""}',
-          );
-
-          // PRIORITY: Mark this as current position if visible
-          final isCurrentlyVisible = currentVisiblePage == index;
-
-          // PHASE 1: Quick shallow evaluation for immediate PVs
-          final quickEval = await StockfishSingleton().evaluatePosition(
-            fen,
-            depth: quickDepth,
-            multiPV: multiPV,
-            isCurrentPosition: isCurrentlyVisible,
-          );
-          debugPrint(
-            '🎯 EVAL: Quick Stockfish completed, depth=${quickEval.depth}, pvs.length=${quickEval.pvs.length}',
-          );
-          if (!quickEval.isCancelled && quickEval.pvs.isNotEmpty) {
-            final quickCp = quickEval.pvs.first.cp;
-            final quickEvalValue = _getConsistentEvaluation(quickCp / 100.0, fen);
-            evaluation = quickEvalValue; // adopt immediately
-            primaryEval = CloudEval(
-              fen: fen,
-              knodes: quickEval.knodes,
-              depth: quickEval.depth,
-              pvs: quickEval.pvs,
-            );
-            var quickPvLines = await _buildPrincipalVariations(fen, quickEval.pvs);
-            debugPrint('🎯 QUICK EVAL: Built ${quickPvLines.length} PV lines from ${quickEval.pvs.length} raw PVs');
-            if (quickPvLines.length > multiPV) {
-              quickPvLines = quickPvLines.take(multiPV).toList(growable: false);
-            }
-            pvLines = quickPvLines;
-            // Report quick phase depth (same for both gauge and PV display)
-            final quickProgress = EngineSearchProgress(
-              depth: quickEval.depth,
-              kiloNodes: quickEval.knodes,
+        await StockfishSingleton().evaluatePosition(
+          fen,
+          depth: deepTarget,
+          multiPV: multiPV,
+          isCurrentPosition: isCurrentlyVisible,
+          searchDuration: combinedSearchDuration,
+          maxDepth: combinedMaxDepth,
+          onDepthUpdate: (depth, knodes) {
+            // Synchronized depth for gauge + PV components
+            final progress = EngineSearchProgress(
+              depth: depth,
+              kiloNodes: knodes,
               fenFragment: fen,
             );
             depthTracker.update(
               component: EngineComponent.evaluationGauge,
-              progress: quickProgress,
-              context: 'quick D:${quickEval.depth}, PVs:${quickPvLines.length}',
+              progress: progress,
+              context: 'progressive D:$depth',
             );
             depthTracker.update(
               component: EngineComponent.principalVariation,
-              progress: quickProgress,
-              context: 'quick D:${quickEval.depth}, PVs:${quickPvLines.length}',
+              progress: progress,
+              context: 'progressive D:$depth',
             );
+          },
+          onPvUpdate: (pvs, depth) {
+            // Build and apply PVs asynchronously to avoid blocking engine stream
+            Future<void>(() async {
+              if (!mounted) return;
+              // Visibility + position guards
+              final visiblePage = ref.read(currentlyVisiblePageIndexProvider);
+              if (visiblePage != index) return;
+              final currentState = state.value;
+              if (currentState == null) return;
+              final pos =
+                  currentState.isAnalysisMode
+                      ? currentState.analysisState.position
+                      : currentState.position;
+              if (pos == null) return;
+              final currentFenBase = pos.fen.split(' ').take(3).join(' ');
+              final targetFenBase = fen.split(' ').take(3).join(' ');
+              if (currentFenBase != targetFenBase) return;
 
-            // IMMEDIATE UI UPDATE: apply quick PVs now so cards render without waiting for deep eval
-            final snapshotForQuick = state.value;
-            if (snapshotForQuick != null && mounted) {
-              final inAnalysisQuick = snapshotForQuick.isAnalysisMode;
-              final positionQuick = inAnalysisQuick
-                  ? snapshotForQuick.analysisState.position
-                  : snapshotForQuick.position;
-              final basePointerQuick = inAnalysisQuick
-                  ? snapshotForQuick.analysisState.movePointer
-                  : null;
-
-              // Set evaluation + PVs to show the cards immediately
-              // CRITICAL: Set isEvaluating=false so PV cards render (staged refinement continues silently)
-              final updatedQuick = snapshotForQuick.copyWith(
-                evaluation: evaluation,
-                mate: quickEval.pvs.first.mate,
-                isEvaluating: false, // Cards can render now; staged depth continues in background
-                principalVariations: quickPvLines,
-                analysisState: snapshotForQuick.analysisState.copyWith(
-                  suggestionLines: quickPvLines,
-                ),
-              );
-              debugPrint('🎯 QUICK PHASE: Applied ${quickPvLines.length} PVs to state (isEvaluating=false)');
-              debugPrint('   First PV: ${quickPvLines.isNotEmpty && quickPvLines[0].sanMoves.isNotEmpty ? quickPvLines[0].sanMoves.take(3).join(" ") : "none"}...');
-              state = AsyncValue.data(updatedQuick);
-
-              // Let the PV selection/shapes logic run against the quick PVs
-              if (positionQuick != null) {
-                _applyPrincipalVariationResults(
-                  currentState: updatedQuick,
-                  currentPosition: positionQuick,
-                  baseFen: fen,
-                  baseMovePointer: basePointerQuick,
-                  pvLines: quickPvLines,
-                );
+              // Convert PV snapshot to analysis lines
+              var lines = await _buildPrincipalVariations(fen, pvs);
+              if (lines.isEmpty) return;
+              if (lines.length > multiPV) {
+                lines = lines.take(multiPV).toList(growable: false);
               }
-            }
-          }
 
-          // PHASE 2: Deep progressive evaluation (staged depths)
-          // Go very gradually at start (13,14,15,16), then wider gaps
-          final stagedDepths = <int>[13, 14, 15, 16, 18, 20, 22, 25, 30, 35, 40, 50]
-              .where((d) => d > quickDepth && d <= deepDepth)
-              .toList(growable: false);
-          debugPrint('🎯 ═══ STAGED EVAL: depths [${stagedDepths.join(", ")}] ═══');
-
-          for (final stageDepth in stagedDepths) {
-            // Visibility guard
-            final currentVisiblePage = ref.read(currentlyVisiblePageIndexProvider);
-            if (index != currentVisiblePage) {
-              debugPrint('🚫 EVAL: Aborting staged run at depth=$stageDepth (not visible)');
-              break;
-            }
-
-            // Position guard (FEN base)
-            final currentState = state.value;
-            if (currentState == null) break;
-            final pos = currentState.isAnalysisMode
-                ? currentState.analysisState.position
-                : currentState.position;
-            final currentFenBase = pos?.fen.split(' ').take(3).join(' ');
-            final targetFenBase = fen.split(' ').take(3).join(' ');
-            if (currentFenBase != targetFenBase) {
-              debugPrint('🚫 EVAL: Aborting staged run (position changed)');
-              break;
-            }
-
-            final stagedEval = await StockfishSingleton().evaluatePosition(
-              fen,
-              depth: stageDepth,
-              multiPV: multiPV,
-              isCurrentPosition: isCurrentlyVisible,
-              onDepthUpdate: (depth, knodes) {
-                final progress = EngineSearchProgress(
-                  depth: depth,
-                  kiloNodes: knodes,
-                  fenFragment: fen,
-                );
-                // Update both gauge and PV simultaneously (no separation)
-                depthTracker.update(
-                  component: EngineComponent.evaluationGauge,
-                  progress: progress,
-                  context: 'staged D:$depth (target=$stageDepth)',
-                );
-                depthTracker.update(
-                  component: EngineComponent.principalVariation,
-                  progress: progress,
-                  context: 'staged D:$depth (target=$stageDepth)',
-                );
-              },
-            );
-
-            if (!stagedEval.isCancelled && stagedEval.pvs.isNotEmpty) {
-              final rawCp = stagedEval.pvs.first.cp;
-              evaluation = _getConsistentEvaluation(rawCp / 100.0, fen);
+              // Update evaluation from first PV
+              final cp = pvs.first.cp;
+              final newEval = _getConsistentEvaluation(cp / 100.0, fen);
+              evaluation = newEval;
               primaryEval = CloudEval(
                 fen: fen,
-                knodes: stagedEval.knodes,
-                depth: stagedEval.depth,
-                pvs: stagedEval.pvs,
+                knodes: 0,
+                depth: depth,
+                pvs: pvs,
               );
 
-              var newLines = await _buildPrincipalVariations(fen, stagedEval.pvs);
-              debugPrint('🎯 STAGED D:${stagedEval.depth}: Built ${newLines.length} PV lines');
-              if (needsMorePvs && pvLines.isNotEmpty) {
-                final merged = <AnalysisLine>[...pvLines];
-                final existingFirstMoves = pvLines
-                    .map((line) => line.sanMoves.isNotEmpty ? line.sanMoves.first : '')
-                    .toSet();
-                for (final sfLine in newLines) {
-                  if (merged.length >= multiPV) break;
-                  final firstMove = sfLine.sanMoves.isNotEmpty ? sfLine.sanMoves.first : '';
-                  if (!existingFirstMoves.contains(firstMove)) {
-                    merged.add(sfLine);
-                    existingFirstMoves.add(firstMove);
-                  }
-                }
-                pvLines = merged.length > multiPV
-                    ? merged.take(multiPV).toList(growable: false)
-                    : merged;
-              } else {
-                pvLines = newLines.length > multiPV
-                    ? newLines.take(multiPV).toList(growable: false)
-                    : newLines;
-              }
-
-              // Apply PVs to state progressively (keep isEvaluating=false set by quick phase)
-              final basePointer = currentState.isAnalysisMode
-                  ? currentState.analysisState.movePointer
-                  : null;
-              final stagedState = currentState.copyWith(
-                evaluation: evaluation,
-                isEvaluating: false, // Keep false; cards already rendering
-                principalVariations: pvLines,
+              final basePointer =
+                  currentState.isAnalysisMode
+                      ? currentState.analysisState.movePointer
+                      : null;
+              final nextState = currentState.copyWith(
+                evaluation: newEval,
+                isEvaluating:
+                    quickApplied ? false : false, // ensure false once we apply
+                principalVariations: lines,
                 analysisState: currentState.analysisState.copyWith(
-                  suggestionLines: pvLines,
+                  suggestionLines: lines,
                 ),
               );
-              state = AsyncValue.data(stagedState);
-              debugPrint('🎯 STAGED D:${stagedEval.depth}: Applied ${pvLines.length} PVs to state');
-              debugPrint('   First PV: ${pvLines.isNotEmpty && pvLines[0].sanMoves.isNotEmpty ? pvLines[0].sanMoves.take(3).join(" ") : "none"}...');
-
+              state = AsyncValue.data(nextState);
+              quickApplied = true;
               _applyPrincipalVariationResults(
-                currentState: stagedState,
-                currentPosition: pos!,
+                currentState: nextState,
+                currentPosition: pos,
                 baseFen: fen,
                 baseMovePointer: basePointer,
-                pvLines: pvLines,
+                pvLines: lines,
               );
-            }
-          }
-        } catch (e, stack) {
-          debugPrint('🎯 EVAL ERROR: Stockfish two-phase failed for $fen: $e');
-          debugPrint('Stack: $stack');
-        }
+            });
+          },
+        );
+      } catch (e, stack) {
+        debugPrint(
+          '🎯 EVAL ERROR: Stockfish progressive run failed for $fen: $e',
+        );
+        debugPrint('Stack: $stack');
       }
 
       // CRITICAL FIX: Show evaluation even if PVs fail to convert
@@ -2858,13 +2771,13 @@ class ChessBoardScreenNotifierNew
 
       // CRITICAL: Always show evaluation even if PVs fail
       // Show eval bar immediately, PV cards can come later via retry
-      if (pvLines.isEmpty && primaryEval.pvs.isNotEmpty) {
+      if (pvLines.isEmpty && (primaryEval?.pvs.isNotEmpty ?? false)) {
         debugPrint(
           '⚠️ EVAL: Have evaluation ($evaluation) but PV conversion failed',
         );
-        debugPrint('   primaryEval.pvs.length=${primaryEval.pvs.length}');
+        debugPrint('   primaryEval.pvs.length=${primaryEval?.pvs.length}');
         debugPrint(
-          '   First PV: moves=${primaryEval.pvs.first.moves}, cp=${primaryEval.pvs.first.cp}',
+          '   First PV: moves=${primaryEval?.pvs.first.moves}, cp=${primaryEval?.pvs.first.cp}',
         );
 
         // IMMEDIATE UPDATE: Show eval bar with loading PVs indicator
@@ -2873,7 +2786,7 @@ class ChessBoardScreenNotifierNew
           state = AsyncValue.data(
             currentSnapshot.copyWith(
               evaluation: evaluation,
-              mate: primaryEval.pvs.first.mate,
+              mate: primaryEval?.pvs.first.mate,
               isEvaluating: false, // Show eval bar immediately
               principalVariations: const [], // Empty PVs for now
             ),
@@ -2899,6 +2812,10 @@ class ChessBoardScreenNotifierNew
           final targetFenBase = fen.split(' ').take(3).join(' ');
 
           // Only retry if still on same position and still no PVs
+          if (evalForRetry == null) {
+            return;
+          }
+
           if (currentFenBase == targetFenBase &&
               currentState.principalVariations.isEmpty &&
               evalForRetry.pvs.isNotEmpty) {
@@ -2966,15 +2883,17 @@ class ChessBoardScreenNotifierNew
 
       // OPTIMIZATION: Don't await cache persistence - run in background for speed
       // User sees evaluation immediately while caching happens asynchronously
-      final cache = ref.read(localEvalCacheProvider);
-      final persist = ref.read(persistCloudEvalProvider);
-      Future.wait([
-        persist.call(fen, primaryEval),
-        cache.save(fen, primaryEval),
-      ]).catchError((e) {
-        debugPrint('Background persist failed for $fen: $e');
-        return <void>[];
-      });
+      if (primaryEval != null) {
+        final cache = ref.read(localEvalCacheProvider);
+        final persist = ref.read(persistCloudEvalProvider);
+        Future.wait([
+          persist.call(fen, primaryEval!),
+          cache.save(fen, primaryEval!, multiPV: configuredMultiPV),
+        ]).catchError((e) {
+          debugPrint('Background persist failed for $fen: $e');
+          return <void>[];
+        });
+      }
 
       if (_cancelEvaluation || state.value == null || !mounted) {
         // CRITICAL FIX: Clear evaluating state on early return
@@ -3030,19 +2949,21 @@ class ChessBoardScreenNotifierNew
 
         // CRITICAL: Still cache the evaluation result even if position changed
         // This prevents wasted computation and speeds up navigation
-        _evaluationCache[cacheKey] = evaluation;
+        _evaluationCache[cacheKey] = evaluation ?? 0.0;
         _mateCache[cacheKey] =
-            primaryEval
-                .pvs
-                .first
-                .mate; // Use engine mate directly, null if no mate
+            (primaryEval?.pvs.isNotEmpty ?? false)
+                ? primaryEval!.pvs.first.mate
+                : null; // Use engine mate directly, null if no mate
         _pvCache[cacheKey] = pvLines;
 
         // EDGE CASE FIX: Check if we have cached evaluation for the CURRENT position
         // This handles race conditions where evaluation completes after position changed
         // but the new position already has a cached result available
         final currentPositionFen = position.fen;
-        final currentCacheKey = _fenCacheKey(currentPositionFen);
+        final currentCacheKey = _fenCacheKey(
+          currentPositionFen,
+          multiPV: configuredMultiPV,
+        );
         final cachedCurrentEval = _evaluationCache[currentCacheKey];
         final cachedCurrentPv = _pvCache[currentCacheKey];
         final cachedCurrentMate = _mateCache[currentCacheKey];
@@ -3140,15 +3061,16 @@ class ChessBoardScreenNotifierNew
 
       final basePointer =
           inAnalysis ? currentSnapshot.analysisState.movePointer : null;
-      final rawMateScore =
-          primaryEval
-              .pvs
-              .first
-              .mate; // Use engine mate directly, null if no mate
+      final primaryPvs = primaryEval?.pvs;
+      final bool hasPrimaryPv = primaryPvs != null && primaryPvs.isNotEmpty;
+      final int? rawMateScore =
+          hasPrimaryPv
+              ? primaryPvs.first.mate
+              : null; // Use engine mate directly, null if no mate
 
       // BUG FIX: Validate mate=0 - only allow it if position is actually checkmate
       // This fixes the bug where "M" appears on regular positions
-      final mateScore =
+      final int? mateScore =
           (rawMateScore == 0 && !position.isCheckmate)
               ? null // Invalid mate=0, treat as regular position
               : rawMateScore;
@@ -3159,7 +3081,9 @@ class ChessBoardScreenNotifierNew
         );
       }
 
-      _evaluationCache[cacheKey] = evaluation;
+      if (evaluation != null) {
+        _evaluationCache[cacheKey] = evaluation!;
+      }
       _mateCache[cacheKey] = mateScore;
       _pvCache[cacheKey] = pvLines;
       _failedEvalTimestamps.remove(cacheKey);
@@ -3178,7 +3102,27 @@ class ChessBoardScreenNotifierNew
           currentSnapshot.selectedVariantIndex!,
         );
       } else {
-        shapes = getBestMoveShape(position, primaryEval);
+        // Fallback: if primaryEval is null, build a minimal CloudEval from pvLines
+        final evalForShapes =
+            primaryEval ??
+            CloudEval(
+              fen: position.fen,
+              knodes: 0,
+              depth: 0,
+              pvs:
+                  pvLines
+                      .map(
+                        (line) => Pv(
+                          moves: line.moves.map((m) => m.uci).join(' '),
+                          cp: ((line.evaluation ?? 0) * 100).toInt(),
+                          isMate: line.isMate,
+                          mate: line.mate,
+                          whitePerspective: true,
+                        ),
+                      )
+                      .toList(),
+            );
+        shapes = getBestMoveShape(position, evalForShapes);
       }
 
       currentSnapshot = currentSnapshot.copyWith(

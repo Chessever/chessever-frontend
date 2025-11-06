@@ -61,6 +61,7 @@ class PersistCloudEval {
                 },
               )
               .toList(),
+          multiPv: cloud.pvs.length, // Track number of PVs
         ),
       );
 

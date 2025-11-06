@@ -28,6 +28,7 @@ class EvalRepository extends BaseRepository {
           'knodes': eval.knodes,
           'depth': eval.depth,
           'pvs': eval.pvs,
+          if (eval.multiPv != null) 'multi_pv': eval.multiPv,
         };
         final updated = await supabase
             .from('evals')
