@@ -1868,6 +1868,39 @@ class ChessBoardScreenNotifierNew
     return lines;
   }
 
+  List<AnalysisLine> _mergePvProgress(
+    List<AnalysisLine> previous,
+    List<AnalysisLine> incoming,
+  ) {
+    if (incoming.isEmpty) return incoming;
+    final merged = <AnalysisLine>[];
+    for (var i = 0; i < incoming.length; i++) {
+      final newLine = incoming[i];
+      final prevLine = i < previous.length ? previous[i] : null;
+      if (prevLine == null) {
+        merged.add(newLine);
+        continue;
+      }
+      final prevMoves = prevLine.moves;
+      final newMoves = newLine.moves;
+      if (prevMoves.length > newMoves.length &&
+          _isPrefixMoves(newMoves, prevMoves)) {
+        merged.add(prevLine);
+      } else {
+        merged.add(newLine);
+      }
+    }
+    return merged;
+  }
+
+  bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
+    if (shorter.length > longer.length) return false;
+    for (var i = 0; i < shorter.length; i++) {
+      if (shorter[i].uci != longer[i].uci) return false;
+    }
+    return true;
+  }
+
   ChessGameNavigator? get _analysisNavigator =>
       _analysisGame == null
           ? null
