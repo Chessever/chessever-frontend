@@ -2628,6 +2628,20 @@ class ChessBoardScreenNotifierNew
             final rawCp = cascadeEval.pvs.first.cp;
             final rawEval = rawCp / 100.0;
             evaluation = _getConsistentEvaluation(rawEval, fen);
+            final cascadeMate = cascadeEval.pvs.first.mate;
+
+            if (mounted) {
+              final previewState = state.value;
+              if (previewState != null) {
+                state = AsyncValue.data(
+                  previewState.copyWith(
+                    evaluation: evaluation,
+                    mate: cascadeMate,
+                    isEvaluating: true,
+                  ),
+                );
+              }
+            }
 
             final cascadeFenParts = fen.split(' ');
             final cascadeSideToMove =
@@ -2805,6 +2819,19 @@ class ChessBoardScreenNotifierNew
               final targetFenBase = fen.split(' ').take(3).join(' ');
               if (currentFenBase != targetFenBase) return;
 
+              // Quick evaluation update before heavy PV processing
+              final cp = pvs.first.cp;
+              final newEval = _getConsistentEvaluation(cp / 100.0, fen);
+              final mateScore = pvs.first.mate;
+              evaluation = newEval;
+
+              var workingState = currentState.copyWith(
+                evaluation: newEval,
+                mate: mateScore,
+                isEvaluating: true,
+              );
+              state = AsyncValue.data(workingState);
+
               // Convert PV snapshot to analysis lines
               var lines = await _buildPrincipalVariations(fen, pvs);
               if (lines.isEmpty) return;
@@ -2812,10 +2839,6 @@ class ChessBoardScreenNotifierNew
                 lines = lines.take(multiPV).toList(growable: false);
               }
 
-              // Update evaluation from first PV
-              final cp = pvs.first.cp;
-              final newEval = _getConsistentEvaluation(cp / 100.0, fen);
-              evaluation = newEval;
               primaryEval = CloudEval(
                 fen: fen,
                 knodes: 0,
@@ -2823,7 +2846,7 @@ class ChessBoardScreenNotifierNew
                 pvs: pvs,
               );
               final mergedLines = _mergePvProgress(
-                currentState.principalVariations,
+                workingState.principalVariations,
                 lines,
               );
               pvLines = mergedLines;
@@ -2848,15 +2871,16 @@ class ChessBoardScreenNotifierNew
               pendingProgress = null;
 
               final basePointer =
-                  currentState.isAnalysisMode
-                      ? currentState.analysisState.movePointer
+                  workingState.isAnalysisMode
+                      ? workingState.analysisState.movePointer
                       : null;
               final hasPrimaryPv = mergedLines.isNotEmpty;
-              final nextState = currentState.copyWith(
+              final nextState = workingState.copyWith(
                 evaluation: newEval,
                 isEvaluating: !hasPrimaryPv,
+                mate: mateScore,
                 principalVariations: mergedLines,
-                analysisState: currentState.analysisState.copyWith(
+                analysisState: workingState.analysisState.copyWith(
                   suggestionLines: mergedLines,
                 ),
               );
