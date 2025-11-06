@@ -45,7 +45,9 @@ class StockfishSingleton {
     int multiPV = 3,
     Function(int depth, int knodes)? onDepthUpdate,
     Function(List<Pv> pvs, int depth)? onPvUpdate,
-    bool isCurrentPosition = false, // Priority flag for user's currently viewed position
+    bool isCurrentPosition =
+        false, // Priority flag for user's currently viewed position
+    bool allowCache = true,
   }) async {
     // Validate depth range (only if using depth-based search)
     if (searchDuration == null && (depth < 1 || depth > 99)) {
@@ -66,7 +68,7 @@ class StockfishSingleton {
             : 'depth_$depth';
     final cacheKey = '${fen}_${searchMode}_pv${multiPV}_$sideToMove';
 
-    if (_evaluationCache.containsKey(cacheKey)) {
+    if (allowCache && _evaluationCache.containsKey(cacheKey)) {
       debugPrint('📦 CACHE HIT for $fen');
       return _evaluationCache[cacheKey]!;
     }
@@ -82,6 +84,40 @@ class StockfishSingleton {
       return pending.completer.future;
     }
 
+    // If this is the active board position, cancel any in-progress job for a different FEN
+    if (isCurrentPosition &&
+        _currentJob != null &&
+        _currentJob!.fen != fen &&
+        !_currentJob!.completer.isCompleted) {
+      debugPrint(
+        '🛑 QUEUE: Cancelling in-flight evaluation for ${_currentJob!.fen} → new position $fen',
+      );
+      await _cancelCurrentEvaluation();
+    }
+
+    // Remove pending duplicate current-position jobs to avoid stale searches
+    if (isCurrentPosition && _jobQueue.isNotEmpty) {
+      _jobQueue.removeWhere((job) {
+        final shouldDrop = job.isCurrentPosition && job.fen != fen;
+        if (shouldDrop) {
+          _pendingJobs.remove(job.key);
+          if (!job.completer.isCompleted) {
+            job.completer.complete(
+              EnhancedCloudEval(
+                fen: job.fen,
+                knodes: 0,
+                depth: 0,
+                pvs: [Pv(moves: '', cp: 0, mate: 0)],
+                isCancelled: true,
+              ),
+            );
+          }
+          debugPrint('🗑️ QUEUE: Dropped pending job for ${job.fen}');
+        }
+        return shouldDrop;
+      });
+    }
+
     // Create job and add to queue
     final completer = Completer<EnhancedCloudEval>();
     final job = _EvalJob(
@@ -95,6 +131,7 @@ class StockfishSingleton {
       onDepthUpdate: onDepthUpdate,
       onPvUpdate: onPvUpdate,
       isCurrentPosition: isCurrentPosition,
+      allowCache: allowCache,
     );
 
     // PRIORITY: Insert high-priority jobs at the front, low-priority at the back
@@ -315,7 +352,9 @@ class StockfishSingleton {
 
         // Emit PV snapshot updates once per increased depth
         if (job.onPvUpdate != null && finalDepth > lastPvUpdateDepthReported) {
-          final snapshot = pvs.where((pv) => pv.moves.isNotEmpty).toList(growable: false);
+          final snapshot = pvs
+              .where((pv) => pv.moves.isNotEmpty)
+              .toList(growable: false);
           if (snapshot.isNotEmpty) {
             try {
               job.onPvUpdate!(snapshot, finalDepth);
@@ -337,13 +376,19 @@ class StockfishSingleton {
         // CRITICAL: Check if depth is 0 (no info lines parsed)
         if (finalDepth == 0) {
           if (filteredPvs.isNotEmpty) {
-            debugPrint('⚠️ BESTMOVE without info depth - setting fallback depth');
+            debugPrint(
+              '⚠️ BESTMOVE without info depth - setting fallback depth',
+            );
             // Fallback to at least the minimum report depth to avoid UI getting stuck
             final minimum = EngineSearchProgress.minReportDepth;
             finalDepth = depth < minimum ? minimum : depth;
           } else {
-            debugPrint('❌ CRITICAL: Stockfish returned NO depth info AND NO PVs for $fen');
-            debugPrint('   Requested: ${isDynamicSearch ? "dynamic ${searchDuration.inSeconds}s" : "depth $depth"}');
+            debugPrint(
+              '❌ CRITICAL: Stockfish returned NO depth info AND NO PVs for $fen',
+            );
+            debugPrint(
+              '   Requested: ${isDynamicSearch ? "dynamic ${searchDuration.inSeconds}s" : "depth $depth"}',
+            );
             debugPrint('   Last UCI line: $line');
             debugPrint('   This might be an invalid position or engine error');
           }
@@ -388,7 +433,7 @@ class StockfishSingleton {
       // This was causing depth 0 bugs and killing performance
       // The working commit (a85edea1a0ded3f1772efb3baf1756c793c054b0) didn't use ucinewgame
       // Stockfish is smart enough to handle position changes without clearing hash
-      
+
       _engine!.stdin = 'setoption name MultiPV value $multiPV';
       _engine!.stdin = 'position fen $fen';
 
@@ -472,7 +517,7 @@ class StockfishSingleton {
 
   Future<void> _waitUntilReady() async {
     if (_engine!.state.value == StockfishState.ready) return;
-    
+
     final completer = Completer<void>();
     late VoidCallback listener;
     listener = () {
@@ -483,13 +528,15 @@ class StockfishSingleton {
     };
     _engine!.state.addListener(listener);
     await completer.future;
-    
+
     // CRITICAL: Configure Stockfish for analysis (not tablebase lookup)
     // Disable tablebase probing to force actual search with depth progression
     try {
       _engine!.stdin = 'setoption name SyzygyProbeLimit value 0';
       _engine!.stdin = 'setoption name UCI_AnalyseMode value true';
-      debugPrint('✅ Stockfish configured: Tablebases disabled for progressive search');
+      debugPrint(
+        '✅ Stockfish configured: Tablebases disabled for progressive search',
+      );
     } catch (e) {
       debugPrint('⚠️ Could not configure Stockfish tablebases: $e');
     }
@@ -528,6 +575,7 @@ class _EvalJob {
     this.onDepthUpdate,
     this.onPvUpdate,
     this.isCurrentPosition = false,
+    this.allowCache = true,
   });
 
   final String fen;
@@ -539,5 +587,7 @@ class _EvalJob {
   final int multiPV;
   final Function(int depth, int knodes)? onDepthUpdate;
   final Function(List<Pv> pvs, int depth)? onPvUpdate;
-  final bool isCurrentPosition; // True if this is the user's currently viewed position
+  final bool
+  isCurrentPosition; // True if this is the user's currently viewed position
+  final bool allowCache;
 }

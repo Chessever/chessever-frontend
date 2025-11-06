@@ -2355,6 +2355,12 @@ class ChessBoardScreenNotifierNew
 
       // NOTE: cacheKey is now defined above (after getting configuredMultiPV)
 
+      CloudEval? primaryEval;
+      double? evaluation;
+      List<AnalysisLine> pvLines = const [];
+      bool usedCachedResult = false;
+      bool skipCascade = false;
+
       final cachedEval = _evaluationCache[cacheKey];
       final cachedPv = _pvCache[cacheKey];
       final cachedMate = _mateCache[cacheKey];
@@ -2394,13 +2400,18 @@ class ChessBoardScreenNotifierNew
         var cachedState = initialState.copyWith(
           evaluation: cachedEval,
           mate: validatedCachedMate,
-          isEvaluating: !hasCompletePv,
+          isEvaluating: true,
           principalVariations: normalizedCachedPv,
           analysisState: initialState.analysisState.copyWith(
             suggestionLines: normalizedCachedPv,
           ),
         );
         state = AsyncValue.data(cachedState);
+
+        pvLines = List<AnalysisLine>.from(normalizedCachedPv);
+        evaluation = cachedEval;
+        usedCachedResult = true;
+        skipCascade = true;
 
         final basePointer =
             cachedState.isAnalysisMode
@@ -2416,9 +2427,8 @@ class ChessBoardScreenNotifierNew
           currentPosition: position,
           baseFen: fen,
           baseMovePointer: basePointer,
-          pvLines: cachedPv,
+          pvLines: normalizedCachedPv,
         );
-        return;
       }
 
       // OPTIMIZATION: Skip recently failed evaluations (avoid hammering engine)
@@ -2479,24 +2489,26 @@ class ChessBoardScreenNotifierNew
       _activeEvalRequestId = currentRequestId;
       _activeEvalStartTime = DateTime.now(); // Track when this request started
 
-      // CRITICAL: Clear stale PVs immediately to prevent wrong position data displaying
-      debugPrint(
-        '🎯 EVAL: Clearing stale PVs, starting fresh evaluation for FEN: ${fen.split(' ').take(3).join(' ')}...',
-      );
-      state = AsyncValue.data(
-        initialState.copyWith(
-          shapes: const ISet.empty(),
-          isEvaluating: true,
-          principalVariations: const [], // Clear old PVs immediately
-          analysisState: initialState.analysisState.copyWith(
-            suggestionLines: const [], // Clear old suggestions
+      final baselineState = state.value ?? initialState;
+      if (!usedCachedResult) {
+        debugPrint(
+          '🎯 EVAL: Clearing stale PVs, starting fresh evaluation for FEN: ${fen.split(' ').take(3).join(' ')}...',
+        );
+        state = AsyncValue.data(
+          baselineState.copyWith(
+            shapes: const ISet.empty(),
+            isEvaluating: true,
+            principalVariations: const [],
+            analysisState: baselineState.analysisState.copyWith(
+              suggestionLines: const [],
+            ),
           ),
-        ),
-      );
-
-      CloudEval? primaryEval;
-      double? evaluation;
-      List<AnalysisLine> pvLines = const [];
+        );
+      } else {
+        debugPrint(
+          '🎯 EVAL: Continuing evaluation with cached baseline for ${fen.split(' ').take(3).join(' ')} (fresh depth search scheduled)',
+        );
+      }
 
       debugPrint(
         '🎯 EVAL START: Evaluating position $fen (requesting $configuredMultiPV PVs)',
@@ -2505,157 +2517,164 @@ class ChessBoardScreenNotifierNew
       // OPTIMIZED: Try cascade (cloud sources) FIRST for speed
       // Cascade queries local DB → Supabase → Lichess → Stockfish sequentially
       // Each source has its own timeout, so no need for overall cascade timeout
-      try {
-        debugPrint(
-          '🎯 EVAL: Requesting cascade evaluation (local → Supabase → Lichess → Stockfish) with $configuredMultiPV PVs...',
-        );
-        // Use configured multiPV from user settings
-        // PRIORITY: Mark as current position since _evaluatePosition only runs for visible boards
-        final cascadeEval = await ref.read(
-          cascadeEvalProviderForBoard(
-            CascadeEvalParams(
-              fen: fen,
-              multiPV: configuredMultiPV,
-              isCurrentPosition:
-                  true, // Always true here - only visible boards reach this point
-            ),
-          ).future,
-        );
-        if (cascadeEval.pvs.isNotEmpty) {
-          // Update depth tracker for BOTH evaluation gauge AND PV cards
-          // They both use the same evaluation source, so depth should be synchronized
-          final depthProgress = EngineSearchProgress(
-            depth: cascadeEval.depth,
-            kiloNodes: cascadeEval.knodes,
-            fenFragment: fen,
-          );
-          depthTracker.update(
-            component: EngineComponent.evaluationGauge,
-            progress: depthProgress,
-            context: 'cascade evaluation',
-          );
-          depthTracker.update(
-            component: EngineComponent.principalVariation,
-            progress: depthProgress,
-            context: 'cascade evaluation (multiPV=$configuredMultiPV)',
-          );
-          primaryEval = cascadeEval;
-          final rawCp = cascadeEval.pvs.first.cp;
-          final rawEval = rawCp / 100.0;
-          evaluation = _getConsistentEvaluation(rawEval, fen);
-
-          // DEBUG: Track evaluation through pipeline
-          final fenParts = fen.split(' ');
-          final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
-          final whitePerspectiveFlag = cascadeEval.pvs.first.whitePerspective;
+      if (!skipCascade) {
+        try {
           debugPrint(
-            '🔍 EVAL PIPELINE: fen=$fen, side=$sideToMove, rawCp=$rawCp, rawEval=$rawEval, evaluation=$evaluation, whitePerspective=$whitePerspectiveFlag',
+            '🎯 EVAL: Requesting cascade evaluation (local → Supabase → Lichess → Stockfish) with $configuredMultiPV PVs...',
           );
-          debugPrint(
-            '🎯 EVAL: Building principal variations from cloud source...',
+          final cascadeEval = await ref.read(
+            cascadeEvalProviderForBoard(
+              CascadeEvalParams(
+                fen: fen,
+                multiPV: configuredMultiPV,
+                isCurrentPosition: true,
+              ),
+            ).future,
           );
-          pvLines = await _buildPrincipalVariations(fen, cascadeEval.pvs);
-          if (pvLines.length > configuredMultiPV) {
-            pvLines = pvLines.take(configuredMultiPV).toList(growable: false);
-          }
-
-          // RETRY: If cloud PV building failed but we have PVs, try once more immediately
-          if (pvLines.isEmpty && cascadeEval.pvs.isNotEmpty) {
-            debugPrint(
-              '🔄 RETRY: Cloud PV building failed, retrying immediately...',
+          if (cascadeEval.pvs.isNotEmpty) {
+            final cascadeProgress = EngineSearchProgress(
+              depth: cascadeEval.depth,
+              kiloNodes: cascadeEval.knodes,
+              fenFragment: fen,
             );
+            depthTracker.update(
+              component: EngineComponent.evaluationGauge,
+              progress: cascadeProgress,
+              context: 'cascade evaluation',
+            );
+            depthTracker.update(
+              component: EngineComponent.principalVariation,
+              progress: cascadeProgress,
+              context: 'cascade evaluation (multiPV=$configuredMultiPV)',
+            );
+            primaryEval = cascadeEval;
+            final rawCp = cascadeEval.pvs.first.cp;
+            final rawEval = rawCp / 100.0;
+            evaluation = _getConsistentEvaluation(rawEval, fen);
 
-            // Check if provider is still mounted before accessing state
-            if (!mounted) {
-              debugPrint('🚫 RETRY CANCELLED: Provider disposed');
-              return;
+            final cascadeFenParts = fen.split(' ');
+            final cascadeSideToMove =
+                cascadeFenParts.length >= 2 ? cascadeFenParts[1] : '-';
+            debugPrint(
+              '🔍 EVAL PIPELINE: fen=$fen, side=$cascadeSideToMove, rawCp=$rawCp, rawEval=$rawEval, evaluation=$evaluation, whitePerspective=${cascadeEval.pvs.first.whitePerspective}',
+            );
+            debugPrint(
+              '🎯 EVAL: Building principal variations from cloud source...',
+            );
+            pvLines = await _buildPrincipalVariations(fen, cascadeEval.pvs);
+            if (pvLines.length > configuredMultiPV) {
+              pvLines = pvLines.take(configuredMultiPV).toList(growable: false);
             }
 
-            // Check if position changed
-            final currentState = state.value;
-            if (currentState != null) {
-              final currentPos =
-                  currentState.isAnalysisMode
-                      ? currentState.analysisState.position
-                      : currentState.position;
-              if (currentPos != null) {
-                final currentFenBase = currentPos.fen
-                    .split(' ')
-                    .take(3)
-                    .join(' ');
-                final targetFenBase = fen.split(' ').take(3).join(' ');
+            if (pvLines.isEmpty && cascadeEval.pvs.isNotEmpty) {
+              debugPrint(
+                '🔄 RETRY: Cloud PV building failed, retrying immediately...',
+              );
 
-                if (currentFenBase != targetFenBase) {
-                  debugPrint(
-                    '🚫 RETRY CANCELLED: Position changed during delay (was: $targetFenBase, now: $currentFenBase)',
-                  );
-                  // CRITICAL FIX: Clear evaluating state on early return
-                  if (currentState.isEvaluating) {
-                    state = AsyncValue.data(
-                      currentState.copyWith(isEvaluating: false),
+              if (!mounted) {
+                debugPrint('🚫 RETRY CANCELLED: Provider disposed');
+                return;
+              }
+
+              final currentState = state.value;
+              if (currentState != null) {
+                final currentPos =
+                    currentState.isAnalysisMode
+                        ? currentState.analysisState.position
+                        : currentState.position;
+                if (currentPos != null) {
+                  final currentFenBase = currentPos.fen
+                      .split(' ')
+                      .take(3)
+                      .join(' ');
+                  final targetFenBase = fen.split(' ').take(3).join(' ');
+
+                  if (currentFenBase != targetFenBase) {
+                    debugPrint(
+                      '🚫 RETRY CANCELLED: Position changed during delay (was: $targetFenBase, now: $currentFenBase)',
                     );
+                    if (currentState.isEvaluating) {
+                      state = AsyncValue.data(
+                        currentState.copyWith(isEvaluating: false),
+                      );
+                    }
+                    return;
                   }
-                  return;
                 }
               }
-            }
 
-            pvLines = await _buildPrincipalVariations(fen, cascadeEval.pvs);
-            if (pvLines.isNotEmpty) {
-              debugPrint('✅ RETRY: Cloud PV building succeeded on retry');
-            } else {
-              debugPrint(
-                '❌ RETRY: Cloud PV building failed again, will try Stockfish',
-              );
-            }
-          }
-
-          debugPrint(
-            '🎯 EVAL: CASCADE SUCCESS - returned ${pvLines.length} variants from ${cascadeEval.pvs.length} cloud PVs, eval=$evaluation',
-          );
-          // Apply cascade PVs immediately to render cards without waiting for Stockfish
-          if (pvLines.isNotEmpty && mounted) {
-            final snapshot = state.value;
-            if (snapshot != null) {
-              final inAnalysis = snapshot.isAnalysisMode;
-              final positionCascade =
-                  inAnalysis
-                      ? snapshot.analysisState.position
-                      : snapshot.position;
-              final basePointerCascade =
-                  inAnalysis ? snapshot.analysisState.movePointer : null;
-              final updatedCascade = snapshot.copyWith(
-                evaluation: evaluation,
-                mate: cascadeEval.pvs.first.mate,
-                isEvaluating:
-                    pvLines.length >= configuredMultiPV ? false : true,
-                principalVariations: pvLines,
-                analysisState: snapshot.analysisState.copyWith(
-                  suggestionLines: pvLines,
-                ),
-              );
-              state = AsyncValue.data(updatedCascade);
-              final cascadeComplete =
-                  pvLines.length >= configuredMultiPV ? 'complete' : 'partial';
-              debugPrint(
-                '🎯 CASCADE APPLY: Applied ${pvLines.length} PVs to state ($cascadeComplete)',
-              );
-              if (positionCascade != null) {
-                _applyPrincipalVariationResults(
-                  currentState: updatedCascade,
-                  currentPosition: positionCascade,
-                  baseFen: fen,
-                  baseMovePointer: basePointerCascade,
-                  pvLines: pvLines,
+              pvLines = await _buildPrincipalVariations(fen, cascadeEval.pvs);
+              if (pvLines.isNotEmpty) {
+                debugPrint('✅ RETRY: Cloud PV building succeeded on retry');
+              } else {
+                debugPrint(
+                  '❌ RETRY: Cloud PV building failed again, will try Stockfish',
                 );
               }
             }
+
+            debugPrint(
+              '🎯 EVAL: CASCADE SUCCESS - returned ${pvLines.length} variants from ${cascadeEval.pvs.length} cloud PVs, eval=$evaluation',
+            );
+            if (pvLines.isNotEmpty && mounted) {
+              final snapshot = state.value;
+              if (snapshot != null) {
+                final inAnalysis = snapshot.isAnalysisMode;
+                final positionCascade =
+                    inAnalysis
+                        ? snapshot.analysisState.position
+                        : snapshot.position;
+                final basePointerCascade =
+                    inAnalysis ? snapshot.analysisState.movePointer : null;
+                final mergedCascade = _mergePvProgress(
+                  snapshot.principalVariations,
+                  pvLines,
+                );
+                pvLines = mergedCascade;
+                final updatedCascade = snapshot.copyWith(
+                  evaluation: evaluation,
+                  mate: cascadeEval.pvs.first.mate,
+                  isEvaluating: true,
+                  principalVariations: mergedCascade,
+                  analysisState: snapshot.analysisState.copyWith(
+                    suggestionLines: mergedCascade,
+                  ),
+                );
+                state = AsyncValue.data(updatedCascade);
+                depthTracker.update(
+                  component: EngineComponent.evaluationGauge,
+                  progress: cascadeProgress,
+                  context: 'cascade (cloud)',
+                );
+                depthTracker.update(
+                  component: EngineComponent.principalVariation,
+                  progress: cascadeProgress,
+                  context: 'cascade (cloud)',
+                );
+                final cascadeComplete =
+                    pvLines.length >= configuredMultiPV
+                        ? 'complete'
+                        : 'partial';
+                debugPrint(
+                  '🎯 CASCADE APPLY: Applied ${pvLines.length} PVs to state ($cascadeComplete)',
+                );
+                if (positionCascade != null) {
+                  _applyPrincipalVariationResults(
+                    currentState: updatedCascade,
+                    currentPosition: positionCascade,
+                    baseFen: fen,
+                    baseMovePointer: basePointerCascade,
+                    pvLines: mergedCascade,
+                  );
+                }
+              }
+            }
+          } else {
+            debugPrint('🎯 EVAL: Cascade returned empty PVs');
           }
-        } else {
-          debugPrint('🎯 EVAL: Cascade returned empty PVs');
+        } catch (e) {
+          debugPrint('🎯 EVAL ERROR: Cascade failed for $fen: $e');
         }
-      } catch (e) {
-        debugPrint('🎯 EVAL ERROR: Cascade failed for $fen: $e');
       }
 
       // ALWAYS RUN STOCKFISH: Single progressive deepening run (1 job, streams updates)
@@ -2664,6 +2683,7 @@ class ChessBoardScreenNotifierNew
         final deepTarget = combinedMaxDepth;
         final multiPV = configuredMultiPV;
         final isCurrentlyVisible = currentVisiblePage == index;
+        EngineSearchProgress? pendingProgress;
         await StockfishSingleton().evaluatePosition(
           fen,
           depth: deepTarget,
@@ -2671,22 +2691,12 @@ class ChessBoardScreenNotifierNew
           isCurrentPosition: isCurrentlyVisible,
           searchDuration: combinedSearchDuration,
           maxDepth: combinedMaxDepth,
+          allowCache: false,
           onDepthUpdate: (depth, knodes) {
-            // Synchronized depth for gauge + PV components
-            final progress = EngineSearchProgress(
+            pendingProgress = EngineSearchProgress(
               depth: depth,
               kiloNodes: knodes,
               fenFragment: fen,
-            );
-            depthTracker.update(
-              component: EngineComponent.evaluationGauge,
-              progress: progress,
-              context: 'progressive D:$depth',
-            );
-            depthTracker.update(
-              component: EngineComponent.principalVariation,
-              progress: progress,
-              context: 'progressive D:$depth',
             );
           },
           onPvUpdate: (pvs, depth) {
@@ -2724,18 +2734,42 @@ class ChessBoardScreenNotifierNew
                 depth: depth,
                 pvs: pvs,
               );
+              final mergedLines = _mergePvProgress(
+                currentState.principalVariations,
+                lines,
+              );
+              pvLines = mergedLines;
+
+              final progress =
+                  pendingProgress ??
+                  EngineSearchProgress(
+                    depth: depth,
+                    kiloNodes: 0,
+                    fenFragment: fen,
+                  );
+              depthTracker.update(
+                component: EngineComponent.evaluationGauge,
+                progress: progress,
+                context: 'progressive D:$depth',
+              );
+              depthTracker.update(
+                component: EngineComponent.principalVariation,
+                progress: progress,
+                context: 'progressive D:$depth',
+              );
+              pendingProgress = null;
 
               final basePointer =
                   currentState.isAnalysisMode
                       ? currentState.analysisState.movePointer
                       : null;
-              final hasCompletePv = lines.length >= multiPV;
+              final hasCompletePv = mergedLines.length >= multiPV;
               final nextState = currentState.copyWith(
                 evaluation: newEval,
                 isEvaluating: !hasCompletePv,
-                principalVariations: lines,
+                principalVariations: mergedLines,
                 analysisState: currentState.analysisState.copyWith(
-                  suggestionLines: lines,
+                  suggestionLines: mergedLines,
                 ),
               );
               state = AsyncValue.data(nextState);
@@ -2744,7 +2778,7 @@ class ChessBoardScreenNotifierNew
                 currentPosition: pos,
                 baseFen: fen,
                 baseMovePointer: basePointer,
-                pvLines: lines,
+                pvLines: mergedLines,
               );
             });
           },
