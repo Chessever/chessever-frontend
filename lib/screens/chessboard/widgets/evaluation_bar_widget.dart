@@ -64,12 +64,18 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final hasEval = widget.evaluation != null || _lastEval != null;
-    final displayEval = widget.evaluation ?? _lastEval ?? 0.0;
     final displayMate = widget.mate ?? _lastMate ?? 0;
+    final hasEval =
+        widget.evaluation != null || _lastEval != null || displayMate != 0;
+    final displayEval = widget.evaluation ?? _lastEval ?? 0.0;
     final showLoading = widget.isEvaluating && !hasEval;
 
-    final whiteRatio = _whiteRatio(displayEval);
+    final double evalForRatio =
+        displayMate != 0
+            ? (displayMate > 0 ? 5.0 : -5.0)
+            : displayEval;
+
+    final whiteRatio = _whiteRatio(evalForRatio);
     final blackRatio = 1.0 - whiteRatio;
     final whiteHeight = whiteRatio * widget.height;
     final blackHeight = blackRatio * widget.height;

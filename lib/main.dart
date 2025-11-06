@@ -199,7 +199,7 @@ Future<void> _initRevenueCat() async {
 /// Update CACHE_VERSION number to trigger cache clearing
 Future<void> _clearEvaluationCache() async {
   try {
-    const int cacheVersion = 7; // v7: MultiPV-aware cache keys + defaults
+    const int cacheVersion = 8; // v8: Force clear for eval bar perspective fix
     const String versionKey = 'eval_cache_clear_version';
     const String evalPrefix = 'cloud_eval_';
 
@@ -236,7 +236,7 @@ Future<void> _clearEvaluationCache() async {
 /// This is a one-time reset for beta users to ensure clean transition
 Future<void> _resetFavoritesForMigration() async {
   try {
-    const int migrationVersion = 2; // Update this to trigger reset
+    const int migrationVersion = 3; // Update this to trigger reset
     const String versionKey = 'favorites_reset_version';
 
     final prefs = await SharedPreferences.getInstance();
