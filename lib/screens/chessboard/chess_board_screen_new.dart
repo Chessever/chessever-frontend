@@ -2183,7 +2183,15 @@ class _PrincipalVariationListState
     final lines = widget.state.principalVariations.toList(growable: false);
     final initialIndex = widget.state.selectedVariantIndex ?? 0;
     // Ensure initial page is within bounds
-    _currentPage = lines.isEmpty ? 0 : initialIndex.clamp(0, lines.length - 1);
+    if (lines.isEmpty) {
+      _currentPage = 0;
+    } else if (initialIndex < 0) {
+      _currentPage = 0;
+    } else if (initialIndex >= lines.length) {
+      _currentPage = lines.length - 1;
+    } else {
+      _currentPage = initialIndex;
+    }
     _lastNonEmptyLines = lines;
     _lastUserSelectedIndex = lines.isEmpty ? null : _currentPage;
     _pageController = PageController(initialPage: _currentPage);
