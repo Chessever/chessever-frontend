@@ -162,11 +162,13 @@ class EngineSettings {
     this.showPvArrows = true,
     this.searchTimeIndex = 2,
     int principalVariationIndex = 2, // Default to 3 lines (index 2)
-  }) : principalVariationIndex = principalVariationIndex < 0 
-           ? 0 
-           : (principalVariationIndex > 4 // Max index is 4 (we have 5 labels: 0-4)
-               ? 4 
-               : principalVariationIndex);
+  }) : principalVariationIndex =
+           principalVariationIndex < 0
+               ? 0
+               : (principalVariationIndex >
+                       4 // Max index is 4 (we have 5 labels: 0-4)
+                   ? 4
+                   : principalVariationIndex);
 
   final bool showEngineGauge;
   final bool showDepthOverlay;
@@ -175,13 +177,7 @@ class EngineSettings {
   final int principalVariationIndex;
 
   // Principal variation options: 1, 2, 3, 4, 5 (max 5)
-  static const List<int?> _principalVariationOptions = <int?>[
-    1,
-    2,
-    3,
-    4,
-    5,
-  ];
+  static const List<int?> _principalVariationOptions = <int?>[1, 2, 3, 4, 5];
 
   static const List<String> principalVariationLabels = <String>[
     '1',

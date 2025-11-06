@@ -66,12 +66,10 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   @override
   void didPushNext() {
     Future.microtask(() {
-      print(
-        '🔥 TournamentDetail: didPushNext - NOT disabling streaming (keeping it enabled)',
-      );
-      // Keep streaming enabled even when navigating to sub-screens
-      // This ensures clocks continue updating when viewing chessboard
-      // ref.read(shouldStreamProvider.notifier).state = false;
+      print('🔥 TournamentDetail: didPushNext - disabling streaming while off-screen');
+      // Disable streaming when navigating to sub-screens (e.g., chessboard)
+      // to prevent unnecessary periodic fetches and logs.
+      ref.read(shouldStreamProvider.notifier).state = false;
     });
     super.didPushNext();
   }

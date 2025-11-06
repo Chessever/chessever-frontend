@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:flutter/foundation.dart';
 import 'package:stockfish/stockfish.dart';
+import 'package:chessever2/providers/engine_settings_provider.dart';
 
 // Enhanced CloudEval class with cancellation support
 class EnhancedCloudEval {
@@ -43,6 +44,7 @@ class StockfishSingleton {
     int? maxDepth,
     int multiPV = 3,
     Function(int depth, int knodes)? onDepthUpdate,
+    Function(List<Pv> pvs, int depth)? onPvUpdate,
     bool isCurrentPosition = false, // Priority flag for user's currently viewed position
   }) async {
     // Validate depth range (only if using depth-based search)
@@ -91,6 +93,7 @@ class StockfishSingleton {
       maxDepth: maxDepth,
       multiPV: multiPV,
       onDepthUpdate: onDepthUpdate,
+      onPvUpdate: onPvUpdate,
       isCurrentPosition: isCurrentPosition,
     );
 
@@ -232,6 +235,7 @@ class StockfishSingleton {
     int knodes = 0;
     int finalDepth = 0;
     bool evaluationComplete = false;
+    int lastPvUpdateDepthReported = 0;
 
     final isDynamicSearch = searchDuration != null;
     debugPrint(
@@ -259,7 +263,7 @@ class StockfishSingleton {
           if (onDepthUpdate != null) {
             final searchLabel =
                 isDynamicSearch
-                    ? 'Time-based (${searchDuration!.inSeconds}s)'
+                    ? 'Time-based (${searchDuration.inSeconds}s)'
                     : 'Depth-based (target $depth)';
             debugPrint(
               '⚡ ═══ ENGINE DEPTH UPDATE ═══\n'
@@ -308,6 +312,19 @@ class StockfishSingleton {
             pvs[multipvIndex - 1] = pv;
           }
         }
+
+        // Emit PV snapshot updates once per increased depth
+        if (job.onPvUpdate != null && finalDepth > lastPvUpdateDepthReported) {
+          final snapshot = pvs.where((pv) => pv.moves.isNotEmpty).toList(growable: false);
+          if (snapshot.isNotEmpty) {
+            try {
+              job.onPvUpdate!(snapshot, finalDepth);
+              lastPvUpdateDepthReported = finalDepth;
+            } catch (_) {
+              // Ignore callback errors
+            }
+          }
+        }
       }
 
       // When analysis is complete
@@ -316,6 +333,21 @@ class StockfishSingleton {
         final filteredPvs = pvs
             .where((pv) => pv.moves.isNotEmpty)
             .toList(growable: false);
+
+        // CRITICAL: Check if depth is 0 (no info lines parsed)
+        if (finalDepth == 0) {
+          if (filteredPvs.isNotEmpty) {
+            debugPrint('⚠️ BESTMOVE without info depth - setting fallback depth');
+            // Fallback to at least the minimum report depth to avoid UI getting stuck
+            final minimum = EngineSearchProgress.minReportDepth;
+            finalDepth = depth < minimum ? minimum : depth;
+          } else {
+            debugPrint('❌ CRITICAL: Stockfish returned NO depth info AND NO PVs for $fen');
+            debugPrint('   Requested: ${isDynamicSearch ? "dynamic ${searchDuration.inSeconds}s" : "depth $depth"}');
+            debugPrint('   Last UCI line: $line');
+            debugPrint('   This might be an invalid position or engine error');
+          }
+        }
 
         debugPrint(
           '♟️ STOCKFISH RAW PVs (@depth=$finalDepth): ${filteredPvs.map((pv) => pv.moves).join(' | ')}',
@@ -352,12 +384,16 @@ class StockfishSingleton {
     });
 
     try {
-      _engine!.stdin = 'ucinewgame';
+      // PERFORMANCE FIX: Removed 'ucinewgame' - it clears hash before EVERY position
+      // This was causing depth 0 bugs and killing performance
+      // The working commit (a85edea1a0ded3f1772efb3baf1756c793c054b0) didn't use ucinewgame
+      // Stockfish is smart enough to handle position changes without clearing hash
+      
       _engine!.stdin = 'setoption name MultiPV value $multiPV';
       _engine!.stdin = 'position fen $fen';
 
       if (isDynamicSearch) {
-        final moveTimeMs = searchDuration!.inMilliseconds;
+        final moveTimeMs = searchDuration.inMilliseconds;
         debugPrint(
           '   → Sending: MultiPV $multiPV, movetime ${moveTimeMs}ms${maxDepth != null ? ", depth $maxDepth" : ""}',
         );
@@ -436,6 +472,7 @@ class StockfishSingleton {
 
   Future<void> _waitUntilReady() async {
     if (_engine!.state.value == StockfishState.ready) return;
+    
     final completer = Completer<void>();
     late VoidCallback listener;
     listener = () {
@@ -446,6 +483,16 @@ class StockfishSingleton {
     };
     _engine!.state.addListener(listener);
     await completer.future;
+    
+    // CRITICAL: Configure Stockfish for analysis (not tablebase lookup)
+    // Disable tablebase probing to force actual search with depth progression
+    try {
+      _engine!.stdin = 'setoption name SyzygyProbeLimit value 0';
+      _engine!.stdin = 'setoption name UCI_AnalyseMode value true';
+      debugPrint('✅ Stockfish configured: Tablebases disabled for progressive search');
+    } catch (e) {
+      debugPrint('⚠️ Could not configure Stockfish tablebases: $e');
+    }
   }
 
   void dispose() {
@@ -479,6 +526,7 @@ class _EvalJob {
     this.maxDepth,
     this.multiPV = 3,
     this.onDepthUpdate,
+    this.onPvUpdate,
     this.isCurrentPosition = false,
   });
 
@@ -490,5 +538,6 @@ class _EvalJob {
   final int? maxDepth;
   final int multiPV;
   final Function(int depth, int knodes)? onDepthUpdate;
+  final Function(List<Pv> pvs, int depth)? onPvUpdate;
   final bool isCurrentPosition; // True if this is the user's currently viewed position
 }
