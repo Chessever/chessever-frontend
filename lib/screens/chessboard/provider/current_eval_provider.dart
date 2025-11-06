@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/lichess_eval_repository.dart';
 import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.dart';
@@ -12,19 +13,21 @@ import 'stockfish_singleton.dart';
 class _LichessRateLimitTracker {
   static DateTime? _lastRateLimitTime;
   static const _cooldownDuration = Duration(minutes: 2);
-  
+
   static bool isInCooldown() {
     if (_lastRateLimitTime == null) return false;
     final now = DateTime.now();
     final cooldownEnds = _lastRateLimitTime!.add(_cooldownDuration);
     return now.isBefore(cooldownEnds);
   }
-  
+
   static void recordRateLimit() {
     _lastRateLimitTime = DateTime.now();
-    print('⚠️ LICHESS: Rate limited, entering ${_cooldownDuration.inMinutes}min cooldown');
+    print(
+      '⚠️ LICHESS: Rate limited, entering ${_cooldownDuration.inMinutes}min cooldown',
+    );
   }
-  
+
   static void reset() {
     _lastRateLimitTime = null;
     print('✅ LICHESS: Rate limit cooldown cleared');
@@ -38,14 +41,15 @@ class _LichessRateLimitTracker {
 class CascadeEvalParams {
   final String fen;
   final int multiPV;
-  final bool isCurrentPosition; // Priority flag for user's currently viewed position
-  
+  final bool
+  isCurrentPosition; // Priority flag for user's currently viewed position
+
   const CascadeEvalParams({
     required this.fen,
     this.multiPV = 3,
     this.isCurrentPosition = false,
   });
-  
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -53,28 +57,27 @@ class CascadeEvalParams {
           other.fen == fen &&
           other.multiPV == multiPV &&
           other.isCurrentPosition == isCurrentPosition;
-  
+
   @override
   int get hashCode => Object.hash(fen, multiPV, isCurrentPosition);
 }
 
 /// 1. local → 2. Supabase → 3. lichess
 /// Uses autoDispose to cancel evaluations when switching games
-final cascadeEvalProvider = FutureProvider.family.autoDispose<CloudEval, CascadeEvalParams>((
-  ref,
-  params,
-) async {
+final cascadeEvalProvider = FutureProvider.family.autoDispose<
+  CloudEval,
+  CascadeEvalParams
+>((ref, params) async {
   final fen = params.fen;
   final multiPV = params.multiPV;
-  final isCurrentPosition = params.isCurrentPosition;
   final local = ref.watch(localEvalCacheProvider);
   final persist = ref.watch(persistCloudEvalProvider);
   final lichess = ref.watch(lichessEvalRepoProvider);
   try {
     if (fen.isEmpty) throw Exception('Empty FEN');
 
-    // 1️⃣  Local cache
-    final cached = await local.fetch(fen);
+    // 1️⃣  Local cache (with multiPV in key)
+    final cached = await local.fetch(fen, multiPV: multiPV);
     if (cached != null) {
       final fenParts = fen.split(' ');
       final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
@@ -100,7 +103,7 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<CloudEval, Cascade
         "🟡 EVAL SOURCE (cascadeEval): SUPABASE - fen=$fen, side=$sideToMove, cp=$cp",
       );
       // OPTIMIZATION: Save to local cache in background (unawaited)
-      local.save(fen, cloud).catchError((e) => null);
+      local.save(fen, cloud, multiPV: multiPV).catchError((e) => null);
       return cloud;
     }
 
@@ -114,15 +117,78 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<CloudEval, Cascade
       "🟢 EVAL SOURCE (cascadeEval): LICHESS (${cloud.pvs.length} PVs) - fen=$fen, side=$sideToMove, cp=$cp",
     );
     // OPTIMIZATION: Save to caches in background (unawaited)
-    Future.wait<void>([persist.call(fen, cloud), local.save(fen, cloud)])
-        .catchError((e) => <void>[]);
+    Future.wait<void>([
+      persist.call(fen, cloud),
+      local.save(fen, cloud, multiPV: multiPV),
+    ]).catchError((e) => <void>[]);
     return cloud;
-  } catch (e) {
-    // NO STOCKFISH FALLBACK in this old provider!
-    // Only cascadeEvalProviderForBoard should use Stockfish
-    // to prevent multiple instances
-    print('❌ OLD cascadeEvalProvider: Lichess failed, no fallback - $e');
-    rethrow;
+  } catch (e, st) {
+    print('❌ cascadeEvalProvider: Cloud sources failed for $fen - $e');
+    print(st);
+    final engineSettingsValue = ref.read(engineSettingsProviderNew).value;
+    final resolvedSettings = engineSettingsValue ?? const EngineSettings();
+
+    // Clamp stockfish MultiPV to user preference and request (1-5)
+    final settingsMultiPv = resolvedSettings.multiPvForStockfish();
+    final fallbackMultiPv =
+        multiPV <= settingsMultiPv ? multiPV : settingsMultiPv;
+
+    final searchDuration = resolvedSettings.searchDurationFor(
+      EngineComponent.cascadeEval,
+    );
+    var maxDepthSetting = resolvedSettings.maxDepthFor(
+      EngineComponent.cascadeEval,
+    );
+    if (maxDepthSetting < 1) {
+      maxDepthSetting = 1;
+    } else if (maxDepthSetting > 99) {
+      maxDepthSetting = 99;
+    }
+
+    try {
+      print(
+        '⚡ cascadeEvalProvider: Falling back to Stockfish (depth=$maxDepthSetting, multiPV=$fallbackMultiPv, duration=${searchDuration?.inSeconds}s)',
+      );
+      final sfEval = await StockfishSingleton().evaluatePosition(
+        fen,
+        depth: maxDepthSetting,
+        maxDepth: maxDepthSetting,
+        multiPV: fallbackMultiPv,
+        searchDuration: searchDuration,
+        isCurrentPosition: params.isCurrentPosition,
+      );
+
+      if (sfEval.pvs.isEmpty || sfEval.pvs.first.moves.isEmpty) {
+        throw Exception('Stockfish returned empty PVs for $fen');
+      }
+
+      final cloudFromSf = CloudEval(
+        fen: fen,
+        knodes: sfEval.knodes,
+        depth: sfEval.depth,
+        pvs: sfEval.pvs,
+      );
+
+      // Persist Stockfish result asynchronously for future reuse
+      Future.wait<void>([
+        persist.call(fen, cloudFromSf),
+        local.save(fen, cloudFromSf, multiPV: fallbackMultiPv),
+      ]).catchError((error) {
+        print(
+          '⚠️ cascadeEvalProvider: Background persist failed for $fen: $error',
+        );
+        return <void>[];
+      });
+
+      return cloudFromSf;
+    } catch (engineError, engineStack) {
+      print(
+        '❌ cascadeEvalProvider: Stockfish fallback failed for $fen: $engineError',
+      );
+      print(engineStack);
+      // Propagate failure with original stack
+      return Future.error(engineError, engineStack);
+    }
   }
 });
 
@@ -149,13 +215,12 @@ bool _isValidEvaluation(CloudEval cloud) {
 /// SEQUENTIAL cascade: local → Supabase → Lichess → Stockfish
 /// Respects Lichess API rate limits by querying SEQUENTIALLY (not parallel)
 /// Uses autoDispose to cancel evaluations when switching games
-final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval, CascadeEvalParams>((
-  ref,
-  params,
-) async {
+final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
+  CloudEval,
+  CascadeEvalParams
+>((ref, params) async {
   final fen = params.fen;
   final multiPV = params.multiPV;
-  final isCurrentPosition = params.isCurrentPosition;
   final local = ref.watch(localEvalCacheProvider);
   final persist = ref.watch(persistCloudEvalProvider);
   final lichess = ref.watch(lichessEvalRepoProvider);
@@ -164,13 +229,15 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval,
   try {
     if (fen.isEmpty) throw Exception('Empty FEN');
 
-    // 1️⃣ Check local cache first (instant)
-    final cached = await local.fetch(fen);
+    // 1️⃣ Check local cache first (instant, with multiPV in key)
+    final cached = await local.fetch(fen, multiPV: multiPV);
     if (cached != null && _isValidEvaluation(cached)) {
       final fenParts = fen.split(' ');
       final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
       final cp = cached.pvs.isNotEmpty ? cached.pvs.first.cp : 0;
-      print("🔵 EVAL SOURCE: LOCAL CACHE (instant) - fen=$fen, side=$sideToMove, cp=$cp");
+      print(
+        "🔵 EVAL SOURCE: LOCAL CACHE (instant) - fen=$fen, side=$sideToMove, cp=$cp",
+      );
       return cached;
     }
 
@@ -184,9 +251,11 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval,
           final fenParts = fen.split(' ');
           final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
           final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
-          print("🟡 EVAL SOURCE: SUPABASE - fen=$fen, side=$sideToMove, cp=$cp");
+          print(
+            "🟡 EVAL SOURCE: SUPABASE - fen=$fen, side=$sideToMove, cp=$cp",
+          );
           // Background save to local cache
-          local.save(fen, cloud).catchError((e) => null);
+          local.save(fen, cloud, multiPV: multiPV).catchError((e) => null);
           return cloud;
         }
       }
@@ -194,60 +263,16 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval,
       print('⚠️ Supabase eval failed: $e, continuing to Lichess...');
     }
 
-    // 3️⃣ LOCAL STOCKFISH IS PRIMARY SOURCE!
-    // PROGRESSIVE DEEPENING: Start shallow (12), keep going deeper (13→14→15→20→30...)
-    // Stockfish naturally progresses through depths, reporting each level
-    // UI displays results starting from depth 12, updating as it gets deeper
-    
-    print('⚡ EVAL: Starting PROGRESSIVE evaluation (depth 12→50, multiPV=$multiPV) for $fen');
-    
-    try {
-      // Progressive deepening: Stockfish will go depth 1→2→3→...→50
-      // onDepthUpdate callback will fire for each depth, allowing real-time UI updates
-      // minReportDepth=12 ensures UI never shows depth < 12
-      // Results appear quickly at shallow depths, continuously improving
-      final sfEval = await StockfishSingleton().evaluatePosition(
-        fen,
-        depth: 50, // Target depth (will progressively calculate 1→50)
-        multiPV: multiPV,
-        isCurrentPosition: isCurrentPosition,
-        // onDepthUpdate would fire here but it's not passed in this provider
-        // The board provider passes onDepthUpdate for real-time tracking
-      );
-      
-      final result = CloudEval(
-        fen: fen,
-        knodes: sfEval.knodes,
-        depth: sfEval.depth,
-        pvs: sfEval.pvs,
-      );
-      
-      print('🏆 STOCKFISH COMPLETE: depth=${result.depth}, pvs=${result.pvs.length}, moves=${result.pvs.isNotEmpty ? result.pvs.first.moves.split(' ').length : 0}');
-      
-      // Cache the result for both local and Supabase
-      local.save(fen, result).catchError((e) => null);
-      persist.call(fen, result).catchError((e) => null);
-      
-      // Try Lichess in background ONLY if not rate limited (just for future caching)
-      if (!_LichessRateLimitTracker.isInCooldown()) {
-        _fetchLichessWithFallback(fen, multiPV, lichess).then((cloud) {
-          if (_isValidEvaluation(cloud)) {
-            persist.call(fen, cloud).catchError((e) => null);
-            local.save(fen, cloud).catchError((e) => null);
-            print('✅ LICHESS: Cached cloud result in background');
-          }
-        }).catchError((e) {
-          if (e.toString().contains('RateLimitException')) {
-            _LichessRateLimitTracker.recordRateLimit();
-          }
-        });
-      }
-      
-      return result;
-    } catch (e) {
-      print('❌ Stockfish evaluation failed for $fen: $e');
-      rethrow;
-    }
+    // 3️⃣ LICHESS FALLBACK ONLY (NO LOCAL ENGINE HERE)
+    // Important: The local engine is managed exclusively by the board notifier
+    // to avoid duplicate jobs and massive queue growth.
+    final cloud = await _fetchLichessWithFallback(fen, multiPV, lichess);
+    // Persist in background
+    Future.wait<void>([
+      persist.call(fen, cloud),
+      local.save(fen, cloud, multiPV: multiPV),
+    ]).catchError((_) => <void>[]);
+    return cloud;
   } catch (error, _) {
     rethrow;
   }
@@ -255,7 +280,7 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<CloudEval,
 
 /// Helper to fetch from Lichess with proper error handling
 Future<CloudEval> _fetchLichessWithFallback(
-  String fen, 
+  String fen,
   int multiPV,
   dynamic lichess, // Type inferred from provider
 ) async {
@@ -268,12 +293,12 @@ Future<CloudEval> _fetchLichessWithFallback(
 }
 
 // REMOVED: All background upgrade functions
-// 
+//
 // The progressive depth ladder and background upgrades were causing:
-// - Multiple Stockfish instances running simultaneously  
+// - Multiple Stockfish instances running simultaneously
 // - Evaluation gauge showing different depth than PV cards
 // - Stockfish singleton being used incorrectly
-// 
+//
 // New approach: PROGRESSIVE DEEPENING (depth 12→50)
 // - Stockfish naturally progresses: 1→2→3→...→12→13→14→...→50
 // - UI displays results starting from depth 12 (via minReportDepth guard)

@@ -15,7 +15,7 @@ enum EngineComponent {
 
 /// Track the progress of an engine search
 class EngineSearchProgress {
-  static const int minReportDepth = 12;
+  static const int minReportDepth = 1;
 
   EngineSearchProgress({
     required int depth,
