@@ -173,7 +173,8 @@ class StockfishSingleton {
 
     // Cache the result if it's valid (has actual moves, not just empty PVs)
     // CRITICAL: Don't cache timeout results with empty/partial PVs
-    if (!result.isCancelled &&
+    if (job.allowCache &&
+        !result.isCancelled &&
         result.pvs.isNotEmpty &&
         result.pvs.first.moves.isNotEmpty) {
       _evaluationCache[cacheKey] = result;
