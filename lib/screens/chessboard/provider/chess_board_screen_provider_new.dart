@@ -2360,6 +2360,10 @@ class ChessBoardScreenNotifierNew
       } else {
         combinedSearchDuration =
             gaugeDuration >= pvDuration ? gaugeDuration : pvDuration;
+        const fallbackCap = Duration(seconds: 10);
+        if (combinedSearchDuration > fallbackCap) {
+          combinedSearchDuration = fallbackCap;
+        }
       }
 
       var gaugeMaxDepth = effectiveEngineSettings.maxDepthFor(
@@ -2372,8 +2376,8 @@ class ChessBoardScreenNotifierNew
           gaugeMaxDepth <= pvMaxDepth ? gaugeMaxDepth : pvMaxDepth;
       if (combinedMaxDepth < 1) {
         combinedMaxDepth = 1;
-      } else if (combinedMaxDepth > 99) {
-        combinedMaxDepth = 99;
+      } else if (combinedMaxDepth > 60) {
+        combinedMaxDepth = 60;
       }
 
       // Generate cache key with multiPV count to avoid wrong PV count collisions
@@ -2847,10 +2851,10 @@ class ChessBoardScreenNotifierNew
                   currentState.isAnalysisMode
                       ? currentState.analysisState.movePointer
                       : null;
-              final hasCompletePv = mergedLines.length >= multiPV;
+              final hasPrimaryPv = mergedLines.isNotEmpty;
               final nextState = currentState.copyWith(
                 evaluation: newEval,
-                isEvaluating: !hasCompletePv,
+                isEvaluating: !hasPrimaryPv,
                 principalVariations: mergedLines,
                 analysisState: currentState.analysisState.copyWith(
                   suggestionLines: mergedLines,

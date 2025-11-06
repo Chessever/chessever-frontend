@@ -7,7 +7,6 @@ import 'package:chessever2/repository/local_storage/board_settings_repository/bo
 import 'package:chessever2/screens/chessboard/analysis/move_impact_analyzer.dart';
 import 'package:chessever2/screens/chessboard/analysis/simple_move_impact.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
-import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
@@ -1707,8 +1706,9 @@ class _BoardWithSidebar extends ConsumerWidget {
                   child: EvaluationBarWidget(
                     width: sideBarWidth,
                     height: boardSize,
-                    // REACTIVE: Just pass FEN, eval bar watches provider directly
-                    fen: state.analysisState.position.fen,
+                    evaluation: state.evaluation,
+                    mate: state.mate,
+                    isEvaluating: state.isEvaluating,
                     isFlipped: state.isBoardFlipped,
                   ),
                 ),
@@ -2313,17 +2313,9 @@ class _PrincipalVariationListState
     final baseMoveNumber = position?.fullmoves ?? 1;
     final isWhiteToMove = (position?.turn ?? Side.white) == Side.white;
 
-    // REACTIVE: Watch cascade provider directly for current FEN
-    // Get user's PV count setting to request correct number of lines
+    // Get user's PV count setting (caps at 5)
     final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
-    // Use multiPvForLichess() which caps at 5
     final multiPV = engineSettings?.multiPvForLichess() ?? 3;
-    final currentFen = position?.fen ?? '';
-    final evalAsync = ref.watch(
-      cascadeEvalProviderForBoard(
-        CascadeEvalParams(fen: currentFen, multiPV: multiPV),
-      ),
-    );
 
     // Check if position is terminal (game over)
     final isGameOver = position?.isGameOver ?? false;
@@ -2331,45 +2323,22 @@ class _PrincipalVariationListState
     const double basePvHeight = 78;
     final double pvCardHeight = basePvHeight.h;
 
-    // Get PV lines from state - evalAsync is only watched to trigger rebuilds
-    late List<AnalysisLine> lines;
-
-    evalAsync.when(
-      loading: () {
-        lines = widget.state.principalVariations.toList(
-          growable: false,
-        ); // Use cached while loading
-      },
-      error: (_, __) {
-        lines = widget.state.principalVariations.toList(
-          growable: false,
-        ); // Use cached on error
-      },
-      data: (cloudEval) {
-        // Use board provider's cached PVs if they match this FEN
-        // Otherwise show empty (will trigger recalculation in provider)
-        lines = widget.state.principalVariations.toList(growable: false);
-      },
-    );
-
-    // After resolving provider state, prepare display list
-    // Clamp number of cards to user's MultiPV selection
-    final clampedLines =
-        (lines.length > multiPV)
-            ? lines.take(multiPV).toList(growable: false)
-            : lines.toList(growable: false);
+    // Clamp PVs to user preference
+    final clampedLines = (widget.state.principalVariations.length > multiPV)
+        ? widget.state.principalVariations.take(multiPV).toList(growable: false)
+        : widget.state.principalVariations.toList(growable: false);
 
     // Determine loading state for PV cards
-    // Skeleton shown when there are no PVs (unless game over)
     final showEndOfGame = isGameOver && widget.state.isAnalysisMode;
-    final showSkeleton = !showEndOfGame && clampedLines.isEmpty;
+    final showSkeleton =
+        !showEndOfGame && clampedLines.isEmpty && widget.state.isEvaluating;
     final pageCount = showSkeleton ? 1 : clampedLines.length;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(20.sp, 8.sp, 20.sp, 8.sp),
       child: Column(
         key: ValueKey(
-          lines
+          clampedLines
               .map((line) => '${line.sanMoves.join(' ')}|${line.displayEval}')
               .join('|'),
         ),
