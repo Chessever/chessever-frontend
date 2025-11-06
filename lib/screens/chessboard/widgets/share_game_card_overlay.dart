@@ -631,13 +631,15 @@ class _ShareCard extends ConsumerWidget {
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
+                    SizedBox(
                       width: sideBarWidth,
                       height: boardSize,
                       child: EvaluationBarWidget(
                         width: sideBarWidth,
                         height: boardSize,
-                        fen: positionFen,
+                        evaluation: null,
+                        mate: null,
+                        isEvaluating: true,
                         isFlipped: isFlipped,
                       ),
                     ),

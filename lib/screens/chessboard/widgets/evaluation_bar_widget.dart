@@ -7,123 +7,75 @@ import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// REACTIVE EvaluationBarWidget - watches cascade provider directly
-/// Handles its own loading/data states independently from board provider
-class EvaluationBarWidget extends ConsumerStatefulWidget {
+/// Evaluation bar shown beside the active chess board.
+/// It reflects the evaluation managed by the board provider and keeps the last
+/// known value while the engine continues deepening.
+class EvaluationBarWidget extends StatefulWidget {
   final double width;
   final double height;
-  final String fen; // Just need the FEN to watch evaluation
   final bool isFlipped;
+  final double? evaluation;
+  final int? mate;
+  final bool isEvaluating;
 
   const EvaluationBarWidget({
     required this.width,
     required this.height,
-    required this.fen,
     required this.isFlipped,
+    required this.evaluation,
+    required this.mate,
+    required this.isEvaluating,
     super.key,
   });
 
   @override
-  ConsumerState<EvaluationBarWidget> createState() =>
-      _EvaluationBarWidgetState();
+  State<EvaluationBarWidget> createState() => _EvaluationBarWidgetState();
 }
 
-class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
-  double? _lastValidEvaluation;
-  int? _lastValidMate;
-  bool _isCurrentlyLoading = false;
+class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
+  double? _lastEval;
+  int? _lastMate;
+  bool _shouldAnimate = false;
 
-  /// Converts evaluation to white advantage ratio
-  /// eval: -5 to +5 (negative = black advantage, positive = white advantage)
-  /// returns: 0.0 to 1.0 (0.0 = 100% black advantage, 1.0 = 100% white advantage)
-  double getWhiteRatio(double eval) => (eval.clamp(-5.0, 5.0) + 5.0) / 10.0;
+  @override
+  void initState() {
+    super.initState();
+    _lastEval = widget.evaluation;
+    _lastMate = widget.mate;
+  }
+
+  @override
+  void didUpdateWidget(covariant EvaluationBarWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final previousEval = _lastEval;
+    if (widget.evaluation != null) {
+      _shouldAnimate =
+          previousEval == null || (widget.evaluation! - previousEval).abs() >= 0.1;
+      _lastEval = widget.evaluation;
+    } else {
+      _shouldAnimate = false;
+    }
+    if (widget.mate != null) {
+      _lastMate = widget.mate;
+    }
+  }
+
+  double _whiteRatio(double eval) => (eval.clamp(-5.0, 5.0) + 5.0) / 10.0;
 
   @override
   Widget build(BuildContext context) {
-    // REACTIVE: Watch the cascade provider directly for this FEN
-    // Evaluation bar only needs 1 PV line for the primary evaluation
-    final evalAsync = ref.watch(cascadeEvalProviderForBoard(
-      CascadeEvalParams(fen: widget.fen, multiPV: 1),
-    ));
+    final hasEval = widget.evaluation != null || _lastEval != null;
+    final displayEval = widget.evaluation ?? _lastEval ?? 0.0;
+    final displayMate = widget.mate ?? _lastMate ?? 0;
+    final showLoading = widget.isEvaluating && !hasEval;
 
-    return evalAsync.when(
-      loading: () {
-        // Show loading state with last known evaluation if available
-        _isCurrentlyLoading = true;
-        // OPTIMIZATION: Show last valid evaluation text immediately during loading
-        // Only show "..." if we have NO previous evaluation
-        return _buildBar(
-          evaluation: _lastValidEvaluation ?? 0.0,
-          mate: _lastValidMate ?? 0,
-          isLoading: _lastValidEvaluation == null, // Only show "..." if no cached value
-          shouldAnimate: false,
-        );
-      },
-      error: (_, __) {
-        // Show error state with last known evaluation
-        _isCurrentlyLoading = false;
-        return _buildBar(
-          evaluation: _lastValidEvaluation ?? 0.0,
-          mate: _lastValidMate ?? 0,
-          isLoading: false,
-          shouldAnimate: false,
-        );
-      },
-      data: (cloudEval) {
-        // Extract evaluation from cloud eval
-        final wasLoading = _isCurrentlyLoading;
-        _isCurrentlyLoading = false;
-
-        if (cloudEval.pvs.isEmpty) {
-          // No evaluation available, show last known or default
-          return _buildBar(
-            evaluation: _lastValidEvaluation ?? 0.0,
-            mate: _lastValidMate ?? 0,
-            isLoading: false,
-            shouldAnimate: false,
-          );
-        }
-
-        final pv = cloudEval.pvs.first;
-        final rawCp = pv.cp;
-        final newEval = rawCp / 100.0;
-        final mate = pv.mate;
-
-        // Determine if we should animate based on change magnitude
-        final shouldAnimate =
-            wasLoading ||
-            _lastValidEvaluation == null ||
-            (newEval - _lastValidEvaluation!).abs() >= 0.1;
-
-        // Update cached values
-        _lastValidEvaluation = newEval;
-        _lastValidMate = mate;
-
-        return _buildBar(
-          evaluation: newEval,
-          mate: mate ?? 0,
-          isLoading: false,
-          shouldAnimate: shouldAnimate,
-        );
-      },
-    );
-  }
-
-  Widget _buildBar({
-    required double evaluation,
-    required int mate,
-    required bool isLoading,
-    required bool shouldAnimate,
-  }) {
-    final whiteRatio = getWhiteRatio(evaluation);
+    final whiteRatio = _whiteRatio(displayEval);
     final blackRatio = 1.0 - whiteRatio;
-
     final whiteHeight = whiteRatio * widget.height;
     final blackHeight = blackRatio * widget.height;
 
     final topHeight = widget.isFlipped ? whiteHeight : blackHeight;
     final bottomHeight = widget.isFlipped ? blackHeight : whiteHeight;
-
     final topColor = widget.isFlipped ? kWhiteColor : kPopUpColor;
     final bottomColor = widget.isFlipped ? kPopUpColor : kWhiteColor;
 
@@ -136,9 +88,7 @@ class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
             alignment: Alignment.topCenter,
             child: AnimatedContainer(
               duration:
-                  shouldAnimate
-                      ? const Duration(milliseconds: 300)
-                      : Duration.zero,
+                  _shouldAnimate ? const Duration(milliseconds: 300) : Duration.zero,
               curve: Curves.easeInOut,
               width: widget.width,
               height: topHeight,
@@ -149,9 +99,7 @@ class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
             alignment: Alignment.bottomCenter,
             child: AnimatedContainer(
               duration:
-                  shouldAnimate
-                      ? const Duration(milliseconds: 300)
-                      : Duration.zero,
+                  _shouldAnimate ? const Duration(milliseconds: 300) : Duration.zero,
               curve: Curves.easeInOut,
               width: widget.width,
               height: bottomHeight,
@@ -169,11 +117,11 @@ class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
                 borderRadius: BorderRadius.circular(2.br),
               ),
               child: Text(
-                isLoading
+                showLoading
                     ? '...'
-                    : (evaluation.abs() >= 10.0 && mate != 0)
-                        ? '#${mate.abs()}'
-                        : evaluation.abs().toStringAsFixed(1),
+                    : (displayEval.abs() >= 10.0 && displayMate != 0)
+                        ? '#${displayMate.abs()}'
+                        : displayEval.abs().toStringAsFixed(1),
                 maxLines: 1,
                 textAlign: TextAlign.center,
                 style: AppTypography.textSmRegular.copyWith(
@@ -190,6 +138,7 @@ class _EvaluationBarWidgetState extends ConsumerState<EvaluationBarWidget> {
   }
 }
 
+/// Evaluation widget used on game cards (still watches the cascade provider).
 class EvaluationBarWidgetForGames extends ConsumerWidget {
   final double width;
   final double height;
@@ -206,11 +155,12 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Game card evaluation bar only needs 1 PV
     return ref
-        .watch(cascadeEvalProvider(
-          CascadeEvalParams(fen: fen, multiPV: 1),
-        ))
+        .watch(
+          cascadeEvalProvider(
+            CascadeEvalParams(fen: fen, multiPV: 1),
+          ),
+        )
         .when(
           loading: () {
             return SkeletonWidget(
@@ -222,12 +172,11 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
                 evaluation: 0.0,
                 isEvaluating: true,
                 playerView: playerView,
-                isFlipped:
-                    false, // Game cards always show from white's perspective
+                isFlipped: false,
               ),
             );
           },
-          error: (_, _) {
+          error: (_, __) {
             return SkeletonWidget(
               child: _Bars(
                 width: width,
@@ -236,8 +185,7 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
                 blackHeight: height * 0.5,
                 evaluation: 0.0,
                 playerView: playerView,
-                isFlipped:
-                    false, // Game cards always show from white's perspective
+                isFlipped: false,
               ),
             );
           },
@@ -252,51 +200,52 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
                   blackHeight: height * 0.5,
                   evaluation: 0.0,
                   playerView: playerView,
-                  isFlipped:
-                      false, // Game cards always show from white's perspective
+                  isFlipped: false,
                 ),
               );
             }
 
-            // Handle evaluation based on cp value
-            double evaluation;
-            if (pv.cp.abs() == 100000) {
-              // This is a mate score (converted from mate in X moves)
-              evaluation = pv.cp > 0 ? 10.0 : -10.0;
-            } else {
-              // Normal centipawn score - convert to pawn units
-              evaluation = pv.cp / 100.0;
-            }
-
-            // The cascadeEvalProvider already ensures evaluations are from white's perspective:
-            // - Positive evaluation = White advantage
-            // - Negative evaluation = Black advantage
-
-            // Calculate color ratios for the evaluation bar
-            // evaluation: positive = white advantage, negative = black advantage
-            // normalized: 0.0 = full black advantage, 1.0 = full white advantage
-            final normalized = (evaluation.clamp(-5.0, 5.0) + 5.0) / 10.0;
-            final whiteRatio =
-                normalized; // How much white advantage (0.0 to 1.0)
-            final blackRatio =
-                1.0 - whiteRatio; // How much black advantage (0.0 to 1.0)
+            final eval = pv.cp / 100.0;
+            final isMate = pv.isMate && pv.mate != null;
+            final mate = pv.mate ?? 0;
 
             return _Bars(
               width: width,
               height: height,
-              blackHeight: blackRatio * height,
-              whiteHeight: whiteRatio * height,
-              evaluation: evaluation,
+              whiteHeight: _getWhiteHeight(eval, height),
+              blackHeight: _getBlackHeight(eval, height),
+              evaluation: eval,
+              isMate: isMate,
+              mate: mate,
               playerView: playerView,
-              isFlipped:
-                  false, // Game cards always show from white's perspective
+              isFlipped: false,
             );
           },
         );
   }
+
+  double _getWhiteHeight(double eval, double totalHeight) {
+    final ratio = ((eval.clamp(-5.0, 5.0)) + 5) / 10;
+    return ratio * totalHeight;
+  }
+
+  double _getBlackHeight(double eval, double totalHeight) {
+    return totalHeight - _getWhiteHeight(eval, totalHeight);
+  }
 }
 
-class _Bars extends StatefulWidget {
+class _Bars extends StatelessWidget {
+  final double width;
+  final double height;
+  final double whiteHeight;
+  final double blackHeight;
+  final double evaluation;
+  final PlayerView playerView;
+  final bool isFlipped;
+  final bool isEvaluating;
+  final bool isMate;
+  final int mate;
+
   const _Bars({
     required this.width,
     required this.height,
@@ -304,107 +253,39 @@ class _Bars extends StatefulWidget {
     required this.blackHeight,
     required this.evaluation,
     required this.playerView,
+    required this.isFlipped,
     this.isEvaluating = false,
-    this.isFlipped = false,
+    this.isMate = false,
+    this.mate = 0,
   });
-
-  final double width;
-  final double height;
-  final double whiteHeight;
-  final double blackHeight;
-  final double evaluation;
-  final PlayerView playerView;
-  final bool isEvaluating;
-  final bool isFlipped;
-
-  @override
-  State<_Bars> createState() => _BarsState();
-}
-
-class _BarsState extends State<_Bars> {
-  double? _lastValidEvaluation;
 
   @override
   Widget build(BuildContext context) {
-    // SMART ANIMATION: Same logic as main evaluation bar
-    bool shouldAnimate = true;
-    double whiteHeightForDisplay = widget.whiteHeight;
-    double blackHeightForDisplay = widget.blackHeight;
-
-    if (!widget.isEvaluating && widget.evaluation != 0.0) {
-      // Calculation complete - check if evaluation changed significantly
-      final newEval = widget.evaluation;
-      final oldEval = _lastValidEvaluation;
-
-      if (oldEval != null && (newEval - oldEval).abs() < 0.1) {
-        // Evaluation barely changed, don't animate
-        shouldAnimate = false;
-      } else {
-        // Evaluation changed significantly, update cache and animate
-        _lastValidEvaluation = newEval;
-        shouldAnimate = true;
-      }
-    } else if (widget.isEvaluating && _lastValidEvaluation != null) {
-      // Currently calculating - FREEZE bar at last position, use cached heights
-      shouldAnimate = false;
-
-      // Calculate heights from cached evaluation to freeze the bar
-      final cachedNormalized =
-          (_lastValidEvaluation!.clamp(-5.0, 5.0) + 5.0) / 10.0;
-      final cachedWhiteRatio = cachedNormalized;
-      final cachedBlackRatio = 1.0 - cachedWhiteRatio;
-
-      whiteHeightForDisplay = cachedWhiteRatio * widget.height;
-      blackHeightForDisplay = cachedBlackRatio * widget.height;
-    }
-
-    // Color scheme (consistent regardless of move traversal):
-    // - White color (bottom when not flipped) = White advantage
-    // - Dark color (top when not flipped) = Black advantage
-    final topHeight =
-        widget.isFlipped ? whiteHeightForDisplay : blackHeightForDisplay;
-    final bottomHeight =
-        widget.isFlipped ? blackHeightForDisplay : whiteHeightForDisplay;
-
-    final topColor = widget.isFlipped ? kWhiteColor : kPopUpColor;
-    final bottomColor = widget.isFlipped ? kPopUpColor : kWhiteColor;
-
     return SizedBox(
-      width: widget.width,
-      height: widget.height,
+      width: width,
+      height: height,
       child: Stack(
-        alignment: Alignment.center,
         children: [
           Align(
             alignment: Alignment.topCenter,
-            child: AnimatedContainer(
-              duration:
-                  shouldAnimate
-                      ? const Duration(milliseconds: 200)
-                      : Duration.zero,
-              curve: Curves.easeInOut,
-              width: widget.width,
-              height: topHeight,
-              color: topColor,
+            child: Container(
+              width: width,
+              height: isFlipped ? whiteHeight : blackHeight,
+              color: isFlipped ? kWhiteColor : kPopUpColor,
             ),
           ),
           Align(
             alignment: Alignment.bottomCenter,
-            child: AnimatedContainer(
-              duration:
-                  shouldAnimate
-                      ? const Duration(milliseconds: 200)
-                      : Duration.zero,
-              curve: Curves.easeInOut,
-              width: widget.width,
-              height: bottomHeight,
-              color: bottomColor,
+            child: Container(
+              width: width,
+              height: isFlipped ? blackHeight : whiteHeight,
+              color: isFlipped ? kPopUpColor : kWhiteColor,
             ),
           ),
-          Container(width: widget.width, height: 2.h, color: kRedColor),
-          // Add evaluation number display
-          Align(
-            alignment: Alignment.center,
+          Center(
+            child: Container(width: width, height: 2, color: kRedColor),
+          ),
+          Center(
             child: Container(
               padding: EdgeInsets.symmetric(horizontal: 1.w, vertical: 0.5.h),
               decoration: BoxDecoration(
@@ -412,17 +293,19 @@ class _BarsState extends State<_Bars> {
                 borderRadius: BorderRadius.circular(2.br),
               ),
               child: Text(
-                widget.isEvaluating
-                    ? '...' // Show loading indicator when evaluating
-                    : widget.evaluation.abs().clamp(0.0, 99.9).toStringAsFixed(1),
-                textAlign: TextAlign.center,
+                isEvaluating && evaluation == 0.0
+                    ? '...'
+                    : (isMate && mate != 0)
+                        ? '#${mate.abs()}'
+                        : evaluation.abs().toStringAsFixed(1),
                 maxLines: 1,
+                textAlign: TextAlign.center,
                 style: AppTypography.textSmRegular.copyWith(
-                  color: kWhiteColor,
+                  color: Colors.white,
                   fontSize:
-                      widget.playerView == PlayerView.gridView ? 0.2.f : 1.5.f,
+                      playerView == PlayerView.gridView ? 0.2.f : 1.5.f,
                   fontWeight:
-                      widget.playerView == PlayerView.gridView
+                      playerView == PlayerView.gridView
                           ? FontWeight.w300
                           : FontWeight.w600,
                 ),
