@@ -2909,9 +2909,11 @@ class _MoveNotationWidget extends HookConsumerWidget {
 
     return GestureDetector(
       onTap: () {
-        ref
-            .read(chessBoardScreenProviderNew(params).notifier)
-            .goToMove(moveIndex);
+        unawaited(
+          ref
+              .read(chessBoardScreenProviderNew(params).notifier)
+              .goToMove(moveIndex),
+        );
         // If tapping on the last move, clear the unseen indicator
         if (isLastMove && hasUnseenMoves) {
           ref
