@@ -259,12 +259,13 @@ class StockfishSingleton {
     final onDepthUpdate = job.onDepthUpdate;
     final completer = job.completer;
 
-    // Ensure engine is ready
+    // Ensure engine is ready and reset for fresh search
     if (_engine == null || _engine!.state.value != StockfishState.ready) {
       _engine?.dispose();
       _engine = Stockfish();
       await _waitUntilReady();
     }
+    await _softResetEngine();
 
     // Check if job was cancelled while waiting for engine
     if (_currentJob != job || completer.isCompleted) return;
@@ -284,6 +285,7 @@ class StockfishSingleton {
       // Check if this is still the current job
       if (_currentJob != job || completer.isCompleted) return;
       line = line.trim();
+      debugPrint('🟢 STOCKFISH STDOUT: $line');
       // Parse info lines for analysis data
       if (line.startsWith('info depth')) {
         final depthMatch = RegExp(r'depth (\d+)').firstMatch(line);
@@ -424,6 +426,7 @@ class StockfishSingleton {
         );
         if (!completer.isCompleted) {
           completer.complete(result);
+          unawaited(_currentSubscription?.cancel());
           _currentSubscription = null;
         }
       }
@@ -540,6 +543,48 @@ class StockfishSingleton {
       );
     } catch (e) {
       debugPrint('⚠️ Could not configure Stockfish tablebases: $e');
+    }
+  }
+
+  Future<void> _softResetEngine() async {
+    if (_engine == null) return;
+    await _currentSubscription?.cancel();
+    _currentSubscription = null;
+    try {
+      _engine!.stdin = 'stop';
+      await Future.delayed(const Duration(milliseconds: 20));
+    } catch (e) {
+      debugPrint('⚠️ STOCKFISH STOP FAILED: $e');
+    }
+    try {
+      _engine!.stdin = 'ucinewgame';
+    } catch (e) {
+      debugPrint('⚠️ STOCKFISH ucinewgame FAILED: $e');
+    }
+    try {
+      _engine!.stdin = 'setoption name Clear Hash';
+    } catch (e) {
+      debugPrint('⚠️ STOCKFISH Clear Hash FAILED: $e');
+    }
+    await _waitForReadyOk();
+  }
+
+  Future<void> _waitForReadyOk() async {
+    if (_engine == null) return;
+    final completer = Completer<void>();
+    late StreamSubscription<String> sub;
+    sub = _engine!.stdout.listen((line) {
+      if (line.trim() == 'readyok' && !completer.isCompleted) {
+        completer.complete();
+      }
+    });
+    try {
+      _engine!.stdin = 'isready';
+      await completer.future.timeout(const Duration(seconds: 1));
+    } catch (e) {
+      debugPrint('⚠️ STOCKFISH READY WAIT FAILED: $e');
+    } finally {
+      await sub.cancel();
     }
   }
 
