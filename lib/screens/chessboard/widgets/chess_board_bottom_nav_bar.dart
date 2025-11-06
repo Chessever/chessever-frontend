@@ -52,16 +52,20 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
     final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
     final showDepthOverlay = engineSettings?.showDepthOverlay ?? true;
 
-    // Format depth text like "D:12" - only if overlay setting is enabled
-    final depthText =
-        (gaugeProgress != null && showDepthOverlay)
-            ? 'D:${gaugeProgress.depth.clamp(0, 99).toString().padLeft(2, '0')}'
-            : null;
+    // Format depth text like "D:12"; show "..." while loading if overlay is enabled
+    String? depthText;
+    if (showDepthOverlay) {
+      if (gaugeProgress != null) {
+        depthText = 'D:${gaugeProgress.depth.clamp(0, 99).toString().padLeft(2, '0')}';
+      } else {
+        depthText = '...';
+      }
+    }
 
     // COMPREHENSIVE DEBUG LOGGING - Verify dynamic depth search is working
     if (showEngineAnalysis) {
-      if (depthText != null) {
-        final fenFragment = gaugeProgress!.fenFragment;
+      if (gaugeProgress != null && depthText != null) {
+        final fenFragment = gaugeProgress.fenFragment;
         final fragmentLength =
             fenFragment.length < 20 ? fenFragment.length : 20;
         final fragmentPreview = fenFragment.substring(0, fragmentLength);

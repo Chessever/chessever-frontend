@@ -1557,54 +1557,10 @@ class _AnalysisGameBody extends ConsumerWidget {
 //     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
 //
 //     // Use variants when available; default to first PV if none explicitly selected
-//     final hasVariant = state?.principalVariations.isNotEmpty ?? false;
+//     // final hasVariant = state?.principalVariations.isNotEmpty ?? false;
 //
-//     return Padding(
-//       padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 4.sp),
-//       child: Row(
-//         mainAxisAlignment: MainAxisAlignment.center,
-//         children: [
-//           IconButton(
-//             icon: const Icon(Icons.fast_rewind, color: kWhiteColor),
-//             onPressed: notifier.jumpToStart,
-//           ),
-//           IconButton(
-//             icon: Icon(
-//               Icons.arrow_back,
-//               color:
-//                   hasVariant ? kWhiteColor.withValues(alpha: 0.7) : kWhiteColor,
-//             ),
-//             onPressed: () {
-//               debugPrint('🎯 NAV BACK: hasVariant=$hasVariant');
-//               if (hasVariant) {
-//                 notifier.playVariantMoveBackward();
-//               } else {
-//                 notifier.analysisStepBackward();
-//               }
-//             },
-//           ),
-//           IconButton(
-//             icon: Icon(
-//               Icons.arrow_forward,
-//               color:
-//                   hasVariant ? kWhiteColor.withValues(alpha: 0.7) : kWhiteColor,
-//             ),
-//             onPressed: () {
-//               debugPrint('🎯 NAV FORWARD: hasVariant=$hasVariant');
-//               if (hasVariant) {
-//                 notifier.playVariantMoveForward();
-//               } else {
-//                 notifier.analysisStepForward();
-//               }
-//             },
-//           ),
-//           IconButton(
-//             icon: const Icon(Icons.fast_forward, color: kWhiteColor),
-//             onPressed: notifier.jumpToEnd,
-//           ),
-//         ],
-//       ),
-//     );
+//     // Respect PV count from settings in UI
+//     // ... (omitted)
 //   }
 // }
 
@@ -2270,7 +2226,7 @@ class _PrincipalVariationListState
     // REACTIVE: Watch cascade provider directly for current FEN
     // Get user's PV count setting to request correct number of lines
     final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
-    // Use multiPvForLichess() which caps at 5 (Lichess API maximum) to avoid abuse
+    // Use multiPvForLichess() which caps at 5
     final multiPV = engineSettings?.multiPvForLichess() ?? 3;
     final currentFen = position?.fen ?? '';
     final evalAsync = ref.watch(cascadeEvalProviderForBoard(
@@ -2304,8 +2260,17 @@ class _PrincipalVariationListState
       },
     );
 
-    // Show end of game message when position is terminal
+    // After resolving provider state, prepare display list
+    // Clamp number of cards to user's MultiPV selection
+    final clampedLines = (lines.length > multiPV)
+        ? lines.take(multiPV).toList(growable: false)
+        : lines.toList(growable: false);
+
+    // Determine loading state for PV cards
+    // Skeleton shown when there are no PVs (unless game over)
     final showEndOfGame = isGameOver && widget.state.isAnalysisMode;
+    final showSkeleton = !showEndOfGame && clampedLines.isEmpty;
+    final pageCount = showSkeleton ? 1 : clampedLines.length;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(20.sp, 8.sp, 20.sp, 8.sp),
@@ -2358,23 +2323,6 @@ class _PrincipalVariationListState
                         ),
                       ),
                     )
-                    : lines.isEmpty
-                    ? Container(
-                        width: MediaQuery.of(context).size.width - 40.sp,
-                        margin: EdgeInsets.symmetric(horizontal: 2.sp),
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: kWhiteColor.withValues(alpha: 0.2),
-                            width: 1.5,
-                          ),
-                          borderRadius: BorderRadius.circular(6.sp),
-                          color: kDarkGreyColor.withValues(alpha: 0.1),
-                        ),
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 12.sp,
-                          vertical: 10.sp,
-                        ),
-                      )
                     : PageView.builder(
                         controller: _pageController,
                         onPageChanged: (pageIndex) {
@@ -2384,10 +2332,73 @@ class _PrincipalVariationListState
                           // Update variant selection when page changes
                           notifier.selectVariant(pageIndex);
                         },
-                        itemCount: lines.length,
+                        itemCount: pageCount,
                         itemBuilder: (context, index) {
+                          if (showSkeleton) {
+                            final activeVariantColor = notifier.getVariantColor(0, true);
+                            final borderColor = activeVariantColor.withValues(alpha: 0.7);
+                            final backgroundColor = activeVariantColor.withValues(alpha: 0.15);
+                            final badgeBackgroundColor = activeVariantColor.withValues(alpha: 0.3);
+                            final badgeBorderColor = activeVariantColor.withValues(alpha: 0.6);
+
+                            return Container(
+                              width: MediaQuery.of(context).size.width - 40.sp,
+                              margin: EdgeInsets.symmetric(horizontal: 2.sp),
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: borderColor,
+                                  width: 1.5,
+                                ),
+                                borderRadius: BorderRadius.circular(6.sp),
+                                color: backgroundColor,
+                              ),
+                              clipBehavior: Clip.hardEdge,
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 12.sp,
+                                  vertical: 10.sp,
+                                ),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Container(
+                                      margin: EdgeInsets.only(right: 10.sp),
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: 8.sp,
+                                        vertical: 4.sp,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: badgeBackgroundColor,
+                                        borderRadius: BorderRadius.circular(4.sp),
+                                        border: Border.all(color: badgeBorderColor, width: 1.0),
+                                      ),
+                                      alignment: Alignment.center,
+                                      child: Text(
+                                        '...',
+                                        style: AppTypography.textXsMedium.copyWith(
+                                          color: kWhiteColor,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: Text(
+                                        '...',
+                                        softWrap: true,
+                                        style: AppTypography.textXsMedium.copyWith(
+                                          color: kWhiteColor.withValues(alpha: 0.9),
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }
+
                           final variantIndex = index;
-                          final line = lines[index];
+                          final line = clampedLines[index];
                           final isSelected =
                               widget.state.selectedVariantIndex == variantIndex;
 
@@ -2508,11 +2519,11 @@ class _PrincipalVariationListState
                         },
                       ),
           ),
-          if (lines.length > 1) ...[
+          if (pageCount > 1) ...[
             SizedBox(height: 8.h),
             SmoothPageIndicator(
               controller: _pageController,
-              count: lines.length,
+              count: pageCount,
               effect: ScrollingDotsEffect(
                 activeDotColor: notifier.getVariantColor(_currentPage, true),
                 dotColor: kWhiteColor.withValues(alpha: 0.3),

@@ -47,7 +47,17 @@ class Pv {
   }) : whitePerspective = whitePerspective ?? true;
 
   factory Pv.fromJson(Map<String, dynamic> json) {
-    final moves = json['moves'] as String;
+    // Lichess may return moves as an array (preferred) or as a space-separated string.
+    final dynamic movesField = json['moves'];
+    String moves;
+    if (movesField is List) {
+      // Convert array of UCI moves to a single space-separated string
+      moves = movesField.map((e) => e.toString()).where((e) => e.isNotEmpty).join(' ');
+    } else if (movesField is String) {
+      moves = movesField;
+    } else {
+      moves = '';
+    }
 
     int cp = 0;
     bool isMate = false;

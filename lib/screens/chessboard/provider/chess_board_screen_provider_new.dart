@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.dart';
@@ -25,7 +24,8 @@ import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:worker_manager/worker_manager.dart';
 
-const int _kMaxPrincipalVariations = 3;
+// REMOVED: Hardcoded limit - now we use all PVs that were requested
+// const int _kMaxPrincipalVariations = 3;
 
 enum ChessboardView { favScorecard, tour, countryman }
 
@@ -2453,8 +2453,17 @@ class ChessBoardScreenNotifierNew
       _activeEvalRequestId = currentRequestId;
       _activeEvalStartTime = DateTime.now(); // Track when this request started
 
+      // CRITICAL: Clear stale PVs immediately to prevent wrong position data displaying
+      debugPrint('🎯 EVAL: Clearing stale PVs, starting fresh evaluation for FEN: ${fen.split(' ').take(3).join(' ')}...');
       state = AsyncValue.data(
-        initialState.copyWith(shapes: const ISet.empty(), isEvaluating: true),
+        initialState.copyWith(
+          shapes: const ISet.empty(),
+          isEvaluating: true,
+          principalVariations: const [], // Clear old PVs immediately
+          analysisState: initialState.analysisState.copyWith(
+            suggestionLines: const [], // Clear old suggestions
+          ),
+        ),
       );
 
       CloudEval? primaryEval;
@@ -2489,14 +2498,22 @@ class ChessBoardScreenNotifierNew
           ).future,
         );
         if (cascadeEval.pvs.isNotEmpty) {
+          // Update depth tracker for BOTH evaluation gauge AND PV cards
+          // They both use the same evaluation source, so depth should be synchronized
+          final depthProgress = EngineSearchProgress(
+            depth: cascadeEval.depth,
+            kiloNodes: cascadeEval.knodes,
+            fenFragment: fen,
+          );
           depthTracker.update(
             component: EngineComponent.evaluationGauge,
-            progress: EngineSearchProgress(
-              depth: cascadeEval.depth,
-              kiloNodes: cascadeEval.knodes,
-              fenFragment: fen,
-            ),
+            progress: depthProgress,
             context: 'cascade evaluation',
+          );
+          depthTracker.update(
+            component: EngineComponent.principalVariation,
+            progress: depthProgress,
+            context: 'cascade evaluation (multiPV=$configuredMultiPV)',
           );
           primaryEval = cascadeEval;
           final rawCp = cascadeEval.pvs.first.cp;
@@ -2514,6 +2531,9 @@ class ChessBoardScreenNotifierNew
             '🎯 EVAL: Building principal variations from cloud source...',
           );
           pvLines = await _buildPrincipalVariations(fen, cascadeEval.pvs);
+          if (pvLines.length > configuredMultiPV) {
+            pvLines = pvLines.take(configuredMultiPV).toList(growable: false);
+          }
 
           // RETRY: If cloud PV building failed but we have PVs, try once more immediately
           if (pvLines.isEmpty && cascadeEval.pvs.isNotEmpty) {
@@ -2576,27 +2596,25 @@ class ChessBoardScreenNotifierNew
         debugPrint('🎯 EVAL ERROR: Cascade failed for $fen: $e');
       }
 
-      // SUPPLEMENT/FALLBACK: Use Stockfish if cloud sources returned fewer PVs than configured
-      // Cloud sources might return fewer for:
-      // - Uncommon positions not yet fully analyzed
-      // - Positions with forced mates (only one line matters)
-      // - API rate limiting or temporary unavailability
-      if (evaluation == null || pvLines.length < configuredMultiPV) {
+      // ALWAYS RUN STOCKFISH: Staged depth progression
+      // Even if Lichess returns depth 30, we want local Stockfish to:
+      // 1. Quick phase (depth 12): Show results IMMEDIATELY (override Lichess)
+      // 2. Staged refinement: 13,14,15,16,18,20,22,25,30,35,40,50 (gradual at start)
+      // 3. Abort if user navigates away or position changes
+      // This ensures blazing fast initial display + progressive accuracy improvement
+      final shouldRunStockfish = true; // Always run for progressive deepening
+      
+      if (shouldRunStockfish) {
         final needsEval = evaluation == null;
         final needsMorePvs = pvLines.length < configuredMultiPV;
 
         try {
-          final searchDuration = effectiveEngineSettings.searchDurationFor(
-            EngineComponent.evaluationGauge,
-          );
-          final maxDepth = effectiveEngineSettings.maxDepthFor(
-            EngineComponent.evaluationGauge,
-          );
-          final fallbackDepth = maxDepth;
+          final quickDepth = EngineSearchProgress.minReportDepth; // 12
+          final deepDepth = 50; // target
           final multiPV = configuredMultiPV;
 
           debugPrint('');
-          debugPrint('🎯 ═══ STARTING STOCKFISH EVALUATION ═══');
+          debugPrint('🎯 ═══ STARTING STOCKFISH QUICK EVAL (depth=$quickDepth) ═══');
           final previewLength = fen.length < 50 ? fen.length : 50;
           final fenPreview = fen.substring(0, previewLength);
           final previewSuffix = fen.length > previewLength ? '...' : '';
@@ -2604,210 +2622,204 @@ class ChessBoardScreenNotifierNew
           debugPrint(
             '   Reason: ${needsEval ? "Need eval" : ""}${needsEval && needsMorePvs ? " + " : ""}${needsMorePvs ? "Need more PVs (have ${pvLines.length}/$multiPV)" : ""}',
           );
-          debugPrint('   Settings loaded: ${engineSettings != null}');
-          debugPrint(
-            '   SearchDuration: ${searchDuration?.inSeconds}s (${searchDuration != null ? "DYNAMIC" : "STATIC"})',
-          );
-          debugPrint('   MaxDepth: $maxDepth');
-          debugPrint('   MultiPV: $multiPV lines');
-          debugPrint('   Fallback depth: $fallbackDepth');
-          final baselineDepth = primaryEval?.depth ?? 0;
-          final baselineKnodes = primaryEval?.knodes ?? 0;
-          if (baselineDepth > 0) {
-            debugPrint(
-              '   Baseline depth from cloud: $baselineDepth (knodes=$baselineKnodes)',
-            );
-          }
 
-          // Get depth tracker notifier to report progress
           // PRIORITY: Mark this as current position if visible
           final isCurrentlyVisible = currentVisiblePage == index;
-          final localEval = await StockfishSingleton().evaluatePosition(
-            fen,
-            depth: fallbackDepth,
-            searchDuration: searchDuration,
-            maxDepth: maxDepth,
-            multiPV: multiPV,
-            isCurrentPosition: isCurrentlyVisible, // Prioritize current position
-            onDepthUpdate: (depth, knodes) {
-              // CRITICAL: Only update depth tracker if this is the currently visible game
-              // This prevents depth flickering when swiping between games in PageView
-              final currentVisiblePage = ref.read(
-                currentlyVisiblePageIndexProvider,
-              );
-              if (index != currentVisiblePage) {
-                debugPrint(
-                  '🚫 EVAL: Skipping depth update for non-visible game (page $index, visible: $currentVisiblePage)',
-                );
-                return;
-              }
 
-              debugPrint(
-                '💡 EVAL: Depth update callback -> depth=$depth knodes=${knodes}k',
-              );
-              final adjustedDepth =
-                  baselineDepth > 0 ? math.max(depth, baselineDepth) : depth;
-              final adjustedKnodes =
-                  baselineKnodes > 0
-                      ? math.max(knodes, baselineKnodes)
-                      : knodes;
-              depthTracker.update(
-                component: EngineComponent.evaluationGauge,
-                progress: EngineSearchProgress(
-                  depth: adjustedDepth,
-                  kiloNodes: adjustedKnodes,
-                  fenFragment: fen,
-                ),
-                context:
-                    baselineDepth > 0
-                        ? 'continuation ≥$baselineDepth'
-                        : 'evaluating position',
-              );
-            },
+          // PHASE 1: Quick shallow evaluation for immediate PVs
+          final quickEval = await StockfishSingleton().evaluatePosition(
+            fen,
+            depth: quickDepth,
+            multiPV: multiPV,
+            isCurrentPosition: isCurrentlyVisible,
           );
           debugPrint(
-            '🎯 EVAL: Stockfish completed, isCancelled=${localEval.isCancelled}, pvs.length=${localEval.pvs.length}',
+            '🎯 EVAL: Quick Stockfish completed, depth=${quickEval.depth}, pvs.length=${quickEval.pvs.length}',
           );
-
-          if (!localEval.isCancelled && localEval.pvs.isNotEmpty) {
-            final finalDepth =
-                baselineDepth > 0
-                    ? math.max(localEval.depth, baselineDepth)
-                    : localEval.depth;
-            final finalKnodes =
-                baselineKnodes > 0
-                    ? math.max(localEval.knodes, baselineKnodes)
-                    : localEval.knodes;
-
-            final rawCp = localEval.pvs.first.cp;
-            final rawEval = rawCp / 100.0;
-            final stockfishEval = _getConsistentEvaluation(rawEval, fen);
-            final bool shouldAdoptStockfishEval =
-                needsEval || localEval.depth > baselineDepth;
-            if (shouldAdoptStockfishEval) {
-              evaluation = stockfishEval;
-            }
-
+          if (!quickEval.isCancelled && quickEval.pvs.isNotEmpty) {
+            final quickCp = quickEval.pvs.first.cp;
+            final quickEvalValue = _getConsistentEvaluation(quickCp / 100.0, fen);
+            evaluation = quickEvalValue; // adopt immediately
             primaryEval = CloudEval(
               fen: fen,
-              knodes: finalKnodes,
-              depth: finalDepth,
-              pvs: localEval.pvs,
+              knodes: quickEval.knodes,
+              depth: quickEval.depth,
+              pvs: quickEval.pvs,
             );
-
-            // DEBUG: Track Stockfish evaluation through pipeline
-            final fenParts = fen.split(' ');
-            final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
-            final whitePerspectiveFlag = localEval.pvs.first.whitePerspective;
-            debugPrint(
-              '🔍 STOCKFISH PIPELINE: fen=$fen, side=$sideToMove, rawCp=$rawCp, rawEval=$rawEval, evaluation=$evaluation, whitePerspective=$whitePerspectiveFlag',
-            );
-            // Build PVs from Stockfish with retry on failure
-            debugPrint(
-              '🎯 EVAL: Building principal variations from Stockfish MultiPV...',
-            );
-            var stockfishPvLines = await _buildPrincipalVariations(
-              fen,
-              localEval.pvs,
-            );
-
-            // RETRY: If Stockfish PV building failed, try once more immediately
-            if (stockfishPvLines.isEmpty && localEval.pvs.isNotEmpty) {
-              debugPrint(
-                '🔄 RETRY: Stockfish PV building failed, retrying immediately...',
-              );
-
-              // Check if provider is still mounted before accessing state
-              if (!mounted) {
-                debugPrint('🚫 RETRY CANCELLED: Provider disposed');
-                return;
-              }
-
-              // Check if position changed
-              final currentState = state.value;
-              if (currentState != null) {
-                final currentPos =
-                    currentState.isAnalysisMode
-                        ? currentState.analysisState.position
-                        : currentState.position;
-                if (currentPos != null) {
-                  final currentFenBase = currentPos.fen
-                      .split(' ')
-                      .take(3)
-                      .join(' ');
-                  final targetFenBase = fen.split(' ').take(3).join(' ');
-
-                  if (currentFenBase != targetFenBase) {
-                    debugPrint(
-                      '🚫 RETRY CANCELLED: Position changed during delay (was: $targetFenBase, now: $currentFenBase)',
-                    );
-                    return;
-                  }
-                }
-              }
-
-              stockfishPvLines = await _buildPrincipalVariations(
-                fen,
-                localEval.pvs,
-              );
-              if (stockfishPvLines.isNotEmpty) {
-                debugPrint('✅ RETRY: Stockfish PV building succeeded on retry');
-              } else {
-                debugPrint('❌ RETRY: Stockfish PV building failed again');
-              }
+            var quickPvLines = await _buildPrincipalVariations(fen, quickEval.pvs);
+            debugPrint('🎯 QUICK EVAL: Built ${quickPvLines.length} PV lines from ${quickEval.pvs.length} raw PVs');
+            if (quickPvLines.length > multiPV) {
+              quickPvLines = quickPvLines.take(multiPV).toList(growable: false);
             }
-
-            // Merge: Keep cloud PVs first, then add unique Stockfish PVs
-            if (needsMorePvs && pvLines.isNotEmpty) {
-              final merged = <AnalysisLine>[...pvLines];
-              final existingFirstMoves =
-                  pvLines
-                      .map(
-                        (line) =>
-                            line.sanMoves.isNotEmpty ? line.sanMoves.first : '',
-                      )
-                      .toSet();
-
-              for (final sfLine in stockfishPvLines) {
-                if (merged.length >= 3) break;
-                final firstMove =
-                    sfLine.sanMoves.isNotEmpty ? sfLine.sanMoves.first : '';
-                // Add if it's a different first move (different principal variation)
-                if (!existingFirstMoves.contains(firstMove)) {
-                  merged.add(sfLine);
-                  existingFirstMoves.add(firstMove);
-                }
-              }
-              pvLines = merged;
-              debugPrint(
-                '🎯 EVAL: MERGED - ${pvLines.length} variants (cloud + Stockfish)',
-              );
-            } else {
-              // No cloud PVs, use all Stockfish PVs
-              pvLines = stockfishPvLines;
-              debugPrint(
-                '🎯 EVAL: STOCKFISH ONLY - returned ${pvLines.length} variants, eval=$evaluation',
-              );
-            }
-
-            // Record final MultiPV depth for principal variation tracking
+            pvLines = quickPvLines;
+            // Report quick phase depth (same for both gauge and PV display)
+            final quickProgress = EngineSearchProgress(
+              depth: quickEval.depth,
+              kiloNodes: quickEval.knodes,
+              fenFragment: fen,
+            );
+            depthTracker.update(
+              component: EngineComponent.evaluationGauge,
+              progress: quickProgress,
+              context: 'quick D:${quickEval.depth}, PVs:${quickPvLines.length}',
+            );
             depthTracker.update(
               component: EngineComponent.principalVariation,
-              progress: EngineSearchProgress(
-                depth: finalDepth,
-                kiloNodes: finalKnodes,
-                fenFragment: fen,
-              ),
-              context:
-                  baselineDepth > 0
-                      ? 'multiPV=$multiPV (baseline≥$baselineDepth)'
-                      : 'multiPV=$multiPV',
+              progress: quickProgress,
+              context: 'quick D:${quickEval.depth}, PVs:${quickPvLines.length}',
             );
-          } else {
-            debugPrint('🎯 EVAL: Stockfish returned cancelled or empty result');
+
+            // IMMEDIATE UI UPDATE: apply quick PVs now so cards render without waiting for deep eval
+            final snapshotForQuick = state.value;
+            if (snapshotForQuick != null && mounted) {
+              final inAnalysisQuick = snapshotForQuick.isAnalysisMode;
+              final positionQuick = inAnalysisQuick
+                  ? snapshotForQuick.analysisState.position
+                  : snapshotForQuick.position;
+              final basePointerQuick = inAnalysisQuick
+                  ? snapshotForQuick.analysisState.movePointer
+                  : null;
+
+              // Set evaluation + PVs to show the cards immediately
+              // CRITICAL: Set isEvaluating=false so PV cards render (staged refinement continues silently)
+              final updatedQuick = snapshotForQuick.copyWith(
+                evaluation: evaluation,
+                mate: quickEval.pvs.first.mate,
+                isEvaluating: false, // Cards can render now; staged depth continues in background
+                principalVariations: quickPvLines,
+                analysisState: snapshotForQuick.analysisState.copyWith(
+                  suggestionLines: quickPvLines,
+                ),
+              );
+              debugPrint('🎯 QUICK PHASE: Applied ${quickPvLines.length} PVs to state (isEvaluating=false)');
+              state = AsyncValue.data(updatedQuick);
+
+              // Let the PV selection/shapes logic run against the quick PVs
+              if (positionQuick != null) {
+                _applyPrincipalVariationResults(
+                  currentState: updatedQuick,
+                  currentPosition: positionQuick,
+                  baseFen: fen,
+                  baseMovePointer: basePointerQuick,
+                  pvLines: quickPvLines,
+                );
+              }
+            }
+          }
+
+          // PHASE 2: Deep progressive evaluation (staged depths)
+          // Go very gradually at start (13,14,15,16), then wider gaps
+          final stagedDepths = <int>[13, 14, 15, 16, 18, 20, 22, 25, 30, 35, 40, 50]
+              .where((d) => d > quickDepth && d <= deepDepth)
+              .toList(growable: false);
+          debugPrint('🎯 ═══ STAGED EVAL: depths [${stagedDepths.join(", ")}] ═══');
+
+          for (final stageDepth in stagedDepths) {
+            // Visibility guard
+            final currentVisiblePage = ref.read(currentlyVisiblePageIndexProvider);
+            if (index != currentVisiblePage) {
+              debugPrint('🚫 EVAL: Aborting staged run at depth=$stageDepth (not visible)');
+              break;
+            }
+
+            // Position guard (FEN base)
+            final currentState = state.value;
+            if (currentState == null) break;
+            final pos = currentState.isAnalysisMode
+                ? currentState.analysisState.position
+                : currentState.position;
+            final currentFenBase = pos?.fen.split(' ').take(3).join(' ');
+            final targetFenBase = fen.split(' ').take(3).join(' ');
+            if (currentFenBase != targetFenBase) {
+              debugPrint('🚫 EVAL: Aborting staged run (position changed)');
+              break;
+            }
+
+            final stagedEval = await StockfishSingleton().evaluatePosition(
+              fen,
+              depth: stageDepth,
+              multiPV: multiPV,
+              isCurrentPosition: isCurrentlyVisible,
+              onDepthUpdate: (depth, knodes) {
+                final progress = EngineSearchProgress(
+                  depth: depth,
+                  kiloNodes: knodes,
+                  fenFragment: fen,
+                );
+                // Update both gauge and PV simultaneously (no separation)
+                depthTracker.update(
+                  component: EngineComponent.evaluationGauge,
+                  progress: progress,
+                  context: 'staged D:$depth (target=$stageDepth)',
+                );
+                depthTracker.update(
+                  component: EngineComponent.principalVariation,
+                  progress: progress,
+                  context: 'staged D:$depth (target=$stageDepth)',
+                );
+              },
+            );
+
+            if (!stagedEval.isCancelled && stagedEval.pvs.isNotEmpty) {
+              final rawCp = stagedEval.pvs.first.cp;
+              evaluation = _getConsistentEvaluation(rawCp / 100.0, fen);
+              primaryEval = CloudEval(
+                fen: fen,
+                knodes: stagedEval.knodes,
+                depth: stagedEval.depth,
+                pvs: stagedEval.pvs,
+              );
+
+              var newLines = await _buildPrincipalVariations(fen, stagedEval.pvs);
+              debugPrint('🎯 STAGED D:${stagedEval.depth}: Built ${newLines.length} PV lines');
+              if (needsMorePvs && pvLines.isNotEmpty) {
+                final merged = <AnalysisLine>[...pvLines];
+                final existingFirstMoves = pvLines
+                    .map((line) => line.sanMoves.isNotEmpty ? line.sanMoves.first : '')
+                    .toSet();
+                for (final sfLine in newLines) {
+                  if (merged.length >= multiPV) break;
+                  final firstMove = sfLine.sanMoves.isNotEmpty ? sfLine.sanMoves.first : '';
+                  if (!existingFirstMoves.contains(firstMove)) {
+                    merged.add(sfLine);
+                    existingFirstMoves.add(firstMove);
+                  }
+                }
+                pvLines = merged.length > multiPV
+                    ? merged.take(multiPV).toList(growable: false)
+                    : merged;
+              } else {
+                pvLines = newLines.length > multiPV
+                    ? newLines.take(multiPV).toList(growable: false)
+                    : newLines;
+              }
+
+              // Apply PVs to state progressively (keep isEvaluating=false set by quick phase)
+              final basePointer = currentState.isAnalysisMode
+                  ? currentState.analysisState.movePointer
+                  : null;
+              final stagedState = currentState.copyWith(
+                evaluation: evaluation,
+                isEvaluating: false, // Keep false; cards already rendering
+                principalVariations: pvLines,
+                analysisState: currentState.analysisState.copyWith(
+                  suggestionLines: pvLines,
+                ),
+              );
+              state = AsyncValue.data(stagedState);
+              debugPrint('🎯 STAGED D:${stagedEval.depth}: Applied ${pvLines.length} PVs to state');
+
+              _applyPrincipalVariationResults(
+                currentState: stagedState,
+                currentPosition: pos!,
+                baseFen: fen,
+                baseMovePointer: basePointer,
+                pvLines: pvLines,
+              );
+            }
           }
         } catch (e, stack) {
-          debugPrint('🎯 EVAL ERROR: Stockfish supplement failed for $fen: $e');
+          debugPrint('🎯 EVAL ERROR: Stockfish two-phase failed for $fen: $e');
           debugPrint('Stack: $stack');
         }
       }
@@ -3303,8 +3315,8 @@ class ChessBoardScreenNotifierNew
         return const ISet.empty();
       }
 
-      // Get up to [_kMaxPrincipalVariations] principal variations
-      final pvsToShow = cloudEval.pvs.take(_kMaxPrincipalVariations).toList();
+      // Use all PVs from the cloud eval (already limited by multiPv parameter in request)
+      final pvsToShow = cloudEval.pvs;
 
       for (int i = 0; i < pvsToShow.length; i++) {
         final pv = pvsToShow[i];
