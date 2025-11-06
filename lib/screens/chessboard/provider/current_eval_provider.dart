@@ -125,6 +125,10 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
   } catch (e, st) {
     print('❌ cascadeEvalProvider: Cloud sources failed for $fen - $e');
     print(st);
+    if (!params.isCurrentPosition) {
+      // Non-visible widgets should not tie up the local engine; surface error quickly.
+      return Future.error(e, st);
+    }
     final engineSettingsValue = ref.read(engineSettingsProviderNew).value;
     final resolvedSettings = engineSettingsValue ?? const EngineSettings();
 
