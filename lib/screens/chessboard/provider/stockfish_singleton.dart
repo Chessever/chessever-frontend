@@ -226,6 +226,32 @@ class StockfishSingleton {
     }
   }
 
+  Future<void> cancelAllEvaluations() async {
+    await _cancelCurrentEvaluation();
+    if (_jobQueue.isNotEmpty) {
+      for (final job in _jobQueue) {
+        _pendingJobs.remove(job.key);
+        if (!job.completer.isCompleted) {
+          job.completer.complete(
+            EnhancedCloudEval(
+              fen: job.fen,
+              knodes: 0,
+              depth: 0,
+              pvs: [Pv(moves: '', cp: 0, mate: 0)],
+              isCancelled: true,
+            ),
+          );
+        }
+      }
+      _jobQueue.clear();
+    }
+    _isProcessing = false;
+    _currentSubscription = null;
+    try {
+      _engine?.stdin = 'stop';
+    } catch (_) {}
+  }
+
   Future<void> _processQueue() async {
     if (_isProcessing || _jobQueue.isEmpty) return;
 

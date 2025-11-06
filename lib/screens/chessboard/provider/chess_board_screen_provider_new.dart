@@ -575,12 +575,12 @@ class ChessBoardScreenNotifierNew
     _updateLastSeenMoveCount(currentState.moveSans.length);
   }
 
-  void goToMove(int moveIndex) {
+  Future<void> goToMove(int moveIndex) async {
     // Analysis mode is always active, use analysis navigation
-    analysisModeGoToMove(moveIndex);
+    await analysisModeGoToMove(moveIndex);
   }
 
-  void analysisModeGoToMove(int moveIndex) {
+  Future<void> analysisModeGoToMove(int moveIndex) async {
     var currentState = state.value;
     if (currentState == null) return;
 
@@ -601,113 +601,117 @@ class ChessBoardScreenNotifierNew
 
     if (_isProcessingMove) return;
     _isProcessingMove = true;
-    if (currentState.isLoadingMoves) {
-      _isProcessingMove = false;
-      return;
-    }
+    try {
+      if (currentState.isLoadingMoves) {
+        return;
+      }
 
-    if (moveIndex < -1 ||
-        moveIndex >= currentState.analysisState.allMoves.length) {
-      _isProcessingMove = false;
-      return;
-    }
-    _cancelEvaluation = true;
-    Position newPosition = currentState.analysisState.startingPosition!;
-    Move? newLastMove;
+      if (moveIndex < -1 ||
+          moveIndex >= currentState.analysisState.allMoves.length) {
+        return;
+      }
+      _cancelEvaluation = true;
+      await StockfishSingleton().cancelAllEvaluations();
+      Position newPosition = currentState.analysisState.startingPosition!;
+      Move? newLastMove;
 
-    for (int i = 0; i <= moveIndex; i++) {
-      newLastMove = currentState.analysisState.allMoves[i];
-      newPosition = newPosition.play(currentState.analysisState.allMoves[i]);
-    }
+      for (int i = 0; i <= moveIndex; i++) {
+        newLastMove = currentState.analysisState.allMoves[i];
+        newPosition = newPosition.play(currentState.analysisState.allMoves[i]);
+      }
 
-    // Check if navigating to the last move to clear unseen indicator
-    final isNavigatingToLastMove =
-        moveIndex == currentState.analysisState.allMoves.length - 1;
+      // Check if navigating to the last move to clear unseen indicator
+      final isNavigatingToLastMove =
+          moveIndex == currentState.analysisState.allMoves.length - 1;
 
-    state = AsyncValue.data(
-      currentState.copyWith(
-        analysisState: currentState.analysisState.copyWith(
-          position: newPosition,
-          lastMove: newLastMove,
-          currentMoveIndex: moveIndex,
-          suggestionLines: const [],
+      state = AsyncValue.data(
+        currentState.copyWith(
+          analysisState: currentState.analysisState.copyWith(
+            position: newPosition,
+            lastMove: newLastMove,
+            currentMoveIndex: moveIndex,
+            suggestionLines: const [],
+          ),
+          evaluation: null, // Reset evaluation for new position
+          mate: null,
+          isEvaluating: true, // Show loading indicator while evaluating
+          principalVariations: const [],
+          selectedVariantIndex: null,
+          variantMovePointer: const [],
+          variantBaseFen: null,
+          variantBaseMovePointer: null,
+          variantBaseLastMove: null,
+          variantBaseMoveIndex: null,
+          shapes: const ISet.empty(),
+          // Clear unseen indicator if navigating to the last move
+          hasUnseenMoves:
+              isNavigatingToLastMove ? false : currentState.hasUnseenMoves,
         ),
-        evaluation: null, // Reset evaluation for new position
-        mate: null,
-        isEvaluating: true, // Show loading indicator while evaluating
-        principalVariations: const [],
-        selectedVariantIndex: null,
-        variantMovePointer: const [],
-        variantBaseFen: null,
-        variantBaseMovePointer: null,
-        variantBaseLastMove: null,
-        variantBaseMoveIndex: null,
-        shapes: const ISet.empty(),
-        // Clear unseen indicator if navigating to the last move
-        hasUnseenMoves:
-            isNavigatingToLastMove ? false : currentState.hasUnseenMoves,
-      ),
-    );
+      );
 
-    // Update last seen move count if navigating to the last move
-    if (isNavigatingToLastMove && currentState.hasUnseenMoves) {
-      _updateLastSeenMoveCount(currentState.moveSans.length);
+      // Update last seen move count if navigating to the last move
+      if (isNavigatingToLastMove && currentState.hasUnseenMoves) {
+        _updateLastSeenMoveCount(currentState.moveSans.length);
+      }
+
+      _cancelEvaluation = false;
+      _updateEvaluation();
+    } finally {
+      _isProcessingMove = false;
     }
-
-    _cancelEvaluation = false;
-    _updateEvaluation();
-    _isProcessingMove = false;
   }
 
-  void normalModeGoToMove(int moveIndex) {
+  Future<void> normalModeGoToMove(int moveIndex) async {
     if (_isProcessingMove) return;
     _isProcessingMove = true;
 
     final currentState = state.value;
-    if (currentState == null || currentState.isLoadingMoves) {
-      _isProcessingMove = false;
-      return;
-    }
-    if (moveIndex < -1 || moveIndex >= currentState.allMoves.length) {
-      _isProcessingMove = false;
-      return;
-    }
+    try {
+      if (currentState == null || currentState.isLoadingMoves) {
+        return;
+      }
+      if (moveIndex < -1 || moveIndex >= currentState.allMoves.length) {
+        return;
+      }
 
-    _cancelEvaluation = true;
+      _cancelEvaluation = true;
+      await StockfishSingleton().cancelAllEvaluations();
 
-    Position newPosition = currentState.startingPosition!;
-    Move? newLastMove;
+      Position newPosition = currentState.startingPosition!;
+      Move? newLastMove;
 
-    for (int i = 0; i <= moveIndex; i++) {
-      newLastMove = currentState.allMoves[i];
-      newPosition = newPosition.play(currentState.allMoves[i]);
-    }
+      for (int i = 0; i <= moveIndex; i++) {
+        newLastMove = currentState.allMoves[i];
+        newPosition = newPosition.play(currentState.allMoves[i]);
+      }
 
-    state = AsyncValue.data(
-      currentState.copyWith(
-        position: newPosition,
-        lastMove: newLastMove,
-        currentMoveIndex: moveIndex,
-        evaluation: null, // Reset evaluation for new position
-        mate: null,
-        isEvaluating: true, // Show loading indicator while evaluating
-        analysisState: currentState.analysisState.copyWith(
-          suggestionLines: const [],
+      state = AsyncValue.data(
+        currentState.copyWith(
+          position: newPosition,
+          lastMove: newLastMove,
+          currentMoveIndex: moveIndex,
+          evaluation: null, // Reset evaluation for new position
+          mate: null,
+          isEvaluating: true, // Show loading indicator while evaluating
+          analysisState: currentState.analysisState.copyWith(
+            suggestionLines: const [],
+          ),
+          principalVariations: const [],
+          selectedVariantIndex: null,
+          variantMovePointer: const [],
+          variantBaseFen: null,
+          variantBaseMovePointer: null,
+          variantBaseLastMove: null,
+          variantBaseMoveIndex: null,
+          shapes: const ISet.empty(),
         ),
-        principalVariations: const [],
-        selectedVariantIndex: null,
-        variantMovePointer: const [],
-        variantBaseFen: null,
-        variantBaseMovePointer: null,
-        variantBaseLastMove: null,
-        variantBaseMoveIndex: null,
-        shapes: const ISet.empty(),
-      ),
-    );
+      );
 
-    _cancelEvaluation = false;
-    _updateEvaluation();
-    _isProcessingMove = false;
+      _cancelEvaluation = false;
+      _updateEvaluation();
+    } finally {
+      _isProcessingMove = false;
+    }
   }
 
   void evaluateCurrentPosition() {
@@ -1149,7 +1153,7 @@ class ChessBoardScreenNotifierNew
     selectVariant(targetIndex);
   }
 
-  void moveForward() {
+  Future<void> moveForward() async {
     final currentState = state.value;
     // Bottom nav arrows should navigate within the active context
     // (analysis variation or main game) without forcing a mode change
@@ -1171,10 +1175,10 @@ class ChessBoardScreenNotifierNew
       return;
     }
 
-    goToMove(currentState.currentMoveIndex + 1);
+    await goToMove(currentState.currentMoveIndex + 1);
   }
 
-  void moveBackward() {
+  Future<void> moveBackward() async {
     final currentState = state.value;
     if (currentState == null || _isProcessingMove) {
       return;
@@ -1194,7 +1198,7 @@ class ChessBoardScreenNotifierNew
       return;
     }
 
-    goToMove(currentState.currentMoveIndex - 1);
+    await goToMove(currentState.currentMoveIndex - 1);
   }
 
   // REMOVED: toggleAnalysisMode - analysis mode is always active and cannot be toggled
@@ -3697,7 +3701,7 @@ class ChessBoardScreenNotifierNew
         if (canAdvance && !_isProcessingMove) {
           // Light haptic feedback on each step
           HapticFeedback.selectionClick();
-          moveForward();
+          unawaited(moveForward());
         } else {
           // Final haptic feedback when reaching end
           HapticFeedback.lightImpact();
@@ -3727,7 +3731,7 @@ class ChessBoardScreenNotifierNew
         if (canRetreat && !_isProcessingMove) {
           // Light haptic feedback on each step
           HapticFeedback.selectionClick();
-          moveBackward();
+          unawaited(moveBackward());
         } else {
           // Final haptic feedback when reaching start
           HapticFeedback.lightImpact();
