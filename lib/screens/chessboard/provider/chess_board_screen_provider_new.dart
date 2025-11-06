@@ -1691,6 +1691,24 @@ class ChessBoardScreenNotifierNew
     state = AsyncValue.data(currentState.copyWith(isPlaying: false));
   }
 
+  Future<void> onBecameInvisible() async {
+    _cancelEvaluation = true;
+    _activeEvalKey = null;
+    _activeEvalRequestId = null;
+    _activeEvalStartTime = null;
+    await StockfishSingleton().cancelAllEvaluations();
+    _cancelEvaluation = false;
+  }
+
+  Future<void> onBecameVisible({bool force = true}) async {
+    await StockfishSingleton().cancelAllEvaluations();
+    _cancelEvaluation = false;
+    _activeEvalKey = null;
+    _activeEvalRequestId = null;
+    _activeEvalStartTime = null;
+    _updateEvaluation(force: force);
+  }
+
   Color getMoveColor(String move, int moveIndex) {
     final st = state.value!;
     if (st.isLoadingMoves) {
