@@ -2443,6 +2443,24 @@ class ChessBoardScreenNotifierNew
 
         pvLines = List<AnalysisLine>.from(normalizedCachedPv);
         evaluation = cachedEval;
+        primaryEval = CloudEval(
+          fen: fen,
+          knodes: 0,
+          depth: 0,
+          pvs: normalizedCachedPv
+              .map(
+                (line) => Pv(
+                  moves: line.moves.map((m) => m.uci).join(' '),
+                  cp:
+                      line.mate != null
+                          ? line.mate!.sign * 100000
+                          : ((line.evaluation ?? cachedEval) * 100).round(),
+                  isMate: line.mate != null,
+                  mate: line.mate,
+                ),
+              )
+              .toList(growable: false),
+        );
         usedCachedResult = true;
         skipCascade = true;
 
@@ -2594,10 +2612,17 @@ class ChessBoardScreenNotifierNew
             debugPrint(
               '🎯 EVAL: Building principal variations from cloud source...',
             );
-            pvLines = await _buildPrincipalVariations(fen, cascadeEval.pvs);
-            if (pvLines.length > configuredMultiPV) {
-              pvLines = pvLines.take(configuredMultiPV).toList(growable: false);
+            final cascadeLines = await _buildPrincipalVariations(
+              fen,
+              cascadeEval.pvs,
+            );
+            var mergedCascadeLines = _mergePvProgress(pvLines, cascadeLines);
+            if (mergedCascadeLines.length > configuredMultiPV) {
+              mergedCascadeLines = mergedCascadeLines
+                  .take(configuredMultiPV)
+                  .toList(growable: false);
             }
+            pvLines = mergedCascadeLines;
 
             if (pvLines.isEmpty && cascadeEval.pvs.isNotEmpty) {
               debugPrint(
@@ -2636,8 +2661,12 @@ class ChessBoardScreenNotifierNew
                 }
               }
 
-              pvLines = await _buildPrincipalVariations(fen, cascadeEval.pvs);
-              if (pvLines.isNotEmpty) {
+              final retryLines = await _buildPrincipalVariations(
+                fen,
+                cascadeEval.pvs,
+              );
+              if (retryLines.isNotEmpty) {
+                pvLines = _mergePvProgress(pvLines, retryLines);
                 debugPrint('✅ RETRY: Cloud PV building succeeded on retry');
               } else {
                 debugPrint(
@@ -2717,7 +2746,7 @@ class ChessBoardScreenNotifierNew
         final multiPV = configuredMultiPV;
         final isCurrentlyVisible = currentVisiblePage == index;
         EngineSearchProgress? pendingProgress;
-        await StockfishSingleton().evaluatePosition(
+        final stockfishResult = await StockfishSingleton().evaluatePosition(
           fen,
           depth: deepTarget,
           multiPV: multiPV,
@@ -2816,6 +2845,75 @@ class ChessBoardScreenNotifierNew
             });
           },
         );
+
+        if (!mounted || _cancelEvaluation) return;
+        if (stockfishResult.pvs.isNotEmpty) {
+          primaryEval = CloudEval(
+            fen: fen,
+            knodes: stockfishResult.knodes,
+            depth: stockfishResult.depth,
+            pvs: stockfishResult.pvs,
+          );
+          final finalProgress = EngineSearchProgress(
+            depth: stockfishResult.depth,
+            kiloNodes: stockfishResult.knodes,
+            fenFragment: fen,
+          );
+          depthTracker.update(
+            component: EngineComponent.evaluationGauge,
+            progress: finalProgress,
+            context: 'progressive final',
+          );
+          depthTracker.update(
+            component: EngineComponent.principalVariation,
+            progress: finalProgress,
+            context: 'progressive final',
+          );
+          if (pvLines.isEmpty) {
+            var finalLines = await _buildPrincipalVariations(
+              fen,
+              stockfishResult.pvs,
+            );
+            if (finalLines.isNotEmpty) {
+              if (finalLines.length > configuredMultiPV) {
+                finalLines = finalLines
+                    .take(configuredMultiPV)
+                    .toList(growable: false);
+              }
+              pvLines = _mergePvProgress(pvLines, finalLines);
+              final currentState = state.value;
+              if (currentState != null) {
+                final basePointer =
+                    currentState.isAnalysisMode
+                        ? currentState.analysisState.movePointer
+                        : null;
+                final updatedState = currentState.copyWith(
+                  evaluation: _getConsistentEvaluation(
+                    stockfishResult.pvs.first.cp / 100.0,
+                    fen,
+                  ),
+                  isEvaluating: false,
+                  principalVariations: pvLines,
+                  analysisState: currentState.analysisState.copyWith(
+                    suggestionLines: pvLines,
+                  ),
+                );
+                state = AsyncValue.data(updatedState);
+                final currentPositionFinal =
+                    updatedState.isAnalysisMode
+                        ? updatedState.analysisState.position
+                        : updatedState.position!;
+                _applyPrincipalVariationResults(
+                  currentState: updatedState,
+                  currentPosition: currentPositionFinal,
+                  baseFen: fen,
+                  baseMovePointer: basePointer,
+                  pvLines: pvLines,
+                );
+              }
+            }
+          }
+        }
       } catch (e, stack) {
         debugPrint(
           '🎯 EVAL ERROR: Stockfish progressive run failed for $fen: $e',
@@ -2930,15 +3028,19 @@ class ChessBoardScreenNotifierNew
                       configuredMultiPV <= 0 ||
                       retryPvLines.length >= configuredMultiPV;
 
+                  final mergedRetryLines = _mergePvProgress(
+                    latestState.principalVariations,
+                    retryPvLines,
+                  );
                   state = AsyncValue.data(
                     latestState.copyWith(
-                      principalVariations: retryPvLines,
+                      principalVariations: mergedRetryLines,
                       isEvaluating:
                           hasCompletePv ? false : latestState.isEvaluating,
                       variantBaseFen: fen,
                       variantBaseMovePointer: basePointer,
                       analysisState: latestState.analysisState.copyWith(
-                        suggestionLines: retryPvLines,
+                        suggestionLines: mergedRetryLines,
                       ),
                     ),
                   );
@@ -2948,7 +3050,7 @@ class ChessBoardScreenNotifierNew
                     currentPosition: latestPos!,
                     baseFen: fen,
                     baseMovePointer: basePointer,
-                    pvLines: retryPvLines,
+                    pvLines: mergedRetryLines,
                   );
                 } else {
                   debugPrint(
@@ -3730,6 +3832,7 @@ List<Map<String, dynamic>> _analysisLinesWorker(Map<String, dynamic> payload) {
       var position = basePosition;
       final uciMoves = <String>[];
       final sanMoves = <String>[];
+      var valid = true;
 
       for (final token in tokens) {
         final parsedMove = Move.parse(token);
@@ -3737,6 +3840,7 @@ List<Map<String, dynamic>> _analysisLinesWorker(Map<String, dynamic> payload) {
           debugPrint(
             '⚠️ UCI->SAN failed: "$token" could not be parsed as a valid move',
           );
+          valid = false;
           break;
         }
         try {
@@ -3756,18 +3860,12 @@ List<Map<String, dynamic>> _analysisLinesWorker(Map<String, dynamic> payload) {
               '   Piece at ${origin.name}: ${piece?.role.name ?? 'none'} ${piece?.color.name ?? ''}',
             );
           }
-          // Fallback: keep the UCI token as a placeholder SAN and try to continue
-          uciMoves.add(token);
-          sanMoves.add(token);
-          try {
-            position = position.play(parsedMove);
-          } catch (_) {
-            break;
-          }
+          valid = false;
+          break;
         }
       }
 
-      if (uciMoves.isEmpty) {
+      if (!valid || uciMoves.isEmpty) {
         continue;
       }
 
