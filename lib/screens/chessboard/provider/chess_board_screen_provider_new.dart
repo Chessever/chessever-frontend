@@ -3730,7 +3730,6 @@ List<Map<String, dynamic>> _analysisLinesWorker(Map<String, dynamic> payload) {
       var position = basePosition;
       final uciMoves = <String>[];
       final sanMoves = <String>[];
-      var valid = true;
 
       for (final token in tokens) {
         final parsedMove = Move.parse(token);
@@ -3738,7 +3737,6 @@ List<Map<String, dynamic>> _analysisLinesWorker(Map<String, dynamic> payload) {
           debugPrint(
             '⚠️ UCI->SAN failed: "$token" could not be parsed as a valid move',
           );
-          valid = false;
           break;
         }
         try {
@@ -3758,12 +3756,18 @@ List<Map<String, dynamic>> _analysisLinesWorker(Map<String, dynamic> payload) {
               '   Piece at ${origin.name}: ${piece?.role.name ?? 'none'} ${piece?.color.name ?? ''}',
             );
           }
-          valid = false;
-          break;
+          // Fallback: keep the UCI token as a placeholder SAN and try to continue
+          uciMoves.add(token);
+          sanMoves.add(token);
+          try {
+            position = position.play(parsedMove);
+          } catch (_) {
+            break;
+          }
         }
       }
 
-      if (!valid || uciMoves.isEmpty) {
+      if (uciMoves.isEmpty) {
         continue;
       }
 
