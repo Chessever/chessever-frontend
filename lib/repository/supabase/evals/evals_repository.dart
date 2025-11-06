@@ -14,12 +14,13 @@ class EvalRepository extends BaseRepository {
   final ref;
 
   Future<Evals> upsert(Evals eval) => handleApiCall(() async {
-    final existingRecord = await supabase
-        .from('evals')
-        .select()
-        .eq('position_id', eval.positionId)
-        .eq('depth', eval.depth)
-        .maybeSingle();
+    final existingRecord =
+        await supabase
+            .from('evals')
+            .select()
+            .eq('position_id', eval.positionId)
+            .eq('depth', eval.depth)
+            .maybeSingle();
 
     if (existingRecord != null) {
       final id = existingRecord['id'] as int?;
@@ -30,16 +31,19 @@ class EvalRepository extends BaseRepository {
           'pvs': eval.pvs,
           if (eval.multiPv != null) 'multi_pv': eval.multiPv,
         };
-        final updated = await supabase
-            .from('evals')
-            .update(updatePayload)
-            .eq('id', id)
-            .select()
-            .single();
+        final updated =
+            await supabase
+                .from('evals')
+                .update(updatePayload)
+                .eq('id', id)
+                .select()
+                .single();
         print('Eval record updated for position ${eval.positionId} (id=$id)');
         return Evals.fromJson(updated);
       }
-      print('Eval record exists without id for position ${eval.positionId}, reusing existing data');
+      print(
+        'Eval record exists without id for position ${eval.positionId}, reusing existing data',
+      );
       return Evals.fromJson(Map<String, dynamic>.from(existingRecord));
     }
 
@@ -64,7 +68,7 @@ class EvalRepository extends BaseRepository {
         return data.map<Evals>((json) => Evals.fromJson(json)).toList();
       });
 
-  Future<Evals?> fetchFromSupabase(String fen) async {
+  Future<Evals?> fetchFromSupabase(String fen, {int? desiredMultiPv}) async {
     final posRepo = ref.read(positionRepositoryProvider);
 
     final pos = await posRepo.getByFen(fen);
@@ -73,7 +77,40 @@ class EvalRepository extends BaseRepository {
     final evals = await getByPositionId(pos.id);
     if (evals.isEmpty) return null;
 
-    return evals.first;
+    Evals? selectBestMatch(Iterable<Evals> candidates) {
+      if (candidates.isEmpty) return null;
+      final sorted =
+          candidates.toList()..sort((a, b) {
+            final multiA = (a.multiPv ?? a.pvs.length);
+            final multiB = (b.multiPv ?? b.pvs.length);
+            if (multiB != multiA)
+              return multiB.compareTo(multiA); // prefer higher PV count
+            if (b.depth != a.depth)
+              return b.depth.compareTo(a.depth); // then deeper depth
+            return 0;
+          });
+      return sorted.first;
+    }
+
+    if (desiredMultiPv != null && desiredMultiPv > 0) {
+      final matchingOrBetter = evals.where(
+        (e) =>
+            (e.multiPv ?? e.pvs.length) >= desiredMultiPv && e.pvs.isNotEmpty,
+      );
+      final exactOrBetter = selectBestMatch(matchingOrBetter);
+      if (exactOrBetter != null) {
+        return exactOrBetter;
+      }
+
+      // No records with enough PVs – fall back to best available (highest PV count / depth)
+      final fallback = selectBestMatch(evals.where((e) => e.pvs.isNotEmpty));
+      if (fallback != null) {
+        return fallback;
+      }
+      return null;
+    }
+
+    return selectBestMatch(evals.where((e) => e.pvs.isNotEmpty));
   }
 
   /// Batch fetch evals for multiple FENs - much faster than individual fetches
@@ -117,8 +154,19 @@ class EvalRepository extends BaseRepository {
         final eval = Evals.fromJson(evalJson);
         final posId = eval.positionId;
 
-        if (!evalsByPositionId.containsKey(posId) ||
-            evalsByPositionId[posId]!.depth < eval.depth) {
+        if (!evalsByPositionId.containsKey(posId)) {
+          evalsByPositionId[posId] = eval;
+          continue;
+        }
+
+        final existing = evalsByPositionId[posId]!;
+        final existingMulti = existing.multiPv ?? existing.pvs.length;
+        final candidateMulti = eval.multiPv ?? eval.pvs.length;
+
+        final shouldReplace =
+            candidateMulti > existingMulti ||
+            (candidateMulti == existingMulti && eval.depth > existing.depth);
+        if (shouldReplace) {
           evalsByPositionId[posId] = eval;
         }
       }
@@ -202,7 +250,9 @@ class EvalRepository extends BaseRepository {
     }
 
     if (legacyPerspective) {
-      print('🔧 SUPABASE: Normalized legacy evaluation for $fen to white perspective');
+      print(
+        '🔧 SUPABASE: Normalized legacy evaluation for $fen to white perspective',
+      );
     }
 
     return CloudEval(

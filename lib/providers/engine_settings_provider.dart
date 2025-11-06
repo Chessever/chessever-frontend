@@ -160,8 +160,8 @@ class EngineSettings {
     this.showEngineGauge = true,
     this.showDepthOverlay = true,
     this.showPvArrows = true,
-    this.searchTimeIndex = 2,
-    int principalVariationIndex = 2, // Default to 3 lines (index 2)
+    this.searchTimeIndex = 5,
+    int principalVariationIndex = 4, // Default to 5 lines (index 4)
   }) : principalVariationIndex =
            principalVariationIndex < 0
                ? 0
