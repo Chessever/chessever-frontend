@@ -347,6 +347,22 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
 
         // Analysis mode is already enabled by default in the provider initialization
         // No need to toggle it here
+        try {
+          final initialGame = _resolveGameForIndex(_currentPageIndex);
+          final params = ChessBoardProviderParams(
+            game: initialGame,
+            index: _currentPageIndex,
+          );
+          final notifier =
+              ref.read(chessBoardScreenProviderNew(params).notifier);
+          unawaited(
+            notifier.parseMoves().whenComplete(
+              () => notifier.onBecameVisible(force: true),
+            ),
+          );
+        } catch (e) {
+          debugPrint('Error preparing initial game evaluation: $e');
+        }
       }
     });
   }
@@ -365,6 +381,20 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
     // CRITICAL: Update the global provider to track which page is visible
     // This prevents off-screen games from playing audio
     ref.read(currentlyVisiblePageIndexProvider.notifier).state = newIndex;
+
+    // Cancel active evaluations on the board that just went off-screen
+    try {
+      final prevGame = _resolveGameForIndex(previousIndex);
+      final prevParams = ChessBoardProviderParams(
+        game: prevGame,
+        index: previousIndex,
+      );
+      final prevNotifier =
+          ref.read(chessBoardScreenProviderNew(prevParams).notifier);
+      unawaited(prevNotifier.onBecameInvisible());
+    } catch (e) {
+      debugPrint('Error cancelling previous game evaluation: $e');
+    }
 
     // OPTIMIZED: Don't read provider state during page changes - just manage the chess board providers
     // This prevents unnecessary provider lookups that could trigger rebuilds
@@ -389,13 +419,16 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
       if (mounted) {
         try {
           final newGame = _resolveGameForIndex(newIndex);
-          ref
-              .read(
-                chessBoardScreenProviderNew(
-                  ChessBoardProviderParams(game: newGame, index: newIndex),
-                ).notifier,
-              )
-              .parseMoves();
+          final params = ChessBoardProviderParams(
+            game: newGame,
+            index: newIndex,
+          );
+          final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+          unawaited(
+            notifier.parseMoves().whenComplete(
+              () => notifier.onBecameVisible(force: true),
+            ),
+          );
         } catch (e) {
           debugPrint('Error parsing moves for new index: $e');
         }
@@ -2176,6 +2209,7 @@ class _PrincipalVariationListState
   bool _pendingPageJumpAnimated = false;
   int? _pendingVariantSelectionIndex;
   List<AnalysisLine> _lastNonEmptyLines = const [];
+  String? _lastPositionKey;
 
   @override
   void initState() {
@@ -2195,6 +2229,7 @@ class _PrincipalVariationListState
     _lastNonEmptyLines = lines;
     _lastUserSelectedIndex = lines.isEmpty ? null : _currentPage;
     _pageController = PageController(initialPage: _currentPage);
+    _lastPositionKey = _derivePositionKey(widget.state);
   }
 
   @override
@@ -2204,46 +2239,56 @@ class _PrincipalVariationListState
     final lines = widget.state.principalVariations.toList(growable: false);
     final pageCount = lines.length;
     _lastNonEmptyLines = lines;
+    final positionKey = _derivePositionKey(widget.state);
+    final positionChanged = positionKey != _lastPositionKey;
+    _lastPositionKey = positionKey;
 
+    // Preserve user selection reference when PV list temporarily empties
     if (pageCount == 0) {
+      _lastUserSelectedIndex ??=
+          oldWidget.state.selectedVariantIndex ?? _currentPage;
       _currentPage = 0;
-      _lastUserSelectedIndex = null;
-    } else if (_currentPage >= pageCount) {
+      return;
+    }
+
+    final int maxIndex = pageCount - 1;
+
+    if (_currentPage > maxIndex) {
       _currentPage = pageCount - 1;
-      if (_lastUserSelectedIndex != null &&
-          _lastUserSelectedIndex! >= pageCount) {
-        _lastUserSelectedIndex = pageCount - 1;
-      }
     }
 
     final newSelectedIndex = widget.state.selectedVariantIndex;
-    final oldSelectedIndex = oldWidget.state.selectedVariantIndex;
     final userSelected = _lastUserSelectedIndex;
 
-    final bool shouldRestoreUserSelection =
-        userSelected != null &&
-        oldSelectedIndex == userSelected &&
-        (newSelectedIndex == null || newSelectedIndex != userSelected) &&
-        userSelected < pageCount;
+    int? targetIndex;
 
-    if (shouldRestoreUserSelection) {
-      _currentPage = userSelected;
-      _lastUserSelectedIndex = userSelected;
-      _jumpToPage(userSelected, animate: false);
-      _scheduleVariantSelection(userSelected);
-    } else if (pageCount > 0 &&
-        newSelectedIndex != null &&
-        newSelectedIndex < pageCount &&
-        newSelectedIndex != _currentPage) {
-      _currentPage = newSelectedIndex;
+    if (positionChanged) {
+      targetIndex = ((newSelectedIndex ?? 0).clamp(0, maxIndex)).toInt();
+      _lastUserSelectedIndex = targetIndex;
+    } else if (newSelectedIndex != null && newSelectedIndex <= maxIndex) {
+      targetIndex = newSelectedIndex;
       _lastUserSelectedIndex = newSelectedIndex;
-      _jumpToPage(newSelectedIndex, animate: true);
-    } else if (pageCount > 0) {
-      _jumpToPage(_currentPage, animate: false);
-      if (newSelectedIndex != null &&
-          newSelectedIndex < pageCount &&
-          newSelectedIndex != _lastUserSelectedIndex) {
-        _lastUserSelectedIndex = newSelectedIndex;
+    } else if (userSelected != null && userSelected <= maxIndex) {
+      targetIndex = userSelected;
+    } else if (_currentPage > maxIndex) {
+      targetIndex = maxIndex;
+    }
+
+    if (targetIndex != null) {
+      if (targetIndex != _currentPage) {
+        final animate = positionChanged
+            ? false
+            : (newSelectedIndex != null && newSelectedIndex == targetIndex);
+        _currentPage = targetIndex;
+        _jumpToPage(targetIndex, animate: animate);
+      } else {
+        _jumpToPage(_currentPage, animate: false);
+      }
+
+      if ((newSelectedIndex == null || newSelectedIndex != targetIndex) &&
+          _lastUserSelectedIndex != null &&
+          _lastUserSelectedIndex! <= maxIndex) {
+        _scheduleVariantSelection(_lastUserSelectedIndex!);
       }
     }
   }
@@ -2713,6 +2758,12 @@ class _PrincipalVariationListState
   int get maxPageIndex {
     final count = _lastNonEmptyLines.length;
     return count == 0 ? 0 : count - 1;
+  }
+
+  String _derivePositionKey(ChessBoardStateNew state) {
+    final pos =
+        state.isAnalysisMode ? state.analysisState.position : state.position;
+    return pos?.fen ?? state.game.fen ?? '';
   }
 
   String _formatEvalLabel(AnalysisLine line) {
