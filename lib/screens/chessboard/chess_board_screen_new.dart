@@ -2171,6 +2171,10 @@ class _PrincipalVariationListState
     extends ConsumerState<_PrincipalVariationList> {
   late PageController _pageController;
   int _currentPage = 0;
+  int? _lastUserSelectedIndex;
+  int? _pendingPageJump;
+  bool _pendingPageJumpAnimated = false;
+  int? _pendingVariantSelectionIndex;
   List<AnalysisLine> _lastNonEmptyLines = const [];
 
   @override
@@ -2180,6 +2184,8 @@ class _PrincipalVariationListState
     final initialIndex = widget.state.selectedVariantIndex ?? 0;
     // Ensure initial page is within bounds
     _currentPage = lines.isEmpty ? 0 : initialIndex.clamp(0, lines.length - 1);
+    _lastNonEmptyLines = lines;
+    _lastUserSelectedIndex = lines.isEmpty ? null : _currentPage;
     _pageController = PageController(initialPage: _currentPage);
   }
 
@@ -2187,18 +2193,49 @@ class _PrincipalVariationListState
   void didUpdateWidget(_PrincipalVariationList oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    // Update page when variant selection changes externally
     final lines = widget.state.principalVariations.toList(growable: false);
-    final newIndex = widget.state.selectedVariantIndex ?? 0;
-    // Check bounds against actual number of lines
-    if (newIndex != _currentPage && newIndex < lines.length) {
-      _currentPage = newIndex;
-      if (_pageController.hasClients) {
-        _pageController.animateToPage(
-          newIndex,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-        );
+    final pageCount = lines.length;
+    _lastNonEmptyLines = lines;
+
+    if (pageCount == 0) {
+      _currentPage = 0;
+      _lastUserSelectedIndex = null;
+    } else if (_currentPage >= pageCount) {
+      _currentPage = pageCount - 1;
+      if (_lastUserSelectedIndex != null &&
+          _lastUserSelectedIndex! >= pageCount) {
+        _lastUserSelectedIndex = pageCount - 1;
+      }
+    }
+
+    final newSelectedIndex = widget.state.selectedVariantIndex;
+    final oldSelectedIndex = oldWidget.state.selectedVariantIndex;
+    final userSelected = _lastUserSelectedIndex;
+
+    final bool shouldRestoreUserSelection =
+        userSelected != null &&
+        oldSelectedIndex == userSelected &&
+        (newSelectedIndex == null || newSelectedIndex != userSelected) &&
+        userSelected < pageCount;
+
+    if (shouldRestoreUserSelection) {
+      _currentPage = userSelected;
+      _lastUserSelectedIndex = userSelected;
+      _jumpToPage(userSelected, animate: false);
+      _scheduleVariantSelection(userSelected);
+    } else if (pageCount > 0 &&
+        newSelectedIndex != null &&
+        newSelectedIndex < pageCount &&
+        newSelectedIndex != _currentPage) {
+      _currentPage = newSelectedIndex;
+      _lastUserSelectedIndex = newSelectedIndex;
+      _jumpToPage(newSelectedIndex, animate: true);
+    } else if (pageCount > 0) {
+      _jumpToPage(_currentPage, animate: false);
+      if (newSelectedIndex != null &&
+          newSelectedIndex < pageCount &&
+          newSelectedIndex != _lastUserSelectedIndex) {
+        _lastUserSelectedIndex = newSelectedIndex;
       }
     }
   }
@@ -2229,15 +2266,17 @@ class _PrincipalVariationListState
     // Use multiPvForLichess() which caps at 5
     final multiPV = engineSettings?.multiPvForLichess() ?? 3;
     final currentFen = position?.fen ?? '';
-    final evalAsync = ref.watch(cascadeEvalProviderForBoard(
-      CascadeEvalParams(fen: currentFen, multiPV: multiPV),
-    ));
+    final evalAsync = ref.watch(
+      cascadeEvalProviderForBoard(
+        CascadeEvalParams(fen: currentFen, multiPV: multiPV),
+      ),
+    );
 
     // Check if position is terminal (game over)
     final isGameOver = position?.isGameOver ?? false;
 
-    const double _basePvHeight = 78;
-    final double pvCardHeight = _basePvHeight.h;
+    const double basePvHeight = 78;
+    final double pvCardHeight = basePvHeight.h;
 
     // Get PV lines from state - evalAsync is only watched to trigger rebuilds
     late List<AnalysisLine> lines;
@@ -2262,9 +2301,10 @@ class _PrincipalVariationListState
 
     // After resolving provider state, prepare display list
     // Clamp number of cards to user's MultiPV selection
-    final clampedLines = (lines.length > multiPV)
-        ? lines.take(multiPV).toList(growable: false)
-        : lines.toList(growable: false);
+    final clampedLines =
+        (lines.length > multiPV)
+            ? lines.take(multiPV).toList(growable: false)
+            : lines.toList(growable: false);
 
     // Determine loading state for PV cards
     // Skeleton shown when there are no PVs (unless game over)
@@ -2324,94 +2364,20 @@ class _PrincipalVariationListState
                       ),
                     )
                     : PageView.builder(
-                        controller: _pageController,
-                        onPageChanged: (pageIndex) {
-                          setState(() {
-                            _currentPage = pageIndex;
-                          });
-                          // Update variant selection when page changes
-                          notifier.selectVariant(pageIndex);
-                        },
-                        itemCount: pageCount,
-                        itemBuilder: (context, index) {
-                          if (showSkeleton) {
-                            final activeVariantColor = notifier.getVariantColor(0, true);
-                            final borderColor = activeVariantColor.withValues(alpha: 0.7);
-                            final backgroundColor = activeVariantColor.withValues(alpha: 0.15);
-                            final badgeBackgroundColor = activeVariantColor.withValues(alpha: 0.3);
-                            final badgeBorderColor = activeVariantColor.withValues(alpha: 0.6);
-
-                            return Container(
-                              width: MediaQuery.of(context).size.width - 40.sp,
-                              margin: EdgeInsets.symmetric(horizontal: 2.sp),
-                              decoration: BoxDecoration(
-                                border: Border.all(
-                                  color: borderColor,
-                                  width: 1.5,
-                                ),
-                                borderRadius: BorderRadius.circular(6.sp),
-                                color: backgroundColor,
-                              ),
-                              clipBehavior: Clip.hardEdge,
-                              child: Padding(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: 12.sp,
-                                  vertical: 10.sp,
-                                ),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Container(
-                                      margin: EdgeInsets.only(right: 10.sp),
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: 8.sp,
-                                        vertical: 4.sp,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: badgeBackgroundColor,
-                                        borderRadius: BorderRadius.circular(4.sp),
-                                        border: Border.all(color: badgeBorderColor, width: 1.0),
-                                      ),
-                                      alignment: Alignment.center,
-                                      child: Text(
-                                        '...',
-                                        style: AppTypography.textXsMedium.copyWith(
-                                          color: kWhiteColor,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child: Text(
-                                        '...',
-                                        softWrap: true,
-                                        style: AppTypography.textXsMedium.copyWith(
-                                          color: kWhiteColor.withValues(alpha: 0.9),
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          }
-
-                          final variantIndex = index;
-                          final line = clampedLines[index];
-                          final isSelected =
-                              widget.state.selectedVariantIndex == variantIndex;
-
-                          final sanMoves = _formatPv(
-                            line.sanMoves,
-                            baseMoveNumber,
-                            isWhiteToMove,
-                          );
-                          final evalText = _formatEvalLabel(line);
-
-                          // Get variant color matching the arrow color
+                      controller: _pageController,
+                      onPageChanged: (pageIndex) {
+                        setState(() {
+                          _currentPage = pageIndex;
+                          _lastUserSelectedIndex = pageIndex;
+                        });
+                        // Update variant selection when page changes
+                        notifier.selectVariant(pageIndex);
+                      },
+                      itemCount: pageCount,
+                      itemBuilder: (context, index) {
+                        if (showSkeleton) {
                           final activeVariantColor = notifier.getVariantColor(
-                            variantIndex,
+                            0,
                             true,
                           );
                           final borderColor = activeVariantColor.withValues(
@@ -2425,119 +2391,214 @@ class _PrincipalVariationListState
                           final badgeBorderColor = activeVariantColor
                               .withValues(alpha: 0.6);
 
-                          // Never darken cards - show data immediately and update silently
-
-                          return GestureDetector(
-                            // DISABLED: PV cards are now read-only
-                            // onTap:
-                            //     isEvaluating
-                            //         ? null
-                            //         : () {
-                            //           HapticFeedback.selectionClick();
-                            //           if (isSelected) {
-                            //             notifier.playVariantMoveForward();
-                            //           } else {
-                            //             notifier.playPrincipalVariationMove(
-                            //               line,
-                            //             );
-                            //           }
-                            //         },
-                            child: Container(
-                              width:
-                                  MediaQuery.of(context).size.width - 40.sp,
-                              margin: EdgeInsets.symmetric(horizontal: 2.sp),
-                              decoration: BoxDecoration(
-                                border: Border.all(
-                                  color: borderColor,
-                                  width: isSelected ? 2.0 : 1.5,
-                                ),
-                                borderRadius: BorderRadius.circular(6.sp),
-                                color: backgroundColor,
+                          return Container(
+                            width: MediaQuery.of(context).size.width - 40.sp,
+                            margin: EdgeInsets.symmetric(horizontal: 2.sp),
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: borderColor,
+                                width: 1.5,
                               ),
-                              clipBehavior: Clip.hardEdge,
-                              child: SingleChildScrollView(
-                                scrollDirection: Axis.vertical,
-                                physics: const BouncingScrollPhysics(),
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: 12.sp,
-                                  vertical: 10.sp,
-                                ),
-                                child: Row(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    Container(
-                                      margin: EdgeInsets.only(right: 10.sp),
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: 8.sp,
-                                        vertical: 4.sp,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: badgeBackgroundColor,
-                                        borderRadius: BorderRadius.circular(
-                                          4.sp,
-                                        ),
-                                        border: Border.all(
-                                          color: badgeBorderColor,
-                                          width: 1.0,
-                                        ),
-                                      ),
-                                      alignment: Alignment.center,
-                                      child: AnimatedSwitcher(
-                                        duration: const Duration(
-                                          milliseconds: 200,
-                                        ),
-                                        child: Text(
-                                          evalText,
-                                          key: ValueKey(evalText),
-                                          style: AppTypography.textXsMedium
-                                              .copyWith(
-                                                color: kWhiteColor,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                        ),
+                              borderRadius: BorderRadius.circular(6.sp),
+                              color: backgroundColor,
+                            ),
+                            clipBehavior: Clip.hardEdge,
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 12.sp,
+                                vertical: 10.sp,
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    margin: EdgeInsets.only(right: 10.sp),
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 8.sp,
+                                      vertical: 4.sp,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: badgeBackgroundColor,
+                                      borderRadius: BorderRadius.circular(4.sp),
+                                      border: Border.all(
+                                        color: badgeBorderColor,
+                                        width: 1.0,
                                       ),
                                     ),
-                                    Expanded(
+                                    alignment: Alignment.center,
+                                    child: Text(
+                                      '...',
+                                      style: AppTypography.textXsMedium
+                                          .copyWith(
+                                            color: kWhiteColor,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Text(
+                                      '...',
+                                      softWrap: true,
+                                      style: AppTypography.textXsMedium
+                                          .copyWith(
+                                            color: kWhiteColor.withValues(
+                                              alpha: 0.9,
+                                            ),
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
+
+                        final variantIndex = index;
+                        final line = clampedLines[index];
+                        final isSelected =
+                            widget.state.selectedVariantIndex == variantIndex;
+
+                        final sanMoves = _formatPv(
+                          line.sanMoves,
+                          baseMoveNumber,
+                          isWhiteToMove,
+                        );
+                        final evalText = _formatEvalLabel(line);
+
+                        // Get variant color matching the arrow color
+                        final activeVariantColor = notifier.getVariantColor(
+                          variantIndex,
+                          true,
+                        );
+                        final borderColor = activeVariantColor.withValues(
+                          alpha: 0.7,
+                        );
+                        final backgroundColor = activeVariantColor.withValues(
+                          alpha: 0.15,
+                        );
+                        final badgeBackgroundColor = activeVariantColor
+                            .withValues(alpha: 0.3);
+                        final badgeBorderColor = activeVariantColor.withValues(
+                          alpha: 0.6,
+                        );
+
+                        // Never darken cards - show data immediately and update silently
+
+                        return GestureDetector(
+                          // DISABLED: PV cards are now read-only
+                          // onTap:
+                          //     isEvaluating
+                          //         ? null
+                          //         : () {
+                          //           HapticFeedback.selectionClick();
+                          //           if (isSelected) {
+                          //             notifier.playVariantMoveForward();
+                          //           } else {
+                          //             notifier.playPrincipalVariationMove(
+                          //               line,
+                          //             );
+                          //           }
+                          //         },
+                          child: Container(
+                            width: MediaQuery.of(context).size.width - 40.sp,
+                            margin: EdgeInsets.symmetric(horizontal: 2.sp),
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: borderColor,
+                                width: isSelected ? 2.0 : 1.5,
+                              ),
+                              borderRadius: BorderRadius.circular(6.sp),
+                              color: backgroundColor,
+                            ),
+                            clipBehavior: Clip.hardEdge,
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.vertical,
+                              physics: const BouncingScrollPhysics(),
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 12.sp,
+                                vertical: 10.sp,
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    margin: EdgeInsets.only(right: 10.sp),
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 8.sp,
+                                      vertical: 4.sp,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: badgeBackgroundColor,
+                                      borderRadius: BorderRadius.circular(4.sp),
+                                      border: Border.all(
+                                        color: badgeBorderColor,
+                                        width: 1.0,
+                                      ),
+                                    ),
+                                    alignment: Alignment.center,
+                                    child: AnimatedSwitcher(
+                                      duration: const Duration(
+                                        milliseconds: 200,
+                                      ),
                                       child: Text(
-                                        sanMoves.join(' '),
-                                        softWrap: true,
+                                        evalText,
+                                        key: ValueKey(evalText),
                                         style: AppTypography.textXsMedium
                                             .copyWith(
-                                              color: kWhiteColor.withValues(
-                                                alpha: 0.9,
-                                              ),
+                                              color: kWhiteColor,
                                               fontWeight: FontWeight.w600,
                                             ),
                                       ),
                                     ),
-                                  ],
-                                ),
+                                  ),
+                                  Expanded(
+                                    child: Text(
+                                      sanMoves.join(' '),
+                                      softWrap: true,
+                                      style: AppTypography.textXsMedium
+                                          .copyWith(
+                                            color: kWhiteColor.withValues(
+                                              alpha: 0.9,
+                                            ),
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                          );
-                        },
-                      ),
+                          ),
+                        );
+                      },
+                    ),
           ),
           if (pageCount > 1) ...[
             SizedBox(height: 8.h),
-            SmoothPageIndicator(
-              controller: _pageController,
-              count: pageCount,
-              effect: ScrollingDotsEffect(
-                activeDotColor: notifier.getVariantColor(_currentPage, true),
-                dotColor: kWhiteColor.withValues(alpha: 0.3),
-                dotHeight: 6.w,
-                dotWidth: 6.w,
-                activeDotScale: 1.33,
-                spacing: 6.w,
-                maxVisibleDots: 5,
-              ),
-              onDotClicked: (index) {
-                _pageController.animateToPage(
-                  index,
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeInOut,
+            Builder(
+              builder: (context) {
+                final safeIndex = _currentPage.clamp(0, pageCount - 1);
+                final activeColor = notifier.getVariantColor(safeIndex, true);
+                return SmoothPageIndicator(
+                  controller: _pageController,
+                  count: pageCount,
+                  effect: ScrollingDotsEffect(
+                    activeDotColor: activeColor,
+                    dotColor: kWhiteColor.withValues(alpha: 0.3),
+                    dotHeight: 6.w,
+                    dotWidth: 6.w,
+                    activeDotScale: 1.33,
+                    spacing: 6.w,
+                    maxVisibleDots: 5,
+                  ),
+                  onDotClicked: (index) {
+                    _lastUserSelectedIndex = index;
+                    _pageController.animateToPage(
+                      index,
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                    );
+                  },
                 );
               },
             ),
@@ -2578,6 +2639,72 @@ class _PrincipalVariationListState
       formatted.add(sanMoves[i]);
     }
     return formatted;
+  }
+
+  void _jumpToPage(int targetPage, {required bool animate}) {
+    if (!mounted) return;
+    if (_lastNonEmptyLines.isEmpty) return;
+    final clampedTarget = targetPage.clamp(0, maxPageIndex);
+    if (_pendingPageJump == clampedTarget &&
+        _pendingPageJumpAnimated == animate) {
+      return;
+    }
+    _pendingPageJump = clampedTarget;
+    _pendingPageJumpAnimated = animate;
+
+    void performJump() {
+      if (!mounted) return;
+      if (!_pageController.hasClients) {
+        _pendingPageJump = null;
+        return;
+      }
+
+      final current =
+          _pageController.page?.round() ?? _pageController.initialPage;
+      if (current == clampedTarget) {
+        _pendingPageJump = null;
+        return;
+      }
+
+      if (animate) {
+        _pageController.animateToPage(
+          clampedTarget,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+      } else {
+        _pageController.jumpToPage(clampedTarget);
+      }
+      _pendingPageJump = null;
+    }
+
+    if (_pageController.hasClients) {
+      performJump();
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) => performJump());
+    }
+  }
+
+  void _scheduleVariantSelection(int index) {
+    if (!mounted) return;
+    if (_pendingVariantSelectionIndex == index) return;
+    _pendingVariantSelectionIndex = index;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final params = ChessBoardProviderParams(
+        game: widget.game,
+        index: widget.index,
+      );
+      ref
+          .read(chessBoardScreenProviderNew(params).notifier)
+          .selectVariant(index);
+      _pendingVariantSelectionIndex = null;
+    });
+  }
+
+  int get maxPageIndex {
+    final count = _lastNonEmptyLines.length;
+    return count == 0 ? 0 : count - 1;
   }
 
   String _formatEvalLabel(AnalysisLine line) {
