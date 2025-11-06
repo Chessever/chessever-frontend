@@ -2027,12 +2027,16 @@ class ChessBoardScreenNotifierNew
       final pvFenCompare = baseFen.split(' ').take(3).join(' ');
 
       if (baseFenCompare != pvFenCompare) {
-        debugPrint('🎯 PV RESULTS: REJECTING - PVs for different position');
-        debugPrint('   Expected base: $baseFenCompare');
-        debugPrint('   PV evaluated from: $pvFenCompare');
+        debugPrint('❌ PV APPLY: REJECTED - FEN mismatch');
+        debugPrint('   Current base: $baseFenCompare');
+        debugPrint('   PV from: $pvFenCompare');
+        debugPrint('   Lines: ${pvLines.length}');
         // Keep current state, don't apply these PVs
         return;
       }
+      debugPrint('✅ PV APPLY: FEN match confirmed, applying ${pvLines.length} lines');
+    } else {
+      debugPrint('✅ PV APPLY: No validation needed (new selection or extension), applying ${pvLines.length} lines');
     }
 
     // CRITICAL: Preserve evaluation, mate, and isEvaluating from currentState
@@ -2692,6 +2696,7 @@ class ChessBoardScreenNotifierNew
                 ),
               );
               debugPrint('🎯 QUICK PHASE: Applied ${quickPvLines.length} PVs to state (isEvaluating=false)');
+              debugPrint('   First PV: ${quickPvLines.isNotEmpty && quickPvLines[0].sanMoves.isNotEmpty ? quickPvLines[0].sanMoves.take(3).join(" ") : "none"}...');
               state = AsyncValue.data(updatedQuick);
 
               // Let the PV selection/shapes logic run against the quick PVs
@@ -2808,6 +2813,7 @@ class ChessBoardScreenNotifierNew
               );
               state = AsyncValue.data(stagedState);
               debugPrint('🎯 STAGED D:${stagedEval.depth}: Applied ${pvLines.length} PVs to state');
+              debugPrint('   First PV: ${pvLines.isNotEmpty && pvLines[0].sanMoves.isNotEmpty ? pvLines[0].sanMoves.take(3).join(" ") : "none"}...');
 
               _applyPrincipalVariationResults(
                 currentState: stagedState,
