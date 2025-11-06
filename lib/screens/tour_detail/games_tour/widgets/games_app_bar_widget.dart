@@ -2,11 +2,15 @@ import 'dart:async';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
 import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/round_drop_down.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -110,9 +114,18 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
 
   void _handleGameSelection(Games game) {
     try {
+      final tourDetail = ref.read(tourDetailScreenProvider).valueOrNull;
+      final mainTourId = tourDetail?.aboutTourModel.id;
+      if (mainTourId == null) return;
+
       ref.read(chessboardViewFromProviderNew.notifier).state =
           ChessboardView.tour;
       ref.read(gamesTourScreenProvider.notifier).clearSearch();
+
+      if (game.tourId != mainTourId) {
+        _openStageGame(game);
+        return;
+      }
 
       final gamesTourAsync = ref.read(gamesTourScreenProvider);
       if (!gamesTourAsync.hasValue) return;
@@ -122,14 +135,10 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
 
       final rounds = ref.read(gamesAppBarProvider).value!.gamesAppBarModels;
 
-      var arrangedGames = <GamesTourModel>[];
-      for (var a = 0; a < rounds.length; a++) {
-        for (var b = 0; b < allGames.length; b++) {
-          if (allGames[b].roundId == rounds[a].id) {
-            arrangedGames.add(allGames[b]);
-          }
-        }
-      }
+      final arrangedGames = _buildOrderedGamesForMainTour(
+        rounds: rounds,
+        primaryTourGames: allGames,
+      );
 
       final gameIndex = arrangedGames.indexWhere(
         (tourGame) => tourGame.gameId == game.id,
@@ -150,6 +159,95 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
     } catch (e) {
       debugPrint('Error handling game selection: $e');
     }
+  }
+
+  List<GamesTourModel> _buildOrderedGamesForMainTour({
+    required List<GamesAppBarModel> rounds,
+    required List<GamesTourModel> primaryTourGames,
+  }) {
+    final ordered = <GamesTourModel>[];
+
+    for (final round in rounds) {
+      List<GamesTourModel> roundGames;
+      if (_isSyntheticKnockoutRound(round.id)) {
+        final stageTourId = round.id.replaceFirst('$kKnockoutStagePrefix-', '');
+        if (stageTourId == round.id) {
+          roundGames =
+              primaryTourGames.where((game) => game.roundId == round.id).toList();
+        } else {
+          roundGames = _fetchStageGames(stageTourId);
+        }
+      } else {
+        roundGames =
+            primaryTourGames.where((game) => game.roundId == round.id).toList();
+      }
+
+      if (roundGames.isEmpty) continue;
+
+      if (_isKnockoutRoundId(round.id)) {
+        ordered.addAll(_orderMatchGames(roundGames));
+      } else {
+        ordered.addAll(roundGames);
+      }
+    }
+
+    return ordered;
+  }
+
+  void _openStageGame(Games game) {
+    final stageGames = _orderMatchGames(_fetchStageGames(game.tourId));
+    if (stageGames.isEmpty) return;
+
+    final stageIndex = stageGames.indexWhere((g) => g.gameId == game.id);
+    if (stageIndex == -1) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder:
+            (_) => ChessBoardScreenNew(
+              games: stageGames,
+              currentIndex: stageIndex,
+            ),
+      ),
+    );
+    _closeSearch();
+  }
+
+  List<GamesTourModel> _fetchStageGames(String tourId) {
+    if (tourId.isEmpty) return const [];
+    final stageState = ref.read(knockoutTournamentStateProvider(tourId));
+    if (stageState.allGames.isNotEmpty) {
+      return List<GamesTourModel>.from(stageState.allGames);
+    }
+
+    final stageAsync = ref.read(gamesTourProvider(tourId));
+    final rawGames = stageAsync.valueOrNull ?? const <Games>[];
+    return rawGames.map(GamesTourModel.fromGame).toList();
+  }
+
+  List<GamesTourModel> _orderMatchGames(List<GamesTourModel> games) {
+    if (games.isEmpty) return games;
+    if (!KnockoutMatchDetector.isKnockoutMatchFormat(games)) {
+      return games;
+    }
+    final ordered = <GamesTourModel>[];
+    final matches =
+        KnockoutMatchDetector.groupByMatchesAcrossAllRounds(games);
+    for (final matchGames in matches.values) {
+      ordered.addAll(matchGames);
+    }
+    return ordered;
+  }
+
+  bool _isSyntheticKnockoutRound(String roundId) {
+    return roundId.startsWith('$kKnockoutStagePrefix-');
+  }
+
+  bool _isKnockoutRoundId(String roundId) {
+    final lower = roundId.toLowerCase();
+    return lower.startsWith('$kKnockoutStagePrefix-') ||
+        lower.startsWith('knockout-round-');
   }
 
   @override
