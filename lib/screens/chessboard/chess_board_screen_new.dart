@@ -1703,13 +1703,34 @@ class _BoardWithSidebar extends ConsumerWidget {
                 SizedBox(
                   width: sideBarWidth,
                   height: boardSize,
-                  child: EvaluationBarWidget(
-                    width: sideBarWidth,
-                    height: boardSize,
-                    evaluation: state.evaluation,
-                    mate: state.mate,
-                    isEvaluating: state.isEvaluating,
-                    isFlipped: state.isBoardFlipped,
+                  child: Builder(
+                    builder: (context) {
+                      final activePosition =
+                          state.isAnalysisMode
+                              ? state.analysisState.position
+                              : state.position;
+                      final bool isWhiteToMove =
+                          activePosition?.turn != Side.black;
+
+                      double? displayEvaluation = state.evaluation;
+                      if (displayEvaluation != null && !isWhiteToMove) {
+                        displayEvaluation = -displayEvaluation;
+                      }
+
+                      int? displayMate = state.mate;
+                      if (displayMate != null && !isWhiteToMove) {
+                        displayMate = -displayMate;
+                      }
+
+                      return EvaluationBarWidget(
+                        width: sideBarWidth,
+                        height: boardSize,
+                        evaluation: displayEvaluation,
+                        mate: displayMate,
+                        isEvaluating: state.isEvaluating,
+                        isFlipped: state.isBoardFlipped,
+                      );
+                    },
                   ),
                 ),
               Stack(
