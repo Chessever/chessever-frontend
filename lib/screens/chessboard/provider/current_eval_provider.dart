@@ -294,9 +294,20 @@ Future<CloudEval> _fetchLichessWithFallback(
   dynamic lichess, // Type inferred from provider
 ) async {
   try {
-    return await lichess.getEval(fen, multiPv: multiPV);
+    if (_LichessRateLimitTracker.isInCooldown()) {
+      throw Exception('Lichess fetch skipped (rate limit cooldown)');
+    }
+    final result = await lichess
+        .getEval(fen, multiPv: multiPV)
+        .timeout(const Duration(milliseconds: 600));
+    _LichessRateLimitTracker.reset();
+    return result;
+  } on RateLimitException catch (e) {
+    _LichessRateLimitTracker.recordRateLimit();
+    throw Exception('Lichess fetch failed: $e');
+  } on TimeoutException catch (e) {
+    throw Exception('Lichess fetch timeout: ${e.message}');
   } catch (e) {
-    // Let the error propagate for error handling
     throw Exception('Lichess fetch failed: $e');
   }
 }
