@@ -2218,7 +2218,6 @@ class _PrincipalVariationListState
   late PageController _pageController;
   int _currentPage = 0;
   int? _lastUserSelectedIndex;
-  String? _lastSelectedSignature;
   int? _pendingPageJump;
   bool _pendingPageJumpAnimated = false;
   int? _pendingVariantSelectionIndex;
@@ -2242,8 +2241,6 @@ class _PrincipalVariationListState
     }
     _lastNonEmptyLines = lines;
     _lastUserSelectedIndex = lines.isEmpty ? null : _currentPage;
-    _lastSelectedSignature =
-        lines.isNotEmpty ? _signatureForLine(lines[_currentPage]) : null;
     _pageController = PageController(initialPage: _currentPage);
     _lastPositionKey = _derivePositionKey(widget.state);
   }
@@ -2273,46 +2270,48 @@ class _PrincipalVariationListState
       _currentPage = pageCount - 1;
     }
 
+    final oldSelectedIndex = oldWidget.state.selectedVariantIndex;
     final newSelectedIndex = widget.state.selectedVariantIndex;
+    final selectedIndexChanged = oldSelectedIndex != newSelectedIndex;
     final userSelected = _lastUserSelectedIndex;
 
-    int? targetIndex;
+    int targetIndex;
 
-    if (!positionChanged) {
-      targetIndex = _findMatchingIndex(lines);
-    }
-
+    // CRITICAL FIX: Only jump pages when position changes or user explicitly selects a variant
+    // During silent updates (depth increases), preserve the user's current scroll position
     if (positionChanged) {
+      // Position changed - reset to first variant or explicitly selected one
       targetIndex = ((newSelectedIndex ?? 0).clamp(0, maxIndex)).toInt();
       _lastUserSelectedIndex = targetIndex;
-    } else if (newSelectedIndex != null && newSelectedIndex <= maxIndex) {
+    } else if (selectedIndexChanged && newSelectedIndex != null && newSelectedIndex <= maxIndex) {
+      // User explicitly selected a variant (selectedVariantIndex changed) - honor that selection
       targetIndex = newSelectedIndex;
       _lastUserSelectedIndex = newSelectedIndex;
     } else if (userSelected != null && userSelected <= maxIndex) {
+      // Silent update (e.g., depth increase) - preserve user's current position
       targetIndex = userSelected;
     } else if (_currentPage > maxIndex) {
+      // Current page out of bounds - clamp to max
       targetIndex = maxIndex;
+    } else {
+      // Preserve current page during silent updates
+      targetIndex = _currentPage;
     }
 
-    if (targetIndex != null) {
-      if (targetIndex != _currentPage) {
-        final animate = positionChanged
-            ? false
-            : (newSelectedIndex != null && newSelectedIndex == targetIndex);
-        _currentPage = targetIndex;
-        _jumpToPage(targetIndex, animate: animate);
-      } else {
-        _jumpToPage(_currentPage, animate: false);
-      }
+    if (targetIndex != _currentPage) {
+      // Only animate when user explicitly selects a variant
+      final animate = !positionChanged &&
+          selectedIndexChanged &&
+          newSelectedIndex != null &&
+          newSelectedIndex == targetIndex;
+      _currentPage = targetIndex;
+      _jumpToPage(targetIndex, animate: animate);
+    }
 
-      if ((newSelectedIndex == null || newSelectedIndex != targetIndex) &&
-          _lastUserSelectedIndex != null &&
-          _lastUserSelectedIndex! <= maxIndex) {
-        _scheduleVariantSelection(_lastUserSelectedIndex!);
-      }
-      if (lines.isNotEmpty && _currentPage < lines.length) {
-        _lastSelectedSignature = _signatureForLine(lines[_currentPage]);
-      }
+    if ((newSelectedIndex == null || newSelectedIndex != targetIndex) &&
+        _lastUserSelectedIndex != null &&
+        _lastUserSelectedIndex! <= maxIndex) {
+      _scheduleVariantSelection(_lastUserSelectedIndex!);
     }
   }
 
@@ -2360,11 +2359,9 @@ class _PrincipalVariationListState
     return Padding(
       padding: EdgeInsets.fromLTRB(20.sp, 8.sp, 20.sp, 8.sp),
       child: Column(
-        key: ValueKey(
-          clampedLines
-              .map((line) => '${line.sanMoves.join(' ')}|${line.displayEval}')
-              .join('|'),
-        ),
+        // CRITICAL: No key here! Adding a key that changes with eval causes Flutter
+        // to rebuild the entire widget tree, resetting PageController position.
+        // State is already managed via _currentPage and _lastUserSelectedIndex.
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           SizedBox(
@@ -2414,10 +2411,6 @@ class _PrincipalVariationListState
                         setState(() {
                           _currentPage = pageIndex;
                           _lastUserSelectedIndex = pageIndex;
-                          if (pageIndex < clampedLines.length) {
-                            _lastSelectedSignature =
-                                _signatureForLine(clampedLines[pageIndex]);
-                          }
                         });
                         // Update variant selection when page changes
                         notifier.selectVariant(pageIndex);
@@ -2688,22 +2681,6 @@ class _PrincipalVariationListState
       formatted.add(sanMoves[i]);
     }
     return formatted;
-  }
-
-  String _signatureForLine(AnalysisLine line) =>
-      line.moves.map((m) => m.uci).join(' ');
-
-  int? _findMatchingIndex(List<AnalysisLine> lines) {
-    if (_lastSelectedSignature == null) return null;
-    for (int i = 0; i < lines.length; i++) {
-      final sig = _signatureForLine(lines[i]);
-      if (sig == _lastSelectedSignature ||
-          sig.startsWith(_lastSelectedSignature!) ||
-          _lastSelectedSignature!.startsWith(sig)) {
-        return i;
-      }
-    }
-    return null;
   }
 
   void _jumpToPage(int targetPage, {required bool animate}) {
