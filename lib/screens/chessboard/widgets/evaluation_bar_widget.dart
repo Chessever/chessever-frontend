@@ -77,10 +77,12 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
   Widget build(BuildContext context) {
     final rawEval = widget.evaluation ?? _lastEval ?? 0.0;
     final rawMate = widget.mate ?? _lastMate ?? 0;
-    final displayEval =
-        widget.isWhiteToMove ? rawEval : -rawEval;
-    final displayMate =
-        widget.isWhiteToMove ? rawMate : -rawMate;
+
+    // CRITICAL FIX: Chess evaluations are ALWAYS from White's perspective
+    // Positive = White advantage, Negative = Black advantage
+    // This should NEVER be negated based on whose turn it is
+    final displayEval = rawEval;
+    final displayMate = rawMate;
     final awaitingNewPositionData =
         widget.positionKey != null &&
         widget.positionKey != (_lastEvalPositionKey ?? widget.positionKey);

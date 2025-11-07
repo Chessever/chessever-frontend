@@ -2756,18 +2756,10 @@ class _PrincipalVariationListState
   }
 
   String _formatEvalLabel(AnalysisLine line) {
-    final position =
-        widget.state.isAnalysisMode
-            ? widget.state.analysisState.position
-            : widget.state.position;
-    final bool isWhiteToMove = position?.turn != Side.black;
-
     if (line.isMate) {
       final mate = line.mate ?? 0;
-      final perspectiveMate =
-          isWhiteToMove ? mate : -mate;
-      final absMate = perspectiveMate.abs();
-      final prefix = perspectiveMate >= 0 ? '#+' : '#-';
+      final absMate = mate.abs();
+      final prefix = mate >= 0 ? '#+' : '#-';
       return '$prefix$absMate';
     }
 
@@ -2776,10 +2768,8 @@ class _PrincipalVariationListState
       return '--';
     }
 
-    final perspectiveEval =
-        isWhiteToMove ? eval : -eval;
-    final formatted = perspectiveEval.abs().toStringAsFixed(1);
-    return perspectiveEval >= 0 ? '+$formatted' : '-$formatted';
+    final formatted = eval.abs().toStringAsFixed(1);
+    return eval >= 0 ? '+$formatted' : '-$formatted';
   }
 }
 
