@@ -2,6 +2,7 @@ import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.d
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/round_header_widget.dart';
@@ -41,17 +42,23 @@ class GamesListView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Get expansion state for knockout tournaments
-    final expansionState = ref.watch(matchExpansionProvider);
+    // Expansion states for rounds and matches
+    final matchExpansionState = ref.watch(matchExpansionProvider);
+    final roundExpansionState = ref.watch(roundExpansionProvider);
 
     // For multi-stage knockouts, build ordered games list from gamesByRound
-    final orderedGamesList = _buildOrderedGamesList(rounds, gamesByRound, isKnockoutTournament);
+    final orderedGamesList = _buildOrderedGamesList(
+      rounds,
+      gamesByRound,
+      isKnockoutTournament,
+    );
 
     final itemCount = _computeItemCount(
       gamesListViewMode,
       rounds,
       gamesByRound,
-      expansionState,
+      matchExpansionState,
+      roundExpansionState,
       isKnockoutTournament,
     );
 
@@ -69,7 +76,8 @@ class GamesListView extends ConsumerWidget {
           rounds: rounds,
           gamesByRound: gamesByRound,
           mode: gamesListViewMode,
-          expansionState: expansionState,
+          matchExpansionState: matchExpansionState,
+          roundExpansionState: roundExpansionState,
           isKnockoutTournament: isKnockoutTournament,
         );
 
@@ -78,11 +86,20 @@ class GamesListView extends ConsumerWidget {
         }
 
         if (lookup is _HeaderData) {
+          final isRoundExpanded = ref.watch(
+            roundExpansionStateProvider(lookup.round.id),
+          );
           return Padding(
             padding: EdgeInsets.only(bottom: 16.sp),
             child: RoundHeader(
               round: lookup.round,
               roundGames: lookup.roundGames,
+              isExpanded: isRoundExpanded,
+              onToggle: () {
+                ref
+                    .read(roundExpansionProvider.notifier)
+                    .toggleRound(lookup.round.id);
+              },
             ),
           );
         }
@@ -135,9 +152,21 @@ class GamesListView extends ConsumerWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        _buildGridGame(context, ref, item.game1, item.globalIndex1, orderedGamesList),
+        _buildGridGame(
+          context,
+          ref,
+          item.game1,
+          item.globalIndex1,
+          orderedGamesList,
+        ),
         if (item.game2 != null)
-          _buildGridGame(context, ref, item.game2!, item.globalIndex2!, orderedGamesList),
+          _buildGridGame(
+            context,
+            ref,
+            item.game2!,
+            item.globalIndex2!,
+            orderedGamesList,
+          ),
       ],
     );
   }
@@ -160,11 +189,15 @@ class GamesListView extends ConsumerWidget {
                 orderedGames: orderedGamesList,
                 gameIndex: globalIndex,
                 onReturnFromChessboard: (returnedIndex) {
+                  final latestMatchExpansion = ref.read(matchExpansionProvider);
+                  final latestRoundExpansion = ref.read(roundExpansionProvider);
                   _scrollToGameIndex(
                     returnedIndex,
                     rounds,
                     gamesByRound,
                     gamesListViewMode,
+                    matchExpansionState: latestMatchExpansion,
+                    roundExpansionState: latestRoundExpansion,
                   );
                   onReturnFromChessboard?.call(returnedIndex);
                 },
@@ -195,11 +228,15 @@ class GamesListView extends ConsumerWidget {
       gameIndex: item.globalIndex1,
       isChessBoardVisible: gamesListViewMode == GamesListViewMode.chessBoard,
       onReturnFromChessboard: (returnedIndex) {
+        final latestMatchExpansion = ref.read(matchExpansionProvider);
+        final latestRoundExpansion = ref.read(roundExpansionProvider);
         _scrollToGameIndex(
           returnedIndex,
           rounds,
           gamesByRound,
           gamesListViewMode,
+          matchExpansionState: latestMatchExpansion,
+          roundExpansionState: latestRoundExpansion,
         );
         onReturnFromChessboard?.call(returnedIndex);
       },
@@ -210,14 +247,18 @@ class GamesListView extends ConsumerWidget {
     int gameIndex,
     List<GamesAppBarModel> rounds,
     Map<String, List<GamesTourModel>> gamesByRound,
-    GamesListViewMode mode,
-  ) {
+    GamesListViewMode mode, {
+    required Map<String, bool> matchExpansionState,
+    required Map<String, bool> roundExpansionState,
+  }) {
     final listIndex = _listIndexForGameIndex(
       gameIndex: gameIndex,
       rounds: rounds,
       gamesByRound: gamesByRound,
       mode: mode,
       isKnockoutTournament: isKnockoutTournament,
+      matchExpansionState: matchExpansionState,
+      roundExpansionState: roundExpansionState,
     );
     if (listIndex != null) {
       itemScrollController.scrollTo(
@@ -233,7 +274,8 @@ int _computeItemCount(
   GamesListViewMode mode,
   List<GamesAppBarModel> rounds,
   Map<String, List<GamesTourModel>> gamesByRound,
-  Map<String, bool> expansionState,
+  Map<String, bool> matchExpansionState,
+  Map<String, bool> roundExpansionState,
   bool isKnockoutTournament,
 ) {
   var count = 0;
@@ -242,16 +284,21 @@ int _computeItemCount(
   for (final round in rounds) {
     final roundGames = gamesByRound[round.id] ?? const <GamesTourModel>[];
     if (roundGames.isEmpty) continue;
+    final isRoundExpanded = roundExpansionState[round.id] ?? true;
+
+    count++; // round header always counted
+
+    if (!isRoundExpanded) {
+      continue;
+    }
 
     if (_isKnockoutRound(isKnockoutTournament, round)) {
       // For knockout format: round header + match headers + games
-      count++; // round header
-
       final matches = KnockoutMatchDetector.groupByMatches(roundGames);
       for (final entry in matches.entries) {
         final matchKey = entry.key;
         final matchGames = entry.value;
-        final isExpanded = expansionState[matchKey] ?? true;
+        final isExpanded = matchExpansionState[matchKey] ?? true;
 
         count++; // match header
 
@@ -266,7 +313,6 @@ int _computeItemCount(
       }
     } else {
       // Regular format: round header + games
-      count++; // header
       if (isGrid) {
         count += (roundGames.length / 2).ceil();
       } else {
@@ -283,7 +329,8 @@ Object? _lookupItem({
   required List<GamesAppBarModel> rounds,
   required Map<String, List<GamesTourModel>> gamesByRound,
   required GamesListViewMode mode,
-  required Map<String, bool> expansionState,
+  required Map<String, bool> matchExpansionState,
+  required Map<String, bool> roundExpansionState,
   required bool isKnockoutTournament,
 }) {
   var currentIndex = 0;
@@ -295,6 +342,7 @@ Object? _lookupItem({
     if (roundGames.isEmpty) continue;
 
     final roundStartIndex = globalGameIndex;
+    final isRoundExpanded = roundExpansionState[round.id] ?? true;
 
     if (index == currentIndex) {
       return _HeaderData(round, roundGames);
@@ -302,19 +350,30 @@ Object? _lookupItem({
 
     currentIndex++; // move past round header
 
+    if (!isRoundExpanded) {
+      globalGameIndex = roundStartIndex + roundGames.length;
+      continue;
+    }
+
     if (_isKnockoutRound(isKnockoutTournament, round)) {
       // Handle knockout match format with match headers
       final matches = KnockoutMatchDetector.groupByMatches(roundGames);
-      final matchHeaders = matches.entries.map((entry) {
-        return KnockoutMatchDetector.createMatchHeader(entry.key, entry.value);
-      }).toList();
+      final matchHeaders =
+          matches.entries
+              .map(
+                (entry) => KnockoutMatchDetector.createMatchHeader(
+                  entry.key,
+                  entry.value,
+                ),
+              )
+              .toList();
 
       int matchGameOffset = 0;
 
       for (final matchHeader in matchHeaders) {
         final matchGames = matchHeader.games;
         final matchKey = matchHeader.matchKey;
-        final isExpanded = expansionState[matchKey] ?? true;
+        final isExpanded = matchExpansionState[matchKey] ?? true;
         final matchGamesCount = matchGames.length;
         final matchStartIndex = roundStartIndex + matchGameOffset;
 
@@ -337,9 +396,14 @@ Object? _lookupItem({
               return _GameRowData(
                 game1: matchGames[game1Index],
                 globalIndex1: matchStartIndex + game1Index,
-                game2: game2Index < matchGamesCount ? matchGames[game2Index] : null,
+                game2:
+                    game2Index < matchGamesCount
+                        ? matchGames[game2Index]
+                        : null,
                 globalIndex2:
-                    game2Index < matchGamesCount ? matchStartIndex + game2Index : null,
+                    game2Index < matchGamesCount
+                        ? matchStartIndex + game2Index
+                        : null,
                 isLastInSection: row == rowCount - 1,
               );
             }
@@ -407,6 +471,8 @@ int? _listIndexForGameIndex({
   required Map<String, List<GamesTourModel>> gamesByRound,
   required GamesListViewMode mode,
   required bool isKnockoutTournament,
+  required Map<String, bool> matchExpansionState,
+  required Map<String, bool> roundExpansionState,
 }) {
   if (gameIndex < 0) return null;
 
@@ -420,21 +486,35 @@ int? _listIndexForGameIndex({
 
     final roundStartIndex = globalGameIndex;
     final isKnockoutFormat = _isKnockoutRound(isKnockoutTournament, round);
+    final isRoundExpanded = roundExpansionState[round.id] ?? true;
 
     // skip round header
     currentIndex++;
+
+    if (!isRoundExpanded) {
+      globalGameIndex = roundStartIndex + roundGames.length;
+      continue;
+    }
 
     if (isKnockoutFormat) {
       // Handle knockout match format
       final matches = KnockoutMatchDetector.groupByMatches(roundGames);
       int matchGameOffset = 0;
 
-      for (final matchGames in matches.values) {
+      for (final entry in matches.entries) {
+        final matchKey = entry.key;
+        final matchGames = entry.value;
+        final isExpanded = matchExpansionState[matchKey] ?? true;
         final matchStartIndex = roundStartIndex + matchGameOffset;
         final matchGamesCount = matchGames.length;
 
         // skip match header
         currentIndex++;
+
+        if (!isExpanded) {
+          matchGameOffset += matchGamesCount;
+          continue;
+        }
 
         if (gameIndex >= matchStartIndex &&
             gameIndex < matchStartIndex + matchGamesCount) {
@@ -488,7 +568,8 @@ int? _listIndexForGameIndex({
 bool _isKnockoutRound(bool isKnockoutTournament, GamesAppBarModel round) {
   if (!isKnockoutTournament) return false;
   final id = round.id.toLowerCase();
-  return id.startsWith('$kKnockoutStagePrefix-') || id.startsWith('knockout-round-');
+  return id.startsWith('$kKnockoutStagePrefix-') ||
+      id.startsWith('knockout-round-');
 }
 
 /// Build ordered list of ALL games from ALL visible rounds

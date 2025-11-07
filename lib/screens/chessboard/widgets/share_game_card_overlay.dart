@@ -627,6 +627,9 @@ class _ShareCard extends ConsumerWidget {
                 final sideBarWidth = 20.w;
                 final availableWidth = constraints.maxWidth;
                 final boardSize = math.max(1.0, availableWidth - sideBarWidth);
+                final fenParts = positionFen.split(' ');
+                final overlayWhiteToMove =
+                    fenParts.length > 1 ? fenParts[1] == 'w' : true;
 
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -641,6 +644,7 @@ class _ShareCard extends ConsumerWidget {
                         mate: null,
                         isEvaluating: true,
                         isFlipped: isFlipped,
+                        isWhiteToMove: overlayWhiteToMove,
                       ),
                     ),
                     SizedBox(

@@ -17,6 +17,7 @@ class EvaluationBarWidget extends StatefulWidget {
   final double? evaluation;
   final int? mate;
   final bool isEvaluating;
+  final bool isWhiteToMove;
 
   const EvaluationBarWidget({
     required this.width,
@@ -25,6 +26,7 @@ class EvaluationBarWidget extends StatefulWidget {
     required this.evaluation,
     required this.mate,
     required this.isEvaluating,
+    this.isWhiteToMove = true,
     super.key,
   });
 
@@ -64,10 +66,14 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final displayMate = widget.mate ?? _lastMate ?? 0;
+    final rawEval = widget.evaluation ?? _lastEval ?? 0.0;
+    final rawMate = widget.mate ?? _lastMate ?? 0;
+    final displayEval =
+        widget.isWhiteToMove ? rawEval : -rawEval;
+    final displayMate =
+        widget.isWhiteToMove ? rawMate : -rawMate;
     final hasEval =
         widget.evaluation != null || _lastEval != null || displayMate != 0;
-    final displayEval = widget.evaluation ?? _lastEval ?? 0.0;
     final showLoading = widget.isEvaluating && !hasEval;
 
     final double evalForRatio =

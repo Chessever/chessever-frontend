@@ -1712,23 +1712,14 @@ class _BoardWithSidebar extends ConsumerWidget {
                       final bool isWhiteToMove =
                           activePosition?.turn != Side.black;
 
-                      double? displayEvaluation = state.evaluation;
-                      if (displayEvaluation != null && !isWhiteToMove) {
-                        displayEvaluation = -displayEvaluation;
-                      }
-
-                      int? displayMate = state.mate;
-                      if (displayMate != null && !isWhiteToMove) {
-                        displayMate = -displayMate;
-                      }
-
                       return EvaluationBarWidget(
                         width: sideBarWidth,
                         height: boardSize,
-                        evaluation: displayEvaluation,
-                        mate: displayMate,
+                        evaluation: state.evaluation,
+                        mate: state.mate,
                         isEvaluating: state.isEvaluating,
                         isFlipped: state.isBoardFlipped,
+                        isWhiteToMove: isWhiteToMove,
                       );
                     },
                   ),
@@ -2226,6 +2217,7 @@ class _PrincipalVariationListState
   late PageController _pageController;
   int _currentPage = 0;
   int? _lastUserSelectedIndex;
+  String? _lastSelectedSignature;
   int? _pendingPageJump;
   bool _pendingPageJumpAnimated = false;
   int? _pendingVariantSelectionIndex;
@@ -2249,6 +2241,8 @@ class _PrincipalVariationListState
     }
     _lastNonEmptyLines = lines;
     _lastUserSelectedIndex = lines.isEmpty ? null : _currentPage;
+    _lastSelectedSignature =
+        lines.isNotEmpty ? _signatureForLine(lines[_currentPage]) : null;
     _pageController = PageController(initialPage: _currentPage);
     _lastPositionKey = _derivePositionKey(widget.state);
   }
@@ -2283,6 +2277,10 @@ class _PrincipalVariationListState
 
     int? targetIndex;
 
+    if (!positionChanged) {
+      targetIndex = _findMatchingIndex(lines);
+    }
+
     if (positionChanged) {
       targetIndex = ((newSelectedIndex ?? 0).clamp(0, maxIndex)).toInt();
       _lastUserSelectedIndex = targetIndex;
@@ -2310,6 +2308,9 @@ class _PrincipalVariationListState
           _lastUserSelectedIndex != null &&
           _lastUserSelectedIndex! <= maxIndex) {
         _scheduleVariantSelection(_lastUserSelectedIndex!);
+      }
+      if (lines.isNotEmpty && _currentPage < lines.length) {
+        _lastSelectedSignature = _signatureForLine(lines[_currentPage]);
       }
     }
   }
@@ -2412,6 +2413,10 @@ class _PrincipalVariationListState
                         setState(() {
                           _currentPage = pageIndex;
                           _lastUserSelectedIndex = pageIndex;
+                          if (pageIndex < clampedLines.length) {
+                            _lastSelectedSignature =
+                                _signatureForLine(clampedLines[pageIndex]);
+                          }
                         });
                         // Update variant selection when page changes
                         notifier.selectVariant(pageIndex);
@@ -2684,6 +2689,22 @@ class _PrincipalVariationListState
     return formatted;
   }
 
+  String _signatureForLine(AnalysisLine line) =>
+      line.moves.map((m) => m.uci).join(' ');
+
+  int? _findMatchingIndex(List<AnalysisLine> lines) {
+    if (_lastSelectedSignature == null) return null;
+    for (int i = 0; i < lines.length; i++) {
+      final sig = _signatureForLine(lines[i]);
+      if (sig == _lastSelectedSignature ||
+          sig.startsWith(_lastSelectedSignature!) ||
+          _lastSelectedSignature!.startsWith(sig)) {
+        return i;
+      }
+    }
+    return null;
+  }
+
   void _jumpToPage(int targetPage, {required bool animate}) {
     if (!mounted) return;
     if (_lastNonEmptyLines.isEmpty) return;
@@ -2757,10 +2778,18 @@ class _PrincipalVariationListState
   }
 
   String _formatEvalLabel(AnalysisLine line) {
+    final position =
+        widget.state.isAnalysisMode
+            ? widget.state.analysisState.position
+            : widget.state.position;
+    final bool isWhiteToMove = position?.turn != Side.black;
+
     if (line.isMate) {
       final mate = line.mate ?? 0;
-      final absMate = mate.abs();
-      final prefix = mate >= 0 ? '#+' : '#-';
+      final perspectiveMate =
+          isWhiteToMove ? mate : -mate;
+      final absMate = perspectiveMate.abs();
+      final prefix = perspectiveMate >= 0 ? '#+' : '#-';
       return '$prefix$absMate';
     }
 
@@ -2769,8 +2798,10 @@ class _PrincipalVariationListState
       return '--';
     }
 
-    final formatted = eval.abs().toStringAsFixed(1);
-    return eval >= 0 ? '+$formatted' : '-$formatted';
+    final perspectiveEval =
+        isWhiteToMove ? eval : -eval;
+    final formatted = perspectiveEval.abs().toStringAsFixed(1);
+    return perspectiveEval >= 0 ? '+$formatted' : '-$formatted';
   }
 }
 

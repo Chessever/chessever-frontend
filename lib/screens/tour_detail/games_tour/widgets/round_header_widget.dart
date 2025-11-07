@@ -5,61 +5,82 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tou
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
-import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-class RoundHeader extends ConsumerWidget {
+class RoundHeader extends StatelessWidget {
   final GamesAppBarModel round;
   final List<GamesTourModel> roundGames;
+  final bool isExpanded;
+  final VoidCallback? onToggle;
 
-  const RoundHeader({super.key, required this.round, required this.roundGames});
+  const RoundHeader({
+    super.key,
+    required this.round,
+    required this.roundGames,
+    this.isExpanded = true,
+    this.onToggle,
+  });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     // Removed all the individual visibility checking logic
     // Now handled centrally in GamesTourScreen for better performance
 
     // Format the round name better for knockout tournaments
     final displayName = _formatRoundName(round, roundGames);
 
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 14.sp),
-      decoration: BoxDecoration(
-        color: kDarkGreyColor,
-        borderRadius: BorderRadius.circular(12.br),
-        border: Border.all(color: kWhiteColor.withValues(alpha: 0.1)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            width: 4.w,
-            height: 20.h,
-            decoration: BoxDecoration(
-              color: kPrimaryColor,
-              borderRadius: BorderRadius.circular(2),
+    return InkWell(
+      onTap: onToggle,
+      borderRadius: BorderRadius.circular(12.br),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 14.sp),
+        decoration: BoxDecoration(
+          color: kDarkGreyColor,
+          borderRadius: BorderRadius.circular(12.br),
+          border: Border.all(color: kWhiteColor.withValues(alpha: 0.1)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.1),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
             ),
-          ),
-          SizedBox(width: 12.w),
-          Expanded(
-            child: Text(
-              '$displayName ⚫ ${roundGames.length} games',
-              style: TextStyle(
-                color: kWhiteColor,
-                fontSize: 16.sp,
-                fontWeight: FontWeight.w600,
+          ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              width: 4.w,
+              height: 20.h,
+              decoration: BoxDecoration(
+                color: kPrimaryColor,
+                borderRadius: BorderRadius.circular(2),
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
             ),
-          ),
-        ],
+            SizedBox(width: 12.w),
+            Expanded(
+              child: Text(
+                '$displayName ⚫ ${roundGames.length} games',
+                style: TextStyle(
+                  color: kWhiteColor,
+                  fontSize: 16.sp,
+                  fontWeight: FontWeight.w600,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (onToggle != null) ...[
+              SizedBox(width: 12.w),
+              Icon(
+                isExpanded
+                    ? Icons.keyboard_arrow_up_rounded
+                    : Icons.keyboard_arrow_down_rounded,
+                color: kWhiteColor.withValues(alpha: 0.5),
+                size: 20.sp,
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
