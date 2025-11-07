@@ -10,6 +10,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_pr
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
 import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/round_drop_down.dart';
@@ -25,7 +26,12 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 
 // Enum for menu items to improve maintainability
-enum MenuAction { unpinAll, showHideFinishedGames }
+enum MenuAction {
+  unpinAll,
+  showHideFinishedGames,
+  collapseAllRounds,
+  expandAllRounds,
+}
 
 class GamesAppBarWidget extends ConsumerStatefulWidget {
   const GamesAppBarWidget({super.key});
@@ -173,7 +179,9 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
         final stageTourId = round.id.replaceFirst('$kKnockoutStagePrefix-', '');
         if (stageTourId == round.id) {
           roundGames =
-              primaryTourGames.where((game) => game.roundId == round.id).toList();
+              primaryTourGames
+                  .where((game) => game.roundId == round.id)
+                  .toList();
         } else {
           roundGames = _fetchStageGames(stageTourId);
         }
@@ -232,8 +240,7 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
       return games;
     }
     final ordered = <GamesTourModel>[];
-    final matches =
-        KnockoutMatchDetector.groupByMatchesAcrossAllRounds(games);
+    final matches = KnockoutMatchDetector.groupByMatchesAcrossAllRounds(games);
     for (final matchGames in matches.values) {
       ordered.addAll(matchGames);
     }
@@ -351,6 +358,14 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
                                     _menuKey.currentContext?.findRenderObject()
                                         as RenderBox?;
                                 if (renderBox != null) {
+                                  final roundIds =
+                                      ref
+                                          .read(gamesAppBarProvider)
+                                          .valueOrNull
+                                          ?.gamesAppBarModels
+                                          .map((r) => r.id)
+                                          .toList(growable: false) ??
+                                      const <String>[];
                                   final Offset offset = renderBox.localToGlobal(
                                     Offset.zero,
                                   );
@@ -446,6 +461,93 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
                                                     SvgAsset.pin,
                                                     height: 13.h,
                                                     width: 13.w,
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        PopupMenuDivider(
+                                          height: 1.h,
+                                          thickness: 0.5.w,
+                                          color: kDividerColor,
+                                        ),
+                                      ],
+
+                                      if (roundIds.isNotEmpty) ...[
+                                        PopupMenuItem<MenuAction>(
+                                          value: MenuAction.collapseAllRounds,
+                                          child: InkWell(
+                                            onTap: () {
+                                              Navigator.pop(context);
+                                              ref
+                                                  .read(
+                                                    roundExpansionProvider
+                                                        .notifier,
+                                                  )
+                                                  .collapseAll(roundIds);
+                                            },
+                                            child: SizedBox(
+                                              width: 200,
+                                              child: Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment
+                                                        .spaceBetween,
+                                                children: [
+                                                  Text(
+                                                    "Collapse all rounds",
+                                                    style: AppTypography
+                                                        .textXsMedium
+                                                        .copyWith(
+                                                          color: kWhiteColor,
+                                                        ),
+                                                  ),
+                                                  Icon(
+                                                    Icons.unfold_less,
+                                                    color: kWhiteColor,
+                                                    size: 16.sp,
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        PopupMenuDivider(
+                                          height: 1.h,
+                                          thickness: 0.5.w,
+                                          color: kDividerColor,
+                                        ),
+                                        PopupMenuItem<MenuAction>(
+                                          value: MenuAction.expandAllRounds,
+                                          child: InkWell(
+                                            onTap: () {
+                                              Navigator.pop(context);
+                                              ref
+                                                  .read(
+                                                    roundExpansionProvider
+                                                        .notifier,
+                                                  )
+                                                  .expandAll();
+                                            },
+                                            child: SizedBox(
+                                              width: 200,
+                                              child: Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment
+                                                        .spaceBetween,
+                                                children: [
+                                                  Text(
+                                                    "Expand all rounds",
+                                                    style: AppTypography
+                                                        .textXsMedium
+                                                        .copyWith(
+                                                          color: kWhiteColor,
+                                                        ),
+                                                  ),
+                                                  Icon(
+                                                    Icons.unfold_more,
+                                                    color: kWhiteColor,
+                                                    size: 16.sp,
                                                   ),
                                                 ],
                                               ),
