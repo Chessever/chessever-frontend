@@ -214,6 +214,13 @@ class ChessBoardScreenNotifierNew
     return normalizedEval;
   }
 
+  int? _getConsistentMate(int? mate, String fen) {
+    if (mate == null || mate == 0) return mate;
+    final parts = fen.split(' ');
+    final isWhiteToMove = parts.length > 1 ? parts[1] == 'w' : true;
+    return isWhiteToMove ? mate : -mate;
+  }
+
   String _fenCacheKey(String fen, {int? multiPV}) {
     final parts = fen.split(' ');
     final baseFen =
@@ -1855,6 +1862,7 @@ class ChessBoardScreenNotifierNew
             mateValue is int
                 ? mateValue
                 : int.tryParse(mateValue?.toString() ?? '');
+        mate = _getConsistentMate(mate, fen);
       } else {
         final cp =
             cpValue is int
@@ -2629,7 +2637,8 @@ class ChessBoardScreenNotifierNew
             final rawCp = cascadeEval.pvs.first.cp;
             final rawEval = rawCp / 100.0;
             evaluation = _getConsistentEvaluation(rawEval, fen);
-            final cascadeMate = cascadeEval.pvs.first.mate;
+            final cascadeMate =
+                _getConsistentMate(cascadeEval.pvs.first.mate, fen);
 
             if (mounted) {
               final previewState = state.value;
@@ -2736,7 +2745,10 @@ class ChessBoardScreenNotifierNew
                 pvLines = mergedCascade;
                 final updatedCascade = snapshot.copyWith(
                   evaluation: evaluation,
-                  mate: cascadeEval.pvs.first.mate,
+                  mate: _getConsistentMate(
+                    cascadeEval.pvs.first.mate,
+                    fen,
+                  ),
                   isEvaluating: true,
                   principalVariations: mergedCascade,
                   analysisState: snapshot.analysisState.copyWith(
@@ -2816,7 +2828,7 @@ class ChessBoardScreenNotifierNew
 
             final cp = pvs.first.cp;
             final newEval = _getConsistentEvaluation(cp / 100.0, fen);
-            final mateScore = pvs.first.mate;
+            final mateScore = _getConsistentMate(pvs.first.mate, fen);
             evaluation = newEval;
 
             var workingState = currentState.copyWith(
@@ -2938,6 +2950,10 @@ class ChessBoardScreenNotifierNew
                     stockfishResult.pvs.first.cp / 100.0,
                     fen,
                   ),
+                  mate: _getConsistentMate(
+                    stockfishResult.pvs.first.mate,
+                    fen,
+                  ),
                   isEvaluating: false,
                   principalVariations: pvLines,
                   analysisState: currentState.analysisState.copyWith(
@@ -3010,9 +3026,12 @@ class ChessBoardScreenNotifierNew
           state = AsyncValue.data(
             currentSnapshot.copyWith(
               evaluation: evaluation,
-              mate: primaryEval?.pvs.first.mate,
-              isEvaluating: false, // Show eval bar immediately
+              mate: _getConsistentMate(primaryEval?.pvs.first.mate, fen),
+              isEvaluating: true, // Keep loading state until PVs arrive
               principalVariations: const [], // Empty PVs for now
+              analysisState: currentSnapshot.analysisState.copyWith(
+                suggestionLines: const [],
+              ),
             ),
           );
         }
@@ -3185,7 +3204,7 @@ class ChessBoardScreenNotifierNew
         _evaluationCache[cacheKey] = evaluation ?? 0.0;
         _mateCache[cacheKey] =
             (primaryEval?.pvs.isNotEmpty ?? false)
-                ? primaryEval!.pvs.first.mate
+                ? _getConsistentMate(primaryEval!.pvs.first.mate, fen)
                 : null; // Use engine mate directly, null if no mate
         _pvCache[cacheKey] = pvLines;
 

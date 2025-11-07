@@ -66,7 +66,8 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
     if (widget.mate != null) {
       _lastMate = widget.mate;
     }
-    if (widget.evaluation != null && widget.positionKey != null) {
+    if ((widget.evaluation != null || widget.mate != null) &&
+        widget.positionKey != null) {
       _lastEvalPositionKey = widget.positionKey;
     }
   }
@@ -87,10 +88,10 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
         widget.positionKey != null &&
         widget.positionKey != (_lastEvalPositionKey ?? widget.positionKey);
     final hasEval =
-        (!awaitingNewPositionData &&
-            (widget.evaluation != null || _lastEval != null)) ||
-        displayMate != 0;
-    final showLoading = widget.isEvaluating && (!hasEval || awaitingNewPositionData);
+        !awaitingNewPositionData &&
+        ((widget.evaluation != null || _lastEval != null) ||
+            displayMate != 0);
+    final showLoading = widget.isEvaluating && !hasEval;
 
     final double evalForRatio =
         displayMate != 0

@@ -2352,9 +2352,9 @@ class _PrincipalVariationListState
 
     // Determine loading state for PV cards
     final showEndOfGame = isGameOver && widget.state.isAnalysisMode;
-    final showSkeleton =
-        !showEndOfGame && clampedLines.isEmpty && widget.state.isEvaluating;
-    final pageCount = showSkeleton ? 1 : clampedLines.length;
+    final noPvData = !showEndOfGame && clampedLines.isEmpty;
+    final showSkeleton = noPvData && widget.state.isEvaluating;
+    final pageCount = noPvData ? 1 : clampedLines.length;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(20.sp, 8.sp, 20.sp, 8.sp),
@@ -2408,6 +2408,9 @@ class _PrincipalVariationListState
                     : PageView.builder(
                       controller: _pageController,
                       onPageChanged: (pageIndex) {
+                        if (clampedLines.isEmpty) {
+                          return;
+                        }
                         setState(() {
                           _currentPage = pageIndex;
                           _lastUserSelectedIndex = pageIndex;
@@ -2492,6 +2495,45 @@ class _PrincipalVariationListState
                                   ),
                                 ],
                               ),
+                            ),
+                          );
+                        }
+                        if (clampedLines.isEmpty) {
+                          return Container(
+                            width: MediaQuery.of(context).size.width - 40.sp,
+                            margin: EdgeInsets.symmetric(horizontal: 2.sp),
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: kWhiteColor.withValues(alpha: 0.1),
+                                width: 1.5,
+                              ),
+                              borderRadius: BorderRadius.circular(6.sp),
+                              color: Colors.black.withValues(alpha: 0.3),
+                            ),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 12.sp,
+                              vertical: 16.sp,
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.horizontal_rule_rounded,
+                                  color: kWhiteColor.withValues(alpha: 0.4),
+                                ),
+                                SizedBox(height: 4.h),
+                                Text(
+                                  widget.state.isEvaluating
+                                      ? 'Preparing analysis...'
+                                      : 'No engine lines available',
+                                  textAlign: TextAlign.center,
+                                  style: AppTypography.textXsMedium.copyWith(
+                                    color: kWhiteColor.withValues(alpha: 0.7),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
                             ),
                           );
                         }
