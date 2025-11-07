@@ -18,6 +18,7 @@ class EvaluationBarWidget extends StatefulWidget {
   final int? mate;
   final bool isEvaluating;
   final bool isWhiteToMove;
+  final String? positionKey;
 
   const EvaluationBarWidget({
     required this.width,
@@ -27,6 +28,7 @@ class EvaluationBarWidget extends StatefulWidget {
     required this.mate,
     required this.isEvaluating,
     this.isWhiteToMove = true,
+    this.positionKey,
     super.key,
   });
 
@@ -38,12 +40,16 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
   double? _lastEval;
   int? _lastMate;
   bool _shouldAnimate = false;
+  String? _lastEvalPositionKey;
 
   @override
   void initState() {
     super.initState();
     _lastEval = widget.evaluation;
     _lastMate = widget.mate;
+    if (widget.evaluation != null && widget.positionKey != null) {
+      _lastEvalPositionKey = widget.positionKey;
+    }
   }
 
   @override
@@ -60,6 +66,9 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
     if (widget.mate != null) {
       _lastMate = widget.mate;
     }
+    if (widget.evaluation != null && widget.positionKey != null) {
+      _lastEvalPositionKey = widget.positionKey;
+    }
   }
 
   double _whiteRatio(double eval) => (eval.clamp(-5.0, 5.0) + 5.0) / 10.0;
@@ -72,9 +81,14 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
         widget.isWhiteToMove ? rawEval : -rawEval;
     final displayMate =
         widget.isWhiteToMove ? rawMate : -rawMate;
+    final awaitingNewPositionData =
+        widget.positionKey != null &&
+        widget.positionKey != (_lastEvalPositionKey ?? widget.positionKey);
     final hasEval =
-        widget.evaluation != null || _lastEval != null || displayMate != 0;
-    final showLoading = widget.isEvaluating && !hasEval;
+        (!awaitingNewPositionData &&
+            (widget.evaluation != null || _lastEval != null)) ||
+        displayMate != 0;
+    final showLoading = widget.isEvaluating && (!hasEval || awaitingNewPositionData);
 
     final double evalForRatio =
         displayMate != 0

@@ -1720,6 +1720,7 @@ class _BoardWithSidebar extends ConsumerWidget {
                         isEvaluating: state.isEvaluating,
                         isFlipped: state.isBoardFlipped,
                         isWhiteToMove: isWhiteToMove,
+                        positionKey: activePosition?.fen,
                       );
                     },
                   ),

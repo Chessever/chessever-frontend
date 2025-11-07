@@ -645,6 +645,7 @@ class _ShareCard extends ConsumerWidget {
                         isEvaluating: true,
                         isFlipped: isFlipped,
                         isWhiteToMove: overlayWhiteToMove,
+                        positionKey: positionFen,
                       ),
                     ),
                     SizedBox(
