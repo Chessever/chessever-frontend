@@ -194,23 +194,24 @@ class ChessBoardScreenNotifierNew
   /// Lichess API returns evaluations in white's perspective by default.
   ///
   /// CRITICAL CONTRACT:
-  /// - Input: evaluation from cascade provider (already in white's perspective)
-  /// - Output: MUST be in white's perspective
-  /// - Positive (+) = White advantage
+  /// - Input: evaluation from engines (Stockfish, Lichess, etc.)
+  ///   Most engines report scores from the SIDE TO MOVE perspective.
+  /// - Output: MUST be normalized to WHITE'S perspective.
+  /// - Positive (+) = White advantage, regardless of side to move
   /// - Negative (-) = Black advantage
-  /// - This contract is enforced throughout the evaluation pipeline
   double _getConsistentEvaluation(double evaluation, String fen) {
-    // All evaluations are already in white's perspective from cascade provider
-    // This method validates and passes through the evaluation
+    final parts = fen.split(' ');
+    final isWhiteToMove = parts.length > 1 ? parts[1] == 'w' : true;
+    final normalizedEval = isWhiteToMove ? evaluation : -evaluation;
 
     // VALIDATION: Extreme values should only occur in mate scenarios
-    if (evaluation.abs() > 100.0 && evaluation.abs() < 99999) {
+    if (normalizedEval.abs() > 100.0 && normalizedEval.abs() < 99999) {
       debugPrint(
-        '⚠️ EVAL WARNING: Unusual evaluation value $evaluation for FEN: $fen',
+        '⚠️ EVAL WARNING: Unusual evaluation value $normalizedEval for FEN: $fen',
       );
     }
 
-    return evaluation;
+    return normalizedEval;
   }
 
   String _fenCacheKey(String fen, {int? multiPV}) {
