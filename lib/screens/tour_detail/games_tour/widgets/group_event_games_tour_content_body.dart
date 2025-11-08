@@ -4,6 +4,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_match_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/round_header_widget.dart';
+import 'package:chessever2/widgets/positioned_list_scrollbar.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
@@ -154,33 +155,43 @@ class _GroupEventGamesTourContentBodyState
     }
 
     // Build scrollable positioned list with all rounds
-    return ScrollablePositionedList.builder(
-      itemScrollController: scrollController,
+    return PositionedListScrollbar(
       itemPositionsListener: itemPositionsListener,
+      itemScrollController: scrollController,
+      itemCount: allItems.length,
+      thumbWidth: 4.sp,
       padding: EdgeInsets.only(
-        left: 16.sp,
-        right: 16.sp,
         top: 16.sp,
         bottom: MediaQuery.of(context).viewPadding.bottom + 8.sp,
       ),
-      itemCount: allItems.length,
-      itemBuilder: (context, index) {
-        final item = allItems[index];
-        final isLastItem = index == allItems.length - 1;
-        final nextIsHeader = !isLastItem && allItems[index + 1].isHeader;
+      child: ScrollablePositionedList.builder(
+        itemScrollController: scrollController,
+        itemPositionsListener: itemPositionsListener,
+        padding: EdgeInsets.only(
+          left: 16.sp,
+          right: 16.sp,
+          top: 16.sp,
+          bottom: MediaQuery.of(context).viewPadding.bottom + 8.sp,
+        ),
+        itemCount: allItems.length,
+        itemBuilder: (context, index) {
+          final item = allItems[index];
+          final isLastItem = index == allItems.length - 1;
+          final nextIsHeader = !isLastItem && allItems[index + 1].isHeader;
 
-        // Apply beautiful UI spacing with visual hierarchy
-        EdgeInsets padding;
-        if (item.isHeader) {
-          // Round headers get more spacing below (16sp)
-          padding = EdgeInsets.only(bottom: 16.sp);
-        } else {
-          // Team cards: standard spacing (12sp), extra before next header (20sp)
-          padding = EdgeInsets.only(bottom: nextIsHeader ? 20.sp : 12.sp);
-        }
+          // Apply beautiful UI spacing with visual hierarchy
+          EdgeInsets padding;
+          if (item.isHeader) {
+            // Round headers get more spacing below (16sp)
+            padding = EdgeInsets.only(bottom: 16.sp);
+          } else {
+            // Team cards: standard spacing (12sp), extra before next header (20sp)
+            padding = EdgeInsets.only(bottom: nextIsHeader ? 20.sp : 12.sp);
+          }
 
-        return Padding(padding: padding, child: item.widget);
-      },
+          return Padding(padding: padding, child: item.widget);
+        },
+      ),
     );
   }
 }

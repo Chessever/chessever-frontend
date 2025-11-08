@@ -11,6 +11,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_d
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/positioned_list_scrollbar.dart';
 import 'package:flutter/material.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -66,79 +67,89 @@ class GamesListView extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
-    return ScrollablePositionedList.builder(
-      itemScrollController: itemScrollController,
+    return PositionedListScrollbar(
       itemPositionsListener: itemPositionsListener,
+      itemScrollController: itemScrollController,
       itemCount: itemCount,
-      itemBuilder: (context, index) {
-        final lookup = _lookupItem(
-          index: index,
-          rounds: rounds,
-          gamesByRound: gamesByRound,
-          mode: gamesListViewMode,
-          matchExpansionState: matchExpansionState,
-          roundExpansionState: roundExpansionState,
-          isKnockoutTournament: isKnockoutTournament,
-        );
-
-        if (lookup == null) {
-          return const SizedBox.shrink();
-        }
-
-        if (lookup is _HeaderData) {
-          final isRoundExpanded = ref.watch(
-            roundExpansionStateProvider(lookup.round.id),
-          );
-          return Padding(
-            padding: EdgeInsets.only(bottom: 16.sp),
-            child: RoundHeader(
-              round: lookup.round,
-              roundGames: lookup.roundGames,
-              isExpanded: isRoundExpanded,
-              onToggle: () {
-                ref
-                    .read(roundExpansionProvider.notifier)
-                    .toggleRound(lookup.round.id);
-              },
-            ),
-          );
-        }
-
-        if (lookup is _MatchHeaderData) {
-          final matchKey = lookup.matchHeader.matchKey;
-          final isExpanded = ref.watch(matchExpansionStateProvider(matchKey));
-
-          return Padding(
-            padding: EdgeInsets.only(bottom: 12.sp),
-            child: MatchHeader(
-              match: lookup.matchHeader,
-              isExpanded: isExpanded,
-              onToggle: () {
-                ref.read(matchExpansionProvider.notifier).toggleMatch(matchKey);
-              },
-            ),
-          );
-        }
-
-        if (lookup is _GameRowData) {
-          return Padding(
-            padding: EdgeInsets.only(
-              bottom: lookup.isLastInSection ? 20.sp : 12.sp,
-            ),
-            child:
-                gamesListViewMode == GamesListViewMode.chessBoardGrid
-                    ? _buildGridRow(context, ref, lookup, orderedGamesList)
-                    : _buildCardRow(context, ref, lookup, orderedGamesList),
-          );
-        }
-
-        return const SizedBox.shrink();
-      },
+      thumbWidth: 4.sp,
       padding: EdgeInsets.only(
-        left: 16.sp,
-        right: 16.sp,
         top: 16.sp,
         bottom: MediaQuery.of(context).viewPadding.bottom + 8.sp,
+      ),
+      child: ScrollablePositionedList.builder(
+        itemScrollController: itemScrollController,
+        itemPositionsListener: itemPositionsListener,
+        itemCount: itemCount,
+        itemBuilder: (context, index) {
+          final lookup = _lookupItem(
+            index: index,
+            rounds: rounds,
+            gamesByRound: gamesByRound,
+            mode: gamesListViewMode,
+            matchExpansionState: matchExpansionState,
+            roundExpansionState: roundExpansionState,
+            isKnockoutTournament: isKnockoutTournament,
+          );
+
+          if (lookup == null) {
+            return const SizedBox.shrink();
+          }
+
+          if (lookup is _HeaderData) {
+            final isRoundExpanded = ref.watch(
+              roundExpansionStateProvider(lookup.round.id),
+            );
+            return Padding(
+              padding: EdgeInsets.only(bottom: 16.sp),
+              child: RoundHeader(
+                round: lookup.round,
+                roundGames: lookup.roundGames,
+                isExpanded: isRoundExpanded,
+                onToggle: () {
+                  ref
+                      .read(roundExpansionProvider.notifier)
+                      .toggleRound(lookup.round.id);
+                },
+              ),
+            );
+          }
+
+          if (lookup is _MatchHeaderData) {
+            final matchKey = lookup.matchHeader.matchKey;
+            final isExpanded = ref.watch(matchExpansionStateProvider(matchKey));
+
+            return Padding(
+              padding: EdgeInsets.only(bottom: 12.sp),
+              child: MatchHeader(
+                match: lookup.matchHeader,
+                isExpanded: isExpanded,
+                onToggle: () {
+                  ref.read(matchExpansionProvider.notifier).toggleMatch(matchKey);
+                },
+              ),
+            );
+          }
+
+          if (lookup is _GameRowData) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: lookup.isLastInSection ? 20.sp : 12.sp,
+              ),
+              child:
+                  gamesListViewMode == GamesListViewMode.chessBoardGrid
+                      ? _buildGridRow(context, ref, lookup, orderedGamesList)
+                      : _buildCardRow(context, ref, lookup, orderedGamesList),
+            );
+          }
+
+          return const SizedBox.shrink();
+        },
+        padding: EdgeInsets.only(
+          left: 16.sp,
+          right: 16.sp,
+          top: 16.sp,
+          bottom: MediaQuery.of(context).viewPadding.bottom + 8.sp,
+        ),
       ),
     );
   }
