@@ -2911,7 +2911,29 @@ bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
           );
           if (_activeEvalRequestId == currentRequestId) {
             _activeEvalRequestId = null;
+            _activeEvalKey = null;
             _activeEvalStartTime = null;
+          }
+          final snapshot = state.value;
+          if (snapshot != null && snapshot.isEvaluating) {
+            state = AsyncValue.data(snapshot.copyWith(isEvaluating: false));
+          }
+
+          if (mounted && !_cancelEvaluation) {
+            Future.microtask(() {
+              if (!mounted || _cancelEvaluation) return;
+              final latestState = state.value;
+              if (latestState == null) return;
+              final latestPosition =
+                  latestState.isAnalysisMode
+                      ? latestState.analysisState.position
+                      : latestState.position;
+              final latestFen = latestPosition?.fen;
+              if (latestFen != null && _normalizeFen(latestFen) == _normalizeFen(fen)) {
+                debugPrint('🎯 EVAL: Retrying evaluation after cancellation');
+                _evaluatePosition(force: true);
+              }
+            });
           }
           return;
         }
@@ -3006,28 +3028,26 @@ bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
       // CRITICAL FIX: Show evaluation even if PVs fail to convert
       // During live games with rapid moves, PV conversion might fail due to race conditions,
       // but we still want to show the evaluation bar and prevent stuck loading state
-      if (evaluation == null || primaryEval == null) {
-        debugPrint('❌ EVAL FAILED: No valid evaluation available for $fen');
-        debugPrint(
-          '   evaluation=$evaluation, pvLines.length=${pvLines.length}, primaryEval=$primaryEval',
-        );
+      if (primaryEval == null) {
+        debugPrint('❌ EVAL FAILED: No primaryEval available for $fen');
         _failedEvalTimestamps[cacheKey] = DateTime.now();
-        _evaluationCache[cacheKey] = 0.0;
-        _mateCache[cacheKey] = null;
-        _pvCache[cacheKey] = const [];
+        _evaluationCache.remove(cacheKey);
+        _mateCache.remove(cacheKey);
+        _pvCache.remove(cacheKey);
         final fallbackState = state.value;
         if (fallbackState != null) {
-          // Set a default evaluation to prevent stuck loading state
           state = AsyncValue.data(
             fallbackState.copyWith(
               isEvaluating: false,
-              evaluation: 0.0,
-              principalVariations: const [],
+              evaluation: fallbackState.evaluation ?? 0,
             ),
           );
         }
         return;
       }
+
+      evaluation ??=
+          _getConsistentEvaluation(primaryEval!.pvs.first.cp / 100.0, fen);
 
       // CRITICAL: Always show evaluation even if PVs fail
       // Show eval bar immediately, PV cards can come later via retry
@@ -3046,9 +3066,9 @@ bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
           state = AsyncValue.data(
             currentSnapshot.copyWith(
               evaluation: evaluation,
-              mate: _getConsistentMate(primaryEval?.pvs.first.mate, fen),
+              mate: _getConsistentMate(primaryEval!.pvs.first.mate, fen),
               isEvaluating: true, // Keep loading state until PVs arrive
-              principalVariations: const [], // Empty PVs for now
+              principalVariations: const [],
               analysisState: currentSnapshot.analysisState.copyWith(
                 suggestionLines: const [],
               ),
@@ -3718,6 +3738,8 @@ bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
 
     return arrows.toISet();
   }
+
+  String _normalizeFen(String fen) => fen.split(' ').take(4).join(' ');
 
   void _updateEvaluation({bool force = false}) {
     if (_isLongPressing) return;
