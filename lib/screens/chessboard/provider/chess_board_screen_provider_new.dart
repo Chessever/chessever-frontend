@@ -77,12 +77,8 @@ class ChessBoardScreenNotifierNew
   bool _cancelEvaluation = false;
   String? _pendingEvalFen;
   Timer? _evalWatchdogTimer;
-  Timer? _navEvalDebounceTimer;
   bool _resumeVariantAutoPlay = false;
   bool _isPlayingVariant = false;
-  final Map<String, double> _evaluationCache = {};
-  final Map<String, int?> _mateCache = {};
-  final Map<String, List<AnalysisLine>> _pvCache = {};
   final Map<String, DateTime> _failedEvalTimestamps = {};
   int _evalRequestCounter = 0;
   int? _activeEvalRequestId;
@@ -92,12 +88,6 @@ class ChessBoardScreenNotifierNew
   ChessGameNavigatorStateManager? _analysisStateManager;
   ProviderSubscription<ChessGameNavigatorState>? _navigatorSubscription;
   bool _isInitialLoad = true;
-  DateTime? _lastNavEventTime;
-  int _navRapidNavigationCount = 0;
-  String? _navEvalPendingFen;
-
-  static const Duration _navBurstWindow = Duration(milliseconds: 160);
-  static const Duration _navBurstDebounceDelay = Duration(milliseconds: 120);
 
   void _initializeState() {
     // Start with an initial data state to ensure proper initialization
@@ -143,8 +133,6 @@ class ChessBoardScreenNotifierNew
           '     - Max Depth: ${nextValue.maxDepthFor(EngineComponent.evaluationGauge)}',
         );
         debugPrint('');
-
-        _clearEvaluationCache();
 
         // Clear state's PVs immediately to show loading state
         final currentState = state.valueOrNull;
@@ -193,16 +181,6 @@ class ChessBoardScreenNotifierNew
         }
       }
     });
-  }
-
-  /// Clear all evaluation caches to force fresh evaluations
-  void _clearEvaluationCache() {
-    final totalItems =
-        _evaluationCache.length + _pvCache.length + _mateCache.length;
-    _evaluationCache.clear();
-    _pvCache.clear();
-    _mateCache.clear();
-    debugPrint('🗑️  Cleared evaluation cache ($totalItems items removed)');
   }
 
   String? _currentPositionFen() {
@@ -305,53 +283,6 @@ class ChessBoardScreenNotifierNew
     }
   }
 
-  void _cancelNavigationEvalDebounce() {
-    _navEvalDebounceTimer?.cancel();
-    _navEvalDebounceTimer = null;
-    _navEvalPendingFen = null;
-    _navRapidNavigationCount = 0;
-    _lastNavEventTime = null;
-  }
-
-  void _triggerEvaluationAfterNavigation(String fen) {
-    final now = DateTime.now();
-    final hadRecentNav =
-        _lastNavEventTime != null &&
-        now.difference(_lastNavEventTime!) < _navBurstWindow;
-    _lastNavEventTime = now;
-
-    if (!hadRecentNav) {
-      _navRapidNavigationCount = 1;
-      _navEvalPendingFen = null;
-      _navEvalDebounceTimer?.cancel();
-      _updateEvaluation();
-      return;
-    }
-
-    _navRapidNavigationCount++;
-    if (_navRapidNavigationCount < 2) {
-      _navEvalPendingFen = null;
-      _navEvalDebounceTimer?.cancel();
-      _updateEvaluation();
-      return;
-    }
-
-    _navEvalPendingFen = _normalizeFen(fen);
-    _navEvalDebounceTimer?.cancel();
-    _navEvalDebounceTimer = Timer(_navBurstDebounceDelay, () {
-      if (!mounted) return;
-      _navEvalDebounceTimer = null;
-      final latestFen = _currentPositionFen();
-      final pendingFen = _navEvalPendingFen;
-      _navEvalPendingFen = null;
-      _navRapidNavigationCount = 0;
-      if (pendingFen == null) return;
-      if (_cancelEvaluation) return;
-      if (latestFen == null) return;
-      if (_normalizeFen(latestFen) != pendingFen) return;
-      _updateEvaluation(force: true);
-    });
-  }
 
   /// Get evaluation with consistent perspective for evaluation bar display
   /// BULLETPROOF evaluation perspective handler
@@ -1059,14 +990,6 @@ class ChessBoardScreenNotifierNew
           );
           _resumeVariantAutoPlay = true;
           final currentFen = currentState.analysisState.position.fen;
-          // Clear cache for all PV counts when extending variant (can't know exact count)
-          for (int pv = 1; pv <= 5; pv++) {
-            final key = _fenCacheKey(currentFen, multiPV: pv);
-            _pvCache.remove(key);
-            _evaluationCache.remove(key);
-            _mateCache.remove(key);
-          }
-
           // CRITICAL: Update variant base to CURRENT position for extension
           // The new PVs will start from here, and variantMovePointer resets to []
           final updatedForExtension = currentState.copyWith(
@@ -1874,7 +1797,6 @@ class ChessBoardScreenNotifierNew
   Future<void> onBecameInvisible() async {
     _cancelEvaluation = true;
     _cancelEvalWatchdog(resetPending: true);
-    _cancelNavigationEvalDebounce();
     _activeEvalKey = null;
     _activeEvalRequestId = null;
     _activeEvalStartTime = null;
@@ -2626,97 +2548,6 @@ bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
       CloudEval? primaryEval;
       double? evaluation;
       List<AnalysisLine> pvLines = const [];
-      bool usedCachedResult = false;
-      bool skipCascade = false;
-
-      final cachedEval = _evaluationCache[cacheKey];
-      final cachedPv = _pvCache[cacheKey];
-      final cachedMate = _mateCache[cacheKey];
-      if (!force && cachedEval != null && cachedPv != null) {
-        // ⚡ INSTANT CACHE HIT: Show immediately, no delay, no loading state
-        debugPrint(
-          '⚡ CACHE HIT: Instant display for ${fen.split(' ').take(3).join(' ')}... (eval=$cachedEval, ${cachedPv.length} PVs)',
-        );
-
-        // Clamp cached PVs to respect current settings
-        final normalizedCachedPv =
-            cachedPv.length > configuredMultiPV && configuredMultiPV > 0
-                ? cachedPv.take(configuredMultiPV).toList(growable: false)
-                : cachedPv;
-
-        final hasCompletePv =
-            configuredMultiPV <= 0 ||
-            normalizedCachedPv.length >= configuredMultiPV;
-
-        if (!hasCompletePv) {
-          debugPrint(
-            '⚡ CACHE HIT: Only ${normalizedCachedPv.length}/$configuredMultiPV PVs available, keeping evaluation active until engine fills in.',
-          );
-        }
-
-        // Validate cached mate=0 before applying
-        final validatedCachedMate =
-            (cachedMate == 0 && !currentPosition.isCheckmate)
-                ? null // Invalid cached mate=0
-                : cachedMate;
-
-        if (cachedMate == 0 && !currentPosition.isCheckmate) {
-          debugPrint('⚠️ EVAL: Cached mate=0 invalid for position, ignoring');
-        }
-
-        // Apply cached values SYNCHRONOUSLY (no await, instant)
-        var cachedState = initialState.copyWith(
-          evaluation: cachedEval,
-          mate: validatedCachedMate,
-          isEvaluating: true,
-          principalVariations: normalizedCachedPv,
-          analysisState: initialState.analysisState.copyWith(
-            suggestionLines: normalizedCachedPv,
-          ),
-        );
-        state = AsyncValue.data(cachedState);
-
-        pvLines = List<AnalysisLine>.from(normalizedCachedPv);
-        evaluation = cachedEval;
-        primaryEval = CloudEval(
-          fen: fen,
-          knodes: 0,
-          depth: 0,
-          pvs: normalizedCachedPv
-              .map(
-                (line) => Pv(
-                  moves: line.moves.map((m) => m.uci).join(' '),
-                  cp:
-                      line.mate != null
-                          ? line.mate!.sign * 100000
-                          : ((line.evaluation ?? cachedEval) * 100).round(),
-                  isMate: line.mate != null,
-                  mate: line.mate,
-                ),
-              )
-              .toList(growable: false),
-          requestedMultiPv: configuredMultiPV,
-        );
-        usedCachedResult = true;
-        skipCascade = true;
-
-        final basePointer =
-            cachedState.isAnalysisMode
-                ? cachedState.analysisState.movePointer
-                : null;
-        final position =
-            cachedState.isAnalysisMode
-                ? cachedState.analysisState.position
-                : cachedState.position!;
-
-        _applyPrincipalVariationResults(
-          currentState: cachedState,
-          currentPosition: position,
-          baseFen: fen,
-          baseMovePointer: basePointer,
-          pvLines: normalizedCachedPv,
-        );
-      }
 
       // OPTIMIZATION: Skip recently failed evaluations (avoid hammering engine)
       final lastFailure = _failedEvalTimestamps[cacheKey];
@@ -2779,35 +2610,28 @@ bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
       _activeEvalStartTime = DateTime.now(); // Track when this request started
 
       final baselineState = state.value ?? initialState;
-      if (!usedCachedResult) {
-        debugPrint(
-          '🎯 EVAL: Clearing stale PVs, starting fresh evaluation for FEN: ${fen.split(' ').take(3).join(' ')}...',
-        );
-        state = AsyncValue.data(
-          baselineState.copyWith(
-            shapes: const ISet.empty(),
-            isEvaluating: true,
-            principalVariations: const [],
-            analysisState: baselineState.analysisState.copyWith(
-              suggestionLines: const [],
-            ),
+      debugPrint(
+        '🎯 EVAL: Clearing stale PVs, starting fresh evaluation for FEN: ${fen.split(' ').take(3).join(' ')}...',
+      );
+      state = AsyncValue.data(
+        baselineState.copyWith(
+          shapes: const ISet.empty(),
+          isEvaluating: true,
+          principalVariations: const [],
+          analysisState: baselineState.analysisState.copyWith(
+            suggestionLines: const [],
           ),
-        );
-      } else {
-        debugPrint(
-          '🎯 EVAL: Continuing evaluation with cached baseline for ${fen.split(' ').take(3).join(' ')} (fresh depth search scheduled)',
-        );
-      }
+        ),
+      );
 
       debugPrint(
         '🎯 EVAL START: Evaluating position $fen (requesting $configuredMultiPV PVs)',
       );
 
       // OPTIMIZED: Try cascade (cloud sources) FIRST for speed
-      // Cascade queries local DB → Supabase → Lichess → Stockfish sequentially
+      // Cascade queries local DB → Supabase → Lichess sequentially
       // Each source has its own timeout, so no need for overall cascade timeout
-      if (!skipCascade) {
-        try {
+      try {
           debugPrint(
             '🎯 EVAL: Requesting cascade evaluation (local → Supabase cache only) with $configuredMultiPV PVs...',
           );
@@ -2971,9 +2795,8 @@ bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
           } else {
             debugPrint('🎯 EVAL: Cascade returned empty PVs');
           }
-        } catch (e) {
-          debugPrint('🎯 EVAL ERROR: Cascade failed for $fen: $e');
-        }
+      } catch (e) {
+        debugPrint('🎯 EVAL ERROR: Cascade failed for $fen: $e');
       }
 
       final multiPV = configuredMultiPV;
@@ -3223,9 +3046,6 @@ bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
       if (primaryEval == null) {
         debugPrint('❌ EVAL FAILED: No primaryEval available for $fen');
         _failedEvalTimestamps[cacheKey] = DateTime.now();
-        _evaluationCache.remove(cacheKey);
-        _mateCache.remove(cacheKey);
-        _pvCache.remove(cacheKey);
         final fallbackState = state.value;
         if (fallbackState != null) {
           state = AsyncValue.data(
@@ -3440,134 +3260,9 @@ bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
         debugPrint(
           '🎯 EVAL: Position changed during eval (current=$currentFenBase vs eval=$evalFenBase)',
         );
-        debugPrint(
-          '🎯 EVAL: Caching result for $evalFenBase but not applying to current position',
+        state = AsyncValue.data(
+          currentSnapshot.copyWith(isEvaluating: false),
         );
-
-        // CRITICAL: Still cache the evaluation result even if position changed
-        // This prevents wasted computation and speeds up navigation
-        _evaluationCache[cacheKey] = evaluation ?? 0.0;
-        _mateCache[cacheKey] =
-            (primaryEval?.pvs.isNotEmpty ?? false)
-                ? _getConsistentMate(primaryEval!.pvs.first.mate, fen)
-                : null; // Use engine mate directly, null if no mate
-        _pvCache[cacheKey] = pvLines;
-
-        // EDGE CASE FIX: Check if we have cached evaluation for the CURRENT position
-        // This handles race conditions where evaluation completes after position changed
-        // but the new position already has a cached result available
-        final currentPositionFen = position.fen;
-        final currentCacheKey = _fenCacheKey(
-          currentPositionFen,
-          multiPV: configuredMultiPV,
-        );
-        final cachedCurrentEval = _evaluationCache[currentCacheKey];
-        final cachedCurrentPv = _pvCache[currentCacheKey];
-        final cachedCurrentMate = _mateCache[currentCacheKey];
-
-        if (cachedCurrentEval != null &&
-            cachedCurrentPv != null &&
-            cachedCurrentPv.isNotEmpty) {
-          // Apply cached evaluation for current position to prevent stuck loading state
-          debugPrint(
-            '🎯 EVAL: Applying cached result for current position to prevent loading state',
-          );
-          final basePointer =
-              inAnalysis ? currentSnapshot.analysisState.movePointer : null;
-
-          final inVariantExploration =
-              currentSnapshot.selectedVariantIndex != null &&
-              currentSnapshot.variantMovePointer.isNotEmpty &&
-              currentSnapshot.variantBaseFen != null;
-
-          final ISet<Shape> shapes;
-          if (currentSnapshot.selectedVariantIndex != null &&
-              cachedCurrentPv.isNotEmpty) {
-            shapes = _getAllVariantArrowShapes(
-              cachedCurrentPv,
-              currentSnapshot.selectedVariantIndex!,
-            );
-          } else {
-            final evalForShapes = CloudEval(
-              fen: currentPositionFen,
-              knodes: 0,
-              depth: 0,
-              pvs:
-                  cachedCurrentPv
-                      .map(
-                        (line) => Pv(
-                          moves: line.moves.map((m) => m.uci).join(' '),
-                          cp: ((line.evaluation ?? 0) * 100).toInt(),
-                          isMate: line.isMate,
-                          mate: line.mate,
-                          whitePerspective: true,
-                        ),
-                      )
-                      .toList(),
-              requestedMultiPv: cachedCurrentPv.length,
-            );
-            shapes = getBestMoveShape(position, evalForShapes);
-          }
-
-          // BUG FIX: Validate cached mate=0 before applying
-          final validatedMate =
-              (cachedCurrentMate == 0 && !position.isCheckmate)
-                  ? null // Invalid cached mate=0
-                  : cachedCurrentMate;
-
-          if (cachedCurrentMate == 0 && !position.isCheckmate) {
-            debugPrint(
-              '⚠️ EVAL: Cached mate=0 invalid for current position, ignoring',
-            );
-          }
-
-          final updatedState = currentSnapshot.copyWith(
-            evaluation: cachedCurrentEval,
-            mate: validatedMate, // Use validated mate value
-            isEvaluating: false,
-            shapes: shapes,
-            principalVariations: cachedCurrentPv,
-            variantBaseFen:
-                inVariantExploration
-                    ? currentSnapshot.variantBaseFen
-                    : currentPositionFen,
-            variantBaseMovePointer:
-                inVariantExploration
-                    ? currentSnapshot.variantBaseMovePointer
-                    : basePointer,
-            analysisState: currentSnapshot.analysisState.copyWith(
-              suggestionLines: cachedCurrentPv,
-            ),
-          );
-          state = AsyncValue.data(updatedState);
-
-          _applyPrincipalVariationResults(
-            currentState: updatedState,
-            currentPosition: position,
-            baseFen: currentPositionFen,
-            baseMovePointer: basePointer,
-            pvLines: cachedCurrentPv,
-          );
-        } else {
-          final normalizedCurrentFen = _normalizeFen(currentPositionFen);
-          final bool pendingForCurrent =
-              _pendingEvalFen != null &&
-              _pendingEvalFen == normalizedCurrentFen;
-          final bool hasActiveRequestForCurrent =
-              _activeEvalRequestId != null &&
-              _activeEvalKey ==
-                  _fenCacheKey(currentPositionFen, multiPV: configuredMultiPV);
-
-          if (pendingForCurrent || hasActiveRequestForCurrent) {
-            debugPrint(
-              '⏳ EVAL: New evaluation pending for $normalizedCurrentFen, keeping loading state',
-            );
-          } else {
-            state = AsyncValue.data(
-              currentSnapshot.copyWith(isEvaluating: false),
-            );
-          }
-        }
         return;
       }
 
@@ -3593,11 +3288,6 @@ bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
         );
       }
 
-      if (evaluation != null) {
-        _evaluationCache[cacheKey] = evaluation!;
-      }
-      _mateCache[cacheKey] = mateScore;
-      _pvCache[cacheKey] = pvLines;
       _failedEvalTimestamps.remove(cacheKey);
 
       // CRITICAL: Don't overwrite variant base if we're exploring a variant
@@ -3760,7 +3450,7 @@ bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
       state = AsyncValue.data(progressedState);
 
       if (!_cancelEvaluation) {
-        _triggerEvaluationAfterNavigation(position.fen);
+        _updateEvaluation();
       }
     } catch (e) {
       debugPrint('Failed to sync analysis navigator state: $e');
@@ -4090,10 +3780,6 @@ bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
   @override
   void dispose() {
     stopLongPress();
-    _evaluationCache.clear();
-    _mateCache.clear();
-    _pvCache.clear();
-    _cancelNavigationEvalDebounce();
     unawaited(_persistAnalysisState());
     _navigatorSubscription?.close();
     _navigatorSubscription = null;
