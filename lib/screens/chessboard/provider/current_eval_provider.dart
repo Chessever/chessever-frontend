@@ -43,11 +43,13 @@ class CascadeEvalParams {
   final int multiPV;
   final bool
   isCurrentPosition; // Priority flag for user's currently viewed position
+  final bool enableLichessFallback;
 
   const CascadeEvalParams({
     required this.fen,
     this.multiPV = 3,
     this.isCurrentPosition = false,
+    this.enableLichessFallback = true,
   });
 
   @override
@@ -56,10 +58,22 @@ class CascadeEvalParams {
       other is CascadeEvalParams &&
           other.fen == fen &&
           other.multiPV == multiPV &&
-          other.isCurrentPosition == isCurrentPosition;
+          other.isCurrentPosition == isCurrentPosition &&
+          other.enableLichessFallback == enableLichessFallback;
 
   @override
-  int get hashCode => Object.hash(fen, multiPV, isCurrentPosition);
+  int get hashCode =>
+      Object.hash(fen, multiPV, isCurrentPosition, enableLichessFallback);
+}
+
+const int _minPersistDepth = 20;
+const int _minPersistFullMoves = 8;
+
+bool _shouldPersistCloudEval(CloudEval eval) {
+  return eval.meetsPersistenceThreshold(
+    minDepth: _minPersistDepth,
+    minFullMoves: _minPersistFullMoves,
+  );
 }
 
 /// 1. local → 2. Supabase → 3. lichess
@@ -102,8 +116,20 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
       print(
         "🟡 EVAL SOURCE (cascadeEval): SUPABASE - fen=$fen, side=$sideToMove, cp=$cp",
       );
-      // OPTIMIZATION: Save to local cache in background (unawaited)
-      local.save(fen, cloud, multiPV: cloud.pvs.length).catchError((e) => null);
+      if (_shouldPersistCloudEval(cloud)) {
+        // OPTIMIZATION: Save to local cache in background (unawaited)
+        local
+            .save(
+              fen,
+              cloud,
+              multiPV: cloud.requestedMultiPv ?? cloud.pvs.length,
+            )
+            .catchError((e) => null);
+      } else {
+        print(
+          '⚠️ CACHE SKIP (Supabase): depth=${cloud.depth}, fullMoves=${cloud.pvs.isNotEmpty ? cloud.pvs.first.fullMoveCount : 0}',
+        );
+      }
       return cloud;
     }
 
@@ -117,10 +143,20 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
       "🟢 EVAL SOURCE (cascadeEval): LICHESS (${cloud.pvs.length} PVs) - fen=$fen, side=$sideToMove, cp=$cp",
     );
     // OPTIMIZATION: Save to caches in background (unawaited)
-    Future.wait<void>([
-      persist.call(fen, cloud),
-      local.save(fen, cloud, multiPV: cloud.pvs.length),
-    ]).catchError((e) => <void>[]);
+    if (_shouldPersistCloudEval(cloud)) {
+      Future.wait<void>([
+        persist.call(fen, cloud),
+        local.save(
+          fen,
+          cloud,
+          multiPV: cloud.requestedMultiPv ?? cloud.pvs.length,
+        ),
+      ]).catchError((e) => <void>[]);
+    } else {
+      print(
+        '⚠️ CACHE SKIP (Lichess): depth=${cloud.depth}, fullMoves=${cloud.pvs.isNotEmpty ? cloud.pvs.first.fullMoveCount : 0}',
+      );
+    }
     return cloud;
   } catch (e, st) {
     print('❌ cascadeEvalProvider: Cloud sources failed for $fen - $e');
@@ -171,18 +207,29 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
         knodes: sfEval.knodes,
         depth: sfEval.depth,
         pvs: sfEval.pvs,
+        requestedMultiPv: fallbackMultiPv,
       );
 
-      // Persist Stockfish result asynchronously for future reuse
-      Future.wait<void>([
-        persist.call(fen, cloudFromSf),
-        local.save(fen, cloudFromSf, multiPV: cloudFromSf.pvs.length),
-      ]).catchError((error) {
+      if (_shouldPersistCloudEval(cloudFromSf)) {
+        // Persist Stockfish result asynchronously for future reuse
+        Future.wait<void>([
+          persist.call(fen, cloudFromSf),
+          local.save(
+            fen,
+            cloudFromSf,
+            multiPV: cloudFromSf.requestedMultiPv ?? cloudFromSf.pvs.length,
+          ),
+        ]).catchError((error) {
+          print(
+            '⚠️ cascadeEvalProvider: Background persist failed for $fen: $error',
+          );
+          return <void>[];
+        });
+      } else {
         print(
-          '⚠️ cascadeEvalProvider: Background persist failed for $fen: $error',
+          '⚠️ PERSIST SKIP (Stockfish fallback): depth=${cloudFromSf.depth}, fullMoves=${cloudFromSf.pvs.first.fullMoveCount}',
         );
-        return <void>[];
-      });
+      }
 
       return cloudFromSf;
     } catch (engineError, engineStack) {
@@ -261,10 +308,16 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
           print(
             "🟡 EVAL SOURCE: SUPABASE - fen=$fen, side=$sideToMove, cp=$cp",
           );
-          // Background save to local cache
-          local
-              .save(fen, cloud, multiPV: cloud.pvs.length)
-              .catchError((e) => null);
+          // Background save to local cache when meaningful
+          if (_shouldPersistCloudEval(cloud)) {
+            local
+                .save(
+                  fen,
+                  cloud,
+                  multiPV: cloud.requestedMultiPv ?? cloud.pvs.length,
+                )
+                .catchError((e) => null);
+          }
           return cloud;
         }
       }
@@ -272,15 +325,25 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
       print('⚠️ Supabase eval failed: $e, continuing to Lichess...');
     }
 
+    if (!params.enableLichessFallback) {
+      throw Exception('Lichess disabled for this request');
+    }
+
     // 3️⃣ LICHESS FALLBACK ONLY (NO LOCAL ENGINE HERE)
     // Important: The local engine is managed exclusively by the board notifier
     // to avoid duplicate jobs and massive queue growth.
     final cloud = await _fetchLichessWithFallback(fen, multiPV, lichess);
-    // Persist in background
-    Future.wait<void>([
-      persist.call(fen, cloud),
-      local.save(fen, cloud, multiPV: cloud.pvs.length),
-    ]).catchError((_) => <void>[]);
+    if (_shouldPersistCloudEval(cloud)) {
+      // Persist in background
+      Future.wait<void>([
+        persist.call(fen, cloud),
+        local.save(
+          fen,
+          cloud,
+          multiPV: cloud.requestedMultiPv ?? cloud.pvs.length,
+        ),
+      ]).catchError((_) => <void>[]);
+    }
     return cloud;
   } catch (error, _) {
     rethrow;

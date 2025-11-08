@@ -11,7 +11,7 @@ class LocalEvalCache {
   static const _prefix = 'cloud_eval_';
   static const _versionKey = 'cloud_eval_version';
   static const _currentVersion =
-      8; // v8: Force clear for eval bar perspective fix
+      10; // v10: Enforce persistence thresholds + multiPV tagging
 
   Future<void> save(String fen, CloudEval eval, {int? multiPV}) async {
     final prefs = await SharedPreferences.getInstance();
@@ -21,7 +21,8 @@ class LocalEvalCache {
     }
     await prefs.setInt(_versionKey, _currentVersion);
 
-    final effectiveMultiPv = (multiPV ?? eval.pvs.length).clamp(0, 5);
+    final effectiveMultiPv =
+        (multiPV ?? eval.requestedMultiPv ?? eval.pvs.length).clamp(0, 5);
     final key = _buildKey(fen, effectiveMultiPv);
     await prefs.setString(key, jsonEncode(eval.toJson()));
 
@@ -58,18 +59,40 @@ class LocalEvalCache {
       try {
         final eval = CloudEval.fromJson(jsonDecode(raw));
         if (eval.pvs.isEmpty) continue;
-        // Ensure we only accept entries that don't exceed requested PV count
-        if (desired > 0 && eval.pvs.length > desired) {
-          // Truncate in-memory copy so callers never see more lines than requested
-          final trimmed = CloudEval(
-            fen: eval.fen,
-            knodes: eval.knodes,
-            depth: eval.depth,
-            pvs: eval.pvs.take(desired).toList(growable: false),
-          );
-          return trimmed;
+        if (desired > 0) {
+          // Skip entries that don't satisfy the requested PV count
+          if (eval.pvs.length < desired) {
+            continue;
+          }
+          if (eval.pvs.length > desired) {
+            final trimmed = CloudEval(
+              fen: eval.fen,
+              knodes: eval.knodes,
+              depth: eval.depth,
+              pvs: eval.pvs.take(desired).toList(growable: false),
+              requestedMultiPv: desired,
+            );
+            return trimmed;
+          }
+          if (eval.requestedMultiPv != desired) {
+            return CloudEval(
+              fen: eval.fen,
+              knodes: eval.knodes,
+              depth: eval.depth,
+              pvs: eval.pvs,
+              requestedMultiPv: desired,
+            );
+          }
         }
-        return eval;
+        return eval.requestedMultiPv == null
+            ? CloudEval(
+                fen: eval.fen,
+                knodes: eval.knodes,
+                depth: eval.depth,
+                pvs: eval.pvs,
+                requestedMultiPv: eval.pvs.length,
+              )
+            : eval;
       } catch (_) {
         // corrupted entry → skip it
       }

@@ -37,6 +37,8 @@ class PersistCloudEval {
     final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
     print("💾 SAVING TO SUPABASE: fen=$fen, side=$sideToMove, cp=$cp (should already be white's perspective)");
 
+    final targetMultiPv = cloud.requestedMultiPv ?? cloud.pvs.length;
+
     return await _evalRepo.handleApiCall(() async {
       // All DB operations happen on the same client → implicit transaction
       final supabase = _evalRepo.supabase;
@@ -61,7 +63,7 @@ class PersistCloudEval {
                 },
               )
               .toList(),
-          multiPv: cloud.pvs.length, // Track number of PVs
+          multiPv: targetMultiPv, // Track user-requested PV count
         ),
       );
 

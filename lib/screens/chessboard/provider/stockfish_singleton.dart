@@ -12,6 +12,7 @@ class EnhancedCloudEval {
   final List<Pv> pvs;
   final bool isCancelled;
   final bool fromWhitePerspective; // Track perspective for correct evaluation
+  final int? requestedMultiPv;
 
   const EnhancedCloudEval({
     required this.fen,
@@ -20,6 +21,7 @@ class EnhancedCloudEval {
     required this.pvs,
     this.isCancelled = false,
     this.fromWhitePerspective = true,
+    this.requestedMultiPv,
   });
 }
 
@@ -109,6 +111,7 @@ class StockfishSingleton {
                 depth: 0,
                 pvs: [Pv(moves: '', cp: 0, mate: 0)],
                 isCancelled: true,
+                requestedMultiPv: job.multiPV,
               ),
             );
           }
@@ -158,6 +161,7 @@ class StockfishSingleton {
             depth: 0,
             pvs: [Pv(moves: '', cp: 0, mate: 0)],
             isCancelled: true,
+            requestedMultiPv: dropped.multiPV,
           ),
         );
       }
@@ -204,6 +208,7 @@ class StockfishSingleton {
           depth: 0,
           pvs: [Pv(moves: '', cp: 0, mate: 0)],
           isCancelled: true,
+          requestedMultiPv: _currentJob!.multiPV,
         );
         _currentJob!.completer.complete(cancelledResult);
       }
@@ -449,6 +454,7 @@ class StockfishSingleton {
           depth: finalDepth,
           pvs: normalizedPvs.isEmpty ? [Pv(moves: '', cp: 0)] : normalizedPvs,
           isCancelled: false,
+          requestedMultiPv: job.multiPV,
         );
         if (!completer.isCompleted) {
           completer.complete(result);
@@ -490,6 +496,7 @@ class StockfishSingleton {
           depth: 0,
           pvs: [Pv(moves: '', cp: 0)],
           isCancelled: false,
+          requestedMultiPv: job.multiPV,
         );
         completer.complete(errorResult);
         _currentJob = null;
