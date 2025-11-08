@@ -2566,24 +2566,31 @@ class _PrincipalVariationListState
                               vertical: 16.sp,
                             ),
                             child: Column(
-                              mainAxisSize: MainAxisSize.min,
+                              mainAxisSize: MainAxisSize.max,
                               mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
                                 Icon(
                                   Icons.horizontal_rule_rounded,
                                   color: kWhiteColor.withValues(alpha: 0.4),
+                                  size: 20.sp,
                                 ),
-                                SizedBox(height: 4.h),
-                                Text(
-                                  widget.state.isEvaluating
-                                      ? 'Preparing analysis...'
-                                      : 'No engine lines available',
-                                  textAlign: TextAlign.center,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: AppTypography.textXsMedium.copyWith(
-                                    color: kWhiteColor.withValues(alpha: 0.7),
-                                    fontWeight: FontWeight.w500,
+                                SizedBox(height: 6.sp),
+                                Flexible(
+                                  child: Text(
+                                    widget.state.isEvaluating
+                                        ? 'Preparing analysis...'
+                                        : 'No engine lines available',
+                                    textAlign: TextAlign.center,
+                                    softWrap: true,
+                                    maxLines: 3,
+                                    overflow: TextOverflow.fade,
+                                    style:
+                                        AppTypography.textXsMedium.copyWith(
+                                      color:
+                                          kWhiteColor.withValues(alpha: 0.7),
+                                      fontWeight: FontWeight.w500,
+                                    ),
                                   ),
                                 ),
                               ],
