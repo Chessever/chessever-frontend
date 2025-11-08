@@ -58,12 +58,7 @@ class ChessSvgBottomNavbar extends StatelessWidget {
               onPressed!();
             }
           : null,
-      onLongPress: onLongPress != null
-          ? () {
-              HapticFeedbackService.contextMenu();
-              onLongPress!();
-            }
-          : null,
+      onLongPress: onLongPress,
       behavior: HitTestBehavior.opaque,
       child: SizedBox(
         width: width,
@@ -125,12 +120,7 @@ class ChessSvgBottomNavbarWithLongPress extends StatelessWidget {
               onPressed!();
             }
           : null,
-      onLongPressStart: onLongPressStart != null
-          ? (_) {
-              HapticFeedbackService.contextMenu();
-              onLongPressStart!();
-            }
-          : null,
+      onLongPressStart: onLongPressStart != null ? (_) => onLongPressStart!() : null,
       onLongPressEnd: onLongPressEnd != null ? (_) => onLongPressEnd!() : null,
       onLongPressCancel: onLongPressEnd,
       behavior: HitTestBehavior.opaque,
