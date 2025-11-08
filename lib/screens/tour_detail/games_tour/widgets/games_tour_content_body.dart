@@ -6,6 +6,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
 import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:flutter/material.dart';
@@ -45,17 +46,26 @@ class GamesTourContentBody extends ConsumerWidget {
 
     // Group games by round while preserving the original sorting within each round
     final gamesByRound = <String, List<GamesTourModel>>{};
+    final roundLookup = <String, GamesAppBarModel>{
+      for (final round in rounds) round.id: round,
+    };
 
-    // Initialize empty lists for each round first
+    final Set<String>? searchGameIds =
+        isSearchMode ? allGames.map((g) => g.gameId).toSet() : null;
+
+    void ensureRoundEntry(String roundId) {
+      gamesByRound.putIfAbsent(roundId, () => <GamesTourModel>[]);
+    }
+
+    // Initialize empty lists for each known round
     for (final round in rounds) {
-      gamesByRound[round.id] = [];
+      ensureRoundEntry(round.id);
     }
 
     // Check if this is a multi-stage knockout and ensure ALL stages have loaded before proceeding
     // IMPORTANT: Skip multi-stage loading when in search mode - use filtered games instead
-    final isMultiStageKnockout = !isSearchMode &&
-                                  isKnockoutTournament &&
-                                  rounds.any((r) => r.id.startsWith('$kKnockoutStagePrefix-'));
+    final isMultiStageKnockout = isKnockoutTournament &&
+        rounds.any((r) => r.id.startsWith('$kKnockoutStagePrefix-'));
 
     if (isMultiStageKnockout) {
       // Extract all stage tour IDs
@@ -86,10 +96,14 @@ class GamesTourContentBody extends ConsumerWidget {
           final stageTourId = round.id.replaceFirst('$kKnockoutStagePrefix-', '');
 
           // Watch the state to rebuild when games update
-          final stageKnockoutState = ref.watch(knockoutTournamentStateProvider(stageTourId));
-
-          // Assign all games from this stage's tour
-          gamesByRound[round.id] = List<GamesTourModel>.from(stageKnockoutState.allGames);
+          final stageKnockoutState =
+              ref.watch(knockoutTournamentStateProvider(stageTourId));
+          final stageGames = stageKnockoutState.allGames
+              .where(
+                (game) => searchGameIds == null || searchGameIds.contains(game.gameId),
+              )
+              .toList();
+          gamesByRound[round.id] = stageGames;
         }
       }
 
@@ -111,27 +125,72 @@ class GamesTourContentBody extends ConsumerWidget {
     } else {
       // For regular tournaments OR search mode, use the (filtered) games from gamesScreenModel
       for (final game in allGames) {
-        if (gamesByRound.containsKey(game.roundId)) {
-          gamesByRound[game.roundId]!.add(game);
+        ensureRoundEntry(game.roundId);
+        gamesByRound[game.roundId]!.add(game);
+
+        if (isSearchMode && !roundLookup.containsKey(game.roundId)) {
+          final slug = game.roundSlug;
+          final friendlyName =
+              (slug != null && slug.isNotEmpty)
+                  ? KnockoutMatchDetector.formatRoundSlug(slug)
+                  : (game.tourSlug ?? game.roundId);
+          roundLookup[game.roundId] = GamesAppBarModel(
+            id: game.roundId,
+            name: friendlyName,
+            startsAt: game.lastMoveTime,
+            roundStatus: RoundStatus.live,
+          );
         }
       }
 
       if (isSearchMode) {
-        print('🔍 Search mode active: Using ${allGames.length} filtered games');
+        debugPrint('🔍 Search mode active: Using ${allGames.length} filtered games');
       }
     }
 
+    // Determine effective round list (original or search-specific)
+    final List<GamesAppBarModel> effectiveRounds;
+    if (isSearchMode) {
+      effectiveRounds = roundLookup.values
+          .where((round) => (gamesByRound[round.id]?.isNotEmpty ?? false))
+          .toList();
+
+      // Preserve original ordering when possible
+      final originalOrder = {
+        for (var i = 0; i < rounds.length; i++) rounds[i].id: i,
+      };
+      effectiveRounds.sort((a, b) {
+        final ia = originalOrder[a.id];
+        final ib = originalOrder[b.id];
+        if (ia != null && ib != null) return ia.compareTo(ib);
+        if (ia != null) return -1;
+        if (ib != null) return 1;
+        final aTime = gamesByRound[a.id]?.first.lastMoveTime ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bTime = gamesByRound[b.id]?.first.lastMoveTime ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return bTime.compareTo(aTime);
+      });
+    } else {
+      effectiveRounds = rounds;
+    }
+
     // Smart filtering: Show upcoming rounds intelligently
+    // FOR SEARCH MODE: Show ALL rounds with matching games (ignore status)
     // FOR MULTI-STAGE KNOCKOUTS: Show ALL stages with games (no status filtering)
     // FOR REGULAR EVENTS:
     // 1. If there are live/ongoing rounds → hide upcoming rounds (unless explicitly selected)
     // 2. If only completed rounds exist → show next upcoming round
     // 3. If all rounds are upcoming → show all upcoming rounds
 
-    final visibleRounds = rounds.where((round) {
+    final sourceRounds = isSearchMode ? effectiveRounds : rounds;
+    final visibleRounds = sourceRounds.where((round) {
       final roundGames = gamesByRound[round.id] ?? [];
       if (roundGames.isEmpty) {
         return false;
+      }
+
+      // In search mode, show ALL rounds that have matching games
+      if (isSearchMode) {
+        return true;
       }
 
       // For multi-stage knockouts, show ALL stages with games (no status filtering)
@@ -140,13 +199,13 @@ class GamesTourContentBody extends ConsumerWidget {
       }
 
       // Regular tournament filtering logic below
-      final hasLiveOrOngoing = rounds.any((r) =>
+      final hasLiveOrOngoing = sourceRounds.any((r) =>
         r.roundStatus == RoundStatus.live || r.roundStatus == RoundStatus.ongoing
       );
 
-      final hasCompleted = rounds.any((r) => r.roundStatus == RoundStatus.completed);
+      final hasCompleted = sourceRounds.any((r) => r.roundStatus == RoundStatus.completed);
 
-      final allAreUpcoming = rounds.every((r) =>
+      final allAreUpcoming = sourceRounds.every((r) =>
         r.roundStatus == RoundStatus.upcoming || gamesByRound[r.id]?.isEmpty == true
       );
 
@@ -168,10 +227,10 @@ class GamesTourContentBody extends ConsumerWidget {
       // If only completed rounds exist, show completed + first upcoming
       if (hasCompleted && round.roundStatus == RoundStatus.upcoming) {
         // Find the first upcoming round and only show that one
-        final upcomingRounds = rounds.where((r) =>
-          r.roundStatus == RoundStatus.upcoming &&
-          (gamesByRound[r.id]?.isNotEmpty ?? false)
-        ).toList();
+      final upcomingRounds = sourceRounds.where((r) =>
+        r.roundStatus == RoundStatus.upcoming &&
+        (gamesByRound[r.id]?.isNotEmpty ?? false)
+      ).toList();
         return upcomingRounds.isNotEmpty && upcomingRounds.first.id == round.id;
       }
 
@@ -181,16 +240,13 @@ class GamesTourContentBody extends ConsumerWidget {
 
     // Create a properly ordered flat list that matches the ListView display order
     final orderedGamesForChessBoard = <GamesTourModel>[];
-
     for (final round in visibleRounds) {
       final roundGames = gamesByRound[round.id] ?? [];
       orderedGamesForChessBoard.addAll(roundGames);
     }
 
-    // Create a new GamesScreenModel with the ListView-ordered games for ChessBoard navigation
-    final orderedGamesData = GamesScreenModel(
+    final orderedGamesData = gamesScreenModel.copyWith(
       gamesTourModels: orderedGamesForChessBoard,
-      pinnedGamedIs: gamesScreenModel.pinnedGamedIs,
     );
 
     final itemScrollController = ref.watch(gamesTourScrollProvider);
@@ -198,7 +254,7 @@ class GamesTourContentBody extends ConsumerWidget {
         ref.read(gamesTourScrollProvider.notifier).itemPositionsListener;
 
     return GamesListView(
-      key: ValueKey('games_list_${gamesListViewMode.name}'),
+      key: ValueKey('games_list_${gamesListViewMode.name}_search_$isSearchMode'),
       rounds: visibleRounds,
       gamesByRound: gamesByRound,
       gamesData: orderedGamesData,
@@ -206,6 +262,7 @@ class GamesTourContentBody extends ConsumerWidget {
       gamesListViewMode: gamesListViewMode,
       itemScrollController: itemScrollController,
       itemPositionsListener: itemPositionsListener,
+      isSearchMode: isSearchMode,
       onReturnFromChessboard: (returnedIndex) {
         // The scrolling is already handled in GamesListView
         // This callback can be used for additional logic if needed

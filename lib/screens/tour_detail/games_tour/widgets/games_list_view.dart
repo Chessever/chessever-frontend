@@ -29,6 +29,7 @@ class GamesListView extends ConsumerWidget {
     required this.gamesListViewMode,
     required this.itemScrollController,
     required this.itemPositionsListener,
+    this.isSearchMode = false,
     this.onReturnFromChessboard,
   });
 
@@ -39,13 +40,19 @@ class GamesListView extends ConsumerWidget {
   final GamesListViewMode gamesListViewMode;
   final ItemScrollController itemScrollController;
   final ItemPositionsListener itemPositionsListener;
+  final bool isSearchMode;
   final void Function(int)? onReturnFromChessboard;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Expansion states for rounds and matches
-    final matchExpansionState = ref.watch(matchExpansionProvider);
-    final roundExpansionState = ref.watch(roundExpansionProvider);
+    // In search mode, override expansion to show everything
+    final matchExpansionState = isSearchMode
+        ? <String, bool>{} // Empty map means all expanded by default
+        : ref.watch(matchExpansionProvider);
+    final roundExpansionState = isSearchMode
+        ? <String, bool>{} // Empty map means all expanded by default
+        : ref.watch(roundExpansionProvider);
 
     // For multi-stage knockouts, build ordered games list from gamesByRound
     final orderedGamesList = _buildOrderedGamesList(
@@ -61,6 +68,7 @@ class GamesListView extends ConsumerWidget {
       matchExpansionState,
       roundExpansionState,
       isKnockoutTournament,
+      isSearchMode: isSearchMode,
     );
 
     if (itemCount == 0) {
@@ -89,6 +97,7 @@ class GamesListView extends ConsumerWidget {
             matchExpansionState: matchExpansionState,
             roundExpansionState: roundExpansionState,
             isKnockoutTournament: isKnockoutTournament,
+            isSearchMode: isSearchMode,
           );
 
           if (lookup == null) {
@@ -96,36 +105,42 @@ class GamesListView extends ConsumerWidget {
           }
 
           if (lookup is _HeaderData) {
-            final isRoundExpanded = ref.watch(
-              roundExpansionStateProvider(lookup.round.id),
-            );
+            final isRoundExpanded = isSearchMode
+                ? true
+                : ref.watch(roundExpansionStateProvider(lookup.round.id));
             return Padding(
               padding: EdgeInsets.only(bottom: 16.sp),
               child: RoundHeader(
                 round: lookup.round,
                 roundGames: lookup.roundGames,
                 isExpanded: isRoundExpanded,
-                onToggle: () {
-                  ref
-                      .read(roundExpansionProvider.notifier)
-                      .toggleRound(lookup.round.id);
-                },
+                onToggle: isSearchMode
+                    ? null // Disable toggle in search mode
+                    : () {
+                        ref
+                            .read(roundExpansionProvider.notifier)
+                            .toggleRound(lookup.round.id);
+                      },
               ),
             );
           }
 
           if (lookup is _MatchHeaderData) {
             final matchKey = lookup.matchHeader.matchKey;
-            final isExpanded = ref.watch(matchExpansionStateProvider(matchKey));
+            final isExpanded = isSearchMode
+                ? true
+                : ref.watch(matchExpansionStateProvider(matchKey));
 
             return Padding(
               padding: EdgeInsets.only(bottom: 12.sp),
               child: MatchHeader(
                 match: lookup.matchHeader,
                 isExpanded: isExpanded,
-                onToggle: () {
-                  ref.read(matchExpansionProvider.notifier).toggleMatch(matchKey);
-                },
+                onToggle: isSearchMode
+                    ? null // Disable toggle in search mode
+                    : () {
+                        ref.read(matchExpansionProvider.notifier).toggleMatch(matchKey);
+                      },
               ),
             );
           }
@@ -270,6 +285,7 @@ class GamesListView extends ConsumerWidget {
       isKnockoutTournament: isKnockoutTournament,
       matchExpansionState: matchExpansionState,
       roundExpansionState: roundExpansionState,
+      isSearchMode: isSearchMode,
     );
     if (listIndex != null) {
       itemScrollController.scrollTo(
@@ -287,15 +303,17 @@ int _computeItemCount(
   Map<String, List<GamesTourModel>> gamesByRound,
   Map<String, bool> matchExpansionState,
   Map<String, bool> roundExpansionState,
-  bool isKnockoutTournament,
-) {
+  bool isKnockoutTournament, {
+  bool isSearchMode = false,
+}) {
   var count = 0;
   final isGrid = mode == GamesListViewMode.chessBoardGrid;
 
   for (final round in rounds) {
     final roundGames = gamesByRound[round.id] ?? const <GamesTourModel>[];
     if (roundGames.isEmpty) continue;
-    final isRoundExpanded = roundExpansionState[round.id] ?? true;
+    // In search mode, default to expanded (true)
+    final isRoundExpanded = isSearchMode ? true : (roundExpansionState[round.id] ?? true);
 
     count++; // round header always counted
 
@@ -309,7 +327,8 @@ int _computeItemCount(
       for (final entry in matches.entries) {
         final matchKey = entry.key;
         final matchGames = entry.value;
-        final isExpanded = matchExpansionState[matchKey] ?? true;
+        // In search mode, default to expanded (true)
+        final isExpanded = isSearchMode ? true : (matchExpansionState[matchKey] ?? true);
 
         count++; // match header
 
@@ -343,6 +362,7 @@ Object? _lookupItem({
   required Map<String, bool> matchExpansionState,
   required Map<String, bool> roundExpansionState,
   required bool isKnockoutTournament,
+  bool isSearchMode = false,
 }) {
   var currentIndex = 0;
   var globalGameIndex = 0;
@@ -353,7 +373,8 @@ Object? _lookupItem({
     if (roundGames.isEmpty) continue;
 
     final roundStartIndex = globalGameIndex;
-    final isRoundExpanded = roundExpansionState[round.id] ?? true;
+    // In search mode, default to expanded (true)
+    final isRoundExpanded = isSearchMode ? true : (roundExpansionState[round.id] ?? true);
 
     if (index == currentIndex) {
       return _HeaderData(round, roundGames);
@@ -384,7 +405,8 @@ Object? _lookupItem({
       for (final matchHeader in matchHeaders) {
         final matchGames = matchHeader.games;
         final matchKey = matchHeader.matchKey;
-        final isExpanded = matchExpansionState[matchKey] ?? true;
+        // In search mode, default to expanded (true)
+        final isExpanded = isSearchMode ? true : (matchExpansionState[matchKey] ?? true);
         final matchGamesCount = matchGames.length;
         final matchStartIndex = roundStartIndex + matchGameOffset;
 
@@ -484,6 +506,7 @@ int? _listIndexForGameIndex({
   required bool isKnockoutTournament,
   required Map<String, bool> matchExpansionState,
   required Map<String, bool> roundExpansionState,
+  bool isSearchMode = false,
 }) {
   if (gameIndex < 0) return null;
 
@@ -497,7 +520,8 @@ int? _listIndexForGameIndex({
 
     final roundStartIndex = globalGameIndex;
     final isKnockoutFormat = _isKnockoutRound(isKnockoutTournament, round);
-    final isRoundExpanded = roundExpansionState[round.id] ?? true;
+    // In search mode, default to expanded (true)
+    final isRoundExpanded = isSearchMode ? true : (roundExpansionState[round.id] ?? true);
 
     // skip round header
     currentIndex++;
@@ -515,7 +539,8 @@ int? _listIndexForGameIndex({
       for (final entry in matches.entries) {
         final matchKey = entry.key;
         final matchGames = entry.value;
-        final isExpanded = matchExpansionState[matchKey] ?? true;
+        // In search mode, default to expanded (true)
+        final isExpanded = isSearchMode ? true : (matchExpansionState[matchKey] ?? true);
         final matchStartIndex = roundStartIndex + matchGameOffset;
         final matchGamesCount = matchGames.length;
 

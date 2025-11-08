@@ -5,8 +5,11 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/repository/local_storage/tournament/games/pin_games_local_storage.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search.dart';
+import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final gamesTourScreenProvider = StateNotifierProvider<
@@ -502,11 +505,40 @@ class GamesTourScreenProvider
       final pinnedIds = ref.read(gamesPinprovider(aboutTourModel!.id)).allPins;
 
       final gamesLocal = ref.read(gamesLocalStorage);
-      final searchResult = await gamesLocal.searchGamesWithScoring(
+
+      // Search in main tournament
+      final mainSearchResult = await gamesLocal.searchGamesWithScoring(
         tourId: aboutTourModel!.id,
         query: query,
       );
-      final games = searchResult.results.map((r) => r.game).toList();
+      final allResults = <GameSearchResult>[...mainSearchResult.results];
+
+      // Check if this is a multi-stage knockout tournament and search all stages
+      final gamesAppBar = ref.read(gamesAppBarProvider);
+      if (gamesAppBar.hasValue) {
+        final rounds = gamesAppBar.value?.gamesAppBarModels ?? [];
+        final stageTourIds = rounds
+            .where((r) => r.id.startsWith('$kKnockoutStagePrefix-'))
+            .map((r) => r.id.replaceFirst('$kKnockoutStagePrefix-', ''))
+            .where((id) => id != aboutTourModel!.id) // Don't search main tour twice
+            .toSet()
+            .toList();
+
+        // Search each stage
+        for (final stageTourId in stageTourIds) {
+          try {
+            final stageSearchResult = await gamesLocal.searchGamesWithScoring(
+              tourId: stageTourId,
+              query: query,
+            );
+            allResults.addAll(stageSearchResult.results);
+          } catch (e) {
+            debugPrint('Error searching stage $stageTourId: $e');
+          }
+        }
+      }
+
+      final games = allResults.map((r) => r.game).toList();
 
       final models = <GamesTourModel>[];
       for (final g in games) {
@@ -514,6 +546,8 @@ class GamesTourScreenProvider
           models.add(GamesTourModel.fromGame(g));
         } catch (_) {}
       }
+
+      debugPrint('🔍 Search completed: Found ${models.length} games across all stages for query "$query"');
 
       if (mounted) {
         state = AsyncValue.data(
