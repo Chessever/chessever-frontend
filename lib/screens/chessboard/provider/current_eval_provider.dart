@@ -105,7 +105,8 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
     // 2️⃣  Supabase
     final supabaseEval = await ref
         .read(evalsRepositoryProvider)
-        .fetchFromSupabase(fen, desiredMultiPv: multiPV);
+        .fetchFromSupabase(fen, desiredMultiPv: multiPV)
+        .timeout(const Duration(milliseconds: 600), onTimeout: () => null);
     if (supabaseEval != null) {
       final cloud = ref
           .read(evalsRepositoryProvider)
@@ -295,10 +296,12 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
     // 2️⃣ Query Supabase FIRST (our database, no rate limits)
     print('🔍 EVAL: Checking Supabase for $fen');
     try {
-      final supabaseEval = await evalsRepo.fetchFromSupabase(
-        fen,
-        desiredMultiPv: multiPV,
-      );
+      final supabaseEval = await evalsRepo
+          .fetchFromSupabase(
+            fen,
+            desiredMultiPv: multiPV,
+          )
+          .timeout(const Duration(milliseconds: 600), onTimeout: () => null);
       if (supabaseEval != null) {
         final cloud = evalsRepo.evalsToCloudEval(fen, supabaseEval);
         if (_isValidEvaluation(cloud)) {
@@ -326,7 +329,14 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
     }
 
     if (!params.enableLichessFallback) {
-      throw Exception('Lichess disabled for this request');
+      print('⚠️ cascadeEvalProviderForBoard: Lichess disabled, skipping remote fallback for $fen');
+      return CloudEval(
+        fen: fen,
+        knodes: 0,
+        depth: 0,
+        pvs: const [],
+        requestedMultiPv: multiPV,
+      );
     }
 
     // 3️⃣ LICHESS FALLBACK ONLY (NO LOCAL ENGINE HERE)
