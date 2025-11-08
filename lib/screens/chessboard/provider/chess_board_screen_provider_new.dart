@@ -77,6 +77,7 @@ class ChessBoardScreenNotifierNew
   bool _cancelEvaluation = false;
   String? _pendingEvalFen;
   Timer? _evalWatchdogTimer;
+  Timer? _navEvalDebounceTimer;
   bool _resumeVariantAutoPlay = false;
   bool _isPlayingVariant = false;
   final Map<String, double> _evaluationCache = {};
@@ -91,6 +92,12 @@ class ChessBoardScreenNotifierNew
   ChessGameNavigatorStateManager? _analysisStateManager;
   ProviderSubscription<ChessGameNavigatorState>? _navigatorSubscription;
   bool _isInitialLoad = true;
+  DateTime? _lastNavEventTime;
+  int _navRapidNavigationCount = 0;
+  String? _navEvalPendingFen;
+
+  static const Duration _navBurstWindow = Duration(milliseconds: 160);
+  static const Duration _navBurstDebounceDelay = Duration(milliseconds: 120);
 
   void _initializeState() {
     // Start with an initial data state to ensure proper initialization
@@ -298,6 +305,54 @@ class ChessBoardScreenNotifierNew
     }
   }
 
+  void _cancelNavigationEvalDebounce() {
+    _navEvalDebounceTimer?.cancel();
+    _navEvalDebounceTimer = null;
+    _navEvalPendingFen = null;
+    _navRapidNavigationCount = 0;
+    _lastNavEventTime = null;
+  }
+
+  void _triggerEvaluationAfterNavigation(String fen) {
+    final now = DateTime.now();
+    final hadRecentNav =
+        _lastNavEventTime != null &&
+        now.difference(_lastNavEventTime!) < _navBurstWindow;
+    _lastNavEventTime = now;
+
+    if (!hadRecentNav) {
+      _navRapidNavigationCount = 1;
+      _navEvalPendingFen = null;
+      _navEvalDebounceTimer?.cancel();
+      _updateEvaluation();
+      return;
+    }
+
+    _navRapidNavigationCount++;
+    if (_navRapidNavigationCount < 2) {
+      _navEvalPendingFen = null;
+      _navEvalDebounceTimer?.cancel();
+      _updateEvaluation();
+      return;
+    }
+
+    _navEvalPendingFen = _normalizeFen(fen);
+    _navEvalDebounceTimer?.cancel();
+    _navEvalDebounceTimer = Timer(_navBurstDebounceDelay, () {
+      if (!mounted) return;
+      _navEvalDebounceTimer = null;
+      final latestFen = _currentPositionFen();
+      final pendingFen = _navEvalPendingFen;
+      _navEvalPendingFen = null;
+      _navRapidNavigationCount = 0;
+      if (pendingFen == null) return;
+      if (_cancelEvaluation) return;
+      if (latestFen == null) return;
+      if (_normalizeFen(latestFen) != pendingFen) return;
+      _updateEvaluation(force: true);
+    });
+  }
+
   /// Get evaluation with consistent perspective for evaluation bar display
   /// BULLETPROOF evaluation perspective handler
   /// This method GUARANTEES that ALL evaluations are in WHITE'S PERSPECTIVE
@@ -449,6 +504,10 @@ class ChessBoardScreenNotifierNew
         if (pgn != null) {
           game = game.copyWith(pgn: pgn);
         }
+      }
+
+      if ((pgn == null || pgn.trim().isEmpty) && (game.fen?.isNotEmpty ?? false)) {
+        pgn = _buildFenFallbackPgn(game.fen!);
       }
 
       // Ensure PGN is not empty
@@ -1815,6 +1874,7 @@ class ChessBoardScreenNotifierNew
   Future<void> onBecameInvisible() async {
     _cancelEvaluation = true;
     _cancelEvalWatchdog(resetPending: true);
+    _cancelNavigationEvalDebounce();
     _activeEvalKey = null;
     _activeEvalRequestId = null;
     _activeEvalStartTime = null;
@@ -1832,16 +1892,20 @@ class ChessBoardScreenNotifierNew
   }
 
   Color getMoveColor(String move, int moveIndex) {
-    final st = state.value!;
-    if (st.isLoadingMoves) {
+    final currentState = state.value!;
+    if (currentState.isLoadingMoves) {
       return kWhiteColor.withValues(alpha: 0.3);
     }
-    if (moveIndex == st.currentMoveIndex - 1) {
+
+    final referenceIndex =
+        currentState.isAnalysisMode
+            ? currentState.analysisState.currentMoveIndex
+            : currentState.currentMoveIndex;
+
+    if (referenceIndex >= 0 && moveIndex <= referenceIndex) {
       return kWhiteColor;
     }
-    if (moveIndex < st.currentMoveIndex - 1) {
-      return kWhiteColor;
-    }
+
     return kWhiteColor70;
   }
 
@@ -1863,6 +1927,26 @@ class ChessBoardScreenNotifierNew
 [Opening "Old Indian Defense: Normal Variation"]
 
 1. d4 d6 2. Nf3 Nf6 3. c4 Nbd7 4. Nc3 e5 5. e4 c6 6. Be2 Be7 7. O-O Qc7 8. h3 O-O 9. Be3 Re8 10. Rc1 exd4 11. Nxd4 Nc5 12. Qc2 a5 13. f4 Bf8 14. Bf3 g6 15. Nde2 Ncxe4 16. Nxe4 Nxe4 17. Bxe4 Qe7 18. Ng3 d5 19. cxd5 cxd5 20. Bxd5 Qxe3+ 21. Qf2 Qxf2+ 22. Kxf2 Be6 23. Bxe6 Rxe6 24. Rfd1 b6 25. Kf3 Rae8 26. Rc4 Re3+ 27. Kf2 Bc5 28. Rxc5 bxc5 29. Rc1 Rd3 30. Rc2 Kg7 31. Nf1 Re4 32. g3 Rb4 33. b3 a4 34. Rxc5 axb3 35. axb3 Rbxb3 36. Rc2 h5 37. h4 Rf3+ 38. Kg2 Rfc3 39. Re2 Rc5 40. Kf2 Rcb5 41. Re8 Rb2+ 42. Kf3 R5b3+ 43. Ne3 Ra2 44. Re7 Rbb2 45. g4 hxg4+ 46. Nxg4 Ra3+ 47. Ne3 Kf8 48. Re4 f6 49. Kg3 Kf7 50. Kf3 Rh2 51. Kg3 Rh1 52. Kg2 Rxh4 53. Nd5 Ra7 0-1
+''';
+  }
+
+  String _buildFenFallbackPgn(String rawFen) {
+    final safeFen = rawFen.trim();
+    String sanitize(String value) => value.replaceAll('"', "'");
+    final whiteName = sanitize(game.whitePlayer.name);
+    final blackName = sanitize(game.blackPlayer.name);
+    final eventName = sanitize(game.roundSlug ?? game.roundId);
+    final siteName = sanitize(game.tourSlug ?? game.tourId);
+
+    return '''
+[Event "$eventName"]
+[Site "$siteName"]
+[White "$whiteName"]
+[Black "$blackName"]
+[SetUp "1"]
+[FEN "$safeFen"]
+
+*
 ''';
   }
 
@@ -3465,10 +3549,24 @@ bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
             pvLines: cachedCurrentPv,
           );
         } else {
-          // No cached result for current position - just turn off evaluating flag
-          state = AsyncValue.data(
-            currentSnapshot.copyWith(isEvaluating: false),
-          );
+          final normalizedCurrentFen = _normalizeFen(currentPositionFen);
+          final bool pendingForCurrent =
+              _pendingEvalFen != null &&
+              _pendingEvalFen == normalizedCurrentFen;
+          final bool hasActiveRequestForCurrent =
+              _activeEvalRequestId != null &&
+              _activeEvalKey ==
+                  _fenCacheKey(currentPositionFen, multiPV: configuredMultiPV);
+
+          if (pendingForCurrent || hasActiveRequestForCurrent) {
+            debugPrint(
+              '⏳ EVAL: New evaluation pending for $normalizedCurrentFen, keeping loading state',
+            );
+          } else {
+            state = AsyncValue.data(
+              currentSnapshot.copyWith(isEvaluating: false),
+            );
+          }
         }
         return;
       }
@@ -3662,7 +3760,7 @@ bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
       state = AsyncValue.data(progressedState);
 
       if (!_cancelEvaluation) {
-        _updateEvaluation();
+        _triggerEvaluationAfterNavigation(position.fen);
       }
     } catch (e) {
       debugPrint('Failed to sync analysis navigator state: $e');
@@ -3995,6 +4093,7 @@ bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
     _evaluationCache.clear();
     _mateCache.clear();
     _pvCache.clear();
+    _cancelNavigationEvalDebounce();
     unawaited(_persistAnalysisState());
     _navigatorSubscription?.close();
     _navigatorSubscription = null;
