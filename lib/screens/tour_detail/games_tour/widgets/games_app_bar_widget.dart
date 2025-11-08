@@ -479,13 +479,15 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
                                           value: MenuAction.collapseAllRounds,
                                           child: InkWell(
                                             onTap: () {
-                                              Navigator.pop(context);
+                                              // Update state first
                                               ref
                                                   .read(
                                                     roundExpansionProvider
                                                         .notifier,
                                                   )
                                                   .collapseAll(roundIds);
+                                              // Then close popup after state update
+                                              Navigator.pop(context);
                                             },
                                             child: SizedBox(
                                               width: 200,
@@ -521,13 +523,15 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
                                           value: MenuAction.expandAllRounds,
                                           child: InkWell(
                                             onTap: () {
-                                              Navigator.pop(context);
+                                              // Update state first
                                               ref
                                                   .read(
                                                     roundExpansionProvider
                                                         .notifier,
                                                   )
                                                   .expandAll();
+                                              // Then close popup after state update
+                                              Navigator.pop(context);
                                             },
                                             child: SizedBox(
                                               width: 200,

@@ -38,7 +38,7 @@ class RoundExpansionNotifier extends StateNotifier<Map<String, bool>> {
   }
 
   void collapseAll(Iterable<String> roundIds) {
-    final newState = <String, bool>{};
+    final newState = <String, bool>{...state};
     for (final id in roundIds) {
       newState[id] = false;
     }

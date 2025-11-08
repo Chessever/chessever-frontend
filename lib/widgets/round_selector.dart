@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../utils/app_typography.dart';
+import '../utils/haptic_feedback_service.dart';
 
 class RoundSelector extends StatelessWidget {
   final int currentRound;
@@ -18,6 +19,7 @@ class RoundSelector extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
+        HapticFeedbackService.dropdownSelect();
         _showRoundPicker(context);
       },
       child: Container(
@@ -77,6 +79,7 @@ class RoundSelector extends StatelessWidget {
 
                     return ListTile(
                       onTap: () {
+                        HapticFeedbackService.selection();
                         Navigator.pop(context);
                         onRoundSelected(roundNumber);
                       },

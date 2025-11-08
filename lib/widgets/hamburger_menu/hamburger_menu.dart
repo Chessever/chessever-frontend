@@ -2,6 +2,7 @@ import 'package:chessever2/providers/app_version_provider.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu_dialogs.dart';
@@ -168,7 +169,12 @@ class _LogOutButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: onLogoutPressed,
+      onTap: onLogoutPressed != null
+          ? () {
+              HapticFeedbackService.buttonPress();
+              onLogoutPressed!();
+            }
+          : null,
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 12.sp),
         height: 48.h,
@@ -210,7 +216,12 @@ class _MenuItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: onPressed,
+      onTap: onPressed != null
+          ? () {
+              HapticFeedbackService.navigation();
+              onPressed!();
+            }
+          : null,
       child: Container(
         color: color,
         padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),

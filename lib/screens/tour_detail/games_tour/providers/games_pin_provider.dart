@@ -1,7 +1,11 @@
 import 'package:chessever2/repository/local_storage/tournament/games/pin_games_local_storage.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_auto_pin_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class GamesPinState {
@@ -43,10 +47,12 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
     : super(GamesPinState()) {
     loadPinnedGames();
     _listenToFavoritePlayers();
+    _listenToKnockoutStages();
   }
 
   final Ref ref;
   final String tourId;
+  final Set<String> _stageListeners = <String>{};
 
   void _listenToFavoritePlayers() {
     // Listen to favorite players changes and recompute auto-pins
@@ -59,6 +65,73 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
         });
       },
     );
+  }
+
+  void _listenToKnockoutStages() {
+    ref.listen(
+      tourDetailScreenProvider,
+      (previous, next) {
+        final detail = next.valueOrNull;
+        if (detail == null) {
+          return;
+        }
+
+        if (detail.tours.isEmpty) {
+          return;
+        }
+
+        // Find the current tour to determine its group broadcast
+        var matchingTour = detail.tours.first;
+        for (final tourModel in detail.tours) {
+          if (tourModel.tour.id == tourId) {
+            matchingTour = tourModel;
+            break;
+          }
+        }
+
+        final groupBroadcastId = matchingTour.tour.groupBroadcastId;
+        if (groupBroadcastId == null || groupBroadcastId.isEmpty) {
+          return;
+        }
+
+        final relatedStageIds = detail.tours
+            .where((tourModel) => tourModel.tour.groupBroadcastId == groupBroadcastId)
+            .map((tourModel) => tourModel.tour.id);
+
+        for (final stageId in relatedStageIds) {
+          // Avoid wiring duplicate listeners
+          if (_stageListeners.contains(stageId)) continue;
+          _stageListeners.add(stageId);
+
+          ref.listen<KnockoutTournamentState>(
+            knockoutTournamentStateProvider(stageId),
+            (prevState, nextState) {
+              final previousGames = prevState?.allGames ?? const <GamesTourModel>[];
+              final nextGames = nextState.allGames;
+
+              if (_didStageGamesChange(previousGames, nextGames)) {
+                computeAutoPins();
+              }
+            },
+            fireImmediately: true,
+          );
+        }
+      },
+      fireImmediately: true,
+    );
+  }
+
+  bool _didStageGamesChange(
+    List<GamesTourModel> previous,
+    List<GamesTourModel> next,
+  ) {
+    if (previous.length != next.length) {
+      return true;
+    }
+
+    final previousIds = previous.map((game) => game.gameId).toSet();
+    final nextIds = next.map((game) => game.gameId).toSet();
+    return !setEquals(previousIds, nextIds);
   }
 
   Future<void> loadPinnedGames() async {

@@ -1,4 +1,5 @@
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
@@ -51,8 +52,18 @@ class ChessSvgBottomNavbar extends StatelessWidget {
     final bool showDepth = depthText != null && depthText!.isNotEmpty;
 
     return GestureDetector(
-      onTap: onPressed,
-      onLongPress: onLongPress,
+      onTap: onPressed != null
+          ? () {
+              HapticFeedbackService.buttonPress();
+              onPressed!();
+            }
+          : null,
+      onLongPress: onLongPress != null
+          ? () {
+              HapticFeedbackService.contextMenu();
+              onLongPress!();
+            }
+          : null,
       behavior: HitTestBehavior.opaque,
       child: SizedBox(
         width: width,
@@ -108,9 +119,18 @@ class ChessSvgBottomNavbarWithLongPress extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onPressed,
-      onLongPressStart:
-          onLongPressStart != null ? (_) => onLongPressStart!() : null,
+      onTap: onPressed != null
+          ? () {
+              HapticFeedbackService.buttonPress();
+              onPressed!();
+            }
+          : null,
+      onLongPressStart: onLongPressStart != null
+          ? (_) {
+              HapticFeedbackService.contextMenu();
+              onLongPressStart!();
+            }
+          : null,
       onLongPressEnd: onLongPressEnd != null ? (_) => onLongPressEnd!() : null,
       onLongPressCancel: onLongPressEnd,
       behavior: HitTestBehavior.opaque,
@@ -214,7 +234,12 @@ class ChessIconBottomNavbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: onPressed,
+      onTap: onPressed != null
+          ? () {
+              HapticFeedbackService.buttonPress();
+              onPressed!();
+            }
+          : null,
       child: Container(
         padding: EdgeInsets.all(8.sp),
         child: Icon(iconData, size: 24.ic),

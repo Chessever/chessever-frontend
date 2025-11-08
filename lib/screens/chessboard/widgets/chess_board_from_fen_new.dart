@@ -4,11 +4,11 @@ import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/providers/board_settings_provider.dart';
 
@@ -115,9 +115,12 @@ class ChessBoardFromFENNew extends StatelessWidget {
           final boardSize = availableWidth - sideBarWidth;
 
           return GestureDetector(
-            onTap: onChanged,
+            onTap: () {
+              HapticFeedbackService.cardTap();
+              onChanged();
+            },
             onLongPressStart: (details) {
-              HapticFeedback.lightImpact();
+              HapticFeedbackService.contextMenu();
               _showBlurredPopup(context, details);
             },
             child: _ChessBoardLayout(
@@ -273,9 +276,12 @@ class GridChessBoardFromFENNew extends StatelessWidget {
     final screenWidth = (MediaQuery.of(context).size.width / 2) - 24.sp;
     final boardSize = screenWidth - sideBarWidth;
     return GestureDetector(
-      onTap: onChanged,
+      onTap: () {
+        HapticFeedbackService.cardTap();
+        onChanged();
+      },
       onLongPressStart: (details) {
-        HapticFeedback.lightImpact();
+        HapticFeedbackService.contextMenu();
         _showBlurredPopup(
           context: context,
           size: boardSize,

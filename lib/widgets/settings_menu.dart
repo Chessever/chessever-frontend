@@ -1,3 +1,4 @@
+import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:flutter/material.dart';
@@ -60,7 +61,12 @@ class SettingsMenu extends StatelessWidget {
           SizedBox(height: 25.h),
           // Board settings
           InkWell(
-            onTap: onBoardSettingsPressed,
+            onTap: onBoardSettingsPressed != null
+                ? () {
+                    HapticFeedbackService.navigation();
+                    onBoardSettingsPressed!();
+                  }
+                : null,
             child: Container(
               height: 36,
               decoration: BoxDecoration(
@@ -112,7 +118,12 @@ class SettingsMenu extends StatelessWidget {
 
           // Language
           InkWell(
-            onTap: onLanguagePressed,
+            onTap: onLanguagePressed != null
+                ? () {
+                    HapticFeedbackService.navigation();
+                    onLanguagePressed!();
+                  }
+                : null,
             child: Container(
               height: 36,
               decoration: BoxDecoration(
@@ -160,7 +171,12 @@ class SettingsMenu extends StatelessWidget {
 
           // Set timezone
           InkWell(
-            onTap: onTimezonePressed,
+            onTap: onTimezonePressed != null
+                ? () {
+                    HapticFeedbackService.navigation();
+                    onTimezonePressed!();
+                  }
+                : null,
             child: Container(
               height: 36,
               decoration: BoxDecoration(
@@ -230,6 +246,7 @@ class SettingsMenu extends StatelessWidget {
                     child: Switch(
                       value: notificationsEnabled,
                       onChanged: (value) {
+                        HapticFeedbackService.toggle();
                         onNotificationsPressed?.call();
                       },
                       activeThumbColor: kWhiteColor,
