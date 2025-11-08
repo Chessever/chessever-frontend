@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'dart:async';
 
@@ -153,11 +154,48 @@ class _GameSearchController extends StateNotifier<GameSearchState> {
 
     try {
       // Perform the actual search
-      final searchResult = await ref
-          .read(gamesLocalStorage)
-          .searchGamesWithScoring(tourId: tourId, query: trimmedQuery);
+      final gamesLocal = ref.read(gamesLocalStorage);
 
-      final results = searchResult.results;
+      final searchResult = await gamesLocal.searchGamesWithScoring(
+        tourId: tourId,
+        query: trimmedQuery,
+      );
+      final combinedResults = <GameSearchResult>[...searchResult.results];
+
+      final gamesAppBar = ref.read(gamesAppBarProvider);
+      if (gamesAppBar.hasValue) {
+        final rounds = gamesAppBar.value?.gamesAppBarModels ?? [];
+        final stageTourIds = rounds
+            .where((r) => r.id.startsWith('$kKnockoutStagePrefix-'))
+            .map((r) => r.id.replaceFirst('$kKnockoutStagePrefix-', ''))
+            .where((stageId) => stageId != tourId)
+            .toSet();
+
+        for (final stageTourId in stageTourIds) {
+          try {
+            final stageResult = await gamesLocal.searchGamesWithScoring(
+              tourId: stageTourId,
+              query: trimmedQuery,
+            );
+            combinedResults.addAll(stageResult.results);
+          } catch (e) {
+            debugPrint('Stage search failed for $stageTourId: $e');
+          }
+        }
+      }
+
+      // Deduplicate by game id while preserving latest occurrence (later stage search overrides?)
+      final deduped = <String, GameSearchResult>{};
+      for (final result in combinedResults) {
+        final gameId = result.game.id;
+        if (gameId != null) {
+          deduped[gameId] = result;
+        } else {
+          deduped[result.hashCode.toString()] = result;
+        }
+      }
+
+      final results = deduped.values.toList();
 
       // Cache the results
       _cacheResults(cacheKey, results);

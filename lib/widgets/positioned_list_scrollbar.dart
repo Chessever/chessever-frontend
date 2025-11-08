@@ -10,19 +10,20 @@ import 'package:sprung/sprung.dart';
 /// Features:
 /// - Drag to scroll through the list (tap disabled for visibility only)
 /// - Liquid drag feedback: thumb follows your finger instantly
-/// - Beautiful spring animations using Sprung curves (overDamped for thumb expansion)
-/// - Visual feedback: thumb expands 2x when dragging with smooth spring animation
-/// - Haptic feedback: mediumImpact on drag start, lightImpact on release
+/// - Snappy spring animations using custom Sprung curves for dynamic feel
+/// - Visual feedback: thumb expands 2.5x when dragging with fast spring animation
+/// - Haptic feedback: mediumImpact on touch (immediate), lightImpact on release
 /// - Performance optimized with RepaintBoundary
+/// - 28pt touch target for comfortable interaction without accidental activation
 ///
 /// Animation details:
-/// - Thumb expansion: 400ms with Sprung.overDamped (smooth, bouncy feel)
+/// - Thumb expansion: 180ms with custom Sprung (snappy, responsive feel)
 /// - Position updates: Instant (Duration.zero) for liquid drag experience
-/// - Fade in/out: 300ms with Sprung.criticallyDamped
+/// - Fade in/out: 200ms with Sprung.criticallyDamped
 ///
 /// Haptic feedback:
-/// - Drag start: HapticFeedback.mediumImpact() (noticeable confirmation)
-/// - Drag end: HapticFeedback.lightImpact() (subtle release feedback)
+/// - On touch: HapticFeedback.mediumImpact() (immediate confirmation)
+/// - On release: HapticFeedback.lightImpact() (subtle release feedback)
 ///
 /// Performance characteristics:
 /// - Uses existing ItemPositionsListener (no additional subscriptions)
@@ -51,7 +52,7 @@ class PositionedListScrollbar extends StatefulWidget {
     this.trackColor,
     this.trackBorderRadius,
     this.padding,
-    this.fadeDuration = const Duration(milliseconds: 300),
+    this.fadeDuration = const Duration(milliseconds: 200),
   });
 
   @override
@@ -104,13 +105,19 @@ class _PositionedListScrollbarState extends State<PositionedListScrollbar> {
     }
   }
 
-  void _handleDragUpdate(double localY, double trackHeight) {
+  void _handleDragStart(DragStartDetails details) {
     if (widget.itemCount <= 1) return;
 
-    // Provide haptic feedback on first drag (drag start)
-    if (!_isDragging) {
-      HapticFeedback.mediumImpact();
-    }
+    // Immediate haptic feedback on touch - user feels it right away!
+    HapticFeedback.mediumImpact();
+
+    setState(() {
+      _isDragging = true;
+    });
+  }
+
+  void _handleDragUpdate(double localY, double trackHeight) {
+    if (widget.itemCount <= 1) return;
 
     // Calculate progress based on drag position
     final progress = (localY / trackHeight).clamp(0.0, 1.0);
@@ -118,7 +125,6 @@ class _PositionedListScrollbarState extends State<PositionedListScrollbar> {
     // Update drag progress immediately for liquid feedback
     setState(() {
       _dragProgress = progress;
-      _isDragging = true;
     });
 
     // Convert progress to item index
@@ -131,7 +137,7 @@ class _PositionedListScrollbarState extends State<PositionedListScrollbar> {
   }
 
   void _handleDragEnd() {
-    // Optional: subtle feedback on release
+    // Subtle feedback on release
     HapticFeedback.lightImpact();
 
     setState(() {
@@ -141,8 +147,8 @@ class _PositionedListScrollbarState extends State<PositionedListScrollbar> {
 
   @override
   Widget build(BuildContext context) {
-    // Expanded tap area for better mobile UX (Apple HIG minimum: 44pt)
-    const double tapAreaWidth = 44.0;
+    // Expanded tap area for better mobile UX (balanced to avoid accidental activation)
+    const double tapAreaWidth = 28.0;
 
     return Stack(
       children: [
@@ -160,6 +166,7 @@ class _PositionedListScrollbarState extends State<PositionedListScrollbar> {
                 curve: Sprung.criticallyDamped,
                 child: GestureDetector(
                   // Only drag is enabled - tap removed for track visibility only
+                  onVerticalDragStart: _handleDragStart,
                   onVerticalDragUpdate: (details) {
                     final RenderBox box = context.findRenderObject() as RenderBox;
                     final localY = details.localPosition.dy;
@@ -217,15 +224,21 @@ class _ScrollbarThumb extends StatelessWidget {
         final maxThumbOffset = trackHeight - thumbHeight;
         final thumbOffset = maxThumbOffset * scrollProgress;
 
-        // Make thumb wider and more opaque when dragging
-        final activeThumbWidth = isDragging ? thumbWidth * 2 : thumbWidth;
+        // Make thumb wider and more opaque when dragging - dramatic 2.5x expansion!
+        final activeThumbWidth = isDragging ? thumbWidth * 2.5 : thumbWidth;
         final activeThumbColor = isDragging
             ? thumbColor.withValues(alpha: 1.0)
             : thumbColor;
 
+        // Custom spring curve for snappy, dynamic feel
+        final dynamicCurve = Sprung.custom(
+          damping: 20, // Higher damping = more bounce/skitter
+          stiffness: 180, // Higher stiffness = faster response
+        );
+
         return AnimatedContainer(
-          duration: const Duration(milliseconds: 400),
-          curve: Sprung.overDamped,
+          duration: const Duration(milliseconds: 180),
+          curve: dynamicCurve,
           width: activeThumbWidth,
           height: trackHeight,
           decoration: BoxDecoration(
@@ -238,8 +251,8 @@ class _ScrollbarThumb extends StatelessWidget {
                 duration: Duration.zero, // Instant position update for liquid feel
                 top: thumbOffset,
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 400),
-                  curve: Sprung.overDamped,
+                  duration: const Duration(milliseconds: 180),
+                  curve: dynamicCurve,
                   width: activeThumbWidth,
                   height: thumbHeight,
                   decoration: BoxDecoration(
