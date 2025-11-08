@@ -24,6 +24,16 @@ import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:worker_manager/worker_manager.dart';
 
+const int _minPersistDepth = 20;
+const int _minPersistFullMoves = 8;
+
+bool _shouldPersistCloudEval(CloudEval eval) {
+  return eval.meetsPersistenceThreshold(
+    minDepth: _minPersistDepth,
+    minFullMoves: _minPersistFullMoves,
+  );
+}
+
 // REMOVED: Hardcoded limit - now we use all PVs that were requested
 // const int _kMaxPrincipalVariations = 3;
 
@@ -1924,13 +1934,13 @@ class ChessBoardScreenNotifierNew
     return merged;
   }
 
-  bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
-    if (shorter.length > longer.length) return false;
-    for (var i = 0; i < shorter.length; i++) {
-      if (shorter[i].uci != longer[i].uci) return false;
-    }
-    return true;
+bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
+  if (shorter.length > longer.length) return false;
+  for (var i = 0; i < shorter.length; i++) {
+    if (shorter[i].uci != longer[i].uci) return false;
   }
+  return true;
+}
 
   ChessGameNavigator? get _analysisNavigator =>
       _analysisGame == null
@@ -2495,6 +2505,7 @@ class ChessBoardScreenNotifierNew
                 ),
               )
               .toList(growable: false),
+          requestedMultiPv: configuredMultiPV,
         );
         usedCachedResult = true;
         skipCascade = true;
@@ -2606,7 +2617,7 @@ class ChessBoardScreenNotifierNew
       if (!skipCascade) {
         try {
           debugPrint(
-            '🎯 EVAL: Requesting cascade evaluation (local → Supabase → Lichess → Stockfish) with $configuredMultiPV PVs...',
+            '🎯 EVAL: Requesting cascade evaluation (local → Supabase cache only) with $configuredMultiPV PVs...',
           );
           final cascadeEval = await ref.read(
             cascadeEvalProviderForBoard(
@@ -2614,6 +2625,7 @@ class ChessBoardScreenNotifierNew
                 fen: fen,
                 multiPV: configuredMultiPV,
                 isCurrentPosition: true,
+                enableLichessFallback: false,
               ),
             ).future,
           );
@@ -2622,16 +2634,6 @@ class ChessBoardScreenNotifierNew
               depth: cascadeEval.depth,
               kiloNodes: cascadeEval.knodes,
               fenFragment: fen,
-            );
-            depthTracker.update(
-              component: EngineComponent.evaluationGauge,
-              progress: cascadeProgress,
-              context: 'cascade evaluation',
-            );
-            depthTracker.update(
-              component: EngineComponent.principalVariation,
-              progress: cascadeProgress,
-              context: 'cascade evaluation (multiPV=$configuredMultiPV)',
             );
             primaryEval = cascadeEval;
             final rawCp = cascadeEval.pvs.first.cp;
@@ -2756,16 +2758,6 @@ class ChessBoardScreenNotifierNew
                   ),
                 );
                 state = AsyncValue.data(updatedCascade);
-                depthTracker.update(
-                  component: EngineComponent.evaluationGauge,
-                  progress: cascadeProgress,
-                  context: 'cascade (cloud)',
-                );
-                depthTracker.update(
-                  component: EngineComponent.principalVariation,
-                  progress: cascadeProgress,
-                  context: 'cascade (cloud)',
-                );
                 final cascadeComplete =
                     pvLines.length >= configuredMultiPV
                         ? 'complete'
@@ -2855,6 +2847,7 @@ class ChessBoardScreenNotifierNew
               knodes: 0,
               depth: depth,
               pvs: pvs,
+              requestedMultiPv: multiPV,
             );
             final mergedLines = _mergePvProgress(
               workingState.principalVariations,
@@ -2912,6 +2905,17 @@ class ChessBoardScreenNotifierNew
       try {
         final stockfishResult = await stockfishFuture;
 
+        if (stockfishResult.isCancelled) {
+          debugPrint(
+            '🎯 EVAL: Stockfish result cancelled before completion for $fen',
+          );
+          if (_activeEvalRequestId == currentRequestId) {
+            _activeEvalRequestId = null;
+            _activeEvalStartTime = null;
+          }
+          return;
+        }
+
         if (!mounted || _cancelEvaluation) return;
         if (stockfishResult.pvs.isNotEmpty) {
           primaryEval = CloudEval(
@@ -2919,6 +2923,7 @@ class ChessBoardScreenNotifierNew
             knodes: stockfishResult.knodes,
             depth: stockfishResult.depth,
             pvs: stockfishResult.pvs,
+            requestedMultiPv: multiPV,
           );
           final finalProgress = EngineSearchProgress(
             depth: stockfishResult.depth,
@@ -3150,16 +3155,29 @@ class ChessBoardScreenNotifierNew
 
       // OPTIMIZATION: Don't await cache persistence - run in background for speed
       // User sees evaluation immediately while caching happens asynchronously
-      if (primaryEval != null) {
+      if (primaryEval != null && _shouldPersistCloudEval(primaryEval!)) {
         final cache = ref.read(localEvalCacheProvider);
         final persist = ref.read(persistCloudEvalProvider);
         Future.wait([
           persist.call(fen, primaryEval!),
-          cache.save(fen, primaryEval!, multiPV: primaryEval!.pvs.length),
+          cache.save(
+            fen,
+            primaryEval!,
+            multiPV:
+                primaryEval!.requestedMultiPv ?? primaryEval!.pvs.length,
+          ),
         ]).catchError((e) {
           debugPrint('Background persist failed for $fen: $e');
           return <void>[];
         });
+      } else if (primaryEval != null) {
+        final pvMovesCount =
+            primaryEval!.pvs.isNotEmpty
+                ? primaryEval!.pvs.first.fullMoveCount
+                : 0;
+        debugPrint(
+          '⚠️ PERSIST SKIPPED: Eval depth=${primaryEval!.depth}, fullMoves=$pvMovesCount',
+        );
       }
 
       if (_cancelEvaluation || state.value == null || !mounted) {
@@ -3274,6 +3292,7 @@ class ChessBoardScreenNotifierNew
                         ),
                       )
                       .toList(),
+              requestedMultiPv: cachedCurrentPv.length,
             );
             shapes = getBestMoveShape(position, evalForShapes);
           }
@@ -3388,6 +3407,7 @@ class ChessBoardScreenNotifierNew
                         ),
                       )
                       .toList(),
+              requestedMultiPv: pvLines.length,
             );
         shapes = getBestMoveShape(position, evalForShapes);
       }

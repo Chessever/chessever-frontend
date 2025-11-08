@@ -15,7 +15,9 @@ enum EngineComponent {
 
 /// Track the progress of an engine search
 class EngineSearchProgress {
-  static const int minReportDepth = 1;
+  // Stockfish depth overlay should never appear lower than D:08, even when the
+  // engine is just starting a fresh search on a new position.
+  static const int minReportDepth = 8;
 
   EngineSearchProgress({
     required int depth,

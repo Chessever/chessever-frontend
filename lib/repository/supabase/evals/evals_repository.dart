@@ -99,13 +99,16 @@ class EvalRepository extends BaseRepository {
       );
       final exactOrBetter = selectBestMatch(matchingOrBetter);
       if (exactOrBetter != null) {
-        return exactOrBetter;
-      }
-
-      // No records with enough PVs – fall back to best available (highest PV count / depth)
-      final fallback = selectBestMatch(evals.where((e) => e.pvs.isNotEmpty));
-      if (fallback != null) {
-        return fallback;
+        final existingMulti = exactOrBetter.multiPv ?? exactOrBetter.pvs.length;
+        if (existingMulti == desiredMultiPv) {
+          return exactOrBetter;
+        }
+        final trimmedPvs =
+            exactOrBetter.pvs.take(desiredMultiPv).toList(growable: false);
+        return exactOrBetter.copyWith(
+          pvs: trimmedPvs,
+          multiPv: desiredMultiPv,
+        );
       }
       return null;
     }
@@ -260,6 +263,7 @@ class EvalRepository extends BaseRepository {
       knodes: eval.knodes,
       depth: eval.depth,
       pvs: pvsList,
+      requestedMultiPv: eval.multiPv ?? pvsList.length,
     );
   }
 

@@ -32,4 +32,13 @@ class Evals {
     'pvs': pvs,
     if (multiPv != null) 'multi_pv': multiPv,
   };
+
+  Evals copyWith({List<dynamic>? pvs, int? multiPv}) => Evals(
+    id: id,
+    positionId: positionId,
+    knodes: knodes,
+    depth: depth,
+    pvs: pvs ?? this.pvs,
+    multiPv: multiPv ?? this.multiPv,
+  );
 }

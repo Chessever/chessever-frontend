@@ -97,6 +97,7 @@ class _LichessEvalRepository {
       knodes: cloudEval.knodes,
       depth: cloudEval.depth,
       pvs: adjustedPvs,
+      requestedMultiPv: multiPv,
     );
   }
 }

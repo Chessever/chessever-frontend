@@ -3,12 +3,14 @@ class CloudEval {
   final int knodes;
   final int depth;
   final List<Pv> pvs;
+  final int? requestedMultiPv;
 
   CloudEval({
     required this.fen,
     required this.knodes,
     required this.depth,
     required this.pvs,
+    this.requestedMultiPv,
   });
 
   factory CloudEval.fromJson(Map<String, dynamic> json) {
@@ -20,6 +22,7 @@ class CloudEval {
           (json['pvs'] as List)
               .map((e) => Pv.fromJson(e as Map<String, dynamic>))
               .toList(),
+      requestedMultiPv: json['requestedMultiPv'] as int?,
     );
   }
 
@@ -28,6 +31,7 @@ class CloudEval {
     'knodes': knodes,
     'depth': depth,
     'pvs': pvs.map((e) => e.toJson()).toList(),
+    if (requestedMultiPv != null) 'requestedMultiPv': requestedMultiPv,
   };
 }
 
@@ -100,4 +104,28 @@ class Pv {
     'mate': mate,
     'whitePerspective': whitePerspective,
   };
+}
+
+int _countHalfMoves(String moves) {
+  if (moves.isEmpty) return 0;
+  final tokens = moves.trim().isEmpty
+      ? const <String>[]
+      : moves.trim().split(RegExp(r'\s+'));
+  return tokens.length;
+}
+
+extension PvQuality on Pv {
+  int get halfMoveCount => _countHalfMoves(moves);
+
+  int get fullMoveCount => (halfMoveCount / 2).floor();
+
+  bool hasMinFullMoves(int minFullMoves) => fullMoveCount >= minFullMoves;
+}
+
+extension CloudEvalQuality on CloudEval {
+  bool meetsPersistenceThreshold({int minDepth = 20, int minFullMoves = 8}) {
+    if (depth < minDepth) return false;
+    if (pvs.isEmpty) return false;
+    return pvs.first.hasMinFullMoves(minFullMoves);
+  }
 }
