@@ -42,6 +42,7 @@ class GamesTourContentBody extends ConsumerWidget {
     final isKnockoutTournament = knockoutState.isKnockout;
 
     final allGames = gamesScreenModel.gamesTourModels;
+    final displayMode = gamesScreenModel.gameDisplayMode;
     final isSearchMode = gamesScreenModel.isSearchMode;
 
     // Group games by round while preserving the original sorting within each round
@@ -98,11 +99,11 @@ class GamesTourContentBody extends ConsumerWidget {
           // Watch the state to rebuild when games update
           final stageKnockoutState =
               ref.watch(knockoutTournamentStateProvider(stageTourId));
-          final stageGames = stageKnockoutState.allGames
-              .where(
-                (game) => searchGameIds == null || searchGameIds.contains(game.gameId),
-              )
-              .toList();
+          final stageGames = stageKnockoutState.allGames.where((game) {
+            final matchesSearch =
+                searchGameIds == null || searchGameIds.contains(game.gameId);
+            return matchesSearch && _shouldIncludeGame(displayMode, game);
+          }).toList(growable: false);
           gamesByRound[round.id] = stageGames;
         }
       }
@@ -125,6 +126,7 @@ class GamesTourContentBody extends ConsumerWidget {
     } else {
       // For regular tournaments OR search mode, use the (filtered) games from gamesScreenModel
       for (final game in allGames) {
+        if (!_shouldIncludeGame(displayMode, game)) continue;
         ensureRoundEntry(game.roundId);
         gamesByRound[game.roundId]!.add(game);
 
@@ -268,5 +270,20 @@ class GamesTourContentBody extends ConsumerWidget {
         // This callback can be used for additional logic if needed
       },
     );
+  }
+}
+
+bool _shouldIncludeGame(
+  GameDisplayMode mode,
+  GamesTourModel game,
+) {
+  switch (mode) {
+    case GameDisplayMode.hideFinishedGames:
+      return !game.gameStatus.isFinished;
+    case GameDisplayMode.showfinishedGame:
+      return game.gameStatus.isFinished;
+    case GameDisplayMode.all:
+    default:
+      return true;
   }
 }

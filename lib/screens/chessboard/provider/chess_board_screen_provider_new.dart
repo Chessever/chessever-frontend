@@ -26,6 +26,7 @@ import 'package:worker_manager/worker_manager.dart';
 
 const int _minPersistDepth = 20;
 const int _minPersistFullMoves = 8;
+const Duration _evalWatchdogInterval = Duration(milliseconds: 1600);
 
 bool _shouldPersistCloudEval(CloudEval eval) {
   return eval.meetsPersistenceThreshold(
@@ -74,6 +75,8 @@ class ChessBoardScreenNotifierNew
   bool _isProcessingMove = false;
   bool _isLongPressing = false;
   bool _cancelEvaluation = false;
+  String? _pendingEvalFen;
+  Timer? _evalWatchdogTimer;
   bool _resumeVariantAutoPlay = false;
   bool _isPlayingVariant = false;
   final Map<String, double> _evaluationCache = {};
@@ -193,6 +196,106 @@ class ChessBoardScreenNotifierNew
     _pvCache.clear();
     _mateCache.clear();
     debugPrint('🗑️  Cleared evaluation cache ($totalItems items removed)');
+  }
+
+  String? _currentPositionFen() {
+    final currentState = state.value;
+    if (currentState == null) {
+      return null;
+    }
+    final position =
+        currentState.isAnalysisMode
+            ? currentState.analysisState.position
+            : currentState.position;
+    return position?.fen;
+  }
+
+  int _currentMultiPvSetting() {
+    final engineSettingsAsync = ref.read(engineSettingsProviderNew);
+    final engineSettings =
+        engineSettingsAsync.value ?? const EngineSettings();
+    return engineSettings.multiPvForStockfish();
+  }
+
+  void _registerPendingEvaluation(String fen) {
+    final normalizedFen = _normalizeFen(fen);
+    _pendingEvalFen = normalizedFen;
+    _scheduleEvalWatchdog(normalizedFen);
+  }
+
+  void _scheduleEvalWatchdog(String normalizedFen) {
+    _evalWatchdogTimer?.cancel();
+    _evalWatchdogTimer = Timer(
+      _evalWatchdogInterval,
+      () => _handleEvalWatchdogTimeout(normalizedFen),
+    );
+  }
+
+  void _handleEvalWatchdogTimeout(String targetFen) {
+    if (!mounted || _pendingEvalFen != targetFen) {
+      return;
+    }
+
+    final visibleIndex = ref.read(currentlyVisiblePageIndexProvider);
+    if (visibleIndex != index || _cancelEvaluation || _isLongPressing) {
+      _scheduleEvalWatchdog(targetFen);
+      return;
+    }
+
+    final currentFen = _currentPositionFen();
+    if (currentFen == null) {
+      _pendingEvalFen = null;
+      _cancelEvalWatchdog();
+      return;
+    }
+    final normalizedCurrent = _normalizeFen(currentFen);
+    if (normalizedCurrent != targetFen) {
+      return;
+    }
+
+    final isEvaluating = state.value?.isEvaluating ?? false;
+    if (!isEvaluating) {
+      _pendingEvalFen = null;
+      _cancelEvalWatchdog();
+      return;
+    }
+
+    final int multiPv = _currentMultiPvSetting();
+    final targetKey = _fenCacheKey(targetFen, multiPV: multiPv);
+    final bool hasActiveEval =
+        _activeEvalRequestId != null && _activeEvalKey == targetKey;
+
+    if (hasActiveEval) {
+      _scheduleEvalWatchdog(targetFen);
+      return;
+    }
+
+    debugPrint(
+      '⚠️ EVAL WATCHDOG: Stalled evaluation for $targetFen, forcing restart',
+    );
+    _pendingEvalFen = null;
+    _cancelEvalWatchdog();
+    _cancelEvaluation = false;
+    _evaluatePosition(force: true);
+  }
+
+  void _resolvePendingEvaluation(String fen) {
+    if (_pendingEvalFen == null) {
+      return;
+    }
+    final normalizedFen = _normalizeFen(fen);
+    if (_pendingEvalFen == normalizedFen) {
+      _pendingEvalFen = null;
+      _cancelEvalWatchdog();
+    }
+  }
+
+  void _cancelEvalWatchdog({bool resetPending = false}) {
+    _evalWatchdogTimer?.cancel();
+    _evalWatchdogTimer = null;
+    if (resetPending) {
+      _pendingEvalFen = null;
+    }
   }
 
   /// Get evaluation with consistent perspective for evaluation bar display
@@ -1711,6 +1814,7 @@ class ChessBoardScreenNotifierNew
 
   Future<void> onBecameInvisible() async {
     _cancelEvaluation = true;
+    _cancelEvalWatchdog(resetPending: true);
     _activeEvalKey = null;
     _activeEvalRequestId = null;
     _activeEvalStartTime = null;
@@ -2323,6 +2427,7 @@ bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
 
   Future<void> _evaluatePosition({bool force = false}) async {
     int? requestId;
+    String? lastEvaluatedFen;
     try {
       final initialState = state.value;
       if (initialState == null || initialState.isLoadingMoves) {
@@ -2357,6 +2462,7 @@ bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
         state = AsyncValue.data(initialState.copyWith(isEvaluating: false));
         return;
       }
+      lastEvaluatedFen = fen;
 
       // Get engine settings FIRST to get configured PV count for cache key
       final engineSettingsAsync = ref.read(engineSettingsProviderNew);
@@ -2567,6 +2673,8 @@ bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
           return; // Let existing request complete
         }
       }
+
+      _registerPendingEvaluation(fen);
 
       depthTracker.clear(
         EngineComponent.evaluationGauge,
@@ -3475,6 +3583,9 @@ bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
         _activeEvalKey = null;
         _activeEvalStartTime = null; // Clear start time on completion
       }
+      if (lastEvaluatedFen != null) {
+        _resolvePendingEvaluation(lastEvaluatedFen);
+      }
     }
   }
 
@@ -3887,6 +3998,7 @@ bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
     unawaited(_persistAnalysisState());
     _navigatorSubscription?.close();
     _navigatorSubscription = null;
+    _cancelEvalWatchdog(resetPending: true);
     super.dispose();
   }
 }
