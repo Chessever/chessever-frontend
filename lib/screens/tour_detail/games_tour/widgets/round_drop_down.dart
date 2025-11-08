@@ -2,6 +2,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_v
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/divider_widget.dart';
@@ -218,6 +219,7 @@ class _RoundDropdown extends HookConsumerWidget {
 
                                   return InkWell(
                                     onTap: () {
+                                      HapticFeedbackService.selection();
                                       if (!isSelected) {
                                         onChanged(round);
                                       }
@@ -312,6 +314,7 @@ class _RoundDropdown extends HookConsumerWidget {
           try {
             if (rounds.length <= 1) return;
 
+            HapticFeedbackService.dropdownSelect();
             if (isOpen.value) {
               isOpen.value = false;
             } else {

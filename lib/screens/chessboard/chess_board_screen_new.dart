@@ -290,6 +290,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   bool analysisMode = false;
   int? _lastViewedIndex;
   int _currentPageIndex = 0;
+  final Set<String> _syncedLatestPositions = <String>{};
 
   GamesTourModel _resolveGameForIndex(int index) {
     if (widget.games.isEmpty) {
@@ -317,6 +318,51 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
     }
 
     return fallbackGame;
+  }
+
+  void _ensureLatestMoveSelected({
+    required WidgetRef ref,
+    required int pageIndex,
+    required ChessBoardStateNew state,
+  }) {
+    if (pageIndex != _currentPageIndex) return;
+    if (state.isLoadingMoves) return;
+
+    final gameId = state.game.gameId;
+    if (_syncedLatestPositions.contains(gameId)) {
+      return;
+    }
+
+    final totalMoves = state.analysisState.allMoves.length;
+    if (totalMoves == 0) {
+      return; // Wait until we have at least one move before syncing
+    }
+
+    final lastMoveIndex = totalMoves - 1;
+    final currentIndex = state.analysisState.currentMoveIndex;
+
+    if (currentIndex >= lastMoveIndex) {
+      _syncedLatestPositions.add(gameId);
+      return;
+    }
+
+    final params = ChessBoardProviderParams(
+      game: state.game,
+      index: pageIndex,
+    );
+    final targetGameId = gameId;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_currentPageIndex != pageIndex) {
+        _syncedLatestPositions.remove(targetGameId);
+        return;
+      }
+      final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+      notifier.goToMove(lastMoveIndex);
+    });
+
+    _syncedLatestPositions.add(gameId);
   }
 
   @override
@@ -703,6 +749,11 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
                     ref.watch(chessBoardScreenProviderNew(params));
                 return stateAsync?.when(
                   data: (chessBoardState) {
+                    _ensureLatestMoveSelected(
+                      ref: ref,
+                      pageIndex: index,
+                      state: chessBoardState,
+                    );
                     if (chessBoardState.isAnalysisMode != analysisMode) {
                       WidgetsBinding.instance.addPostFrameCallback((_) {
                         if (_pageController.hasClients) {
@@ -2528,6 +2579,8 @@ class _PrincipalVariationListState
                                       ? 'Preparing analysis...'
                                       : 'No engine lines available',
                                   textAlign: TextAlign.center,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
                                   style: AppTypography.textXsMedium.copyWith(
                                     color: kWhiteColor.withValues(alpha: 0.7),
                                     fontWeight: FontWeight.w500,
@@ -2596,9 +2649,7 @@ class _PrincipalVariationListState
                               color: backgroundColor,
                             ),
                             clipBehavior: Clip.hardEdge,
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.vertical,
-                              physics: const BouncingScrollPhysics(),
+                            child: Padding(
                               padding: EdgeInsets.symmetric(
                                 horizontal: 12.sp,
                                 vertical: 10.sp,
@@ -2637,16 +2688,20 @@ class _PrincipalVariationListState
                                     ),
                                   ),
                                   Expanded(
-                                    child: Text(
-                                      sanMoves.join(' '),
-                                      softWrap: true,
-                                      style: AppTypography.textXsMedium
-                                          .copyWith(
-                                            color: kWhiteColor.withValues(
-                                              alpha: 0.9,
+                                    child: SingleChildScrollView(
+                                      scrollDirection: Axis.vertical,
+                                      physics: const BouncingScrollPhysics(),
+                                      child: Text(
+                                        sanMoves.join(' '),
+                                        softWrap: true,
+                                        style: AppTypography.textXsMedium
+                                            .copyWith(
+                                              color: kWhiteColor.withValues(
+                                                alpha: 0.9,
+                                              ),
+                                              fontWeight: FontWeight.w600,
                                             ),
-                                            fontWeight: FontWeight.w600,
-                                          ),
+                                      ),
                                     ),
                                   ),
                                 ],

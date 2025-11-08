@@ -2804,17 +2804,23 @@ class ChessBoardScreenNotifierNew
         maxDepth: combinedMaxDepth,
         allowCache: false,
         onDepthUpdate: (depth, knodes) {
-          pendingProgress = EngineSearchProgress(
+          final progress = EngineSearchProgress(
             depth: depth,
             kiloNodes: knodes,
             fenFragment: fen,
+          );
+          pendingProgress = progress;
+          depthTracker.update(
+            component: EngineComponent.evaluationGauge,
+            progress: progress,
+            context: 'local stockfish D:$depth',
           );
         },
         onPvUpdate: (pvs, depth) {
           Future<void>(() async {
             if (!mounted) return;
             final visiblePage = ref.read(currentlyVisiblePageIndexProvider);
-            if (visiblePage != index) return;
+            if (visiblePage != index && !isCurrentlyVisible) return;
             final currentState = state.value;
             if (currentState == null) return;
             final pos =
@@ -2863,11 +2869,13 @@ class ChessBoardScreenNotifierNew
                   kiloNodes: 0,
                   fenFragment: fen,
                 );
-            depthTracker.update(
-              component: EngineComponent.evaluationGauge,
-              progress: progress,
-              context: 'progressive D:$depth',
-            );
+            if (pendingProgress == null) {
+              depthTracker.update(
+                component: EngineComponent.evaluationGauge,
+                progress: progress,
+                context: 'progressive D:$depth',
+              );
+            }
             depthTracker.update(
               component: EngineComponent.principalVariation,
               progress: progress,
@@ -2981,6 +2989,13 @@ class ChessBoardScreenNotifierNew
           '🎯 EVAL ERROR: Stockfish progressive run failed for $fen: $e',
         );
         debugPrint('Stack: $stack');
+      }
+
+      if (evaluation == null && (primaryEval?.pvs.isNotEmpty ?? false)) {
+        evaluation = _getConsistentEvaluation(
+          primaryEval!.pvs.first.cp / 100.0,
+          fen,
+        );
       }
 
       // CRITICAL FIX: Show evaluation even if PVs fail to convert

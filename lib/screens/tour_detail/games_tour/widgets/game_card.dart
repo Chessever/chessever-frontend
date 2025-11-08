@@ -3,6 +3,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/chess_progress
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -11,7 +12,6 @@ import 'package:chessever2/widgets/atomic_countdown_text.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/chessboard/widgets/context_pop_up_menu.dart';
 
@@ -34,9 +34,12 @@ class GameCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: () {
+        HapticFeedbackService.cardTap();
+        onTap();
+      },
       onLongPressStart: (details) {
-        HapticFeedback.lightImpact();
+        HapticFeedbackService.contextMenu();
         _showBlurredPopup(context, details: details);
       },
       child: SizedBox(

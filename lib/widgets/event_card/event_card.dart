@@ -3,11 +3,11 @@ import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -20,9 +20,14 @@ class EventCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: onTap != null
+          ? () {
+              HapticFeedbackService.cardTap();
+              onTap!();
+            }
+          : null,
       onLongPressStart: (detail) {
-        HapticFeedback.lightImpact();
+        HapticFeedbackService.contextMenu();
       },
       child: Container(
         decoration: BoxDecoration(
@@ -260,7 +265,7 @@ class _StarWidget extends ConsumerWidget {
     // Star icon is tappable - user can favorite/unfavorite
     return InkWell(
       onTap: () {
-        HapticFeedback.lightImpact();
+        HapticFeedbackService.pin();
 
         ref.read(favoriteEventsProvider.notifier).toggleFavorite(
           eventId: tourEventCardModel.id,
