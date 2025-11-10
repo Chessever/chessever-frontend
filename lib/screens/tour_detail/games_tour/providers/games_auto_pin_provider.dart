@@ -1,7 +1,8 @@
 import 'dart:async';
 
 import 'package:chessever2/providers/country_dropdown_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
@@ -122,9 +123,19 @@ class _AutoPinLogController {
   List<GamesTourModel> _getAllGamesIncludingStages(String tourId) {
     final allGames = <GamesTourModel>[];
 
-    // Get games from the main/selected tour
-    final mainGames =
-        ref.read(gamesTourScreenProvider).value?.gamesTourModels ?? [];
+    // Get games from the main/selected tour using the raw games provider
+    final mainGamesRaw =
+        ref.read(gamesTourProvider(tourId)).valueOrNull ?? const <Games>[];
+    final mainGames = mainGamesRaw
+        .map((game) {
+          try {
+            return GamesTourModel.fromGame(game);
+          } catch (_) {
+            return null;
+          }
+        })
+        .whereType<GamesTourModel>()
+        .toList();
     allGames.addAll(mainGames);
 
     // Check if this is a multi-stage knockout tournament

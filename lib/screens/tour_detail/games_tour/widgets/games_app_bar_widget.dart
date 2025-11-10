@@ -471,6 +471,52 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
                                           thickness: 0.5.w,
                                           color: kDividerColor,
                                         ),
+                                      ] else ...[
+                                        PopupMenuItem<MenuAction>(
+                                          value: MenuAction.unpinAll,
+                                          child: InkWell(
+                                            onTap: () async {
+                                              Navigator.pop(context);
+                                              await ref
+                                                  .read(
+                                                    gamesPinprovider(
+                                                      tourData
+                                                          .aboutTourModel
+                                                          .id,
+                                                    ).notifier,
+                                                  )
+                                                  .disableAutoPin();
+                                            },
+                                            child: SizedBox(
+                                              width: 200,
+                                              child: Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment
+                                                        .spaceBetween,
+                                                children: [
+                                                  Text(
+                                                    "Disable Auto Pin",
+                                                    style: AppTypography
+                                                        .textXsMedium
+                                                        .copyWith(
+                                                          color: kWhiteColor,
+                                                        ),
+                                                  ),
+                                                  SvgPicture.asset(
+                                                    SvgAsset.unpine,
+                                                    height: 13.h,
+                                                    width: 13.w,
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        PopupMenuDivider(
+                                          height: 1.h,
+                                          thickness: 0.5.w,
+                                          color: kDividerColor,
+                                        ),
                                       ],
 
                                       if (roundIds.isNotEmpty) ...[

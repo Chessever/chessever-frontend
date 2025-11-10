@@ -1,8 +1,10 @@
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/repository/local_storage/tournament/games/pin_games_local_storage.dart';
+import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_auto_pin_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
@@ -20,7 +22,20 @@ class GamesPinState {
     this.autoPinDisabled = false,
   });
 
-  List<String> get allPins => {...manualPins, ...autoPins}.toList();
+  List<String> get allPins {
+    final seen = <String>{};
+    final ordered = <String>[];
+
+    for (final id in manualPins) {
+      if (seen.add(id)) ordered.add(id);
+    }
+
+    for (final id in autoPins) {
+      if (seen.add(id)) ordered.add(id);
+    }
+
+    return ordered;
+  }
 
   GamesPinState copyWith({
     List<String>? manualPins,
@@ -50,6 +65,7 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
     _listenToFavoritePlayers();
     _listenToKnockoutStages();
     _listenToCountrySelection();
+    _listenToPrimaryGames();
   }
 
   final Ref ref;
@@ -111,13 +127,37 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
               final previousGames = prevState?.allGames ?? const <GamesTourModel>[];
               final nextGames = nextState.allGames;
 
-              if (_didStageGamesChange(previousGames, nextGames)) {
+              if (_didGameListChange(previousGames, nextGames)) {
                 computeAutoPins();
               }
             },
             fireImmediately: true,
           );
         }
+      },
+      fireImmediately: true,
+    );
+  }
+
+  void _listenToPrimaryGames() {
+    ref.listen<AsyncValue<List<Games>>>(
+      gamesTourProvider(tourId),
+      (previous, next) {
+        if (!next.hasValue) {
+          return;
+        }
+
+        final nextGames = next.value ?? const <Games>[];
+        if (nextGames.isEmpty) {
+          return;
+        }
+
+        final previousGames = previous?.valueOrNull;
+        if (previousGames != null && !_didRawGamesChange(previousGames, nextGames)) {
+          return;
+        }
+
+        computeAutoPins();
       },
       fireImmediately: true,
     );
@@ -143,7 +183,7 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
     );
   }
 
-  bool _didStageGamesChange(
+  bool _didGameListChange(
     List<GamesTourModel> previous,
     List<GamesTourModel> next,
   ) {
@@ -153,6 +193,16 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
 
     final previousIds = previous.map((game) => game.gameId).toSet();
     final nextIds = next.map((game) => game.gameId).toSet();
+    return !setEquals(previousIds, nextIds);
+  }
+
+  bool _didRawGamesChange(List<Games> previous, List<Games> next) {
+    if (previous.length != next.length) {
+      return true;
+    }
+
+    final previousIds = previous.map((game) => game.id).toSet();
+    final nextIds = next.map((game) => game.id).toSet();
     return !setEquals(previousIds, nextIds);
   }
 
