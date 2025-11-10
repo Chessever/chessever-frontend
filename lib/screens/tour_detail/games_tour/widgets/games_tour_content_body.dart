@@ -91,6 +91,7 @@ class GamesTourContentBody extends ConsumerWidget {
 
       // For knockout tournaments with stage-based rounds (multi-stage knockouts),
       // fetch and assign games for EACH stage from ALL tours in the group broadcast
+      // DO NOT filter by displayMode here - filtering happens at rendering level for knockout
       for (final round in rounds) {
         if (round.id.startsWith('$kKnockoutStagePrefix-')) {
           // Extract the tour ID from the stage ID: "knockout-stage-{tourId}"
@@ -102,7 +103,8 @@ class GamesTourContentBody extends ConsumerWidget {
           final stageGames = stageKnockoutState.allGames.where((game) {
             final matchesSearch =
                 searchGameIds == null || searchGameIds.contains(game.gameId);
-            return matchesSearch && _shouldIncludeGame(displayMode, game);
+            // Only apply search filter, NOT displayMode filter for knockout
+            return matchesSearch;
           }).toList(growable: false);
           gamesByRound[round.id] = stageGames;
         }
@@ -124,9 +126,12 @@ class GamesTourContentBody extends ConsumerWidget {
         }
       }
     } else {
-      // For regular tournaments OR search mode, use the (filtered) games from gamesScreenModel
+      // For regular tournaments OR single-stage knockouts, use games from gamesScreenModel
+      // For knockout tournaments: DO NOT filter by displayMode here - filtering happens at rendering level
+      // For regular tournaments: Apply displayMode filter here
       for (final game in allGames) {
-        if (!_shouldIncludeGame(displayMode, game)) continue;
+        // Only apply displayMode filter for non-knockout tournaments
+        if (!isKnockoutTournament && !_shouldIncludeGame(displayMode, game)) continue;
         ensureRoundEntry(game.roundId);
         gamesByRound[game.roundId]!.add(game);
 
@@ -265,6 +270,7 @@ class GamesTourContentBody extends ConsumerWidget {
       itemScrollController: itemScrollController,
       itemPositionsListener: itemPositionsListener,
       isSearchMode: isSearchMode,
+      displayMode: displayMode,
       onReturnFromChessboard: (returnedIndex) {
         // The scrolling is already handled in GamesListView
         // This callback can be used for additional logic if needed
@@ -283,7 +289,6 @@ bool _shouldIncludeGame(
     case GameDisplayMode.showfinishedGame:
       return game.gameStatus.isFinished;
     case GameDisplayMode.all:
-    default:
       return true;
   }
 }
