@@ -30,6 +30,7 @@ class GamesListView extends ConsumerWidget {
     required this.itemScrollController,
     required this.itemPositionsListener,
     this.isSearchMode = false,
+    this.displayMode = GameDisplayMode.all,
     this.onReturnFromChessboard,
   });
 
@@ -41,6 +42,7 @@ class GamesListView extends ConsumerWidget {
   final ItemScrollController itemScrollController;
   final ItemPositionsListener itemPositionsListener;
   final bool isSearchMode;
+  final GameDisplayMode displayMode;
   final void Function(int)? onReturnFromChessboard;
 
   @override
@@ -68,6 +70,7 @@ class GamesListView extends ConsumerWidget {
       matchExpansionState,
       roundExpansionState,
       isKnockoutTournament,
+      displayMode,
       isSearchMode: isSearchMode,
     );
 
@@ -97,6 +100,7 @@ class GamesListView extends ConsumerWidget {
             matchExpansionState: matchExpansionState,
             roundExpansionState: roundExpansionState,
             isKnockoutTournament: isKnockoutTournament,
+            displayMode: displayMode,
             isSearchMode: isSearchMode,
           );
 
@@ -285,6 +289,7 @@ class GamesListView extends ConsumerWidget {
       isKnockoutTournament: isKnockoutTournament,
       matchExpansionState: matchExpansionState,
       roundExpansionState: roundExpansionState,
+      displayMode: displayMode,
       isSearchMode: isSearchMode,
     );
     if (listIndex != null) {
@@ -303,7 +308,8 @@ int _computeItemCount(
   Map<String, List<GamesTourModel>> gamesByRound,
   Map<String, bool> matchExpansionState,
   Map<String, bool> roundExpansionState,
-  bool isKnockoutTournament, {
+  bool isKnockoutTournament,
+  GameDisplayMode displayMode, {
   bool isSearchMode = false,
 }) {
   var count = 0;
@@ -334,10 +340,15 @@ int _computeItemCount(
 
         // Only count games if match is expanded
         if (isExpanded) {
+          // Filter games based on displayMode for knockout tournaments
+          final filteredGames = matchGames.where((game) {
+            return _shouldShowGame(displayMode, game);
+          }).toList();
+
           if (isGrid) {
-            count += (matchGames.length / 2).ceil();
+            count += (filteredGames.length / 2).ceil();
           } else {
-            count += matchGames.length;
+            count += filteredGames.length;
           }
         }
       }
@@ -354,6 +365,17 @@ int _computeItemCount(
   return count;
 }
 
+bool _shouldShowGame(GameDisplayMode mode, GamesTourModel game) {
+  switch (mode) {
+    case GameDisplayMode.hideFinishedGames:
+      return !game.gameStatus.isFinished;
+    case GameDisplayMode.showfinishedGame:
+      return game.gameStatus.isFinished;
+    case GameDisplayMode.all:
+      return true;
+  }
+}
+
 Object? _lookupItem({
   required int index,
   required List<GamesAppBarModel> rounds,
@@ -362,6 +384,7 @@ Object? _lookupItem({
   required Map<String, bool> matchExpansionState,
   required Map<String, bool> roundExpansionState,
   required bool isKnockoutTournament,
+  required GameDisplayMode displayMode,
   bool isSearchMode = false,
 }) {
   var currentIndex = 0;
@@ -419,38 +442,55 @@ Object? _lookupItem({
 
         // Only process games if match is expanded
         if (isExpanded) {
+          // Filter games based on displayMode for knockout tournaments
+          final filteredGames = matchGames.where((game) {
+            return _shouldShowGame(displayMode, game);
+          }).toList();
+
+          // Build index mapping from filtered to original
+          final filteredToOriginalIndex = <int, int>{};
+          int filteredIdx = 0;
+          for (int i = 0; i < matchGames.length; i++) {
+            if (_shouldShowGame(displayMode, matchGames[i])) {
+              filteredToOriginalIndex[filteredIdx] = i;
+              filteredIdx++;
+            }
+          }
+
+          final filteredCount = filteredGames.length;
+
           if (isGrid) {
-            final rowCount = (matchGamesCount / 2).ceil();
+            final rowCount = (filteredCount / 2).ceil();
             if (index < currentIndex + rowCount) {
               final row = index - currentIndex;
               final game1Index = row * 2;
               final game2Index = game1Index + 1;
 
               return _GameRowData(
-                game1: matchGames[game1Index],
-                globalIndex1: matchStartIndex + game1Index,
+                game1: filteredGames[game1Index],
+                globalIndex1: matchStartIndex + filteredToOriginalIndex[game1Index]!,
                 game2:
-                    game2Index < matchGamesCount
-                        ? matchGames[game2Index]
+                    game2Index < filteredCount
+                        ? filteredGames[game2Index]
                         : null,
                 globalIndex2:
-                    game2Index < matchGamesCount
-                        ? matchStartIndex + game2Index
+                    game2Index < filteredCount
+                        ? matchStartIndex + filteredToOriginalIndex[game2Index]!
                         : null,
                 isLastInSection: row == rowCount - 1,
               );
             }
             currentIndex += rowCount;
           } else {
-            if (index < currentIndex + matchGamesCount) {
+            if (index < currentIndex + filteredCount) {
               final localIndex = index - currentIndex;
               return _GameRowData(
-                game1: matchGames[localIndex],
-                globalIndex1: matchStartIndex + localIndex,
-                isLastInSection: localIndex == matchGamesCount - 1,
+                game1: filteredGames[localIndex],
+                globalIndex1: matchStartIndex + filteredToOriginalIndex[localIndex]!,
+                isLastInSection: localIndex == filteredCount - 1,
               );
             }
-            currentIndex += matchGamesCount;
+            currentIndex += filteredCount;
           }
         }
 
@@ -506,6 +546,7 @@ int? _listIndexForGameIndex({
   required bool isKnockoutTournament,
   required Map<String, bool> matchExpansionState,
   required Map<String, bool> roundExpansionState,
+  required GameDisplayMode displayMode,
   bool isSearchMode = false,
 }) {
   if (gameIndex < 0) return null;
@@ -552,21 +593,36 @@ int? _listIndexForGameIndex({
           continue;
         }
 
+        // Filter games based on displayMode for knockout tournaments
+        final filteredGames = matchGames.where((game) {
+          return _shouldShowGame(displayMode, game);
+        }).toList();
+        final filteredCount = filteredGames.length;
+
         if (gameIndex >= matchStartIndex &&
             gameIndex < matchStartIndex + matchGamesCount) {
           final localIndex = gameIndex - matchStartIndex;
-          if (isGrid) {
-            final row = localIndex ~/ 2;
-            return currentIndex + row;
-          } else {
-            return currentIndex + localIndex;
+          // Find position in filtered list
+          int filteredPosition = 0;
+          for (int i = 0; i < localIndex; i++) {
+            if (_shouldShowGame(displayMode, matchGames[i])) {
+              filteredPosition++;
+            }
+          }
+          if (_shouldShowGame(displayMode, matchGames[localIndex])) {
+            if (isGrid) {
+              final row = filteredPosition ~/ 2;
+              return currentIndex + row;
+            } else {
+              return currentIndex + filteredPosition;
+            }
           }
         }
 
         if (isGrid) {
-          currentIndex += (matchGamesCount / 2).ceil();
+          currentIndex += (filteredCount / 2).ceil();
         } else {
-          currentIndex += matchGamesCount;
+          currentIndex += filteredCount;
         }
 
         matchGameOffset += matchGamesCount;
