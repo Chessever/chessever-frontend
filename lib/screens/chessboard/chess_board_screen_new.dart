@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
-import 'package:chessever2/providers/board_settings_provider.dart';
+import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/move_impact_analyzer.dart';
 import 'package:chessever2/screens/chessboard/analysis/simple_move_impact.dart';
@@ -1826,10 +1826,11 @@ class _AnalysisBoard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final boardSettingsValue = ref.watch(boardSettingsProvider);
+    final boardSettingsAsync = ref.watch(boardSettingsProviderNew);
+    final boardSettings = boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
     final boardTheme = ref
         .read(boardSettingsRepository)
-        .getBoardTheme(boardSettingsValue.boardColor);
+        .getBoardTheme(boardSettings.boardColorValue);
     // final params = ChessBoardProviderParams(game: game, index: index);
     // final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
 
@@ -3136,13 +3137,14 @@ class _ShareGameScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Get board settings for creating the board widget
-    final boardSettingsValue = ref.watch(boardSettingsProvider);
+    final boardSettingsAsync = ref.watch(boardSettingsProviderNew);
+    final boardSettingsNew = boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
     final boardTheme = ref
         .read(boardSettingsRepository)
-        .getBoardTheme(boardSettingsValue.boardColor);
+        .getBoardTheme(boardSettingsNew.boardColorValue);
 
     // Build board settings for the share overlay board (sized responsively inside the overlay)
-    final boardSettings = ChessboardSettings(
+    final chessboardSettings = ChessboardSettings(
       enableCoordinates: false,
       colorScheme: ChessboardColorScheme(
         lightSquare: boardTheme.lightSquareColor,
@@ -3215,7 +3217,7 @@ class _ShareGameScreen extends ConsumerWidget {
             : null;
 
     return ShareGameCardOverlay(
-      boardSettings: boardSettings,
+      boardSettings: chessboardSettings,
       positionFen: state.analysisState.position.fen,
       lastMove: state.analysisState.lastMove,
       pgn: pgn,

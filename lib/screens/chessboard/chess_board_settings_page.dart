@@ -1,8 +1,11 @@
 import 'package:chessever2/providers/engine_settings_provider.dart';
+import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/svg_asset.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class ChessBoardSettingsPage extends ConsumerStatefulWidget {
@@ -39,6 +42,7 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
   @override
   Widget build(BuildContext context) {
     final settingsAsync = ref.watch(engineSettingsProviderNew);
+    final boardSettingsAsync = ref.watch(boardSettingsProviderNew);
 
     return PopScope(
       canPop: false,
@@ -63,7 +67,16 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
         centerTitle: false,
       ),
         body: settingsAsync.when(
-          data: (settings) => _buildSettings(context, settings),
+          data: (engineSettings) => boardSettingsAsync.when(
+            data: (boardSettings) => _buildSettings(context, engineSettings, boardSettings),
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (error, stack) => Center(
+              child: Text(
+                'Error loading board settings',
+                style: AppTypography.textMdRegular.copyWith(color: kWhiteColor),
+              ),
+            ),
+          ),
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (error, stack) => Center(
             child: Text(
@@ -76,8 +89,9 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
     );
   }
 
-  Widget _buildSettings(BuildContext context, EngineSettings settings) {
+  Widget _buildSettings(BuildContext context, EngineSettings settings, BoardSettingsNew boardSettings) {
     final notifier = ref.read(engineSettingsProviderNew.notifier);
+    final boardNotifier = ref.read(boardSettingsProviderNew.notifier);
 
     return ListView(
       padding: EdgeInsets.symmetric(horizontal: 20.sp, vertical: 16.sp),
@@ -300,7 +314,136 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
             ],
           ),
         ),
+
+        // Board Settings Section
+        SizedBox(height: 24.h),
+        _SectionLabel(title: 'Board Settings'),
+        SizedBox(height: 12.h),
+        _SettingCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Board Color',
+                style: AppTypography.textMdMedium.copyWith(
+                  color: kWhiteColor,
+                  fontSize: 13.f,
+                ),
+              ),
+              SizedBox(height: 4.h),
+              Text(
+                'Choose your preferred board color theme.',
+                style: AppTypography.textSmRegular.copyWith(
+                  color: kWhiteColor70,
+                  fontSize: 11.f,
+                ),
+              ),
+              SizedBox(height: 20.h),
+              // Visual board color options
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 10.w),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _buildBoardColorOption(
+                      context: context,
+                      svgAsset: SvgAsset.boardColorDefault,
+                      label: 'Default',
+                      colorIndex: 0,
+                      isSelected: boardSettings.boardColorIndex == 0,
+                      onTap: () {
+                        debugPrint('🎨 Settings UI: Board color changed to Default');
+                        _trackPersist(boardNotifier.setBoardColorIndex(0));
+                      },
+                    ),
+                    _buildBoardColorOption(
+                      context: context,
+                      svgAsset: SvgAsset.boardColorBrown,
+                      label: 'Brown',
+                      colorIndex: 1,
+                      isSelected: boardSettings.boardColorIndex == 1,
+                      onTap: () {
+                        debugPrint('🎨 Settings UI: Board color changed to Brown');
+                        _trackPersist(boardNotifier.setBoardColorIndex(1));
+                      },
+                    ),
+                    _buildBoardColorOption(
+                      context: context,
+                      svgAsset: SvgAsset.boardColorGrey,
+                      label: 'Grey',
+                      colorIndex: 2,
+                      isSelected: boardSettings.boardColorIndex == 2,
+                      onTap: () {
+                        debugPrint('🎨 Settings UI: Board color changed to Grey');
+                        _trackPersist(boardNotifier.setBoardColorIndex(2));
+                      },
+                    ),
+                    _buildBoardColorOption(
+                      context: context,
+                      svgAsset: SvgAsset.boardColorGreen,
+                      label: 'Green',
+                      colorIndex: 3,
+                      isSelected: boardSettings.boardColorIndex == 3,
+                      onTap: () {
+                        debugPrint('🎨 Settings UI: Board color changed to Green');
+                        _trackPersist(boardNotifier.setBoardColorIndex(3));
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
+    );
+  }
+
+  Widget _buildBoardColorOption({
+    required BuildContext context,
+    required String svgAsset,
+    required String label,
+    required int colorIndex,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    const Color checkMarkColor = Color(0xFF247435);
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        children: [
+          // SVG Board Preview with fixed dimensions
+          SizedBox(
+            width: 32,
+            height: 32,
+            child: SvgPicture.asset(svgAsset, fit: BoxFit.contain),
+          ),
+          SizedBox(height: 8.h),
+          Text(
+            label,
+            style: AppTypography.textXsRegular.copyWith(color: kWhiteColor),
+          ),
+          SizedBox(height: 8.h),
+          // Selection indicator
+          Container(
+            width: 20,
+            height: 20,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
+              color: isSelected ? checkMarkColor : Colors.transparent,
+            ),
+            child: isSelected
+                ? const Icon(
+                    Icons.check,
+                    color: Colors.white,
+                    size: 14,
+                  )
+                : null,
+          ),
+        ],
+      ),
     );
   }
 }

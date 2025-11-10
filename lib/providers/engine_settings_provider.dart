@@ -162,6 +162,7 @@ class EngineSettings {
     this.showEngineGauge = true,
     this.showDepthOverlay = true,
     this.showPvArrows = true,
+    this.showEngineAnalysis = true,
     this.searchTimeIndex = 5,
     int principalVariationIndex = 4, // Default to 5 lines (index 4)
   }) : principalVariationIndex =
@@ -175,6 +176,7 @@ class EngineSettings {
   final bool showEngineGauge;
   final bool showDepthOverlay;
   final bool showPvArrows;
+  final bool showEngineAnalysis; // Controls visibility of PV cards & arrows (computer icon)
   final int searchTimeIndex;
   final int principalVariationIndex;
 
@@ -276,6 +278,7 @@ class EngineSettings {
     bool? showEngineGauge,
     bool? showDepthOverlay,
     bool? showPvArrows,
+    bool? showEngineAnalysis,
     int? searchTimeIndex,
     int? principalVariationIndex,
   }) {
@@ -283,6 +286,7 @@ class EngineSettings {
       showEngineGauge: showEngineGauge ?? this.showEngineGauge,
       showDepthOverlay: showDepthOverlay ?? this.showDepthOverlay,
       showPvArrows: showPvArrows ?? this.showPvArrows,
+      showEngineAnalysis: showEngineAnalysis ?? this.showEngineAnalysis,
       searchTimeIndex: searchTimeIndex ?? this.searchTimeIndex,
       principalVariationIndex: (principalVariationIndex ??
               this.principalVariationIndex)
@@ -379,6 +383,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
         showEngineGauge: model.showEngineGauge,
         showDepthOverlay: model.showDepthOverlay,
         showPvArrows: model.showPvArrows,
+        showEngineAnalysis: model.showEngineAnalysis,
         searchTimeIndex: model.searchTimeIndex,
         principalVariationIndex: model.principalVariationIndex,
       );
@@ -417,6 +422,15 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
   Future<void> togglePvArrows(bool value) async {
     final currentState = state.valueOrNull ?? const EngineSettings();
     final newSettings = currentState.copyWith(showPvArrows: value);
+    state = AsyncValue.data(newSettings);
+    await _persist(newSettings);
+  }
+
+  /// Toggle engine analysis visibility (PV cards & arrows from computer icon)
+  Future<void> toggleEngineAnalysis(bool value) async {
+    final currentState = state.valueOrNull ?? const EngineSettings();
+    final newSettings = currentState.copyWith(showEngineAnalysis: value);
+    debugPrint('🎯 EngineSettings: Engine analysis visibility set to $value');
     state = AsyncValue.data(newSettings);
     await _persist(newSettings);
   }
@@ -506,6 +520,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
           'show_engine_gauge': settings.showEngineGauge,
           'show_depth_overlay': settings.showDepthOverlay,
           'show_pv_arrows': settings.showPvArrows,
+          'show_engine_analysis': settings.showEngineAnalysis,
           'search_time_index': settings.searchTimeIndex,
           'principal_variation_index': settings.principalVariationIndex,
           'updated_at': DateTime.now().toUtc().toIso8601String(),
@@ -526,6 +541,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
         'showEngineGauge': settings.showEngineGauge,
         'showDepthOverlay': settings.showDepthOverlay,
         'showPvArrows': settings.showPvArrows,
+        'showEngineAnalysis': settings.showEngineAnalysis,
         'searchTimeIndex': settings.searchTimeIndex,
         'principalVariationIndex': settings.principalVariationIndex,
       });
@@ -550,6 +566,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
         showEngineGauge: map['showEngineGauge'] as bool? ?? true,
         showDepthOverlay: map['showDepthOverlay'] as bool? ?? true,
         showPvArrows: map['showPvArrows'] as bool? ?? true,
+        showEngineAnalysis: map['showEngineAnalysis'] as bool? ?? true,
         searchTimeIndex: map['searchTimeIndex'] as int? ?? 2,
         principalVariationIndex: map['principalVariationIndex'] as int? ?? 2,
       );

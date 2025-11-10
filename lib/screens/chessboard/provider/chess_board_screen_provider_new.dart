@@ -109,6 +109,10 @@ class ChessBoardScreenNotifierNew
   void _initializeState() {
     // Start with an initial data state to ensure proper initialization
     // The loading flag is handled by isLoadingMoves
+    // Load showEngineAnalysis from persisted settings
+    final engineSettings = ref.read(engineSettingsProviderNew).valueOrNull;
+    final showEngineAnalysis = engineSettings?.showEngineAnalysis ?? true;
+
     state = AsyncValue.data(
       ChessBoardStateNew(
         game: game,
@@ -118,6 +122,7 @@ class ChessBoardScreenNotifierNew
         evaluation: null,
         isEvaluating: false,
         isAnalysisMode: true,
+        showEngineAnalysis: showEngineAnalysis, // Load from settings
       ),
     );
     parseMoves();
@@ -1798,11 +1803,19 @@ class ChessBoardScreenNotifierNew
   void toggleEngineVisibility() {
     final currentState = state.value;
     if (currentState == null) return;
+
+    final newValue = !currentState.showEngineAnalysis;
+
+    // Update local state immediately for responsive UI
     state = AsyncValue.data(
       currentState.copyWith(
-        showPrincipalVariations: !currentState.showPrincipalVariations,
+        showEngineAnalysis: newValue,
+        showPrincipalVariations: newValue, // Keep in sync
       ),
     );
+
+    // Persist to settings (async, fire and forget)
+    ref.read(engineSettingsProviderNew.notifier).toggleEngineAnalysis(newValue);
   }
 
   void togglePlayPause() {

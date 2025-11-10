@@ -56,11 +56,17 @@ class GamesListView extends ConsumerWidget {
         ? <String, bool>{} // Empty map means all expanded by default
         : ref.watch(roundExpansionProvider);
 
+    // Pre-calculate match groupings once for knockout tournaments to avoid repeated calculations
+    final matchGroupsByRound = isKnockoutTournament
+        ? _preCalculateMatchGroups(rounds, gamesByRound)
+        : <String, Map<String, List<GamesTourModel>>>{};
+
     // For multi-stage knockouts, build ordered games list from gamesByRound
     final orderedGamesList = _buildOrderedGamesList(
       rounds,
       gamesByRound,
       isKnockoutTournament,
+      matchGroupsByRound,
     );
 
     final itemCount = _computeItemCount(
@@ -71,6 +77,7 @@ class GamesListView extends ConsumerWidget {
       roundExpansionState,
       isKnockoutTournament,
       displayMode,
+      matchGroupsByRound,
       isSearchMode: isSearchMode,
     );
 
@@ -101,6 +108,7 @@ class GamesListView extends ConsumerWidget {
             roundExpansionState: roundExpansionState,
             isKnockoutTournament: isKnockoutTournament,
             displayMode: displayMode,
+            matchGroupsByRound: matchGroupsByRound,
             isSearchMode: isSearchMode,
           );
 
@@ -156,8 +164,8 @@ class GamesListView extends ConsumerWidget {
               ),
               child:
                   gamesListViewMode == GamesListViewMode.chessBoardGrid
-                      ? _buildGridRow(context, ref, lookup, orderedGamesList)
-                      : _buildCardRow(context, ref, lookup, orderedGamesList),
+                      ? _buildGridRow(context, ref, lookup, orderedGamesList, matchGroupsByRound)
+                      : _buildCardRow(context, ref, lookup, orderedGamesList, matchGroupsByRound),
             );
           }
 
@@ -178,6 +186,7 @@ class GamesListView extends ConsumerWidget {
     WidgetRef ref,
     _GameRowData item,
     List<GamesTourModel> orderedGamesList,
+    Map<String, Map<String, List<GamesTourModel>>> matchGroupsByRound,
   ) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -188,6 +197,7 @@ class GamesListView extends ConsumerWidget {
           item.game1,
           item.globalIndex1,
           orderedGamesList,
+          matchGroupsByRound,
         ),
         if (item.game2 != null)
           _buildGridGame(
@@ -196,6 +206,7 @@ class GamesListView extends ConsumerWidget {
             item.game2!,
             item.globalIndex2!,
             orderedGamesList,
+            matchGroupsByRound,
           ),
       ],
     );
@@ -207,6 +218,7 @@ class GamesListView extends ConsumerWidget {
     GamesTourModel game,
     int globalIndex,
     List<GamesTourModel> orderedGamesList,
+    Map<String, Map<String, List<GamesTourModel>>> matchGroupsByRound,
   ) {
     return GridChessBoardFromFENNew(
       key: ValueKey('game_${game.gameId}'),
@@ -226,6 +238,7 @@ class GamesListView extends ConsumerWidget {
                     rounds,
                     gamesByRound,
                     gamesListViewMode,
+                    matchGroupsByRound,
                     matchExpansionState: latestMatchExpansion,
                     roundExpansionState: latestRoundExpansion,
                   );
@@ -245,6 +258,7 @@ class GamesListView extends ConsumerWidget {
     WidgetRef ref,
     _GameRowData item,
     List<GamesTourModel> orderedGamesList,
+    Map<String, Map<String, List<GamesTourModel>>> matchGroupsByRound,
   ) {
     // Create modified gamesData with correct orderedGames for multi-stage knockouts
     final modifiedGamesData = GamesScreenModel(
@@ -265,6 +279,7 @@ class GamesListView extends ConsumerWidget {
           rounds,
           gamesByRound,
           gamesListViewMode,
+          matchGroupsByRound,
           matchExpansionState: latestMatchExpansion,
           roundExpansionState: latestRoundExpansion,
         );
@@ -277,7 +292,8 @@ class GamesListView extends ConsumerWidget {
     int gameIndex,
     List<GamesAppBarModel> rounds,
     Map<String, List<GamesTourModel>> gamesByRound,
-    GamesListViewMode mode, {
+    GamesListViewMode mode,
+    Map<String, Map<String, List<GamesTourModel>>> matchGroupsByRound, {
     required Map<String, bool> matchExpansionState,
     required Map<String, bool> roundExpansionState,
   }) {
@@ -290,6 +306,7 @@ class GamesListView extends ConsumerWidget {
       matchExpansionState: matchExpansionState,
       roundExpansionState: roundExpansionState,
       displayMode: displayMode,
+      matchGroupsByRound: matchGroupsByRound,
       isSearchMode: isSearchMode,
     );
     if (listIndex != null) {
@@ -309,7 +326,8 @@ int _computeItemCount(
   Map<String, bool> matchExpansionState,
   Map<String, bool> roundExpansionState,
   bool isKnockoutTournament,
-  GameDisplayMode displayMode, {
+  GameDisplayMode displayMode,
+  Map<String, Map<String, List<GamesTourModel>>> matchGroupsByRound, {
   bool isSearchMode = false,
 }) {
   var count = 0;
@@ -328,8 +346,8 @@ int _computeItemCount(
     }
 
     if (_isKnockoutRound(isKnockoutTournament, round)) {
-      // For knockout format: round header + match headers + games
-      final matches = KnockoutMatchDetector.groupByMatches(roundGames);
+      // For knockout format: round header + match headers + games using pre-calculated groups
+      final matches = matchGroupsByRound[round.id] ?? {};
       for (final entry in matches.entries) {
         final matchKey = entry.key;
         final matchGames = entry.value;
@@ -385,6 +403,7 @@ Object? _lookupItem({
   required Map<String, bool> roundExpansionState,
   required bool isKnockoutTournament,
   required GameDisplayMode displayMode,
+  required Map<String, Map<String, List<GamesTourModel>>> matchGroupsByRound,
   bool isSearchMode = false,
 }) {
   var currentIndex = 0;
@@ -411,8 +430,8 @@ Object? _lookupItem({
     }
 
     if (_isKnockoutRound(isKnockoutTournament, round)) {
-      // Handle knockout match format with match headers
-      final matches = KnockoutMatchDetector.groupByMatches(roundGames);
+      // Handle knockout match format with match headers using pre-calculated groups
+      final matches = matchGroupsByRound[round.id] ?? {};
       final matchHeaders =
           matches.entries
               .map(
@@ -547,6 +566,7 @@ int? _listIndexForGameIndex({
   required Map<String, bool> matchExpansionState,
   required Map<String, bool> roundExpansionState,
   required GameDisplayMode displayMode,
+  required Map<String, Map<String, List<GamesTourModel>>> matchGroupsByRound,
   bool isSearchMode = false,
 }) {
   if (gameIndex < 0) return null;
@@ -573,8 +593,8 @@ int? _listIndexForGameIndex({
     }
 
     if (isKnockoutFormat) {
-      // Handle knockout match format
-      final matches = KnockoutMatchDetector.groupByMatches(roundGames);
+      // Handle knockout match format using pre-calculated groups
+      final matches = matchGroupsByRound[round.id] ?? {};
       int matchGameOffset = 0;
 
       for (final entry in matches.entries) {
@@ -664,12 +684,30 @@ bool _isKnockoutRound(bool isKnockoutTournament, GamesAppBarModel round) {
       id.startsWith('knockout-round-');
 }
 
+/// Pre-calculate match groupings for all rounds to avoid repeated calculations
+Map<String, Map<String, List<GamesTourModel>>> _preCalculateMatchGroups(
+  List<GamesAppBarModel> rounds,
+  Map<String, List<GamesTourModel>> gamesByRound,
+) {
+  final result = <String, Map<String, List<GamesTourModel>>>{};
+
+  for (final round in rounds) {
+    final roundGames = gamesByRound[round.id];
+    if (roundGames == null || roundGames.isEmpty) continue;
+
+    result[round.id] = KnockoutMatchDetector.groupByMatches(roundGames);
+  }
+
+  return result;
+}
+
 /// Build ordered list of ALL games from ALL visible rounds
 /// This is critical for correct navigation in multi-stage knockouts
 List<GamesTourModel> _buildOrderedGamesList(
   List<GamesAppBarModel> rounds,
   Map<String, List<GamesTourModel>> gamesByRound,
   bool isKnockoutTournament,
+  Map<String, Map<String, List<GamesTourModel>>> matchGroupsByRound,
 ) {
   final orderedGames = <GamesTourModel>[];
 
@@ -678,8 +716,8 @@ List<GamesTourModel> _buildOrderedGamesList(
     if (roundGames.isEmpty) continue;
 
     if (_isKnockoutRound(isKnockoutTournament, round)) {
-      // For knockout format, add games in match order
-      final matches = KnockoutMatchDetector.groupByMatches(roundGames);
+      // For knockout format, add games in match order using pre-calculated groups
+      final matches = matchGroupsByRound[round.id] ?? {};
       for (final matchGames in matches.values) {
         orderedGames.addAll(matchGames);
       }
