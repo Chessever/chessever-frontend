@@ -13,6 +13,10 @@ ADD COLUMN IF NOT EXISTS piece_style_index INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE public.user_engine_settings
 ADD COLUMN IF NOT EXISTS show_engine_analysis BOOLEAN NOT NULL DEFAULT true;
 
+-- Add selected countryman column (stores country code like 'US', 'TR', etc.)
+ALTER TABLE public.user_engine_settings
+ADD COLUMN IF NOT EXISTS selected_country_code VARCHAR(2);
+
 -- Add constraints for board_color_index (0-3 for Default/Brown/Grey/Green)
 ALTER TABLE public.user_engine_settings
 DROP CONSTRAINT IF EXISTS board_color_index_check;

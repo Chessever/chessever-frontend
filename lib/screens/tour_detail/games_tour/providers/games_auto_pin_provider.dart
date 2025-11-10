@@ -28,27 +28,11 @@ class _AutoPinLogController {
     if (shouldHidePin) {
       return (true, <String>[]);
     } else {
-      final countryCode = ref.read(countryDropdownProvider).value!.countryCode;
+      final countryCode = await _resolveCountryCode();
       final players = await ref.read(tournamentFavoritePlayersProvider.future);
 
       // Collect games from ALL stages in multi-stage knockouts
       final gamesList = _getAllGamesIncludingStages(tourId);
-
-      final filteredGames =
-          gamesList
-              .where((game) {
-                // Use the matcher to compare regardless of ISO format
-                return CountryCodeMatcher.matches(
-                      game.whitePlayer.countryCode,
-                      countryCode,
-                    ) ||
-                    CountryCodeMatcher.matches(
-                      game.blackPlayer.countryCode,
-                      countryCode,
-                    );
-              })
-              .map((e) => e.gameId)
-              .toList();
 
       final favPlayers =
           gamesList
@@ -67,12 +51,71 @@ class _AutoPinLogController {
               .map((e) => e.gameId)
               .toList();
 
+      if (countryCode == null || countryCode.isEmpty) {
+        print('⚠️ Auto-pin: Country unavailable, falling back to favorites only');
+        return (false, [...favPlayers]);
+      }
+
+      final filteredGames =
+          gamesList
+              .where((game) {
+                // Use the matcher to compare regardless of ISO format
+                return CountryCodeMatcher.matches(
+                      game.whitePlayer.countryCode,
+                      countryCode,
+                    ) ||
+                    CountryCodeMatcher.matches(
+                      game.blackPlayer.countryCode,
+                      countryCode,
+                    );
+              })
+              .map((e) => e.gameId)
+              .toList();
+
       if (filteredGames.length == gamesList.length) {
         return (false, [...favPlayers]);
       }
 
       return (false, [...favPlayers, ...filteredGames]);
     }
+  }
+
+  Future<String?> _resolveCountryCode() async {
+    // Get country code directly from SharedPreferences (fast, synchronous)
+    // This ensures auto-pin works even while Supabase is syncing
+    final prefs = await SharedPreferences.getInstance();
+    final cachedCountryCode = prefs.getString('selected_country_code');
+
+    if (cachedCountryCode != null && cachedCountryCode.isNotEmpty) {
+      // Use cached country code (works immediately, no async wait)
+      print('🎯 Auto-pin: Using cached country code: $cachedCountryCode');
+      return cachedCountryCode;
+    }
+
+    // Fallback: wait for provider to load if no cache
+    final countryAsync = ref.read(countryDropdownProvider);
+    if (countryAsync.hasValue && countryAsync.value != null) {
+      final countryCode = countryAsync.value!.countryCode;
+      print('🎯 Auto-pin: Using provider country code: $countryCode');
+      return countryCode;
+    }
+
+    // Wait up to 3 seconds for country to load
+    print('⚠️ Auto-pin: Country not cached, waiting for provider...');
+    var attempts = 0;
+    while (attempts < 30) {
+      await Future.delayed(const Duration(milliseconds: 100));
+      final retry = ref.read(countryDropdownProvider);
+      if (retry.hasValue && retry.value != null) {
+        final countryCode = retry.value!.countryCode;
+        print('🎯 Auto-pin: Provider loaded, using: $countryCode');
+        return countryCode;
+      }
+      attempts++;
+    }
+
+    print('❌ Auto-pin: Country still not loaded after 3s');
+    return null;
   }
 
   /// Collects games from the main tour AND all stages in multi-stage knockouts

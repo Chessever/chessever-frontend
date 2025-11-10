@@ -110,8 +110,13 @@ class ChessBoardScreenNotifierNew
     // Start with an initial data state to ensure proper initialization
     // The loading flag is handled by isLoadingMoves
     // Load showEngineAnalysis from persisted settings
-    final engineSettings = ref.read(engineSettingsProviderNew).valueOrNull;
+    final engineSettingsAsync = ref.read(engineSettingsProviderNew);
+    final engineSettings = engineSettingsAsync.valueOrNull;
     final showEngineAnalysis = engineSettings?.showEngineAnalysis ?? true;
+
+    debugPrint(
+      '🎯 ChessBoard[$index]: Initializing with showEngineAnalysis=$showEngineAnalysis (from settings: ${engineSettings?.showEngineAnalysis})',
+    );
 
     state = AsyncValue.data(
       ChessBoardStateNew(
@@ -145,9 +150,13 @@ class ChessBoardScreenNotifierNew
         _releaseLog(
           '     - PV Setting: ${prevValue?.principalVariationLabel() ?? "null"}',
         );
+        _releaseLog(
+          '     - Engine Visibility: ${prevValue?.showEngineAnalysis ?? "null"}',
+        );
         _releaseLog('   New:');
         _releaseLog('     - Search Time: ${nextValue.searchTimeLabel()}');
         _releaseLog('     - PV Setting: ${nextValue.principalVariationLabel()}');
+        _releaseLog('     - Engine Visibility: ${nextValue.showEngineAnalysis}');
         _releaseLog(
           '     - Search Duration: ${nextValue.searchDurationFor(EngineComponent.evaluationGauge)?.inSeconds}s',
         );
@@ -156,8 +165,22 @@ class ChessBoardScreenNotifierNew
         );
         _releaseLog('');
 
-        // Clear state's PVs immediately to show loading state
+        // Sync engine analysis visibility from settings
         final currentState = state.valueOrNull;
+        if (currentState != null &&
+            currentState.showEngineAnalysis != nextValue.showEngineAnalysis) {
+          _releaseLog(
+            '   🔄 Syncing engine visibility: ${currentState.showEngineAnalysis} → ${nextValue.showEngineAnalysis}',
+          );
+          state = AsyncValue.data(
+            currentState.copyWith(
+              showEngineAnalysis: nextValue.showEngineAnalysis,
+              showPrincipalVariations: nextValue.showEngineAnalysis,
+            ),
+          );
+        }
+
+        // Clear state's PVs immediately to show loading state
         if (currentState != null &&
             currentState.principalVariations.isNotEmpty) {
           _releaseLog(
@@ -1806,6 +1829,10 @@ class ChessBoardScreenNotifierNew
 
     final newValue = !currentState.showEngineAnalysis;
 
+    debugPrint(
+      '🎯 ChessBoard[$index]: Toggling engine visibility: ${currentState.showEngineAnalysis} → $newValue',
+    );
+
     // Update local state immediately for responsive UI
     state = AsyncValue.data(
       currentState.copyWith(
@@ -1814,8 +1841,14 @@ class ChessBoardScreenNotifierNew
       ),
     );
 
-    // Persist to settings (async, fire and forget)
-    ref.read(engineSettingsProviderNew.notifier).toggleEngineAnalysis(newValue);
+    // Persist to settings in background (unawaited, fire-and-forget)
+    debugPrint(
+      '🎯 ChessBoard[$index]: Persisting engine visibility to settings: $newValue',
+    );
+    // Use unawaited to truly fire-and-forget without blocking UI
+    unawaited(
+      ref.read(engineSettingsProviderNew.notifier).toggleEngineAnalysis(newValue),
+    );
   }
 
   void togglePlayPause() {

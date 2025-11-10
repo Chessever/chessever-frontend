@@ -2478,70 +2478,62 @@ class _PrincipalVariationListState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    margin: EdgeInsets.only(right: 10.sp),
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 8.sp,
-                      vertical: 4.sp,
-                    ),
-                    decoration: BoxDecoration(
-                      color: badgeBackgroundColor,
-                      borderRadius: BorderRadius.circular(4.sp),
-                      border: Border.all(
-                        color: badgeBorderColor,
-                        width: 1.0,
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      margin: EdgeInsets.only(right: 10.sp),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 8.sp,
+                        vertical: 4.sp,
                       ),
-                    ),
-                    alignment: Alignment.center,
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 200),
-                      child: Text(
-                        evalText,
-                        key: ValueKey(evalText),
-                        style: AppTypography.textXsMedium.copyWith(
-                          color: kWhiteColor.withValues(
-                            alpha: dimmed ? 0.7 : 1.0,
+                      decoration: BoxDecoration(
+                        color: badgeBackgroundColor,
+                        borderRadius: BorderRadius.circular(4.sp),
+                        border: Border.all(
+                          color: badgeBorderColor,
+                          width: 1.0,
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 200),
+                        child: Text(
+                          evalText,
+                          key: ValueKey(evalText),
+                          style: AppTypography.textXsMedium.copyWith(
+                            color: kWhiteColor.withValues(
+                              alpha: dimmed ? 0.7 : 1.0,
+                            ),
+                            fontWeight: FontWeight.w600,
                           ),
-                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
-                  ),
-                  Expanded(
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final availableHeight = constraints.maxHeight.isFinite
-                            ? constraints.maxHeight
-                            : pvCardHeight - 24.h;
-                        return ClipRect(
-                          child: SizedBox(
-                            height: availableHeight,
-                            child: SingleChildScrollView(
-                              primary: false,
-                              physics: const BouncingScrollPhysics(
-                                parent: AlwaysScrollableScrollPhysics(),
+                    Expanded(
+                      child: ClipRect(
+                        child: SingleChildScrollView(
+                          primary: false,
+                          physics: const BouncingScrollPhysics(
+                            parent: AlwaysScrollableScrollPhysics(),
+                          ),
+                          padding: EdgeInsets.only(bottom: 4.sp),
+                          child: Text(
+                            sanMoves.join(' '),
+                            softWrap: true,
+                            style: AppTypography.textXsMedium.copyWith(
+                              color: kWhiteColor.withValues(
+                                alpha: dimmed ? 0.75 : 0.9,
                               ),
-                              padding: EdgeInsets.only(bottom: 4.sp),
-                              child: Text(
-                                sanMoves.join(' '),
-                                softWrap: true,
-                                style: AppTypography.textXsMedium.copyWith(
-                                  color: kWhiteColor.withValues(
-                                    alpha: dimmed ? 0.75 : 0.9,
-                                  ),
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
-                        );
-                      },
+                        ),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               if (showUpdatingLabel)
                 Align(

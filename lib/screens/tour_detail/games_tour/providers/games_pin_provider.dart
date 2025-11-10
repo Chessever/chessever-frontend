@@ -1,3 +1,4 @@
+import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/repository/local_storage/tournament/games/pin_games_local_storage.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -48,6 +49,7 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
     loadPinnedGames();
     _listenToFavoritePlayers();
     _listenToKnockoutStages();
+    _listenToCountrySelection();
   }
 
   final Ref ref;
@@ -118,6 +120,26 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
         }
       },
       fireImmediately: true,
+    );
+  }
+
+  void _listenToCountrySelection() {
+    ref.listen(
+      countryDropdownProvider,
+      (previous, next) {
+        final previousCode = previous?.valueOrNull?.countryCode;
+        final nextCode = next.valueOrNull?.countryCode;
+
+        if (nextCode == null) {
+          return;
+        }
+
+        if (previousCode == nextCode) {
+          return;
+        }
+
+        computeAutoPins();
+      },
     );
   }
 

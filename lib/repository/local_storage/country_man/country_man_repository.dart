@@ -1,5 +1,9 @@
+import 'dart:async';
+
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 final countryManRepository = Provider((ref) => _CountryManRepository(ref));
 
@@ -8,17 +12,143 @@ class _CountryManRepository {
 
   final Ref ref;
 
-  static String get countryName => 'selected_country_name';
+  static String get countryCodeKey => 'selected_country_code';
+  static String get countryNameKey => 'selected_country_name'; // Legacy support
 
-  Future<void> saveCountryMan(String country) async {
-    await ref.read(sharedPreferencesRepository).setString(countryName, country);
+  SupabaseClient get _supabase => Supabase.instance.client;
+
+  /// Save countryman selection with Supabase + SharedPreferences dual persistence
+  /// @param countryCode - The 2-letter country code (e.g., 'US', 'TR', 'GB')
+  Future<void> saveCountryMan(String countryCode) async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+
+      // Always save to SharedPreferences first (immediate, works offline)
+      await ref
+          .read(sharedPreferencesRepository)
+          .setString(countryCodeKey, countryCode);
+      debugPrint('[CountryMan] ✅ Saved to SharedPreferences: $countryCode');
+
+      // If user is logged in, persist to Supabase (fire-and-forget, non-blocking)
+      if (userId != null) {
+        unawaited(
+          _saveToSupabase(userId, countryCode),
+        );
+      } else {
+        debugPrint(
+          '[CountryMan] ℹ️ No user logged in, skipping Supabase sync',
+        );
+      }
+    } catch (e, st) {
+      debugPrint('[CountryMan] ❌ Error saving countryman: $e');
+      debugPrint('[CountryMan] Stack: $st');
+    }
+  }
+
+  /// Internal method to save to Supabase (fire-and-forget)
+  Future<void> _saveToSupabase(String userId, String countryCode) async {
+    try {
+      await _supabase.from('user_engine_settings').upsert(
+        {
+          'user_id': userId,
+          'selected_country_code': countryCode,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        },
+        onConflict: 'user_id',
+      );
+      debugPrint('[CountryMan] ✅ Saved to Supabase: $countryCode');
+    } catch (e) {
+      debugPrint('[CountryMan] ⚠️ Failed to save to Supabase: $e');
+    }
   }
 
   Future<void> removeCountrySelection() async {
-    await ref.read(sharedPreferencesRepository).removeData(countryName);
+    // Remove from SharedPreferences first (immediate)
+    await ref.read(sharedPreferencesRepository).removeData(countryCodeKey);
+    await ref.read(sharedPreferencesRepository).removeData(countryNameKey);
+    debugPrint('[CountryMan] ✅ Removed from SharedPreferences');
+
+    // Remove from Supabase (fire-and-forget, non-blocking)
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId != null) {
+      unawaited(
+        _removeFromSupabase(userId),
+      );
+    }
   }
 
+  /// Internal method to remove from Supabase (fire-and-forget)
+  Future<void> _removeFromSupabase(String userId) async {
+    try {
+      await _supabase.from('user_engine_settings').upsert(
+        {
+          'user_id': userId,
+          'selected_country_code': null,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        },
+        onConflict: 'user_id',
+      );
+      debugPrint('[CountryMan] ✅ Removed from Supabase');
+    } catch (e) {
+      debugPrint('[CountryMan] ⚠️ Failed to remove from Supabase: $e');
+    }
+  }
+
+  /// Get saved countryman with Supabase as source of truth
+  /// Returns country code (e.g., 'US', 'TR', 'GB') or null if not set
   Future<String?> getSavedCountryMan() async {
-    return ref.read(sharedPreferencesRepository).getString(countryName);
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+
+      // If user is logged in, try Supabase first (source of truth)
+      if (userId != null) {
+        try {
+          final response = await _supabase
+              .from('user_engine_settings')
+              .select('selected_country_code')
+              .eq('user_id', userId)
+              .maybeSingle();
+
+          if (response != null && response['selected_country_code'] != null) {
+            final countryCode = response['selected_country_code'] as String;
+            debugPrint('[CountryMan] ✅ Loaded from Supabase: $countryCode');
+
+            // Cache to SharedPreferences for offline access
+            await ref
+                .read(sharedPreferencesRepository)
+                .setString(countryCodeKey, countryCode);
+
+            return countryCode;
+          }
+        } catch (e) {
+          debugPrint('[CountryMan] ⚠️ Failed to load from Supabase: $e');
+          // Fall through to SharedPreferences
+        }
+      }
+
+      // Fallback to SharedPreferences (offline mode or not logged in)
+      final cachedCode =
+          await ref.read(sharedPreferencesRepository).getString(countryCodeKey);
+      if (cachedCode != null && cachedCode.isNotEmpty) {
+        debugPrint('[CountryMan] ✅ Loaded from SharedPreferences: $cachedCode');
+        return cachedCode;
+      }
+
+      // Legacy: try old country name key (for backward compatibility)
+      final legacyName =
+          await ref.read(sharedPreferencesRepository).getString(countryNameKey);
+      if (legacyName != null && legacyName.isNotEmpty) {
+        debugPrint('[CountryMan] ℹ️ Found legacy country name: $legacyName');
+        // Return 'LEGACY:' prefix so provider knows to convert name to code
+        return 'LEGACY:$legacyName';
+      }
+
+      debugPrint('[CountryMan] ℹ️ No saved countryman found');
+      return null;
+    } catch (e, st) {
+      debugPrint('[CountryMan] ❌ Error loading countryman: $e');
+      debugPrint('[CountryMan] Stack: $st');
+      return null;
+    }
   }
 }
