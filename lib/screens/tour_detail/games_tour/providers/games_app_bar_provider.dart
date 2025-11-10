@@ -108,6 +108,80 @@ class _GamesAppBarNotifier
     );
   }
 
+  /// Get list of visible round IDs using the same filtering logic as games_tour_content_body.dart
+  /// This is used by collapse/expand all buttons to only affect visible rounds
+  List<String> getVisibleRoundIds() {
+    final vm = state.valueOrNull;
+    final allRounds = vm?.gamesAppBarModels ?? [];
+    if (allRounds.isEmpty) return [];
+
+    final selectedId = vm?.selectedId;
+    final userSelected = vm?.userSelectedId ?? false;
+
+    // Smart filtering: Match the EXACT logic in games_tour_content_body.dart
+    final gamesByRound = _buildRoundGameCounts();
+
+    // Check if this is a multi-stage knockout
+    final isMultiStageKnockout = allRounds.any(
+      (r) => r.id.startsWith('$kKnockoutStagePrefix-'),
+    );
+
+    final visibleRounds = allRounds.where((round) {
+      final gamesInRound = gamesByRound[round.id] ?? 0;
+      if (gamesInRound == 0) return false;
+
+      // For multi-stage knockouts, show ALL stages with games (no status filtering)
+      if (isMultiStageKnockout) {
+        return true;
+      }
+
+      // Regular tournament filtering logic below
+      final hasLiveOrOngoing = allRounds.any(
+        (r) =>
+            r.roundStatus == RoundStatus.live ||
+            r.roundStatus == RoundStatus.ongoing,
+      );
+
+      final hasCompleted = allRounds.any(
+        (r) => r.roundStatus == RoundStatus.completed,
+      );
+
+      final allAreUpcoming = allRounds.every(
+        (r) =>
+            r.roundStatus == RoundStatus.upcoming ||
+            (gamesByRound[r.id] ?? 0) == 0,
+      );
+
+      // Always include explicitly user-selected round
+      if (userSelected && selectedId == round.id) return true;
+
+      // If all rounds are upcoming, show them all
+      if (allAreUpcoming) return true;
+
+      // If there are live/ongoing rounds, hide upcoming
+      if (hasLiveOrOngoing) {
+        return round.roundStatus != RoundStatus.upcoming;
+      }
+
+      // If only completed rounds exist, show completed + first upcoming
+      if (hasCompleted && round.roundStatus == RoundStatus.upcoming) {
+        final upcomingRounds = allRounds
+            .where(
+              (r) =>
+                  r.roundStatus == RoundStatus.upcoming &&
+                  (gamesByRound[r.id] ?? 0) > 0,
+            )
+            .toList();
+        return upcomingRounds.isNotEmpty && upcomingRounds.first.id == round.id;
+      }
+
+      // Show completed/ongoing/live rounds
+      return round.roundStatus != RoundStatus.upcoming;
+    }).toList();
+
+    return visibleRounds.map((r) => r.id).toList();
+  }
+
   Future<void> _scrollToRound(String roundId) async {
     final scrollProvider = ref.read(gamesTourScrollProvider.notifier);
     final controller = scrollProvider.state;

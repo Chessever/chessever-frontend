@@ -358,14 +358,13 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
                                     _menuKey.currentContext?.findRenderObject()
                                         as RenderBox?;
                                 if (renderBox != null) {
+                                  // CRITICAL FIX: Use visible rounds only (not all rounds)
+                                  // This ensures collapse/expand only affects rounds that are actually shown in the UI
+                                  // Previously, collapsing hidden rounds had no visual effect
                                   final roundIds =
                                       ref
-                                          .read(gamesAppBarProvider)
-                                          .valueOrNull
-                                          ?.gamesAppBarModels
-                                          .map((r) => r.id)
-                                          .toList(growable: false) ??
-                                      const <String>[];
+                                          .read(gamesAppBarProvider.notifier)
+                                          .getVisibleRoundIds();
                                   final Offset offset = renderBox.localToGlobal(
                                     Offset.zero,
                                   );
@@ -529,7 +528,7 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
                                                     roundExpansionProvider
                                                         .notifier,
                                                   )
-                                                  .expandAll();
+                                                  .expandAll(roundIds);
                                               // Then close popup after state update
                                               Navigator.pop(context);
                                             },

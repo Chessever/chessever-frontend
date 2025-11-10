@@ -45,8 +45,18 @@ class RoundExpansionNotifier extends StateNotifier<Map<String, bool>> {
     state = newState;
   }
 
-  void expandAll() {
-    reset();
+  /// Expand specific rounds by ID. If no IDs provided, expands all rounds (resets state)
+  void expandAll([Iterable<String>? roundIds]) {
+    if (roundIds == null || roundIds.isEmpty) {
+      reset();
+      return;
+    }
+
+    final newState = <String, bool>{...state};
+    for (final id in roundIds) {
+      newState[id] = true;
+    }
+    state = newState;
   }
 
   void reset() {
