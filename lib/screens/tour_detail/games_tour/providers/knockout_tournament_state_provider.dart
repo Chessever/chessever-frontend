@@ -50,11 +50,12 @@ final knockoutTournamentStateProvider = Provider.autoDispose
         }
       }
 
-      final inferredKnockout =
+      // Check format string first (fast), only analyze games if inconclusive
+      final explicitKnockout = _formatSuggestsKnockout(formatString);
+      final inferredKnockout = !explicitKnockout &&
           models.isNotEmpty &&
           KnockoutMatchDetector.isKnockoutMatchFormat(models);
-      final explicitKnockout = _formatSuggestsKnockout(formatString);
-      final isKnockout = inferredKnockout || explicitKnockout;
+      final isKnockout = explicitKnockout || inferredKnockout;
 
       if (models.isEmpty && !explicitKnockout) {
         return const KnockoutTournamentState.empty();

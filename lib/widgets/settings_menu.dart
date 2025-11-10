@@ -7,38 +7,21 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:flutter_svg/svg.dart';
 
 class SettingsMenu extends StatelessWidget {
-  final bool notificationsEnabled;
-  final String languageSubtitle;
-  final String timezoneSubtitle;
   final bool isSmallScreen;
   final bool isLargeScreen;
   final VoidCallback? onBoardSettingsPressed;
-  final VoidCallback? onLanguagePressed;
-  final VoidCallback? onTimezonePressed;
-  final VoidCallback? onNotificationsPressed;
   final Widget? boardSettingsIcon;
-  final Widget? languageIcon;
-  final Widget? timezoneIcon;
 
   const SettingsMenu({
     super.key,
-    required this.notificationsEnabled,
-    this.languageSubtitle = "English",
-    this.timezoneSubtitle = "UTC+0",
     this.isSmallScreen = false,
     this.isLargeScreen = false,
     this.onBoardSettingsPressed,
-    this.onLanguagePressed,
-    this.onTimezonePressed,
-    this.onNotificationsPressed,
     this.boardSettingsIcon,
-    this.languageIcon,
-    this.timezoneIcon,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Fixed height of 144px (36px × 4 menu items)
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 12.sp),
       child: Column(
@@ -69,14 +52,6 @@ class SettingsMenu extends StatelessWidget {
                 : null,
             child: Container(
               height: 36,
-              decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(
-                    color: Colors.grey.shade800.withValues(alpha: 0.1),
-                    width: 1,
-                  ),
-                ),
-              ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.start,
                 crossAxisAlignment: CrossAxisAlignment.center,
@@ -87,19 +62,13 @@ class SettingsMenu extends StatelessWidget {
                         boardSettingsIcon ??
                         Icon(Icons.grid_4x4, color: Colors.white, size: 12.ic),
                   ),
-                  SizedBox(width: 4.w), // Changed from 8px to 4px
+                  SizedBox(width: 4.w),
                   Expanded(
                     child: Text(
                       'Board settings',
                       style: AppTypography.textMdMedium.copyWith(
                         color: kWhiteColor,
                       ),
-                      // style: TextStyle(
-                      //   fontFamily: 'InterDisplay',
-                      //   fontSize: 12,
-                      //   fontWeight: FontWeight.w400,
-                      //   color: kWhiteColor,
-                      // ),
                     ),
                   ),
                   SizedBox(
@@ -112,154 +81,6 @@ class SettingsMenu extends StatelessWidget {
                   ),
                 ],
               ),
-            ),
-          ),
-          SizedBox(height: 7.h),
-
-          // Language
-          InkWell(
-            onTap: onLanguagePressed != null
-                ? () {
-                    HapticFeedbackService.navigation();
-                    onLanguagePressed!();
-                  }
-                : null,
-            child: Container(
-              height: 36,
-              decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(
-                    color: Colors.grey.shade800.withValues(
-                      alpha: 0.15,
-                    ), // Reduced opacity from 0.3 to 0.15
-                    width: 1,
-                  ),
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.start,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  SizedBox(
-                    width: 24.w,
-                    child:
-                        languageIcon ??
-                        Icon(Icons.language, color: kWhiteColor, size: 20),
-                  ),
-                  SizedBox(width: 4), // Changed from 8px to 4px
-                  Expanded(
-                    child: Text(
-                      'Language',
-                      style: AppTypography.textMdMedium.copyWith(
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 36,
-                    child: SvgPicture.asset(
-                      SvgAsset.right_arrow,
-                      height: 24.h,
-                      width: 24.w,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          SizedBox(height: 7.h),
-
-          // Set timezone
-          InkWell(
-            onTap: onTimezonePressed != null
-                ? () {
-                    HapticFeedbackService.navigation();
-                    onTimezonePressed!();
-                  }
-                : null,
-            child: Container(
-              height: 36,
-              decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(
-                    color: Colors.grey.shade800.withValues(
-                      alpha: 0.15,
-                    ), // Reduced opacity from 0.3 to 0.15
-                    width: 1,
-                  ),
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.start,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  SizedBox(
-                    width: 24.w,
-                    child:
-                        timezoneIcon ??
-                        Icon(Icons.public, color: Colors.white, size: 12.ic),
-                  ),
-                  SizedBox(width: 4), // Changed from 8px to 4px
-                  Expanded(
-                    child: Text(
-                      'Set timezone',
-                      style: AppTypography.textMdMedium.copyWith(
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 36,
-                    child: SvgPicture.asset(
-                      SvgAsset.right_arrow,
-                      height: 24.h,
-                      width: 24.w,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          SizedBox(height: 7.h),
-
-          // Notifications toggle
-          Container(
-            height: 36,
-            padding: EdgeInsets.symmetric(horizontal: 10),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // Text aligned with icons (no spacers)
-                Text(
-                  'Notifications',
-                  style: AppTypography.textMdMedium.copyWith(
-                    color: Colors.white,
-                  ),
-                ),
-                // Custom sized switch
-                SizedBox(
-                  width: 34,
-                  height: 25,
-                  child: FittedBox(
-                    fit: BoxFit.fill,
-                    child: Switch(
-                      value: notificationsEnabled,
-                      onChanged: (value) {
-                        HapticFeedbackService.toggle();
-                        onNotificationsPressed?.call();
-                      },
-                      activeThumbColor: kWhiteColor,
-                      // Circle color is white
-                      activeTrackColor: kPrimaryColor,
-                      // Track uses app primary color
-                      inactiveThumbColor: kWhiteColor,
-                      inactiveTrackColor: Colors.grey.withValues(alpha: 0.5),
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                  ),
-                ),
-              ],
             ),
           ),
           SizedBox(height: 15.h),

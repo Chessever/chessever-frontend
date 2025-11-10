@@ -10,7 +10,7 @@ import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:chessever2/providers/board_settings_provider.dart';
+import 'package:chessever2/providers/board_settings_provider_new.dart';
 
 class ChessBoardFromFENNew extends StatelessWidget {
   const ChessBoardFromFENNew({
@@ -522,10 +522,11 @@ class _ChessBoardWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final boardSettingsValue = ref.watch(boardSettingsProvider);
+    final boardSettingsAsync = ref.watch(boardSettingsProviderNew);
+    final boardSettings = boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
     final boardTheme = ref
         .read(boardSettingsRepository)
-        .getBoardTheme(boardSettingsValue.boardColor);
+        .getBoardTheme(boardSettings.boardColorValue);
 
     return Container(
       height: boardSize,

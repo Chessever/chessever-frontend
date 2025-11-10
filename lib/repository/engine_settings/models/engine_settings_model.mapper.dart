@@ -43,6 +43,12 @@ class EngineSettingsModelMapper extends ClassMapperBase<EngineSettingsModel> {
     'showPvArrows',
     _$showPvArrows,
   );
+  static bool _$showEngineAnalysis(EngineSettingsModel v) =>
+      v.showEngineAnalysis;
+  static const Field<EngineSettingsModel, bool> _f$showEngineAnalysis = Field(
+    'showEngineAnalysis',
+    _$showEngineAnalysis,
+  );
   static int _$searchTimeIndex(EngineSettingsModel v) => v.searchTimeIndex;
   static const Field<EngineSettingsModel, int> _f$searchTimeIndex = Field(
     'searchTimeIndex',
@@ -70,6 +76,7 @@ class EngineSettingsModelMapper extends ClassMapperBase<EngineSettingsModel> {
     #showEngineGauge: _f$showEngineGauge,
     #showDepthOverlay: _f$showDepthOverlay,
     #showPvArrows: _f$showPvArrows,
+    #showEngineAnalysis: _f$showEngineAnalysis,
     #searchTimeIndex: _f$searchTimeIndex,
     #principalVariationIndex: _f$principalVariationIndex,
     #createdAt: _f$createdAt,
@@ -83,6 +90,7 @@ class EngineSettingsModelMapper extends ClassMapperBase<EngineSettingsModel> {
       showEngineGauge: data.dec(_f$showEngineGauge),
       showDepthOverlay: data.dec(_f$showDepthOverlay),
       showPvArrows: data.dec(_f$showPvArrows),
+      showEngineAnalysis: data.dec(_f$showEngineAnalysis),
       searchTimeIndex: data.dec(_f$searchTimeIndex),
       principalVariationIndex: data.dec(_f$principalVariationIndex),
       createdAt: data.dec(_f$createdAt),
@@ -166,6 +174,7 @@ abstract class EngineSettingsModelCopyWith<
     bool? showEngineGauge,
     bool? showDepthOverlay,
     bool? showPvArrows,
+    bool? showEngineAnalysis,
     int? searchTimeIndex,
     int? principalVariationIndex,
     DateTime? createdAt,
@@ -191,6 +200,7 @@ class _EngineSettingsModelCopyWithImpl<$R, $Out>
     bool? showEngineGauge,
     bool? showDepthOverlay,
     bool? showPvArrows,
+    bool? showEngineAnalysis,
     int? searchTimeIndex,
     int? principalVariationIndex,
     DateTime? createdAt,
@@ -202,6 +212,7 @@ class _EngineSettingsModelCopyWithImpl<$R, $Out>
       if (showEngineGauge != null) #showEngineGauge: showEngineGauge,
       if (showDepthOverlay != null) #showDepthOverlay: showDepthOverlay,
       if (showPvArrows != null) #showPvArrows: showPvArrows,
+      if (showEngineAnalysis != null) #showEngineAnalysis: showEngineAnalysis,
       if (searchTimeIndex != null) #searchTimeIndex: searchTimeIndex,
       if (principalVariationIndex != null)
         #principalVariationIndex: principalVariationIndex,
@@ -216,6 +227,10 @@ class _EngineSettingsModelCopyWithImpl<$R, $Out>
     showEngineGauge: data.get(#showEngineGauge, or: $value.showEngineGauge),
     showDepthOverlay: data.get(#showDepthOverlay, or: $value.showDepthOverlay),
     showPvArrows: data.get(#showPvArrows, or: $value.showPvArrows),
+    showEngineAnalysis: data.get(
+      #showEngineAnalysis,
+      or: $value.showEngineAnalysis,
+    ),
     searchTimeIndex: data.get(#searchTimeIndex, or: $value.searchTimeIndex),
     principalVariationIndex: data.get(
       #principalVariationIndex,
