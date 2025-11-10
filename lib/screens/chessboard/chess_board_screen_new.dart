@@ -2405,9 +2405,7 @@ class _PrincipalVariationListState
 
     final hasActivePvs = clampedLines.isNotEmpty;
     final fallbackLines =
-        (!hasActivePvs &&
-                widget.state.isEvaluating &&
-                _lastNonEmptyLines.isNotEmpty)
+        (!hasActivePvs && _lastNonEmptyLines.isNotEmpty)
             ? (_lastNonEmptyLines.length > multiPV
                 ? _lastNonEmptyLines.take(multiPV).toList(growable: false)
                 : _lastNonEmptyLines.toList(growable: false))
@@ -2418,9 +2416,15 @@ class _PrincipalVariationListState
     // Determine loading state for PV cards
     final showEndOfGame = isGameOver && widget.state.isAnalysisMode;
     final showSkeleton =
-        !showEndOfGame && displayLines.isEmpty && widget.state.isEvaluating;
+        !showEndOfGame &&
+        !hasActivePvs &&
+        _lastNonEmptyLines.isEmpty &&
+        widget.state.isEvaluating;
     final showEmptyState =
-        !showEndOfGame && displayLines.isEmpty && !widget.state.isEvaluating;
+        !showEndOfGame &&
+        displayLines.isEmpty &&
+        !widget.state.isEvaluating &&
+        _lastNonEmptyLines.isEmpty;
     final pageCount =
         (showSkeleton || showEmptyState) ? 1 : displayLines.length;
 
@@ -2506,33 +2510,57 @@ class _PrincipalVariationListState
                     ),
                   ),
                   Expanded(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.vertical,
-                      physics: const BouncingScrollPhysics(),
-                      child: Text(
-                        sanMoves.join(' '),
-                        softWrap: true,
-                        style: AppTypography.textXsMedium.copyWith(
-                          color: kWhiteColor.withValues(
-                            alpha: dimmed ? 0.75 : 0.9,
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final availableHeight = constraints.maxHeight.isFinite
+                            ? constraints.maxHeight
+                            : pvCardHeight - 24.h;
+                        return ClipRect(
+                          child: SizedBox(
+                            height: availableHeight,
+                            child: SingleChildScrollView(
+                              primary: false,
+                              physics: const BouncingScrollPhysics(
+                                parent: AlwaysScrollableScrollPhysics(),
+                              ),
+                              padding: EdgeInsets.only(bottom: 4.sp),
+                              child: Text(
+                                sanMoves.join(' '),
+                                softWrap: true,
+                                style: AppTypography.textXsMedium.copyWith(
+                                  color: kWhiteColor.withValues(
+                                    alpha: dimmed ? 0.75 : 0.9,
+                                  ),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
                           ),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
+                        );
+                      },
                     ),
                   ),
                 ],
               ),
               if (showUpdatingLabel)
-                Padding(
-                  padding: EdgeInsets.only(top: 6.sp),
-                  child: Text(
-                    'Updating lines…',
-                    style: AppTypography.textXxsMedium.copyWith(
-                      color: kWhiteColor.withValues(
-                        alpha: 0.65,
+                Align(
+                  alignment: Alignment.bottomRight,
+                  child: Container(
+                    margin: EdgeInsets.only(top: 6.sp),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 8.sp,
+                      vertical: 4.sp,
+                    ),
+                    decoration: BoxDecoration(
+                      color: kBlackColor.withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(4.sp),
+                    ),
+                    child: Text(
+                      'Updating lines…',
+                      style: AppTypography.textXxsMedium.copyWith(
+                        color: kWhiteColor.withValues(alpha: 0.75),
+                        fontStyle: FontStyle.italic,
                       ),
-                      fontStyle: FontStyle.italic,
                     ),
                   ),
                 ),
@@ -2688,7 +2716,8 @@ class _PrincipalVariationListState
                             variantIndex: variantIndex,
                             isSelected: isSelected,
                             dimmed: usingFallback,
-                            showUpdatingLabel: usingFallback,
+                            showUpdatingLabel:
+                                usingFallback && widget.state.isEvaluating,
                           ),
                         );
                       },
