@@ -356,8 +356,8 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
                                   data: (country) {
                                     return CountryDropdown(
                                       selectedCountryCode: country.countryCode,
-                                      onChanged: (Country newCountry) async {
-                                        await ref
+                                      onChanged: (Country newCountry) {
+                                        ref
                                             .read(
                                               countryDropdownProvider.notifier,
                                             )

@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+
 import 'package:chessever2/providers/board_settings_provider.dart';
 import 'package:chessever2/repository/board_settings/models/board_settings_model.dart';
 import 'package:flutter/material.dart';
@@ -236,15 +238,17 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         return;
       }
 
-      // Save to Supabase
-      await _saveToSupabase(settings, userId);
-
-      // Cache locally
+      // Cache locally first (fast, immediate)
       await _cacheSettings(settings);
+
+      // Save to Supabase in background (fire-and-forget, non-blocking)
+      unawaited(
+        _saveToSupabase(settings, userId),
+      );
     } catch (e, st) {
       debugPrint('[BoardSettings] Error persisting settings: $e');
       debugPrint('[BoardSettings] Stack: $st');
-      rethrow;
+      // Don't rethrow - we don't want to block UI on persistence errors
     }
   }
 

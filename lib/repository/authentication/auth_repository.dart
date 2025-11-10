@@ -8,6 +8,7 @@ import 'package:chessever2/repository/authentication/model/app_user.dart';
 import 'package:chessever2/repository/authentication/model/auth_state.dart';
 import 'package:chessever2/repository/authentication/model/exceptions.dart';
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
+import 'package:chessever2/repository/migration/settings_migration_service.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -91,6 +92,13 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
           final appUser = AppUser.fromSupabaseUser(supabaseUser);
           await _sessionManager.saveSession(session, supabaseUser);
           state = AsyncValue.data(AppAuthState.authenticated(appUser));
+
+          // Trigger migration/sync of local settings to Supabase
+          // This runs in the background and doesn't block the auth flow
+          // Runs on all auth state changes to ensure settings stay synced
+          unawaited(
+            ref.read(settingsMigrationServiceProvider).migrateSettingsToSupabase(),
+          );
         }
         break;
       case AuthChangeEvent.signedOut:
