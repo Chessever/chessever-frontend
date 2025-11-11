@@ -100,7 +100,10 @@ class KnockoutMatchScrollNotifier extends StateNotifier<KnockoutMatchScrollState
       currentIndex++;
 
       // Add games if match is expanded
-      final isExpanded = expansionState[currentMatchKey] ?? true;
+      final isExpanded = resolveMatchExpansionState(
+        expansionState,
+        currentMatchKey,
+      );
       if (isExpanded) {
         if (isGrid) {
           currentIndex += (matchGames.length / 2).ceil();
@@ -140,7 +143,7 @@ class KnockoutMatchScrollNotifier extends StateNotifier<KnockoutMatchScrollState
       currentIndex++; // Move past match header
 
       // Check if index is within match games
-      final isExpanded = expansionState[matchKey] ?? true;
+      final isExpanded = resolveMatchExpansionState(expansionState, matchKey);
       if (isExpanded) {
         final gamesCount = isGrid ? (matchGames.length / 2).ceil() : matchGames.length;
 

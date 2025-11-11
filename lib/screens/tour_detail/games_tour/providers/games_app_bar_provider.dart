@@ -182,6 +182,36 @@ class _GamesAppBarNotifier
     return visibleRounds.map((r) => r.id).toList();
   }
 
+  /// Get list of ALL match keys from ALL rounds (for group events)
+  /// This is used by collapse/expand all buttons to affect versus cards
+  /// Note: Gets match keys from ALL rounds, not just visible ones, so that
+  /// when a collapsed round is later expanded, its versus cards remain collapsed
+  List<String> getAllMatchKeys() {
+    final vm = state.valueOrNull;
+    final allRounds = vm?.gamesAppBarModels ?? [];
+    if (allRounds.isEmpty) return [];
+
+    final gamesScreenModel = ref.read(gamesTourScreenProvider).valueOrNull;
+    if (gamesScreenModel == null) return [];
+
+    final matchKeys = <String>[];
+
+    // For each round (visible or not), get the match keys (team headers)
+    for (final round in allRounds) {
+      final grouped = ref
+          .read(gamesTourContentProvider)
+          .getGroupHeader(
+            selectedRoundId: round.id,
+            gamesScreenModel: gamesScreenModel,
+          );
+
+      // Each group header key is a match key (e.g., "Team1 vs Team2")
+      matchKeys.addAll(grouped.keys);
+    }
+
+    return matchKeys;
+  }
+
   Future<void> _scrollToRound(String roundId) async {
     final scrollProvider = ref.read(gamesTourScrollProvider.notifier);
     final controller = scrollProvider.state;
@@ -377,7 +407,10 @@ class _GamesAppBarNotifier
           for (final entry in matches.entries) {
             final matchKey = entry.key;
             final matchGames = entry.value;
-            final isExpanded = expansionState[matchKey] ?? true;
+            final isExpanded = resolveMatchExpansionState(
+              expansionState,
+              matchKey,
+            );
 
             itemCount++; // match header
 

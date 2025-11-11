@@ -352,7 +352,9 @@ int _computeItemCount(
         final matchKey = entry.key;
         final matchGames = entry.value;
         // In search mode, default to expanded (true)
-        final isExpanded = isSearchMode ? true : (matchExpansionState[matchKey] ?? true);
+        final isExpanded = isSearchMode
+            ? true
+            : resolveMatchExpansionState(matchExpansionState, matchKey);
 
         count++; // match header
 
@@ -448,7 +450,9 @@ Object? _lookupItem({
         final matchGames = matchHeader.games;
         final matchKey = matchHeader.matchKey;
         // In search mode, default to expanded (true)
-        final isExpanded = isSearchMode ? true : (matchExpansionState[matchKey] ?? true);
+        final isExpanded = isSearchMode
+            ? true
+            : resolveMatchExpansionState(matchExpansionState, matchKey);
         final matchGamesCount = matchGames.length;
         final matchStartIndex = roundStartIndex + matchGameOffset;
 
@@ -601,7 +605,9 @@ int? _listIndexForGameIndex({
         final matchKey = entry.key;
         final matchGames = entry.value;
         // In search mode, default to expanded (true)
-        final isExpanded = isSearchMode ? true : (matchExpansionState[matchKey] ?? true);
+        final isExpanded = isSearchMode
+            ? true
+            : resolveMatchExpansionState(matchExpansionState, matchKey);
         final matchStartIndex = roundStartIndex + matchGameOffset;
         final matchGamesCount = matchGames.length;
 
