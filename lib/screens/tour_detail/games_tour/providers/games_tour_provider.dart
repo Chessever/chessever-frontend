@@ -114,12 +114,10 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
             '🔥 GamesTourNotifier: New games: ${newGames.map((g) => g.roundSlug).join(", ")}',
           );
 
-          // Set up stream listeners for new games
+          // Set up stream listeners only for live games
           for (final game in newGames) {
             if (game.status == "*") {
-              _listenToGameStreams(game.id, listenToMoves: true);
-            } else {
-              _listenToGameStreams(game.id, listenToMoves: false);
+              _listenToGameStreams(game.id);
             }
           }
         }
@@ -149,9 +147,9 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       '🔥 GamesTourNotifier: Setting up stream listeners for ${games.length} games',
     );
 
-    // Set up listeners for ALL games
-    // - For ongoing games: listen to FEN, moves, clocks
-    // - For all games (including finished): listen to status changes
+    // Set up listeners ONLY for ongoing games
+    // Finished games already have stable data (result/FEN) so we skip
+    // real-time streams for them to avoid unnecessary updates & logs.
     for (final game in games) {
       debugPrint(
         '🔥 GamesTourNotifier: Game ${game.id} status: ${game.status}',
@@ -160,24 +158,18 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
         debugPrint(
           '🔥 GamesTourNotifier: Setting up streams for ongoing game ${game.id}',
         );
-        _listenToGameStreams(game.id, listenToMoves: true);
-      } else {
-        // For finished games, only listen to status in case it gets corrected
-        debugPrint(
-          '🔥 GamesTourNotifier: Setting up status stream for finished game ${game.id}',
-        );
-        _listenToGameStreams(game.id, listenToMoves: false);
+        _listenToGameStreams(game.id);
       }
     }
   }
 
-  void _listenToGameStreams(String gameId, {required bool listenToMoves}) {
+  void _listenToGameStreams(String gameId) {
     final subscriptions = <ProviderSubscription>[];
 
     // CONSOLIDATED: Use ONE stream for ALL game data (reduces channels by 83%)
     // This single stream provides: fen, last_move, clocks, status, last_move_time
     debugPrint(
-      '🔥 GamesTourNotifier: Setting up CONSOLIDATED stream for game $gameId (listenToMoves: $listenToMoves)',
+      '🔥 GamesTourNotifier: Setting up CONSOLIDATED stream for game $gameId',
     );
 
     final gameUpdatesSubscription = ref.listen<
@@ -200,25 +192,22 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
         // Always update status (for all games, even finished ones)
         final status = gameData['status'] as String?;
 
-        if (listenToMoves) {
-          // For ongoing games: update everything
-          _updateGameData(
-            gameId,
-            fen: gameData['fen'] as String?,
-            lastMove: gameData['last_move'] as String?,
-            whiteClockSeconds: (gameData['last_clock_white'] as num?)?.round(),
-            blackClockSeconds: (gameData['last_clock_black'] as num?)?.round(),
-            lastMoveTime:
-                gameData['last_move_time'] != null
-                    ? DateTime.tryParse(gameData['last_move_time'] as String)
-                    : null,
-            status: status,
-          );
-        } else {
-          // For finished games: only update status
-          if (status != null) {
-            _updateGameData(gameId, status: status);
-          }
+        _updateGameData(
+          gameId,
+          fen: gameData['fen'] as String?,
+          lastMove: gameData['last_move'] as String?,
+          whiteClockSeconds: (gameData['last_clock_white'] as num?)?.round(),
+          blackClockSeconds: (gameData['last_clock_black'] as num?)?.round(),
+          lastMoveTime:
+              gameData['last_move_time'] != null
+                  ? DateTime.tryParse(gameData['last_move_time'] as String)
+                  : null,
+          status: status,
+        );
+
+        // As soon as a game finishes, tear down its stream subscription.
+        if (status != null && status != '*') {
+          _stopListeningToGame(gameId);
         }
       });
     });
@@ -299,6 +288,14 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       }
     }
     _streamSubscriptions.clear();
+  }
+
+  void _stopListeningToGame(String gameId) {
+    final subscriptions = _streamSubscriptions.remove(gameId);
+    if (subscriptions == null) return;
+    for (final subscription in subscriptions) {
+      subscription.close();
+    }
   }
 
   Future<void> refreshGames() async {
