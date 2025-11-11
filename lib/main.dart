@@ -19,7 +19,6 @@ import 'package:chessever2/screens/tour_detail/tournament_detail_screen.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
-import 'package:chessever2/utils/notification_service.dart';
 import 'package:chessever2/utils/lifecycle_event_handler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/auth_state_listener.dart';
@@ -145,8 +144,6 @@ Future<void> main() async {
           workerManager.init(isolatesCount: 6)
         else
           Future.value(),
-        // Notification service
-        NotificationService.initialize(),
         // Clear evaluation cache
         _clearEvaluationCache(),
         // Reset favorites for Supabase migration (one-time for beta users)
