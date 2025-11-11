@@ -16,6 +16,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chessground/chessground.dart';
+import 'package:collection/collection.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:easy_debounce/easy_debounce.dart';
 import 'package:fast_immutable_collections/fast_immutable_collections.dart';
@@ -1564,6 +1565,14 @@ class ChessBoardScreenNotifierNew
         _releaseLog(
           '🎯 ANALYSIS MOVE: Navigator aligned, applying move via navigator',
         );
+        const pointerEquality = ListEquality<int>();
+        final boardPointer = currentState.analysisState.movePointer;
+        if (!pointerEquality.equals(navigatorState.movePointer, boardPointer)) {
+          _releaseLog(
+            '🎯 ANALYSIS MOVE: Syncing navigator pointer to $boardPointer before move',
+          );
+          _analysisNavigator?.goToMovePointerUnchecked(boardPointer);
+        }
         final (_, san) = boardPosition.makeSan(move);
 
         _analysisNavigator?.makeOrGoToMove(move.uci);
@@ -1617,6 +1626,11 @@ class ChessBoardScreenNotifierNew
 
       // Navigator is in sync, apply move through it
       _releaseLog('🎯 MANUAL MOVE FALLBACK: Navigator in sync, applying move');
+      const pointerEquality = ListEquality<int>();
+      final boardPointer = currentState.analysisState.movePointer;
+      if (!pointerEquality.equals(navigatorState.movePointer, boardPointer)) {
+        _analysisNavigator?.goToMovePointerUnchecked(boardPointer);
+      }
       _analysisNavigator?.makeOrGoToMove(move.uci);
       HapticFeedback.lightImpact();
       return;
@@ -1670,6 +1684,14 @@ class ChessBoardScreenNotifierNew
             _releaseLog(
               '🎯 PROMOTION SELECTION: Navigator in sync, applying via navigator',
             );
+            const pointerEquality = ListEquality<int>();
+            final boardPointer = currentState.analysisState.movePointer;
+            if (!pointerEquality.equals(
+              navigatorState.movePointer,
+              boardPointer,
+            )) {
+              _analysisNavigator?.goToMovePointerUnchecked(boardPointer);
+            }
             _analysisNavigator?.makeOrGoToMove(move.uci);
             HapticFeedback.mediumImpact();
           } else {
@@ -2778,11 +2800,6 @@ class ChessBoardScreenNotifierNew
           ).future,
         );
         if (cascadeEval.pvs.isNotEmpty) {
-          final cascadeProgress = EngineSearchProgress(
-            depth: cascadeEval.depth,
-            kiloNodes: cascadeEval.knodes,
-            fenFragment: fen,
-          );
           primaryEval = cascadeEval;
           final rawCp = cascadeEval.pvs.first.cp;
           final rawEval = rawCp / 100.0;
