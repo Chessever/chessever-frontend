@@ -4,8 +4,8 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_games_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_match_card_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
-import 'package:chessever2/utils/string_utils_provider.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -16,7 +16,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 
-class GroupEventMatchCard extends ConsumerStatefulWidget {
+class GroupEventMatchCard extends ConsumerWidget {
   final String roundTitle;
   final List<MatchWithComparison> games;
   final GamesScreenModel gamesData;
@@ -33,55 +33,19 @@ class GroupEventMatchCard extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<GroupEventMatchCard> createState() =>
-      _GroupEventMatchCardState();
-}
-
-class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
-    with SingleTickerProviderStateMixin {
-  bool _isExpanded = true;
-  late AnimationController _animationController;
-
-  @override
-  void initState() {
-    super.initState();
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 300),
-      vsync: this,
-    );
-  }
-
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
-  }
-
-  void _toggleExpand() {
-    setState(() {
-      _isExpanded = !_isExpanded;
-      if (_isExpanded) {
-        _animationController.forward();
-      } else {
-        _animationController.reverse();
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final team1Name = widget.roundTitle.split(' vs ').first;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final team1Name = roundTitle.split(' vs ').first;
     final country1 = ref
         .read(locationServiceProvider)
         .getValidCountryCodeFromName(team1Name);
-    final team2Name = widget.roundTitle.split(' vs ').last;
+    final team2Name = roundTitle.split(' vs ').last;
     final country2 = ref
         .read(locationServiceProvider)
         .getValidCountryCodeFromName(team2Name);
 
     final matchScore = ref
         .read(groupEventMatchCardProvider)
-        .getMatchScore(matchList: widget.games, team: team1Name);
+        .getMatchScore(matchList: games, team: team1Name);
     final team1ScoreStr = matchScore.first % 1 == 0
         ? matchScore.first.toStringAsFixed(0)
         : matchScore.first.toStringAsFixed(1);
@@ -89,10 +53,14 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
         ? matchScore.last.toStringAsFixed(0)
         : matchScore.last.toStringAsFixed(1);
 
+    // Use match key from roundTitle (Team1 vs Team2)
+    final matchKey = roundTitle;
+    final isExpanded = ref.watch(matchExpansionStateProvider(matchKey));
+
     final radius = Radius.circular(12.br);
     final cardBorderRadius = BorderRadius.circular(12.br);
     final headerBorderRadius =
-        _isExpanded
+        isExpanded
             ? BorderRadius.only(topLeft: radius, topRight: radius)
             : cardBorderRadius;
 
@@ -105,7 +73,9 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
       child: Column(
         children: [
           InkWell(
-            onTap: _toggleExpand,
+            onTap: () {
+              ref.read(matchExpansionProvider.notifier).toggleMatch(matchKey);
+            },
             child: Container(
               height: 60.h,
               padding: EdgeInsets.only(left: 12.sp, right: 12.sp),
@@ -208,6 +178,16 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
                       ],
                     ),
                   ),
+
+                  // Expand/collapse icon
+                  SizedBox(width: 8.w),
+                  Icon(
+                    isExpanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    color: kWhiteColor.withValues(alpha: 0.5),
+                    size: 20.sp,
+                  ),
                 ],
               ),
             ),
@@ -216,12 +196,12 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 300),
             child:
-                _isExpanded
+                isExpanded
                     ? Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Container(height: 10.h, color: kBlackColor),
-                        _buildGamesList(),
+                        _buildGamesList(context, ref),
                       ],
                     )
                     : const SizedBox.shrink(),
@@ -231,24 +211,22 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
     );
   }
 
-  Widget _buildGamesList() {
-    switch (widget.gamesListViewMode) {
+  Widget _buildGamesList(BuildContext context, WidgetRef ref) {
+    switch (gamesListViewMode) {
       case GamesListViewMode.gamesCard:
         return GroupEventGamesCard(
-          games: widget.games,
-          gamesData: widget.gamesData,
-          onReturnFromChessboard: widget.onReturnFromChessboard,
+          games: games,
+          gamesData: gamesData,
+          onReturnFromChessboard: onReturnFromChessboard,
         );
       case GamesListViewMode.chessBoardGrid:
-        return _buildChessBoardGridView();
+        return _buildChessBoardGridView(context, ref);
       case GamesListViewMode.chessBoard:
-        return _buildChessBoardView();
+        return _buildChessBoardView(context, ref);
     }
   }
 
-  Widget _buildChessBoardGridView() {
-    final games = widget.games;
-
+  Widget _buildChessBoardGridView(BuildContext context, WidgetRef ref) {
     return ListView.builder(
       padding: EdgeInsets.zero,
       shrinkWrap: true,
@@ -264,9 +242,9 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(child: _buildGridChessBoard(matchWithComparison)),
+              Expanded(child: _buildGridChessBoard(context, ref, matchWithComparison)),
               if (game2 != null) ...[
-                Expanded(child: _buildGridChessBoard(game2)),
+                Expanded(child: _buildGridChessBoard(context, ref, game2)),
               ],
             ],
           ),
@@ -275,10 +253,9 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
     );
   }
 
-  Widget _buildChessBoardView() {
-    final games = widget.games;
+  Widget _buildChessBoardView(BuildContext context, WidgetRef ref) {
     // Use the games list from widget data to maintain correct order for group events
-    final fullGamesList = widget.gamesData.gamesTourModels;
+    final fullGamesList = gamesData.gamesTourModels;
 
     return ListView.builder(
       padding: EdgeInsets.zero,
@@ -297,20 +274,20 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
             game: matchWithComparison.game,
             gamesData: GamesScreenModel(
               gamesTourModels: fullGamesList,
-              pinnedGamedIs: widget.gamesData.pinnedGamedIs,
+              pinnedGamedIs: gamesData.pinnedGamedIs,
             ),
             gameIndex: gameIndex,
             isChessBoardVisible: true,
-            onReturnFromChessboard: widget.onReturnFromChessboard,
+            onReturnFromChessboard: onReturnFromChessboard,
           ),
         );
       },
     );
   }
 
-  Widget _buildGridChessBoard(MatchWithComparison matchWithComparison) {
+  Widget _buildGridChessBoard(BuildContext context, WidgetRef ref, MatchWithComparison matchWithComparison) {
     // Use the games list from widget data to maintain correct order for group events
-    final fullGamesList = widget.gamesData.gamesTourModels;
+    final fullGamesList = gamesData.gamesTourModels;
 
     final gameIndex = fullGamesList.indexWhere(
       (g) => g.gameId == matchWithComparison.game.gameId,
@@ -326,9 +303,9 @@ class _GroupEventMatchCardState extends ConsumerState<GroupEventMatchCard>
                 context: context,
                 orderedGames: fullGamesList,
                 gameIndex: gameIndex,
-                onReturnFromChessboard: widget.onReturnFromChessboard,
+                onReturnFromChessboard: onReturnFromChessboard,
               ),
-      pinnedIds: widget.gamesData.pinnedGamedIs,
+      pinnedIds: gamesData.pinnedGamedIs,
       onPinToggle:
           (_) async => await ref
               .read(gamesTourScreenProvider.notifier)

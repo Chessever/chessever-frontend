@@ -11,6 +11,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
 import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/round_drop_down.dart';
@@ -365,6 +366,12 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
                                       ref
                                           .read(gamesAppBarProvider.notifier)
                                           .getVisibleRoundIds();
+                                  // Get ALL match keys from ALL rounds for group events
+                                  // This ensures versus cards stay collapsed even after expanding a round
+                                  final matchKeys =
+                                      ref
+                                          .read(gamesAppBarProvider.notifier)
+                                          .getAllMatchKeys();
                                   final Offset offset = renderBox.localToGlobal(
                                     Offset.zero,
                                   );
@@ -524,13 +531,23 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
                                           value: MenuAction.collapseAllRounds,
                                           child: InkWell(
                                             onTap: () {
-                                              // Update state first
+                                              // Update state first - collapse both rounds and versus cards
                                               ref
                                                   .read(
                                                     roundExpansionProvider
                                                         .notifier,
                                                   )
                                                   .collapseAll(roundIds);
+                                              // Also collapse all versus cards (match cards)
+                                              // IMPORTANT: Always call collapseAll to set the collapse mode flag
+                                              // even if matchKeys is empty, so that newly rendered cards
+                                              // will be collapsed by default
+                                              ref
+                                                  .read(
+                                                    matchExpansionProvider
+                                                        .notifier,
+                                                  )
+                                                  .collapseAll(matchKeys);
                                               // Then close popup after state update
                                               Navigator.pop(context);
                                             },
@@ -542,7 +559,7 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
                                                         .spaceBetween,
                                                 children: [
                                                   Text(
-                                                    "Collapse all rounds",
+                                                    "Collapse all",
                                                     style: AppTypography
                                                         .textXsMedium
                                                         .copyWith(
@@ -568,13 +585,20 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
                                           value: MenuAction.expandAllRounds,
                                           child: InkWell(
                                             onTap: () {
-                                              // Update state first
+                                              // Update state first - expand both rounds and versus cards
                                               ref
                                                   .read(
                                                     roundExpansionProvider
                                                         .notifier,
                                                   )
                                                   .expandAll(roundIds);
+                                              // Also expand all versus cards (match cards)
+                                              ref
+                                                  .read(
+                                                    matchExpansionProvider
+                                                        .notifier,
+                                                  )
+                                                  .expandAll();
                                               // Then close popup after state update
                                               Navigator.pop(context);
                                             },
@@ -586,7 +610,7 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
                                                         .spaceBetween,
                                                 children: [
                                                   Text(
-                                                    "Expand all rounds",
+                                                    "Expand all",
                                                     style: AppTypography
                                                         .textXsMedium
                                                         .copyWith(
