@@ -1,6 +1,7 @@
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/repository/local_storage/tournament/games/pin_games_local_storage.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
@@ -339,50 +340,17 @@ class GamesTourScreenProvider
   }
 
   Future<void> showFinishedGames() async {
-    var games = ref.read(gamesTourProvider(aboutTourModel!.id)).value ?? [];
-    var pinnedIds = ref.read(gamesPinprovider(aboutTourModel!.id)).allPins;
-    var finishedGames = games.where((g) => g.status != '*').toList();
+    if (aboutTourModel == null) return;
 
-    // Pre-parse for performance
-    final gameInfo = <String, (int, int)>{};
-    for (final game in finishedGames) {
-      gameInfo[game.id] = (_extractRoundNumber(game.roundSlug), _extractGameNumber(game.roundSlug));
-    }
-
-    final sortedGames = List<Games>.from(finishedGames);
-    sortedGames.sort((a, b) {
-      final aPinned = pinnedIds.contains(a.id);
-      final bPinned = pinnedIds.contains(b.id);
-      if (aPinned && !bPinned) return -1;
-      if (!aPinned && bPinned) return 1;
-
-      // If both are pinned, preserve pin order (favorites before countrymen)
-      if (aPinned && bPinned) {
-        final aIndex = pinnedIds.indexOf(a.id);
-        final bIndex = pinnedIds.indexOf(b.id);
-        if (aIndex != bIndex) return aIndex.compareTo(bIndex);
-      }
-
-      final (roundA, gameA) = gameInfo[a.id] ?? (0, 0);
-      final (roundB, gameB) = gameInfo[b.id] ?? (0, 0);
-
-      // Sort by round DESCENDING (to match the round list order)
-      if (roundA != roundB) return roundB.compareTo(roundA);
-
-      // Within same round, sort by game DESCENDING (Game 2 before Game 1)
-      if (gameA != gameB) return gameB.compareTo(gameA);
-
-      final aBoard = a.boardNr, bBoard = b.boardNr;
-      if (aBoard != null && bBoard != null) return aBoard.compareTo(bBoard);
-      if (aBoard != null) return -1;
-      if (bBoard != null) return 1;
-      return 0;
-    });
+    final pinnedIds = ref.read(gamesPinprovider(aboutTourModel!.id)).allPins;
+    final allGames = _collectGamesAcrossVisibleStages();
+    final finishedGames = allGames.where((g) => g.status != '*').toList();
+    final sortedGames = _sortGamesForFilters(finishedGames, pinnedIds);
+    final models = _mapGamesToModels(sortedGames);
 
     state = AsyncValue.data(
       GamesScreenModel(
-        gamesTourModels:
-            sortedGames.map((g) => GamesTourModel.fromGame(g)).toList(),
+        gamesTourModels: models,
         pinnedGamedIs: pinnedIds,
         isSearchMode: true,
         gameDisplayMode: GameDisplayMode.showfinishedGame,
@@ -391,49 +359,17 @@ class GamesTourScreenProvider
   }
 
   Future<void> hideFinishedGames() async {
-    var games = ref.read(gamesTourProvider(aboutTourModel!.id)).value ?? [];
-    var unfinishedGames = games.where((g) => g.status == '*').toList();
+    if (aboutTourModel == null) return;
+
     final pinnedIds = ref.read(gamesPinprovider(aboutTourModel!.id)).allPins;
+    final allGames = _collectGamesAcrossVisibleStages();
+    final unfinishedGames = allGames.where((g) => g.status == '*').toList();
+    final sortedGames = _sortGamesForFilters(unfinishedGames, pinnedIds);
+    final models = _mapGamesToModels(sortedGames);
 
-    // Pre-parse for performance
-    final gameInfo = <String, (int, int)>{};
-    for (final game in unfinishedGames) {
-      gameInfo[game.id] = (_extractRoundNumber(game.roundSlug), _extractGameNumber(game.roundSlug));
-    }
-
-    final sortedGames = List<Games>.from(unfinishedGames);
-    sortedGames.sort((a, b) {
-      final aPinned = pinnedIds.contains(a.id);
-      final bPinned = pinnedIds.contains(b.id);
-      if (aPinned && !bPinned) return -1;
-      if (!aPinned && bPinned) return 1;
-
-      // If both are pinned, preserve pin order (favorites before countrymen)
-      if (aPinned && bPinned) {
-        final aIndex = pinnedIds.indexOf(a.id);
-        final bIndex = pinnedIds.indexOf(b.id);
-        if (aIndex != bIndex) return aIndex.compareTo(bIndex);
-      }
-
-      final (roundA, gameA) = gameInfo[a.id] ?? (0, 0);
-      final (roundB, gameB) = gameInfo[b.id] ?? (0, 0);
-
-      // Sort by round DESCENDING (to match the round list order)
-      if (roundA != roundB) return roundB.compareTo(roundA);
-
-      // Within same round, sort by game DESCENDING (Game 2 before Game 1)
-      if (gameA != gameB) return gameB.compareTo(gameA);
-
-      final aBoard = a.boardNr, bBoard = b.boardNr;
-      if (aBoard != null && bBoard != null) return aBoard.compareTo(bBoard);
-      if (aBoard != null) return -1;
-      if (bBoard != null) return 1;
-      return 0;
-    });
     state = AsyncValue.data(
       GamesScreenModel(
-        gamesTourModels:
-            sortedGames.map((g) => GamesTourModel.fromGame(g)).toList(),
+        gamesTourModels: models,
         pinnedGamedIs: pinnedIds,
         isSearchMode: true,
         gameDisplayMode: GameDisplayMode.hideFinishedGames,
@@ -442,24 +378,95 @@ class GamesTourScreenProvider
   }
 
   Future<void> showAllGames() async {
-    var games = ref.read(gamesTourProvider(aboutTourModel!.id)).value ?? [];
-    final pinnedIds = ref.read(gamesPinprovider(aboutTourModel!.id)).allPins;
+    if (aboutTourModel == null) return;
 
-    // Pre-parse for performance
+    final pinnedIds = ref.read(gamesPinprovider(aboutTourModel!.id)).allPins;
+    final allGames = _collectGamesAcrossVisibleStages();
+    final sortedGames = _sortGamesForFilters(allGames, pinnedIds);
+    final models = _mapGamesToModels(sortedGames);
+
+    state = AsyncValue.data(
+      GamesScreenModel(
+        gamesTourModels: models,
+        pinnedGamedIs: pinnedIds,
+        isSearchMode: false,
+        gameDisplayMode: GameDisplayMode.all,
+      ),
+    );
+  }
+
+  List<Games> _collectGamesAcrossVisibleStages() {
+    if (aboutTourModel == null) {
+      return const <Games>[];
+    }
+
+    final baseGames =
+        ref.read(gamesTourProvider(aboutTourModel!.id)).value ?? const <Games>[];
+    final gamesAppBar = ref.read(gamesAppBarProvider);
+
+    if (!gamesAppBar.hasValue) {
+      return baseGames;
+    }
+
+    final rounds =
+        gamesAppBar.value?.gamesAppBarModels ?? const <GamesAppBarModel>[];
+    final stageTourIds =
+        rounds
+            .where((round) => round.id.startsWith('$kKnockoutStagePrefix-'))
+            .map((round) =>
+                round.id.replaceFirst('$kKnockoutStagePrefix-', ''))
+            .where((id) => id.isNotEmpty)
+            .toSet();
+
+    if (stageTourIds.isEmpty) {
+      return baseGames;
+    }
+
+    final aggregatedGames = <Games>[];
+    final seenGameIds = <String>{};
+
+    void addGames(List<Games> games) {
+      for (final game in games) {
+        if (seenGameIds.add(game.id)) {
+          aggregatedGames.add(game);
+        }
+      }
+    }
+
+    addGames(baseGames);
+
+    for (final stageTourId in stageTourIds) {
+      if (stageTourId == aboutTourModel!.id) continue;
+      final stageGames = ref.read(gamesTourProvider(stageTourId)).value;
+      if (stageGames != null && stageGames.isNotEmpty) {
+        addGames(stageGames);
+      }
+    }
+
+    return aggregatedGames.isEmpty ? baseGames : aggregatedGames;
+  }
+
+  List<Games> _sortGamesForFilters(
+    List<Games> games,
+    List<String> pinnedIds,
+  ) {
+    if (games.isEmpty) return const <Games>[];
+
     final gameInfo = <String, (int, int)>{};
     for (final game in games) {
-      gameInfo[game.id] = (_extractRoundNumber(game.roundSlug), _extractGameNumber(game.roundSlug));
+      gameInfo[game.id] = (
+        _extractRoundNumber(game.roundSlug),
+        _extractGameNumber(game.roundSlug),
+      );
     }
 
     final sortedGames = List<Games>.from(games);
     sortedGames.sort((a, b) {
-      // FIRST PRIORITY: Pinned games
       final aPinned = pinnedIds.contains(a.id);
       final bPinned = pinnedIds.contains(b.id);
       if (aPinned && !bPinned) return -1;
       if (!aPinned && bPinned) return 1;
 
-      // If both are pinned, preserve pin order (favorites before countrymen)
       if (aPinned && bPinned) {
         final aIndex = pinnedIds.indexOf(a.id);
         final bIndex = pinnedIds.indexOf(b.id);
@@ -469,10 +476,7 @@ class GamesTourScreenProvider
       final (roundA, gameA) = gameInfo[a.id] ?? (0, 0);
       final (roundB, gameB) = gameInfo[b.id] ?? (0, 0);
 
-      // Sort by round DESCENDING
       if (roundA != roundB) return roundB.compareTo(roundA);
-
-      // Within same round, sort by game DESCENDING (Game 2 before Game 1)
       if (gameA != gameB) return gameB.compareTo(gameA);
 
       final aBoard = a.boardNr, bBoard = b.boardNr;
@@ -481,15 +485,22 @@ class GamesTourScreenProvider
       if (bBoard != null) return 1;
       return 0;
     });
-    state = AsyncValue.data(
-      GamesScreenModel(
-        gamesTourModels:
-            sortedGames.map((g) => GamesTourModel.fromGame(g)).toList(),
-        pinnedGamedIs: pinnedIds,
-        isSearchMode: true,
-        gameDisplayMode: GameDisplayMode.hideFinishedGames,
-      ),
-    );
+
+    return sortedGames;
+  }
+
+  List<GamesTourModel> _mapGamesToModels(List<Games> games) {
+    if (games.isEmpty) return const <GamesTourModel>[];
+
+    final models = <GamesTourModel>[];
+    for (final game in games) {
+      try {
+        models.add(GamesTourModel.fromGame(game));
+      } catch (_) {
+        // Ignore games that fail to parse into display models
+      }
+    }
+    return models;
   }
 
   Future<void> searchGamesEnhanced(String query) async {
