@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:chessever2/screens/splash/splash_screen_provider.dart';
+import 'package:chessever2/utils/notification_service.dart';
 import 'package:chessever2/utils/png_asset.dart' show PngAsset;
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/blur_background.dart';
@@ -19,6 +22,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   void initState() {
     ///Remove Native Splash Screen
     FlutterNativeSplash.remove();
+    unawaited(NotificationService.initialize());
     Future.microtask(
       () =>
           ref.read(splashScreenProvider).runAuthenticationPreProcessor(context),
