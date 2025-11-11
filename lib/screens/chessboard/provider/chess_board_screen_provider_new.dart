@@ -155,8 +155,12 @@ class ChessBoardScreenNotifierNew
         );
         _releaseLog('   New:');
         _releaseLog('     - Search Time: ${nextValue.searchTimeLabel()}');
-        _releaseLog('     - PV Setting: ${nextValue.principalVariationLabel()}');
-        _releaseLog('     - Engine Visibility: ${nextValue.showEngineAnalysis}');
+        _releaseLog(
+          '     - PV Setting: ${nextValue.principalVariationLabel()}',
+        );
+        _releaseLog(
+          '     - Engine Visibility: ${nextValue.showEngineAnalysis}',
+        );
         _releaseLog(
           '     - Search Duration: ${nextValue.searchDurationFor(EngineComponent.evaluationGauge)?.inSeconds}s',
         );
@@ -242,8 +246,7 @@ class ChessBoardScreenNotifierNew
 
   int _currentMultiPvSetting() {
     final engineSettingsAsync = ref.read(engineSettingsProviderNew);
-    final engineSettings =
-        engineSettingsAsync.value ?? const EngineSettings();
+    final engineSettings = engineSettingsAsync.value ?? const EngineSettings();
     return engineSettings.multiPvForStockfish();
   }
 
@@ -327,7 +330,6 @@ class ChessBoardScreenNotifierNew
       _pendingEvalFen = null;
     }
   }
-
 
   /// Get evaluation with consistent perspective for evaluation bar display
   /// BULLETPROOF evaluation perspective handler
@@ -482,7 +484,8 @@ class ChessBoardScreenNotifierNew
         }
       }
 
-      if ((pgn == null || pgn.trim().isEmpty) && (game.fen?.isNotEmpty ?? false)) {
+      if ((pgn == null || pgn.trim().isEmpty) &&
+          (game.fen?.isNotEmpty ?? false)) {
         pgn = _buildFenFallbackPgn(game.fen!);
       }
 
@@ -630,7 +633,8 @@ class ChessBoardScreenNotifierNew
         _updateLastSeenMoveCount(currentMoveCount);
       }
       if (_isInitialLoad) {
-        _isInitialLoad = false; // Mark initial load as complete after first parse
+        _isInitialLoad =
+            false; // Mark initial load as complete after first parse
       }
 
       // Analysis board is always initialized since analysis mode is always active
@@ -892,6 +896,54 @@ class ChessBoardScreenNotifierNew
       }
     }
     _analysisNavigator?.goToMovePointerUnchecked(pointer);
+  }
+
+  ChessGameNavigatorState? navigatorStateSnapshot() {
+    if (_analysisGame == null) return null;
+    final snapshot = ref.read(chessGameNavigatorProvider(_analysisGame!));
+    return ChessGameNavigatorState(
+      game: snapshot.game,
+      movePointer: List<Number>.of(snapshot.movePointer),
+    );
+  }
+
+  Future<void> restoreNavigatorState(ChessGameNavigatorState snapshot) async {
+    if (_analysisNavigator == null) return;
+    _analysisNavigator!.replaceState(snapshot);
+    await _persistAnalysisState();
+  }
+
+  Future<void> deleteVariationAtPointer(ChessMovePointer pointer) async {
+    if (_analysisNavigator == null) return;
+    final currentState = state.value;
+    if (currentState == null) return;
+    final cleared = _clearVariantSelection(currentState);
+    if (!identical(cleared, currentState)) {
+      state = AsyncValue.data(cleared);
+    }
+    _analysisNavigator!.deleteVariationAtPointer(pointer);
+    HapticFeedback.heavyImpact();
+    await _persistAnalysisState();
+  }
+
+  Future<void> promoteVariationAtPointer(ChessMovePointer pointer) async {
+    if (_analysisNavigator == null) return;
+    final currentState = state.value;
+    if (currentState == null) return;
+    final cleared = _clearVariantSelection(currentState);
+    if (!identical(cleared, currentState)) {
+      state = AsyncValue.data(cleared);
+    }
+    _analysisNavigator!.promoteVariationToMainline(pointer);
+    HapticFeedback.heavyImpact();
+    await _persistAnalysisState();
+  }
+
+  Future<void> insertNullMoveAfterCurrent() async {
+    if (_analysisNavigator == null) return;
+    _analysisNavigator!.insertNullMoveAtPointer();
+    HapticFeedback.mediumImpact();
+    await _persistAnalysisState();
   }
 
   void playPrincipalVariationMove(AnalysisLine line) {
@@ -1474,6 +1526,7 @@ class ChessBoardScreenNotifierNew
           '🎯 ANALYSIS MOVE: ERROR - Move ${move.uci} is ILLEGAL in current board position ${boardPosition.fen}',
         );
         _releaseLog('🎯 ANALYSIS MOVE: Turn to move: ${boardPosition.turn}');
+        HapticFeedback.heavyImpact();
         return;
       }
     } catch (e) {
@@ -1514,6 +1567,7 @@ class ChessBoardScreenNotifierNew
         final (_, san) = boardPosition.makeSan(move);
 
         _analysisNavigator?.makeOrGoToMove(move.uci);
+        HapticFeedback.lightImpact();
         _playSoundForSan(san);
         return;
       } else {
@@ -1564,6 +1618,7 @@ class ChessBoardScreenNotifierNew
       // Navigator is in sync, apply move through it
       _releaseLog('🎯 MANUAL MOVE FALLBACK: Navigator in sync, applying move');
       _analysisNavigator?.makeOrGoToMove(move.uci);
+      HapticFeedback.lightImpact();
       return;
     } catch (e) {
       _releaseLog('🎯 MANUAL MOVE FALLBACK: ERROR - $e');
@@ -1581,6 +1636,7 @@ class ChessBoardScreenNotifierNew
             ),
           ),
         );
+        HapticFeedback.selectionClick();
         return;
       }
 
@@ -1615,18 +1671,21 @@ class ChessBoardScreenNotifierNew
               '🎯 PROMOTION SELECTION: Navigator in sync, applying via navigator',
             );
             _analysisNavigator?.makeOrGoToMove(move.uci);
+            HapticFeedback.mediumImpact();
           } else {
             _releaseLog(
               '🎯 PROMOTION SELECTION: Navigator OUT OF SYNC, using manual fallback',
             );
             // Use manual application as fallback
             _applyManualAnalysisMove(currentState, boardPosition, move);
+            HapticFeedback.mediumImpact();
           }
         } else {
           _releaseLog(
             '🎯 PROMOTION SELECTION: No navigator, using manual fallback',
           );
           _applyManualAnalysisMove(currentState, boardPosition, move);
+          HapticFeedback.mediumImpact();
         }
 
         state = AsyncValue.data(
@@ -1847,7 +1906,9 @@ class ChessBoardScreenNotifierNew
     );
     // Use unawaited to truly fire-and-forget without blocking UI
     unawaited(
-      ref.read(engineSettingsProviderNew.notifier).toggleEngineAnalysis(newValue),
+      ref
+          .read(engineSettingsProviderNew.notifier)
+          .toggleEngineAnalysis(newValue),
     );
   }
 
@@ -1987,9 +2048,13 @@ class ChessBoardScreenNotifierNew
         () => _analysisLinesWorker(payload),
         priority: WorkPriority.high,
       );
-      _releaseLog('🎯 BUILD PV: Worker returned ${workerResult.length} results');
+      _releaseLog(
+        '🎯 BUILD PV: Worker returned ${workerResult.length} results',
+      );
     } catch (e) {
-      _releaseLog('⚠️ BUILD PV: Worker failed: $e, falling back to main thread');
+      _releaseLog(
+        '⚠️ BUILD PV: Worker failed: $e, falling back to main thread',
+      );
     }
 
     if (workerResult.isEmpty) {
@@ -2111,13 +2176,13 @@ class ChessBoardScreenNotifierNew
     return merged;
   }
 
-bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
-  if (shorter.length > longer.length) return false;
-  for (var i = 0; i < shorter.length; i++) {
-    if (shorter[i].uci != longer[i].uci) return false;
+  bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
+    if (shorter.length > longer.length) return false;
+    for (var i = 0; i < shorter.length; i++) {
+      if (shorter[i].uci != longer[i].uci) return false;
+    }
+    return true;
   }
-  return true;
-}
 
   ChessGameNavigator? get _analysisNavigator =>
       _analysisGame == null
@@ -2699,169 +2764,166 @@ bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
       // Cascade queries local DB → Supabase → Lichess sequentially
       // Each source has its own timeout, so no need for overall cascade timeout
       try {
-          _releaseLog(
-            '🎯 EVAL: Requesting cascade evaluation (local → Supabase cache only) with $configuredMultiPV PVs...',
+        _releaseLog(
+          '🎯 EVAL: Requesting cascade evaluation (local → Supabase cache only) with $configuredMultiPV PVs...',
+        );
+        final cascadeEval = await ref.read(
+          cascadeEvalProviderForBoard(
+            CascadeEvalParams(
+              fen: fen,
+              multiPV: configuredMultiPV,
+              isCurrentPosition: true,
+              enableLichessFallback: false,
+            ),
+          ).future,
+        );
+        if (cascadeEval.pvs.isNotEmpty) {
+          final cascadeProgress = EngineSearchProgress(
+            depth: cascadeEval.depth,
+            kiloNodes: cascadeEval.knodes,
+            fenFragment: fen,
           );
-          final cascadeEval = await ref.read(
-            cascadeEvalProviderForBoard(
-              CascadeEvalParams(
-                fen: fen,
-                multiPV: configuredMultiPV,
-                isCurrentPosition: true,
-                enableLichessFallback: false,
-              ),
-            ).future,
+          primaryEval = cascadeEval;
+          final rawCp = cascadeEval.pvs.first.cp;
+          final rawEval = rawCp / 100.0;
+          evaluation = _getConsistentEvaluation(rawEval, fen);
+          final cascadeMate = _getConsistentMate(
+            cascadeEval.pvs.first.mate,
+            fen,
           );
-          if (cascadeEval.pvs.isNotEmpty) {
-            final cascadeProgress = EngineSearchProgress(
-              depth: cascadeEval.depth,
-              kiloNodes: cascadeEval.knodes,
-              fenFragment: fen,
-            );
-            primaryEval = cascadeEval;
-            final rawCp = cascadeEval.pvs.first.cp;
-            final rawEval = rawCp / 100.0;
-            evaluation = _getConsistentEvaluation(rawEval, fen);
-            final cascadeMate =
-                _getConsistentMate(cascadeEval.pvs.first.mate, fen);
 
-            if (mounted) {
-              final previewState = state.value;
-              if (previewState != null) {
-                state = AsyncValue.data(
-                  previewState.copyWith(
-                    evaluation: evaluation,
-                    mate: cascadeMate,
-                    isEvaluating: true,
-                  ),
-                );
+          if (mounted) {
+            final previewState = state.value;
+            if (previewState != null) {
+              state = AsyncValue.data(
+                previewState.copyWith(
+                  evaluation: evaluation,
+                  mate: cascadeMate,
+                  isEvaluating: true,
+                ),
+              );
+            }
+          }
+
+          final cascadeFenParts = fen.split(' ');
+          final cascadeSideToMove =
+              cascadeFenParts.length >= 2 ? cascadeFenParts[1] : '-';
+          _releaseLog(
+            '🔍 EVAL PIPELINE: fen=$fen, side=$cascadeSideToMove, rawCp=$rawCp, rawEval=$rawEval, evaluation=$evaluation, whitePerspective=${cascadeEval.pvs.first.whitePerspective}',
+          );
+          _releaseLog(
+            '🎯 EVAL: Building principal variations from cloud source...',
+          );
+          final cascadeLines = await _buildPrincipalVariations(
+            fen,
+            cascadeEval.pvs,
+          );
+          var mergedCascadeLines = _mergePvProgress(pvLines, cascadeLines);
+          if (mergedCascadeLines.length > configuredMultiPV) {
+            mergedCascadeLines = mergedCascadeLines
+                .take(configuredMultiPV)
+                .toList(growable: false);
+          }
+          pvLines = mergedCascadeLines;
+
+          if (pvLines.isEmpty && cascadeEval.pvs.isNotEmpty) {
+            _releaseLog(
+              '🔄 RETRY: Cloud PV building failed, retrying immediately...',
+            );
+
+            if (!mounted) {
+              _releaseLog('🚫 RETRY CANCELLED: Provider disposed');
+              return;
+            }
+
+            final currentState = state.value;
+            if (currentState != null) {
+              final currentPos =
+                  currentState.isAnalysisMode
+                      ? currentState.analysisState.position
+                      : currentState.position;
+              if (currentPos != null) {
+                final currentFenBase = currentPos.fen
+                    .split(' ')
+                    .take(3)
+                    .join(' ');
+                final targetFenBase = fen.split(' ').take(3).join(' ');
+
+                if (currentFenBase != targetFenBase) {
+                  _releaseLog(
+                    '🚫 RETRY CANCELLED: Position changed during delay (was: $targetFenBase, now: $currentFenBase)',
+                  );
+                  if (currentState.isEvaluating) {
+                    state = AsyncValue.data(
+                      currentState.copyWith(isEvaluating: false),
+                    );
+                  }
+                  return;
+                }
               }
             }
 
-            final cascadeFenParts = fen.split(' ');
-            final cascadeSideToMove =
-                cascadeFenParts.length >= 2 ? cascadeFenParts[1] : '-';
-            _releaseLog(
-              '🔍 EVAL PIPELINE: fen=$fen, side=$cascadeSideToMove, rawCp=$rawCp, rawEval=$rawEval, evaluation=$evaluation, whitePerspective=${cascadeEval.pvs.first.whitePerspective}',
-            );
-            _releaseLog(
-              '🎯 EVAL: Building principal variations from cloud source...',
-            );
-            final cascadeLines = await _buildPrincipalVariations(
+            final retryLines = await _buildPrincipalVariations(
               fen,
               cascadeEval.pvs,
             );
-            var mergedCascadeLines = _mergePvProgress(pvLines, cascadeLines);
-            if (mergedCascadeLines.length > configuredMultiPV) {
-              mergedCascadeLines = mergedCascadeLines
-                  .take(configuredMultiPV)
-                  .toList(growable: false);
-            }
-            pvLines = mergedCascadeLines;
-
-            if (pvLines.isEmpty && cascadeEval.pvs.isNotEmpty) {
+            if (retryLines.isNotEmpty) {
+              pvLines = _mergePvProgress(pvLines, retryLines);
+              _releaseLog('✅ RETRY: Cloud PV building succeeded on retry');
+            } else {
               _releaseLog(
-                '🔄 RETRY: Cloud PV building failed, retrying immediately...',
+                '❌ RETRY: Cloud PV building failed again, will try Stockfish',
               );
-
-              if (!mounted) {
-                _releaseLog('🚫 RETRY CANCELLED: Provider disposed');
-                return;
-              }
-
-              final currentState = state.value;
-              if (currentState != null) {
-                final currentPos =
-                    currentState.isAnalysisMode
-                        ? currentState.analysisState.position
-                        : currentState.position;
-                if (currentPos != null) {
-                  final currentFenBase = currentPos.fen
-                      .split(' ')
-                      .take(3)
-                      .join(' ');
-                  final targetFenBase = fen.split(' ').take(3).join(' ');
-
-                  if (currentFenBase != targetFenBase) {
-                    _releaseLog(
-                      '🚫 RETRY CANCELLED: Position changed during delay (was: $targetFenBase, now: $currentFenBase)',
-                    );
-                    if (currentState.isEvaluating) {
-                      state = AsyncValue.data(
-                        currentState.copyWith(isEvaluating: false),
-                      );
-                    }
-                    return;
-                  }
-                }
-              }
-
-              final retryLines = await _buildPrincipalVariations(
-                fen,
-                cascadeEval.pvs,
-              );
-              if (retryLines.isNotEmpty) {
-                pvLines = _mergePvProgress(pvLines, retryLines);
-                _releaseLog('✅ RETRY: Cloud PV building succeeded on retry');
-              } else {
-                _releaseLog(
-                  '❌ RETRY: Cloud PV building failed again, will try Stockfish',
-                );
-              }
             }
-
-            _releaseLog(
-              '🎯 EVAL: CASCADE SUCCESS - returned ${pvLines.length} variants from ${cascadeEval.pvs.length} cloud PVs, eval=$evaluation',
-            );
-            if (pvLines.isNotEmpty && mounted) {
-              final snapshot = state.value;
-              if (snapshot != null) {
-                final inAnalysis = snapshot.isAnalysisMode;
-                final positionCascade =
-                    inAnalysis
-                        ? snapshot.analysisState.position
-                        : snapshot.position;
-                final basePointerCascade =
-                    inAnalysis ? snapshot.analysisState.movePointer : null;
-                final mergedCascade = _mergePvProgress(
-                  snapshot.principalVariations,
-                  pvLines,
-                );
-                pvLines = mergedCascade;
-                final updatedCascade = snapshot.copyWith(
-                  evaluation: evaluation,
-                  mate: _getConsistentMate(
-                    cascadeEval.pvs.first.mate,
-                    fen,
-                  ),
-                  isEvaluating: true,
-                  principalVariations: mergedCascade,
-                  analysisState: snapshot.analysisState.copyWith(
-                    suggestionLines: mergedCascade,
-                  ),
-                );
-                state = AsyncValue.data(updatedCascade);
-                final cascadeComplete =
-                    pvLines.length >= configuredMultiPV
-                        ? 'complete'
-                        : 'partial';
-                _releaseLog(
-                  '🎯 CASCADE APPLY: Applied ${pvLines.length} PVs to state ($cascadeComplete)',
-                );
-                if (positionCascade != null) {
-                  _applyPrincipalVariationResults(
-                    currentState: updatedCascade,
-                    currentPosition: positionCascade,
-                    baseFen: fen,
-                    baseMovePointer: basePointerCascade,
-                    pvLines: mergedCascade,
-                  );
-                }
-              }
-            }
-          } else {
-            _releaseLog('🎯 EVAL: Cascade returned empty PVs');
           }
+
+          _releaseLog(
+            '🎯 EVAL: CASCADE SUCCESS - returned ${pvLines.length} variants from ${cascadeEval.pvs.length} cloud PVs, eval=$evaluation',
+          );
+          if (pvLines.isNotEmpty && mounted) {
+            final snapshot = state.value;
+            if (snapshot != null) {
+              final inAnalysis = snapshot.isAnalysisMode;
+              final positionCascade =
+                  inAnalysis
+                      ? snapshot.analysisState.position
+                      : snapshot.position;
+              final basePointerCascade =
+                  inAnalysis ? snapshot.analysisState.movePointer : null;
+              final mergedCascade = _mergePvProgress(
+                snapshot.principalVariations,
+                pvLines,
+              );
+              pvLines = mergedCascade;
+              final updatedCascade = snapshot.copyWith(
+                evaluation: evaluation,
+                mate: _getConsistentMate(cascadeEval.pvs.first.mate, fen),
+                isEvaluating: true,
+                principalVariations: mergedCascade,
+                analysisState: snapshot.analysisState.copyWith(
+                  suggestionLines: mergedCascade,
+                ),
+              );
+              state = AsyncValue.data(updatedCascade);
+              final cascadeComplete =
+                  pvLines.length >= configuredMultiPV ? 'complete' : 'partial';
+              _releaseLog(
+                '🎯 CASCADE APPLY: Applied ${pvLines.length} PVs to state ($cascadeComplete)',
+              );
+              if (positionCascade != null) {
+                _applyPrincipalVariationResults(
+                  currentState: updatedCascade,
+                  currentPosition: positionCascade,
+                  baseFen: fen,
+                  baseMovePointer: basePointerCascade,
+                  pvLines: mergedCascade,
+                );
+              }
+            }
+          }
+        } else {
+          _releaseLog('🎯 EVAL: Cascade returned empty PVs');
+        }
       } catch (e) {
         _releaseLog('🎯 EVAL ERROR: Cascade failed for $fen: $e');
       }
@@ -3011,7 +3073,8 @@ bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
                       ? latestState.analysisState.position
                       : latestState.position;
               final latestFen = latestPosition?.fen;
-              if (latestFen != null && _normalizeFen(latestFen) == _normalizeFen(fen)) {
+              if (latestFen != null &&
+                  _normalizeFen(latestFen) == _normalizeFen(fen)) {
                 _releaseLog('🎯 EVAL: Retrying evaluation after cancellation');
                 _evaluatePosition(force: true);
               }
@@ -3067,10 +3130,7 @@ bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
                     stockfishResult.pvs.first.cp / 100.0,
                     fen,
                   ),
-                  mate: _getConsistentMate(
-                    stockfishResult.pvs.first.mate,
-                    fen,
-                  ),
+                  mate: _getConsistentMate(stockfishResult.pvs.first.mate, fen),
                   isEvaluating: false,
                   principalVariations: pvLines,
                   analysisState: currentState.analysisState.copyWith(
@@ -3125,8 +3185,10 @@ bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
         return;
       }
 
-      evaluation ??=
-          _getConsistentEvaluation(primaryEval!.pvs.first.cp / 100.0, fen);
+      evaluation ??= _getConsistentEvaluation(
+        primaryEval!.pvs.first.cp / 100.0,
+        fen,
+      );
 
       // CRITICAL: Always show evaluation even if PVs fail
       // Show eval bar immediately, PV cards can come later via retry
@@ -3181,7 +3243,9 @@ bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
           if (currentFenBase == targetFenBase &&
               currentState.principalVariations.isEmpty &&
               evalForRetry.pvs.isNotEmpty) {
-            _releaseLog('🔄 RETRY: Re-building PVs for position $targetFenBase');
+            _releaseLog(
+              '🔄 RETRY: Re-building PVs for position $targetFenBase',
+            );
             final retryPvLines = await _buildPrincipalVariations(
               fen,
               evalForRetry.pvs,
@@ -3262,8 +3326,7 @@ bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
           cache.save(
             fen,
             primaryEval!,
-            multiPV:
-                primaryEval!.requestedMultiPv ?? primaryEval!.pvs.length,
+            multiPV: primaryEval!.requestedMultiPv ?? primaryEval!.pvs.length,
           ),
         ]).catchError((e) {
           _releaseLog('Background persist failed for $fen: $e');
@@ -3327,9 +3390,7 @@ bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
         _releaseLog(
           '🎯 EVAL: Position changed during eval (current=$currentFenBase vs eval=$evalFenBase)',
         );
-        state = AsyncValue.data(
-          currentSnapshot.copyWith(isEvaluating: false),
-        );
+        state = AsyncValue.data(currentSnapshot.copyWith(isEvaluating: false));
         return;
       }
 

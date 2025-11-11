@@ -120,6 +120,80 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
   ChessGameNavigator(ChessGame game)
     : super(ChessGameNavigatorState(game: game, movePointer: []));
 
+  bool _pointerStartsWith(ChessMovePointer pointer, List<Number> prefix) {
+    if (prefix.length > pointer.length) return false;
+    for (var i = 0; i < prefix.length; i++) {
+      if (prefix[i] != pointer[i]) return false;
+    }
+    return true;
+  }
+
+  ChessLine _rebuildLine(
+    ChessLine source,
+    ChessMovePointer pointer,
+    int pointerIndex,
+    ChessLine Function(ChessLine line, int moveIndex) handler,
+  ) {
+    if (pointer.isEmpty) {
+      return source;
+    }
+
+    final moveIndex = pointer[pointerIndex];
+    if (pointerIndex == pointer.length - 1) {
+      return handler(source, moveIndex);
+    }
+
+    if (pointerIndex + 1 >= pointer.length) {
+      return source;
+    }
+
+    final variationIndex = pointer[pointerIndex + 1];
+    final move = source[moveIndex];
+    final variations = move.variations;
+    if (variations == null || variationIndex >= variations.length) {
+      return source;
+    }
+
+    final updatedVariation = _rebuildLine(
+      variations[variationIndex],
+      pointer,
+      pointerIndex + 2,
+      handler,
+    );
+
+    final newVariations = List<ChessLine>.of(variations);
+    newVariations[variationIndex] = updatedVariation;
+    final updatedMove = move.copyWith(variations: newVariations);
+
+    final newLine = List<ChessMove>.of(source);
+    newLine[moveIndex] = updatedMove;
+    return newLine;
+  }
+
+  String _fenAfterNullMove(String fen) {
+    final parts = fen.split(' ');
+    if (parts.length < 6) {
+      return fen;
+    }
+    final board = parts[0];
+    final turn = parts[1];
+    final castling = parts[2].isEmpty ? '-' : parts[2];
+    final halfmoveClock = (int.tryParse(parts[4]) ?? 0) + 1;
+    var fullmove = int.tryParse(parts[5]) ?? 1;
+    if (turn == 'b') {
+      fullmove += 1;
+    }
+    final nextTurn = turn == 'w' ? 'b' : 'w';
+    return [
+      board,
+      nextTurn,
+      castling,
+      '-',
+      halfmoveClock.toString(),
+      fullmove.toString(),
+    ].join(' ');
+  }
+
   void goToNextMove() {
     final currentLine = state.currentLine;
     if (currentLine == null) return;
@@ -164,10 +238,7 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
   void goToHead() {
     // Go to the starting position (before any moves)
     replaceState(
-      ChessGameNavigatorState(
-        game: state.game,
-        movePointer: const [],
-      ),
+      ChessGameNavigatorState(game: state.game, movePointer: const []),
     );
   }
 
@@ -201,12 +272,18 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
     final currentIndex =
         state.movePointer.isEmpty ? -1 : state.movePointer.last;
 
-    debugPrint('🎯 NAVIGATOR makeOrGoToMove: playedMove=${playedMove?.uci}, currentIndex=$currentIndex');
-    debugPrint('🎯 NAVIGATOR makeOrGoToMove: currentLine length=${currentLine?.length}');
+    debugPrint(
+      '🎯 NAVIGATOR makeOrGoToMove: playedMove=${playedMove?.uci}, currentIndex=$currentIndex',
+    );
+    debugPrint(
+      '🎯 NAVIGATOR makeOrGoToMove: currentLine length=${currentLine?.length}',
+    );
     debugPrint('🎯 NAVIGATOR makeOrGoToMove: currentFen=${state.currentFen}');
 
     if (playedMove == null || currentLine == null) {
-      debugPrint('🎯 NAVIGATOR makeOrGoToMove: FAILED - playedMove or currentLine is null');
+      debugPrint(
+        '🎯 NAVIGATOR makeOrGoToMove: FAILED - playedMove or currentLine is null',
+      );
       return;
     }
 
@@ -226,7 +303,9 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
 
     // Check if move exists in variations
     if (currentMove?.variations != null) {
-      debugPrint('🎯 NAVIGATOR makeOrGoToMove: Checking ${currentMove!.variations!.length} variations');
+      debugPrint(
+        '🎯 NAVIGATOR makeOrGoToMove: Checking ${currentMove!.variations!.length} variations',
+      );
       for (var i = 0; i < currentMove.variations!.length; i++) {
         final variation = currentMove.variations![i];
         if (variation.isNotEmpty && variation[0].uci == uci) {
@@ -255,12 +334,18 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
     // CRITICAL: Add error handling for illegal moves
     try {
       if (!position.isLegal(playedMove)) {
-        debugPrint('🎯 NAVIGATOR makeOrGoToMove: ERROR - Move $uci is ILLEGAL in position ${state.currentFen}');
-        debugPrint('🎯 NAVIGATOR makeOrGoToMove: Turn to move: ${position.turn}');
+        debugPrint(
+          '🎯 NAVIGATOR makeOrGoToMove: ERROR - Move $uci is ILLEGAL in position ${state.currentFen}',
+        );
+        debugPrint(
+          '🎯 NAVIGATOR makeOrGoToMove: Turn to move: ${position.turn}',
+        );
         return;
       }
     } catch (e) {
-      debugPrint('🎯 NAVIGATOR makeOrGoToMove: ERROR - Failed to check move legality: $e');
+      debugPrint(
+        '🎯 NAVIGATOR makeOrGoToMove: ERROR - Failed to check move legality: $e',
+      );
       return;
     }
 
@@ -269,28 +354,35 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
     // CRITICAL: Preserve move number context when creating variations
     // position.turn = who is about to move (before the move)
     // newPosition.turn = who will move next (after the move)
-    // The move being made is by position.turn
-    final movingColor = position.turn == Side.white ? ChessColor.white : ChessColor.black;
+    final movingColor =
+        position.turn == Side.white ? ChessColor.white : ChessColor.black;
+    final nextToMove =
+        newPosition.turn == Side.white ? ChessColor.white : ChessColor.black;
 
     // Calculate move number based on previous move
-    final moveNumber = currentMove != null
-        ? (currentMove.turn == ChessColor.black
-            ? currentMove.num + 1  // Black just played, white is moving -> increment
-            : currentMove.num)      // White just played, black is moving -> same number
-        : (movingColor == ChessColor.white ? 1 : 1);  // First move
+    final moveNumber =
+        currentMove != null
+            ? (currentMove.turn == ChessColor.black
+                ? currentMove.num +
+                    1 // Black just played, white is moving -> increment
+                : currentMove
+                    .num) // White just played, black is moving -> same number
+            : (movingColor == ChessColor.white ? 1 : 1); // First move
 
     final newMove = ChessMove(
       num: moveNumber,
       fen: newPosition.fen,
       san: san,
       uci: uci,
-      turn: movingColor,  // Store who made this move
+      turn: nextToMove, // Store who is to move after this move
     );
 
     if (currentIndex == -1) {
       debugPrint('🎯 NAVIGATOR makeOrGoToMove: At starting position');
       if (state.game.mainline.isEmpty) {
-        debugPrint('🎯 NAVIGATOR makeOrGoToMove: Creating first move in mainline');
+        debugPrint(
+          '🎯 NAVIGATOR makeOrGoToMove: Creating first move in mainline',
+        );
         replaceState(
           ChessGameNavigatorState(
             game: state.game.copyWith(mainline: [newMove]),
@@ -356,6 +448,266 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
       ChessGameNavigatorState(
         game: state.game.copyWith(mainline: newMainline),
         movePointer: pointer,
+      ),
+    );
+  }
+
+  void deleteVariationAtPointer(ChessMovePointer variationHeadPointer) {
+    debugPrint('🎯 NAVIGATOR deleteVariationAtPointer: $variationHeadPointer');
+    if (variationHeadPointer.length < 3) {
+      debugPrint('🎯 NAVIGATOR deleteVariationAtPointer: invalid pointer');
+      return;
+    }
+
+    final variationIndexPosition = variationHeadPointer.length - 2;
+    final variationIndex = variationHeadPointer[variationIndexPosition];
+    final parentPointer = variationHeadPointer.sublist(
+      0,
+      variationIndexPosition,
+    );
+    final variationPrefix = variationHeadPointer.sublist(
+      0,
+      variationIndexPosition + 1,
+    );
+
+    final updatedMainline = _rebuildLine(
+      state.game.mainline,
+      parentPointer,
+      0,
+      (line, moveIndex) {
+        if (line.isEmpty || moveIndex >= line.length) {
+          return line;
+        }
+        final move = line[moveIndex];
+        final variations = move.variations?.toList();
+        if (variations == null || variationIndex >= variations.length) {
+          return line;
+        }
+        variations.removeAt(variationIndex);
+        final updatedMove = move.copyWith(
+          variations: variations.isEmpty ? null : variations,
+        );
+        final newLine = List<ChessMove>.of(line);
+        newLine[moveIndex] = updatedMove;
+        return newLine;
+      },
+    );
+
+    ChessMovePointer newPointer = state.movePointer;
+    if (_pointerStartsWith(newPointer, variationPrefix)) {
+      newPointer = parentPointer;
+    }
+
+    replaceState(
+      ChessGameNavigatorState(
+        game: state.game.copyWith(mainline: updatedMainline),
+        movePointer: newPointer,
+      ),
+    );
+  }
+
+  void promoteVariationToMainline(ChessMovePointer variationHeadPointer) {
+    debugPrint('🎯 NAVIGATOR promoteVariation: $variationHeadPointer');
+    if (variationHeadPointer.length < 3) {
+      debugPrint('🎯 NAVIGATOR promoteVariation: invalid pointer');
+      return;
+    }
+
+    final variationIndexPosition = variationHeadPointer.length - 2;
+    final variationIndex = variationHeadPointer[variationIndexPosition];
+    final parentPointer = variationHeadPointer.sublist(
+      0,
+      variationIndexPosition,
+    );
+    if (parentPointer.isEmpty) {
+      debugPrint('🎯 NAVIGATOR promoteVariation: parent pointer missing');
+      return;
+    }
+
+    bool updated = false;
+
+    final updatedMainline = _rebuildLine(
+      state.game.mainline,
+      parentPointer,
+      0,
+      (line, moveIndex) {
+        if (line.isEmpty || moveIndex >= line.length) {
+          return line;
+        }
+        final move = line[moveIndex];
+        final variations = move.variations?.toList();
+        if (variations == null || variationIndex >= variations.length) {
+          return line;
+        }
+
+        final promotedLine = List<ChessMove>.of(variations[variationIndex]);
+        if (promotedLine.isEmpty) {
+          return line;
+        }
+
+        final remainingVariations = List<ChessLine>.of(variations)
+          ..removeAt(variationIndex);
+        final trailing =
+            moveIndex + 1 < line.length
+                ? List<ChessMove>.of(line.sublist(moveIndex + 1))
+                : <ChessMove>[];
+        if (trailing.isNotEmpty) {
+          remainingVariations.insert(0, trailing);
+        }
+
+        final updatedMove = move.copyWith(
+          variations: remainingVariations.isEmpty ? null : remainingVariations,
+        );
+
+        final newLine = <ChessMove>[
+          ...line.sublist(0, moveIndex),
+          updatedMove,
+          ...promotedLine,
+        ];
+
+        updated = true;
+        return newLine;
+      },
+    );
+
+    if (!updated) {
+      debugPrint('🎯 NAVIGATOR promoteVariation: no changes applied');
+      return;
+    }
+
+    final newPointer = List<Number>.of(parentPointer);
+    newPointer[newPointer.length - 1] = newPointer[newPointer.length - 1] + 1;
+
+    replaceState(
+      ChessGameNavigatorState(
+        game: state.game.copyWith(mainline: updatedMainline),
+        movePointer: newPointer,
+      ),
+    );
+  }
+
+  void insertNullMoveAtPointer([ChessMovePointer? pointerOverride]) {
+    final pointer = List<Number>.of(pointerOverride ?? state.movePointer);
+    final currentLine = state.currentLine;
+    if (currentLine == null) {
+      return;
+    }
+
+    final position = Position.setupPosition(
+      Rule.chess,
+      Setup.parseFen(state.currentFen),
+    );
+    final fenAfter = _fenAfterNullMove(state.currentFen);
+    final nextToMove =
+        fenAfter.split(' ')[1] == 'w' ? ChessColor.white : ChessColor.black;
+
+    final currentMove = state.currentMove;
+    final movingColor =
+        position.turn == Side.white ? ChessColor.white : ChessColor.black;
+    final moveNumber =
+        currentMove != null
+            ? (currentMove.turn == ChessColor.black
+                ? currentMove.num + 1
+                : currentMove.num)
+            : (movingColor == ChessColor.white ? 1 : 1);
+
+    final newMove = ChessMove(
+      num: moveNumber,
+      fen: fenAfter,
+      san: '--',
+      uci: '0000',
+      turn: nextToMove,
+    );
+
+    final currentIndex = pointer.isEmpty ? -1 : pointer.last;
+
+    if (currentIndex == -1) {
+      if (state.game.mainline.isEmpty) {
+        replaceState(
+          ChessGameNavigatorState(
+            game: state.game.copyWith(mainline: [newMove]),
+            movePointer: [0],
+          ),
+        );
+        return;
+      }
+
+      final firstMove = state.game.mainline.first;
+      final updatedVariations = List<ChessLine>.of(
+        firstMove.variations ?? const <ChessLine>[],
+      );
+      updatedVariations.add([newMove]);
+
+      replaceState(
+        ChessGameNavigatorState(
+          game: state.game.copyWith(
+            mainline: [
+              firstMove.copyWith(variations: updatedVariations),
+              ...state.game.mainline.sublist(1),
+            ],
+          ),
+          movePointer: [0, updatedVariations.length - 1, 0],
+        ),
+      );
+      return;
+    }
+
+    final newMainline = List<ChessMove>.of(state.game.mainline);
+    ChessLine line = newMainline;
+    if (line.isEmpty) {
+      return;
+    }
+    ChessMove move = line.first;
+
+    for (var i = 0; i < pointer.length; i++) {
+      final index = pointer[i];
+      if (i.isEven) {
+        if (index >= line.length) {
+          return;
+        }
+        move = line[index];
+      } else {
+        final variations = move.variations;
+        if (variations == null || index >= variations.length) {
+          return;
+        }
+        line = variations[index];
+      }
+    }
+
+    ChessMovePointer newPointer = List<Number>.of(pointer);
+
+    if (currentIndex == currentLine.length - 1) {
+      line.add(newMove);
+      newPointer[newPointer.length - 1] = currentIndex + 1;
+      replaceState(
+        ChessGameNavigatorState(
+          game: state.game.copyWith(mainline: newMainline),
+          movePointer: newPointer,
+        ),
+      );
+      return;
+    }
+
+    if (pointer.last + 1 >= line.length) {
+      return;
+    }
+    final nextMove = line[pointer.last + 1];
+    final updatedVariations = List<ChessLine>.of(
+      nextMove.variations ?? const <ChessLine>[],
+    );
+    updatedVariations.add([newMove]);
+    line[pointer.last + 1] = nextMove.copyWith(variations: updatedVariations);
+
+    newPointer[newPointer.length - 1] = pointer.last + 1;
+    newPointer
+      ..add(updatedVariations.length - 1)
+      ..add(0);
+
+    replaceState(
+      ChessGameNavigatorState(
+        game: state.game.copyWith(mainline: newMainline),
+        movePointer: newPointer,
       ),
     );
   }
