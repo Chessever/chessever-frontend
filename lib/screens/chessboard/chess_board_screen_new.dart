@@ -4,9 +4,14 @@ import 'package:skeletonizer/skeletonizer.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
+import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/analysis/move_impact_analyzer.dart';
 import 'package:chessever2/screens/chessboard/analysis/simple_move_impact.dart';
+import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/chessboard/notation/notation_cache.dart';
+import 'package:chessever2/screens/chessboard/notation/notation_pointer.dart';
+import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
@@ -26,6 +31,7 @@ import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/string_utils.dart';
 import 'package:chessground/chessground.dart';
+import 'package:collection/collection.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:fast_immutable_collections/fast_immutable_collections.dart';
 import 'package:flutter/gestures.dart';
@@ -346,10 +352,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
       return;
     }
 
-    final params = ChessBoardProviderParams(
-      game: state.game,
-      index: pageIndex,
-    );
+    final params = ChessBoardProviderParams(game: state.game, index: pageIndex);
     final targetGameId = gameId;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -398,8 +401,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
             game: initialGame,
             index: _currentPageIndex,
           );
-          final notifier =
-              ref.read(chessBoardScreenProviderNew(params).notifier);
+          final notifier = ref.read(
+            chessBoardScreenProviderNew(params).notifier,
+          );
           unawaited(
             notifier.parseMoves().whenComplete(
               () => notifier.onBecameVisible(force: true),
@@ -434,8 +438,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
         game: prevGame,
         index: previousIndex,
       );
-      final prevNotifier =
-          ref.read(chessBoardScreenProviderNew(prevParams).notifier);
+      final prevNotifier = ref.read(
+        chessBoardScreenProviderNew(prevParams).notifier,
+      );
       unawaited(prevNotifier.onBecameInvisible());
     } catch (e) {
       debugPrint('Error cancelling previous game evaluation: $e');
@@ -468,7 +473,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
             game: newGame,
             index: newIndex,
           );
-          final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+          final notifier = ref.read(
+            chessBoardScreenProviderNew(params).notifier,
+          );
           unawaited(
             notifier.parseMoves().whenComplete(
               () => notifier.onBecameVisible(force: true),
@@ -1052,10 +1059,19 @@ class _AppBar extends ConsumerWidget implements PreferredSizeWidget {
     this.lastViewedIndex,
   });
   copyPgnBtnClicked(WidgetRef ref) async {
-    final gameWithPgn = await ref
-        .read(gameRepositoryProvider)
-        .getGameById(game.gameId);
-    String pgn = gameWithPgn.pgn ?? "";
+    String? pgn;
+    final params = ChessBoardProviderParams(
+      game: game,
+      index: currentGameIndex,
+    );
+    final boardState = ref.read(chessBoardScreenProviderNew(params));
+    final analysisGame = boardState.valueOrNull?.analysisState.game;
+    if (analysisGame != null) {
+      pgn = exportGameToPgn(analysisGame);
+    }
+    pgn ??=
+        (await ref.read(gameRepositoryProvider).getGameById(game.gameId)).pgn ??
+        '';
     Clipboard.setData(ClipboardData(text: pgn));
   }
 
@@ -1585,40 +1601,11 @@ class _AnalysisGameBody extends ConsumerWidget {
           // _AnalysisControlsRow(index: index, game: game),
         ],
         Expanded(
-          child: Container(
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: kDarkGreyColor.withValues(alpha: 0.3),
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(12.sp),
-                topRight: Radius.circular(12.sp),
-              ),
-            ),
-            child: NotificationListener<ScrollNotification>(
-              onNotification: (notification) {
-                if (notification is ScrollStartNotification) {
-                  // placeholder hook
-                }
-                return false;
-              },
-              child: SingleChildScrollView(
-                scrollDirection: Axis.vertical,
-                physics: const ClampingScrollPhysics(),
-                dragStartBehavior: DragStartBehavior.down,
-                child: GestureDetector(
-                  onHorizontalDragStart: (_) {},
-                  onHorizontalDragUpdate: (_) {},
-                  onHorizontalDragEnd: (_) {},
-                  behavior: HitTestBehavior.translucent,
-                  child: _MovesDisplay(
-                    index: index,
-                    currentPageIndex: currentPageIndex,
-                    state: state,
-                    game: game,
-                  ),
-                ),
-              ),
-            ),
+          child: _MovesDisplay(
+            index: index,
+            currentPageIndex: currentPageIndex,
+            state: state,
+            game: game,
           ),
         ),
       ],
@@ -1786,6 +1773,26 @@ class _BoardWithSidebar extends ConsumerWidget {
                     index: index,
                     game: state.game,
                   ),
+                  Positioned(
+                    bottom: state.isBoardFlipped ? null : 8.sp,
+                    top: state.isBoardFlipped ? 8.sp : null,
+                    right: state.isBoardFlipped ? null : 8.sp,
+                    left: state.isBoardFlipped ? 8.sp : null,
+                    child: _NullMoveButton(
+                      onPressed: () {
+                        ref
+                            .read(
+                              chessBoardScreenProviderNew(
+                                ChessBoardProviderParams(
+                                  game: game,
+                                  index: index,
+                                ),
+                              ).notifier,
+                            )
+                            .insertNullMoveAfterCurrent();
+                      },
+                    ),
+                  ),
                   // DISABLED: Move annotation overlay (requires move impact analysis)
                   // // Add move annotation overlay - only show if impact is not normal and not exploring a variant
                   // if (currentMoveImpact != null &&
@@ -1827,12 +1834,13 @@ class _AnalysisBoard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final boardSettingsAsync = ref.watch(boardSettingsProviderNew);
-    final boardSettings = boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
+    final boardSettings =
+        boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
     final boardTheme = ref
         .read(boardSettingsRepository)
         .getBoardTheme(boardSettings.boardColorValue);
-    // final params = ChessBoardProviderParams(game: game, index: index);
-    // final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+    final params = ChessBoardProviderParams(game: game, index: index);
+    final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
 
     // Read engine settings to control PV arrows visibility
     final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
@@ -1886,20 +1894,69 @@ class _AnalysisBoard extends ConsumerWidget {
           (chessBoardState.showPrincipalVariations && showPvArrows)
               ? chessBoardState.shapes
               : const ISet.empty(),
-      // DISABLED: Manual piece movement disabled in analysis mode
-      // game: GameData(
-      //   playerSide:
-      //       chessBoardState.analysisState.position.turn == Side.white
-      //           ? PlayerSide.white
-      //           : PlayerSide.black,
-      //   validMoves: chessBoardState.analysisState.validMoves,
-      //   sideToMove: chessBoardState.analysisState.position.turn,
-      //   isCheck: chessBoardState.analysisState.position.isCheck,
-      //   promotionMove: chessBoardState.analysisState.promotionMove,
-      //   onMove: notifier.onAnalysisMove,
-      //   onPromotionSelection: notifier.onAnalysisPromotionSelection,
-      // ),
-      game: null, // Board is now read-only in analysis mode
+      game: GameData(
+        playerSide:
+            chessBoardState.analysisState.position.turn == Side.white
+                ? PlayerSide.white
+                : PlayerSide.black,
+        validMoves: chessBoardState.analysisState.validMoves,
+        sideToMove: chessBoardState.analysisState.position.turn,
+        isCheck: chessBoardState.analysisState.position.isCheck,
+        promotionMove: chessBoardState.analysisState.promotionMove,
+        onMove: notifier.onAnalysisMove,
+        onPromotionSelection: notifier.onAnalysisPromotionSelection,
+      ),
+    );
+  }
+}
+
+class _NullMoveButton extends StatelessWidget {
+  final VoidCallback onPressed;
+
+  const _NullMoveButton({required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        width: 32.sp,
+        height: 32.sp,
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.45),
+          borderRadius: BorderRadius.circular(6.sp),
+          border: Border.all(
+            color: kWhiteColor.withValues(alpha: 0.4),
+            width: 1,
+          ),
+        ),
+        alignment: Alignment.center,
+        child: Icon(Icons.block, size: 18.sp, color: kWhiteColor),
+      ),
+    );
+  }
+}
+
+class _SkeletonContainer extends StatelessWidget {
+  final double height;
+  final double width;
+  final double borderRadius;
+
+  const _SkeletonContainer({
+    required this.height,
+    required this.width,
+    required this.borderRadius,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: height,
+      width: width,
+      decoration: BoxDecoration(
+        color: kWhiteColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(borderRadius),
+      ),
     );
   }
 }
@@ -1923,211 +1980,11 @@ class _MovesDisplay extends ConsumerStatefulWidget {
 
 class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   final ScrollController _scrollController = ScrollController();
-  final Map<int, GlobalKey> _moveKeys = {};
+  final Map<String, GlobalKey> _moveKeys = {};
+  final ListEquality<int> _pointerEquality = const ListEquality<int>();
   bool _hasInitiallyScrolled = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeMoveKeys();
-    _scheduleEnsureInitialScroll();
-  }
-
-  @override
-  void didUpdateWidget(_MovesDisplay oldWidget) {
-    super.didUpdateWidget(oldWidget);
-
-    // Reinitialize keys if the number of moves changed
-    // Analysis mode is always active, use analysis state
-    final oldSans = oldWidget.state.analysisState.moveSans;
-    final newSans = widget.state.analysisState.moveSans;
-    final oldCurrentIndex = oldWidget.state.analysisState.currentMoveIndex;
-    final newCurrentIndex = widget.state.analysisState.currentMoveIndex;
-
-    // CRITICAL: Force rebuild when hasUnseenMoves flag changes
-    // This ensures red dot indicators sync correctly between notation text and bottom nav
-    if (oldWidget.state.hasUnseenMoves != widget.state.hasUnseenMoves) {
-      debugPrint(
-        '🔴 hasUnseenMoves changed: ${oldWidget.state.hasUnseenMoves} -> ${widget.state.hasUnseenMoves}',
-      );
-      // Trigger rebuild to update all _MoveNotationWidget children
-      setState(() {});
-    }
-
-    if (oldSans.length != newSans.length) {
-      _initializeMoveKeys();
-
-      // Only reset scroll position if user was viewing the last move
-      // This preserves scroll position when viewing historical moves
-      final wasViewingLastMove = oldCurrentIndex >= oldSans.length - 1;
-      final isNewMoveAdded = newSans.length > oldSans.length;
-
-      if (isNewMoveAdded && wasViewingLastMove) {
-        // User was following along, auto-scroll to new move
-        _hasInitiallyScrolled = false;
-        _scheduleEnsureInitialScroll();
-      } else if (isNewMoveAdded && !wasViewingLastMove) {
-        // User is viewing history, preserve scroll position
-        // Don't reset _hasInitiallyScrolled, don't schedule scroll
-        debugPrint(
-          '📌 Preserving scroll position - user viewing move $oldCurrentIndex while new move arrived',
-        );
-      } else {
-        // Move count decreased (unlikely) or other change, reset
-        _hasInitiallyScrolled = false;
-        _scheduleEnsureInitialScroll();
-      }
-    }
-
-    // Auto-scroll when current move changes
-
-    // Only trigger scroll if on current page and index changed
-    if (widget.index == widget.currentPageIndex &&
-        oldCurrentIndex != newCurrentIndex) {
-      // For the very first scroll, use initial scroll logic
-      final isFirstScroll = !_hasInitiallyScrolled;
-
-      debugPrint(
-        '🔄 Move index changed: $oldCurrentIndex -> $newCurrentIndex (isFirstScroll: $isFirstScroll, page: ${widget.index}/${widget.currentPageIndex})',
-      );
-
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-
-        if (isFirstScroll) {
-          // First scroll: jump to position without animation, aligned to bottom
-          debugPrint('📍 Initial scroll to move $newCurrentIndex');
-          _scrollToMove(newCurrentIndex, isInitialScroll: true, alignment: 1.0);
-        } else {
-          // Subsequent scrolls: check if out of sight and scroll smoothly if needed
-          debugPrint('🎯 Checking visibility for move $newCurrentIndex');
-          _scrollToMove(
-            newCurrentIndex,
-            isInitialScroll: false,
-            alignment: 0.5,
-          );
-        }
-      });
-    } else {
-      debugPrint(
-        '⛔ Scroll conditions not met: pageMatch=${widget.index == widget.currentPageIndex}, indexChanged=${oldCurrentIndex != newCurrentIndex} ($oldCurrentIndex vs $newCurrentIndex)',
-      );
-    }
-
-    final becameActive =
-        widget.index == widget.currentPageIndex &&
-        oldWidget.currentPageIndex != widget.currentPageIndex;
-    if (becameActive) {
-      _scheduleEnsureInitialScroll();
-    }
-  }
-
-  void _initializeMoveKeys() {
-    final sans = _getSans();
-
-    _moveKeys.clear();
-    for (int i = 0; i < sans.length; i++) {
-      _moveKeys[i] = GlobalKey();
-    }
-  }
-
-  List<String> _getSans() {
-    // Analysis mode is always active, use analysis state
-    return widget.state.analysisState.moveSans;
-  }
-
-  int? _resolveTargetMoveIndex(int moveCount) {
-    if (moveCount == 0) return null;
-
-    // Analysis mode is always active, use analysis state
-    final rawIndex = widget.state.analysisState.currentMoveIndex;
-
-    if (rawIndex >= 0 && rawIndex < moveCount) {
-      return rawIndex;
-    }
-
-    if (rawIndex >= moveCount) {
-      return moveCount - 1;
-    }
-
-    // When pointer is before the start, fall back to the last move (latest position)
-    return moveCount - 1;
-  }
-
-  void _scheduleEnsureInitialScroll() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _ensureInitialScroll();
-    });
-  }
-
-  void _ensureInitialScroll() {
-    if (_hasInitiallyScrolled) return;
-    if (widget.index != widget.currentPageIndex) return;
-
-    final sans = _getSans();
-    final targetIndex = _resolveTargetMoveIndex(sans.length);
-    if (targetIndex == null) return;
-
-    _scrollToMove(targetIndex, isInitialScroll: true, alignment: 1.0);
-  }
-
-  bool _scrollToMove(
-    int moveIndex, {
-    bool isInitialScroll = false,
-    double alignment = 0.5,
-  }) {
-    if (!_scrollController.hasClients) {
-      if (isInitialScroll) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          _scrollToMove(moveIndex, isInitialScroll: true, alignment: alignment);
-        });
-      }
-      return false;
-    }
-    if (moveIndex < 0 || moveIndex >= _moveKeys.length) return false;
-
-    final key = _moveKeys[moveIndex];
-    final context = key?.currentContext;
-    if (context == null) {
-      // Retry after a short delay if context isn't ready
-      if (isInitialScroll) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          _scrollToMove(moveIndex, isInitialScroll: true, alignment: alignment);
-        });
-      }
-      return false;
-    }
-
-    try {
-      // For initial scroll, jump without animation so the latest move is visible immediately
-      if (isInitialScroll) {
-        Scrollable.ensureVisible(
-          context,
-          duration: Duration.zero,
-          alignment: alignment,
-        );
-        _hasInitiallyScrolled = true;
-        return true;
-      }
-
-      // For subsequent scrolls, always animate to keep the focused move centered.
-      Scrollable.ensureVisible(
-        context,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeInOut,
-        alignment: alignment,
-      );
-      _hasInitiallyScrolled = true;
-      return true;
-    } catch (e) {
-      debugPrint('Scroll error for move $moveIndex: $e');
-    }
-
-    return false;
-  }
+  String? _lastSignature;
+  ChessMovePointer? _lastPointer;
 
   @override
   void dispose() {
@@ -2141,15 +1998,13 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       return _buildMovesLoadingSkeleton();
     }
 
-    // Analysis mode is always active, use analysis state
-    final sans = widget.state.analysisState.moveSans;
-
-    if (sans.isEmpty && !widget.state.isLoadingMoves) {
+    final analysisGame = widget.state.analysisState.game;
+    if (analysisGame == null) {
       return Container(
         alignment: Alignment.center,
         padding: EdgeInsets.all(20.sp),
         child: Text(
-          "No moves available for this game",
+          'No moves available for this game',
           style: AppTypography.textXsMedium.copyWith(
             color: kWhiteColor70,
             fontWeight: FontWeight.normal,
@@ -2158,15 +2013,82 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       );
     }
 
-    // LAZY IMPACT: Each move in the notation list lazily loads its own impact
-    // This prevents flooding the Stockfish queue with 100+ positions at once
-    final boardParams = ChessBoardProviderParams(
+    final params = ChessBoardProviderParams(
       game: widget.game,
       index: widget.index,
     );
+    final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+    final navigatorState = ref.watch(chessGameNavigatorProvider(analysisGame));
+    final signature = notationGameSignature(navigatorState.game);
 
-    // Analysis mode is always active, use analysis state for current index
-    final modeAwareCurrentIndex = widget.state.analysisState.currentMoveIndex;
+    if (_lastSignature != signature) {
+      _moveKeys.clear();
+      _hasInitiallyScrolled = false;
+      _lastSignature = signature;
+    }
+
+    final notationParams = NotationTreeParams(
+      game: navigatorState.game,
+      signature: signature,
+    );
+    final tree = ref.watch(notationTreeProvider(notationParams));
+
+    final pointerMap = <String, NotationMoveNode>{};
+    final tokens = _buildTokens(
+      tree.mainline,
+      depth: 0,
+      pointerMap: pointerMap,
+    );
+
+    if (tokens.isEmpty) {
+      return Container(
+        alignment: Alignment.center,
+        padding: EdgeInsets.all(20.sp),
+        child: Text(
+          'No moves available for this game',
+          style: AppTypography.textXsMedium.copyWith(
+            color: kWhiteColor70,
+            fontWeight: FontWeight.normal,
+          ),
+        ),
+      );
+    }
+
+    final hasMoves = tree.mainline.isNotEmpty;
+    final tailNode = hasMoves ? tree.mainline.last : null;
+    final tailPointerId =
+        tailNode != null ? NotationPointer.encode(tailNode.pointer) : null;
+
+    final rawPointer = navigatorState.movePointer;
+    final hasPointer = rawPointer.isNotEmpty;
+    final isAtTailByIndex =
+        hasMoves &&
+        widget.state.analysisState.currentMoveIndex == tree.mainline.length - 1;
+    final shouldFallbackToTail =
+        !hasPointer && isAtTailByIndex && tailNode != null;
+
+    final pointerForHighlightId =
+        hasPointer
+            ? NotationPointer.encode(rawPointer)
+            : shouldFallbackToTail
+            ? tailPointerId
+            : null;
+    final pointerForScroll =
+        hasPointer
+            ? rawPointer
+            : shouldFallbackToTail
+            ? List<Number>.of(tailNode!.pointer)
+            : const <Number>[];
+
+    if (pointerForScroll.isNotEmpty) {
+      _schedulePointerScroll(pointerForScroll, pointerForHighlightId);
+    }
+
+    final currentNode =
+        pointerForHighlightId != null
+            ? pointerMap[pointerForHighlightId]
+            : null;
+    final currentPly = currentNode?.ply ?? -1;
 
     return SingleChildScrollView(
       controller: _scrollController,
@@ -2177,29 +2099,306 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           spacing: 2.sp,
           runSpacing: 2.sp,
           children:
-              sans.asMap().entries.map((entry) {
-                final moveIndex = entry.key;
-                final move = entry.value;
-
-                // Extract to separate widget with key to prevent layout shift
-                return _MoveNotationWidget(
-                  key:
-                      _moveKeys[moveIndex] ??
-                      ValueKey('move_${widget.game.gameId}_$moveIndex'),
-                  game: widget.game,
-                  index: widget.index,
-                  currentPageIndex: widget.currentPageIndex,
-                  moveIndex: moveIndex,
-                  move: move,
-                  modeAwareCurrentIndex: modeAwareCurrentIndex,
-                  boardParams: boardParams,
-                  totalMoveCount: sans.length,
-                  hasUnseenMoves: widget.state.hasUnseenMoves,
-                );
+              tokens.map((token) {
+                switch (token.type) {
+                  case _NotationTokenType.move:
+                    return _buildMoveChip(
+                      token,
+                      params,
+                      notifier,
+                      currentPly,
+                      pointerForHighlightId,
+                      tailPointerId,
+                    );
+                  case _NotationTokenType.openParen:
+                  case _NotationTokenType.closeParen:
+                  case _NotationTokenType.ellipsis:
+                    return _buildAuxToken(token);
+                }
               }).toList(),
         ),
       ),
     );
+  }
+
+  Widget _buildMoveChip(
+    _NotationDisplayToken token,
+    ChessBoardProviderParams params,
+    ChessBoardScreenNotifierNew notifier,
+    int currentPly,
+    String? currentPointerId,
+    String? tailPointerId,
+  ) {
+    final pointerId = token.pointerId;
+    final key =
+        pointerId == null
+            ? null
+            : _moveKeys.putIfAbsent(pointerId, () => GlobalKey());
+    final isCurrent = pointerId != null && pointerId == currentPointerId;
+    final isTail =
+        pointerId != null &&
+        tailPointerId != null &&
+        pointerId == tailPointerId;
+    final color = _resolveMoveColor(token, notifier, currentPly);
+
+    return GestureDetector(
+      key: key,
+      onTap: () {
+        final pointer = token.pointer;
+        if (pointer == null) return;
+        ref
+            .read(chessBoardScreenProviderNew(params).notifier)
+            .goToMovePointer(pointer);
+        if (isTail && widget.state.hasUnseenMoves) {
+          ref
+              .read(chessBoardScreenProviderNew(params).notifier)
+              .markMovesAsSeen();
+        }
+      },
+      onLongPress: () {
+        if (token.isVariationHead &&
+            token.variationHeadPointer != null &&
+            token.variationMoves != null) {
+          _showVariationMenu(
+            context,
+            params,
+            token.variationHeadPointer!,
+            token.variationMoves!,
+          );
+        } else {
+          _showMoveMenu(context, params, token.pointer);
+        }
+      },
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 6.sp, vertical: 2.sp),
+            decoration: BoxDecoration(
+              color:
+                  isCurrent
+                      ? kWhiteColor70.withValues(alpha: 0.25)
+                      : Colors.transparent,
+              borderRadius: BorderRadius.circular(4.sp),
+              border: Border.all(
+                color: isCurrent ? kWhiteColor : Colors.transparent,
+                width: 0.7,
+              ),
+            ),
+            child: Text(
+              token.text,
+              style: AppTypography.textXsMedium.copyWith(
+                color: color,
+                fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ),
+          if (isTail && widget.state.hasUnseenMoves)
+            Positioned(
+              top: -2.sp,
+              right: -2.sp,
+              child: _BlinkingRedDot(size: 6.sp),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAuxToken(_NotationDisplayToken token) {
+    return Text(
+      token.text,
+      style: AppTypography.textXsMedium.copyWith(
+        color: kWhiteColor.withValues(
+          alpha: (0.6 - token.depth * 0.05).clamp(0.3, 0.7),
+        ),
+        fontStyle:
+            token.type == _NotationTokenType.ellipsis
+                ? FontStyle.normal
+                : FontStyle.italic,
+      ),
+    );
+  }
+
+  Color _resolveMoveColor(
+    _NotationDisplayToken token,
+    ChessBoardScreenNotifierNew notifier,
+    int currentPly,
+  ) {
+    final node = token.node;
+    if (node == null) {
+      return kWhiteColor70;
+    }
+
+    if (token.pointerId == null) {
+      return kWhiteColor70;
+    }
+
+    final isPast = currentPly >= 0 && node.ply <= currentPly;
+    if (node.isMainline) {
+      return isPast ? kWhiteColor : kWhiteColor70;
+    }
+
+    final colorIndex = token.variationIndex ?? 0;
+    final baseColor = notifier.getVariantColor(colorIndex, false);
+    return baseColor.withValues(alpha: isPast ? 0.95 : 0.65);
+  }
+
+  List<_NotationDisplayToken> _buildTokens(
+    List<NotationMoveNode> moves, {
+    required int depth,
+    NotationVariationNode? variationContext,
+    required Map<String, NotationMoveNode> pointerMap,
+  }) {
+    final tokens = <_NotationDisplayToken>[];
+    for (var i = 0; i < moves.length; i++) {
+      final node = moves[i];
+      final pointerList = List<Number>.of(node.pointer);
+      final pointerId = NotationPointer.encode(pointerList);
+      pointerMap[pointerId] = node;
+      final isVariationHead = variationContext != null && i == 0;
+
+      if (node.showEllipsis) {
+        tokens.add(
+          _NotationDisplayToken(
+            type: _NotationTokenType.ellipsis,
+            text: '...',
+            depth: variationContext?.depth ?? depth,
+            pointerId: null,
+          ),
+        );
+      }
+
+      final text = _formatMoveText(node);
+      tokens.add(
+        _NotationDisplayToken(
+          type: _NotationTokenType.move,
+          text: text,
+          depth: depth,
+          pointerId: pointerId,
+          node: node,
+          pointer: pointerList,
+          variationIndex: variationContext?.variationIndex,
+          isVariationHead: isVariationHead,
+          variationHeadPointer:
+              isVariationHead && (variationContext?.moves.isNotEmpty ?? false)
+                  ? List<Number>.of(variationContext!.moves.first.pointer)
+                  : null,
+          variationMoves: variationContext?.moves,
+        ),
+      );
+
+      for (final variation in node.variations) {
+        tokens.add(
+          _NotationDisplayToken(
+            type: _NotationTokenType.openParen,
+            text: '(',
+            depth: variation.depth,
+            pointerId: null,
+            variationIndex: variation.variationIndex,
+          ),
+        );
+        tokens.addAll(
+          _buildTokens(
+            variation.moves,
+            depth: variation.depth,
+            variationContext: variation,
+            pointerMap: pointerMap,
+          ),
+        );
+        tokens.add(
+          _NotationDisplayToken(
+            type: _NotationTokenType.closeParen,
+            text: ')',
+            depth: variation.depth,
+            pointerId: null,
+            variationIndex: variation.variationIndex,
+          ),
+        );
+      }
+    }
+    return tokens;
+  }
+
+  String _formatMoveText(NotationMoveNode node) {
+    final buffer = StringBuffer();
+    if (node.showMoveNumber) {
+      buffer.write(
+        node.isWhiteMove ? '${node.moveNumber}. ' : '${node.moveNumber}... ',
+      );
+    }
+    buffer.write(node.move.san);
+    return buffer.toString();
+  }
+
+  void _schedulePointerScroll(ChessMovePointer pointer, String? pointerId) {
+    if (widget.index != widget.currentPageIndex) return;
+    if (pointerId == null) return;
+    if (_lastPointer != null &&
+        _pointerEquality.equals(_lastPointer!, pointer)) {
+      return;
+    }
+    _lastPointer = List.of(pointer);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _scrollToPointer(
+        pointerId,
+        isInitialScroll: !_hasInitiallyScrolled,
+        alignment: _hasInitiallyScrolled ? 0.5 : 1.0,
+      );
+    });
+  }
+
+  void _scrollToPointer(
+    String pointerId, {
+    bool isInitialScroll = false,
+    double alignment = 0.5,
+  }) {
+    if (!_scrollController.hasClients) {
+      if (isInitialScroll) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _scrollToPointer(
+            pointerId,
+            isInitialScroll: true,
+            alignment: alignment,
+          );
+        });
+      }
+      return;
+    }
+
+    final key = _moveKeys[pointerId];
+    final context = key?.currentContext;
+    if (context == null) {
+      if (isInitialScroll) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _scrollToPointer(
+            pointerId,
+            isInitialScroll: true,
+            alignment: alignment,
+          );
+        });
+      }
+      return;
+    }
+
+    if (isInitialScroll) {
+      Scrollable.ensureVisible(
+        context,
+        duration: Duration.zero,
+        alignment: alignment,
+      );
+      _hasInitiallyScrolled = true;
+    } else {
+      Scrollable.ensureVisible(
+        context,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeInOut,
+        alignment: alignment,
+      );
+      _hasInitiallyScrolled = true;
+    }
   }
 
   Widget _buildMovesLoadingSkeleton() {
@@ -2247,7 +2446,198 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       ),
     );
   }
+
+  Future<void> _showMoveMenu(
+    BuildContext context,
+    ChessBoardProviderParams params,
+    ChessMovePointer? pointer,
+  ) async {
+    if (pointer == null) return;
+    final action = await showModalBottomSheet<_MoveAction>(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.play_arrow),
+                title: const Text('Continue from here'),
+                onTap: () => Navigator.of(context).pop(_MoveAction.goTo),
+              ),
+              ListTile(
+                leading: const Icon(Icons.block),
+                title: const Text('Add null move after'),
+                onTap: () => Navigator.of(context).pop(_MoveAction.nullMove),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (!mounted || action == null) return;
+    final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+    switch (action) {
+      case _MoveAction.goTo:
+        notifier.goToMovePointer(pointer);
+        break;
+      case _MoveAction.nullMove:
+        notifier.goToMovePointer(pointer);
+        await notifier.insertNullMoveAfterCurrent();
+        if (!mounted) return;
+        _showInfoSnack(context, 'Null move inserted');
+        break;
+    }
+  }
+
+  Future<void> _showVariationMenu(
+    BuildContext context,
+    ChessBoardProviderParams params,
+    ChessMovePointer headPointer,
+    List<NotationMoveNode> moves,
+  ) async {
+    final action = await showModalBottomSheet<_VariationAction>(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.call_split),
+                title: const Text('Start from here'),
+                onTap: () => Navigator.of(context).pop(_VariationAction.start),
+              ),
+              ListTile(
+                leading: const Icon(Icons.arrow_circle_up),
+                title: const Text('Promote to mainline'),
+                onTap:
+                    () => Navigator.of(context).pop(_VariationAction.promote),
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline),
+                title: const Text('Delete variation'),
+                onTap: () => Navigator.of(context).pop(_VariationAction.delete),
+              ),
+              ListTile(
+                leading: const Icon(Icons.copy),
+                title: const Text('Copy line'),
+                onTap: () => Navigator.of(context).pop(_VariationAction.copy),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (!mounted || action == null) return;
+    final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+    switch (action) {
+      case _VariationAction.start:
+        notifier.goToMovePointer(headPointer);
+        break;
+      case _VariationAction.promote:
+        final snapshot = notifier.navigatorStateSnapshot();
+        await notifier.promoteVariationAtPointer(headPointer);
+        if (!mounted) return;
+        if (snapshot != null) {
+          _showUndoSnackBar(context, params, snapshot, 'Variation promoted');
+        } else {
+          _showInfoSnack(context, 'Variation promoted');
+        }
+        break;
+      case _VariationAction.delete:
+        final snapshot = notifier.navigatorStateSnapshot();
+        await notifier.deleteVariationAtPointer(headPointer);
+        if (!mounted) return;
+        if (snapshot != null) {
+          _showUndoSnackBar(context, params, snapshot, 'Variation deleted');
+        } else {
+          _showInfoSnack(context, 'Variation deleted');
+        }
+        break;
+      case _VariationAction.copy:
+        final text = _formatVariationText(moves);
+        await Clipboard.setData(ClipboardData(text: text));
+        if (!mounted) return;
+        _showInfoSnack(context, 'Variation copied');
+        break;
+    }
+  }
+
+  void _showUndoSnackBar(
+    BuildContext context,
+    ChessBoardProviderParams params,
+    ChessGameNavigatorState snapshot,
+    String message,
+  ) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () {
+            ref
+                .read(chessBoardScreenProviderNew(params).notifier)
+                .restoreNavigatorState(snapshot);
+          },
+        ),
+      ),
+    );
+  }
+
+  void _showInfoSnack(BuildContext context, String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  String _formatVariationText(List<NotationMoveNode> moves) {
+    final buffer = StringBuffer();
+    for (final node in moves) {
+      if (node.showMoveNumber) {
+        buffer.write(
+          node.isWhiteMove ? '${node.moveNumber}. ' : '${node.moveNumber}... ',
+        );
+      }
+      buffer.write('${node.move.san} ');
+    }
+    return buffer.toString().trim();
+  }
 }
+
+enum _NotationTokenType { move, openParen, closeParen, ellipsis }
+
+class _NotationDisplayToken {
+  final _NotationTokenType type;
+  final String text;
+  final int depth;
+  final String? pointerId;
+  final NotationMoveNode? node;
+  final ChessMovePointer? pointer;
+  final int? variationIndex;
+  final bool isVariationHead;
+  final ChessMovePointer? variationHeadPointer;
+  final List<NotationMoveNode>? variationMoves;
+
+  const _NotationDisplayToken({
+    required this.type,
+    required this.text,
+    required this.depth,
+    this.pointerId,
+    this.node,
+    this.pointer,
+    this.variationIndex,
+    this.isVariationHead = false,
+    this.variationHeadPointer,
+    this.variationMoves,
+  });
+}
+
+enum _MoveAction { goTo, nullMove }
+
+enum _VariationAction { start, promote, delete, copy }
 
 class _PrincipalVariationList extends ConsumerStatefulWidget {
   final int index;
@@ -2337,7 +2727,9 @@ class _PrincipalVariationListState
       // Position changed - reset to first variant or explicitly selected one
       targetIndex = ((newSelectedIndex ?? 0).clamp(0, maxIndex)).toInt();
       _lastUserSelectedIndex = targetIndex;
-    } else if (selectedIndexChanged && newSelectedIndex != null && newSelectedIndex <= maxIndex) {
+    } else if (selectedIndexChanged &&
+        newSelectedIndex != null &&
+        newSelectedIndex <= maxIndex) {
       // User explicitly selected a variant (selectedVariantIndex changed) - honor that selection
       targetIndex = newSelectedIndex;
       _lastUserSelectedIndex = newSelectedIndex;
@@ -2354,7 +2746,8 @@ class _PrincipalVariationListState
 
     if (targetIndex != _currentPage) {
       // Only animate when user explicitly selects a variant
-      final animate = !positionChanged &&
+      final animate =
+          !positionChanged &&
           selectedIndexChanged &&
           newSelectedIndex != null &&
           newSelectedIndex == targetIndex;
@@ -2400,9 +2793,12 @@ class _PrincipalVariationListState
     final double pvCardHeight = basePvHeight.h;
 
     // Clamp PVs to user preference
-    final clampedLines = (widget.state.principalVariations.length > multiPV)
-        ? widget.state.principalVariations.take(multiPV).toList(growable: false)
-        : widget.state.principalVariations.toList(growable: false);
+    final clampedLines =
+        (widget.state.principalVariations.length > multiPV)
+            ? widget.state.principalVariations
+                .take(multiPV)
+                .toList(growable: false)
+            : widget.state.principalVariations.toList(growable: false);
 
     final hasActivePvs = clampedLines.isNotEmpty;
     final fallbackLines =
@@ -2436,128 +2832,117 @@ class _PrincipalVariationListState
       required bool dimmed,
       required bool showUpdatingLabel,
     }) {
-      final sanMoves = _formatPv(
-        line.sanMoves,
-        baseMoveNumber,
-        isWhiteToMove,
-      );
+      final sanMoves = _formatPv(line.sanMoves, baseMoveNumber, isWhiteToMove);
       final evalText = _formatEvalLabel(line);
-      final activeVariantColor = notifier.getVariantColor(
-        variantIndex,
-        true,
-      );
+      final activeVariantColor = notifier.getVariantColor(variantIndex, true);
       final opacityScale = dimmed ? 0.4 : 0.7;
-      final borderColor = activeVariantColor.withValues(
-        alpha: opacityScale,
-      );
+      final borderColor = activeVariantColor.withValues(alpha: opacityScale);
       final backgroundColor = activeVariantColor.withValues(
         alpha: dimmed ? 0.1 : 0.15,
       );
       final badgeBackgroundColor = activeVariantColor.withValues(alpha: 0.3);
-      final badgeBorderColor = activeVariantColor.withValues(
-        alpha: 0.6,
-      );
+      final badgeBorderColor = activeVariantColor.withValues(alpha: 0.6);
 
-      return Container(
-        width: MediaQuery.of(context).size.width - 40.sp,
-        margin: EdgeInsets.symmetric(horizontal: 2.sp),
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: borderColor,
-            width: isSelected ? 2.0 : 1.5,
+      return InkWell(
+        onTap: () => notifier.playPrincipalVariationMove(line),
+        child: Container(
+          width: MediaQuery.of(context).size.width - 40.sp,
+          margin: EdgeInsets.symmetric(horizontal: 2.sp),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: borderColor,
+              width: isSelected ? 2.0 : 1.5,
+            ),
+            borderRadius: BorderRadius.circular(6.sp),
+            color: backgroundColor,
           ),
-          borderRadius: BorderRadius.circular(6.sp),
-          color: backgroundColor,
-        ),
-        clipBehavior: Clip.hardEdge,
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: 12.sp,
-            vertical: 10.sp,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      margin: EdgeInsets.only(right: 10.sp),
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 8.sp,
-                        vertical: 4.sp,
-                      ),
-                      decoration: BoxDecoration(
-                        color: badgeBackgroundColor,
-                        borderRadius: BorderRadius.circular(4.sp),
-                        border: Border.all(
-                          color: badgeBorderColor,
-                          width: 1.0,
+          clipBehavior: Clip.hardEdge,
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 10.sp),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        margin: EdgeInsets.only(right: 10.sp),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 8.sp,
+                          vertical: 4.sp,
                         ),
-                      ),
-                      alignment: Alignment.center,
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 200),
-                        child: Text(
-                          evalText,
-                          key: ValueKey(evalText),
-                          style: AppTypography.textXsMedium.copyWith(
-                            color: kWhiteColor.withValues(
-                              alpha: dimmed ? 0.7 : 1.0,
-                            ),
-                            fontWeight: FontWeight.w600,
+                        decoration: BoxDecoration(
+                          color: badgeBackgroundColor,
+                          borderRadius: BorderRadius.circular(4.sp),
+                          border: Border.all(
+                            color: badgeBorderColor,
+                            width: 1.0,
                           ),
                         ),
-                      ),
-                    ),
-                    Expanded(
-                      child: ClipRect(
-                        child: SingleChildScrollView(
-                          primary: false,
-                          physics: const BouncingScrollPhysics(
-                            parent: AlwaysScrollableScrollPhysics(),
-                          ),
-                          padding: EdgeInsets.only(bottom: 4.sp),
+                        alignment: Alignment.center,
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 200),
                           child: Text(
-                            sanMoves.join(' '),
-                            softWrap: true,
+                            evalText,
+                            key: ValueKey(evalText),
                             style: AppTypography.textXsMedium.copyWith(
                               color: kWhiteColor.withValues(
-                                alpha: dimmed ? 0.75 : 0.9,
+                                alpha: dimmed ? 0.7 : 1.0,
                               ),
                               fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                      Expanded(
+                        child: ClipRect(
+                          child: SingleChildScrollView(
+                            primary: false,
+                            physics: const BouncingScrollPhysics(
+                              parent: AlwaysScrollableScrollPhysics(),
+                            ),
+                            padding: EdgeInsets.only(bottom: 4.sp),
+                            child: Text(
+                              sanMoves.join(' '),
+                              softWrap: true,
+                              style: AppTypography.textXsMedium.copyWith(
+                                color: kWhiteColor.withValues(
+                                  alpha: dimmed ? 0.75 : 0.9,
+                                ),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              if (showUpdatingLabel)
-                Align(
-                  alignment: Alignment.bottomRight,
-                  child: Container(
-                    margin: EdgeInsets.only(top: 6.sp),
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 8.sp,
-                      vertical: 4.sp,
-                    ),
-                    decoration: BoxDecoration(
-                      color: kBlackColor.withValues(alpha: 0.35),
-                      borderRadius: BorderRadius.circular(4.sp),
-                    ),
-                    child: Text(
-                      'Updating lines…',
-                      style: AppTypography.textXxsMedium.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.75),
-                        fontStyle: FontStyle.italic,
+                if (showUpdatingLabel)
+                  Align(
+                    alignment: Alignment.bottomRight,
+                    child: Container(
+                      margin: EdgeInsets.only(top: 6.sp),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 8.sp,
+                        vertical: 4.sp,
+                      ),
+                      decoration: BoxDecoration(
+                        color: kBlackColor.withValues(alpha: 0.35),
+                        borderRadius: BorderRadius.circular(4.sp),
+                      ),
+                      child: Text(
+                        'Updating lines…',
+                        style: AppTypography.textXxsMedium.copyWith(
+                          color: kWhiteColor.withValues(alpha: 0.75),
+                          fontStyle: FontStyle.italic,
+                        ),
                       ),
                     ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
       );
@@ -2632,11 +3017,11 @@ class _PrincipalVariationListState
                               displayLines.isNotEmpty
                                   ? displayLines.first
                                   : _lastNonEmptyLines.isNotEmpty
-                                      ? _lastNonEmptyLines.first
-                                      : const AnalysisLine(
-                                          sanMoves: ['...'],
-                                          evaluation: 0,
-                                        );
+                                  ? _lastNonEmptyLines.first
+                                  : const AnalysisLine(
+                                    sanMoves: ['...'],
+                                    evaluation: 0,
+                                  );
                           return Skeletonizer(
                             enabled: true,
                             child: buildVariantCard(
@@ -2684,10 +3069,8 @@ class _PrincipalVariationListState
                                     softWrap: true,
                                     maxLines: 3,
                                     overflow: TextOverflow.fade,
-                                    style:
-                                        AppTypography.textXsMedium.copyWith(
-                                      color:
-                                          kWhiteColor.withValues(alpha: 0.7),
+                                    style: AppTypography.textXsMedium.copyWith(
+                                      color: kWhiteColor.withValues(alpha: 0.7),
                                       fontWeight: FontWeight.w500,
                                     ),
                                   ),
@@ -2703,15 +3086,13 @@ class _PrincipalVariationListState
                             hasActivePvs &&
                             widget.state.selectedVariantIndex == variantIndex;
 
-                        return GestureDetector(
-                          child: buildVariantCard(
-                            line: line,
-                            variantIndex: variantIndex,
-                            isSelected: isSelected,
-                            dimmed: usingFallback,
-                            showUpdatingLabel:
-                                usingFallback && widget.state.isEvaluating,
-                          ),
+                        return buildVariantCard(
+                          line: line,
+                          variantIndex: variantIndex,
+                          isSelected: isSelected,
+                          dimmed: usingFallback,
+                          showUpdatingLabel:
+                              usingFallback && widget.state.isEvaluating,
                         );
                       },
                     ),
@@ -2934,187 +3315,6 @@ class _BlinkingRedDotState extends State<_BlinkingRedDot>
   }
 }
 
-class _SkeletonContainer extends StatefulWidget {
-  final double height;
-  final double width;
-  final double borderRadius;
-
-  const _SkeletonContainer({
-    required this.height,
-    required this.width,
-    required this.borderRadius,
-  });
-
-  @override
-  State<_SkeletonContainer> createState() => _SkeletonContainerState();
-}
-
-class _SkeletonContainerState extends State<_SkeletonContainer>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _animationController;
-  late Animation<double> _animation;
-
-  @override
-  void initState() {
-    super.initState();
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 1200),
-      vsync: this,
-    );
-    _animation = Tween<double>(begin: 0.3, end: 0.7).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
-    );
-    _animationController.repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _animation,
-      builder: (context, child) {
-        return Container(
-          height: widget.height,
-          width: widget.width,
-          decoration: BoxDecoration(
-            color: kWhiteColor.withValues(alpha: _animation.value * 0.15),
-            borderRadius: BorderRadius.circular(widget.borderRadius),
-          ),
-        );
-      },
-    );
-  }
-}
-
-/// Isolated widget for each move notation to prevent layout shifts
-/// Only this widget rebuilds when its impact calculation completes
-class _MoveNotationWidget extends HookConsumerWidget {
-  final GamesTourModel game;
-  final int index;
-  final int currentPageIndex;
-  final int moveIndex;
-  final String move;
-  final int modeAwareCurrentIndex;
-  final ChessBoardProviderParams boardParams;
-  final int totalMoveCount;
-  final bool hasUnseenMoves;
-
-  const _MoveNotationWidget({
-    super.key,
-    required this.game,
-    required this.index,
-    required this.currentPageIndex,
-    required this.moveIndex,
-    required this.move,
-    required this.modeAwareCurrentIndex,
-    required this.boardParams,
-    required this.totalMoveCount,
-    required this.hasUnseenMoves,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final isCurrentMove = moveIndex == modeAwareCurrentIndex;
-    final fullMoveNumber = (moveIndex / 2).floor() + 1;
-    final isWhiteMove = moveIndex % 2 == 0;
-
-    // Check if this is the last move and there are unseen moves
-    final isLastMove = moveIndex == totalMoveCount - 1;
-    final showUnseenIndicator = isLastMove && hasUnseenMoves;
-
-    // DISABLED: Move impact calculation in notation list
-    // This was causing eval bar to get stuck because it creates 100+ provider watchers
-    // that all rebuild on every navigation, keeping isEvaluating = true
-    // Move impacts are ONLY shown on the board overlay for the current move
-    MoveImpactAnalysis? impact;
-
-    final displayText = isWhiteMove ? '$fullMoveNumber. $move' : move;
-    final impactSymbol = ''; // No impact symbols in notation list
-
-    // Determine text color - PRIORITY: current move > default
-    final params = ChessBoardProviderParams(game: game, index: index);
-    Color textColor;
-
-    if (isCurrentMove) {
-      textColor = kWhiteColor;
-    } else {
-      textColor = ref
-          .read(chessBoardScreenProviderNew(params).notifier)
-          .getMoveColor(move, moveIndex);
-    }
-
-    return GestureDetector(
-      onTap: () {
-        unawaited(
-          ref
-              .read(chessBoardScreenProviderNew(params).notifier)
-              .goToMove(moveIndex),
-        );
-        // If tapping on the last move, clear the unseen indicator
-        if (isLastMove && hasUnseenMoves) {
-          ref
-              .read(chessBoardScreenProviderNew(params).notifier)
-              .markMovesAsSeen();
-        }
-      },
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 6.sp, vertical: 2.sp),
-            decoration: BoxDecoration(
-              color:
-                  isCurrentMove
-                      ? kWhiteColor70.withValues(alpha: 0.4)
-                      : Colors.transparent,
-              borderRadius: BorderRadius.circular(4.sp),
-              border: Border.all(
-                color: isCurrentMove ? kWhiteColor : Colors.transparent,
-                width: 0.5,
-              ),
-            ),
-            child: RichText(
-              text: TextSpan(
-                children: [
-                  TextSpan(
-                    text: displayText,
-                    style: AppTypography.textXsMedium.copyWith(
-                      color: textColor,
-                      fontWeight:
-                          isCurrentMove ? FontWeight.bold : FontWeight.normal,
-                    ),
-                  ),
-                  if (impactSymbol.isNotEmpty)
-                    TextSpan(
-                      text: impactSymbol,
-                      style: AppTypography.textXsMedium.copyWith(
-                        color: impact!.impact.color,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-          // Show red dot indicator on top-right corner if this is the last unseen move
-          if (showUnseenIndicator)
-            Positioned(
-              top: -2.sp,
-              right: -2.sp,
-              child: _BlinkingRedDot(size: 6.sp),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-// Share Game Screen Widget
 class _ShareGameScreen extends ConsumerWidget {
   final GamesTourModel game;
   final ChessBoardStateNew state;
@@ -3130,7 +3330,8 @@ class _ShareGameScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Get board settings for creating the board widget
     final boardSettingsAsync = ref.watch(boardSettingsProviderNew);
-    final boardSettingsNew = boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
+    final boardSettingsNew =
+        boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
     final boardTheme = ref
         .read(boardSettingsRepository)
         .getBoardTheme(boardSettingsNew.boardColorValue);
