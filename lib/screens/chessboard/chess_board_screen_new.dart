@@ -2059,8 +2059,12 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     final tailPointerId =
         tailNode != null ? NotationPointer.encode(tailNode.pointer) : null;
 
-    final rawPointer = navigatorState.movePointer;
-    final hasPointer = rawPointer.isNotEmpty;
+    ChessMovePointer pointerCandidate = navigatorState.movePointer;
+    if (pointerCandidate.isEmpty &&
+        widget.state.analysisState.movePointer.isNotEmpty) {
+      pointerCandidate = widget.state.analysisState.movePointer;
+    }
+    final hasPointer = pointerCandidate.isNotEmpty;
     final isAtTailByIndex =
         hasMoves &&
         widget.state.analysisState.currentMoveIndex == tree.mainline.length - 1;
@@ -2069,13 +2073,13 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
     final pointerForHighlightId =
         hasPointer
-            ? NotationPointer.encode(rawPointer)
+            ? NotationPointer.encode(pointerCandidate)
             : shouldFallbackToTail
             ? tailPointerId
             : null;
     final pointerForScroll =
         hasPointer
-            ? rawPointer
+            ? pointerCandidate
             : shouldFallbackToTail
             ? List<Number>.of(tailNode!.pointer)
             : const <Number>[];
@@ -2370,16 +2374,14 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     final key = _moveKeys[pointerId];
     final context = key?.currentContext;
     if (context == null) {
-      if (isInitialScroll) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          _scrollToPointer(
-            pointerId,
-            isInitialScroll: true,
-            alignment: alignment,
-          );
-        });
-      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _scrollToPointer(
+          pointerId,
+          isInitialScroll: isInitialScroll,
+          alignment: alignment,
+        );
+      });
       return;
     }
 
