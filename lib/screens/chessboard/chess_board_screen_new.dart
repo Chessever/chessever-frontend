@@ -34,7 +34,6 @@ import 'package:chessground/chessground.dart';
 import 'package:collection/collection.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:fast_immutable_collections/fast_immutable_collections.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -1979,9 +1978,13 @@ class _MovesDisplay extends ConsumerStatefulWidget {
 }
 
 class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
+  static const int _autoCollapseDepth = 3;
+  static const int _autoCollapseMoveThreshold = 12;
   final ScrollController _scrollController = ScrollController();
   final Map<String, GlobalKey> _moveKeys = {};
   final ListEquality<int> _pointerEquality = const ListEquality<int>();
+  final Set<String> _collapsedVariationIds = <String>{};
+  final Set<String> _expandedVariationIds = <String>{};
   bool _hasInitiallyScrolled = false;
   String? _lastSignature;
   ChessMovePointer? _lastPointer;
@@ -2033,27 +2036,6 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     );
     final tree = ref.watch(notationTreeProvider(notationParams));
 
-    final pointerMap = <String, NotationMoveNode>{};
-    final tokens = _buildTokens(
-      tree.mainline,
-      depth: 0,
-      pointerMap: pointerMap,
-    );
-
-    if (tokens.isEmpty) {
-      return Container(
-        alignment: Alignment.center,
-        padding: EdgeInsets.all(20.sp),
-        child: Text(
-          'No moves available for this game',
-          style: AppTypography.textXsMedium.copyWith(
-            color: kWhiteColor70,
-            fontWeight: FontWeight.normal,
-          ),
-        ),
-      );
-    }
-
     final hasMoves = tree.mainline.isNotEmpty;
     final tailNode = hasMoves ? tree.mainline.last : null;
     final tailPointerId =
@@ -2081,11 +2063,40 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         hasPointer
             ? pointerCandidate
             : shouldFallbackToTail
-            ? List<Number>.of(tailNode!.pointer)
+            ? List<Number>.of(tailNode.pointer)
             : const <Number>[];
 
     if (pointerForScroll.isNotEmpty) {
       _schedulePointerScroll(pointerForScroll, pointerForHighlightId);
+    }
+
+    final forcedOpenIds = <String>{};
+    _collectVariationAncestors(
+      pointerForHighlightId,
+      tree.mainline,
+      forcedOpenIds,
+    );
+
+    final pointerMap = <String, NotationMoveNode>{};
+    final tokens = _buildTokens(
+      tree.mainline,
+      depth: 0,
+      pointerMap: pointerMap,
+      forcedOpenIds: forcedOpenIds,
+    );
+
+    if (tokens.isEmpty) {
+      return Container(
+        alignment: Alignment.center,
+        padding: EdgeInsets.all(20.sp),
+        child: Text(
+          'No moves available for this game',
+          style: AppTypography.textXsMedium.copyWith(
+            color: kWhiteColor70,
+            fontWeight: FontWeight.normal,
+          ),
+        ),
+      );
     }
 
     final currentNode =
@@ -2117,6 +2128,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                   case _NotationTokenType.openParen:
                   case _NotationTokenType.closeParen:
                   case _NotationTokenType.ellipsis:
+                  case _NotationTokenType.variationPlaceholder:
                     return _buildAuxToken(token);
                 }
               }).toList(),
@@ -2209,18 +2221,78 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   }
 
   Widget _buildAuxToken(_NotationDisplayToken token) {
-    return Text(
-      token.text,
-      style: AppTypography.textXsMedium.copyWith(
-        color: kWhiteColor.withValues(
-          alpha: (0.6 - token.depth * 0.05).clamp(0.3, 0.7),
+    final isVariationToken =
+        token.variation != null && token.type != _NotationTokenType.ellipsis;
+
+    Widget child;
+    if (token.type == _NotationTokenType.variationPlaceholder) {
+      child = Container(
+        padding: EdgeInsets.symmetric(horizontal: 6.sp, vertical: 2.sp),
+        decoration: BoxDecoration(
+          color: kWhiteColor.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(4.sp),
         ),
-        fontStyle:
-            token.type == _NotationTokenType.ellipsis
-                ? FontStyle.normal
-                : FontStyle.italic,
-      ),
+        child: Text(
+          token.text,
+          style: AppTypography.textXsMedium.copyWith(
+            color: kWhiteColor70,
+            fontStyle: FontStyle.italic,
+          ),
+        ),
+      );
+    } else {
+      child = Text(
+        token.text,
+        style: AppTypography.textXsMedium.copyWith(
+          color: kWhiteColor.withValues(
+            alpha: (0.6 - token.depth * 0.05).clamp(0.3, 0.7),
+          ),
+          fontStyle:
+              token.type == _NotationTokenType.ellipsis
+                  ? FontStyle.normal
+                  : FontStyle.italic,
+        ),
+      );
+    }
+
+    if (!isVariationToken || token.variation == null) {
+      return child;
+    }
+
+    return GestureDetector(
+      onTap: () => _toggleVariationCollapse(token),
+      child: child,
     );
+  }
+
+  void _toggleVariationCollapse(_NotationDisplayToken token) {
+    final variation = token.variation;
+    if (variation == null || token.isForcedOpen) {
+      HapticFeedback.lightImpact();
+      return;
+    }
+
+    final variationId = variation.id;
+    final defaultCollapsed = token.defaultsToCollapsed;
+
+    setState(() {
+      if (defaultCollapsed) {
+        if (_expandedVariationIds.remove(variationId)) {
+          // revert to default collapsed
+        } else {
+          _expandedVariationIds.add(variationId);
+          _collapsedVariationIds.remove(variationId);
+        }
+      } else {
+        if (_collapsedVariationIds.remove(variationId)) {
+          // revert to expanded state
+        } else {
+          _collapsedVariationIds.add(variationId);
+          _expandedVariationIds.remove(variationId);
+        }
+      }
+    });
+    HapticFeedback.selectionClick();
   }
 
   Color _resolveMoveColor(
@@ -2252,6 +2324,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     required int depth,
     NotationVariationNode? variationContext,
     required Map<String, NotationMoveNode> pointerMap,
+    required Set<String> forcedOpenIds,
   }) {
     final tokens = <_NotationDisplayToken>[];
     for (var i = 0; i < moves.length; i++) {
@@ -2273,6 +2346,11 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       }
 
       final text = _formatMoveText(node);
+      final variationMovesList = variationContext?.moves;
+      final variationHeadPointer =
+          isVariationHead && (variationMovesList?.isNotEmpty ?? false)
+              ? List<Number>.of(variationMovesList!.first.pointer)
+              : null;
       tokens.add(
         _NotationDisplayToken(
           type: _NotationTokenType.move,
@@ -2283,15 +2361,30 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           pointer: pointerList,
           variationIndex: variationContext?.variationIndex,
           isVariationHead: isVariationHead,
-          variationHeadPointer:
-              isVariationHead && (variationContext?.moves.isNotEmpty ?? false)
-                  ? List<Number>.of(variationContext!.moves.first.pointer)
-                  : null,
-          variationMoves: variationContext?.moves,
+          variationHeadPointer: variationHeadPointer,
+          variationMoves: variationMovesList,
         ),
       );
 
       for (final variation in node.variations) {
+        final defaultCollapsed = _shouldCollapseByDefault(variation);
+        final forcedOpen = forcedOpenIds.contains(variation.id);
+        final manuallyCollapsed = _collapsedVariationIds.contains(variation.id);
+        final manuallyExpanded = _expandedVariationIds.contains(variation.id);
+
+        bool collapsed = defaultCollapsed;
+        if (forcedOpen) {
+          collapsed = false;
+        } else if (defaultCollapsed) {
+          if (manuallyExpanded) {
+            collapsed = false;
+          } else {
+            collapsed = true;
+          }
+        } else {
+          collapsed = manuallyCollapsed;
+        }
+
         tokens.add(
           _NotationDisplayToken(
             type: _NotationTokenType.openParen,
@@ -2299,16 +2392,37 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             depth: variation.depth,
             pointerId: null,
             variationIndex: variation.variationIndex,
+            variation: variation,
+            isCollapsed: collapsed,
+            defaultsToCollapsed: defaultCollapsed,
+            isForcedOpen: forcedOpen,
           ),
         );
-        tokens.addAll(
-          _buildTokens(
-            variation.moves,
-            depth: variation.depth,
-            variationContext: variation,
-            pointerMap: pointerMap,
-          ),
-        );
+        if (collapsed) {
+          tokens.add(
+            _NotationDisplayToken(
+              type: _NotationTokenType.variationPlaceholder,
+              text: '... ${variation.moves.length} moves',
+              depth: variation.depth,
+              pointerId: null,
+              variationIndex: variation.variationIndex,
+              variation: variation,
+              isCollapsed: true,
+              defaultsToCollapsed: defaultCollapsed,
+              isForcedOpen: forcedOpen,
+            ),
+          );
+        } else {
+          tokens.addAll(
+            _buildTokens(
+              variation.moves,
+              depth: variation.depth,
+              variationContext: variation,
+              pointerMap: pointerMap,
+              forcedOpenIds: forcedOpenIds,
+            ),
+          );
+        }
         tokens.add(
           _NotationDisplayToken(
             type: _NotationTokenType.closeParen,
@@ -2316,11 +2430,25 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             depth: variation.depth,
             pointerId: null,
             variationIndex: variation.variationIndex,
+            variation: variation,
+            isCollapsed: collapsed,
+            defaultsToCollapsed: defaultCollapsed,
+            isForcedOpen: forcedOpen,
           ),
         );
       }
     }
     return tokens;
+  }
+
+  bool _shouldCollapseByDefault(NotationVariationNode variation) {
+    if (variation.depth >= _autoCollapseDepth) {
+      return true;
+    }
+    if (variation.moves.length >= _autoCollapseMoveThreshold) {
+      return true;
+    }
+    return false;
   }
 
   String _formatMoveText(NotationMoveNode node) {
@@ -2401,6 +2529,30 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       );
       _hasInitiallyScrolled = true;
     }
+  }
+
+  bool _collectVariationAncestors(
+    String? pointerId,
+    List<NotationMoveNode> moves,
+    Set<String> output,
+  ) {
+    if (pointerId == null) {
+      return false;
+    }
+
+    for (final node in moves) {
+      final nodeId = NotationPointer.encode(node.pointer);
+      if (nodeId == pointerId) {
+        return true;
+      }
+      for (final variation in node.variations) {
+        if (_collectVariationAncestors(pointerId, variation.moves, output)) {
+          output.add(variation.id);
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   Widget _buildMovesLoadingSkeleton() {
@@ -2609,7 +2761,13 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   }
 }
 
-enum _NotationTokenType { move, openParen, closeParen, ellipsis }
+enum _NotationTokenType {
+  move,
+  openParen,
+  closeParen,
+  ellipsis,
+  variationPlaceholder,
+}
 
 class _NotationDisplayToken {
   final _NotationTokenType type;
@@ -2622,6 +2780,10 @@ class _NotationDisplayToken {
   final bool isVariationHead;
   final ChessMovePointer? variationHeadPointer;
   final List<NotationMoveNode>? variationMoves;
+  final NotationVariationNode? variation;
+  final bool isCollapsed;
+  final bool defaultsToCollapsed;
+  final bool isForcedOpen;
 
   const _NotationDisplayToken({
     required this.type,
@@ -2634,6 +2796,10 @@ class _NotationDisplayToken {
     this.isVariationHead = false,
     this.variationHeadPointer,
     this.variationMoves,
+    this.variation,
+    this.isCollapsed = false,
+    this.defaultsToCollapsed = false,
+    this.isForcedOpen = false,
   });
 }
 
