@@ -324,6 +324,27 @@ class ChessBoardStateNew {
 
   /// Move index before variant exploration
   final int? variantBaseMoveIndex;
+  final bool isPvPreviewActive;
+  final int? pvPreviewVariantIndex;
+  final int? pvPreviewMoveIndex;
+
+  /// Locked PV line preserved during preview mode
+  final AnalysisLine? lockedPvLine;
+
+  /// Merged PGN history + PV moves for static card navigation (SAN notation)
+  final List<String>? lockedPvMergedMoves;
+
+  /// Current navigation index within the locked PV card
+  final int? lockedPvNavigationIndex;
+
+  /// Combined move objects (PGN history + PV moves) for preview navigation
+  final List<Move>? lockedPvMergedMoveObjects;
+
+  /// Position history aligned with [lockedPvMergedMoveObjects]
+  final List<Position>? lockedPvMergedPositions;
+
+  /// Number of moves that belong to the original PGN history
+  final int? lockedPvBaseMoveCount;
 
   bool get canMoveForward => currentMoveIndex < allMoves.length - 1;
 
@@ -365,6 +386,15 @@ class ChessBoardStateNew {
     this.variantBaseMovePointer,
     this.variantBaseLastMove,
     this.variantBaseMoveIndex,
+    this.isPvPreviewActive = false,
+    this.pvPreviewVariantIndex,
+    this.pvPreviewMoveIndex,
+    this.lockedPvLine,
+    this.lockedPvMergedMoves,
+    this.lockedPvNavigationIndex,
+    this.lockedPvMergedMoveObjects,
+    this.lockedPvMergedPositions,
+    this.lockedPvBaseMoveCount,
   });
 
   static const _noChange = Object();
@@ -402,6 +432,15 @@ class ChessBoardStateNew {
     Object? variantBaseMovePointer = _noChange,
     Object? variantBaseLastMove = _noChange,
     Object? variantBaseMoveIndex = _noChange,
+    bool? isPvPreviewActive,
+    Object? pvPreviewVariantIndex = _noChange,
+    Object? pvPreviewMoveIndex = _noChange,
+    Object? lockedPvLine = _noChange,
+    Object? lockedPvMergedMoves = _noChange,
+    Object? lockedPvNavigationIndex = _noChange,
+    Object? lockedPvMergedMoveObjects = _noChange,
+    Object? lockedPvMergedPositions = _noChange,
+    Object? lockedPvBaseMoveCount = _noChange,
   }) {
     final newAnalysisState = analysisState ?? this.analysisState;
 
@@ -462,6 +501,39 @@ class ChessBoardStateNew {
           identical(variantBaseMoveIndex, _noChange)
               ? this.variantBaseMoveIndex
               : variantBaseMoveIndex as int?,
+      isPvPreviewActive: isPvPreviewActive ?? this.isPvPreviewActive,
+      pvPreviewVariantIndex:
+          identical(pvPreviewVariantIndex, _noChange)
+              ? this.pvPreviewVariantIndex
+              : pvPreviewVariantIndex as int?,
+      pvPreviewMoveIndex:
+          identical(pvPreviewMoveIndex, _noChange)
+              ? this.pvPreviewMoveIndex
+              : pvPreviewMoveIndex as int?,
+      lockedPvLine:
+          identical(lockedPvLine, _noChange)
+              ? this.lockedPvLine
+              : lockedPvLine as AnalysisLine?,
+      lockedPvMergedMoves:
+          identical(lockedPvMergedMoves, _noChange)
+              ? this.lockedPvMergedMoves
+              : lockedPvMergedMoves as List<String>?,
+      lockedPvNavigationIndex:
+          identical(lockedPvNavigationIndex, _noChange)
+              ? this.lockedPvNavigationIndex
+              : lockedPvNavigationIndex as int?,
+      lockedPvMergedMoveObjects:
+          identical(lockedPvMergedMoveObjects, _noChange)
+              ? this.lockedPvMergedMoveObjects
+              : lockedPvMergedMoveObjects as List<Move>?,
+      lockedPvMergedPositions:
+          identical(lockedPvMergedPositions, _noChange)
+              ? this.lockedPvMergedPositions
+              : lockedPvMergedPositions as List<Position>?,
+      lockedPvBaseMoveCount:
+          identical(lockedPvBaseMoveCount, _noChange)
+              ? this.lockedPvBaseMoveCount
+              : lockedPvBaseMoveCount as int?,
       analysisState: newAnalysisState,
     );
   }
@@ -520,6 +592,28 @@ class ChessBoardStateNew {
         ) &&
         variantLastMovesEqual &&
         other.variantBaseMoveIndex == variantBaseMoveIndex &&
+        other.isPvPreviewActive == isPvPreviewActive &&
+        other.pvPreviewVariantIndex == pvPreviewVariantIndex &&
+        other.pvPreviewMoveIndex == pvPreviewMoveIndex &&
+        other.lockedPvLine == lockedPvLine &&
+        _stringListEquality.equals(
+          other.lockedPvMergedMoves,
+          lockedPvMergedMoves,
+        ) &&
+        other.lockedPvNavigationIndex == lockedPvNavigationIndex &&
+        _stringListEquality.equals(
+          _movesToUci(other.lockedPvMergedMoveObjects ?? const []),
+          _movesToUci(lockedPvMergedMoveObjects ?? const []),
+        ) &&
+        _stringListEquality.equals(
+          AnalysisBoardState._positionsToFen(
+            other.lockedPvMergedPositions ?? const [],
+          ),
+          AnalysisBoardState._positionsToFen(
+            lockedPvMergedPositions ?? const [],
+          ),
+        ) &&
+        other.lockedPvBaseMoveCount == lockedPvBaseMoveCount &&
         other.selectedVariantIndex == selectedVariantIndex &&
         other.shapes == shapes &&
         other.analysisState == analysisState &&
@@ -573,6 +667,21 @@ class ChessBoardStateNew {
       Object.hashAll(moveTimes),
       Object.hashAll(principalVariations),
       Object.hashAll(variantMovePointer),
+      isPvPreviewActive,
+      pvPreviewVariantIndex,
+      pvPreviewMoveIndex,
+      lockedPvLine,
+      lockedPvMergedMoves == null ? null : Object.hashAll(lockedPvMergedMoves!),
+      lockedPvNavigationIndex,
+      lockedPvMergedMoveObjects == null
+          ? null
+          : Object.hashAll(_movesToUci(lockedPvMergedMoveObjects!)),
+      lockedPvMergedPositions == null
+          ? null
+          : Object.hashAll(
+            AnalysisBoardState._positionsToFen(lockedPvMergedPositions!),
+          ),
+      lockedPvBaseMoveCount,
     ]);
   }
 }

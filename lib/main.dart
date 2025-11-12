@@ -309,15 +309,15 @@ class MyApp extends HookConsumerWidget {
           return;
         }
 
-        try {
-          final clarityConfig = ClarityConfig(
-            projectId: _getEnv('CLARITY_PROJECT_ID'),
-          );
+        if (!kDebugMode) {
+          try {
+            final clarityConfig = ClarityConfig(
+              projectId: _getEnv('CLARITY_PROJECT_ID'),
+            );
 
-          final initialized = Clarity.initialize(context, clarityConfig);
-          debugPrint('Clarity initialized: $initialized');
-        } catch (e, st) {
-          if (kDebugMode) {
+            final initialized = Clarity.initialize(context, clarityConfig);
+            debugPrint('Clarity initialized: $initialized');
+          } catch (e, st) {
             debugPrint('Failed to initialize Clarity: $e');
             debugPrintStack(stackTrace: st);
           }
