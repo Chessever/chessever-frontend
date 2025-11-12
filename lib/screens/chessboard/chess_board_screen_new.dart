@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:skeletonizer/skeletonizer.dart';
-import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
@@ -35,6 +34,7 @@ import 'package:collection/collection.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:fast_immutable_collections/fast_immutable_collections.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/svg_asset.dart';
@@ -276,6 +276,80 @@ Color getAnalysisLastMoveHighlightColor(ChessBoardStateNew state) {
   return isWhiteMove ? kPrimaryColor : kChessBlackMoveColor;
 }
 
+bool _gameHasCustomVariations(ChessGame? game) {
+  if (game == null) return false;
+  bool found = false;
+
+  void visit(List<ChessMove> moves) {
+    for (final move in moves) {
+      final variations = move.variations ?? const <ChessLine>[];
+      if (variations.isNotEmpty) {
+        found = true;
+        return;
+      }
+      for (final variation in variations) {
+        if (found) return;
+        visit(variation);
+      }
+    }
+  }
+
+  visit(game.mainline);
+  return found;
+}
+
+Future<bool?> _showAnalysisConfirmationDialog({
+  required BuildContext context,
+  required String title,
+  required String message,
+  required String confirmLabel,
+  Color? confirmColor,
+}) {
+  return showDialog<bool>(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        backgroundColor: kBlack2Color,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12.br),
+        ),
+        title: Text(
+          title,
+          style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
+        ),
+        content: Text(
+          message,
+          style: AppTypography.textSmRegular.copyWith(
+            color: kWhiteColor.withValues(alpha: 0.7),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(
+              'Cancel',
+              style: AppTypography.textSmMedium.copyWith(
+                color: kWhiteColor.withValues(alpha: 0.7),
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop(true);
+            },
+            child: Text(
+              confirmLabel,
+              style: AppTypography.textSmMedium.copyWith(
+                color: confirmColor ?? kPrimaryColor,
+              ),
+            ),
+          ),
+        ],
+      );
+    },
+  );
+}
+
 class ChessBoardScreenNew extends ConsumerStatefulWidget {
   final int currentIndex;
   final List<GamesTourModel> games;
@@ -296,6 +370,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   int? _lastViewedIndex;
   int _currentPageIndex = 0;
   final Set<String> _syncedLatestPositions = <String>{};
+  bool _isRevertingPage = false;
 
   GamesTourModel _resolveGameForIndex(int index) {
     if (widget.games.isEmpty) {
@@ -416,10 +491,64 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
   }
 
   void _onPageChanged(int newIndex) {
+    unawaited(_handlePageChange(newIndex));
+  }
+
+  Future<bool> _confirmLeaveAnalysisIfNeeded(int pageIndex) async {
+    if (!mounted) return true;
+    if (pageIndex < 0 || pageIndex >= widget.games.length) {
+      return true;
+    }
+
+    final game = _resolveGameForIndex(pageIndex);
+    final params = ChessBoardProviderParams(game: game, index: pageIndex);
+    final state = ref.read(chessBoardScreenProviderNew(params)).valueOrNull;
+    final analysisGame = state?.analysisState.game;
+
+    if (analysisGame == null) {
+      return true;
+    }
+
+    final hasCustomAnalysis = _gameHasCustomVariations(analysisGame);
+    if (!hasCustomAnalysis) {
+      return true;
+    }
+
+    final confirmed = await _showAnalysisConfirmationDialog(
+          context: context,
+          title: 'Leave analysis?',
+          message:
+              'You have local analysis variations for this game. Leaving now will discard your move tree progress.',
+          confirmLabel: 'Leave',
+          confirmColor: kRedColor,
+        ) ??
+        false;
+    return confirmed;
+  }
+
+  Future<void> _handlePageChange(int newIndex) async {
+    if (_isRevertingPage) {
+      _isRevertingPage = false;
+      return;
+    }
+
     if (_currentPageIndex == newIndex) return;
 
-    _lastViewedIndex = newIndex;
     final previousIndex = _currentPageIndex;
+    final canLeave = await _confirmLeaveAnalysisIfNeeded(previousIndex);
+    if (!mounted) return;
+
+    if (!canLeave) {
+      _isRevertingPage = true;
+      _pageController.animateToPage(
+        previousIndex,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOut,
+      );
+      return;
+    }
+
+    _lastViewedIndex = newIndex;
 
     // Update current page index immediately
     setState(() {
@@ -1491,9 +1620,15 @@ class _BottomNavBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final params = ChessBoardProviderParams(game: game, index: index);
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
-    // Analysis mode is always active, always use analysis state
-    final canMoveForward = state.analysisState.canMoveForward;
-    final canMoveBackward = state.analysisState.canMoveBackward;
+    ChessGameNavigatorState? navigatorState;
+    final analysisGame = state.analysisState.game;
+    if (analysisGame != null) {
+      navigatorState = ref.watch(chessGameNavigatorProvider(analysisGame));
+    }
+    final canMoveForward =
+        navigatorState?.canGoForward ?? state.analysisState.canMoveForward;
+    final canMoveBackward =
+        navigatorState?.canGoBackward ?? state.analysisState.canMoveBackward;
 
     return ChessBoardBottomNavBar(
       gameIndex: index,
@@ -1572,6 +1707,7 @@ class _AnalysisGameBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final params = ChessBoardProviderParams(game: game, index: index);
     return Column(
       children: [
         _PlayerWidget(
@@ -1595,7 +1731,20 @@ class _AnalysisGameBody extends ConsumerWidget {
           state: state,
         ),
         if (state.isAnalysisMode && state.showPrincipalVariations) ...[
-          _PrincipalVariationList(index: index, state: state, game: game),
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              _PrincipalVariationList(index: index, state: state, game: game),
+              Positioned(
+                top: 0,
+                right: -12.sp,
+                child: _AnalysisActionButtons(
+                  params: params,
+                  alignWithPvArea: true,
+                ),
+              ),
+            ],
+          ),
           // DISABLED: Analysis navigation arrows hidden
           // _AnalysisControlsRow(index: index, game: game),
         ],
@@ -1772,26 +1921,6 @@ class _BoardWithSidebar extends ConsumerWidget {
                     index: index,
                     game: state.game,
                   ),
-                  Positioned(
-                    bottom: state.isBoardFlipped ? null : 8.sp,
-                    top: state.isBoardFlipped ? 8.sp : null,
-                    right: state.isBoardFlipped ? null : 8.sp,
-                    left: state.isBoardFlipped ? 8.sp : null,
-                    child: _NullMoveButton(
-                      onPressed: () {
-                        ref
-                            .read(
-                              chessBoardScreenProviderNew(
-                                ChessBoardProviderParams(
-                                  game: game,
-                                  index: index,
-                                ),
-                              ).notifier,
-                            )
-                            .insertNullMoveAfterCurrent();
-                      },
-                    ),
-                  ),
                   // DISABLED: Move annotation overlay (requires move impact analysis)
                   // // Add move annotation overlay - only show if impact is not normal and not exploring a variant
                   // if (currentMoveImpact != null &&
@@ -1853,7 +1982,7 @@ class _AnalysisBoard extends ConsumerWidget {
         animationDuration: const Duration(milliseconds: 200),
         dragFeedbackScale: 1,
         dragTargetKind: DragTargetKind.none,
-        pieceShiftMethod: PieceShiftMethod.either,
+        pieceShiftMethod: PieceShiftMethod.tapTwoSquares,
         autoQueenPromotionOnPremove: false,
         pieceOrientationBehavior: PieceOrientationBehavior.facingUser,
         colorScheme: ChessboardColorScheme(
@@ -1904,33 +2033,6 @@ class _AnalysisBoard extends ConsumerWidget {
         promotionMove: chessBoardState.analysisState.promotionMove,
         onMove: notifier.onAnalysisMove,
         onPromotionSelection: notifier.onAnalysisPromotionSelection,
-      ),
-    );
-  }
-}
-
-class _NullMoveButton extends StatelessWidget {
-  final VoidCallback onPressed;
-
-  const _NullMoveButton({required this.onPressed});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onPressed,
-      child: Container(
-        width: 32.sp,
-        height: 32.sp,
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.45),
-          borderRadius: BorderRadius.circular(6.sp),
-          border: Border.all(
-            color: kWhiteColor.withValues(alpha: 0.4),
-            width: 1,
-          ),
-        ),
-        alignment: Alignment.center,
-        child: Icon(Icons.block, size: 18.sp, color: kWhiteColor),
       ),
     );
   }
@@ -2105,7 +2207,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             : null;
     final currentPly = currentNode?.ply ?? -1;
 
-    return SingleChildScrollView(
+    final notationContent = SingleChildScrollView(
       controller: _scrollController,
       child: Container(
         alignment: Alignment.centerLeft,
@@ -2133,6 +2235,63 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                 }
               }).toList(),
         ),
+      ),
+    );
+
+    return Container(
+      decoration: BoxDecoration(
+        color: kDarkGreyColor.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(12.sp),
+          topRight: Radius.circular(12.sp),
+        ),
+      ),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned.fill(child: notationContent),
+          // Full overlay when preview is active
+          if (widget.state.isPvPreviewActive)
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  // Tap anywhere on overlay to exit preview
+                  ref
+                      .read(chessBoardScreenProviderNew(params).notifier)
+                      .clearPvPreview();
+                },
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: kBlackColor.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(12.sp),
+                      topRight: Radius.circular(12.sp),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          if (widget.state.isPvPreviewActive)
+            Positioned(
+              top: 16.sp,
+              left: 20.sp,
+              right: 20.sp,
+              child: _PreviewBanner(
+                onExit: () {
+                  ref
+                      .read(chessBoardScreenProviderNew(params).notifier)
+                      .clearPvPreview();
+                },
+              ),
+            ),
+          if (!widget.state.showPrincipalVariations)
+            Positioned(
+              top: 0,
+              right: -12.sp,
+              child: _AnalysisActionButtons(params: params),
+            ),
+        ],
       ),
     );
   }
@@ -2334,17 +2493,6 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       pointerMap[pointerId] = node;
       final isVariationHead = variationContext != null && i == 0;
 
-      if (node.showEllipsis) {
-        tokens.add(
-          _NotationDisplayToken(
-            type: _NotationTokenType.ellipsis,
-            text: '...',
-            depth: variationContext?.depth ?? depth,
-            pointerId: null,
-          ),
-        );
-      }
-
       final text = _formatMoveText(node);
       final variationMovesList = variationContext?.moves;
       final variationHeadPointer =
@@ -2513,22 +2661,21 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       return;
     }
 
-    if (isInitialScroll) {
+    final targetContext = context;
+    Future.microtask(() {
+      if (!mounted) return;
+      if (!targetContext.mounted) return;
       Scrollable.ensureVisible(
-        context,
-        duration: Duration.zero,
-        alignment: alignment,
-      );
-      _hasInitiallyScrolled = true;
-    } else {
-      Scrollable.ensureVisible(
-        context,
-        duration: const Duration(milliseconds: 250),
+        targetContext,
+        duration:
+            isInitialScroll
+                ? const Duration(milliseconds: 1)
+                : const Duration(milliseconds: 250),
         curve: Curves.easeInOut,
         alignment: alignment,
       );
       _hasInitiallyScrolled = true;
-    }
+    });
   }
 
   bool _collectVariationAncestors(
@@ -2639,7 +2786,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       case _MoveAction.nullMove:
         notifier.goToMovePointer(pointer);
         await notifier.insertNullMoveAfterCurrent();
-        if (!mounted) return;
+        if (!context.mounted) return;
         _showInfoSnack(context, 'Null move inserted');
         break;
     }
@@ -2694,7 +2841,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       case _VariationAction.promote:
         final snapshot = notifier.navigatorStateSnapshot();
         await notifier.promoteVariationAtPointer(headPointer);
-        if (!mounted) return;
+        if (!context.mounted) return;
         if (snapshot != null) {
           _showUndoSnackBar(context, params, snapshot, 'Variation promoted');
         } else {
@@ -2704,7 +2851,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       case _VariationAction.delete:
         final snapshot = notifier.navigatorStateSnapshot();
         await notifier.deleteVariationAtPointer(headPointer);
-        if (!mounted) return;
+        if (!context.mounted) return;
         if (snapshot != null) {
           _showUndoSnackBar(context, params, snapshot, 'Variation deleted');
         } else {
@@ -2714,7 +2861,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       case _VariationAction.copy:
         final text = _formatVariationText(moves);
         await Clipboard.setData(ClipboardData(text: text));
-        if (!mounted) return;
+        if (!context.mounted) return;
         _showInfoSnack(context, 'Variation copied');
         break;
     }
@@ -2758,6 +2905,227 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       buffer.write('${node.move.san} ');
     }
     return buffer.toString().trim();
+  }
+}
+
+class _AnalysisActionButtons extends ConsumerWidget {
+  final ChessBoardProviderParams params;
+  final bool alignWithPvArea;
+
+  const _AnalysisActionButtons({
+    required this.params,
+    this.alignWithPvArea = false,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(chessBoardScreenProviderNew(params)).valueOrNull;
+    final analysisGame = state?.analysisState.game;
+    final hasCustomAnalysis = _gameHasCustomVariations(analysisGame);
+    final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _RibbonAnalysisButton(
+          icon: Icons.auto_delete_outlined,
+          color: kRedColor,
+          enabled: hasCustomAnalysis,
+          onPressed:
+              !hasCustomAnalysis
+                  ? null
+                  : () async {
+                    HapticFeedback.selectionClick();
+                    final confirmed =
+                        await _showAnalysisConfirmationDialog(
+                              context: context,
+                              title: 'Clear analysis?',
+                              message:
+                                  'This will remove every custom branch, including nested subvariants. This action cannot be undone.',
+                              confirmLabel: 'Clear',
+                              confirmColor: kRedColor,
+                            ) ??
+                            false;
+                    if (!confirmed) return;
+                    HapticFeedback.heavyImpact();
+                    await notifier.clearUserAnalysis();
+                  },
+        ),
+        SizedBox(height: alignWithPvArea ? 10.sp : 12.sp),
+        _RibbonAnalysisButton(
+          icon: Icons.control_point_duplicate_rounded,
+          color: kPrimaryColor,
+          onPressed: () {
+            HapticFeedback.mediumImpact();
+            notifier.insertNullMoveAfterCurrent();
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _PreviewBanner extends StatelessWidget {
+  final VoidCallback onExit;
+
+  const _PreviewBanner({required this.onExit});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 12.sp),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            kPrimaryColor.withValues(alpha: 0.85),
+            kPrimaryColor.withValues(alpha: 0.65),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(10.sp),
+        border: Border.all(
+          color: kPrimaryColor.withValues(alpha: 0.4),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: kPrimaryColor.withValues(alpha: 0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: EdgeInsets.all(6.sp),
+            decoration: BoxDecoration(
+              color: kWhiteColor.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.visibility_outlined,
+              color: kWhiteColor,
+              size: 18.sp,
+            ),
+          ),
+          SizedBox(width: 10.sp),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Preview Mode',
+                  style: AppTypography.textSmBold.copyWith(
+                    color: kWhiteColor,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  'Tap anywhere to exit or explore moves',
+                  style: AppTypography.textXsRegular.copyWith(
+                    color: kWhiteColor.withValues(alpha: 0.85),
+                    fontSize: 11.sp,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(width: 8.sp),
+          GestureDetector(
+            onTap: onExit,
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 6.sp),
+              decoration: BoxDecoration(
+                color: kWhiteColor.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(6.sp),
+                border: Border.all(
+                  color: kWhiteColor.withValues(alpha: 0.3),
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.close,
+                    color: kWhiteColor,
+                    size: 16.sp,
+                  ),
+                  SizedBox(width: 4.sp),
+                  Text(
+                    'Exit',
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: kWhiteColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RibbonAnalysisButton extends StatelessWidget {
+  final VoidCallback? onPressed;
+  final IconData icon;
+  final Color color;
+  final bool enabled;
+
+  const _RibbonAnalysisButton({
+    required this.icon,
+    required this.color,
+    this.onPressed,
+    this.enabled = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveOnTap = enabled ? onPressed : null;
+
+    return GestureDetector(
+      onTap: effectiveOnTap,
+      child: Opacity(
+        opacity: enabled ? 1 : 0.35,
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: 13.5.sp, vertical: 10.sp),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                color.withValues(alpha: 0.85),
+                color.withValues(alpha: 0.55),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(14.sp),
+              bottomLeft: Radius.circular(14.sp),
+              topRight: Radius.circular(6.sp),
+              bottomRight: Radius.circular(6.sp),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: 0.35),
+                blurRadius: 12,
+                offset: const Offset(0, 6),
+              ),
+            ],
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.15),
+              width: 0.8,
+            ),
+          ),
+          child: Icon(icon, size: 18.sp, color: kWhiteColor),
+        ),
+      ),
+    );
   }
 }
 
@@ -2858,6 +3226,21 @@ class _PrincipalVariationListState
   @override
   void didUpdateWidget(_PrincipalVariationList oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    // When entering preview mode with locked PV, jump to page 0
+    final wasPreviewActive = oldWidget.state.isPvPreviewActive;
+    final isPreviewActive = widget.state.isPvPreviewActive;
+    final hasLockedPv = widget.state.lockedPvLine != null;
+
+    if (!wasPreviewActive && isPreviewActive && hasLockedPv) {
+      _currentPage = 0;
+      _lastUserSelectedIndex = 0;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _pageController.hasClients) {
+          _pageController.jumpToPage(0);
+        }
+      });
+    }
 
     final lines = widget.state.principalVariations.toList(growable: false);
     final pageCount = lines.length;
@@ -2976,8 +3359,6 @@ class _PrincipalVariationListState
                 : _lastNonEmptyLines.toList(growable: false))
             : const <AnalysisLine>[];
     final displayLines = hasActivePvs ? clampedLines : fallbackLines;
-    final usingFallback = !hasActivePvs && displayLines.isNotEmpty;
-
     // Determine loading state for PV cards
     final showEndOfGame = isGameOver && widget.state.isAnalysisMode;
     final showSkeleton =
@@ -2990,51 +3371,252 @@ class _PrincipalVariationListState
         displayLines.isEmpty &&
         !widget.state.isEvaluating &&
         _lastNonEmptyLines.isEmpty;
-    final pageCount =
+    // Add 1 to pageCount when in preview mode for the static PV card
+    final hasLockedPv =
+        widget.state.isPvPreviewActive && widget.state.lockedPvLine != null;
+    final basePageCount =
         (showSkeleton || showEmptyState) ? 1 : displayLines.length;
+    final pageCount = hasLockedPv ? basePageCount + 1 : basePageCount;
+
+    List<InlineSpan> buildPreviewCardSpans(List<_PvToken> tokens) {
+      final spans = <InlineSpan>[];
+      final baseStyle = AppTypography.textXsMedium.copyWith(
+        color: kWhiteColor.withValues(alpha: 0.95),
+        fontWeight: FontWeight.w600,
+      );
+
+      final currentNavIndex = widget.state.lockedPvNavigationIndex ?? -1;
+
+      for (final token in tokens) {
+        final isMove = token.moveIndex != null;
+        final isSelectedMove = isMove && token.moveIndex == currentNavIndex;
+
+        if (!isMove) {
+          spans.add(
+            TextSpan(
+              text: '${token.text} ',
+              style: baseStyle,
+            ),
+          );
+          continue;
+        }
+
+        // Add selected state highlighting
+        final moveStyle =
+            isSelectedMove
+                ? baseStyle.copyWith(
+                  backgroundColor: kPrimaryColor.withValues(alpha: 0.4),
+                  color: kWhiteColor,
+                )
+                : baseStyle;
+
+        final recognizer = TapGestureRecognizer()
+          ..onTap = () {
+            HapticFeedback.lightImpact();
+            // Navigate to this position in the preview card
+            notifier.navigateToPreviewCardIndex(token.moveIndex!);
+          };
+
+        spans.add(
+          TextSpan(
+            text: '${token.text} ',
+            style: moveStyle,
+            recognizer: recognizer,
+          ),
+        );
+      }
+      return spans;
+    }
+
+    Widget buildStaticPvCard() {
+      final lockedLine = widget.state.lockedPvLine;
+      final mergedMoves = widget.state.lockedPvMergedMoves;
+
+      if (lockedLine == null || mergedMoves == null) {
+        return const SizedBox.shrink();
+      }
+
+      // Format the merged moves for display
+      final sanMoves = _formatPv(mergedMoves, 1, true);
+      final evalText = _formatEvalLabel(lockedLine);
+
+      // Use a special color for the static PV card
+      const staticColor = kPrimaryColor;
+      final opacityScale = 0.7;
+      final borderColor = staticColor.withValues(alpha: opacityScale);
+      final backgroundColor = staticColor.withValues(alpha: 0.2);
+      final badgeBackgroundColor = staticColor.withValues(alpha: 0.4);
+      final badgeBorderColor = staticColor.withValues(alpha: 0.7);
+      final pvTokens = _buildPvTokens(sanMoves);
+
+      return Container(
+        width: MediaQuery.of(context).size.width - 40.sp,
+        margin: EdgeInsets.symmetric(horizontal: 2.sp),
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: borderColor,
+            width: 2.5, // Thicker border for static card
+          ),
+          borderRadius: BorderRadius.circular(6.sp),
+          color: backgroundColor,
+        ),
+        clipBehavior: Clip.hardEdge,
+        child: Stack(
+          children: [
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 10.sp),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Evaluation badge - non-interactive for static card
+                        Container(
+                          margin: EdgeInsets.only(right: 10.sp),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 8.sp,
+                            vertical: 4.sp,
+                          ),
+                          decoration: BoxDecoration(
+                            color: badgeBackgroundColor,
+                            borderRadius: BorderRadius.circular(4.sp),
+                            border: Border.all(
+                              color: badgeBorderColor,
+                              width: 1.0,
+                            ),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            evalText,
+                            style: AppTypography.textXsMedium.copyWith(
+                              color: kWhiteColor,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        // Notation text - shows merged PGN + PV moves
+                        Expanded(
+                          child: ClipRect(
+                            child: SingleChildScrollView(
+                              primary: false,
+                              physics: const BouncingScrollPhysics(
+                                parent: AlwaysScrollableScrollPhysics(),
+                              ),
+                              padding: EdgeInsets.only(bottom: 4.sp),
+                              child: RichText(
+                                text: TextSpan(
+                                  style: AppTypography.textXsMedium.copyWith(
+                                    color: kWhiteColor.withValues(alpha: 0.95),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  children: buildPreviewCardSpans(pvTokens),
+                                ),
+                                softWrap: true,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Preview badge in top-right corner
+            Positioned(
+              top: 6.sp,
+              right: 6.sp,
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 6.sp, vertical: 2.sp),
+                decoration: BoxDecoration(
+                  color: kPrimaryColor,
+                  borderRadius: BorderRadius.circular(4.sp),
+                  boxShadow: [
+                    BoxShadow(
+                      color: kPrimaryColor.withValues(alpha: 0.5),
+                      blurRadius: 6,
+                      spreadRadius: 1,
+                    ),
+                  ],
+                ),
+                child: Text(
+                  'PREVIEW',
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: kWhiteColor,
+                    fontSize: 9.sp,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     Widget buildVariantCard({
       required AnalysisLine line,
       required int variantIndex,
       required bool isSelected,
-      required bool dimmed,
-      required bool showUpdatingLabel,
     }) {
       final sanMoves = _formatPv(line.sanMoves, baseMoveNumber, isWhiteToMove);
       final evalText = _formatEvalLabel(line);
       final activeVariantColor = notifier.getVariantColor(variantIndex, true);
-      final opacityScale = dimmed ? 0.4 : 0.7;
+      final opacityScale = 0.7;
       final borderColor = activeVariantColor.withValues(alpha: opacityScale);
       final backgroundColor = activeVariantColor.withValues(
-        alpha: dimmed ? 0.1 : 0.15,
+        alpha: 0.15,
       );
       final badgeBackgroundColor = activeVariantColor.withValues(alpha: 0.3);
       final badgeBorderColor = activeVariantColor.withValues(alpha: 0.6);
+      final pvTokens = _buildPvTokens(sanMoves);
 
-      return InkWell(
-        onTap: () => notifier.playPrincipalVariationMove(line),
-        child: Container(
-          width: MediaQuery.of(context).size.width - 40.sp,
-          margin: EdgeInsets.symmetric(horizontal: 2.sp),
-          decoration: BoxDecoration(
-            border: Border.all(
-              color: borderColor,
-              width: isSelected ? 2.0 : 1.5,
-            ),
-            borderRadius: BorderRadius.circular(6.sp),
-            color: backgroundColor,
+      // Check if any move in this variant is selected for preview
+      final isPreviewingThisVariant =
+          widget.state.isPvPreviewActive &&
+          widget.state.pvPreviewVariantIndex == variantIndex;
+
+      return Container(
+        width: MediaQuery.of(context).size.width - 40.sp,
+        margin: EdgeInsets.symmetric(horizontal: 2.sp),
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: borderColor,
+            width: isSelected ? 2.0 : 1.5,
           ),
-          clipBehavior: Clip.hardEdge,
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 10.sp),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
+          borderRadius: BorderRadius.circular(6.sp),
+          color: backgroundColor,
+        ),
+        clipBehavior: Clip.hardEdge,
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 10.sp),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Evaluation badge - tap applies move to PGN history
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        // Check if we're in preview mode with a locked PV
+                        if (widget.state.lockedPvLine != null &&
+                            widget.state.lockedPvMergedMoves != null) {
+                          // Case 1: In preview mode - overwrite PGN history with preview card's history
+                          // then insert this move and exit preview mode
+                          notifier.applyPreviewHistoryAndInsertMove(line);
+                        } else {
+                          // Case 2: Normal mode - insert regularly
+                          notifier.clearPvPreview();
+                          notifier.playPrincipalVariationMove(line);
+                        }
+                      },
+                      child: Container(
                         margin: EdgeInsets.only(right: 10.sp),
                         padding: EdgeInsets.symmetric(
                           horizontal: 8.sp,
@@ -3055,62 +3637,50 @@ class _PrincipalVariationListState
                             evalText,
                             key: ValueKey(evalText),
                             style: AppTypography.textXsMedium.copyWith(
-                              color: kWhiteColor.withValues(
-                                alpha: dimmed ? 0.7 : 1.0,
-                              ),
+                              color: kWhiteColor,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
                       ),
-                      Expanded(
-                        child: ClipRect(
-                          child: SingleChildScrollView(
-                            primary: false,
-                            physics: const BouncingScrollPhysics(
-                              parent: AlwaysScrollableScrollPhysics(),
-                            ),
-                            padding: EdgeInsets.only(bottom: 4.sp),
-                            child: Text(
-                              sanMoves.join(' '),
-                              softWrap: true,
+                    ),
+                    // Notation text - tap previews position without modifying PGN
+                    Expanded(
+                      child: ClipRect(
+                        child: SingleChildScrollView(
+                          primary: false,
+                          physics: const BouncingScrollPhysics(
+                            parent: AlwaysScrollableScrollPhysics(),
+                          ),
+                          padding: EdgeInsets.only(bottom: 4.sp),
+                          child: RichText(
+                            text: TextSpan(
                               style: AppTypography.textXsMedium.copyWith(
                                 color: kWhiteColor.withValues(
-                                  alpha: dimmed ? 0.75 : 0.9,
+                                  alpha: 0.95,
                                 ),
                                 fontWeight: FontWeight.w600,
                               ),
+                              children: _buildPvSpans(
+                                tokens: pvTokens,
+                                notifier: notifier,
+                                line: line,
+                                variantIndex: variantIndex,
+                                previewMoveIndex:
+                                    isPreviewingThisVariant
+                                        ? widget.state.pvPreviewMoveIndex
+                                        : null,
+                              ),
                             ),
+                            softWrap: true,
                           ),
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                if (showUpdatingLabel)
-                  Align(
-                    alignment: Alignment.bottomRight,
-                    child: Container(
-                      margin: EdgeInsets.only(top: 6.sp),
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 8.sp,
-                        vertical: 4.sp,
-                      ),
-                      decoration: BoxDecoration(
-                        color: kBlackColor.withValues(alpha: 0.35),
-                        borderRadius: BorderRadius.circular(4.sp),
-                      ),
-                      child: Text(
-                        'Updating lines…',
-                        style: AppTypography.textXxsMedium.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.75),
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
                     ),
-                  ),
-              ],
-            ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       );
@@ -3168,18 +3738,40 @@ class _PrincipalVariationListState
                     : PageView.builder(
                       controller: _pageController,
                       onPageChanged: (pageIndex) {
-                        if (clampedLines.isEmpty) {
-                          return;
-                        }
                         setState(() {
                           _currentPage = pageIndex;
                           _lastUserSelectedIndex = pageIndex;
                         });
-                        // Update variant selection when page changes
-                        notifier.selectVariant(pageIndex);
+
+                        // Static preview card at index 0
+                        if (hasLockedPv && pageIndex == 0) {
+                          return;
+                        }
+
+                        if (clampedLines.isEmpty) {
+                          return;
+                        }
+
+                        // Adjust index for dynamic PV cards when static card is present
+                        final variantIndex =
+                            (hasLockedPv ? pageIndex - 1 : pageIndex)
+                                .clamp(0, clampedLines.length - 1);
+
+                        notifier.selectVariant(
+                          variantIndex,
+                          preservePreview: hasLockedPv,
+                        );
                       },
                       itemCount: pageCount,
                       itemBuilder: (context, index) {
+                        // Show static PV card at index 0 when in preview mode
+                        if (hasLockedPv && index == 0) {
+                          return buildStaticPvCard();
+                        }
+
+                        // Adjust index for dynamic PV cards when static card is present
+                        final dynamicIndex = hasLockedPv ? index - 1 : index;
+
                         if (showSkeleton) {
                           final placeholderLine =
                               displayLines.isNotEmpty
@@ -3192,14 +3784,12 @@ class _PrincipalVariationListState
                                   );
                           return Skeletonizer(
                             enabled: true,
-                            child: buildVariantCard(
-                              line: placeholderLine,
-                              variantIndex: 0,
-                              isSelected: false,
-                              dimmed: true,
-                              showUpdatingLabel: false,
-                            ),
-                          );
+                          child: buildVariantCard(
+                            line: placeholderLine,
+                            variantIndex: 0,
+                            isSelected: false,
+                          ),
+                        );
                         }
                         if (showEmptyState) {
                           return Container(
@@ -3248,8 +3838,8 @@ class _PrincipalVariationListState
                           );
                         }
 
-                        final variantIndex = index;
-                        final line = displayLines[index];
+                        final variantIndex = dynamicIndex;
+                        final line = displayLines[dynamicIndex];
                         final isSelected =
                             hasActivePvs &&
                             widget.state.selectedVariantIndex == variantIndex;
@@ -3258,32 +3848,37 @@ class _PrincipalVariationListState
                           line: line,
                           variantIndex: variantIndex,
                           isSelected: isSelected,
-                          dimmed: usingFallback,
-                          showUpdatingLabel:
-                              usingFallback && widget.state.isEvaluating,
                         );
                       },
                     ),
           ),
           if (pageCount > 1) ...[
             SizedBox(height: 8.h),
-            Builder(
-              builder: (context) {
-                final safeIndex = _currentPage.clamp(0, pageCount - 1);
-                final activeColor = notifier.getVariantColor(safeIndex, true);
-                return SmoothPageIndicator(
-                  controller: _pageController,
-                  count: pageCount,
-                  effect: ScrollingDotsEffect(
-                    activeDotColor: activeColor,
-                    dotColor: kWhiteColor.withValues(alpha: 0.3),
-                    dotHeight: 6.w,
-                    dotWidth: 6.w,
-                    activeDotScale: 1.33,
-                    spacing: 6.w,
-                    maxVisibleDots: 5,
-                  ),
-                  onDotClicked: (index) {
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(pageCount, (index) {
+                final isLockedDot = hasLockedPv && index == 0;
+                final isActive = index == _currentPage;
+                final dynamicIndex = hasLockedPv ? index - 1 : index;
+                final Color activeColor =
+                    isLockedDot
+                        ? kPrimaryColor
+                        : displayLines.isNotEmpty
+                            ? notifier.getVariantColor(
+                              dynamicIndex.clamp(
+                                0,
+                                displayLines.length - 1,
+                              ),
+                              true,
+                            )
+                            : kWhiteColor.withValues(alpha: 0.7);
+                final Color dotColor =
+                    isActive
+                        ? activeColor
+                        : kWhiteColor.withValues(alpha: 0.3);
+                final double size = isLockedDot ? 8.w : 6.w;
+                return GestureDetector(
+                  onTap: () {
                     _lastUserSelectedIndex = index;
                     _pageController.animateToPage(
                       index,
@@ -3291,13 +3886,113 @@ class _PrincipalVariationListState
                       curve: Curves.easeInOut,
                     );
                   },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    margin: EdgeInsets.symmetric(horizontal: 4.sp),
+                    width: size,
+                    height: size,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: dotColor,
+                      border:
+                          isLockedDot
+                              ? Border.all(
+                                color:
+                                    isActive
+                                        ? kWhiteColor
+                                        : kPrimaryColor.withValues(
+                                          alpha: 0.7,
+                                        ),
+                                width: isActive ? 1.5 : 1,
+                              )
+                              : null,
+                    ),
+                  ),
                 );
-              },
+              }),
             ),
           ],
         ],
       ),
     );
+  }
+
+  List<_PvToken> _buildPvTokens(List<String> formattedMoves) {
+    final tokens = <_PvToken>[];
+    var moveCursor = -1;
+    for (final entry in formattedMoves) {
+      if (entry.trim().isEmpty) continue;
+      final trimmed = entry.trim();
+      final isWhiteNumber =
+          trimmed.endsWith('.') && !trimmed.contains('...');
+      final isBlackNumber =
+          trimmed.contains('...') && !trimmed.endsWith('...');
+      if (isWhiteNumber || isBlackNumber) {
+        tokens.add(_PvToken(text: entry));
+      } else {
+        moveCursor++;
+        tokens.add(_PvToken(text: entry, moveIndex: moveCursor));
+      }
+    }
+    return tokens;
+  }
+
+  List<InlineSpan> _buildPvSpans({
+    required List<_PvToken> tokens,
+    required ChessBoardScreenNotifierNew notifier,
+    required AnalysisLine line,
+    required int variantIndex,
+    int? previewMoveIndex,
+  }) {
+    final spans = <InlineSpan>[];
+    // Use consistent styling for all text in PV notation
+    final baseStyle = AppTypography.textXsMedium.copyWith(
+      color: kWhiteColor.withValues(alpha: 0.95),
+      fontWeight: FontWeight.w600,
+    );
+
+    for (final token in tokens) {
+      final isMove = token.moveIndex != null;
+      final isSelectedMove = isMove && token.moveIndex == previewMoveIndex;
+
+      if (!isMove) {
+        spans.add(
+          TextSpan(
+            text: '${token.text} ',
+            style: baseStyle, // Same style as moves
+          ),
+        );
+        continue;
+      }
+
+      // Add selected state highlighting
+      final moveStyle =
+          isSelectedMove
+              ? baseStyle.copyWith(
+                backgroundColor: kPrimaryColor.withValues(alpha: 0.4),
+                color: kWhiteColor,
+              )
+              : baseStyle;
+
+      final recognizer = TapGestureRecognizer()
+        ..onTap = () {
+          HapticFeedback.lightImpact();
+          notifier.previewPrincipalVariationMoveAt(
+            line,
+            variantIndex,
+            token.moveIndex!,
+          );
+        };
+
+      spans.add(
+        TextSpan(
+          text: '${token.text} ',
+          style: moveStyle,
+          recognizer: recognizer,
+        ),
+      );
+    }
+    return spans;
   }
 
   List<String> _formatPv(
@@ -3421,6 +4116,13 @@ class _PrincipalVariationListState
     final formatted = eval.abs().toStringAsFixed(1);
     return eval >= 0 ? '+$formatted' : '-$formatted';
   }
+}
+
+class _PvToken {
+  final String text;
+  final int? moveIndex;
+
+  const _PvToken({required this.text, this.moveIndex});
 }
 
 /// Blinking red dot indicator widget to show unseen moves
