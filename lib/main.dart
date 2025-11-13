@@ -38,6 +38,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:worker_manager/worker_manager.dart';
 import 'package:clarity_flutter/clarity_flutter.dart';
 import 'package:amplitude_flutter/amplitude.dart';
+import 'package:heroine/heroine.dart';
 import 'package:upgrader/upgrader.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_provider.dart';
@@ -349,7 +350,7 @@ class MyApp extends HookConsumerWidget {
         darkTheme: AppTheme.darkTheme,
         themeMode: themeMode,
         navigatorKey: navigatorKey,
-        navigatorObservers: [routeObserver],
+        navigatorObservers: [routeObserver, HeroineController()],
         initialRoute: '/',
         builder:
             (context, child) => CustomUpgradeAlert(

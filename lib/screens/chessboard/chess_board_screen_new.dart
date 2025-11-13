@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:math' as math;
+import 'dart:ui';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
@@ -40,6 +42,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:heroine/heroine.dart';
 
 /// Cached move impact results keyed by game id/signature to avoid recomputation
 class CachedMoveImpact {
@@ -2493,7 +2496,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       pointerMap[pointerId] = node;
       final isVariationHead = variationContext != null && i == 0;
 
-      final text = _formatMoveText(node);
+      final text = _formatMoveText(
+        node,
+        suppressBlackMovePrefix: isVariationHead,
+      );
       final variationMovesList = variationContext?.moves;
       final variationHeadPointer =
           isVariationHead && (variationMovesList?.isNotEmpty ?? false)
@@ -2599,12 +2605,15 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     return false;
   }
 
-  String _formatMoveText(NotationMoveNode node) {
+  String _formatMoveText(
+    NotationMoveNode node, {
+    bool suppressBlackMovePrefix = false,
+  }) {
     final buffer = StringBuffer();
     if (node.showMoveNumber) {
-      buffer.write(
-        node.isWhiteMove ? '${node.moveNumber}. ' : '${node.moveNumber}... ',
-      );
+      final useEllipsis = !node.isWhiteMove && !suppressBlackMovePrefix;
+      final separator = useEllipsis ? '... ' : '. ';
+      buffer.write('${node.moveNumber}$separator');
     }
     buffer.write(node.move.san);
     return buffer.toString();
@@ -2706,9 +2715,11 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     return Container(
       alignment: Alignment.centerLeft,
       padding: EdgeInsets.all(20.sp),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
           _SkeletonContainer(height: 16.h, width: 80.w, borderRadius: 4.sp),
           SizedBox(height: 12.h),
           ...List.generate(6, (rowIndex) {
@@ -2744,6 +2755,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             }),
           ),
         ],
+        ),
       ),
     );
   }
@@ -2896,13 +2908,15 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
   String _formatVariationText(List<NotationMoveNode> moves) {
     final buffer = StringBuffer();
+    var isFirstNode = true;
     for (final node in moves) {
-      if (node.showMoveNumber) {
-        buffer.write(
-          node.isWhiteMove ? '${node.moveNumber}. ' : '${node.moveNumber}... ',
-        );
-      }
-      buffer.write('${node.move.san} ');
+      buffer.write(
+        '${_formatMoveText(
+          node,
+          suppressBlackMovePrefix: isFirstNode,
+        )} ',
+      );
+      isFirstNode = false;
     }
     return buffer.toString().trim();
   }
@@ -3098,8 +3112,8 @@ class _RibbonAnalysisButton extends StatelessWidget {
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                color.withValues(alpha: 0.85),
-                color.withValues(alpha: 0.55),
+                color.withValues(alpha: 0.35),
+                color.withValues(alpha: 0.25),
               ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
@@ -3112,13 +3126,13 @@ class _RibbonAnalysisButton extends StatelessWidget {
             ),
             boxShadow: [
               BoxShadow(
-                color: color.withValues(alpha: 0.35),
+                color: color.withValues(alpha: 0.2),
                 blurRadius: 12,
                 offset: const Offset(0, 6),
               ),
             ],
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.15),
+              color: Colors.white.withValues(alpha: 0.2),
               width: 0.8,
             ),
           ),
@@ -3635,7 +3649,7 @@ class _PrincipalVariationListState
                           duration: const Duration(milliseconds: 200),
                           child: Text(
                             evalText,
-                            key: ValueKey(evalText),
+                            key: ValueKey('$variantIndex-$evalText'),
                             style: AppTypography.textXsMedium.copyWith(
                               color: kWhiteColor,
                               fontWeight: FontWeight.w600,
@@ -3974,21 +3988,43 @@ class _PrincipalVariationListState
               )
               : baseStyle;
 
-      final recognizer = TapGestureRecognizer()
-        ..onTap = () {
-          HapticFeedback.lightImpact();
-          notifier.previewPrincipalVariationMoveAt(
-            line,
-            variantIndex,
-            token.moveIndex!,
-          );
-        };
+      // Create unique tag for heroine transition
+      // Use identityHashCode to ensure uniqueness across different line instances
+      final heroineTag = 'pv_move_${identityHashCode(line)}_${variantIndex}_${token.moveIndex}';
 
+      // Use WidgetSpan with GestureDetector to handle tap and long press
       spans.add(
-        TextSpan(
-          text: '${token.text} ',
-          style: moveStyle,
-          recognizer: recognizer,
+        WidgetSpan(
+          alignment: PlaceholderAlignment.baseline,
+          baseline: TextBaseline.alphabetic,
+          child: GestureDetector(
+            onTap: () {
+              HapticFeedback.lightImpact();
+              // Single tap: add the next best move to PGN history
+              notifier.clearPvPreview();
+              notifier.playPrincipalVariationMove(line);
+            },
+            onLongPress: () {
+              HapticFeedback.mediumImpact();
+              // Long press: show hero animation and preview after 1.5s
+              _showMovePreviewAnimation(
+                context,
+                token.text,
+                heroineTag,
+                line,
+                variantIndex,
+                token.moveIndex!,
+                notifier,
+              );
+            },
+            child: Heroine(
+              tag: heroineTag,
+              child: Text(
+                '${token.text} ',
+                style: moveStyle,
+              ),
+            ),
+          ),
         ),
       );
     }
@@ -4087,6 +4123,35 @@ class _PrincipalVariationListState
           .selectVariant(index);
       _pendingVariantSelectionIndex = null;
     });
+  }
+
+  void _showMovePreviewAnimation(
+    BuildContext context,
+    String moveText,
+    String heroineTag,
+    AnalysisLine line,
+    int variantIndex,
+    int moveIndex,
+    ChessBoardScreenNotifierNew notifier,
+  ) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        barrierColor: Colors.black.withValues(alpha: 0.3),
+        barrierDismissible: false,
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            _MovePreviewAnimationOverlay(
+          moveText: moveText,
+          heroineTag: heroineTag,
+          line: line,
+          variantIndex: variantIndex,
+          moveIndex: moveIndex,
+          notifier: notifier,
+        ),
+        transitionDuration: const Duration(milliseconds: 400),
+        reverseTransitionDuration: const Duration(milliseconds: 300),
+      ),
+    );
   }
 
   int get maxPageIndex {
@@ -4309,4 +4374,319 @@ class _ShareGameScreen extends ConsumerWidget {
       onClose: () => Navigator.of(context).pop(),
     );
   }
+}
+
+/// Overlay widget that shows the move preview animation with loading bar
+class _MovePreviewAnimationOverlay extends StatefulWidget {
+  final String moveText;
+  final String heroineTag;
+  final AnalysisLine line;
+  final int variantIndex;
+  final int moveIndex;
+  final ChessBoardScreenNotifierNew notifier;
+
+  const _MovePreviewAnimationOverlay({
+    required this.moveText,
+    required this.heroineTag,
+    required this.line,
+    required this.variantIndex,
+    required this.moveIndex,
+    required this.notifier,
+  });
+
+  @override
+  State<_MovePreviewAnimationOverlay> createState() =>
+      _MovePreviewAnimationOverlayState();
+}
+
+class _MovePreviewAnimationOverlayState
+    extends State<_MovePreviewAnimationOverlay>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _smoothProgress;
+  bool _completed = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Configure for buttery smooth 120fps on high refresh rate displays
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+      animationBehavior: AnimationBehavior.preserve, // Maintain frame rate
+    );
+
+    // Smooth cubic easing optimized for high refresh rates
+    _smoothProgress = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+    );
+
+    // Start animation
+    _controller.forward().then((_) {
+      if (mounted && !_completed) {
+        _completed = true;
+        // Trigger the preview
+        widget.notifier.previewPrincipalVariationMoveAt(
+          widget.line,
+          widget.variantIndex,
+          widget.moveIndex,
+        );
+        // Close overlay with magical animation
+        _closeWithMagicalAnimation();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _closeWithMagicalAnimation() {
+    // Add magical edge animation before closing
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screenSize = MediaQuery.of(context).size;
+    // Use smooth cubic easing for silky 120fps animation
+    final progress = _smoothProgress.value;
+
+    // Create pulsing glow effect optimized for high refresh rate
+    final glowOpacity = (math.sin(progress * math.pi * 4) * 0.3 + 0.7).clamp(0.0, 1.0);
+
+    return Material(
+      color: Colors.transparent,
+      child: Stack(
+        children: [
+          // Background blur/dim effect
+          Positioned.fill(
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 200),
+              opacity: progress * 0.3,
+              child: Container(
+                color: Colors.black,
+              ),
+            ),
+          ),
+
+          // Magical light particles from screen edges
+          ...List.generate(12, (index) {
+            final angle = (index / 12) * 2 * math.pi;
+            final startX = screenSize.width / 2 + (screenSize.width * 0.7) * math.cos(angle);
+            final startY = screenSize.height / 2 + (screenSize.height * 0.7) * math.sin(angle);
+
+            // Stagger particle animations
+            final particleProgress = (progress - (index * 0.03)).clamp(0.0, 1.0);
+
+            return Positioned(
+              left: startX + (screenSize.width / 2 - startX) * particleProgress,
+              top: startY + (screenSize.height / 2 - startY) * particleProgress,
+              child: Opacity(
+                opacity: (1 - particleProgress) * 0.8,
+                child: Container(
+                  width: 3.sp,
+                  height: 3.sp,
+                  decoration: BoxDecoration(
+                    color: kPrimaryColor,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: kPrimaryColor.withValues(alpha: 0.8),
+                        blurRadius: 12,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }),
+
+          // Glassic hero card with heroine transition and drag-to-dismiss
+          Center(
+            child: DragDismissable(
+              child: Transform.scale(
+                scale: 1 + (progress * 0.2),
+                child: Opacity(
+                  opacity: (progress * 1.5).clamp(0.0, 1.0),
+                  child: Heroine(
+                    tag: widget.heroineTag,
+                    child: Container(
+                      constraints: BoxConstraints(
+                        maxWidth: screenSize.width * 0.75,
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(24.sp),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                          child: Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 40.sp,
+                              vertical: 32.sp,
+                            ),
+                            decoration: BoxDecoration(
+                              // Glassic gradient with transparency
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  kWhiteColor.withValues(alpha: 0.15),
+                                  kWhiteColor.withValues(alpha: 0.05),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(24.sp),
+                              border: Border.all(
+                                color: kWhiteColor.withValues(alpha: 0.2),
+                                width: 1.5,
+                              ),
+                              boxShadow: [
+                                // Outer glow
+                                BoxShadow(
+                                  color: kPrimaryColor.withValues(alpha: glowOpacity * 0.5),
+                                  blurRadius: 40,
+                                  spreadRadius: 0,
+                                ),
+                                // Inner shadow for depth
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.2),
+                                  blurRadius: 20,
+                                  offset: const Offset(0, 10),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // Move text with shimmer effect
+                                ShaderMask(
+                                  shaderCallback: (bounds) {
+                                    return LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [
+                                        kWhiteColor,
+                                        kPrimaryColor.withValues(alpha: 0.8),
+                                        kWhiteColor,
+                                      ],
+                                      stops: [
+                                        0.0,
+                                        progress.clamp(0.3, 0.7),
+                                        1.0,
+                                      ],
+                                    ).createShader(bounds);
+                                  },
+                                  child: Text(
+                                    widget.moveText,
+                                    style: AppTypography.textXsMedium.copyWith(
+                                      color: kWhiteColor,
+                                      fontSize: 42.sp,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 3,
+                                      height: 1.2,
+                                    ),
+                                  ),
+                                ),
+
+                                SizedBox(height: 24.sp),
+
+                                // Glassic loading bar container
+                                Container(
+                                  width: 160.sp,
+                                  height: 6.sp,
+                                  decoration: BoxDecoration(
+                                    color: kWhiteColor.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(3.sp),
+                                    border: Border.all(
+                                      color: kWhiteColor.withValues(alpha: 0.1),
+                                      width: 0.5,
+                                    ),
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(3.sp),
+                                    child: Stack(
+                                      children: [
+                                        // Progress fill with gradient
+                                        FractionallySizedBox(
+                                          alignment: Alignment.centerLeft,
+                                          widthFactor: progress,
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                              gradient: LinearGradient(
+                                                colors: [
+                                                  kPrimaryColor,
+                                                  kPrimaryColor.withValues(alpha: 0.7),
+                                                ],
+                                              ),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: kPrimaryColor.withValues(alpha: 0.6),
+                                                  blurRadius: 8,
+                                                  spreadRadius: 1,
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                        // Shimmer overlay on progress
+                                        if (progress > 0 && progress < 1)
+                                          Positioned(
+                                            left: (160.sp * progress) - 30.sp,
+                                            child: Container(
+                                              width: 30.sp,
+                                              height: 6.sp,
+                                              decoration: BoxDecoration(
+                                                gradient: LinearGradient(
+                                                  colors: [
+                                                    Colors.transparent,
+                                                    kWhiteColor.withValues(alpha: 0.5),
+                                                    Colors.transparent,
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+
+                                SizedBox(height: 12.sp),
+
+                                // Subtle hint text
+                                Text(
+                                  'Drag to cancel',
+                                  style: AppTypography.textXsMedium.copyWith(
+                                    color: kWhiteColor.withValues(alpha: 0.5),
+                                    fontSize: 11.sp,
+                                    fontWeight: FontWeight.w500,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  double cos(double radians) => math.cos(radians);
+  double sin(double radians) => math.sin(radians);
 }

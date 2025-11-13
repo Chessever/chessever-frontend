@@ -127,6 +127,7 @@ dependencies:
   package_info_plus: ^8.1.3
   dart_mappable: ^4.2.2
   icons_launcher: ^3.0.3
+  heroine: ^0.5.0
 
 dev_dependencies:
   flutter_test:
