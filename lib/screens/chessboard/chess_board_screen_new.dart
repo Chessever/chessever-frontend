@@ -2423,8 +2423,111 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
     return GestureDetector(
       onTap: () => _toggleVariationCollapse(token),
+      onLongPress: () => _showVariationPgnCard(token.variation!),
       child: child,
     );
+  }
+
+  void _showVariationPgnCard(NotationVariationNode variation) {
+    HapticFeedback.mediumImpact();
+    final pgn = _generateVariationPgn(variation);
+
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        barrierColor: Colors.black.withValues(alpha: 0.7),
+        barrierDismissible: true,
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return FadeTransition(
+            opacity: animation,
+            child: _VariationPgnCard(pgn: pgn),
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 300),
+        reverseTransitionDuration: const Duration(milliseconds: 200),
+      ),
+    );
+  }
+
+  String _generateVariationPgn(NotationVariationNode variation) {
+    // Build PGN with moves leading up to the variation + the variation itself
+    final buffer = StringBuffer();
+    final parentPointer = variation.parentPointer;
+
+    // Get the analysis game to access the full game tree
+    final analysisGame = widget.state.analysisState.game;
+    if (analysisGame == null) return '';
+
+    final navigatorState = ref.read(chessGameNavigatorProvider(analysisGame));
+
+    // Helper to traverse and build PGN up to a specific pointer
+    void buildPathToPgn(ChessLine line, List<int> pointer, int depth, int startPly) {
+      var ply = startPly;
+      for (var i = 0; i < line.length; i++) {
+        final move = line[i];
+        final moveNumber = (ply ~/ 2) + 1;
+        final isWhiteMove = ply.isEven;
+        final showNumber = isWhiteMove || i == 0;
+
+        // Check if this move is on the path to our target
+        if (depth < pointer.length && i == pointer[depth]) {
+          // This move is on the path
+          if (showNumber) {
+            buffer.write(isWhiteMove ? '$moveNumber. ' : '$moveNumber... ');
+          }
+          buffer.write('${move.san} ');
+
+          // If we need to go deeper into a variation
+          if (depth + 1 < pointer.length && move.variations != null) {
+            final variationIndex = pointer[depth + 1];
+            if (variationIndex < move.variations!.length) {
+              // Recursively build the path through this variation
+              buildPathToPgn(
+                move.variations![variationIndex],
+                pointer,
+                depth + 2,
+                ply + 1,
+              );
+            }
+          }
+          return;
+        }
+        ply++;
+      }
+    }
+
+    // Build all moves up to the parent move
+    buildPathToPgn(
+      navigatorState.game.mainline,
+      parentPointer,
+      0,
+      _startingPlyFromFen(navigatorState.game.startingFen),
+    );
+
+    // Now add the variation itself in parentheses
+    buffer.write('(');
+    for (var i = 0; i < variation.moves.length; i++) {
+      final node = variation.moves[i];
+      if (node.showMoveNumber) {
+        buffer.write(node.isWhiteMove ? '${node.moveNumber}. ' : '${node.moveNumber}... ');
+      }
+      buffer.write('${node.move.san}');
+      if (i < variation.moves.length - 1) {
+        buffer.write(' ');
+      }
+    }
+    buffer.write(')');
+
+    return buffer.toString().trim();
+  }
+
+  int _startingPlyFromFen(String startingFen) {
+    final parts = startingFen.split(' ');
+    if (parts.length < 6) return 0;
+    final turn = parts[1];
+    final fullmove = int.tryParse(parts[5]) ?? 1;
+    final base = (fullmove - 1) * 2;
+    return turn == 'w' ? base : base + 1;
   }
 
   void _toggleVariationCollapse(_NotationDisplayToken token) {
@@ -3216,6 +3319,11 @@ class _PrincipalVariationListState
   List<AnalysisLine> _lastNonEmptyLines = const [];
   String? _lastPositionKey;
 
+  // Preview card notation scroll support
+  final ScrollController _previewScrollController = ScrollController();
+  final Map<int, GlobalKey> _previewMoveKeys = {};
+  int? _lastScrolledPreviewIndex;
+
   @override
   void initState() {
     super.initState();
@@ -3253,6 +3361,20 @@ class _PrincipalVariationListState
         if (mounted && _pageController.hasClients) {
           _pageController.jumpToPage(0);
         }
+      });
+    }
+
+    // Auto-scroll preview card notation when navigation index changes
+    final oldNavIndex = oldWidget.state.lockedPvNavigationIndex;
+    final newNavIndex = widget.state.lockedPvNavigationIndex;
+    if (isPreviewActive &&
+        hasLockedPv &&
+        newNavIndex != null &&
+        newNavIndex != oldNavIndex &&
+        newNavIndex != _lastScrolledPreviewIndex) {
+      _lastScrolledPreviewIndex = newNavIndex;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToPreviewMove(newNavIndex);
       });
     }
 
@@ -3327,9 +3449,38 @@ class _PrincipalVariationListState
     }
   }
 
+  void _scrollToPreviewMove(int moveIndex) {
+    if (!_previewScrollController.hasClients) return;
+    if (!mounted) return;
+
+    final key = _previewMoveKeys[moveIndex];
+    final context = key?.currentContext;
+    if (context == null) {
+      // Context not ready yet, try again
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _scrollToPreviewMove(moveIndex);
+      });
+      return;
+    }
+
+    final targetContext = context;
+    Future.microtask(() {
+      if (!mounted) return;
+      if (!targetContext.mounted) return;
+      Scrollable.ensureVisible(
+        targetContext,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeInOut,
+        alignment: 0.5, // Center the move in the viewport
+      );
+    });
+  }
+
   @override
   void dispose() {
     _pageController.dispose();
+    _previewScrollController.dispose();
     super.dispose();
   }
 
@@ -3401,6 +3552,9 @@ class _PrincipalVariationListState
 
       final currentNavIndex = widget.state.lockedPvNavigationIndex ?? -1;
 
+      // Clear old keys before rebuilding
+      _previewMoveKeys.clear();
+
       for (final token in tokens) {
         final isMove = token.moveIndex != null;
         final isSelectedMove = isMove && token.moveIndex == currentNavIndex;
@@ -3424,18 +3578,27 @@ class _PrincipalVariationListState
                 )
                 : baseStyle;
 
-        final recognizer = TapGestureRecognizer()
-          ..onTap = () {
-            HapticFeedback.lightImpact();
-            // Navigate to this position in the preview card
-            notifier.navigateToPreviewCardIndex(token.moveIndex!);
-          };
+        // Create GlobalKey for this move to enable scrolling
+        final key = GlobalKey();
+        _previewMoveKeys[token.moveIndex!] = key;
 
+        // Wrap move text in a widget with key for scroll targeting
         spans.add(
-          TextSpan(
-            text: '${token.text} ',
-            style: moveStyle,
-            recognizer: recognizer,
+          WidgetSpan(
+            alignment: PlaceholderAlignment.baseline,
+            baseline: TextBaseline.alphabetic,
+            child: GestureDetector(
+              key: key,
+              onTap: () {
+                HapticFeedback.lightImpact();
+                // Navigate to this position in the preview card
+                notifier.navigateToPreviewCardIndex(token.moveIndex!);
+              },
+              child: Text(
+                '${token.text} ',
+                style: moveStyle,
+              ),
+            ),
           ),
         );
       }
@@ -3514,6 +3677,7 @@ class _PrincipalVariationListState
                         Expanded(
                           child: ClipRect(
                             child: SingleChildScrollView(
+                              controller: _previewScrollController,
                               primary: false,
                               physics: const BouncingScrollPhysics(
                                 parent: AlwaysScrollableScrollPhysics(),
@@ -4689,4 +4853,124 @@ class _MovePreviewAnimationOverlayState
 
   double cos(double radians) => math.cos(radians);
   double sin(double radians) => math.sin(radians);
+}
+
+class _VariationPgnCard extends StatelessWidget {
+  final String pgn;
+
+  const _VariationPgnCard({required this.pgn});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Hero(
+        tag: 'variation-pgn-card',
+        child: Container(
+          margin: EdgeInsets.symmetric(horizontal: 40.sp),
+          padding: EdgeInsets.all(24.sp),
+          decoration: BoxDecoration(
+            color: kBlackColor,
+            borderRadius: BorderRadius.circular(16.sp),
+            border: Border.all(
+              color: kPrimaryColor.withValues(alpha: 0.5),
+              width: 2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: kPrimaryColor.withValues(alpha: 0.3),
+                blurRadius: 24,
+                spreadRadius: 8,
+              ),
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Header
+                Row(
+                  children: [
+                    Icon(
+                      Icons.subdirectory_arrow_right,
+                      color: kPrimaryColor,
+                      size: 24.ic,
+                    ),
+                    SizedBox(width: 12.w),
+                    Expanded(
+                      child: Text(
+                        'Variation PGN',
+                        style: AppTypography.textLgBold.copyWith(
+                          color: kWhiteColor,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.close, color: kWhiteColor70),
+                      onPressed: () => Navigator.of(context).pop(),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 16.h),
+                DividerWidget(),
+                SizedBox(height: 16.h),
+                // PGN text
+                Container(
+                  padding: EdgeInsets.all(16.sp),
+                  decoration: BoxDecoration(
+                    color: kWhiteColor.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(8.sp),
+                  ),
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.4,
+                  ),
+                  child: SingleChildScrollView(
+                    child: SelectableText(
+                      pgn,
+                      style: AppTypography.textSmRegular.copyWith(
+                        color: kWhiteColor.withValues(alpha: 0.9),
+                        fontFamily: 'monospace',
+                        height: 1.6,
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(height: 20.h),
+                // Copy button
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: pgn));
+                    HapticFeedback.lightImpact();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('PGN copied to clipboard'),
+                        duration: const Duration(seconds: 2),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  },
+                  icon: Icon(Icons.copy, size: 18.ic),
+                  label: Text('Copy PGN'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: kPrimaryColor,
+                    foregroundColor: kWhiteColor,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 24.sp,
+                      vertical: 12.sp,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8.sp),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

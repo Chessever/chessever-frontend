@@ -1019,8 +1019,20 @@ class ChessBoardScreenNotifierNew
     if (line.moves.isEmpty) return;
 
     final cappedIndex = targetMoveIndex.clamp(0, line.moves.length - 1);
-    _pvPreviewSnapshot ??= currentState.copyWith();
-    final baseState = _pvPreviewSnapshot ?? currentState;
+
+    // If already in preview mode, use current preview state as base for nested preview
+    // Otherwise, save current state as snapshot for first preview
+    final ChessBoardStateNew baseState;
+    if (currentState.isPvPreviewActive && currentState.lockedPvMergedMoves != null) {
+      // Nested preview: use current preview position as base
+      baseState = currentState;
+      _releaseLog('🎯 PV PREVIEW: Creating nested preview from current preview state');
+    } else {
+      // First preview: save original state to restore later
+      _pvPreviewSnapshot ??= currentState.copyWith();
+      baseState = _pvPreviewSnapshot ?? currentState;
+      _releaseLog('🎯 PV PREVIEW: Creating first preview, saving original state');
+    }
     final baseAnalysis = baseState.analysisState;
 
     var previewPosition = Position.setupPosition(
@@ -1317,15 +1329,36 @@ class ChessBoardScreenNotifierNew
       variantIndex,
     );
 
-    final updatedState = currentState.copyWith(
-      selectedVariantIndex: variantIndex,
-      variantMovePointer: const [],
-      variantBaseFen: baseFen,
-      variantBaseMovePointer: basePointer,
-      variantBaseLastMove: currentState.analysisState.lastMove,
-      variantBaseMoveIndex: currentState.analysisState.currentMoveIndex,
-      shapes: arrowShapes,
-    );
+    // When preserving preview mode, explicitly maintain all preview-related state
+    final updatedState = preservePreview
+        ? currentState.copyWith(
+          selectedVariantIndex: variantIndex,
+          variantMovePointer: const [],
+          variantBaseFen: baseFen,
+          variantBaseMovePointer: basePointer,
+          variantBaseLastMove: currentState.analysisState.lastMove,
+          variantBaseMoveIndex: currentState.analysisState.currentMoveIndex,
+          shapes: arrowShapes,
+          // Explicitly preserve preview state to prevent accidental exit
+          isPvPreviewActive: currentState.isPvPreviewActive,
+          pvPreviewVariantIndex: currentState.pvPreviewVariantIndex,
+          pvPreviewMoveIndex: currentState.pvPreviewMoveIndex,
+          lockedPvLine: currentState.lockedPvLine,
+          lockedPvMergedMoves: currentState.lockedPvMergedMoves,
+          lockedPvMergedMoveObjects: currentState.lockedPvMergedMoveObjects,
+          lockedPvMergedPositions: currentState.lockedPvMergedPositions,
+          lockedPvBaseMoveCount: currentState.lockedPvBaseMoveCount,
+          lockedPvNavigationIndex: currentState.lockedPvNavigationIndex,
+        )
+        : currentState.copyWith(
+          selectedVariantIndex: variantIndex,
+          variantMovePointer: const [],
+          variantBaseFen: baseFen,
+          variantBaseMovePointer: basePointer,
+          variantBaseLastMove: currentState.analysisState.lastMove,
+          variantBaseMoveIndex: currentState.analysisState.currentMoveIndex,
+          shapes: arrowShapes,
+        );
 
     _resumeVariantAutoPlay = false;
     _isPlayingVariant = false;
@@ -2066,13 +2099,26 @@ class ChessBoardScreenNotifierNew
   /// Navigate forward in analysis mode (through main line when no variant selected)
   void analysisStepForward() {
     _releaseLog('🎯 ANALYSIS STEP FORWARD called');
+
+    final currentState = state.value;
+    if (currentState == null) return;
+
+    // If preview mode is active, navigate within preview instead of exiting
+    if (currentState.isPvPreviewActive) {
+      _releaseLog('🎯 ANALYSIS STEP FORWARD: Preview mode active, navigating in preview');
+      final currentNavIndex = currentState.lockedPvNavigationIndex ?? -1;
+      final mergedMoves = currentState.lockedPvMergedMoves;
+      if (mergedMoves != null && currentNavIndex < mergedMoves.length - 1) {
+        _navigateToLockedPvIndex(currentNavIndex + 1);
+      }
+      return;
+    }
+
     _exitPvPreviewIfActive();
     if (state.value?.isAnalysisMode != true) {
       _releaseLog('🎯 ANALYSIS STEP FORWARD: Not in analysis mode');
       return;
     }
-    final currentState = state.value;
-    if (currentState == null) return;
     if (_analysisGame == null) {
       _releaseLog('🎯 ANALYSIS STEP FORWARD: ERROR - _analysisGame is null');
       return;
@@ -2106,13 +2152,25 @@ class ChessBoardScreenNotifierNew
   /// Navigate backward in analysis mode (through main line when no variant selected)
   void analysisStepBackward() {
     _releaseLog('🎯 ANALYSIS STEP BACKWARD called');
+
+    final currentState = state.value;
+    if (currentState == null) return;
+
+    // If preview mode is active, navigate within preview instead of exiting
+    if (currentState.isPvPreviewActive) {
+      _releaseLog('🎯 ANALYSIS STEP BACKWARD: Preview mode active, navigating in preview');
+      final currentNavIndex = currentState.lockedPvNavigationIndex ?? -1;
+      if (currentNavIndex > 0) {
+        _navigateToLockedPvIndex(currentNavIndex - 1);
+      }
+      return;
+    }
+
     _exitPvPreviewIfActive();
     if (state.value?.isAnalysisMode != true) {
       _releaseLog('🎯 ANALYSIS STEP BACKWARD: Not in analysis mode');
       return;
     }
-    final currentState = state.value;
-    if (currentState == null) return;
     if (_analysisGame == null) {
       _releaseLog('🎯 ANALYSIS STEP BACKWARD: ERROR - _analysisGame is null');
       return;
@@ -2989,10 +3047,28 @@ class ChessBoardScreenNotifierNew
         return;
       }
 
-      final currentPosition =
-          initialState.isAnalysisMode
-              ? initialState.analysisState.position
-              : initialState.position;
+      // When in preview mode, evaluate the preview card's current position
+      // This allows PV cards to show suggestions based on the preview position
+      final Position? currentPosition;
+      if (initialState.isPvPreviewActive &&
+          initialState.lockedPvMergedPositions != null &&
+          initialState.lockedPvNavigationIndex != null) {
+        final navIndex = initialState.lockedPvNavigationIndex!;
+        final positions = initialState.lockedPvMergedPositions!;
+        if (navIndex >= 0 && navIndex < positions.length) {
+          currentPosition = positions[navIndex];
+        } else {
+          currentPosition =
+              initialState.isAnalysisMode
+                  ? initialState.analysisState.position
+                  : initialState.position;
+        }
+      } else {
+        currentPosition =
+            initialState.isAnalysisMode
+                ? initialState.analysisState.position
+                : initialState.position;
+      }
       final fen = currentPosition?.fen;
       if (fen == null) {
         // CRITICAL FIX: Clear evaluating state on early return
