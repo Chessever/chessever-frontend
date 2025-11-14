@@ -2292,13 +2292,12 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                     ),
                   ),
                   child: Align(
-                    alignment: Alignment.bottomCenter,
+                    alignment: Alignment.center,
                     child: TweenAnimationBuilder<double>(
                       duration: const Duration(milliseconds: 400),
                       curve: Curves.elasticOut,
                       tween: Tween(begin: 0.0, end: 1.0),
                       builder: (context, value, child) {
-                        // Clamp values to prevent elasticOut from overshooting valid ranges
                         final clampedValue = value.clamp(0.0, 1.0);
                         return Transform.scale(
                           scale: 0.8 + (clampedValue * 0.2),
@@ -2308,60 +2307,35 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                           ),
                         );
                       },
-                      child: Container(
-                        margin: EdgeInsets.only(bottom: 12.sp),
-                        padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 8.sp),
-                        decoration: BoxDecoration(
-                          color: kBlackColor.withValues(alpha: 0.85),
-                          borderRadius: BorderRadius.circular(20.sp),
-                          border: Border.all(
-                            color: kWhiteColor.withValues(alpha: 0.15),
-                            width: 1,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: kBlackColor.withValues(alpha: 0.3),
-                              blurRadius: 12,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 14.sp,
+                          vertical: 12.sp,
                         ),
-                        child: Row(
+                        child: Column(
                           mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            Container(
-                              width: 4.sp,
-                              height: 4.sp,
-                              decoration: BoxDecoration(
-                                color: kPrimaryColor.withValues(alpha: 0.8),
-                                shape: BoxShape.circle,
-                              ),
+                            Icon(
+                              Icons.auto_awesome,
+                              color: Colors.white.withValues(alpha: 0.9),
+                              size: 18.sp,
                             ),
-                            SizedBox(width: 8.w),
+                            SizedBox(height: 8.sp),
                             Text(
                               'Preview mode',
-                              style: AppTypography.textXsMedium.copyWith(
-                                color: kWhiteColor.withValues(alpha: 0.9),
-                                fontSize: 11.sp,
-                                fontWeight: FontWeight.w500,
-                                letterSpacing: 0.2,
+                              textAlign: TextAlign.center,
+                              style: AppTypography.textSmMedium.copyWith(
+                                color: Colors.white,
+                                letterSpacing: 0.4,
                               ),
                             ),
-                            SizedBox(width: 6.w),
+                            SizedBox(height: 4.sp),
                             Text(
-                              '•',
-                              style: AppTypography.textXsMedium.copyWith(
-                                color: kWhiteColor.withValues(alpha: 0.4),
-                                fontSize: 11.sp,
-                              ),
-                            ),
-                            SizedBox(width: 6.w),
-                            Text(
-                              'Tap to exit',
-                              style: AppTypography.textXsMedium.copyWith(
-                                color: kWhiteColor.withValues(alpha: 0.6),
-                                fontSize: 11.sp,
-                                fontWeight: FontWeight.w400,
+                              'Tap anywhere to exit or swipe the hero card up to apply.',
+                              textAlign: TextAlign.center,
+                              style: AppTypography.textXsRegular.copyWith(
+                                color: Colors.white.withValues(alpha: 0.8),
                               ),
                             ),
                           ],
@@ -3344,6 +3318,14 @@ class _PrincipalVariationListState
   final ScrollController _previewScrollController = ScrollController();
   final Map<int, GlobalKey> _previewMoveKeys = {};
   int? _lastScrolledPreviewIndex;
+  int? _pressedVariantIndex;
+
+  void _setCardPressed(int? index) {
+    if (_pressedVariantIndex == index) return;
+    setState(() {
+      _pressedVariantIndex = index;
+    });
+  }
 
   @override
   void initState() {
@@ -3397,6 +3379,19 @@ class _PrincipalVariationListState
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollToPreviewMove(newNavIndex);
       });
+    }
+
+    if (isPreviewActive && hasLockedPv) {
+      if (_currentPage != 0) {
+        _currentPage = 0;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _pageController.hasClients) {
+            _pageController.jumpToPage(0);
+          }
+        });
+      }
+      _lastPositionKey = _derivePositionKey(widget.state);
+      return;
     }
 
     final lines = widget.state.principalVariations.toList(growable: false);
@@ -3502,61 +3497,6 @@ class _PrincipalVariationListState
         alignment: 0.5, // Center the move in the viewport
       );
     });
-  }
-
-  Future<void> _promptExitPreview(
-    ChessBoardScreenNotifierNew notifier,
-  ) async {
-    if (!mounted) return;
-    final shouldExit = await showDialog<bool>(
-      context: context,
-      barrierDismissible: true,
-      builder: (dialogContext) {
-        return AlertDialog(
-          backgroundColor: kDarkGreyColor,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16.sp),
-          ),
-          title: Text(
-            'Exit preview mode?',
-            style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
-          ),
-          content: Text(
-            'You\'ll return to the main analysis line.',
-            style: AppTypography.textSmRegular.copyWith(
-              color: kWhiteColor70,
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: Text(
-                'Stay',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: kWhiteColor70,
-                ),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: kPrimaryColor,
-                foregroundColor: kWhiteColor,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8.sp),
-                ),
-              ),
-              child: const Text('Exit'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (shouldExit == true) {
-      HapticFeedback.lightImpact();
-      notifier.clearPvPreview();
-    }
   }
 
   @override
@@ -3838,13 +3778,18 @@ class _PrincipalVariationListState
       // Check if any move in this variant is selected for preview
       final isPreviewingThisVariant =
           widget.state.isPvPreviewActive &&
-              widget.state.pvPreviewVariantIndex == variantIndex;
-      final shouldDimVariant = widget.state.isPvPreviewActive;
+          widget.state.pvPreviewVariantIndex == variantIndex;
+
+      final isPressed = _pressedVariantIndex == variantIndex;
 
       return GestureDetector(
+        onTapDown: (_) => _setCardPressed(variantIndex),
+        onTapUp: (_) => _setCardPressed(null),
+        onTapCancel: () => _setCardPressed(null),
+        onLongPressStart: (_) => _setCardPressed(variantIndex),
+        onLongPressEnd: (_) => _setCardPressed(null),
         onLongPress: () {
           HapticFeedback.mediumImpact();
-          // Long press anywhere on card: show preview with ALL moves, focus on last move
           final lastMoveIndex = line.sanMoves.length - 1;
           if (lastMoveIndex >= 0) {
             final lastMoveText = pvTokens.lastWhere((t) => t.moveIndex != null).text;
@@ -3861,12 +3806,16 @@ class _PrincipalVariationListState
             );
           }
         },
-        child: Container(
-          width: MediaQuery.of(context).size.width - 40.sp,
-          margin: EdgeInsets.symmetric(horizontal: 2.sp),
-          decoration: BoxDecoration(
-            border: Border.all(
-              color: borderColor,
+        child: AnimatedScale(
+          scale: isPressed ? 0.97 : 1.0,
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOut,
+          child: Container(
+            width: MediaQuery.of(context).size.width - 40.sp,
+            margin: EdgeInsets.symmetric(horizontal: 2.sp),
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: borderColor,
               width: isSelected ? 2.0 : 1.5,
           ),
           borderRadius: BorderRadius.circular(6.sp),
@@ -3965,71 +3914,16 @@ class _PrincipalVariationListState
                 ),
               ],
             ),
-            if (shouldDimVariant)
-              Positioned.fill(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => _promptExitPreview(notifier),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    curve: Curves.easeOut,
-                    decoration: BoxDecoration(
-                      color: kBlackColor.withValues(alpha: 0.65),
-                    ),
-                    child: Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'Preview Mode',
-                            style: AppTypography.textSmMedium.copyWith(
-                              color: kWhiteColor,
-                              letterSpacing: 0.4,
-                            ),
-                          ),
-                          SizedBox(height: 8.sp),
-                          Container(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 16.sp,
-                              vertical: 6.sp,
-                            ),
-                            decoration: BoxDecoration(
-                              color: kWhiteColor.withValues(alpha: 0.08),
-                              borderRadius: BorderRadius.circular(20.sp),
-                              border: Border.all(
-                                color: kWhiteColor.withValues(alpha: 0.2),
-                              ),
-                            ),
-                            child: Text(
-                              'Exit',
-                              style: AppTypography.textXsMedium.copyWith(
-                                color: kWhiteColor,
-                                letterSpacing: 0.3,
-                              ),
-                            ),
-                          ),
-                          SizedBox(height: 6.sp),
-                          Text(
-                            'Tap any card to return',
-                            style: AppTypography.textXsRegular.copyWith(
-                              color: kWhiteColor.withValues(alpha: 0.6),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
           ],
+            ),
         ),
-      ),
-    );
+        ),
+      );
     }
 
     return Padding(
       padding: EdgeInsets.fromLTRB(20.sp, 8.sp, 20.sp, 8.sp),
-      child: Column(
+        child: Column(
         // CRITICAL: No key here! Adding a key that changes with eval causes Flutter
         // to rebuild the entire widget tree, resetting PageController position.
         // State is already managed via _currentPage and _lastUserSelectedIndex.
@@ -4793,6 +4687,7 @@ class _MovePreviewAnimationOverlayState
     extends State<_MovePreviewAnimationOverlay>
     with TickerProviderStateMixin {
   static const double _dragDismissThreshold = 160.0;
+  static const double _maxDragRadius = 240.0;
   late AnimationController _controller;
   late AnimationController _dismissController;
   late AnimationController _dragReturnController;
@@ -4807,7 +4702,10 @@ class _MovePreviewAnimationOverlayState
   Offset _currentDragVelocity = Offset.zero;
   Duration? _lastDragSampleTime;
   bool _hasTriggeredInstantApply = false;
-  bool _completed = false;
+  bool _pendingReject = false;
+  bool _skipHeroFlight = false;
+  Offset? _rejectDirection;
+    bool _completed = false;
   bool _isDismissing = false;
   double _lastHapticProgress = 0.0;
   double _magicBurst = 0.0;
@@ -4850,13 +4748,19 @@ class _MovePreviewAnimationOverlayState
     });
     _dragReturnController.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
+        final shouldDismiss = _pendingReject;
+        _pendingReject = false;
         _dragReturnAnimation = null;
         if (mounted) {
           setState(() {
             _dragOffset = Offset.zero;
             _currentDragVelocity = Offset.zero;
             _lastDragSampleTime = null;
+            _hasTriggeredInstantApply = false;
           });
+        }
+        if (shouldDismiss) {
+          _dismissEarly(triggerHaptic: false);
         }
       }
     });
@@ -4949,14 +4853,16 @@ class _MovePreviewAnimationOverlayState
       _lastDragSampleTime = timestamp;
     }
 
-    final dx = (_dragOffset.dx + details.delta.dx).clamp(-140.0, 140.0);
-    final dy = (_dragOffset.dy + details.delta.dy).clamp(
-      -_dragDismissThreshold * 1.6,
-      32.0,
-    );
-    final nextOffset = Offset(dx, dy);
+    final proposed = _dragOffset + details.delta;
+    final radius = proposed.distance;
+    Offset limitedOffset;
+    if (radius > _maxDragRadius) {
+      limitedOffset = proposed / radius * _maxDragRadius;
+    } else {
+      limitedOffset = proposed;
+    }
     setState(() {
-      _dragOffset = Offset.lerp(_dragOffset, nextOffset, 0.6)!;
+      _dragOffset = Offset.lerp(_dragOffset, limitedOffset, 0.7)!;
     });
 
     final upward = -_dragOffset.dy;
@@ -4978,11 +4884,17 @@ class _MovePreviewAnimationOverlayState
     final shouldDismiss =
         upward > _dragDismissThreshold && sideways < _dragDismissThreshold * 0.7;
     final fastFlick = velocityY < -800 && upward > _dragDismissThreshold * 0.6;
+    final rejectHorizontal = sideways > _dragDismissThreshold * 1.1;
 
     if ((shouldDismiss || fastFlick) && !_isDismissing) {
       _sparkMagicBurst();
       _commitPreview();
       _closeWithMagicalAnimation();
+      return;
+    }
+
+    if (rejectHorizontal || upward < _dragDismissThreshold * 0.8) {
+      _rejectPreview();
       return;
     }
 
@@ -5010,6 +4922,32 @@ class _MovePreviewAnimationOverlayState
         setState(() => _magicBurst = 0.0);
       }
     });
+  }
+
+  void _rejectPreview() {
+    if (_isDismissing) return;
+    setState(() {
+      _isDraggingCard = false;
+      _skipHeroFlight = true;
+    });
+    final releaseVector =
+        _dragOffset + (_currentDragVelocity * 0.0015);
+    Offset direction =
+        releaseVector == Offset.zero ? const Offset(0, 1) : releaseVector;
+    final normalized = direction / direction.distance;
+    final target = normalized * (_maxDragRadius * 1.4);
+    _pendingReject = true;
+    _rejectDirection = normalized;
+    _dragReturnAnimation = Tween<Offset>(
+      begin: _dragOffset,
+      end: target,
+    ).animate(
+      CurvedAnimation(
+        parent: _dragReturnController,
+        curve: Sprung.underDamped,
+      ),
+    );
+    _dragReturnController.forward(from: 0);
   }
 
   @override
@@ -5055,6 +4993,10 @@ class _MovePreviewAnimationOverlayState
       _currentDragVelocity = Offset.zero;
       _lastDragSampleTime = null;
       _hasTriggeredInstantApply = false;
+      _skipHeroFlight = false;
+      _pendingReject = false;
+      _rejectDirection = null;
+      _magicBurst = 0.0;
     });
     // Stop the loading animation if still running
     _controller.stop();
@@ -5065,13 +5007,11 @@ class _MovePreviewAnimationOverlayState
     });
   }
 
-  void _dismissEarly() {
-    // User dismissed before loading completed - cancel preview activation
-    if (!_completed) {
-      // Haptic feedback for cancellation
+  void _dismissEarly({bool triggerHaptic = true}) {
+    if (!_completed && triggerHaptic) {
       HapticFeedback.lightImpact();
-      _closeWithMagicalAnimation();
     }
+    _closeWithMagicalAnimation();
     _dragReturnController.stop();
     _dragReturnAnimation = null;
     _dragOffset = Offset.zero;
@@ -5094,8 +5034,6 @@ class _MovePreviewAnimationOverlayState
           final cardScaleValue = _cardScaleAnimation.value.clamp(0.0, 1.1);
           final dismissScaleValue = _dismissScale.value.clamp(0.0, 1.0);
           final baseScale = _isDismissing ? dismissScaleValue : cardScaleValue;
-          final cardOpacityValue =
-              (_isDismissing ? _dismissOpacity.value : 1.0).clamp(0.0, 1.0);
           final backgroundOpacityValue = _isDismissing
               ? ((1 - _dismissController.value).clamp(0.0, 1.0) * 0.5)
               : (progress * 0.5);
@@ -5106,8 +5044,17 @@ class _MovePreviewAnimationOverlayState
           final interactiveScaleFactor = 1 + (dragProgress * 0.15);
           final interactiveOffset = _dragOffset;
           final rotationAngle = (_dragOffset.dx / 220).clamp(-0.25, 0.25);
-          final scale = baseScale * interactiveScaleFactor;
+          final rejectionPhase =
+              _pendingReject ? (1 - _dragReturnController.value).clamp(0.0, 1.0) : 0.0;
+          final rejectionTwist =
+              _rejectDirection == null ? 0.0 : _rejectDirection!.dx.sign * rejectionPhase * 0.35;
+          final rejectionScale = _pendingReject ? (1 - rejectionPhase * 0.2) : 1.0;
+          final combinedScale = baseScale * interactiveScaleFactor * rejectionScale;
+          final combinedRotation = rotationAngle + rejectionTwist;
           final magicPulse = (dragProgress * 0.6 + _magicBurst).clamp(0.0, 1.0);
+          final cardOpacityValue =
+              ((_isDismissing ? _dismissOpacity.value : 1.0).clamp(0.0, 1.0)) *
+              (_pendingReject ? (1 - rejectionPhase * 0.4) : 1.0);
 
           final spiralParticles = List.generate(particleCount, (index) {
             final angle = (index / particleCount) * 2 * math.pi;
@@ -5219,6 +5166,50 @@ class _MovePreviewAnimationOverlayState
             }
           }
 
+          final centerBase = Offset(
+            screenSize.width / 2 + interactiveOffset.dx,
+            screenSize.height / 2 + interactiveOffset.dy,
+          );
+          final orbitingParticles = <Widget>[];
+          for (int i = 0; i < 8; i++) {
+            final angle =
+                (particleProgress * math.pi * 2) + i * (math.pi / 4.0);
+            final orbitRadius =
+                70 + math.sin(particleProgress * math.pi * 2 + i) * 20;
+            final x = centerBase.dx + orbitRadius * math.cos(angle);
+            final y = centerBase.dy + orbitRadius * math.sin(angle);
+            final size = 6.sp;
+            orbitingParticles.add(
+              Positioned(
+                left: x - size / 2,
+                top: y - size / 2,
+                child: Opacity(
+                  opacity: 0.35 + 0.25 * math.sin(angle + progress * math.pi),
+                  child: Container(
+                    width: size,
+                    height: size,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          variantColor.withValues(alpha: 0.9),
+                          variantColor.withValues(alpha: 0.0),
+                        ],
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: variantColor.withValues(alpha: 0.5),
+                          blurRadius: 12,
+                          spreadRadius: 1,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }
+
           final dragTrail = <Widget>[];
           if (dragProgress > 0.05 || _isDraggingCard) {
             const int trailCount = 6;
@@ -5286,6 +5277,7 @@ class _MovePreviewAnimationOverlayState
                   ),
                   ...spiralParticles,
                   ...milestoneRings,
+                  ...orbitingParticles,
                   if (magicPulse > 0)
                     Positioned.fill(
                       child: IgnorePointer(
@@ -5315,9 +5307,9 @@ class _MovePreviewAnimationOverlayState
                       child: Transform.translate(
                         offset: interactiveOffset,
                         child: Transform.rotate(
-                          angle: rotationAngle,
+                          angle: combinedRotation,
                           child: Transform.scale(
-                            scale: scale,
+                            scale: combinedScale,
                             child: Opacity(
                               opacity: cardOpacityValue,
                               child: Container(
@@ -5368,48 +5360,56 @@ class _MovePreviewAnimationOverlayState
                                       child: Column(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          HeroineVelocity(
-                                          velocity: Velocity(
-                                            pixelsPerSecond:
-                                                _currentDragVelocity,
-                                          ),
-                                          child: Heroine(
-                                            tag: widget.heroineTag,
-                                            child: Material(
-                                              color: Colors.transparent,
-                                              child: Text(
-                                                widget.moveText,
-                                                style: AppTypography
-                                                    .textXsMedium
-                                                    .copyWith(
-                                                  color: kWhiteColor,
-                                                  fontSize: 48.sp,
-                                                  fontWeight: FontWeight.w900,
-                                                  letterSpacing: 4,
-                                                  height: 1.2,
-                                                  shadows: [
-                                                    Shadow(
-                                                      color: variantColor
-                                                          .withValues(
-                                                        alpha: 0.8,
-                                                      ),
-                                                      blurRadius: 20,
+                                      Builder(
+                                        builder: (context) {
+                                          final heroChild = Material(
+                                            color: Colors.transparent,
+                                            child: Text(
+                                              widget.moveText,
+                                              style: AppTypography
+                                                  .textXsMedium
+                                                  .copyWith(
+                                                color: kWhiteColor,
+                                                fontSize: 48.sp,
+                                                fontWeight: FontWeight.w900,
+                                                letterSpacing: 4,
+                                                height: 1.2,
+                                                shadows: [
+                                                  Shadow(
+                                                    color: variantColor
+                                                        .withValues(
+                                                      alpha: 0.8,
                                                     ),
-                                                    Shadow(
-                                                      color: Colors.black
-                                                          .withValues(
-                                                        alpha: 0.5,
-                                                      ),
-                                                      blurRadius: 4,
-                                                      offset:
-                                                          const Offset(0, 2),
+                                                    blurRadius: 20,
+                                                  ),
+                                                  Shadow(
+                                                    color: Colors.black
+                                                        .withValues(
+                                                      alpha: 0.5,
                                                     ),
-                                                  ],
-                                                ),
+                                                    blurRadius: 4,
+                                                    offset:
+                                                        const Offset(0, 2),
+                                                  ),
+                                                ],
                                               ),
                                             ),
-                                          ),
-                                        ),
+                                          );
+                                          if (_skipHeroFlight) {
+                                            return heroChild;
+                                          }
+                                          return HeroineVelocity(
+                                            velocity: Velocity(
+                                              pixelsPerSecond:
+                                                  _currentDragVelocity,
+                                            ),
+                                            child: Heroine(
+                                              tag: widget.heroineTag,
+                                              child: heroChild,
+                                            ),
+                                          );
+                                        },
+                                      ),
                                           SizedBox(height: 16.sp),
                                           Container(
                                             padding: EdgeInsets.symmetric(
@@ -5544,12 +5544,12 @@ class _MovePreviewAnimationOverlayState
                                           ),
                                           SizedBox(height: 14.sp),
                                           Text(
-                                            'Swipe to cancel',
+                                            'Swipe down to cancel',
                                             style: AppTypography
                                                 .textXsMedium
                                                 .copyWith(
                                               color: kWhiteColor.withValues(
-                                                alpha: 0.6,
+                                                alpha: 0.65,
                                               ),
                                               fontSize: 12.sp,
                                               fontWeight: FontWeight.w600,

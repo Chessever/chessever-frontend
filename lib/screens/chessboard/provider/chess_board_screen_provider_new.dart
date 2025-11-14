@@ -1314,7 +1314,9 @@ class ChessBoardScreenNotifierNew
       ),
     );
 
-    _updateEvaluation(force: true);
+    if (!currentState.isPvPreviewActive) {
+      _updateEvaluation(force: true);
+    }
   }
 
   /// Select a variant (engine suggestion) for navigation
