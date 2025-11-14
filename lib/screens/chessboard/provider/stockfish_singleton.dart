@@ -316,7 +316,8 @@ class StockfishSingleton {
       // Check if this is still the current job
       if (_currentJob != job || completer.isCompleted) return;
       line = line.trim();
-      debugPrint('🟢 STOCKFISH STDOUT: $line');
+      // TEMPO-01-COMMENT
+      // debugPrint('🟢 STOCKFISH STDOUT: $line');
       // Parse info lines for analysis data
       if (line.startsWith('info depth')) {
         final depthMatch = RegExp(r'depth (\d+)').firstMatch(line);
@@ -336,15 +337,16 @@ class StockfishSingleton {
                 isDynamicSearch
                     ? 'Time-based (${searchDuration.inSeconds}s)'
                     : 'Depth-based (target $depth)';
-            debugPrint(
-              '⚡ ═══ ENGINE DEPTH UPDATE ═══\n'
-              '   Current Depth: $currentDepth\n'
-              '   Nodes: ${currentKnodes}k\n'
-              '   Search Mode: $searchLabel\n'
-              '   Max Depth: ${maxDepth ?? "-"}\n'
-              '   UCI Output: ${line.substring(0, line.length.clamp(0, 80).toInt())}\n'
-              '   ════════════════════════════════════',
-            );
+            // TEMPO-01-COMMENT
+            // debugPrint(
+            //   '⚡ ═══ ENGINE DEPTH UPDATE ═══\n'
+            //   '   Current Depth: $currentDepth\n'
+            //   '   Nodes: ${currentKnodes}k\n'
+            //   '   Search Mode: $searchLabel\n'
+            //   '   Max Depth: ${maxDepth ?? "-"}\n'
+            //   '   UCI Output: ${line.substring(0, line.length.clamp(0, 80).toInt())}\n'
+            //   '   ════════════════════════════════════',
+            // );
             onDepthUpdate(currentDepth, currentKnodes);
           }
         }

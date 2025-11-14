@@ -354,9 +354,10 @@ class ChessBoardScreenNotifierNew
 
     // VALIDATION: Extreme values should only occur in mate scenarios
     if (normalizedEval.abs() > 100.0 && normalizedEval.abs() < 99999) {
-      _releaseLog(
-        '⚠️ EVAL WARNING: Unusual evaluation value $normalizedEval for FEN: $fen',
-      );
+      // TEMPO-01-COMMENT
+      // _releaseLog(
+      //   '⚠️ EVAL WARNING: Unusual evaluation value $normalizedEval for FEN: $fen',
+      // );
     }
 
     return normalizedEval;
@@ -1060,28 +1061,58 @@ class ChessBoardScreenNotifierNew
     );
 
     // Create locked PV line: merge PGN history with PV moves
-    final pgnHistory = baseAnalysis.combinedMoveSans;
-    final baseMoveObjects = baseAnalysis.combinedMoves;
+    // CRITICAL: When in nested preview, use the preview card's merged history as base
+    final List<String> pgnHistory;
+    final List<Move> baseMoveObjects;
+    if (currentState.isPvPreviewActive && currentState.lockedPvMergedMoves != null) {
+      // Nested preview: Use preview card's merged history as base
+      pgnHistory = currentState.lockedPvMergedMoves!;
+      baseMoveObjects = currentState.lockedPvMergedMoveObjects ?? baseAnalysis.combinedMoves;
+      _releaseLog('🎯 PV PREVIEW: Using preview card history as base (${pgnHistory.length} moves)');
+    } else {
+      // First preview: Use analysis state's combined history
+      pgnHistory = baseAnalysis.combinedMoveSans;
+      baseMoveObjects = baseAnalysis.combinedMoves;
+      _releaseLog('🎯 PV PREVIEW: Using analysis history as base (${pgnHistory.length} moves)');
+    }
     final pvMoves = line.moves;
     final mergedMoves = [...pgnHistory, ...line.sanMoves];
     final combinedMoveObjects = [...baseMoveObjects, ...pvMoves];
 
     // Build merged position history (start + every move)
-    Position startingPosition =
-        baseAnalysis.startingPosition ??
-        (baseAnalysis.positionHistory.isNotEmpty
-            ? baseAnalysis.positionHistory.first
-            : Chess.initial);
-    // Clone to avoid mutating original
-    startingPosition = Position.setupPosition(
-      Rule.chess,
-      Setup.parseFen(startingPosition.fen),
-    );
-    var positionCursor = startingPosition;
-    final mergedPositions = <Position>[positionCursor];
-    for (final move in combinedMoveObjects) {
-      positionCursor = positionCursor.play(move);
-      mergedPositions.add(positionCursor);
+    // CRITICAL: When in nested preview, reuse existing positions to avoid recalculation
+    final List<Position> mergedPositions;
+    if (currentState.isPvPreviewActive && currentState.lockedPvMergedPositions != null) {
+      // Nested preview: Extend the existing preview positions with new PV moves
+      final existingPositions = currentState.lockedPvMergedPositions!;
+      var positionCursor = existingPositions.last;
+      final newPositions = <Position>[];
+      for (final move in pvMoves) {
+        positionCursor = positionCursor.play(move);
+        newPositions.add(positionCursor);
+      }
+      mergedPositions = [...existingPositions, ...newPositions];
+      _releaseLog('🎯 PV PREVIEW: Extended existing positions (${existingPositions.length} + ${newPositions.length} = ${mergedPositions.length})');
+    } else {
+      // First preview: Calculate all positions from scratch
+      Position startingPosition =
+          baseAnalysis.startingPosition ??
+          (baseAnalysis.positionHistory.isNotEmpty
+              ? baseAnalysis.positionHistory.first
+              : Chess.initial);
+      // Clone to avoid mutating original
+      startingPosition = Position.setupPosition(
+        Rule.chess,
+        Setup.parseFen(startingPosition.fen),
+      );
+      var positionCursor = startingPosition;
+      final positions = <Position>[positionCursor];
+      for (final move in combinedMoveObjects) {
+        positionCursor = positionCursor.play(move);
+        positions.add(positionCursor);
+      }
+      mergedPositions = positions;
+      _releaseLog('🎯 PV PREVIEW: Calculated all positions from scratch (${mergedPositions.length})');
     }
 
     final baseMoveCount = baseMoveObjects.length;
@@ -2432,9 +2463,10 @@ class ChessBoardScreenNotifierNew
       return const [];
     }
 
-    _releaseLog(
-      '🎯 BUILD PV: Starting with ${validPvs.length} valid PVs (filtered ${pvs.length - validPvs.length} empty) for $fen',
-    );
+    // TEMPO-01-COMMENT
+    // _releaseLog(
+    //   '🎯 BUILD PV: Starting with ${validPvs.length} valid PVs (filtered ${pvs.length - validPvs.length} empty) for $fen',
+    // );
 
     // OPTIMIZATION: Skip validation check - worker will filter out invalid moves
     // The validation was making PV cards load slowly by doing upfront position creation
@@ -2461,9 +2493,10 @@ class ChessBoardScreenNotifierNew
         () => _analysisLinesWorker(payload),
         priority: WorkPriority.high,
       );
-      _releaseLog(
-        '🎯 BUILD PV: Worker returned ${workerResult.length} results',
-      );
+      // TEMPO-01-COMMENT
+      // _releaseLog(
+      //   '🎯 BUILD PV: Worker returned ${workerResult.length} results',
+      // );
     } catch (e) {
       _releaseLog(
         '⚠️ BUILD PV: Worker failed: $e, falling back to main thread',
@@ -2471,15 +2504,17 @@ class ChessBoardScreenNotifierNew
     }
 
     if (workerResult.isEmpty) {
-      _releaseLog('🎯 BUILD PV: Worker result empty, running on main thread');
+      // TEMPO-01-COMMENT
+      // _releaseLog('🎯 BUILD PV: Worker result empty, running on main thread');
       workerResult = _analysisLinesWorker(payload);
       if (workerResult.isEmpty) {
         _releaseLog('❌ BUILD PV: Main thread also returned empty result');
         return const [];
       }
-      _releaseLog(
-        '🎯 BUILD PV: Main thread returned ${workerResult.length} results',
-      );
+      // TEMPO-01-COMMENT
+      // _releaseLog(
+      //   '🎯 BUILD PV: Main thread returned ${workerResult.length} results',
+      // );
     }
 
     final basePosition = Position.setupPosition(
@@ -2546,9 +2581,10 @@ class ChessBoardScreenNotifierNew
       );
     }
 
-    _releaseLog(
-      '🎯 BUILD PV: Successfully built ${lines.length} analysis lines',
-    );
+    // TEMPO-01-COMMENT
+    // _releaseLog(
+    //   '🎯 BUILD PV: Successfully built ${lines.length} analysis lines',
+    // );
     if (lines.isEmpty) {
       _releaseLog(
         '❌ BUILD PV: No valid lines could be built from ${workerResult.length} worker results',
@@ -2557,9 +2593,10 @@ class ChessBoardScreenNotifierNew
 
     // Return actual variations without padding
     // UI will handle displaying 1-3 PV cards dynamically
-    _releaseLog(
-      '✅ BUILD PV: Returning ${lines.length} principal variations (no padding)',
-    );
+    // TEMPO-01-COMMENT
+    // _releaseLog(
+    //   '✅ BUILD PV: Returning ${lines.length} principal variations (no padding)',
+    // );
 
     return lines;
   }
@@ -2823,13 +2860,15 @@ class ChessBoardScreenNotifierNew
         // Keep current state, don't apply these PVs
         return;
       }
-      _releaseLog(
-        '✅ PV APPLY: FEN match confirmed, applying ${pvLines.length} lines',
-      );
+      // TEMPO-01-COMMENT
+      // _releaseLog(
+      //   '✅ PV APPLY: FEN match confirmed, applying ${pvLines.length} lines',
+      // );
     } else {
-      _releaseLog(
-        '✅ PV APPLY: No validation needed (new selection or extension), applying ${pvLines.length} lines',
-      );
+      // TEMPO-01-COMMENT
+      // _releaseLog(
+      //   '✅ PV APPLY: No validation needed (new selection or extension), applying ${pvLines.length} lines',
+      // );
     }
 
     // CRITICAL: Preserve evaluation, mate, and isEvaluating from currentState
@@ -2876,9 +2915,10 @@ class ChessBoardScreenNotifierNew
       if (inVariantExploration) {
         // CRITICAL: We're exploring a variant
         // ALWAYS keep the original locked base - even if current position changed
-        _releaseLog(
-          '🎯 PV RESULTS: Preserving locked base FEN during variant exploration',
-        );
+        // TEMPO-01-COMMENT
+        // _releaseLog(
+        //   '🎯 PV RESULTS: Preserving locked base FEN during variant exploration',
+        // );
         final arrowShapes = _getAllVariantArrowShapes(
           pvLines,
           previousSelection,
@@ -2895,9 +2935,10 @@ class ChessBoardScreenNotifierNew
         );
       } else {
         // Not in variant exploration - safe to update base
-        _releaseLog(
-          '🎯 PV RESULTS: Not in variant exploration, updating base FEN',
-        );
+        // TEMPO-01-COMMENT
+        // _releaseLog(
+        //   '🎯 PV RESULTS: Not in variant exploration, updating base FEN',
+        // );
 
         // CRITICAL: Validate the selected variant is still valid for the new base
         // The variant index might be the same, but the actual variant is different now
