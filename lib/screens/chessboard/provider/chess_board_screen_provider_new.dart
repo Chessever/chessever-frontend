@@ -561,8 +561,12 @@ class ChessBoardScreenNotifierNew
       // - If initial load or we previously had no moves: ALWAYS jump to last move
       // - If user was viewing last move: jump to new last move
       // - If user was viewing an earlier move AND it's not initial load: stay at current position (don't jump)
+      final isPreviewActive = currentState?.isPvPreviewActive == true;
+
       final newMoveIndex =
-          shouldForceLatestPosition
+          isPreviewActive
+              ? (currentState?.analysisState.currentMoveIndex ?? lastMoveIndex)
+              : shouldForceLatestPosition
               ? lastMoveIndex // Always show latest on initial screen load or when moves first arrive
               : (wasViewingLastMove
                   ? lastMoveIndex // Jump to new last move if user was already viewing last
@@ -603,7 +607,10 @@ class ChessBoardScreenNotifierNew
                       allMoves, // Must include all moves for proper navigation
                 ),
                 moveTimes: moveTimes,
-                hasUnseenMoves: shouldMarkAsUnseen,
+                hasUnseenMoves:
+                    isPreviewActive
+                        ? currentState.hasUnseenMoves
+                        : shouldMarkAsUnseen,
               )
               : ChessBoardStateNew(
                 game: game,
@@ -627,7 +634,10 @@ class ChessBoardScreenNotifierNew
                   allMoves: allMoves,
                 ),
                 moveTimes: moveTimes,
-                hasUnseenMoves: shouldMarkAsUnseen,
+                hasUnseenMoves:
+                    isPreviewActive
+                        ? (currentState?.hasUnseenMoves ?? false)
+                        : shouldMarkAsUnseen,
               );
 
       state = AsyncValue.data(newState);
@@ -957,6 +967,9 @@ class ChessBoardScreenNotifierNew
   }
 
   Future<void> insertNullMoveAfterCurrent() async {
+    if (_isEditingBlockedByPreview(reason: 'insert null move')) {
+      return;
+    }
     _exitPvPreviewIfActive();
     if (_analysisNavigator == null) return;
     _analysisNavigator!.insertNullMoveAtPointer();
@@ -965,6 +978,9 @@ class ChessBoardScreenNotifierNew
   }
 
   Future<void> clearUserAnalysis() async {
+    if (_isEditingBlockedByPreview(reason: 'clear analysis')) {
+      return;
+    }
     _exitPvPreviewIfActive();
     if (_analysisNavigator == null) return;
     final currentState = state.value;
@@ -987,7 +1003,13 @@ class ChessBoardScreenNotifierNew
   }
 
   void playPrincipalVariationMove(AnalysisLine line) {
-    _exitPvPreviewIfActive();
+    final wasPreviewActive = state.value?.isPvPreviewActive == true;
+    if (wasPreviewActive) {
+      _exitPvPreviewIfActive();
+    }
+    if (_isEditingBlockedByPreview(reason: 'play PV move')) {
+      return;
+    }
     final currentState = state.value;
     if (currentState == null) return;
 
@@ -1021,6 +1043,9 @@ class ChessBoardScreenNotifierNew
   /// If at the end of the current line, appends moves to mainline/variation.
   /// If NOT at the end, creates a new variation with parentheses.
   void insertPvMoves(AnalysisLine line) {
+    if (_isEditingBlockedByPreview(reason: 'insert PV moves')) {
+      return;
+    }
     _exitPvPreviewIfActive();
     final currentState = state.value;
     if (currentState == null || line.moves.isEmpty) return;
@@ -1444,6 +1469,9 @@ class ChessBoardScreenNotifierNew
   /// Play next move of the selected variant forward
   void playVariantMoveForward() {
     _releaseLog('🎯 PLAY VARIANT FORWARD called');
+    if (_isEditingBlockedByPreview(reason: 'variant forward')) {
+      return;
+    }
     _exitPvPreviewIfActive();
 
     // CRITICAL: Prevent concurrent execution
@@ -1639,6 +1667,9 @@ class ChessBoardScreenNotifierNew
   /// Undo last move of the selected variant OR navigator move
   void playVariantMoveBackward() {
     _releaseLog('🎯 PLAY VARIANT BACKWARD called');
+    if (_isEditingBlockedByPreview(reason: 'variant backward')) {
+      return;
+    }
     _exitPvPreviewIfActive();
     _resumeVariantAutoPlay = false;
     var currentState = state.value;
@@ -1931,6 +1962,9 @@ class ChessBoardScreenNotifierNew
     _releaseLog(
       '🎯 ANALYSIS MOVE: Received move ${move.uci}, isDrop=$isDrop, isPremove=$isPremove',
     );
+    if (_isEditingBlockedByPreview(reason: 'board move')) {
+      return;
+    }
     _exitPvPreviewIfActive();
     _releaseLog(
       '🎯 ANALYSIS MOVE: _analysisGame is ${_analysisGame == null ? "null" : "not null"}',
@@ -2771,6 +2805,19 @@ class ChessBoardScreenNotifierNew
     }
     // If position unchanged, don't call _updateEvaluation at all
     // Let the ongoing background evaluation continue uninterrupted
+  }
+
+  bool _isEditingBlockedByPreview({String? reason}) {
+    final currentState = state.value;
+    if (currentState?.isPvPreviewActive == true) {
+      final description = reason != null ? ' ($reason)' : '';
+      _releaseLog(
+        '🚫 PREVIEW BLOCK: Edit attempt while preview is active$description',
+      );
+      HapticFeedback.mediumImpact();
+      return true;
+    }
+    return false;
   }
 
   void _playSoundForSan(String san) {
