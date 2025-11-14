@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.dart';
@@ -898,14 +899,20 @@ class ChessBoardScreenNotifierNew
   void goToMovePointer(ChessMovePointer pointer) {
     _exitPvPreviewIfActive();
     if (_analysisGame == null) return;
+    _releaseLog('🎯 GO TO MOVE POINTER: Navigating to pointer=$pointer');
     final currentState = state.value;
     if (currentState != null) {
+      _releaseLog(
+        '🎯 GO TO MOVE POINTER: Current board pointer=${currentState.analysisState.movePointer}',
+      );
       final cleared = _clearVariantSelection(currentState);
       if (!identical(cleared, currentState)) {
         state = AsyncValue.data(cleared);
       }
     }
     _analysisNavigator?.goToMovePointerUnchecked(pointer);
+    // The navigator listener will fire and call _syncAnalysisFromNavigator
+    // which will update analysisState.movePointer to match the navigator
   }
 
   ChessGameNavigatorState? navigatorStateSnapshot() {
@@ -1006,6 +1013,39 @@ class ChessBoardScreenNotifierNew
     Future.microtask(() {
       if (mounted && state.value?.selectedVariantIndex == index) {
         playVariantMoveForward();
+      }
+    });
+  }
+
+  /// Inserts all PV moves into the game history.
+  /// If at the end of the current line, appends moves to mainline/variation.
+  /// If NOT at the end, creates a new variation with parentheses.
+  void insertPvMoves(AnalysisLine line) {
+    _exitPvPreviewIfActive();
+    final currentState = state.value;
+    if (currentState == null || line.moves.isEmpty) return;
+
+    final navigator = _analysisNavigator;
+    if (navigator == null) {
+      _releaseLog('🎯 INSERT PV MOVES: No navigator available');
+      return;
+    }
+
+    _releaseLog(
+      '🎯 INSERT PV MOVES: Inserting ${line.moves.length} moves (${line.sanMoves.join(" ")})',
+    );
+
+    // Use the navigator's new method to append PV moves
+    navigator.appendMovesFromPv(
+      moves: line.moves,
+      sanMoves: line.sanMoves,
+    );
+
+    // Sync state with navigator after insertion
+    Future.microtask(() {
+      if (mounted) {
+        _syncAnalysisFromNavigator(navigator.state);
+        _updateEvaluation();
       }
     });
   }
@@ -1167,31 +1207,31 @@ class ChessBoardScreenNotifierNew
 
     final lockedLine = currentState.lockedPvLine!;
     final currentNavIndex = currentState.lockedPvNavigationIndex ?? -1;
-    final pgnHistoryLength =
-        (currentState.lockedPvMergedMoves!.length - lockedLine.moves.length);
+    final baseMoveCount = currentState.lockedPvBaseMoveCount ?? 0;
+    final totalPvMoves = lockedLine.moves.length;
 
     _releaseLog(
-      '🎯 APPLY PREVIEW: currentNavIndex=$currentNavIndex, pgnHistoryLength=$pgnHistoryLength, lockedPvMoves=${lockedLine.moves.length}',
+      '🎯 APPLY PREVIEW: currentNavIndex=$currentNavIndex, baseMoveCount=$baseMoveCount, lockedPvMoves=$totalPvMoves',
     );
 
-    // Calculate how many PV moves need to be committed (moves beyond PGN history)
-    final newMovesCount = (currentNavIndex - pgnHistoryLength + 1).clamp(0, lockedLine.moves.length);
+    final movesToCommit = math.min(
+      totalPvMoves,
+      math.max(0, currentNavIndex - baseMoveCount + 1),
+    );
+    _releaseLog('🎯 APPLY PREVIEW: Need to commit $movesToCommit PV moves');
 
-    _releaseLog('🎯 APPLY PREVIEW: Need to commit $newMovesCount PV moves');
+    final basePointerSource =
+        _pvPreviewSnapshot?.analysisState.movePointer ??
+        currentState.analysisState.movePointer;
+    final basePointer = List<Number>.of(basePointerSource);
 
-    // First, navigate back to the base position (before the PV moves)
-    // The base should be at the end of PGN history
-    if (pgnHistoryLength > 0) {
-      _releaseLog('🎯 APPLY PREVIEW: Navigating to PGN history end');
-      // Get the move pointer for the base position
-      final basePointer = currentState.analysisState.movePointer.take(pgnHistoryLength).toList();
-      _analysisNavigator!.goToMovePointerUnchecked(basePointer);
-    }
+    _ensureNavigatorPointerSynced(basePointer);
 
-    // Commit the PV moves up to the current navigation index
-    for (int i = 0; i < newMovesCount; i++) {
+    for (int i = 0; i < movesToCommit; i++) {
       final move = lockedLine.moves[i];
-      _releaseLog('🎯 APPLY PREVIEW: Committing PV move ${i + 1}/$newMovesCount: ${move.uci}');
+      _releaseLog(
+        '🎯 APPLY PREVIEW: Committing PV move ${i + 1}/$movesToCommit: ${move.uci}',
+      );
       _analysisNavigator!.makeOrGoToMove(move.uci);
     }
 
@@ -1217,6 +1257,7 @@ class ChessBoardScreenNotifierNew
     if (line.moves.isNotEmpty) {
       final firstMove = line.moves.first;
       _releaseLog('🎯 APPLY PREVIEW: Inserting new move: ${firstMove.uci}');
+      _ensureNavigatorPointerSynced();
       _analysisNavigator!.makeOrGoToMove(firstMove.uci);
 
       final (_, san) = currentState.analysisState.position.makeSan(firstMove);
@@ -1516,6 +1557,7 @@ class ChessBoardScreenNotifierNew
         state = AsyncValue.data(clearedState);
 
         // Make move through navigator - this is now the single source of truth
+        _ensureNavigatorPointerSynced();
         _analysisNavigator!.makeOrGoToMove(nextMove.uci);
         _playSoundForSan(san);
 
@@ -2035,6 +2077,27 @@ class ChessBoardScreenNotifierNew
     }
   }
 
+  void _ensureNavigatorPointerSynced([ChessMovePointer? pointerOverride]) {
+    if (_analysisNavigator == null || _analysisGame == null) {
+      return;
+    }
+    final currentState = state.value;
+    if (currentState == null) {
+      return;
+    }
+    final targetPointer =
+        pointerOverride ?? currentState.analysisState.movePointer;
+    final navigatorState = ref.read(
+      chessGameNavigatorProvider(_analysisGame!),
+    );
+    const pointerEquality = ListEquality<int>();
+    if (!pointerEquality.equals(navigatorState.movePointer, targetPointer)) {
+      _analysisNavigator!.goToMovePointerUnchecked(
+        List<Number>.of(targetPointer),
+      );
+    }
+  }
+
   void onAnalysisPromotionSelection(Role? role) {
     if (_analysisGame != null) {
       if (role == null) {
@@ -2081,11 +2144,21 @@ class ChessBoardScreenNotifierNew
             );
             const pointerEquality = ListEquality<int>();
             final boardPointer = currentState.analysisState.movePointer;
+            _releaseLog(
+              '🎯 POINTER SYNC CHECK: Board pointer=$boardPointer, Navigator pointer=${navigatorState.movePointer}',
+            );
             if (!pointerEquality.equals(
               navigatorState.movePointer,
               boardPointer,
             )) {
+              _releaseLog(
+                '🎯 POINTER SYNC: Pointers differ, syncing navigator to board pointer=$boardPointer',
+              );
               _analysisNavigator?.goToMovePointerUnchecked(boardPointer);
+            } else {
+              _releaseLog(
+                '🎯 POINTER SYNC: Pointers already in sync at $boardPointer',
+              );
             }
             _analysisNavigator?.makeOrGoToMove(move.uci);
             HapticFeedback.mediumImpact();
@@ -2665,6 +2738,12 @@ class ChessBoardScreenNotifierNew
     }
     final snapshot = _pvPreviewSnapshot ?? currentState;
     _pvPreviewSnapshot = null;
+
+    // Check if position is changing when exiting preview
+    final currentFen = currentState.analysisState.position.fen;
+    final snapshotFen = snapshot.analysisState.position.fen;
+    final positionChanged = currentFen != snapshotFen;
+
     state = AsyncValue.data(
       currentState.copyWith(
         analysisState: snapshot.analysisState,
@@ -2680,9 +2759,18 @@ class ChessBoardScreenNotifierNew
         lockedPvMergedPositions: null,
         lockedPvBaseMoveCount: null,
         lockedPvNavigationIndex: null,
+        // CRITICAL: Preserve isEvaluating state to show continued progress
+        isEvaluating: positionChanged ? true : currentState.isEvaluating,
       ),
     );
-    _updateEvaluation(force: true);
+
+    // CRITICAL: Only force new evaluation if position changed
+    // If returning to same position, let ongoing evaluation continue without interference
+    if (positionChanged) {
+      _updateEvaluation(force: true);
+    }
+    // If position unchanged, don't call _updateEvaluation at all
+    // Let the ongoing background evaluation continue uninterrupted
   }
 
   void _playSoundForSan(String san) {
@@ -4022,6 +4110,15 @@ class ChessBoardScreenNotifierNew
     final current = state.value;
     if (current == null) {
       return;
+    }
+
+    _releaseLog(
+      '🎯 SYNC FROM NAVIGATOR: Syncing to pointer=${navigatorState.movePointer}',
+    );
+    if (navigatorState.currentMove != null) {
+      _releaseLog(
+        '🎯 SYNC FROM NAVIGATOR: Current move is ${navigatorState.currentMove!.san} (move #${navigatorState.currentMove!.num})',
+      );
     }
 
     try {
