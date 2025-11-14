@@ -42,6 +42,7 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:heroine/heroine.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:sprung/sprung.dart';
 
 /// Cached move impact results keyed by game id/signature to avoid recomputation
@@ -2285,62 +2286,78 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                   duration: const Duration(milliseconds: 300),
                   curve: Curves.easeOut,
                   decoration: BoxDecoration(
-                    color: kBlackColor.withValues(alpha: 0.25),
                     borderRadius: BorderRadius.only(
                       topLeft: Radius.circular(12.sp),
                       topRight: Radius.circular(12.sp),
                     ),
                   ),
-                  child: Align(
-                    alignment: Alignment.center,
-                    child: TweenAnimationBuilder<double>(
-                      duration: const Duration(milliseconds: 400),
-                      curve: Curves.elasticOut,
-                      tween: Tween(begin: 0.0, end: 1.0),
-                      builder: (context, value, child) {
-                        final clampedValue = value.clamp(0.0, 1.0);
-                        return Transform.scale(
-                          scale: 0.8 + (clampedValue * 0.2),
-                          child: Opacity(
-                            opacity: clampedValue,
-                            child: child,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(12.sp),
+                      topRight: Radius.circular(12.sp),
+                    ),
+                    child: Stack(
+                      children: [
+                        BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                          child: Container(
+                            color: Colors.black.withValues(alpha: 0.55),
                           ),
-                        );
-                      },
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 14.sp,
-                          vertical: 12.sp,
                         ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.auto_awesome,
-                              color: Colors.white.withValues(alpha: 0.9),
-                              size: 18.sp,
-                            ),
-                            SizedBox(height: 8.sp),
-                            Text(
-                              'Preview mode',
-                              textAlign: TextAlign.center,
-                              style: AppTypography.textSmMedium.copyWith(
-                                color: Colors.white,
-                                letterSpacing: 0.4,
+                        Align(
+                          alignment: Alignment.center,
+                          child: TweenAnimationBuilder<double>(
+                            duration: const Duration(milliseconds: 400),
+                            curve: Curves.elasticOut,
+                            tween: Tween(begin: 0.0, end: 1.0),
+                            builder: (context, value, child) {
+                              final clampedValue = value.clamp(0.0, 1.0);
+                              return Transform.scale(
+                                scale: 0.8 + (clampedValue * 0.2),
+                                child: Opacity(
+                                  opacity: clampedValue,
+                                  child: child,
+                                ),
+                              );
+                            },
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 18.sp,
+                                vertical: 16.sp,
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.visibility_outlined,
+                                    color: Colors.white.withValues(alpha: 0.95),
+                                    size: 20.sp,
+                                  ),
+                                  SizedBox(height: 10.sp),
+                                  Text(
+                                    'Preview mode',
+                                    textAlign: TextAlign.center,
+                                    style: AppTypography.textSmMedium.copyWith(
+                                      color: Colors.white,
+                                      letterSpacing: 0.4,
+                                    ),
+                                  ),
+                                  SizedBox(height: 6.sp),
+                                  Text(
+                                    'Tap anywhere to exit or swipe the hero card up to apply.',
+                                    textAlign: TextAlign.center,
+                                    style: AppTypography.textXsRegular.copyWith(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.85),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            SizedBox(height: 4.sp),
-                            Text(
-                              'Tap anywhere to exit or swipe the hero card up to apply.',
-                              textAlign: TextAlign.center,
-                              style: AppTypography.textXsRegular.copyWith(
-                                color: Colors.white.withValues(alpha: 0.8),
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   ),
                 ),
@@ -2479,30 +2496,112 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       return child;
     }
 
-    return GestureDetector(
-      onTap: () => _toggleVariationCollapse(token),
-      onLongPress: () => _showVariationPgnCard(token.variation!),
+    final heroChild = Heroine(
+      tag: token.heroineTag ?? 'variation-${token.variation!.id}',
       child: child,
+    );
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        _focusVariationHead(token.variation!);
+        _toggleVariationCollapse(token);
+      },
+      onLongPress: () => _showVariationHeroOverlay(token),
+      child: heroChild,
     );
   }
 
-  void _showVariationPgnCard(NotationVariationNode variation) {
+  void _focusVariationHead(NotationVariationNode variation) {
+    if (variation.moves.isEmpty) {
+      return;
+    }
+    final params = ChessBoardProviderParams(
+      game: widget.game,
+      index: widget.index,
+    );
+    final headPointer = List<Number>.of(variation.moves.first.pointer);
+    ref
+        .read(chessBoardScreenProviderNew(params).notifier)
+        .goToMovePointer(headPointer);
+  }
+
+  void _showVariationHeroOverlay(_NotationDisplayToken token) {
+    final variation = token.variation;
+    if (variation == null) return;
     HapticFeedback.mediumImpact();
+
+    final params = ChessBoardProviderParams(
+      game: widget.game,
+      index: widget.index,
+    );
+    final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+    final headPointer =
+        variation.moves.isEmpty
+            ? null
+            : List<Number>.of(variation.moves.first.pointer);
+    final heroineTag = token.heroineTag ?? 'variation-${variation.id}';
+    final summary = _formatVariationText(variation.moves);
+    final condensedSummary =
+        summary.isEmpty ? '...' : summary.startsWith('...')
+            ? summary
+            : '... $summary';
     final pgn = _generateVariationPgn(variation);
+    final hostContext = context;
+
+    Future<void> handleUpgrade(BuildContext overlayContext) async {
+      if (headPointer == null) return;
+      final confirmed = await showDialog<bool>(
+        context: overlayContext,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Upgrade to main variant?'),
+          content: const Text(
+            'This will replace the live main variant with this variation and stop following incoming live moves.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Upgrade'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+
+      final snapshot = notifier.navigatorStateSnapshot();
+      await notifier.promoteVariationAtPointer(headPointer);
+      if (!overlayContext.mounted) return;
+      Navigator.of(overlayContext).pop();
+
+      if (snapshot != null) {
+        _showUndoSnackBar(
+          hostContext,
+          params,
+          snapshot,
+          'Variation promoted',
+        );
+      } else {
+        _showInfoSnack(hostContext, 'Variation promoted');
+      }
+    }
+
+    Future<void> handleShare(BuildContext overlayContext) async {
+      await Share.share(pgn, subject: 'PGN Variation');
+    }
 
     Navigator.of(context).push(
-      PageRouteBuilder(
-        opaque: false,
-        barrierColor: Colors.black.withValues(alpha: 0.7),
-        barrierDismissible: true,
-        pageBuilder: (context, animation, secondaryAnimation) {
-          return FadeTransition(
-            opacity: animation,
-            child: _VariationPgnCard(pgn: pgn),
-          );
-        },
-        transitionDuration: const Duration(milliseconds: 300),
-        reverseTransitionDuration: const Duration(milliseconds: 200),
+      _HeroinePreviewRoute(
+        child: _VariationHeroOverlay(
+          heroineTag: heroineTag,
+          variationLabel: condensedSummary,
+          pgn: pgn,
+          onShare: handleShare,
+          onUpgrade: headPointer == null ? null : handleUpgrade,
+        ),
       ),
     );
   }
@@ -2686,6 +2785,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         final forcedOpen = forcedOpenIds.contains(variation.id);
         final manuallyCollapsed = _collapsedVariationIds.contains(variation.id);
         final manuallyExpanded = _expandedVariationIds.contains(variation.id);
+        final variationHeroTagBase =
+            'notation-variation-${variation.id}-${variation.depth}-${variation.variationIndex}';
 
         bool collapsed = defaultCollapsed;
         if (forcedOpen) {
@@ -2711,6 +2812,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             isCollapsed: collapsed,
             defaultsToCollapsed: defaultCollapsed,
             isForcedOpen: forcedOpen,
+            heroineTag: '$variationHeroTagBase-open',
           ),
         );
         if (collapsed) {
@@ -2725,6 +2827,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
               isCollapsed: true,
               defaultsToCollapsed: defaultCollapsed,
               isForcedOpen: forcedOpen,
+              heroineTag: '$variationHeroTagBase-placeholder',
             ),
           );
         } else {
@@ -2749,6 +2852,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             isCollapsed: collapsed,
             defaultsToCollapsed: defaultCollapsed,
             isForcedOpen: forcedOpen,
+            heroineTag: '$variationHeroTagBase-close',
           ),
         );
       }
@@ -3264,6 +3368,7 @@ class _NotationDisplayToken {
   final bool isCollapsed;
   final bool defaultsToCollapsed;
   final bool isForcedOpen;
+  final String? heroineTag;
 
   const _NotationDisplayToken({
     required this.type,
@@ -3280,6 +3385,7 @@ class _NotationDisplayToken {
     this.isCollapsed = false,
     this.defaultsToCollapsed = false,
     this.isForcedOpen = false,
+    this.heroineTag,
   });
 }
 
@@ -3691,6 +3797,42 @@ class _PrincipalVariationListState
                 ),
               ),
             ),
+            Positioned(
+              top: 10.sp,
+              right: 10.sp,
+              child: Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: 10.sp,
+                  vertical: 4.sp,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: variantColor.withValues(alpha: 0.7),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.visibility,
+                      size: 12.sp,
+                      color: Colors.white,
+                    ),
+                    SizedBox(width: 4.sp),
+                    Text(
+                      'Preview',
+                      style: AppTypography.textXsMedium.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -3793,6 +3935,15 @@ class _PrincipalVariationListState
           final lastMoveIndex = line.sanMoves.length - 1;
           if (lastMoveIndex >= 0) {
             final lastMoveText = pvTokens.lastWhere((t) => t.moveIndex != null).text;
+            if (widget.state.isPvPreviewActive &&
+                widget.state.lockedPvLine != null) {
+              notifier.previewPrincipalVariationMoveAt(
+                line,
+                variantIndex,
+                lastMoveIndex,
+              );
+              return;
+            }
             final heroineTag = 'pv_move_${identityHashCode(line)}_${variantIndex}_$lastMoveIndex';
             _showMovePreviewAnimation(
               context,
@@ -3845,7 +3996,7 @@ class _PrincipalVariationListState
                               // then insert this move and exit preview mode
                               notifier.applyPreviewHistoryAndInsertMove(line);
                             } else {
-                              // Case 2: Normal mode - insert regularly
+                              // Case 2: Normal mode - play PV move one by one
                               notifier.clearPvPreview();
                               notifier.playPrincipalVariationMove(line);
                             }
@@ -3972,6 +4123,12 @@ class _PrincipalVariationListState
                     )
                     : PageView.builder(
                       controller: _pageController,
+                      physics:
+                          hasLockedPv
+                              ? const NeverScrollableScrollPhysics()
+                              : const BouncingScrollPhysics(
+                                parent: AlwaysScrollableScrollPhysics(),
+                              ),
                       onPageChanged: (pageIndex) {
                         setState(() {
                           _currentPage = pageIndex;
@@ -4095,22 +4252,35 @@ class _PrincipalVariationListState
                 final isLockedDot = hasLockedPv && index == 0;
                 final isActive = index == _currentPage;
                 final dynamicIndex = hasLockedPv ? index - 1 : index;
-                final Color activeColor =
-                    isLockedDot
-                        ? kPrimaryColor
-                        : displayLines.isNotEmpty
-                            ? notifier.getVariantColor(
-                              dynamicIndex.clamp(
-                                0,
-                                displayLines.length - 1,
-                              ),
-                              true,
-                            )
-                            : kWhiteColor.withValues(alpha: 0.7);
-                final Color dotColor =
-                    isActive
-                        ? activeColor
-                        : kWhiteColor.withValues(alpha: 0.3);
+
+                Color dotColor;
+                Border? border;
+
+                if (isLockedDot) {
+                  dotColor =
+                      isActive
+                          ? kWhiteColor.withValues(alpha: 0.95)
+                          : kWhiteColor.withValues(alpha: 0.35);
+                  border = Border.all(
+                    color: kWhiteColor.withValues(alpha: isActive ? 1.0 : 0.65),
+                    width: isActive ? 1.5 : 1,
+                  );
+                } else if (displayLines.isNotEmpty) {
+                  final variantColor = notifier.getVariantColor(
+                    dynamicIndex.clamp(0, displayLines.length - 1),
+                    true,
+                  );
+                  dotColor =
+                      isActive
+                          ? variantColor
+                          : variantColor.withValues(alpha: 0.35);
+                } else {
+                  dotColor =
+                      isActive
+                          ? kWhiteColor.withValues(alpha: 0.85)
+                          : kWhiteColor.withValues(alpha: 0.3);
+                }
+
                 final double size = isLockedDot ? 8.w : 6.w;
                 return GestureDetector(
                   onTap: () {
@@ -4129,18 +4299,7 @@ class _PrincipalVariationListState
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: dotColor,
-                      border:
-                          isLockedDot
-                              ? Border.all(
-                                color:
-                                    isActive
-                                        ? kWhiteColor
-                                        : kPrimaryColor.withValues(
-                                          alpha: 0.7,
-                                        ),
-                                width: isActive ? 1.5 : 1,
-                              )
-                              : null,
+                      border: border,
                     ),
                   ),
                 );
@@ -4606,6 +4765,152 @@ class _ShareGameScreen extends ConsumerWidget {
       gameStatus: game.gameStatus,
       gameId: game.gameId, // Pass game ID for correct eval display
       onClose: () => Navigator.of(context).pop(),
+    );
+  }
+}
+
+class _VariationHeroOverlay extends StatelessWidget {
+  final String heroineTag;
+  final String variationLabel;
+  final String pgn;
+  final Future<void> Function(BuildContext context) onShare;
+  final Future<void> Function(BuildContext context)? onUpgrade;
+
+  const _VariationHeroOverlay({
+    required this.heroineTag,
+    required this.variationLabel,
+    required this.pgn,
+    required this.onShare,
+    required this.onUpgrade,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => Navigator.of(context).pop(),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 20.sp),
+        color: Colors.black.withValues(alpha: 0.65),
+        child: Center(
+          child: Heroine(
+            tag: heroineTag,
+            child: GestureDetector(
+              onTap: () {},
+              child: Container(
+                width: double.infinity,
+                margin: EdgeInsets.symmetric(vertical: 24.sp),
+                padding: EdgeInsets.all(20.sp),
+                decoration: BoxDecoration(
+                  color: kBlackColor,
+                  borderRadius: BorderRadius.circular(18.sp),
+                  border: Border.all(
+                    color: kPrimaryColor.withValues(alpha: 0.35),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: kBlackColor.withValues(alpha: 0.45),
+                      blurRadius: 28,
+                      offset: const Offset(0, 18),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.alt_route,
+                          color: kPrimaryColor,
+                          size: 20.ic,
+                        ),
+                        SizedBox(width: 10.w),
+                        Expanded(
+                          child: Text(
+                            'Variation focus',
+                            style: AppTypography.textLgBold.copyWith(
+                              color: kWhiteColor,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(
+                            Icons.close,
+                            color: kWhiteColor70,
+                            size: 18.ic,
+                          ),
+                          onPressed: () => Navigator.of(context).pop(),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 12.h),
+                    Text(
+                      variationLabel,
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: kWhiteColor,
+                      ),
+                    ),
+                    SizedBox(height: 16.h),
+                    Container(
+                      padding: EdgeInsets.all(14.sp),
+                      decoration: BoxDecoration(
+                        color: kWhiteColor.withValues(alpha: 0.04),
+                        borderRadius: BorderRadius.circular(12.sp),
+                        border: Border.all(
+                          color: kWhiteColor.withValues(alpha: 0.08),
+                        ),
+                      ),
+                      constraints: BoxConstraints(
+                        maxHeight:
+                            MediaQuery.of(context).size.height * 0.35,
+                      ),
+                      child: SingleChildScrollView(
+                        child: SelectableText(
+                          pgn,
+                          style: AppTypography.textXsMedium.copyWith(
+                            color: kWhiteColor.withValues(alpha: 0.9),
+                            height: 1.45,
+                            fontFamily: 'monospace',
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 20.h),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: () => onShare(context),
+                            icon: Icon(Icons.share, size: 16.ic),
+                            label: const Text('Share PGN'),
+                          ),
+                        ),
+                        SizedBox(width: 12.w),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed:
+                                onUpgrade == null
+                                    ? null
+                                    : () => onUpgrade!(context),
+                            icon: Icon(
+                              Icons.upgrade,
+                              size: 16.ic,
+                            ),
+                            label: const Text('Upgrade to main'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -5580,121 +5885,4 @@ class _MovePreviewAnimationOverlayState
 
   double cos(double radians) => math.cos(radians);
   double sin(double radians) => math.sin(radians);
-}
-
-class _VariationPgnCard extends StatelessWidget {
-  final String pgn;
-
-  const _VariationPgnCard({required this.pgn});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Hero(
-        tag: 'variation-pgn-card',
-        child: Container(
-          margin: EdgeInsets.symmetric(horizontal: 40.sp),
-          padding: EdgeInsets.all(24.sp),
-          decoration: BoxDecoration(
-            color: kBlackColor,
-            borderRadius: BorderRadius.circular(16.sp),
-            border: Border.all(
-              color: kPrimaryColor.withValues(alpha: 0.5),
-              width: 2,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: kPrimaryColor.withValues(alpha: 0.3),
-                blurRadius: 24,
-                spreadRadius: 8,
-              ),
-            ],
-          ),
-          child: Material(
-            color: Colors.transparent,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.subdirectory_arrow_right,
-                      color: kPrimaryColor,
-                      size: 24.ic,
-                    ),
-                    SizedBox(width: 12.w),
-                    Expanded(
-                      child: Text(
-                        'Variation PGN',
-                        style: AppTypography.textLgBold.copyWith(
-                          color: kWhiteColor,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      icon: Icon(Icons.close, color: kWhiteColor70),
-                      onPressed: () => Navigator.of(context).pop(),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 16.h),
-                DividerWidget(),
-                SizedBox(height: 16.h),
-                Container(
-                  padding: EdgeInsets.all(16.sp),
-                  decoration: BoxDecoration(
-                    color: kWhiteColor.withValues(alpha: 0.05),
-                    borderRadius: BorderRadius.circular(8.sp),
-                  ),
-                  constraints: BoxConstraints(
-                    maxHeight: MediaQuery.of(context).size.height * 0.4,
-                  ),
-                  child: SingleChildScrollView(
-                    child: SelectableText(
-                      pgn,
-                      style: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.9),
-                        fontFamily: 'monospace',
-                        height: 1.6,
-                      ),
-                    ),
-                  ),
-                ),
-                SizedBox(height: 20.h),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: pgn));
-                    HapticFeedback.lightImpact();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('PGN copied to clipboard'),
-                        duration: const Duration(seconds: 2),
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
-                  },
-                  icon: Icon(Icons.copy, size: 18.ic),
-                  label: Text('Copy PGN'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: kPrimaryColor,
-                    foregroundColor: kWhiteColor,
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 24.sp,
-                      vertical: 12.sp,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8.sp),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }

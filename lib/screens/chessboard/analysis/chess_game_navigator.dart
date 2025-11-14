@@ -521,6 +521,14 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
     debugPrint(
       '🎯 NAVIGATOR makeOrGoToMove: Creating variation branch (mid-line or mainline tail)',
     );
+    debugPrint(
+      '🎯 NAVIGATOR makeOrGoToMove: Current pointer=${state.movePointer}, will attach variation to move at pointer.last=${state.movePointer.isEmpty ? "EMPTY" : state.movePointer.last}',
+    );
+    if (state.currentMove != null) {
+      debugPrint(
+        '🎯 NAVIGATOR makeOrGoToMove: Variation will be attached AFTER move: ${state.currentMove!.san} (move #${state.currentMove!.num})',
+      );
+    }
     int? newVariationIndex;
     final updatedMainline = _addVariationToPointer(
       state.game.mainline,
@@ -674,6 +682,162 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
         game: state.game.copyWith(mainline: updatedMainline),
         movePointer: newPointer,
       ),
+    );
+  }
+
+  /// Appends multiple moves as a variation or to the end of the current line.
+  /// If at the end of the current line, appends moves to that line.
+  /// Otherwise, creates a new variation containing all the moves.
+  void appendMovesFromPv({
+    required List<Move> moves,
+    required List<String> sanMoves,
+  }) {
+    if (moves.isEmpty || sanMoves.isEmpty) {
+      debugPrint('🎯 NAVIGATOR appendMovesFromPv: Empty moves list');
+      return;
+    }
+
+    final currentLine = state.currentLine;
+    if (currentLine == null) {
+      debugPrint('🎯 NAVIGATOR appendMovesFromPv: No current line');
+      return;
+    }
+
+    final currentIndex = state.movePointer.isEmpty ? -1 : state.movePointer.last;
+    final isAtLineEnd = currentIndex == currentLine.length - 1;
+
+    debugPrint(
+      '🎯 NAVIGATOR appendMovesFromPv: ${moves.length} moves, isAtLineEnd=$isAtLineEnd, currentIndex=$currentIndex, lineLength=${currentLine.length}',
+    );
+
+    // Build ChessMove objects from the PV moves
+    var position = Position.setupPosition(
+      Rule.chess,
+      Setup.parseFen(state.currentFen),
+    );
+
+    final currentMove = state.currentMove;
+    var moveNumber =
+        currentMove != null
+            ? (currentMove.turn == ChessColor.black
+                ? currentMove.num + 1
+                : currentMove.num)
+            : 1;
+
+    final chessMoves = <ChessMove>[];
+    for (var i = 0; i < moves.length; i++) {
+      final move = moves[i];
+      final san = sanMoves[i];
+
+      if (!position.isLegal(move)) {
+        debugPrint(
+          '🎯 NAVIGATOR appendMovesFromPv: Illegal move ${move.uci} at index $i',
+        );
+        break;
+      }
+
+      final newPosition = position.play(move);
+      final movingColor =
+          position.turn == Side.white ? ChessColor.white : ChessColor.black;
+      final nextToMove =
+          newPosition.turn == Side.white ? ChessColor.white : ChessColor.black;
+
+      chessMoves.add(
+        ChessMove(
+          num: moveNumber,
+          fen: newPosition.fen,
+          san: san,
+          uci: move.uci,
+          turn: nextToMove,
+        ),
+      );
+
+      position = newPosition;
+      if (movingColor == ChessColor.white) {
+        moveNumber++;
+      }
+    }
+
+    if (chessMoves.isEmpty) {
+      debugPrint('🎯 NAVIGATOR appendMovesFromPv: No valid moves to add');
+      return;
+    }
+
+    if (isAtLineEnd) {
+      // Append moves to the end of the current line
+      debugPrint(
+        '🎯 NAVIGATOR appendMovesFromPv: Appending ${chessMoves.length} moves to end of line',
+      );
+
+      var updatedMainline = state.game.mainline;
+      for (final chessMove in chessMoves) {
+        updatedMainline = _appendMoveAfterPointer(
+          updatedMainline,
+          state.movePointer,
+          0,
+          chessMove,
+        );
+
+        // Update pointer to the new move
+        final newPointer = List<Number>.of(state.movePointer);
+        if (newPointer.isEmpty) {
+          newPointer.add(0);
+        } else {
+          newPointer.last++;
+        }
+        state = ChessGameNavigatorState(
+          game: state.game.copyWith(mainline: updatedMainline),
+          movePointer: newPointer,
+        );
+      }
+    } else {
+      // Create a variation with all the moves
+      debugPrint(
+        '🎯 NAVIGATOR appendMovesFromPv: Creating variation with ${chessMoves.length} moves',
+      );
+
+      int? newVariationIndex;
+      final updatedMainline = _addVariationToPointer(
+        state.game.mainline,
+        state.movePointer,
+        0,
+        chessMoves.first,
+        (index) => newVariationIndex = index,
+      );
+
+      if (newVariationIndex == null) {
+        debugPrint('🎯 NAVIGATOR appendMovesFromPv: Failed to create variation');
+        return;
+      }
+
+      // Now append remaining moves to the new variation
+      final newPointer = <Number>[
+        ...state.movePointer,
+        newVariationIndex!,
+        0,
+      ];
+      var currentMainline = updatedMainline;
+
+      for (var i = 1; i < chessMoves.length; i++) {
+        currentMainline = _appendMoveAfterPointer(
+          currentMainline,
+          newPointer,
+          0,
+          chessMoves[i],
+        );
+        newPointer.last++;
+      }
+
+      replaceState(
+        ChessGameNavigatorState(
+          game: state.game.copyWith(mainline: currentMainline),
+          movePointer: newPointer,
+        ),
+      );
+    }
+
+    debugPrint(
+      '🎯 NAVIGATOR appendMovesFromPv: Completed, new pointer=${state.movePointer}',
     );
   }
 
