@@ -2233,28 +2233,30 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       child: Container(
         alignment: Alignment.centerLeft,
         padding: EdgeInsets.all(20.sp),
-        child: Wrap(
-          spacing: 2.sp,
-          runSpacing: 2.sp,
-          children:
-              tokens.map((token) {
-                switch (token.type) {
-                  case _NotationTokenType.move:
-                    return _buildMoveChip(
-                      token,
-                      params,
-                      notifier,
-                      currentPly,
-                      pointerForHighlightId,
-                      tailPointerId,
-                    );
-                  case _NotationTokenType.openParen:
-                  case _NotationTokenType.closeParen:
-                  case _NotationTokenType.ellipsis:
-                  case _NotationTokenType.variationPlaceholder:
-                    return _buildAuxToken(token);
-                }
-              }).toList(),
+        child: ExcludeSemantics(
+          child: Wrap(
+            spacing: 2.sp,
+            runSpacing: 2.sp,
+            children:
+                tokens.map((token) {
+                  switch (token.type) {
+                    case _NotationTokenType.move:
+                      return _buildMoveChip(
+                        token,
+                        params,
+                        notifier,
+                        currentPly,
+                        pointerForHighlightId,
+                        tailPointerId,
+                      );
+                    case _NotationTokenType.openParen:
+                    case _NotationTokenType.closeParen:
+                    case _NotationTokenType.ellipsis:
+                    case _NotationTokenType.variationPlaceholder:
+                      return _buildAuxToken(token);
+                  }
+                }).toList(),
+          ),
         ),
       ),
     );
@@ -2496,9 +2498,12 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       return child;
     }
 
-    final heroChild = Heroine(
-      tag: token.heroineTag ?? 'variation-${token.variation!.id}',
-      child: child,
+    final heroChild = ExcludeSemantics(
+      excluding: true,
+      child: Heroine(
+        tag: token.heroineTag ?? 'variation-${token.variation!.id}',
+        child: child,
+      ),
     );
 
     return GestureDetector(
@@ -2548,6 +2553,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             : '... $summary';
     final pgn = _generateVariationPgn(variation);
     final hostContext = context;
+    final scaffoldMessenger = ScaffoldMessenger.of(hostContext);
 
     Future<void> handleUpgrade(BuildContext overlayContext) async {
       if (headPointer == null) return;
@@ -2593,12 +2599,25 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       await Share.share(pgn, subject: 'PGN Variation');
     }
 
+    Future<void> handleCopy(BuildContext overlayContext) async {
+      await Clipboard.setData(ClipboardData(text: pgn));
+      HapticFeedback.lightImpact();
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(
+          content: Text('Variation PGN copied'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+
     Navigator.of(context).push(
       _HeroinePreviewRoute(
-        child: _VariationHeroOverlay(
+        child: _NotationHeroOverlay(
           heroineTag: heroineTag,
-          variationLabel: condensedSummary,
+          title: 'Variation',
+          summary: condensedSummary,
           pgn: pgn,
+          onCopy: handleCopy,
           onShare: handleShare,
           onUpgrade: headPointer == null ? null : handleUpgrade,
         ),
@@ -3760,142 +3779,116 @@ class _PrincipalVariationListState
       final badgeBorderColor = variantColor.withValues(alpha: 0.6);
       final pvTokens = _buildPvTokens(sanMoves);
 
-      return Container(
-        width: MediaQuery.of(context).size.width - 40.sp,
-        margin: EdgeInsets.symmetric(horizontal: 2.sp),
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: borderColor,
-            width: 1.5,
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onLongPress: () {
+          HapticFeedback.heavyImpact();
+          notifier.applyPreviewHistoryAndInsertMove(lockedLine);
+        },
+        child: Container(
+          width: MediaQuery.of(context).size.width - 40.sp,
+          margin: EdgeInsets.symmetric(horizontal: 2.sp),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: borderColor,
+              width: 1.5,
+            ),
+            borderRadius: BorderRadius.circular(6.sp),
+            color: backgroundColor,
           ),
-          borderRadius: BorderRadius.circular(6.sp),
-          color: backgroundColor,
-        ),
-        clipBehavior: Clip.hardEdge,
-        child: Stack(
-          children: [
-            // Subtle left accent border for preview indication
-            Positioned(
-              left: 0,
-              top: 0,
-              bottom: 0,
-              child: Container(
-                width: 3.sp,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      variantColor.withValues(alpha: 0.9),
-                      variantColor.withValues(alpha: 0.6),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(6.sp),
-                    bottomLeft: Radius.circular(6.sp),
+          clipBehavior: Clip.hardEdge,
+          child: Stack(
+            children: [
+              // Subtle left accent border for preview indication
+              Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                child: Container(
+                  width: 3.sp,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        variantColor.withValues(alpha: 0.9),
+                        variantColor.withValues(alpha: 0.6),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(6.sp),
+                      bottomLeft: Radius.circular(6.sp),
+                    ),
                   ),
                 ),
               ),
-            ),
-            Positioned(
-              top: 10.sp,
-              right: 10.sp,
-              child: Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: 10.sp,
-                  vertical: 4.sp,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.6),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(
-                    color: variantColor.withValues(alpha: 0.7),
-                    width: 1,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.visibility,
-                      size: 12.sp,
-                      color: Colors.white,
-                    ),
-                    SizedBox(width: 4.sp),
-                    Text(
-                      'Preview',
-                      style: AppTypography.textXsMedium.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Evaluation badge - non-interactive for static card
-                      Padding(
-                        padding: EdgeInsets.fromLTRB(12.sp, 10.sp, 0, 10.sp),
-                        child: Container(
-                          margin: EdgeInsets.only(right: 10.sp),
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 8.sp,
-                            vertical: 4.sp,
-                          ),
-                          decoration: BoxDecoration(
-                            color: badgeBackgroundColor,
-                            borderRadius: BorderRadius.circular(4.sp),
-                            border: Border.all(
-                              color: badgeBorderColor,
-                              width: 1.0,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Evaluation badge - non-interactive for static card
+                        Padding(
+                          padding: EdgeInsets.fromLTRB(12.sp, 10.sp, 0, 10.sp),
+                          child: Container(
+                            margin: EdgeInsets.only(right: 10.sp),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 8.sp,
+                              vertical: 4.sp,
                             ),
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            evalText,
-                            style: AppTypography.textXsMedium.copyWith(
-                              color: kWhiteColor,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ),
-                      // Notation text - shows merged PGN + PV moves
-                      Expanded(
-                        child: ClipRect(
-                          child: SingleChildScrollView(
-                            controller: _previewScrollController,
-                            primary: false,
-                            physics: const BouncingScrollPhysics(
-                              parent: AlwaysScrollableScrollPhysics(),
-                            ),
-                            padding: EdgeInsets.fromLTRB(0, 10.sp, 12.sp, 10.sp),
-                            child: RichText(
-                              text: TextSpan(
-                                style: AppTypography.textXsMedium.copyWith(
-                                  color: kWhiteColor.withValues(alpha: 0.95),
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                children: buildPreviewCardSpans(pvTokens, variantColor),
+                            decoration: BoxDecoration(
+                              color: badgeBackgroundColor,
+                              borderRadius: BorderRadius.circular(4.sp),
+                              border: Border.all(
+                                color: badgeBorderColor,
+                                width: 1.0,
                               ),
-                              softWrap: true,
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              evalText,
+                              style: AppTypography.textXsMedium.copyWith(
+                                color: kWhiteColor,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                        // Notation text - shows merged PGN + PV moves
+                        Expanded(
+                          child: ClipRect(
+                            child: SingleChildScrollView(
+                              controller: _previewScrollController,
+                              primary: false,
+                              physics: const BouncingScrollPhysics(
+                                parent: AlwaysScrollableScrollPhysics(),
+                              ),
+                              padding: EdgeInsets.fromLTRB(0, 10.sp, 12.sp, 10.sp),
+                              child: RichText(
+                                text: TextSpan(
+                                  style: AppTypography.textXsMedium.copyWith(
+                                    color: kWhiteColor.withValues(alpha: 0.95),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  children: buildPreviewCardSpans(
+                                    pvTokens,
+                                    variantColor,
+                                  ),
+                                ),
+                                softWrap: true,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -3935,15 +3928,6 @@ class _PrincipalVariationListState
           final lastMoveIndex = line.sanMoves.length - 1;
           if (lastMoveIndex >= 0) {
             final lastMoveText = pvTokens.lastWhere((t) => t.moveIndex != null).text;
-            if (widget.state.isPvPreviewActive &&
-                widget.state.lockedPvLine != null) {
-              notifier.previewPrincipalVariationMoveAt(
-                line,
-                variantIndex,
-                lastMoveIndex,
-              );
-              return;
-            }
             final heroineTag = 'pv_move_${identityHashCode(line)}_${variantIndex}_$lastMoveIndex';
             _showMovePreviewAnimation(
               context,
@@ -3989,12 +3973,13 @@ class _PrincipalVariationListState
                         child: GestureDetector(
                           behavior: HitTestBehavior.opaque,
                           onTap: () {
-                            // Check if we're in preview mode with a locked PV
-                            if (widget.state.lockedPvLine != null &&
-                                widget.state.lockedPvMergedMoves != null) {
-                              // Case 1: In preview mode - overwrite PGN history with preview card's history
-                              // then insert this move and exit preview mode
-                              notifier.applyPreviewHistoryAndInsertMove(line);
+                            if (widget.state.isPvPreviewActive &&
+                                widget.state.lockedPvLine != null) {
+                              notifier.previewPrincipalVariationMoveAt(
+                                line,
+                                variantIndex,
+                                0,
+                              );
                             } else {
                               // Case 2: Normal mode - play PV move one by one
                               notifier.clearPvPreview();
@@ -4149,10 +4134,12 @@ class _PrincipalVariationListState
                             (hasLockedPv ? pageIndex - 1 : pageIndex)
                                 .clamp(0, clampedLines.length - 1);
 
-                        notifier.selectVariant(
-                          variantIndex,
-                          preservePreview: hasLockedPv,
-                        );
+                        if (!widget.state.isPvPreviewActive) {
+                          notifier.selectVariant(
+                            variantIndex,
+                            preservePreview: hasLockedPv,
+                          );
+                        }
                       },
                       itemCount: pageCount,
                       itemBuilder: (context, index) {
@@ -4284,7 +4271,11 @@ class _PrincipalVariationListState
                 final double size = isLockedDot ? 8.w : 6.w;
                 return GestureDetector(
                   onTap: () {
-                    _lastUserSelectedIndex = index;
+                    if (!hasLockedPv ||
+                        widget.state.isPvPreviewActive == false ||
+                        index != 0) {
+                      _lastUserSelectedIndex = index;
+                    }
                     _pageController.animateToPage(
                       index,
                       duration: const Duration(milliseconds: 300),
@@ -4381,9 +4372,18 @@ class _PrincipalVariationListState
           child: GestureDetector(
             onTap: () {
               HapticFeedback.lightImpact();
-              // Single tap: add the next best move to PGN history
-              notifier.clearPvPreview();
-              notifier.playPrincipalVariationMove(line);
+              if (widget.state.isPvPreviewActive &&
+                  widget.state.lockedPvLine != null) {
+                notifier.previewPrincipalVariationMoveAt(
+                  line,
+                  variantIndex,
+                  token.moveIndex ?? 0,
+                );
+              } else {
+                // Single tap: add the next best move to PGN history
+                notifier.clearPvPreview();
+                notifier.playPrincipalVariationMove(line);
+              }
             },
             onLongPress: () {
               HapticFeedback.mediumImpact();
@@ -4769,147 +4769,174 @@ class _ShareGameScreen extends ConsumerWidget {
   }
 }
 
-class _VariationHeroOverlay extends StatelessWidget {
+class _NotationHeroOverlay extends StatelessWidget {
   final String heroineTag;
-  final String variationLabel;
+  final String title;
+  final String summary;
   final String pgn;
-  final Future<void> Function(BuildContext context) onShare;
+  final Future<void> Function(BuildContext context)? onCopy;
+  final Future<void> Function(BuildContext context)? onShare;
   final Future<void> Function(BuildContext context)? onUpgrade;
 
-  const _VariationHeroOverlay({
+  const _NotationHeroOverlay({
     required this.heroineTag,
-    required this.variationLabel,
+    required this.title,
+    required this.summary,
     required this.pgn,
-    required this.onShare,
-    required this.onUpgrade,
+    this.onCopy,
+    this.onShare,
+    this.onUpgrade,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.of(context).pop(),
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 20.sp),
-        color: Colors.black.withValues(alpha: 0.65),
-        child: Center(
-          child: Heroine(
-            tag: heroineTag,
-            child: GestureDetector(
-              onTap: () {},
+    return ReactToHeroineDismiss(
+      builder: (context, dismissProgress, offset, child) {
+        final fade = (1 - dismissProgress).clamp(0.0, 1.0);
+        return Opacity(
+          opacity: fade,
+          child: child!,
+        );
+      },
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
               child: Container(
-                width: double.infinity,
-                margin: EdgeInsets.symmetric(vertical: 24.sp),
-                padding: EdgeInsets.all(20.sp),
-                decoration: BoxDecoration(
-                  color: kBlackColor,
-                  borderRadius: BorderRadius.circular(18.sp),
-                  border: Border.all(
-                    color: kPrimaryColor.withValues(alpha: 0.35),
-                    width: 1.5,
+                color: Colors.black.withValues(alpha: 0.6),
+              ),
+            ),
+          ),
+          Center(
+            child: Heroine(
+              tag: heroineTag,
+              child: GestureDetector(
+                onTap: () {},
+                child: Container(
+                  width: double.infinity,
+                  margin: EdgeInsets.symmetric(horizontal: 20.sp),
+                  padding: EdgeInsets.all(20.sp),
+                  decoration: BoxDecoration(
+                    color: kBlackColor,
+                    borderRadius: BorderRadius.circular(18.sp),
+                    border: Border.all(
+                      color: kPrimaryColor.withValues(alpha: 0.35),
+                      width: 1.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: kBlackColor.withValues(alpha: 0.4),
+                        blurRadius: 28,
+                        offset: const Offset(0, 18),
+                      ),
+                    ],
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: kBlackColor.withValues(alpha: 0.45),
-                      blurRadius: 28,
-                      offset: const Offset(0, 18),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.alt_route,
-                          color: kPrimaryColor,
-                          size: 20.ic,
-                        ),
-                        SizedBox(width: 10.w),
-                        Expanded(
-                          child: Text(
-                            'Variation focus',
-                            style: AppTypography.textLgBold.copyWith(
-                              color: kWhiteColor,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.alt_route,
+                            color: kPrimaryColor,
+                            size: 20.ic,
+                          ),
+                          SizedBox(width: 10.w),
+                          Expanded(
+                            child: Text(
+                              title,
+                              style: AppTypography.textLgBold.copyWith(
+                                color: kWhiteColor,
+                              ),
                             ),
                           ),
-                        ),
-                        IconButton(
-                          icon: Icon(
-                            Icons.close,
-                            color: kWhiteColor70,
-                            size: 18.ic,
-                          ),
-                          onPressed: () => Navigator.of(context).pop(),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 12.h),
-                    Text(
-                      variationLabel,
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: kWhiteColor,
-                      ),
-                    ),
-                    SizedBox(height: 16.h),
-                    Container(
-                      padding: EdgeInsets.all(14.sp),
-                      decoration: BoxDecoration(
-                        color: kWhiteColor.withValues(alpha: 0.04),
-                        borderRadius: BorderRadius.circular(12.sp),
-                        border: Border.all(
-                          color: kWhiteColor.withValues(alpha: 0.08),
-                        ),
-                      ),
-                      constraints: BoxConstraints(
-                        maxHeight:
-                            MediaQuery.of(context).size.height * 0.35,
-                      ),
-                      child: SingleChildScrollView(
-                        child: SelectableText(
-                          pgn,
-                          style: AppTypography.textXsMedium.copyWith(
-                            color: kWhiteColor.withValues(alpha: 0.9),
-                            height: 1.45,
-                            fontFamily: 'monospace',
-                          ),
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: 20.h),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: FilledButton.icon(
-                            onPressed: () => onShare(context),
-                            icon: Icon(Icons.share, size: 16.ic),
-                            label: const Text('Share PGN'),
-                          ),
-                        ),
-                        SizedBox(width: 12.w),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed:
-                                onUpgrade == null
-                                    ? null
-                                    : () => onUpgrade!(context),
+                          IconButton(
                             icon: Icon(
-                              Icons.upgrade,
-                              size: 16.ic,
+                              Icons.close,
+                              color: kWhiteColor70,
+                              size: 18.ic,
                             ),
-                            label: const Text('Upgrade to main'),
+                            onPressed: () => Navigator.of(context).pop(),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 12.h),
+                      Text(
+                        summary,
+                        style: AppTypography.textSmMedium.copyWith(
+                          color: kWhiteColor,
+                        ),
+                      ),
+                      SizedBox(height: 16.h),
+                      Container(
+                        padding: EdgeInsets.all(14.sp),
+                        decoration: BoxDecoration(
+                          color: kWhiteColor.withValues(alpha: 0.04),
+                          borderRadius: BorderRadius.circular(12.sp),
+                          border: Border.all(
+                            color: kWhiteColor.withValues(alpha: 0.08),
+                          ),
+                        ),
+                        constraints: BoxConstraints(
+                          maxHeight: MediaQuery.of(context).size.height * 0.35,
+                        ),
+                        child: SingleChildScrollView(
+                          child: SelectableText(
+                            pgn,
+                            style: AppTypography.textXsMedium.copyWith(
+                              color: kWhiteColor.withValues(alpha: 0.9),
+                              height: 1.45,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: 20.h),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed:
+                                  onCopy == null
+                                      ? null
+                                      : () => onCopy!(context),
+                              icon: Icon(Icons.copy, size: 16.ic),
+                              label: const Text('Copy PGN'),
+                            ),
+                          ),
+                          SizedBox(width: 12.w),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed:
+                                  onShare == null
+                                      ? null
+                                      : () => onShare!(context),
+                              icon: Icon(Icons.share, size: 16.ic),
+                              label: const Text('Share'),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (onUpgrade != null) ...[
+                        SizedBox(height: 12.h),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () => onUpgrade!(context),
+                            icon: Icon(Icons.upgrade, size: 16.ic),
+                            label: const Text('Upgrade to main variant'),
                           ),
                         ),
                       ],
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }

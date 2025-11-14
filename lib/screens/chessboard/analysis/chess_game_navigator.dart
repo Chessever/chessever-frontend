@@ -493,10 +493,11 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
     debugPrint('🎯 NAVIGATOR makeOrGoToMove: Adding move at current position');
 
     final isAtLineEnd = currentIndex == currentLine.length - 1;
-    final isMainlinePointer = state.movePointer.length <= 1;
 
-    if (isAtLineEnd && !isMainlinePointer) {
-      debugPrint('🎯 NAVIGATOR makeOrGoToMove: Appending to end of variation');
+    if (isAtLineEnd) {
+      debugPrint(
+        '🎯 NAVIGATOR makeOrGoToMove: Appending to end of current line (pointer=${state.movePointer})',
+      );
       final updatedMainline = _appendMoveAfterPointer(
         state.game.mainline,
         state.movePointer,
