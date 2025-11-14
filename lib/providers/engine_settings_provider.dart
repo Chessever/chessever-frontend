@@ -78,9 +78,10 @@ class EngineDepthTrackerNotifier
     final fenInfo =
         fragment.isEmpty ? '' : ' ($fragmentPreview$fragmentSuffix)';
     final ctx = (context == null || context.isEmpty) ? '' : ' [$context]';
-    debugPrint(
-      '🧠 DepthTracker: $label depth=${progress.depth} knodes=${progress.kiloNodes}$fenInfo$ctx',
-    );
+    // TEMPO-01-COMMENT
+    // debugPrint(
+    //   '🧠 DepthTracker: $label depth=${progress.depth} knodes=${progress.kiloNodes}$fenInfo$ctx',
+    // );
     state = {...state, component: progress};
   }
 

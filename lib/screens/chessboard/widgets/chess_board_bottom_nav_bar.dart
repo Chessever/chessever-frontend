@@ -70,15 +70,16 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
             fenFragment.length < 20 ? fenFragment.length : 20;
         final fragmentPreview = fenFragment.substring(0, fragmentLength);
         final fragmentSuffix = fenFragment.length > fragmentLength ? '...' : '';
-        debugPrint(
-          '📊 ═══ DEPTH DISPLAY UPDATE (Game $gameIndex) ═══\n'
-          '   Depth: ${gaugeProgress.depth}\n'
-          '   Nodes: ${gaugeProgress.kiloNodes}k\n'
-          '   Display: $depthText\n'
-          '   Component: ${activeComponent ?? EngineComponent.evaluationGauge}\n'
-          '   FEN Fragment: $fragmentPreview$fragmentSuffix\n'
-          '   ═══════════════════════════════════════',
-        );
+        // TEMPO-01-COMMENT
+        // debugPrint(
+        //   '📊 ═══ DEPTH DISPLAY UPDATE (Game $gameIndex) ═══\n'
+        //   '   Depth: ${gaugeProgress.depth}\n'
+        //   '   Nodes: ${gaugeProgress.kiloNodes}k\n'
+        //   '   Display: $depthText\n'
+        //   '   Component: ${activeComponent ?? EngineComponent.evaluationGauge}\n'
+        //   '   FEN Fragment: $fragmentPreview$fragmentSuffix\n'
+        //   '   ═══════════════════════════════════════',
+        // );
       } else {
         debugPrint(
           '⚠️  BottomNav (Game $gameIndex): Engine analysis ON but NO depth data available yet (overlay=${showDepthOverlay})',
