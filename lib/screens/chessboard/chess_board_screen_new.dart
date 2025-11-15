@@ -5018,8 +5018,8 @@ class _MovePreviewAnimationOverlay extends StatefulWidget {
 class _MovePreviewAnimationOverlayState
     extends State<_MovePreviewAnimationOverlay>
     with TickerProviderStateMixin {
-  static const double _dragDismissThreshold = 160.0;
-  static const double _maxDragRadius = 240.0;
+  static const double _dragDismissThreshold = 140.0;
+  static const double _maxDragRadius = 280.0;
   late AnimationController _controller;
   late AnimationController _dismissController;
   late AnimationController _dragReturnController;
@@ -5037,7 +5037,7 @@ class _MovePreviewAnimationOverlayState
   bool _pendingReject = false;
   bool _skipHeroFlight = false;
   Offset? _rejectDirection;
-    bool _completed = false;
+  bool _completed = false;
   bool _isDismissing = false;
   double _lastHapticProgress = 0.0;
   double _magicBurst = 0.0;
@@ -5053,23 +5053,23 @@ class _MovePreviewAnimationOverlayState
     // Initial haptic feedback on long press start
     HapticFeedback.mediumImpact();
 
-    // Main animation controller for 4-second loading
+    // Main animation controller for 3.5-second loading (faster)
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 4000),
+      duration: const Duration(milliseconds: 3500),
       animationBehavior: AnimationBehavior.preserve,
     );
 
-    // Dismiss animation controller
+    // Dismiss animation controller (faster and snappier)
     _dismissController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 500),
+      duration: const Duration(milliseconds: 280),
     );
 
-    // Drag return controller for elastic snap-back
+    // Drag return controller for elastic snap-back (much faster)
     _dragReturnController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 450),
+      duration: const Duration(milliseconds: 320),
     );
     _dragReturnController.addListener(() {
       if (_dragReturnAnimation != null && mounted) {
@@ -5097,40 +5097,40 @@ class _MovePreviewAnimationOverlayState
       }
     });
 
-    // Smooth progress for loading bar
+    // Smooth progress for loading bar (snappier curve)
     _smoothProgress = CurvedAnimation(
       parent: _controller,
-      curve: Curves.easeInOut,
+      curve: Curves.easeInOutCubic,
     );
 
-    // Particle entrance animation with spring
+    // Particle entrance animation with custom spring (more lively)
     _particleAnimation = CurvedAnimation(
       parent: _controller,
-      curve: Sprung.overDamped,
+      curve: Sprung(18), // Custom spring for faster, bouncier feel
     );
 
-    // Card scale uses critically damped spring for smooth bounce
+    // Card scale uses custom spring for magical bounce
     _cardScaleAnimation = CurvedAnimation(
       parent: _controller,
-      curve: Sprung.criticallyDamped,
+      curve: Sprung(16), // Snappier with slight bounce
     );
 
-    // Scale down animation for dismissal with spring
+    // Scale down animation for dismissal (faster spring)
     _dismissScale = Tween<double>(
       begin: 1.0,
-      end: 0.3,
+      end: 0.2,
     ).animate(CurvedAnimation(
       parent: _dismissController,
-      curve: Sprung.overDamped,
+      curve: Sprung(20), // Quick and snappy
     ));
 
-    // Fade out animation for dismissal
+    // Fade out animation for dismissal (faster)
     _dismissOpacity = Tween<double>(
       begin: 1.0,
       end: 0.0,
     ).animate(CurvedAnimation(
       parent: _dismissController,
-      curve: Curves.easeOut,
+      curve: Curves.easeOutCubic,
     ));
 
     // Listen to progress for haptic milestones
@@ -5179,30 +5179,38 @@ class _MovePreviewAnimationOverlayState
         if (deltaMicros > 0) {
           final seconds = deltaMicros / 1e6;
           final velocity = details.delta / seconds;
-          _currentDragVelocity = _currentDragVelocity * 0.6 + velocity * 0.4;
+          // More responsive velocity tracking with less smoothing
+          _currentDragVelocity = _currentDragVelocity * 0.3 + velocity * 0.7;
         }
       }
       _lastDragSampleTime = timestamp;
     }
 
+    // Direct drag response without lerping for instant finger tracking
     final proposed = _dragOffset + details.delta;
     final radius = proposed.distance;
     Offset limitedOffset;
     if (radius > _maxDragRadius) {
-      limitedOffset = proposed / radius * _maxDragRadius;
+      // Apply rubber-band effect at the edge
+      final excess = radius - _maxDragRadius;
+      final rubberBand = _maxDragRadius + excess * 0.3;
+      limitedOffset = proposed / radius * rubberBand;
     } else {
       limitedOffset = proposed;
     }
+
     setState(() {
-      _dragOffset = Offset.lerp(_dragOffset, limitedOffset, 0.7)!;
+      _dragOffset = limitedOffset; // Direct assignment - no lerp!
     });
 
     final upward = -_dragOffset.dy;
     final sideways = _dragOffset.dx.abs();
+    // Slightly easier threshold for instant apply
     if (!_hasTriggeredInstantApply &&
-        upward > _dragDismissThreshold &&
-        sideways < _dragDismissThreshold * 0.5) {
+        upward > _dragDismissThreshold * 0.9 &&
+        sideways < _dragDismissThreshold * 0.6) {
       _hasTriggeredInstantApply = true;
+      HapticFeedback.heavyImpact();
       _sparkMagicBurst();
       _commitPreview();
       _closeWithMagicalAnimation();
@@ -5213,23 +5221,32 @@ class _MovePreviewAnimationOverlayState
     final upward = -_dragOffset.dy;
     final sideways = _dragOffset.dx.abs();
     final velocityY = details.velocity.pixelsPerSecond.dy;
-    final shouldDismiss =
-        upward > _dragDismissThreshold && sideways < _dragDismissThreshold * 0.7;
-    final fastFlick = velocityY < -800 && upward > _dragDismissThreshold * 0.6;
-    final rejectHorizontal = sideways > _dragDismissThreshold * 1.1;
+    final velocityX = details.velocity.pixelsPerSecond.dx.abs();
 
-    if ((shouldDismiss || fastFlick) && !_isDismissing) {
+    // More responsive accept: consider both position and velocity
+    final shouldAccept =
+        upward > _dragDismissThreshold * 0.75 && sideways < _dragDismissThreshold * 0.8;
+    final fastUpwardFlick = velocityY < -600 && upward > _dragDismissThreshold * 0.5;
+
+    // More forgiving reject: strong horizontal motion or downward drag
+    final rejectHorizontal = sideways > _dragDismissThreshold * 1.0 || velocityX > 800;
+    final rejectDownward = upward < 0 && velocityY > 400;
+
+    if ((shouldAccept || fastUpwardFlick) && !_isDismissing) {
+      HapticFeedback.heavyImpact();
       _sparkMagicBurst();
       _commitPreview();
       _closeWithMagicalAnimation();
       return;
     }
 
-    if (rejectHorizontal || upward < _dragDismissThreshold * 0.8) {
+    if (rejectHorizontal || rejectDownward) {
+      HapticFeedback.lightImpact();
       _rejectPreview();
       return;
     }
 
+    // If dragged but not enough to accept/reject, snap back
     _isDraggingCard = false;
     _animateDragBack();
   }
@@ -5241,7 +5258,7 @@ class _MovePreviewAnimationOverlayState
     ).animate(
       CurvedAnimation(
         parent: _dragReturnController,
-        curve: Sprung.underDamped,
+        curve: Sprung(15), // Faster, snappier snap-back
       ),
     );
     _dragReturnController.forward(from: 0);
@@ -5263,11 +5280,11 @@ class _MovePreviewAnimationOverlayState
       _skipHeroFlight = true;
     });
     final releaseVector =
-        _dragOffset + (_currentDragVelocity * 0.0015);
+        _dragOffset + (_currentDragVelocity * 0.002);
     Offset direction =
         releaseVector == Offset.zero ? const Offset(0, 1) : releaseVector;
     final normalized = direction / direction.distance;
-    final target = normalized * (_maxDragRadius * 1.4);
+    final target = normalized * (_maxDragRadius * 1.5);
     _pendingReject = true;
     _rejectDirection = normalized;
     _dragReturnAnimation = Tween<Offset>(
@@ -5276,7 +5293,7 @@ class _MovePreviewAnimationOverlayState
     ).animate(
       CurvedAnimation(
         parent: _dragReturnController,
-        curve: Sprung.underDamped,
+        curve: Sprung(18), // Faster reject animation
       ),
     );
     _dragReturnController.forward(from: 0);
@@ -5354,7 +5371,7 @@ class _MovePreviewAnimationOverlayState
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
     final variantColor = widget.variantColor;
-    const particleCount = 30;
+    const particleCount = 45; // More particles for magical effect
 
     return Material(
       color: Colors.transparent,
@@ -5373,39 +5390,53 @@ class _MovePreviewAnimationOverlayState
               (math.sin(progress * math.pi * 3) * 0.2 + 0.8).clamp(0.0, 1.0);
           final dragProgress =
               (-_dragOffset.dy / _dragDismissThreshold).clamp(0.0, 1.0);
-          final interactiveScaleFactor = 1 + (dragProgress * 0.15);
+          final interactiveScaleFactor = 1 + (dragProgress * 0.2);
           final interactiveOffset = _dragOffset;
-          final rotationAngle = (_dragOffset.dx / 220).clamp(-0.25, 0.25);
+
+          // Enhanced rotation with more dynamic response
+          final rotationAngle = (_dragOffset.dx / 180).clamp(-0.35, 0.35);
+
+          // Add 3D perspective flip based on vertical drag
+          final flipAngleX = (dragProgress * 0.15) * math.pi; // Flip backward as dragging up
+          final flipAngleY = ((_dragOffset.dx / _maxDragRadius) * 0.2).clamp(-0.25, 0.25) * math.pi;
+
           final rejectionPhase =
               _pendingReject ? (1 - _dragReturnController.value).clamp(0.0, 1.0) : 0.0;
           final rejectionTwist =
-              _rejectDirection == null ? 0.0 : _rejectDirection!.dx.sign * rejectionPhase * 0.35;
-          final rejectionScale = _pendingReject ? (1 - rejectionPhase * 0.2) : 1.0;
+              _rejectDirection == null ? 0.0 : _rejectDirection!.dx.sign * rejectionPhase * 0.45;
+          final rejectionScale = _pendingReject ? (1 - rejectionPhase * 0.25) : 1.0;
           final combinedScale = baseScale * interactiveScaleFactor * rejectionScale;
           final combinedRotation = rotationAngle + rejectionTwist;
-          final magicPulse = (dragProgress * 0.6 + _magicBurst).clamp(0.0, 1.0);
+
+          // Enhanced magic pulse with more intensity
+          final magicPulse = (dragProgress * 0.8 + _magicBurst * 1.2).clamp(0.0, 1.0);
           final cardOpacityValue =
               ((_isDismissing ? _dismissOpacity.value : 1.0).clamp(0.0, 1.0)) *
               (_pendingReject ? (1 - rejectionPhase * 0.4) : 1.0);
 
           final spiralParticles = List.generate(particleCount, (index) {
             final angle = (index / particleCount) * 2 * math.pi;
-            final spiralOffset = (index / particleCount) * 0.3;
+            final spiralOffset = (index / particleCount) * 0.25;
             final particleValue =
                 (particleProgress - spiralOffset).clamp(0.0, 1.0);
 
-            final rotationAngle = angle + (particleValue * math.pi * 3);
-            final distance = screenSize.width * 0.5 * (1 - particleValue);
+            // More dynamic spiral with varying speeds
+            final rotationAngle = angle + (particleValue * math.pi * 4);
+            final distance = screenSize.width * 0.55 * (1 - particleValue);
 
             final x = screenSize.width / 2 + distance * cos(rotationAngle);
             final y = screenSize.height / 2 + distance * sin(rotationAngle);
 
-            final size = (3 + (index % 4) * 2.0).sp;
+            // Varying particle sizes for depth
+            final size = (4 + (index % 5) * 2.5).sp;
             final dismissOpacity =
-                (1 - _dismissController.value).clamp(0.0, 1.0) * 0.9;
+                (1 - _dismissController.value).clamp(0.0, 1.0) * 1.0;
             final particleOpacity = _isDismissing
                 ? dismissOpacity
-                : particleValue * (1 - particleValue * 0.5) * 0.9;
+                : particleValue * (1 - particleValue * 0.4) * 1.0;
+
+            // Pulsating effect
+            final pulsate = 0.8 + 0.2 * math.sin(particleProgress * math.pi * 6 + index);
 
             return Positioned(
               left: x,
@@ -5413,16 +5444,21 @@ class _MovePreviewAnimationOverlayState
               child: Opacity(
                 opacity: particleOpacity.clamp(0.0, 1.0),
                 child: Container(
-                  width: size,
-                  height: size,
+                  width: size * pulsate,
+                  height: size * pulsate,
                   decoration: BoxDecoration(
-                    color: variantColor,
+                    gradient: RadialGradient(
+                      colors: [
+                        variantColor.withValues(alpha: 1.0),
+                        variantColor.withValues(alpha: 0.3),
+                      ],
+                    ),
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: variantColor.withValues(alpha: 0.8),
-                        blurRadius: 20,
-                        spreadRadius: 4,
+                        color: variantColor.withValues(alpha: 0.9),
+                        blurRadius: 25,
+                        spreadRadius: 6,
                       ),
                     ],
                   ),
@@ -5503,20 +5539,21 @@ class _MovePreviewAnimationOverlayState
             screenSize.height / 2 + interactiveOffset.dy,
           );
           final orbitingParticles = <Widget>[];
-          for (int i = 0; i < 8; i++) {
+          for (int i = 0; i < 12; i++) {
             final angle =
-                (particleProgress * math.pi * 2) + i * (math.pi / 4.0);
+                (particleProgress * math.pi * 3) + i * (math.pi / 6.0);
             final orbitRadius =
-                70 + math.sin(particleProgress * math.pi * 2 + i) * 20;
+                80 + math.sin(particleProgress * math.pi * 3 + i) * 25;
             final x = centerBase.dx + orbitRadius * math.cos(angle);
             final y = centerBase.dy + orbitRadius * math.sin(angle);
-            final size = 6.sp;
+            final size = (6 + (i % 3) * 2).sp;
+            final particleGlow = 0.5 + 0.4 * math.sin(angle + progress * math.pi * 2);
             orbitingParticles.add(
               Positioned(
                 left: x - size / 2,
                 top: y - size / 2,
                 child: Opacity(
-                  opacity: 0.35 + 0.25 * math.sin(angle + progress * math.pi),
+                  opacity: particleGlow,
                   child: Container(
                     width: size,
                     height: size,
@@ -5524,15 +5561,15 @@ class _MovePreviewAnimationOverlayState
                       shape: BoxShape.circle,
                       gradient: RadialGradient(
                         colors: [
-                          variantColor.withValues(alpha: 0.9),
+                          variantColor.withValues(alpha: 1.0),
                           variantColor.withValues(alpha: 0.0),
                         ],
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: variantColor.withValues(alpha: 0.5),
-                          blurRadius: 12,
-                          spreadRadius: 1,
+                          color: variantColor.withValues(alpha: 0.8),
+                          blurRadius: 18,
+                          spreadRadius: 3,
                         ),
                       ],
                     ),
@@ -5614,16 +5651,18 @@ class _MovePreviewAnimationOverlayState
                     Positioned.fill(
                       child: IgnorePointer(
                         child: Opacity(
-                          opacity: magicPulse * 0.6,
+                          opacity: magicPulse * 0.75,
                           child: DecoratedBox(
                             decoration: BoxDecoration(
                               gradient: RadialGradient(
-                                center: const Alignment(0, -0.35),
-                                radius: 1.2,
+                                center: const Alignment(0, -0.3),
+                                radius: 1.0,
                                 colors: [
-                                  variantColor.withValues(alpha: 0.35),
+                                  variantColor.withValues(alpha: 0.5),
+                                  variantColor.withValues(alpha: 0.2),
                                   Colors.transparent,
                                 ],
+                                stops: const [0.0, 0.5, 1.0],
                               ),
                             ),
                           ),
@@ -5638,13 +5677,18 @@ class _MovePreviewAnimationOverlayState
                       onPanEnd: _endDrag,
                       child: Transform.translate(
                         offset: interactiveOffset,
-                        child: Transform.rotate(
-                          angle: combinedRotation,
-                          child: Transform.scale(
-                            scale: combinedScale,
+                        child: Transform.scale(
+                          scale: combinedScale,
+                          child: Transform(
+                            transform: Matrix4.identity()
+                              ..setEntry(3, 2, 0.001) // Add perspective
+                              ..rotateX(flipAngleX) // 3D flip on X axis
+                              ..rotateY(flipAngleY) // 3D flip on Y axis
+                              ..rotateZ(combinedRotation), // Regular Z rotation
+                            alignment: Alignment.center,
                             child: Opacity(
-                              opacity: cardOpacityValue,
-                              child: Container(
+                            opacity: cardOpacityValue,
+                            child: Container(
                                 constraints: BoxConstraints(
                                   maxWidth: screenSize.width * 0.8,
                                 ),
@@ -5652,8 +5696,8 @@ class _MovePreviewAnimationOverlayState
                                   borderRadius: BorderRadius.circular(16.sp),
                                   child: BackdropFilter(
                                     filter: ImageFilter.blur(
-                                      sigmaX: 30,
-                                      sigmaY: 30,
+                                      sigmaX: 40,
+                                      sigmaY: 40,
                                     ),
                                     child: Container(
                                       padding: EdgeInsets.symmetric(
@@ -5675,17 +5719,24 @@ class _MovePreviewAnimationOverlayState
                                         boxShadow: [
                                           BoxShadow(
                                             color: variantColor.withValues(
-                                              alpha: glowOpacity * 0.6,
+                                              alpha: glowOpacity * 0.8,
                                             ),
-                                            blurRadius: 50,
-                                            spreadRadius: 8,
+                                            blurRadius: 60,
+                                            spreadRadius: 12,
+                                          ),
+                                          BoxShadow(
+                                            color: variantColor.withValues(
+                                              alpha: 0.4,
+                                            ),
+                                            blurRadius: 80,
+                                            spreadRadius: 20,
                                           ),
                                           BoxShadow(
                                             color: Colors.black.withValues(
-                                              alpha: 0.3,
+                                              alpha: 0.4,
                                             ),
-                                            blurRadius: 15,
-                                            offset: const Offset(0, 8),
+                                            blurRadius: 20,
+                                            offset: const Offset(0, 10),
                                           ),
                                         ],
                                       ),
