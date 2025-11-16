@@ -2460,8 +2460,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                                         if (!confirmed) return;
                                         if (!context.mounted) return;
 
-                                        // Apply the preview history and insert move
-                                        notifier.applyPreviewHistoryAndInsertMove(lockedLine);
+                                        notifier.promotePreviewToMainVariant();
                                       },
                                       borderRadius: BorderRadius.circular(8.sp),
                                       splashColor: kPrimaryColor.withValues(alpha: 0.3),
@@ -3036,11 +3035,13 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   }) {
     final buffer = StringBuffer();
     if (node.showMoveNumber) {
+      final bool isNullMove = node.move.san == '--';
       final bool isFirstBlackInLine =
           !node.isWhiteMove && (node.showEllipsis || suppressBlackMovePrefix);
-      if (isFirstBlackInLine) {
-        // For variation heads that start with black, omit the leading ellipsis
-        // to keep the line compact and consistent with PV cards
+      if (isNullMove && !node.isWhiteMove) {
+        buffer.write('${node.moveNumber}... ');
+      } else if (isFirstBlackInLine) {
+        // Still suppress for regular variation heads
       } else {
         final separator = node.isWhiteMove ? '. ' : '... ';
         buffer.write('${node.moveNumber}$separator');
@@ -5590,7 +5591,7 @@ class _MovePreviewAnimationOverlayState
     // Wait a frame then promote using the line we just previewed
     await Future.delayed(const Duration(milliseconds: 50));
     if (mounted) {
-      widget.notifier.applyPreviewHistoryAndInsertMove(widget.line);
+      widget.notifier.promotePreviewToMainVariant();
     }
 
     _closeWithMagicalAnimation();
