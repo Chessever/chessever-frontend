@@ -999,9 +999,13 @@ class ChessBoardScreenNotifierNew
     }
 
     final baseGame = ChessGame.fromPgn(game.gameId, basePgn);
-    _analysisNavigator!.replaceState(
-      ChessGameNavigatorState(game: baseGame, movePointer: const []),
-    );
+    _analysisNavigator!
+      ..replaceState(
+        ChessGameNavigatorState(game: baseGame, movePointer: const []),
+      )
+      ..goToTail();
+
+    _analysisNavigator!.goToTail();
     await _persistAnalysisState();
   }
 
