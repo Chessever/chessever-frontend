@@ -43,7 +43,52 @@ import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:heroine/heroine.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:sprung/sprung.dart';
+
+/// Spring-based curve that mimics iOS snappy motion
+/// Quick, precise animation with subtle natural settling
+class SnappySpringCurve extends Curve {
+  const SnappySpringCurve();
+
+  @override
+  double transform(double t) {
+    // Approximates CupertinoMotion.snappy() using damped spring physics
+    // This creates a quick, responsive motion with minimal overshoot
+    final damping = 0.85; // High damping for snappy feel
+    final frequency = 3.5; // High frequency for quick response
+
+    final omega = frequency * 2 * math.pi;
+    final dampingRatio = damping;
+    final dampedFreq = omega * math.sqrt(1 - dampingRatio * dampingRatio);
+
+    final envelope = math.exp(-dampingRatio * omega * t);
+    final oscillation = math.cos(dampedFreq * t);
+
+    return 1 - envelope * oscillation;
+  }
+}
+
+/// Spring-based curve that mimics iOS bouncy motion
+/// Playful animation with natural bounce and overshoot
+class BouncySpringCurve extends Curve {
+  const BouncySpringCurve();
+
+  @override
+  double transform(double t) {
+    // Approximates CupertinoMotion.bouncy() with pronounced spring effect
+    // Lower damping creates visible bounce and overshoot
+    final damping = 0.55; // Lower damping for bouncy feel
+    final frequency = 2.8; // Medium frequency for natural bounce
+
+    final omega = frequency * 2 * math.pi;
+    final dampingRatio = damping;
+    final dampedFreq = omega * math.sqrt(1 - dampingRatio * dampingRatio);
+
+    final envelope = math.exp(-dampingRatio * omega * t);
+    final oscillation = math.cos(dampedFreq * t);
+
+    return 1 - envelope * oscillation;
+  }
+}
 
 /// Cached move impact results keyed by game id/signature to avoid recomputation
 class CachedMoveImpact {
@@ -2273,9 +2318,13 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         clipBehavior: Clip.none,
         children: [
           Positioned.fill(child: notationContent),
-          // Subtle overlay when preview is active - minimal and unobtrusive
+          // Subtle overlay when preview is active - only covers main variant area
           if (widget.state.isPvPreviewActive)
-            Positioned.fill(
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0, // Will be covered by PV cards naturally
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () {
@@ -2336,7 +2385,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                                     color: Colors.white.withValues(alpha: 0.95),
                                     size: 20.sp,
                                   ),
-                                  SizedBox(height: 10.sp),
+                                  SizedBox(height: 8.sp),
                                   Text(
                                     'Preview mode',
                                     textAlign: TextAlign.center,
@@ -2345,13 +2394,111 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                                       letterSpacing: 0.4,
                                     ),
                                   ),
-                                  SizedBox(height: 6.sp),
+                                  SizedBox(height: 4.sp),
                                   Text(
                                     'Tap anywhere to exit or swipe the hero card up to apply.',
                                     textAlign: TextAlign.center,
                                     style: AppTypography.textXsRegular.copyWith(
                                       color:
                                           Colors.white.withValues(alpha: 0.85),
+                                    ),
+                                  ),
+                                  SizedBox(height: 12.sp),
+                                  // Promote variant button
+                                  Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      onTap: () async {
+                                        // Prevent tap from propagating to parent GestureDetector
+                                        HapticFeedback.mediumImpact();
+
+                                        final lockedLine = widget.state.lockedPvLine;
+                                        if (lockedLine == null) return;
+
+                                        // Confirm before promoting
+                                        final confirmed = await showDialog<bool>(
+                                          context: context,
+                                          builder: (dialogContext) => AlertDialog(
+                                            backgroundColor: kBlack2Color,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(12.br),
+                                            ),
+                                            title: Text(
+                                              'Promote to main variant?',
+                                              style: AppTypography.textMdBold.copyWith(
+                                                color: kWhiteColor,
+                                              ),
+                                            ),
+                                            content: Text(
+                                              'This will replace the main variant with this preview line.',
+                                              style: AppTypography.textSmRegular.copyWith(
+                                                color: kWhiteColor.withValues(alpha: 0.7),
+                                              ),
+                                            ),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () => Navigator.of(dialogContext).pop(false),
+                                                child: Text(
+                                                  'Cancel',
+                                                  style: AppTypography.textSmMedium.copyWith(
+                                                    color: kWhiteColor.withValues(alpha: 0.7),
+                                                  ),
+                                                ),
+                                              ),
+                                              TextButton(
+                                                onPressed: () => Navigator.of(dialogContext).pop(true),
+                                                child: Text(
+                                                  'Promote',
+                                                  style: AppTypography.textSmMedium.copyWith(
+                                                    color: kPrimaryColor,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ) ?? false;
+
+                                        if (!confirmed) return;
+                                        if (!context.mounted) return;
+
+                                        // Apply the preview history and insert move
+                                        notifier.applyPreviewHistoryAndInsertMove(lockedLine);
+                                      },
+                                      borderRadius: BorderRadius.circular(8.sp),
+                                      splashColor: kPrimaryColor.withValues(alpha: 0.3),
+                                      highlightColor: kPrimaryColor.withValues(alpha: 0.2),
+                                      child: Container(
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: 20.sp,
+                                          vertical: 10.sp,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: kPrimaryColor.withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(8.sp),
+                                          border: Border.all(
+                                            color: kPrimaryColor.withValues(alpha: 0.4),
+                                            width: 1.5,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.upgrade_rounded,
+                                              color: kWhiteColor,
+                                              size: 16.sp,
+                                            ),
+                                            SizedBox(width: 8.sp),
+                                            Text(
+                                              'Promote variant',
+                                              style: AppTypography.textSmMedium.copyWith(
+                                                color: kWhiteColor,
+                                                letterSpacing: 0.2,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -3688,7 +3835,8 @@ class _PrincipalVariationListState
         widget.state.isPvPreviewActive && widget.state.lockedPvLine != null;
     final basePageCount =
         (showSkeleton || showEmptyState) ? 1 : displayLines.length;
-    final pageCount = hasLockedPv ? basePageCount + 1 : basePageCount;
+    // During preview mode, only show the static preview card (pageCount = 1)
+    final pageCount = hasLockedPv ? 1 : basePageCount;
 
     List<InlineSpan> buildPreviewCardSpans(List<_PvToken> tokens, Color variantColor) {
       final spans = <InlineSpan>[];
@@ -3903,11 +4051,7 @@ class _PrincipalVariationListState
       final activeVariantColor = notifier.getVariantColor(variantIndex, true);
       final opacityScale = 0.7;
       final borderColor = activeVariantColor.withValues(alpha: opacityScale);
-      final backgroundColor = activeVariantColor.withValues(
-        alpha: 0.15,
-      );
-      final badgeBackgroundColor = activeVariantColor.withValues(alpha: 0.3);
-      final badgeBorderColor = activeVariantColor.withValues(alpha: 0.6);
+      final backgroundColor = activeVariantColor.withValues(alpha: 0.15);
       final pvTokens = _buildPvTokens(sanMoves);
 
       // Check if any move in this variant is selected for preview
@@ -3951,108 +4095,120 @@ class _PrincipalVariationListState
             decoration: BoxDecoration(
               border: Border.all(
                 color: borderColor,
-              width: isSelected ? 2.0 : 1.5,
-          ),
-          borderRadius: BorderRadius.circular(6.sp),
-          color: backgroundColor,
-        ),
-        clipBehavior: Clip.hardEdge,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+                width: isSelected ? 2.0 : 1.5,
+              ),
+              borderRadius: BorderRadius.circular(6.sp),
+              color: backgroundColor,
+            ),
+            clipBehavior: Clip.hardEdge,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // Compact evaluation badge on the left
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    if (widget.state.isPvPreviewActive &&
+                        widget.state.lockedPvLine != null) {
+                      notifier.previewPrincipalVariationMoveAt(
+                        line,
+                        variantIndex,
+                        0,
+                      );
+                    } else {
+                      notifier.clearPvPreview();
+                      notifier.playPrincipalVariationMove(line);
+                    }
+                  },
+                  child: Container(
+                    width: 48.sp,
+                    decoration: BoxDecoration(
+                      color: activeVariantColor.withValues(alpha: 0.25),
+                      border: Border(
+                        right: BorderSide(
+                          color: activeVariantColor.withValues(alpha: 0.4),
+                          width: 1,
+                        ),
+                      ),
+                    ),
+                    child: Center(
+                      child: Text(
+                        evalText,
+                        style: AppTypography.textSmBold.copyWith(
+                          color: kWhiteColor,
+                          fontSize: 12.sp,
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // Notation text - vertically scrollable middle section
                 Expanded(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Evaluation badge - tap applies move to PGN history
-                      Padding(
-                        padding: EdgeInsets.fromLTRB(12.sp, 10.sp, 0, 10.sp),
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () {
-                            if (widget.state.isPvPreviewActive &&
-                                widget.state.lockedPvLine != null) {
-                              notifier.previewPrincipalVariationMoveAt(
-                                line,
-                                variantIndex,
-                                0,
-                              );
-                            } else {
-                              // Case 2: Normal mode - play PV move one by one
-                              notifier.clearPvPreview();
-                              notifier.playPrincipalVariationMove(line);
-                            }
-                          },
-                          child: Container(
-                            margin: EdgeInsets.only(right: 10.sp),
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 8.sp,
-                              vertical: 4.sp,
-                            ),
-                            decoration: BoxDecoration(
-                              color: badgeBackgroundColor,
-                              borderRadius: BorderRadius.circular(4.sp),
-                              border: Border.all(
-                                color: badgeBorderColor,
-                                width: 1.0,
-                              ),
-                            ),
-                            alignment: Alignment.center,
-                            child: Text(
-                              evalText,
-                              style: AppTypography.textXsMedium.copyWith(
-                                color: kWhiteColor,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
+                  child: SingleChildScrollView(
+                    primary: false,
+                    scrollDirection: Axis.vertical,
+                    physics: const BouncingScrollPhysics(
+                      parent: AlwaysScrollableScrollPhysics(),
+                    ),
+                    padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 10.sp),
+                    child: RichText(
+                      text: TextSpan(
+                        style: AppTypography.textXsMedium.copyWith(
+                          color: kWhiteColor.withValues(alpha: 0.95),
+                          fontWeight: FontWeight.w600,
+                        ),
+                        children: _buildPvSpans(
+                          tokens: pvTokens,
+                          notifier: notifier,
+                          line: line,
+                          variantIndex: variantIndex,
+                          variantColor: activeVariantColor,
+                          previewMoveIndex:
+                              isPreviewingThisVariant
+                                  ? widget.state.pvPreviewMoveIndex
+                                  : null,
+                        ),
+                      ),
+                      softWrap: true,
+                    ),
+                  ),
+                ),
+                // '+' button on the right - inserts next best move
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      notifier.clearPvPreview();
+                      notifier.playPrincipalVariationMove(line);
+                    },
+                    splashColor: activeVariantColor.withValues(alpha: 0.3),
+                    highlightColor: activeVariantColor.withValues(alpha: 0.2),
+                    child: Container(
+                      width: 40.sp,
+                      decoration: BoxDecoration(
+                        color: activeVariantColor.withValues(alpha: 0.2),
+                        border: Border(
+                          left: BorderSide(
+                            color: activeVariantColor.withValues(alpha: 0.4),
+                            width: 1,
                           ),
                         ),
                       ),
-                      // Notation text - tap previews position without modifying PGN
-                      Expanded(
-                        child: ClipRect(
-                          child: SingleChildScrollView(
-                            primary: false,
-                            physics: const BouncingScrollPhysics(
-                              parent: AlwaysScrollableScrollPhysics(),
-                            ),
-                            padding: EdgeInsets.fromLTRB(0, 10.sp, 12.sp, 10.sp),
-                            child: RichText(
-                              text: TextSpan(
-                                style: AppTypography.textXsMedium.copyWith(
-                                  color: kWhiteColor.withValues(
-                                    alpha: 0.95,
-                                  ),
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                children: _buildPvSpans(
-                                  tokens: pvTokens,
-                                  notifier: notifier,
-                                  line: line,
-                                  variantIndex: variantIndex,
-                                  variantColor: activeVariantColor,
-                                  previewMoveIndex:
-                                      isPreviewingThisVariant
-                                          ? widget.state.pvPreviewMoveIndex
-                                          : null,
-                                ),
-                              ),
-                              softWrap: true,
-                            ),
-                          ),
+                      child: Center(
+                        child: Icon(
+                          Icons.add_rounded,
+                          color: kWhiteColor.withValues(alpha: 0.9),
+                          size: 20.sp,
                         ),
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ],
             ),
-          ],
-            ),
-        ),
+          ),
         ),
       );
     }
@@ -4372,18 +4528,12 @@ class _PrincipalVariationListState
           child: GestureDetector(
             onTap: () {
               HapticFeedback.lightImpact();
-              if (widget.state.isPvPreviewActive &&
-                  widget.state.lockedPvLine != null) {
-                notifier.previewPrincipalVariationMoveAt(
-                  line,
-                  variantIndex,
-                  token.moveIndex ?? 0,
-                );
-              } else {
-                // Single tap: add the next best move to PGN history
-                notifier.clearPvPreview();
-                notifier.playPrincipalVariationMove(line);
-              }
+              // Single tap: Enter preview mode and navigate to the tapped move
+              notifier.previewPrincipalVariationMoveAt(
+                line,
+                variantIndex,
+                token.moveIndex ?? 0,
+              );
             },
             onLongPress: () {
               HapticFeedback.mediumImpact();
@@ -5039,7 +5189,6 @@ class _MovePreviewAnimationOverlayState
   Offset? _rejectDirection;
   bool _completed = false;
   bool _isDismissing = false;
-  double _lastHapticProgress = 0.0;
   double _magicBurst = 0.0;
 
   @override
@@ -5097,68 +5246,46 @@ class _MovePreviewAnimationOverlayState
       }
     });
 
-    // Smooth progress for loading bar (snappier curve)
+    // Use custom spring physics curves for natural motion
     _smoothProgress = CurvedAnimation(
       parent: _controller,
-      curve: Curves.easeInOutCubic,
+      curve: const SnappySpringCurve(),
     );
 
-    // Particle entrance animation with custom spring (more lively)
+    // Particle entrance animation with spring physics
     _particleAnimation = CurvedAnimation(
       parent: _controller,
-      curve: Sprung(18), // Custom spring for faster, bouncier feel
+      curve: const SnappySpringCurve(), // Quick, responsive entrance
     );
 
-    // Card scale uses custom spring for magical bounce
+    // Card scale uses bouncy spring for playful feel
     _cardScaleAnimation = CurvedAnimation(
       parent: _controller,
-      curve: Sprung(16), // Snappier with slight bounce
+      curve: const BouncySpringCurve(), // Natural iOS-style bouncy spring
     );
 
-    // Scale down animation for dismissal (faster spring)
+    // Scale down animation for dismissal (snappy spring)
     _dismissScale = Tween<double>(
       begin: 1.0,
       end: 0.2,
     ).animate(CurvedAnimation(
       parent: _dismissController,
-      curve: Sprung(20), // Quick and snappy
+      curve: const SnappySpringCurve(), // Quick and decisive
     ));
 
-    // Fade out animation for dismissal (faster)
+    // Fade out animation for dismissal
     _dismissOpacity = Tween<double>(
       begin: 1.0,
       end: 0.0,
     ).animate(CurvedAnimation(
       parent: _dismissController,
-      curve: Curves.easeOutCubic,
+      curve: const SnappySpringCurve(),
     ));
 
-    // Listen to progress for haptic milestones
-    _controller.addListener(_handleProgressHaptics);
-
-    // Start entrance animation - only activate preview AFTER timer complete
-    _controller.forward().then((_) {
-      if (mounted && !_completed && !_isDismissing) {
-        _commitPreview();
-        _closeWithMagicalAnimation();
-      }
-    });
+    // Just play entrance animation without auto-closing
+    _controller.forward();
   }
 
-  void _handleProgressHaptics() {
-    final progress = _controller.value;
-    // Trigger haptic at 25%, 50%, 75% milestones
-    if (progress >= 0.25 && _lastHapticProgress < 0.25) {
-      HapticFeedback.lightImpact();
-      _lastHapticProgress = 0.25;
-    } else if (progress >= 0.50 && _lastHapticProgress < 0.50) {
-      HapticFeedback.lightImpact();
-      _lastHapticProgress = 0.50;
-    } else if (progress >= 0.75 && _lastHapticProgress < 0.75) {
-      HapticFeedback.mediumImpact();
-      _lastHapticProgress = 0.75;
-    }
-  }
 
   void _startDrag() {
     _dragReturnController.stop();
@@ -5205,48 +5332,45 @@ class _MovePreviewAnimationOverlayState
 
     final upward = -_dragOffset.dy;
     final sideways = _dragOffset.dx.abs();
-    // Slightly easier threshold for instant apply
+    // Provide haptic feedback when reaching threshold
     if (!_hasTriggeredInstantApply &&
         upward > _dragDismissThreshold * 0.9 &&
         sideways < _dragDismissThreshold * 0.6) {
       _hasTriggeredInstantApply = true;
       HapticFeedback.heavyImpact();
       _sparkMagicBurst();
-      _commitPreview();
-      _closeWithMagicalAnimation();
     }
   }
 
   void _endDrag(DragEndDetails details) {
     final upward = -_dragOffset.dy;
     final sideways = _dragOffset.dx.abs();
-    final velocityY = details.velocity.pixelsPerSecond.dy;
+    final velocityY = -details.velocity.pixelsPerSecond.dy; // Negative = upward
     final velocityX = details.velocity.pixelsPerSecond.dx.abs();
 
-    // More responsive accept: consider both position and velocity
-    final shouldAccept =
-        upward > _dragDismissThreshold * 0.75 && sideways < _dragDismissThreshold * 0.8;
-    final fastUpwardFlick = velocityY < -600 && upward > _dragDismissThreshold * 0.5;
+    // Check for upward swipe to activate preview (magical gesture)
+    final hasUpwardVelocity = velocityY > 500;
+    final hasUpwardDistance = upward > _dragDismissThreshold * 0.7;
+    final isMainlyVertical = sideways < _dragDismissThreshold * 0.5;
 
-    // More forgiving reject: strong horizontal motion or downward drag
-    final rejectHorizontal = sideways > _dragDismissThreshold * 1.0 || velocityX > 800;
-    final rejectDownward = upward < 0 && velocityY > 400;
-
-    if ((shouldAccept || fastUpwardFlick) && !_isDismissing) {
+    if ((hasUpwardVelocity || hasUpwardDistance) && isMainlyVertical) {
+      // Magical upward swipe - activate preview!
       HapticFeedback.heavyImpact();
-      _sparkMagicBurst();
-      _commitPreview();
-      _closeWithMagicalAnimation();
+      _activatePreviewWithMagic();
       return;
     }
 
+    // Reject on strong horizontal motion or downward drag
+    final rejectHorizontal = sideways > _dragDismissThreshold * 0.8 || velocityX > 800;
+    final rejectDownward = upward < -50 || (upward < 0 && -velocityY < -400);
+
     if (rejectHorizontal || rejectDownward) {
-      HapticFeedback.lightImpact();
+      HapticFeedback.mediumImpact();
       _rejectPreview();
       return;
     }
 
-    // If dragged but not enough to accept/reject, snap back
+    // Snap back to center after dragging
     _isDraggingCard = false;
     _animateDragBack();
   }
@@ -5258,7 +5382,7 @@ class _MovePreviewAnimationOverlayState
     ).animate(
       CurvedAnimation(
         parent: _dragReturnController,
-        curve: Sprung(15), // Faster, snappier snap-back
+        curve: const BouncySpringCurve(), // Natural spring snap-back with overshoot
       ),
     );
     _dragReturnController.forward(from: 0);
@@ -5279,29 +5403,48 @@ class _MovePreviewAnimationOverlayState
       _isDraggingCard = false;
       _skipHeroFlight = true;
     });
-    final releaseVector =
-        _dragOffset + (_currentDragVelocity * 0.002);
-    Offset direction =
-        releaseVector == Offset.zero ? const Offset(0, 1) : releaseVector;
+
+    // Calculate direction with velocity
+    final releaseVector = _dragOffset + (_currentDragVelocity * 0.002);
+    Offset direction = releaseVector == Offset.zero ? const Offset(0, 1) : releaseVector;
     final normalized = direction / direction.distance;
-    final target = normalized * (_maxDragRadius * 1.5);
+
+    // Determine dismiss direction and choose appropriate animation
+    final isHorizontal = normalized.dx.abs() > normalized.dy.abs();
+    final screenSize = MediaQuery.of(context).size;
+
+    Offset target;
+    Curve curve;
+
+    if (isHorizontal) {
+      // Horizontal swipe - slide off screen with slight rotation
+      target = Offset(normalized.dx > 0 ? screenSize.width : -screenSize.width, _dragOffset.dy);
+      curve = Curves.easeInCubic;
+    } else {
+      // Downward swipe - drop off screen with gravity-like motion
+      target = Offset(_dragOffset.dx, screenSize.height * 0.8);
+      curve = Curves.easeInQuad;
+    }
+
     _pendingReject = true;
     _rejectDirection = normalized;
+
+    // Animate the card away with chosen curve
     _dragReturnAnimation = Tween<Offset>(
       begin: _dragOffset,
       end: target,
     ).animate(
       CurvedAnimation(
         parent: _dragReturnController,
-        curve: Sprung(18), // Faster reject animation
+        curve: curve,
       ),
     );
+
     _dragReturnController.forward(from: 0);
   }
 
   @override
   void dispose() {
-    _controller.removeListener(_handleProgressHaptics);
     _controller.dispose();
     _dismissController.dispose();
     _dragReturnController.dispose();
@@ -5313,14 +5456,69 @@ class _MovePreviewAnimationOverlayState
     final moves = widget.line.sanMoves;
     if (moves.isEmpty) return '';
 
-    // Show only the moves that will be added (not all moves, just new ones)
-    // Start with "..." to indicate continuation from current position
-    final moveList = moves.take(5).join(' '); // Show up to 5 moves
-    final hasMore = moves.length > 5;
-    return '... $moveList${hasMore ? ' ...' : ''}';
+    // Show moves starting from the selected move index
+    final remainingMoves = moves.skip(widget.moveIndex).take(4).toList();
+    if (remainingMoves.isEmpty) return '';
+
+    final moveList = remainingMoves.join(' ');
+    final hasMore = moves.length > widget.moveIndex + 4;
+    return moveList + (hasMore ? ' ...' : '');
   }
 
-  void _commitPreview() {
+  String _formatEvalChange() {
+    final eval = widget.line.evaluation;
+    if (eval == null && !widget.line.isMate) return '';
+
+    if (widget.line.isMate) {
+      final mate = widget.line.mate ?? 0;
+      final absMate = mate.abs();
+      final prefix = mate >= 0 ? '#+' : '#-';
+      return '$prefix$absMate';
+    }
+
+    final formatted = eval!.abs().toStringAsFixed(1);
+    final sign = eval >= 0 ? '+' : '-';
+    return '$sign$formatted';
+  }
+
+  void _activatePreviewWithMagic() {
+    if (_completed) return;
+    _completed = true;
+    setState(() {
+      _isDraggingCard = false;
+      _skipHeroFlight = true;
+    });
+
+    // Magical burst effect
+    _sparkMagicBurst();
+
+    // Activate preview mode
+    widget.notifier.previewPrincipalVariationMoveAt(
+      widget.line,
+      widget.variantIndex,
+      widget.moveIndex,
+    );
+
+    // Magical ascension animation
+    final screenHeight = MediaQuery.of(context).size.height;
+    _dragReturnAnimation = Tween<Offset>(
+      begin: _dragOffset,
+      end: Offset(0, -screenHeight * 0.8),
+    ).animate(
+      CurvedAnimation(
+        parent: _dragReturnController,
+        curve: Curves.easeInExpo,
+      ),
+    );
+
+    _dragReturnController.forward(from: 0).then((_) {
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    });
+  }
+
+  void _onPreview() {
     if (_completed) return;
     _completed = true;
     HapticFeedback.heavyImpact();
@@ -5329,6 +5527,67 @@ class _MovePreviewAnimationOverlayState
       widget.variantIndex,
       widget.moveIndex,
     );
+    _closeWithMagicalAnimation();
+  }
+
+  void _onInsertAllMoves() {
+    if (_completed) return;
+    _completed = true;
+    HapticFeedback.heavyImpact();
+    // Insert all moves from this PV line
+    widget.notifier.clearPvPreview();
+    widget.notifier.insertPvMoves(widget.line);
+    _closeWithMagicalAnimation();
+  }
+
+  void _onPromoteMainVariant() async {
+    if (_completed) return;
+    HapticFeedback.mediumImpact();
+
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: kBlack2Color,
+        title: const Text('Promote to main variant?'),
+        content: const Text(
+          'This will replace the main variant with this line from the current position.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: TextButton.styleFrom(
+              foregroundColor: kPrimaryColor,
+            ),
+            child: const Text('Promote'),
+          ),
+        ],
+      ),
+    ) ?? false;
+
+    if (!confirmed || !mounted) return;
+
+    _completed = true;
+    HapticFeedback.heavyImpact();
+
+    // Enter preview mode first
+    widget.notifier.previewPrincipalVariationMoveAt(
+      widget.line,
+      widget.variantIndex,
+      widget.moveIndex,
+    );
+
+    // Wait a frame then promote using the line we just previewed
+    await Future.delayed(const Duration(milliseconds: 50));
+    if (mounted) {
+      widget.notifier.applyPreviewHistoryAndInsertMove(widget.line);
+    }
+
+    _closeWithMagicalAnimation();
   }
 
   void _closeWithMagicalAnimation() {
@@ -5534,49 +5793,100 @@ class _MovePreviewAnimationOverlayState
             }
           }
 
+          // Ascending "lifting" particles when dragging upward
+          final ascendingParticles = <Widget>[];
+          if (dragProgress > 0.1 || _isDraggingCard) {
+            const int liftCount = 20;
+            for (int i = 0; i < liftCount; i++) {
+              final stagger = (i / liftCount);
+              final liftHeight = dragProgress * screenSize.height * 0.6;
+              final horizontalSpread = (i - liftCount / 2) * 15.sp;
+              final yPosition = screenSize.height / 2 - liftHeight * (1 - stagger);
+              final xPosition = screenSize.width / 2 + horizontalSpread + interactiveOffset.dx * 0.5;
+
+              final particleOpacity = (dragProgress * (1 - stagger * 0.7)).clamp(0.0, 1.0);
+              final size = (3 + stagger * 8).sp;
+
+              // Wavy motion as particles rise
+              final wavyX = math.sin(progress * math.pi * 4 + i * 0.5) * 8.sp * dragProgress;
+
+              ascendingParticles.add(
+                Positioned(
+                  left: xPosition + wavyX,
+                  top: yPosition,
+                  child: Opacity(
+                    opacity: particleOpacity,
+                    child: Container(
+                      width: size,
+                      height: size,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: RadialGradient(
+                          colors: [
+                            variantColor.withValues(alpha: 0.9),
+                            variantColor.withValues(alpha: 0.0),
+                          ],
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: variantColor.withValues(alpha: particleOpacity * 0.6),
+                            blurRadius: 12,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }
+          }
+
+          // Subtle orbiting particles (reduced count for elegance)
           final centerBase = Offset(
             screenSize.width / 2 + interactiveOffset.dx,
             screenSize.height / 2 + interactiveOffset.dy,
           );
           final orbitingParticles = <Widget>[];
-          for (int i = 0; i < 12; i++) {
-            final angle =
-                (particleProgress * math.pi * 3) + i * (math.pi / 6.0);
-            final orbitRadius =
-                80 + math.sin(particleProgress * math.pi * 3 + i) * 25;
-            final x = centerBase.dx + orbitRadius * math.cos(angle);
-            final y = centerBase.dy + orbitRadius * math.sin(angle);
-            final size = (6 + (i % 3) * 2).sp;
-            final particleGlow = 0.5 + 0.4 * math.sin(angle + progress * math.pi * 2);
-            orbitingParticles.add(
-              Positioned(
-                left: x - size / 2,
-                top: y - size / 2,
-                child: Opacity(
-                  opacity: particleGlow,
-                  child: Container(
-                    width: size,
-                    height: size,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: RadialGradient(
-                        colors: [
-                          variantColor.withValues(alpha: 1.0),
-                          variantColor.withValues(alpha: 0.0),
+          if (!_isDraggingCard || dragProgress < 0.3) {
+            for (int i = 0; i < 6; i++) {
+              final angle =
+                  (particleProgress * math.pi * 2) + i * (math.pi / 3.0);
+              final orbitRadius = 70 + math.sin(particleProgress * math.pi * 2 + i) * 15;
+              final x = centerBase.dx + orbitRadius * math.cos(angle);
+              final y = centerBase.dy + orbitRadius * math.sin(angle);
+              final size = (4 + (i % 2) * 2).sp;
+              final particleGlow = (0.3 + 0.3 * math.sin(angle + progress * math.pi * 2)) * (1 - dragProgress);
+              orbitingParticles.add(
+                Positioned(
+                  left: x - size / 2,
+                  top: y - size / 2,
+                  child: Opacity(
+                    opacity: particleGlow.clamp(0.0, 1.0),
+                    child: Container(
+                      width: size,
+                      height: size,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: RadialGradient(
+                          colors: [
+                            variantColor.withValues(alpha: 0.9),
+                            variantColor.withValues(alpha: 0.0),
+                          ],
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: variantColor.withValues(alpha: 0.5),
+                            blurRadius: 14,
+                            spreadRadius: 2,
+                          ),
                         ],
                       ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: variantColor.withValues(alpha: 0.8),
-                          blurRadius: 18,
-                          spreadRadius: 3,
-                        ),
-                      ],
                     ),
                   ),
                 ),
-              ),
-            );
+              );
+            }
           }
 
           final dragTrail = <Widget>[];
@@ -5647,6 +5957,7 @@ class _MovePreviewAnimationOverlayState
                   ...spiralParticles,
                   ...milestoneRings,
                   ...orbitingParticles,
+                  ...ascendingParticles,
                   if (magicPulse > 0)
                     Positioned.fill(
                       child: IgnorePointer(
@@ -5743,6 +6054,40 @@ class _MovePreviewAnimationOverlayState
                                       child: Column(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
+                                          // Evaluation badge at top
+                                          if (_formatEvalChange().isNotEmpty)
+                                            Container(
+                                              padding: EdgeInsets.symmetric(
+                                                horizontal: 12.sp,
+                                                vertical: 6.sp,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: variantColor.withValues(alpha: 0.3),
+                                                borderRadius: BorderRadius.circular(20.sp),
+                                                border: Border.all(
+                                                  color: variantColor.withValues(alpha: 0.6),
+                                                  width: 1.5,
+                                                ),
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: variantColor.withValues(alpha: 0.4),
+                                                    blurRadius: 12,
+                                                    spreadRadius: 2,
+                                                  ),
+                                                ],
+                                              ),
+                                              child: Text(
+                                                _formatEvalChange(),
+                                                style: AppTypography.textXsMedium.copyWith(
+                                                  color: kWhiteColor,
+                                                  fontSize: 16.sp,
+                                                  fontWeight: FontWeight.w800,
+                                                  letterSpacing: 1,
+                                                ),
+                                              ),
+                                            ),
+                                          SizedBox(height: 12.sp),
+                                          // Main move text with hero animation
                                       Builder(
                                         builder: (context) {
                                           final heroChild = Material(
@@ -5753,26 +6098,26 @@ class _MovePreviewAnimationOverlayState
                                                   .textXsMedium
                                                   .copyWith(
                                                 color: kWhiteColor,
-                                                fontSize: 48.sp,
+                                                fontSize: 52.sp,
                                                 fontWeight: FontWeight.w900,
-                                                letterSpacing: 4,
-                                                height: 1.2,
+                                                letterSpacing: 5,
+                                                height: 1.1,
                                                 shadows: [
                                                   Shadow(
                                                     color: variantColor
                                                         .withValues(
-                                                      alpha: 0.8,
+                                                      alpha: 0.9,
                                                     ),
-                                                    blurRadius: 20,
+                                                    blurRadius: 24,
                                                   ),
                                                   Shadow(
                                                     color: Colors.black
                                                         .withValues(
-                                                      alpha: 0.5,
+                                                      alpha: 0.6,
                                                     ),
-                                                    blurRadius: 4,
+                                                    blurRadius: 6,
                                                     offset:
-                                                        const Offset(0, 2),
+                                                        const Offset(0, 3),
                                                   ),
                                                 ],
                                               ),
@@ -5793,151 +6138,232 @@ class _MovePreviewAnimationOverlayState
                                           );
                                         },
                                       ),
-                                          SizedBox(height: 16.sp),
+                                          SizedBox(height: 18.sp),
+                                          // Continuation preview
+                                          if (_formatPreviewMoves().isNotEmpty)
                                           Container(
                                             padding: EdgeInsets.symmetric(
-                                              horizontal: 16.sp,
-                                              vertical: 12.sp,
+                                              horizontal: 18.sp,
+                                              vertical: 10.sp,
                                             ),
                                             decoration: BoxDecoration(
                                               color: Colors.black.withValues(
-                                                alpha: 0.4,
+                                                alpha: 0.5,
                                               ),
                                               borderRadius:
-                                                  BorderRadius.circular(8.sp),
+                                                  BorderRadius.circular(10.sp),
                                               border: Border.all(
                                                 color: variantColor.withValues(
-                                                  alpha: 0.3,
+                                                  alpha: 0.4,
                                                 ),
                                                 width: 1,
                                               ),
                                             ),
-                                            child: Column(
-                                              children: [
-                                                Text(
-                                                  'ADDING TO ANALYSIS',
-                                                  style: AppTypography
-                                                      .textXsMedium
-                                                      .copyWith(
-                                                    color: variantColor
-                                                        .withValues(alpha: 0.9),
-                                                    fontSize: 9.sp,
-                                                    fontWeight: FontWeight.w700,
-                                                    letterSpacing: 2,
-                                                  ),
+                                            child: Opacity(
+                                              opacity: (progress * 1.3)
+                                                  .clamp(0.0, 1.0),
+                                              child: Text(
+                                                _formatPreviewMoves(),
+                                                textAlign: TextAlign.center,
+                                                style: AppTypography
+                                                    .textXsMedium
+                                                    .copyWith(
+                                                  color: kWhiteColor.withValues(alpha: 0.95),
+                                                  fontSize: 15.sp,
+                                                  fontWeight: FontWeight.w600,
+                                                  letterSpacing: 1.2,
+                                                  height: 1.5,
                                                 ),
-                                                SizedBox(height: 8.sp),
-                                                Opacity(
-                                                  opacity: (progress * 1.2)
-                                                      .clamp(0.0, 1.0),
-                                                  child: Text(
-                                                    _formatPreviewMoves(),
-                                                    textAlign: TextAlign.center,
-                                                    style: AppTypography
-                                                        .textXsMedium
-                                                        .copyWith(
-                                                      color: kWhiteColor,
-                                                      fontSize: 14.sp,
-                                                      fontWeight: FontWeight.w600,
-                                                      letterSpacing: 1.5,
-                                                      height: 1.4,
-                                                      shadows: [
-                                                        Shadow(
-                                                          color: variantColor
-                                                              .withValues(
-                                                            alpha: 0.6,
-                                                          ),
-                                                          blurRadius: 10,
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
+                                              ),
                                             ),
                                           ),
-                                          SizedBox(height: 20.sp),
-                                          Container(
-                                            width: 180.sp,
-                                            height: 8.sp,
-                                            decoration: BoxDecoration(
-                                              color: Colors.black.withValues(
-                                                alpha: 0.3,
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(4.sp),
-                                              border: Border.all(
-                                                color: variantColor.withValues(
-                                                  alpha: 0.3,
-                                                ),
-                                                width: 1,
-                                              ),
-                                            ),
-                                            child: ClipRRect(
-                                              borderRadius:
-                                                  BorderRadius.circular(4.sp),
-                                              child: Stack(
-                                                children: [
-                                                  FractionallySizedBox(
-                                                    alignment:
-                                                        Alignment.centerLeft,
-                                                    widthFactor: progress,
+                                          SizedBox(height: 24.sp),
+                                          // Action buttons
+                                          Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              // Promote Main Variant button
+                                              SizedBox(
+                                                width: double.infinity,
+                                                child: Material(
+                                                  color: Colors.transparent,
+                                                  child: InkWell(
+                                                    onTap: _onPromoteMainVariant,
+                                                    borderRadius: BorderRadius.circular(10.sp),
                                                     child: Container(
+                                                      padding: EdgeInsets.symmetric(
+                                                        vertical: 14.sp,
+                                                      ),
                                                       decoration: BoxDecoration(
                                                         gradient: LinearGradient(
                                                           colors: [
-                                                            variantColor.withValues(alpha: 1.0),
-                                                            variantColor.withValues(alpha: 0.8),
+                                                            variantColor.withValues(alpha: 0.4),
+                                                            variantColor.withValues(alpha: 0.3),
                                                           ],
                                                         ),
-                                                        boxShadow: [
-                                                          BoxShadow(
-                                                            color: variantColor
-                                                                .withValues(alpha: 0.8),
-                                                            blurRadius: 12,
-                                                            spreadRadius: 2,
+                                                        borderRadius: BorderRadius.circular(10.sp),
+                                                        border: Border.all(
+                                                          color: variantColor.withValues(alpha: 0.6),
+                                                          width: 1.5,
+                                                        ),
+                                                      ),
+                                                      child: Row(
+                                                        mainAxisAlignment: MainAxisAlignment.center,
+                                                        children: [
+                                                          Icon(
+                                                            Icons.upgrade_rounded,
+                                                            color: kWhiteColor,
+                                                            size: 18.sp,
+                                                          ),
+                                                          SizedBox(width: 8.sp),
+                                                          Text(
+                                                            'Promote Main Variant',
+                                                            style: AppTypography.textSmBold.copyWith(
+                                                              color: kWhiteColor,
+                                                              fontSize: 14.sp,
+                                                              fontWeight: FontWeight.w700,
+                                                              letterSpacing: 0.3,
+                                                            ),
                                                           ),
                                                         ],
                                                       ),
                                                     ),
                                                   ),
-                                                  if (progress > 0 && progress < 1)
-                                                    Positioned(
-                                                      left: (180.sp * progress) -
-                                                          40.sp,
-                                                      child: Container(
-                                                        width: 40.sp,
-                                                        height: 8.sp,
-                                                        decoration: BoxDecoration(
-                                                          gradient: LinearGradient(
-                                                            colors: [
-                                                              Colors.transparent,
-                                                              kWhiteColor.withValues(
-                                                                alpha: 0.6,
-                                                              ),
-                                                              Colors.transparent,
-                                                            ],
-                                                          ),
+                                                ),
+                                              ),
+                                              SizedBox(height: 10.sp),
+                                              // Insert All Moves button
+                                              SizedBox(
+                                                width: double.infinity,
+                                                child: Material(
+                                                  color: Colors.transparent,
+                                                  child: InkWell(
+                                                    onTap: _onInsertAllMoves,
+                                                    borderRadius: BorderRadius.circular(10.sp),
+                                                    child: Container(
+                                                      padding: EdgeInsets.symmetric(
+                                                        vertical: 14.sp,
+                                                      ),
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.black.withValues(alpha: 0.3),
+                                                        borderRadius: BorderRadius.circular(10.sp),
+                                                        border: Border.all(
+                                                          color: variantColor.withValues(alpha: 0.4),
+                                                          width: 1,
                                                         ),
                                                       ),
+                                                      child: Row(
+                                                        mainAxisAlignment: MainAxisAlignment.center,
+                                                        children: [
+                                                          Icon(
+                                                            Icons.add_circle_outline_rounded,
+                                                            color: kWhiteColor.withValues(alpha: 0.9),
+                                                            size: 18.sp,
+                                                          ),
+                                                          SizedBox(width: 8.sp),
+                                                          Text(
+                                                            'Insert All Moves',
+                                                            style: AppTypography.textSmBold.copyWith(
+                                                              color: kWhiteColor.withValues(alpha: 0.9),
+                                                              fontSize: 14.sp,
+                                                              fontWeight: FontWeight.w600,
+                                                              letterSpacing: 0.3,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
                                                     ),
-                                                ],
+                                                  ),
+                                                ),
                                               ),
-                                            ),
-                                          ),
-                                          SizedBox(height: 14.sp),
-                                          Text(
-                                            'Swipe down to cancel',
-                                            style: AppTypography
-                                                .textXsMedium
-                                                .copyWith(
-                                              color: kWhiteColor.withValues(
-                                                alpha: 0.65,
+                                              SizedBox(height: 10.sp),
+                                              // Preview button
+                                              SizedBox(
+                                                width: double.infinity,
+                                                child: Material(
+                                                  color: Colors.transparent,
+                                                  child: InkWell(
+                                                    onTap: _onPreview,
+                                                    borderRadius: BorderRadius.circular(10.sp),
+                                                    child: Container(
+                                                      padding: EdgeInsets.symmetric(
+                                                        vertical: 14.sp,
+                                                      ),
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.black.withValues(alpha: 0.3),
+                                                        borderRadius: BorderRadius.circular(10.sp),
+                                                        border: Border.all(
+                                                          color: variantColor.withValues(alpha: 0.4),
+                                                          width: 1,
+                                                        ),
+                                                      ),
+                                                      child: Row(
+                                                        mainAxisAlignment: MainAxisAlignment.center,
+                                                        children: [
+                                                          Icon(
+                                                            Icons.visibility_outlined,
+                                                            color: kWhiteColor.withValues(alpha: 0.9),
+                                                            size: 18.sp,
+                                                          ),
+                                                          SizedBox(width: 8.sp),
+                                                          Text(
+                                                            'Preview',
+                                                            style: AppTypography.textSmBold.copyWith(
+                                                              color: kWhiteColor.withValues(alpha: 0.9),
+                                                              fontSize: 14.sp,
+                                                              fontWeight: FontWeight.w600,
+                                                              letterSpacing: 0.3,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
                                               ),
-                                              fontSize: 12.sp,
-                                              fontWeight: FontWeight.w600,
-                                              letterSpacing: 0.5,
-                                            ),
+                                              // Swipe up hint with animated arrow
+                                              SizedBox(height: 16.sp),
+                                              TweenAnimationBuilder<double>(
+                                                duration: const Duration(milliseconds: 1500),
+                                                tween: Tween(begin: 0.0, end: 1.0),
+                                                curve: Curves.easeInOut,
+                                                builder: (context, value, child) {
+                                                  final bounce = math.sin(value * math.pi * 2) * 4;
+                                                  final opacity = 0.4 + (math.sin(value * math.pi * 2) * 0.3);
+                                                  return Transform.translate(
+                                                    offset: Offset(0, bounce),
+                                                    child: Opacity(
+                                                      opacity: opacity,
+                                                      child: Column(
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        children: [
+                                                          Icon(
+                                                            Icons.keyboard_arrow_up_rounded,
+                                                            color: variantColor,
+                                                            size: 32.sp,
+                                                          ),
+                                                          Text(
+                                                            'Swipe up to preview',
+                                                            style: AppTypography.textXsRegular.copyWith(
+                                                              color: kWhiteColor.withValues(alpha: 0.6),
+                                                              fontSize: 11.sp,
+                                                              fontWeight: FontWeight.w500,
+                                                              letterSpacing: 0.5,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  );
+                                                },
+                                                onEnd: () {
+                                                  // Loop the animation
+                                                  if (mounted) {
+                                                    setState(() {});
+                                                  }
+                                                },
+                                              ),
+                                            ],
                                           ),
                                         ],
                                       ),
