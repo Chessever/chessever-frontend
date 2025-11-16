@@ -79,6 +79,13 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget>
   @override
   void didUpdateWidget(covariant EvaluationBarWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final positionChanged = widget.positionKey != oldWidget.positionKey;
+    if (positionChanged) {
+      _lastEvalPositionKey = widget.positionKey;
+      _lastEval = widget.evaluation;
+      _lastMate = widget.mate;
+      _animateToRatio(_whiteRatio(0.0));
+    }
     bool changed = false;
     if (widget.evaluation != null && widget.evaluation != _lastEval) {
       _lastEval = widget.evaluation;
@@ -94,10 +101,7 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget>
       }
       changed = true;
     }
-    if (widget.positionKey != oldWidget.positionKey) {
-      if (widget.positionKey != null) {
-        _lastEvalPositionKey = widget.positionKey;
-      }
+    if (positionChanged) {
       changed = true;
     }
     if (changed) {

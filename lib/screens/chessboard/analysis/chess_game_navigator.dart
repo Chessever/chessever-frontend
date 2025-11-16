@@ -674,19 +674,7 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
           return line;
         }
 
-        final remainingVariations = List<ChessLine>.of(variations)
-          ..removeAt(variationIndex);
-        final trailing =
-            moveIndex + 1 < line.length
-                ? List<ChessMove>.of(line.sublist(moveIndex + 1))
-                : <ChessMove>[];
-        if (trailing.isNotEmpty) {
-          remainingVariations.insert(0, trailing);
-        }
-
-        final updatedMove = move.copyWith(
-          variations: remainingVariations.isEmpty ? null : remainingVariations,
-        );
+        final updatedMove = move.copyWith(variations: null);
 
         final newLine = <ChessMove>[
           ...line.sublist(0, moveIndex),
