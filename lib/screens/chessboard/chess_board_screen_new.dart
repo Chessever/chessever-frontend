@@ -3962,6 +3962,11 @@ class _PrincipalVariationListState
         onTapCancel: () => _setCardPressed(null),
         onLongPressStart: (_) => _setCardPressed(variantIndex),
         onLongPressEnd: (_) => _setCardPressed(null),
+        onTap: () {
+          HapticFeedback.lightImpact();
+          notifier.clearPvPreview();
+          notifier.playPrincipalVariationMove(line);
+        },
         onLongPress: () {
           HapticFeedback.mediumImpact();
           final lastMoveIndex = line.sanMoves.length - 1;
@@ -4950,8 +4955,8 @@ class _NotationActionOverlayState extends State<_NotationActionOverlay> {
         ReactToHeroineDismiss(
           builder: (context, dismissProgress, offset, child) {
             final progress = 1.0 - dismissProgress;
-            final blurAmount = 10.0 * progress;
-            final backgroundOpacity = 0.55 * progress;
+            final blurAmount = 4.0 * progress;
+            final backgroundOpacity = 0.3 * progress;
 
             return GestureDetector(
               onTap: _dismiss,
@@ -5120,8 +5125,7 @@ class _NotationActionOverlayState extends State<_NotationActionOverlay> {
                                   // Apply stagger effect
                                   final delayedValue = (value - staggerDelay)
                                       .clamp(0.0, 1.0);
-                                  final normalizedValue =
-                                      (staggerDelay >= 1.0
+                                  final normalizedValue = (staggerDelay >= 1.0
                                           ? 0.0
                                           : delayedValue / (1.0 - staggerDelay))
                                       .clamp(0.0, 1.0);
