@@ -1681,12 +1681,19 @@ class _BottomNavBar extends ConsumerWidget {
     final canMoveBackward =
         navigatorState?.canGoBackward ?? state.analysisState.canMoveBackward;
     final previewMoves = state.lockedPvMergedMoves;
+    final previewPositions = state.lockedPvMergedPositions;
     final previewIndex = state.lockedPvNavigationIndex ?? 0;
     final isPreviewActive =
         state.isPvPreviewActive && previewMoves != null && previewMoves.isNotEmpty;
     final previewCanMoveForward =
         isPreviewActive ? previewIndex < previewMoves.length - 1 : false;
-    final previewCanMoveBackward = isPreviewActive ? previewIndex > 0 : false;
+    // CRITICAL FIX: In preview mode, can go backward as long as we have moves
+    // previewIndex >= 0 means we can go backward (even from index 0 to starting position)
+    final previewCanMoveBackward =
+        isPreviewActive && previewMoves != null
+            ? previewIndex >= 0 &&
+ previewMoves.isNotEmpty
+            : false;
     final effectiveCanMoveForward =
         isPreviewActive ? previewCanMoveForward : canMoveForward;
     final effectiveCanMoveBackward =
@@ -2922,10 +2929,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       pointerMap[pointerId] = node;
       final isVariationHead = variationContext != null && i == 0;
 
-      final text = _formatMoveText(
-        node,
-        suppressBlackMovePrefix: isVariationHead,
-      );
+      // CRITICAL FIX: Never suppress black move prefix for proper PGN notation
+      // Variations starting with black moves MUST show ellipsis (e.g., "1... c5")
+      final text = _formatMoveText(node);
       final variationMovesList = variationContext?.moves;
       final variationHeadPointer =
           isVariationHead && (variationMovesList?.isNotEmpty ?? false)
@@ -3339,15 +3345,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
   String _formatVariationText(List<NotationMoveNode> moves) {
     final buffer = StringBuffer();
-    var isFirstNode = true;
+    // CRITICAL FIX: Don't suppress black move prefix for proper PGN notation
     for (final node in moves) {
-      buffer.write(
-        '${_formatMoveText(
-          node,
-          suppressBlackMovePrefix: isFirstNode,
-        )} ',
-      );
-      isFirstNode = false;
+      buffer.write('${_formatMoveText(node)} ');
     }
     return buffer.toString().trim();
   }
@@ -4470,12 +4470,11 @@ class _PrincipalVariationListState
     for (final entry in formattedMoves) {
       if (entry.trim().isEmpty) continue;
       final trimmed = entry.trim();
-      // White move number: ends with exactly one period (e.g., "1.")
-      final isWhiteNumber =
-          trimmed.endsWith('.') && !trimmed.endsWith('...');
-      // Black move number: ends with exactly three periods (e.g., "1...")
-      final isBlackNumber = trimmed.endsWith('...');
-      if (isWhiteNumber || isBlackNumber) {
+      // Check if this is a move number (white or black)
+      // White: "1.", "2.", etc. (number followed by single period)
+      // Black: "1...", "2...", etc. (number followed by three periods)
+      final isNumber = RegExp(r'^\d+\.\.?\.?$').hasMatch(trimmed);
+      if (isNumber) {
         tokens.add(_PvToken(text: entry));
       } else {
         moveCursor++;

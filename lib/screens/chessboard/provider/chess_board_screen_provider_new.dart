@@ -1135,10 +1135,23 @@ class ChessBoardScreenNotifierNew
       baseMoveObjects = currentState.lockedPvMergedMoveObjects ?? baseAnalysis.combinedMoves;
       _releaseLog('🎯 PV PREVIEW: Using preview card history as base (${pgnHistory.length} moves)');
     } else {
-      // First preview: Use analysis state's combined history
-      pgnHistory = baseAnalysis.combinedMoveSans;
-      baseMoveObjects = baseAnalysis.combinedMoves;
-      _releaseLog('🎯 PV PREVIEW: Using analysis history as base (${pgnHistory.length} moves)');
+      // CRITICAL FIX: Only use moves up to CURRENT position, not all moves
+      // When at move 10 of 50, we should only take moves 0-10, not all 50
+      final currentMoveIndex = baseAnalysis.currentMoveIndex;
+      final allSans = baseAnalysis.combinedMoveSans;
+      final allMoves = baseAnalysis.combinedMoves;
+
+      // Take moves from start up to and including current position
+      // currentMoveIndex = -1 means before first move (starting position)
+      // currentMoveIndex = 0 means after first move, etc.
+      final endIndex = currentMoveIndex + 1; // +1 because we want inclusive
+      pgnHistory = endIndex > 0 && endIndex <= allSans.length
+          ? allSans.sublist(0, endIndex)
+          : <String>[];
+      baseMoveObjects = endIndex > 0 && endIndex <= allMoves.length
+          ? allMoves.sublist(0, endIndex)
+          : <Move>[];
+      _releaseLog('🎯 PV PREVIEW: Using analysis history up to move $currentMoveIndex (${pgnHistory.length} moves)');
     }
     final pvMoves = line.moves;
     final mergedMoves = [...pgnHistory, ...line.sanMoves];
@@ -1159,25 +1172,28 @@ class ChessBoardScreenNotifierNew
       mergedPositions = [...existingPositions, ...newPositions];
       _releaseLog('🎯 PV PREVIEW: Extended existing positions (${existingPositions.length} + ${newPositions.length} = ${mergedPositions.length})');
     } else {
-      // First preview: Calculate all positions from scratch
-      Position startingPosition =
-          baseAnalysis.startingPosition ??
-          (baseAnalysis.positionHistory.isNotEmpty
-              ? baseAnalysis.positionHistory.first
-              : Chess.initial);
-      // Clone to avoid mutating original
-      startingPosition = Position.setupPosition(
-        Rule.chess,
-        Setup.parseFen(startingPosition.fen),
-      );
-      var positionCursor = startingPosition;
-      final positions = <Position>[positionCursor];
-      for (final move in combinedMoveObjects) {
+      // CRITICAL FIX: Use existing position history up to current move, then append PV moves
+      // This avoids recalculating positions and ensures we start from the correct position
+      final currentMoveIndex = baseAnalysis.currentMoveIndex;
+      final allPositions = baseAnalysis.positionHistory;
+
+      // Take positions from start up to and including current position
+      // Position history has: [start, after move 0, after move 1, ...]
+      // So for currentMoveIndex = 0, we want positions [0, 1] (start + after move 0)
+      final endIndex = currentMoveIndex + 2; // +2 to include start and current position
+      final basePositions = endIndex > 0 && endIndex <= allPositions.length
+          ? allPositions.sublist(0, endIndex)
+          : (allPositions.isNotEmpty ? [allPositions.first] : [Chess.initial]);
+
+      // Now append PV moves from the last base position
+      var positionCursor = basePositions.last;
+      final newPositions = <Position>[];
+      for (final move in pvMoves) {
         positionCursor = positionCursor.play(move);
-        positions.add(positionCursor);
+        newPositions.add(positionCursor);
       }
-      mergedPositions = positions;
-      _releaseLog('🎯 PV PREVIEW: Calculated all positions from scratch (${mergedPositions.length})');
+      mergedPositions = [...basePositions, ...newPositions];
+      _releaseLog('🎯 PV PREVIEW: Used existing positions up to move $currentMoveIndex (${basePositions.length}) + PV moves (${newPositions.length}) = ${mergedPositions.length}');
     }
 
     final baseMoveCount = baseMoveObjects.length;

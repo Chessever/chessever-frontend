@@ -56,18 +56,34 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
   void didUpdateWidget(covariant EvaluationBarWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
     final previousEval = _lastEval;
+    final positionChanged =
+        widget.positionKey != null &&
+        widget.positionKey != _lastEvalPositionKey;
+
     if (widget.evaluation != null) {
       _shouldAnimate =
           previousEval == null || (widget.evaluation! - previousEval).abs() >= 0.1;
       _lastEval = widget.evaluation;
+    } else if (positionChanged) {
+      // Position changed but no evaluation yet - reset to neutral
+      _shouldAnimate = previousEval != null && previousEval.abs() >= 0.1;
+      _lastEval = 0.0;
     } else {
       _shouldAnimate = false;
     }
+
     if (widget.mate != null) {
       _lastMate = widget.mate;
+    } else if (positionChanged) {
+      // Position changed - reset mate
+      _lastMate = 0;
     }
+
     if ((widget.evaluation != null || widget.mate != null) &&
         widget.positionKey != null) {
+      _lastEvalPositionKey = widget.positionKey;
+    } else if (positionChanged && widget.positionKey != null) {
+      // Update position key even when evaluation is not ready yet
       _lastEvalPositionKey = widget.positionKey;
     }
   }
