@@ -1676,12 +1676,17 @@ class _BottomNavBar extends ConsumerWidget {
     if (analysisGame != null) {
       navigatorState = ref.watch(chessGameNavigatorProvider(analysisGame));
     }
+    final baseCanMoveForward = state.analysisState.canMoveForward;
+    final baseCanMoveBackward = state.analysisState.canMoveBackward;
     final canMoveForward =
-        navigatorState?.canGoForward ?? state.analysisState.canMoveForward;
+        navigatorState != null
+            ? (navigatorState.canGoForward || baseCanMoveForward)
+            : baseCanMoveForward;
     final canMoveBackward =
-        navigatorState?.canGoBackward ?? state.analysisState.canMoveBackward;
+        navigatorState != null
+            ? (navigatorState.canGoBackward || baseCanMoveBackward)
+            : baseCanMoveBackward;
     final previewMoves = state.lockedPvMergedMoves;
-    final previewPositions = state.lockedPvMergedPositions;
     final previewIndex = state.lockedPvNavigationIndex ?? 0;
     final isPreviewActive =
         state.isPvPreviewActive && previewMoves != null && previewMoves.isNotEmpty;
@@ -1690,10 +1695,7 @@ class _BottomNavBar extends ConsumerWidget {
     // CRITICAL FIX: In preview mode, can go backward as long as we have moves
     // previewIndex >= 0 means we can go backward (even from index 0 to starting position)
     final previewCanMoveBackward =
-        isPreviewActive && previewMoves != null
-            ? previewIndex >= 0 &&
- previewMoves.isNotEmpty
-            : false;
+        isPreviewActive ? previewIndex >= 0 && previewMoves.isNotEmpty : false;
     final effectiveCanMoveForward =
         isPreviewActive ? previewCanMoveForward : canMoveForward;
     final effectiveCanMoveBackward =
@@ -2838,10 +2840,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     buffer.write('(');
     for (var i = 0; i < variation.moves.length; i++) {
       final node = variation.moves[i];
-      if (node.showMoveNumber) {
-        buffer.write(node.isWhiteMove ? '${node.moveNumber}. ' : '${node.moveNumber}... ');
-      }
-      buffer.write(node.move.san);
+      buffer.write(_formatMoveText(node));
       if (i < variation.moves.length - 1) {
         buffer.write(' ');
       }
@@ -3048,9 +3047,14 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   }) {
     final buffer = StringBuffer();
     if (node.showMoveNumber) {
-      final useEllipsis = !node.isWhiteMove && !suppressBlackMovePrefix;
-      final separator = useEllipsis ? '... ' : '. ';
-      buffer.write('${node.moveNumber}$separator');
+      final bool isFirstBlackInLine =
+          !node.isWhiteMove && (node.showEllipsis || suppressBlackMovePrefix);
+      if (isFirstBlackInLine) {
+        buffer.write('... ');
+      } else {
+        final separator = node.isWhiteMove ? '. ' : '... ';
+        buffer.write('${node.moveNumber}$separator');
+      }
     }
     buffer.write(node.move.san);
     return buffer.toString();
@@ -3345,7 +3349,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
   String _formatVariationText(List<NotationMoveNode> moves) {
     final buffer = StringBuffer();
-    // CRITICAL FIX: Don't suppress black move prefix for proper PGN notation
+    // Preserve natural PGN formatting, including ellipsis-only entries for black heads
     for (final node in moves) {
       buffer.write('${_formatMoveText(node)} ');
     }

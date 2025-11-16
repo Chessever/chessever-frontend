@@ -305,6 +305,7 @@ class ChessBoardStateNew {
   final AnalysisBoardState analysisState;
   final int? mate;
   final List<AnalysisLine> principalVariations;
+  final String? principalVariationsBaseFen;
   final int? selectedVariantIndex; // Track which engine suggestion is selected
   final List<int> variantMovePointer; // Track progress through selected variant
   final bool
@@ -377,6 +378,7 @@ class ChessBoardStateNew {
     this.shapes = const ISet.empty(),
     this.mate,
     this.principalVariations = const [],
+    this.principalVariationsBaseFen,
     this.selectedVariantIndex,
     this.variantMovePointer = const [],
     this.showEngineAnalysis = true, // Active by default
@@ -423,6 +425,7 @@ class ChessBoardStateNew {
     AnalysisBoardState? analysisState,
     ISet<Shape>? shapes,
     List<AnalysisLine>? principalVariations,
+    Object? principalVariationsBaseFen = _noChange,
     Object? selectedVariantIndex = _noChange,
     List<int>? variantMovePointer,
     bool? showEngineAnalysis,
@@ -476,6 +479,10 @@ class ChessBoardStateNew {
       isAnalysisMode: isAnalysisMode ?? this.isAnalysisMode,
       shapes: shapes ?? this.shapes,
       principalVariations: principalVariations ?? this.principalVariations,
+      principalVariationsBaseFen:
+          identical(principalVariationsBaseFen, _noChange)
+              ? this.principalVariationsBaseFen
+              : principalVariationsBaseFen as String?,
       selectedVariantIndex:
           identical(selectedVariantIndex, _noChange)
               ? this.selectedVariantIndex
@@ -627,6 +634,7 @@ class ChessBoardStateNew {
           other.principalVariations,
           principalVariations,
         ) &&
+        other.principalVariationsBaseFen == principalVariationsBaseFen &&
         _intListEquality.equals(
           other.variantMovePointer,
           variantMovePointer,
@@ -666,6 +674,7 @@ class ChessBoardStateNew {
       Object.hashAll(moveSans),
       Object.hashAll(moveTimes),
       Object.hashAll(principalVariations),
+      principalVariationsBaseFen,
       Object.hashAll(variantMovePointer),
       isPvPreviewActive,
       pvPreviewVariantIndex,
