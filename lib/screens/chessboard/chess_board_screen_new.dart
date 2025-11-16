@@ -2552,7 +2552,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             ),
           Positioned(
             bottom: 12.sp,
-            right: 12.sp,
+            right: 0,
             child: _AnalysisActionButtons(params: params),
           ),
         ],
