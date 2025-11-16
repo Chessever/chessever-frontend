@@ -606,6 +606,35 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
     );
   }
 
+  void deleteContinuationAfterPointer(ChessMovePointer pointer) {
+    if (pointer.isEmpty) {
+      return;
+    }
+
+    final parentPointer = pointer.sublist(0, pointer.length - 1);
+    final trimIndex = pointer.last.toInt();
+
+    final updatedMainline = _rebuildLine(
+      state.game.mainline,
+      parentPointer,
+      0,
+      (line, moveIndex) {
+        if (line.isEmpty) {
+          return line;
+        }
+        final keepLength = trimIndex.clamp(0, line.length - 1) + 1;
+        return List<ChessMove>.of(line.take(keepLength));
+      },
+    );
+
+    replaceState(
+      ChessGameNavigatorState(
+        game: state.game.copyWith(mainline: updatedMainline),
+        movePointer: List<Number>.of(pointer),
+      ),
+    );
+  }
+
   void promoteVariationToMainline(ChessMovePointer variationHeadPointer) {
     debugPrint('🎯 NAVIGATOR promoteVariation: $variationHeadPointer');
     if (variationHeadPointer.length < 3) {
@@ -704,7 +733,8 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
       return;
     }
 
-    final currentIndex = state.movePointer.isEmpty ? -1 : state.movePointer.last;
+    final currentIndex =
+        state.movePointer.isEmpty ? -1 : state.movePointer.last;
     final isAtLineEnd = currentIndex == currentLine.length - 1;
 
     debugPrint(
@@ -807,16 +837,14 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
       );
 
       if (newVariationIndex == null) {
-        debugPrint('🎯 NAVIGATOR appendMovesFromPv: Failed to create variation');
+        debugPrint(
+          '🎯 NAVIGATOR appendMovesFromPv: Failed to create variation',
+        );
         return;
       }
 
       // Now append remaining moves to the new variation
-      final newPointer = <Number>[
-        ...state.movePointer,
-        newVariationIndex!,
-        0,
-      ];
+      final newPointer = <Number>[...state.movePointer, newVariationIndex!, 0];
       var currentMainline = updatedMainline;
 
       for (var i = 1; i < chessMoves.length; i++) {
@@ -1028,10 +1056,7 @@ final chessGameNavigatorProvider = StateNotifierProvider.family<
   ChessGame
 >((ref, game) => ChessGameNavigator(game));
 
-ChessLine? _lineForPointerInGame(
-  ChessGame game,
-  ChessMovePointer pointer,
-) {
+ChessLine? _lineForPointerInGame(ChessGame game, ChessMovePointer pointer) {
   ChessLine? line = game.mainline;
   ChessMove? move;
   for (var i = 0; i < pointer.length; i++) {
@@ -1052,10 +1077,7 @@ ChessLine? _lineForPointerInGame(
   return line;
 }
 
-ChessMovePointer? _nextPointerInGame(
-  ChessGame game,
-  ChessMovePointer pointer,
-) {
+ChessMovePointer? _nextPointerInGame(ChessGame game, ChessMovePointer pointer) {
   if (game.mainline.isEmpty) {
     return null;
   }
