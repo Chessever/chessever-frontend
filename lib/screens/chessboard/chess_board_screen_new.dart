@@ -3668,12 +3668,18 @@ class _PrincipalVariationListState
 
     final lines = widget.state.principalVariations.toList(growable: false);
     final pageCount = lines.length;
-    if (lines.isNotEmpty) {
-      _lastNonEmptyLines = lines;
-    }
     final positionKey = _derivePositionKey(widget.state);
     final positionChanged = positionKey != _lastPositionKey;
     _lastPositionKey = positionKey;
+
+    // Update cached lines: clear on position change, update when new lines available
+    if (positionChanged) {
+      // Clear cached lines when position changes to avoid showing PV lines from wrong position
+      _lastNonEmptyLines = const [];
+    }
+    if (lines.isNotEmpty) {
+      _lastNonEmptyLines = lines;
+    }
 
     // Preserve user selection reference when PV list temporarily empties
     if (pageCount == 0) {
@@ -4464,10 +4470,11 @@ class _PrincipalVariationListState
     for (final entry in formattedMoves) {
       if (entry.trim().isEmpty) continue;
       final trimmed = entry.trim();
+      // White move number: ends with exactly one period (e.g., "1.")
       final isWhiteNumber =
-          trimmed.endsWith('.') && !trimmed.contains('...');
-      final isBlackNumber =
-          trimmed.contains('...') && !trimmed.endsWith('...');
+          trimmed.endsWith('.') && !trimmed.endsWith('...');
+      // Black move number: ends with exactly three periods (e.g., "1...")
+      final isBlackNumber = trimmed.endsWith('...');
       if (isWhiteNumber || isBlackNumber) {
         tokens.add(_PvToken(text: entry));
       } else {
@@ -4588,9 +4595,13 @@ class _PrincipalVariationListState
               : baseMoveNumber +
                   ((i + 1) ~/ 2); // Black starts: 0 -> base, 1,2 -> base+1
 
-      // Add move number prefix only for white moves
+      // Add move number prefix for white moves and first black moves
       if (isWhiteMove) {
+        // White move: use standard notation (e.g., "1.")
         formatted.add('$moveNumber.');
+      } else if (i == 0) {
+        // First move is black: use ellipsis notation (e.g., "1...")
+        formatted.add('$moveNumber...');
       }
 
       // Add the move notation

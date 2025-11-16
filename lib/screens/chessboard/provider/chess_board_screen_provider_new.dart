@@ -1380,9 +1380,8 @@ class ChessBoardScreenNotifierNew
       ),
     );
 
-    if (!currentState.isPvPreviewActive) {
-      _updateEvaluation(force: true);
-    }
+    // Always update evaluation during preview navigation
+    _updateEvaluation(force: true);
   }
 
   /// Select a variant (engine suggestion) for navigation
@@ -3122,7 +3121,13 @@ class ChessBoardScreenNotifierNew
         }
       }
     } else {
-      nextState = _clearVariantSelection(nextState);
+      // No variant selected - but if in preview mode, still show PV arrows
+      if (currentState.isPvPreviewActive && pvLines.isNotEmpty) {
+        final arrowShapes = _getAllVariantArrowShapes(pvLines, 0);
+        nextState = nextState.copyWith(shapes: arrowShapes);
+      } else {
+        nextState = _clearVariantSelection(nextState);
+      }
     }
 
     _resumeVariantAutoPlay = false;
@@ -3233,8 +3238,10 @@ class ChessBoardScreenNotifierNew
           initialState.lockedPvNavigationIndex != null) {
         final navIndex = initialState.lockedPvNavigationIndex!;
         final positions = initialState.lockedPvMergedPositions!;
-        if (navIndex >= 0 && navIndex < positions.length) {
-          currentPosition = positions[navIndex];
+        // Position array: [0]=start, [1]=after move 0, [2]=after move 1, etc.
+        // So for move at navIndex, the position after is at navIndex + 1
+        if (navIndex >= 0 && navIndex + 1 < positions.length) {
+          currentPosition = positions[navIndex + 1];
         } else {
           currentPosition =
               initialState.isAnalysisMode
