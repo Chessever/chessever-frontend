@@ -13,6 +13,7 @@ import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dar
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
+import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
@@ -1336,6 +1337,105 @@ class ChessBoardScreenNotifierNew
     // Trigger fresh evaluation
     _updateEvaluation(force: true);
     _releaseLog('🎯 APPLY PREVIEW: Complete');
+  }
+
+  Future<void> promotePreviewToMainVariant() async {
+    _releaseLog('🎯 PROMOTE PREVIEW: Replacing main variant with preview line');
+    final currentState = state.value;
+    if (currentState == null) return;
+    if (_analysisNavigator == null) {
+      _releaseLog('🎯 PROMOTE PREVIEW: No navigator available');
+      return;
+    }
+    final lockedSans = currentState.lockedPvMergedMoves;
+    final lockedMoves = currentState.lockedPvMergedMoveObjects;
+    final lockedPositions = currentState.lockedPvMergedPositions;
+    if (lockedSans == null ||
+        lockedMoves == null ||
+        lockedPositions == null ||
+        lockedMoves.isEmpty) {
+      _releaseLog('🎯 PROMOTE PREVIEW: Missing locked PV data');
+      return;
+    }
+
+    final startingPosition =
+        lockedPositions.isNotEmpty
+            ? lockedPositions.first
+            : currentState.analysisState.startingPosition ??
+                currentState.position;
+    if (startingPosition == null) {
+      _releaseLog('🎯 PROMOTE PREVIEW: Unable to determine starting position');
+      return;
+    }
+
+    final newMainline = <ChessMove>[];
+    Position cursor = startingPosition;
+    for (int i = 0; i < lockedMoves.length; i++) {
+      final move = lockedMoves[i];
+      final Position resultPosition;
+      if (i + 1 < lockedPositions.length) {
+        resultPosition = lockedPositions[i + 1];
+      } else {
+        resultPosition = cursor.play(move);
+      }
+
+      final san = i < lockedSans.length ? lockedSans[i] : move.uci;
+      final chessMove = ChessMove(
+        num: resultPosition.fullmoves,
+        fen: resultPosition.fen,
+        san: san,
+        uci: move.uci,
+        turn: resultPosition.turn == Side.black
+            ? ChessColor.black
+            : ChessColor.white,
+      );
+      newMainline.add(chessMove);
+      cursor = resultPosition;
+    }
+
+    final existingGame =
+        currentState.analysisState.game ?? _analysisNavigator!.state.game;
+    final metadata = Map<String, dynamic>.from(existingGame.metadata);
+    final newGame = ChessGame(
+      gameId: existingGame.gameId,
+      startingFen: startingPosition.fen,
+      metadata: metadata,
+      mainline: newMainline,
+    );
+
+    final movePointer =
+        newMainline.isEmpty ? const <Number>[] : <Number>[newMainline.length - 1];
+
+    _analysisNavigator!.replaceState(
+      ChessGameNavigatorState(game: newGame, movePointer: movePointer),
+    );
+
+    final newPgn = exportGameToPgn(newGame);
+
+    _pvPreviewSnapshot = null;
+    state = AsyncValue.data(
+      currentState.copyWith(
+        isPvPreviewActive: false,
+        pvPreviewVariantIndex: null,
+        pvPreviewMoveIndex: null,
+        lockedPvLine: null,
+        lockedPvMergedMoves: null,
+        lockedPvMergedMoveObjects: null,
+        lockedPvMergedPositions: null,
+        lockedPvBaseMoveCount: null,
+        lockedPvNavigationIndex: null,
+        principalVariations: const [],
+        selectedVariantIndex: null,
+        variantBaseFen: null,
+        variantMovePointer: const [],
+        pgnData: newPgn,
+      ),
+    );
+
+    _syncAnalysisFromNavigator(_analysisNavigator!.state);
+    await _persistAnalysisState();
+    _updateEvaluation(force: true);
+    _releaseLog('🎯 PROMOTE PREVIEW: Promotion complete');
   }
 
   void navigateLockedPvForward() {
