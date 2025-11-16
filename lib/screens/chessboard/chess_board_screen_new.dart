@@ -42,6 +42,7 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:heroine/heroine.dart';
+import 'package:motor/motor.dart';
 
 /// Spring-based curve that mimics iOS snappy motion
 /// Quick, precise animation with subtle natural settling
@@ -3967,8 +3968,9 @@ class _PrincipalVariationListState
           if (lastMoveIndex >= 0) {
             final lastMoveText =
                 pvTokens.lastWhere((t) => t.moveIndex != null).text;
+            // Make tag unique by including game ID, page index, and timestamp
             final heroineTag =
-                'pv_move_${identityHashCode(line)}_${variantIndex}_$lastMoveIndex';
+                'pv_move_${widget.game.gameId}_${widget.index}_${variantIndex}_$lastMoveIndex';
             _showMovePreviewAnimation(
               context,
               lastMoveText,
@@ -4845,7 +4847,7 @@ class _ShareGameScreen extends ConsumerWidget {
   }
 }
 
-class _NotationActionOverlay extends StatelessWidget {
+class _NotationActionOverlay extends StatefulWidget {
   final String heroineTag;
   final String title;
   final String? subtitle;
@@ -4859,98 +4861,308 @@ class _NotationActionOverlay extends StatelessWidget {
   });
 
   @override
+  State<_NotationActionOverlay> createState() => _NotationActionOverlayState();
+}
+
+class _NotationActionOverlayState extends State<_NotationActionOverlay> {
+  static const double _dragDismissThreshold = 120.0;
+
+  bool _isEntering = true;
+  double _glowIntensity = 0.0;
+  bool _hasPlayedThresholdHaptic = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Initial haptic feedback
+    HapticFeedback.mediumImpact();
+
+    // Trigger entrance animation
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {
+          _isEntering = false;
+        });
+      }
+    });
+  }
+
+  void _dismiss() {
+    Navigator.of(context).pop();
+  }
+
+  Offset _dragOffset = Offset.zero;
+  bool _isDragging = false;
+
+  void _startDrag() {
+    setState(() {
+      _isDragging = true;
+    });
+  }
+
+  void _updateDrag(DragUpdateDetails details) {
+    final newOffset = _dragOffset + details.delta;
+    final distance = newOffset.distance;
+    final newGlow = (distance / _dragDismissThreshold).clamp(0.0, 1.0);
+
+    // Haptic feedback when approaching dismiss threshold
+    if (newGlow > 0.85 && !_hasPlayedThresholdHaptic) {
+      HapticFeedback.selectionClick();
+      _hasPlayedThresholdHaptic = true;
+    } else if (newGlow <= 0.85) {
+      _hasPlayedThresholdHaptic = false;
+    }
+
+    if (mounted) {
+      setState(() {
+        _dragOffset = newOffset;
+        _glowIntensity = newGlow;
+      });
+    }
+  }
+
+  void _endDrag(DragEndDetails details) {
+    final distance = _dragOffset.distance;
+    final velocityMagnitude = details.velocity.pixelsPerSecond.distance;
+
+    if (distance > _dragDismissThreshold || velocityMagnitude > 800) {
+      HapticFeedback.mediumImpact();
+      Navigator.of(context).pop();
+    } else {
+      // Snap back
+      if (mounted) {
+        setState(() {
+          _dragOffset = Offset.zero;
+          _glowIntensity = 0.0;
+          _isDragging = false;
+          _hasPlayedThresholdHaptic = false;
+        });
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return ReactToHeroineDismiss(
-      builder: (context, dismissProgress, offset, child) {
-        final fade = (1 - dismissProgress).clamp(0.0, 1.0);
-        return Opacity(opacity: fade, child: child!);
-      },
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-              child: Container(color: Colors.black.withValues(alpha: 0.55)),
-            ),
-          ),
-          Center(
-            child: Heroine(
-              motion: CupertinoMotion.bouncy(),
-              tag: heroineTag,
-              child: Container(
-                width: double.infinity,
-                margin: EdgeInsets.symmetric(horizontal: 20.sp),
-                padding: EdgeInsets.all(20.sp),
-                decoration: BoxDecoration(
-                  color: kBlack2Color,
-                  borderRadius: BorderRadius.circular(18.sp),
-                  border: Border.all(
-                    color: kPrimaryColor.withValues(alpha: 0.35),
-                    width: 1.5,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: kBlackColor.withValues(alpha: 0.4),
-                      blurRadius: 26,
-                      offset: const Offset(0, 14),
-                    ),
-                  ],
+    return Stack(
+      children: [
+        // Background with blur that reacts to heroine dismiss
+        ReactToHeroineDismiss(
+          builder: (context, dismissProgress, offset, child) {
+            final progress = 1.0 - dismissProgress;
+            final blurAmount = 10.0 * progress;
+            final backgroundOpacity = 0.55 * progress;
+
+            return GestureDetector(
+              onTap: _dismiss,
+              child: BackdropFilter(
+                filter: ImageFilter.blur(
+                  sigmaX: blurAmount,
+                  sigmaY: blurAmount,
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Container(
+                  color: Colors.black.withValues(alpha: backgroundOpacity),
+                ),
+              ),
+            );
+          },
+        ),
+
+        // Main card with drag-to-dismiss
+        Center(
+          child: SingleMotionBuilder(
+            motion: CupertinoMotion.bouncy(),
+            value: _isEntering ? 0.0 : 1.0,
+            builder: (context, value, child) {
+              // Entrance animation
+              final scale = 0.7 + (value * 0.3);
+              final opacity = value.clamp(0.0, 1.0);
+
+              return Transform.translate(
+                offset: _dragOffset,
+                child: Transform.scale(
+                  scale: scale,
+                  child: Opacity(opacity: opacity, child: child),
+                ),
+              );
+            },
+            child: GestureDetector(
+              onVerticalDragStart: (_) => _startDrag(),
+              onVerticalDragUpdate: _updateDrag,
+              onVerticalDragEnd: _endDrag,
+              onHorizontalDragStart: (_) => _startDrag(),
+              onHorizontalDragUpdate: _updateDrag,
+              onHorizontalDragEnd: _endDrag,
+              child: Heroine(
+                motion: CupertinoMotion.bouncy(),
+                tag: widget.heroineTag,
+                child: Stack(
+                  clipBehavior: Clip.none,
                   children: [
-                    Row(
-                      children: [
-                        Icon(Icons.tune, color: kPrimaryColor, size: 20.ic),
-                        SizedBox(width: 10.w),
-                        Expanded(
-                          child: Text(
-                            title,
-                            style: AppTypography.textLgBold.copyWith(
-                              color: kWhiteColor,
-                            ),
+                    // Glow effect when dragging
+                    if (_glowIntensity > 0.0)
+                      Positioned.fill(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(20.sp),
+                            boxShadow: [
+                              BoxShadow(
+                                color: kPrimaryColor.withValues(
+                                  alpha: _glowIntensity * 0.4,
+                                ),
+                                blurRadius: 30 * _glowIntensity,
+                                spreadRadius: 8 * _glowIntensity,
+                              ),
+                            ],
                           ),
-                        ),
-                        IconButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          icon: Icon(
-                            Icons.close,
-                            color: kWhiteColor70,
-                            size: 18.ic,
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (subtitle != null) ...[
-                      SizedBox(height: 6.h),
-                      Text(
-                        subtitle!,
-                        style: AppTypography.textSmMedium.copyWith(
-                          color: kWhiteColor70,
                         ),
                       ),
-                    ],
-                    SizedBox(height: 16.h),
-                    ...actions.map(
-                      (action) => Padding(
-                        padding: EdgeInsets.only(bottom: 10.h),
-                        child: FilledButton.icon(
-                          style: FilledButton.styleFrom(
-                            backgroundColor: action.color.withValues(
-                              alpha: 0.18,
+
+                    // Main card content
+                    Material(
+                      color: Colors.transparent,
+                      child: Container(
+                        width: double.infinity,
+                        margin: EdgeInsets.symmetric(horizontal: 20.sp),
+                        padding: EdgeInsets.all(20.sp),
+                        decoration: BoxDecoration(
+                          color: kBlack2Color,
+                          borderRadius: BorderRadius.circular(20.sp),
+                          border: Border.all(
+                            color: kPrimaryColor.withValues(
+                              alpha: 0.35 + (_glowIntensity * 0.25),
                             ),
-                            foregroundColor: kWhiteColor,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12.sp),
-                              side: BorderSide(
-                                color: action.color.withValues(alpha: 0.45),
+                            width: 1.5 + (_glowIntensity * 0.5),
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: kBlackColor.withValues(alpha: 0.5),
+                              blurRadius: 30 + (_glowIntensity * 10),
+                              offset: Offset(0, 14 + (_glowIntensity * 6)),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Header
+                            Row(
+                              children: [
+                                Container(
+                                  padding: EdgeInsets.all(8.sp),
+                                  decoration: BoxDecoration(
+                                    color: kPrimaryColor.withValues(
+                                      alpha: 0.15,
+                                    ),
+                                    borderRadius: BorderRadius.circular(10.sp),
+                                  ),
+                                  child: Icon(
+                                    Icons.extension_rounded,
+                                    color: kPrimaryColor,
+                                    size: 20.ic,
+                                  ),
+                                ),
+                                SizedBox(width: 12.w),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        widget.title,
+                                        style: AppTypography.textLgBold
+                                            .copyWith(color: kWhiteColor),
+                                      ),
+                                      if (widget.subtitle != null)
+                                        Text(
+                                          widget.subtitle!,
+                                          style: AppTypography.textXsRegular
+                                              .copyWith(
+                                                color: kWhiteColor.withValues(
+                                                  alpha: 0.6,
+                                                ),
+                                              ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                                // Drag indicator
+                                Container(
+                                  padding: EdgeInsets.all(6.sp),
+                                  decoration: BoxDecoration(
+                                    color: kWhiteColor.withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(8.sp),
+                                  ),
+                                  child: Icon(
+                                    Icons.drag_indicator_rounded,
+                                    color: kWhiteColor.withValues(alpha: 0.4),
+                                    size: 18.ic,
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            SizedBox(height: 20.h),
+
+                            // Action buttons with stagger animation
+                            ...List.generate(widget.actions.length, (index) {
+                              final action = widget.actions[index];
+                              // Stagger each button
+                              final staggerDelay = index * 0.12;
+                              final buttonEntranceValue =
+                                  _isEntering ? 0.0 : 1.0;
+
+                              return SingleMotionBuilder(
+                                motion: CupertinoMotion.bouncy(),
+                                value: buttonEntranceValue,
+                                builder: (context, value, child) {
+                                  // Apply stagger effect
+                                  final delayedValue = (value - staggerDelay)
+                                      .clamp(0.0, 1.0);
+                                  final normalizedValue =
+                                      (staggerDelay >= 1.0
+                                          ? 0.0
+                                          : delayedValue / (1.0 - staggerDelay))
+                                      .clamp(0.0, 1.0);
+
+                                  return Transform.translate(
+                                    offset: Offset(
+                                      0,
+                                      (1.0 - normalizedValue) * 20,
+                                    ),
+                                    child: Opacity(
+                                      opacity: normalizedValue,
+                                      child: child,
+                                    ),
+                                  );
+                                },
+                                child: Padding(
+                                  padding: EdgeInsets.only(bottom: 10.h),
+                                  child: _ActionButton(
+                                    action: action,
+                                    onPressed: () => action.onSelected(context),
+                                  ),
+                                ),
+                              );
+                            }),
+
+                            SizedBox(height: 8.h),
+
+                            // Dismiss hint
+                            Center(
+                              child: Opacity(
+                                opacity: 0.4 + (_glowIntensity * 0.3),
+                                child: Text(
+                                  'Swipe to dismiss',
+                                  style: AppTypography.textXsRegular.copyWith(
+                                    color: kWhiteColor.withValues(alpha: 0.5),
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
-                          onPressed: () => action.onSelected(context),
-                          icon: Icon(action.icon, size: 18.ic),
-                          label: Text(action.label),
+                          ],
                         ),
                       ),
                     ),
@@ -4959,7 +5171,102 @@ class _NotationActionOverlay extends StatelessWidget {
               ),
             ),
           ),
-        ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Beautiful action button with hover and press states
+class _ActionButton extends StatefulWidget {
+  final _NotationActionItem action;
+  final VoidCallback onPressed;
+
+  const _ActionButton({required this.action, required this.onPressed});
+
+  @override
+  State<_ActionButton> createState() => _ActionButtonState();
+}
+
+class _ActionButtonState extends State<_ActionButton> {
+  bool _isPressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) {
+        setState(() => _isPressed = true);
+        HapticFeedback.lightImpact();
+      },
+      onTapUp: (_) {
+        setState(() => _isPressed = false);
+        widget.onPressed();
+      },
+      onTapCancel: () {
+        setState(() => _isPressed = false);
+      },
+      child: SingleMotionBuilder(
+        motion: CupertinoMotion.snappy(),
+        value: _isPressed ? 0.95 : 1.0,
+        builder: (context, scale, child) {
+          return Transform.scale(
+            scale: scale,
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 18.sp, vertical: 14.sp),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    widget.action.color.withValues(
+                      alpha: _isPressed ? 0.28 : 0.18,
+                    ),
+                    widget.action.color.withValues(
+                      alpha: _isPressed ? 0.18 : 0.12,
+                    ),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(14.sp),
+                border: Border.all(
+                  color: widget.action.color.withValues(
+                    alpha: _isPressed ? 0.6 : 0.45,
+                  ),
+                  width: 1.5,
+                ),
+                boxShadow:
+                    _isPressed
+                        ? []
+                        : [
+                          BoxShadow(
+                            color: widget.action.color.withValues(alpha: 0.2),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+              ),
+              child: Row(
+                children: [
+                  Icon(widget.action.icon, color: kWhiteColor, size: 20.ic),
+                  SizedBox(width: 12.w),
+                  Expanded(
+                    child: Text(
+                      widget.action.label,
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: kWhiteColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    color: kWhiteColor.withValues(alpha: 0.4),
+                    size: 14.ic,
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
