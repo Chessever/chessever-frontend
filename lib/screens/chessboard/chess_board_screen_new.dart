@@ -2400,7 +2400,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                                     ),
                                   ),
                                   SizedBox(height: 12.sp),
-                                  // Promote variant button
+                                  // Promote main variant button
                                   Material(
                                     color: Colors.transparent,
                                     child: InkWell(
@@ -2527,7 +2527,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                                             ),
                                             SizedBox(width: 8.sp),
                                             Text(
-                                              'Promote variant',
+                                              'Promote main variant',
                                               style: AppTypography.textSmMedium
                                                   .copyWith(
                                                     color: kWhiteColor,
@@ -2602,6 +2602,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           token.pointerId!,
           token.text,
           token.node?.move.san == '--',
+          token.variationHeadPointer,
         );
       },
       child: Stack(
@@ -2803,7 +2804,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       final text = _formatMoveText(node);
       final variationMovesList = variationContext?.moves;
       final variationHeadPointer =
-          isVariationHead && (variationMovesList?.isNotEmpty ?? false)
+          (variationMovesList?.isNotEmpty ?? false)
               ? List<Number>.of(variationMovesList!.first.pointer)
               : null;
       tokens.add(
@@ -2853,6 +2854,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             isCollapsed: collapsed,
             defaultsToCollapsed: defaultCollapsed,
             isForcedOpen: forcedOpen,
+            variationHeadPointer:
+                variation.moves.isNotEmpty
+                    ? List<Number>.of(variation.moves.first.pointer)
+                    : null,
             heroineTag: '$variationHeroTagBase-open',
           ),
         );
@@ -2868,6 +2873,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
               isCollapsed: true,
               defaultsToCollapsed: defaultCollapsed,
               isForcedOpen: forcedOpen,
+              variationHeadPointer:
+                  variation.moves.isNotEmpty
+                      ? List<Number>.of(variation.moves.first.pointer)
+                      : null,
               heroineTag: '$variationHeroTagBase-placeholder',
             ),
           );
@@ -2893,6 +2902,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             isCollapsed: collapsed,
             defaultsToCollapsed: defaultCollapsed,
             isForcedOpen: forcedOpen,
+            variationHeadPointer:
+                variation.moves.isNotEmpty
+                    ? List<Number>.of(variation.moves.first.pointer)
+                    : null,
             heroineTag: '$variationHeroTagBase-close',
           ),
         );
@@ -3031,6 +3044,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     String pointerId,
     String moveText,
     bool isNullMove,
+    ChessMovePointer? variationHeadPointer,
   ) async {
     final hostContext = context;
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
@@ -3055,6 +3069,18 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           await notifier.insertNullMoveAfterPointer(List<Number>.of(pointer));
         },
       ),
+      if (variationHeadPointer != null)
+        _NotationActionItem(
+          icon: Icons.trending_up_rounded,
+          label: 'Promote variant',
+          color: kPrimaryColor,
+          onSelected: (overlayContext) async {
+            Navigator.of(overlayContext).pop();
+            await notifier.promoteVariationAtPointer(
+              List<Number>.of(variationHeadPointer),
+            );
+          },
+        ),
       _NotationActionItem(
         icon: Icons.upgrade_rounded,
         label: 'Promote main variant',
@@ -3088,6 +3114,17 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     );
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
     final actions = <_NotationActionItem>[
+      _NotationActionItem(
+        icon: Icons.trending_up_rounded,
+        label: 'Promote variant',
+        color: kPrimaryColor,
+        onSelected: (overlayContext) async {
+          Navigator.of(overlayContext).pop();
+          await notifier.promoteVariationAtPointer(
+            List<Number>.of(headPointer),
+          );
+        },
+      ),
       _NotationActionItem(
         icon: Icons.delete_forever,
         label: 'Remove subvariant',

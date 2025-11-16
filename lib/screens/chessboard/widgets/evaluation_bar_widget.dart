@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -36,11 +38,15 @@ class EvaluationBarWidget extends StatefulWidget {
   State<EvaluationBarWidget> createState() => _EvaluationBarWidgetState();
 }
 
-class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
+class _EvaluationBarWidgetState extends State<EvaluationBarWidget>
+    with SingleTickerProviderStateMixin {
   double? _lastEval;
   int? _lastMate;
-  bool _shouldAnimate = false;
   String? _lastEvalPositionKey;
+  late AnimationController _controller;
+  late CurvedAnimation _curve;
+  double _animationStartRatio = 0.5;
+  double _targetRatio = 0.5;
 
   @override
   void initState() {
@@ -50,43 +56,71 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
     if (widget.evaluation != null && widget.positionKey != null) {
       _lastEvalPositionKey = widget.positionKey;
     }
+    final initialEval = widget.evaluation ?? 0.0;
+    final initialMate = widget.mate ?? 0;
+    _targetRatio = _ratioForEval(initialEval, initialMate);
+    _animationStartRatio = _targetRatio;
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 320),
+    )..addListener(() {
+      setState(() {});
+    });
+    _controller.value = 1.0;
+    _curve = CurvedAnimation(parent: _controller, curve: Curves.easeInOut);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 
   @override
   void didUpdateWidget(covariant EvaluationBarWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final previousEval = _lastEval;
-    final positionChanged =
-        widget.positionKey != null &&
-        widget.positionKey != _lastEvalPositionKey;
-
-    if (widget.evaluation != null) {
-      _shouldAnimate =
-          previousEval == null || (widget.evaluation! - previousEval).abs() >= 0.1;
+    bool changed = false;
+    if (widget.evaluation != null && widget.evaluation != _lastEval) {
       _lastEval = widget.evaluation;
-    } else if (positionChanged) {
-      // Position changed but no evaluation yet - keep last value until new eval arrives
-      _shouldAnimate = false;
-    } else {
-      _shouldAnimate = false;
+      if (widget.positionKey != null) {
+        _lastEvalPositionKey = widget.positionKey;
+      }
+      changed = true;
     }
-
-    if (widget.mate != null) {
+    if (widget.mate != null && widget.mate != _lastMate) {
       _lastMate = widget.mate;
-    } else if (positionChanged) {
-      // Position changed - keep previous mate info while new eval loads
+      if (widget.positionKey != null) {
+        _lastEvalPositionKey = widget.positionKey;
+      }
+      changed = true;
     }
-
-    if ((widget.evaluation != null || widget.mate != null) &&
-        widget.positionKey != null) {
-      _lastEvalPositionKey = widget.positionKey;
-    } else if (positionChanged && widget.positionKey != null) {
-      // Update position key even when evaluation is not ready yet
-      _lastEvalPositionKey = widget.positionKey;
+    if (widget.positionKey != oldWidget.positionKey) {
+      if (widget.positionKey != null) {
+        _lastEvalPositionKey = widget.positionKey;
+      }
+      changed = true;
+    }
+    if (changed) {
+      setState(() {});
     }
   }
 
-  double _whiteRatio(double eval) => (eval.clamp(-5.0, 5.0) + 5.0) / 10.0;
+  double _whiteRatio(double eval) => _normalizedEvalToRatio(eval);
+
+  double _currentAnimatedRatio() {
+    final t = _curve.value;
+    return _animationStartRatio + (_targetRatio - _animationStartRatio) * t;
+  }
+
+  void _animateToRatio(double newRatio) {
+    final clamped = newRatio.clamp(0.0, 1.0);
+    if ((clamped - _targetRatio).abs() < 0.0005) {
+      return;
+    }
+    _animationStartRatio = _currentAnimatedRatio();
+    _targetRatio = clamped;
+    _controller.forward(from: 0.0);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -103,16 +137,17 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
         widget.positionKey != (_lastEvalPositionKey ?? widget.positionKey);
     final hasEval =
         !awaitingNewPositionData &&
-        ((widget.evaluation != null || _lastEval != null) ||
-            displayMate != 0);
+        ((widget.evaluation != null || _lastEval != null) || displayMate != 0);
     final showLoading = widget.isEvaluating && !hasEval;
 
     final double evalForRatio =
-        displayMate != 0
-            ? (displayMate > 0 ? 5.0 : -5.0)
-            : displayEval;
+        displayMate != 0 ? (displayMate > 0 ? 10.0 : -10.0) : displayEval;
 
-    final whiteRatio = _whiteRatio(evalForRatio);
+    if (!awaitingNewPositionData) {
+      _animateToRatio(_whiteRatio(evalForRatio));
+    }
+
+    final whiteRatio = _currentAnimatedRatio();
     final blackRatio = 1.0 - whiteRatio;
     final whiteHeight = whiteRatio * widget.height;
     final blackHeight = blackRatio * widget.height;
@@ -129,10 +164,7 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
         children: [
           Align(
             alignment: Alignment.topCenter,
-            child: AnimatedContainer(
-              duration:
-                  _shouldAnimate ? const Duration(milliseconds: 300) : Duration.zero,
-              curve: Curves.easeInOut,
+            child: Container(
               width: widget.width,
               height: topHeight,
               color: topColor,
@@ -140,10 +172,7 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
           ),
           Align(
             alignment: Alignment.bottomCenter,
-            child: AnimatedContainer(
-              duration:
-                  _shouldAnimate ? const Duration(milliseconds: 300) : Duration.zero,
-              curve: Curves.easeInOut,
+            child: Container(
               width: widget.width,
               height: bottomHeight,
               color: bottomColor,
@@ -163,8 +192,8 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
                 showLoading
                     ? '...'
                     : (displayEval.abs() >= 10.0 && displayMate != 0)
-                        ? '#${displayMate.abs()}'
-                        : displayEval.abs().toStringAsFixed(1),
+                    ? '#${displayMate.abs()}'
+                    : displayEval.abs().toStringAsFixed(1),
                 maxLines: 1,
                 textAlign: TextAlign.center,
                 style: AppTypography.textSmRegular.copyWith(
@@ -199,11 +228,7 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return ref
-        .watch(
-          cascadeEvalProvider(
-            CascadeEvalParams(fen: fen, multiPV: 1),
-          ),
-        )
+        .watch(cascadeEvalProvider(CascadeEvalParams(fen: fen, multiPV: 1)))
         .when(
           loading: () {
             return SkeletonWidget(
@@ -268,7 +293,7 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
   }
 
   double _getWhiteHeight(double eval, double totalHeight) {
-    final ratio = ((eval.clamp(-5.0, 5.0)) + 5) / 10;
+    final ratio = _normalizedEvalToRatio(eval);
     return ratio * totalHeight;
   }
 
@@ -325,9 +350,7 @@ class _Bars extends StatelessWidget {
               color: isFlipped ? kPopUpColor : kWhiteColor,
             ),
           ),
-          Center(
-            child: Container(width: width, height: 2, color: kRedColor),
-          ),
+          Center(child: Container(width: width, height: 2, color: kRedColor)),
           Center(
             child: Container(
               padding: EdgeInsets.symmetric(horizontal: 1.w, vertical: 0.5.h),
@@ -339,14 +362,13 @@ class _Bars extends StatelessWidget {
                 isEvaluating && evaluation == 0.0
                     ? '...'
                     : (isMate && mate != 0)
-                        ? '#${mate.abs()}'
-                        : evaluation.abs().toStringAsFixed(1),
+                    ? '#${mate.abs()}'
+                    : evaluation.abs().toStringAsFixed(1),
                 maxLines: 1,
                 textAlign: TextAlign.center,
                 style: AppTypography.textSmRegular.copyWith(
                   color: Colors.white,
-                  fontSize:
-                      playerView == PlayerView.gridView ? 0.2.f : 1.5.f,
+                  fontSize: playerView == PlayerView.gridView ? 0.2.f : 1.5.f,
                   fontWeight:
                       playerView == PlayerView.gridView
                           ? FontWeight.w300
@@ -359,4 +381,19 @@ class _Bars extends StatelessWidget {
       ),
     );
   }
+}
+
+double _normalizedEvalToRatio(double eval) {
+  const double scale = 3.0;
+  const double minRatio = 0.02;
+  const double maxRatio = 0.98;
+  final double clampedEval = eval.clamp(-20.0, 20.0);
+  final double logistic = 1.0 / (1.0 + math.exp(-clampedEval / scale));
+  return logistic.clamp(minRatio, maxRatio);
+}
+
+double _ratioForEval(double evaluation, int mate) {
+  final double effectiveEval =
+      mate != 0 ? (mate > 0 ? 10.0 : -10.0) : evaluation;
+  return _normalizedEvalToRatio(effectiveEval);
 }
