@@ -42,7 +42,6 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:heroine/heroine.dart';
-import 'package:share_plus/share_plus.dart';
 
 /// Spring-based curve that mimics iOS snappy motion
 /// Quick, precise animation with subtle natural settling
@@ -563,7 +562,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
       return true;
     }
 
-    final confirmed = await _showAnalysisConfirmationDialog(
+    final confirmed =
+        await _showAnalysisConfirmationDialog(
           context: context,
           title: 'Leave analysis?',
           message:
@@ -985,7 +985,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
       ),
     );
   }
-
 }
 
 class _GamePage extends StatelessWidget {
@@ -1030,7 +1029,6 @@ class _GamePage extends StatelessWidget {
       ),
     );
   }
-
 }
 
 class _LoadingScreen extends StatelessWidget {
@@ -1689,7 +1687,9 @@ class _BottomNavBar extends ConsumerWidget {
     final previewMoves = state.lockedPvMergedMoves;
     final previewIndex = state.lockedPvNavigationIndex ?? 0;
     final isPreviewActive =
-        state.isPvPreviewActive && previewMoves != null && previewMoves.isNotEmpty;
+        state.isPvPreviewActive &&
+        previewMoves != null &&
+        previewMoves.isNotEmpty;
     final previewCanMoveForward =
         isPreviewActive ? previewIndex < previewMoves.length - 1 : false;
     // CRITICAL FIX: In preview mode, can go backward as long as we have moves
@@ -1805,11 +1805,7 @@ class _AnalysisGameBody extends ConsumerWidget {
           state: state,
         ),
         if (state.isAnalysisMode && state.showPrincipalVariations) ...[
-          _PrincipalVariationList(
-            index: index,
-            state: state,
-            game: game,
-          ),
+          _PrincipalVariationList(index: index, state: state, game: game),
           // DISABLED: Analysis navigation arrows hidden
           // _AnalysisControlsRow(index: index, game: game),
         ],
@@ -2288,7 +2284,6 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                       return _buildMoveChip(
                         token,
                         params,
-                        notifier,
                         currentPly,
                         pointerForHighlightId,
                         tailPointerId,
@@ -2398,8 +2393,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                                     'Tap anywhere to exit or swipe the hero card up to apply.',
                                     textAlign: TextAlign.center,
                                     style: AppTypography.textXsRegular.copyWith(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.85),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.85,
+                                      ),
                                     ),
                                   ),
                                   SizedBox(height: 12.sp),
@@ -2411,51 +2407,83 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                                         // Prevent tap from propagating to parent GestureDetector
                                         HapticFeedback.mediumImpact();
 
-                                        final lockedLine = widget.state.lockedPvLine;
+                                        final lockedLine =
+                                            widget.state.lockedPvLine;
                                         if (lockedLine == null) return;
 
                                         // Confirm before promoting
-                                        final confirmed = await showDialog<bool>(
-                                          context: context,
-                                          builder: (dialogContext) => AlertDialog(
-                                            backgroundColor: kBlack2Color,
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius: BorderRadius.circular(12.br),
-                                            ),
-                                            title: Text(
-                                              'Promote to main variant?',
-                                              style: AppTypography.textMdBold.copyWith(
-                                                color: kWhiteColor,
-                                              ),
-                                            ),
-                                            content: Text(
-                                              'This will replace the main variant with this preview line.',
-                                              style: AppTypography.textSmRegular.copyWith(
-                                                color: kWhiteColor.withValues(alpha: 0.7),
-                                              ),
-                                            ),
-                                            actions: [
-                                              TextButton(
-                                                onPressed: () => Navigator.of(dialogContext).pop(false),
-                                                child: Text(
-                                                  'Cancel',
-                                                  style: AppTypography.textSmMedium.copyWith(
-                                                    color: kWhiteColor.withValues(alpha: 0.7),
+                                        final confirmed =
+                                            await showDialog<bool>(
+                                              context: context,
+                                              builder:
+                                                  (
+                                                    dialogContext,
+                                                  ) => AlertDialog(
+                                                    backgroundColor:
+                                                        kBlack2Color,
+                                                    shape: RoundedRectangleBorder(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            12.br,
+                                                          ),
+                                                    ),
+                                                    title: Text(
+                                                      'Promote to main variant?',
+                                                      style: AppTypography
+                                                          .textMdBold
+                                                          .copyWith(
+                                                            color: kWhiteColor,
+                                                          ),
+                                                    ),
+                                                    content: Text(
+                                                      'This will replace the main variant with this preview line.',
+                                                      style: AppTypography
+                                                          .textSmRegular
+                                                          .copyWith(
+                                                            color: kWhiteColor
+                                                                .withValues(
+                                                                  alpha: 0.7,
+                                                                ),
+                                                          ),
+                                                    ),
+                                                    actions: [
+                                                      TextButton(
+                                                        onPressed:
+                                                            () => Navigator.of(
+                                                              dialogContext,
+                                                            ).pop(false),
+                                                        child: Text(
+                                                          'Cancel',
+                                                          style: AppTypography
+                                                              .textSmMedium
+                                                              .copyWith(
+                                                                color: kWhiteColor
+                                                                    .withValues(
+                                                                      alpha:
+                                                                          0.7,
+                                                                    ),
+                                                              ),
+                                                        ),
+                                                      ),
+                                                      TextButton(
+                                                        onPressed:
+                                                            () => Navigator.of(
+                                                              dialogContext,
+                                                            ).pop(true),
+                                                        child: Text(
+                                                          'Promote',
+                                                          style: AppTypography
+                                                              .textSmMedium
+                                                              .copyWith(
+                                                                color:
+                                                                    kPrimaryColor,
+                                                              ),
+                                                        ),
+                                                      ),
+                                                    ],
                                                   ),
-                                                ),
-                                              ),
-                                              TextButton(
-                                                onPressed: () => Navigator.of(dialogContext).pop(true),
-                                                child: Text(
-                                                  'Promote',
-                                                  style: AppTypography.textSmMedium.copyWith(
-                                                    color: kPrimaryColor,
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ) ?? false;
+                                            ) ??
+                                            false;
 
                                         if (!confirmed) return;
                                         if (!context.mounted) return;
@@ -2463,18 +2491,28 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                                         notifier.promotePreviewToMainVariant();
                                       },
                                       borderRadius: BorderRadius.circular(8.sp),
-                                      splashColor: kPrimaryColor.withValues(alpha: 0.3),
-                                      highlightColor: kPrimaryColor.withValues(alpha: 0.2),
+                                      splashColor: kPrimaryColor.withValues(
+                                        alpha: 0.3,
+                                      ),
+                                      highlightColor: kPrimaryColor.withValues(
+                                        alpha: 0.2,
+                                      ),
                                       child: Container(
                                         padding: EdgeInsets.symmetric(
                                           horizontal: 20.sp,
                                           vertical: 10.sp,
                                         ),
                                         decoration: BoxDecoration(
-                                          color: kPrimaryColor.withValues(alpha: 0.15),
-                                          borderRadius: BorderRadius.circular(8.sp),
+                                          color: kPrimaryColor.withValues(
+                                            alpha: 0.15,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            8.sp,
+                                          ),
                                           border: Border.all(
-                                            color: kPrimaryColor.withValues(alpha: 0.4),
+                                            color: kPrimaryColor.withValues(
+                                              alpha: 0.4,
+                                            ),
                                             width: 1.5,
                                           ),
                                         ),
@@ -2489,10 +2527,11 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                                             SizedBox(width: 8.sp),
                                             Text(
                                               'Promote variant',
-                                              style: AppTypography.textSmMedium.copyWith(
-                                                color: kWhiteColor,
-                                                letterSpacing: 0.2,
-                                              ),
+                                              style: AppTypography.textSmMedium
+                                                  .copyWith(
+                                                    color: kWhiteColor,
+                                                    letterSpacing: 0.2,
+                                                  ),
                                             ),
                                           ],
                                         ),
@@ -2511,8 +2550,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
               ),
             ),
           Positioned(
-            bottom: 16.sp,
-            right: -12.sp,
+            bottom: 12.sp,
+            right: 12.sp,
             child: _AnalysisActionButtons(params: params),
           ),
         ],
@@ -2523,7 +2562,6 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   Widget _buildMoveChip(
     _NotationDisplayToken token,
     ChessBoardProviderParams params,
-    ChessBoardScreenNotifierNew notifier,
     int currentPly,
     String? currentPointerId,
     String? tailPointerId,
@@ -2538,7 +2576,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         pointerId != null &&
         tailPointerId != null &&
         pointerId == tailPointerId;
-    final color = _resolveMoveColor(token, notifier, currentPly);
+    final color = _resolveMoveColor(token, currentPly);
 
     return GestureDetector(
       key: key,
@@ -2555,18 +2593,15 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         }
       },
       onLongPress: () {
-        if (token.isVariationHead &&
-            token.variationHeadPointer != null &&
-            token.variationMoves != null) {
-          _showVariationMenu(
-            context,
-            params,
-            token.variationHeadPointer!,
-            token.variationMoves!,
-          );
-        } else {
-          _showMoveMenu(context, params, token.pointer);
-        }
+        final pointer = token.pointer;
+        if (pointer == null || token.pointerId == null) return;
+        _showMoveActions(
+          params,
+          pointer,
+          token.pointerId!,
+          token.text,
+          token.node?.move.san == '--',
+        );
       },
       child: Stack(
         clipBehavior: Clip.none,
@@ -2606,19 +2641,23 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   Widget _buildAuxToken(_NotationDisplayToken token) {
     final isVariationToken =
         token.variation != null && token.type != _NotationTokenType.ellipsis;
+    final depthColor =
+        token.depth > 0
+            ? _colorForVariationDepth(token.depth)
+            : kWhiteColor.withValues(alpha: 0.75);
 
     Widget child;
     if (token.type == _NotationTokenType.variationPlaceholder) {
       child = Container(
         padding: EdgeInsets.symmetric(horizontal: 6.sp, vertical: 2.sp),
         decoration: BoxDecoration(
-          color: kWhiteColor.withValues(alpha: 0.08),
+          color: depthColor.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(4.sp),
         ),
         child: Text(
           token.text,
           style: AppTypography.textXsMedium.copyWith(
-            color: kWhiteColor70,
+            color: depthColor.withValues(alpha: 0.85),
             fontStyle: FontStyle.italic,
           ),
         ),
@@ -2627,9 +2666,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       child = Text(
         token.text,
         style: AppTypography.textXsMedium.copyWith(
-          color: kWhiteColor.withValues(
-            alpha: (0.6 - token.depth * 0.05).clamp(0.3, 0.7),
-          ),
+          color:
+              token.type == _NotationTokenType.ellipsis
+                  ? kWhiteColor70
+                  : depthColor.withValues(alpha: 0.85),
           fontStyle:
               token.type == _NotationTokenType.ellipsis
                   ? FontStyle.normal
@@ -2656,7 +2696,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         _focusVariationHead(token.variation!);
         _toggleVariationCollapse(token);
       },
-      onLongPress: () => _showVariationHeroOverlay(token),
+      onLongPress: () {
+        _showVariationActions(token);
+      },
       child: heroChild,
     );
   }
@@ -2673,178 +2715,6 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     ref
         .read(chessBoardScreenProviderNew(params).notifier)
         .goToMovePointer(headPointer);
-  }
-
-  void _showVariationHeroOverlay(_NotationDisplayToken token) {
-    final variation = token.variation;
-    if (variation == null) return;
-    HapticFeedback.mediumImpact();
-
-    final params = ChessBoardProviderParams(
-      game: widget.game,
-      index: widget.index,
-    );
-    final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
-    final headPointer =
-        variation.moves.isEmpty
-            ? null
-            : List<Number>.of(variation.moves.first.pointer);
-    final heroineTag = token.heroineTag ?? 'variation-${variation.id}';
-    final summary = _formatVariationText(variation.moves);
-    final condensedSummary =
-        summary.isEmpty ? '...' : summary.startsWith('...')
-            ? summary
-            : '... $summary';
-    final pgn = _generateVariationPgn(variation);
-    final hostContext = context;
-    final scaffoldMessenger = ScaffoldMessenger.of(hostContext);
-
-    Future<void> handleUpgrade(BuildContext overlayContext) async {
-      if (headPointer == null) return;
-      final confirmed = await showDialog<bool>(
-        context: overlayContext,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('Upgrade to main variant?'),
-          content: const Text(
-            'This will replace the live main variant with this variation and stop following incoming live moves.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Upgrade'),
-            ),
-          ],
-        ),
-      );
-      if (confirmed != true) return;
-
-      final snapshot = notifier.navigatorStateSnapshot();
-      await notifier.promoteVariationAtPointer(headPointer);
-      if (!overlayContext.mounted) return;
-      Navigator.of(overlayContext).pop();
-
-      if (snapshot != null) {
-        _showUndoSnackBar(
-          hostContext,
-          params,
-          snapshot,
-          'Variation promoted',
-        );
-      } else {
-        _showInfoSnack(hostContext, 'Variation promoted');
-      }
-    }
-
-    Future<void> handleShare(BuildContext overlayContext) async {
-      await Share.share(pgn, subject: 'PGN Variation');
-    }
-
-    Future<void> handleCopy(BuildContext overlayContext) async {
-      await Clipboard.setData(ClipboardData(text: pgn));
-      HapticFeedback.lightImpact();
-      scaffoldMessenger.showSnackBar(
-        const SnackBar(
-          content: Text('Variation PGN copied'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-    }
-
-    Navigator.of(context).push(
-      _HeroinePreviewRoute(
-        child: _NotationHeroOverlay(
-          heroineTag: heroineTag,
-          title: 'Variation',
-          summary: condensedSummary,
-          pgn: pgn,
-          onCopy: handleCopy,
-          onShare: handleShare,
-          onUpgrade: headPointer == null ? null : handleUpgrade,
-        ),
-      ),
-    );
-  }
-
-  String _generateVariationPgn(NotationVariationNode variation) {
-    // Build PGN with moves leading up to the variation + the variation itself
-    final buffer = StringBuffer();
-    final parentPointer = variation.parentPointer;
-
-    // Get the analysis game to access the full game tree
-    final analysisGame = widget.state.analysisState.game;
-    if (analysisGame == null) return '';
-
-    final navigatorState = ref.read(chessGameNavigatorProvider(analysisGame));
-
-    // Helper to traverse and build PGN up to a specific pointer
-    void buildPathToPgn(ChessLine line, List<int> pointer, int depth, int startPly) {
-      var ply = startPly;
-      for (var i = 0; i < line.length; i++) {
-        final move = line[i];
-        final moveNumber = (ply ~/ 2) + 1;
-        final isWhiteMove = ply.isEven;
-        final showNumber = isWhiteMove || i == 0;
-
-        // Check if this move is on the path to our target
-        if (depth < pointer.length && i == pointer[depth]) {
-          // This move is on the path
-          if (showNumber) {
-            buffer.write(isWhiteMove ? '$moveNumber. ' : '$moveNumber... ');
-          }
-          buffer.write('${move.san} ');
-
-          // If we need to go deeper into a variation
-          if (depth + 1 < pointer.length && move.variations != null) {
-            final variationIndex = pointer[depth + 1];
-            if (variationIndex < move.variations!.length) {
-              // Recursively build the path through this variation
-              buildPathToPgn(
-                move.variations![variationIndex],
-                pointer,
-                depth + 2,
-                ply + 1,
-              );
-            }
-          }
-          return;
-        }
-        ply++;
-      }
-    }
-
-    // Build all moves up to the parent move
-    buildPathToPgn(
-      navigatorState.game.mainline,
-      parentPointer,
-      0,
-      _startingPlyFromFen(navigatorState.game.startingFen),
-    );
-
-    // Now add the variation itself in parentheses
-    buffer.write('(');
-    for (var i = 0; i < variation.moves.length; i++) {
-      final node = variation.moves[i];
-      buffer.write(_formatMoveText(node));
-      if (i < variation.moves.length - 1) {
-        buffer.write(' ');
-      }
-    }
-    buffer.write(')');
-
-    return buffer.toString().trim();
-  }
-
-  int _startingPlyFromFen(String startingFen) {
-    final parts = startingFen.split(' ');
-    if (parts.length < 6) return 0;
-    final turn = parts[1];
-    final fullmove = int.tryParse(parts[5]) ?? 1;
-    final base = (fullmove - 1) * 2;
-    return turn == 'w' ? base : base + 1;
   }
 
   void _toggleVariationCollapse(_NotationDisplayToken token) {
@@ -2877,11 +2747,23 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     HapticFeedback.selectionClick();
   }
 
-  Color _resolveMoveColor(
-    _NotationDisplayToken token,
-    ChessBoardScreenNotifierNew notifier,
-    int currentPly,
-  ) {
+  static const List<Color> _variationDepthPalette = [
+    Color(0xFFA98BFF),
+    Color(0xFFFF9EB5),
+    Color(0xFFFFE28C),
+    Color(0xFF8EE0C7),
+    Color(0xFF8EC6FF),
+  ];
+
+  Color _colorForVariationDepth(int depth) {
+    if (depth <= 0) {
+      return kWhiteColor;
+    }
+    final paletteIndex = (depth - 1) % _variationDepthPalette.length;
+    return _variationDepthPalette[paletteIndex];
+  }
+
+  Color _resolveMoveColor(_NotationDisplayToken token, int currentPly) {
     final node = token.node;
     if (node == null) {
       return kWhiteColor;
@@ -2892,13 +2774,12 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     }
 
     final isPast = currentPly >= 0 && node.ply <= currentPly;
-    if (node.isMainline) {
+    if (node.isMainline || token.depth <= 0) {
       return isPast ? kWhiteColor : kWhiteColor;
     }
 
-    final colorIndex = token.variationIndex ?? 0;
-    final baseColor = notifier.getVariantColor(colorIndex, false);
-    return baseColor.withValues(alpha: isPast ? 0.95 : 0.65);
+    final depthColor = _colorForVariationDepth(token.depth);
+    return depthColor.withValues(alpha: isPast ? 0.95 : 0.75);
   }
 
   List<_NotationDisplayToken> _buildTokens(
@@ -3143,6 +3024,132 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     return false;
   }
 
+  Future<void> _showMoveActions(
+    ChessBoardProviderParams params,
+    ChessMovePointer pointer,
+    String pointerId,
+    String moveText,
+    bool isNullMove,
+  ) async {
+    final hostContext = context;
+    final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+    final actions = <_NotationActionItem>[
+      _NotationActionItem(
+        icon: Icons.delete_outline,
+        label: 'Delete from here',
+        color: kRedColor,
+        onSelected: (overlayContext) async {
+          Navigator.of(overlayContext).pop();
+          await notifier.deleteContinuationFromPointer(
+            List<Number>.of(pointer),
+          );
+        },
+      ),
+      _NotationActionItem(
+        icon: Icons.block,
+        label: 'Add null move after',
+        color: kPrimaryColor,
+        onSelected: (overlayContext) async {
+          Navigator.of(overlayContext).pop();
+          await notifier.insertNullMoveAfterPointer(List<Number>.of(pointer));
+        },
+      ),
+      _NotationActionItem(
+        icon: Icons.upgrade_rounded,
+        label: 'Promote main variant',
+        color: kPrimaryColor,
+        onSelected: (overlayContext) async {
+          Navigator.of(overlayContext).pop();
+          await notifier.promoteBranchToMainVariant(List<Number>.of(pointer));
+        },
+      ),
+    ];
+
+    await _pushNotationActionOverlay(
+      context: hostContext,
+      heroineTag: 'move-action-$pointerId',
+      title: isNullMove ? 'Null move' : moveText,
+      subtitle: 'Move options',
+      actions: actions,
+    );
+  }
+
+  Future<void> _showVariationActions(_NotationDisplayToken token) async {
+    final variation = token.variation;
+    final headPointer = token.variationHeadPointer;
+    if (variation == null || headPointer == null) {
+      return;
+    }
+    final hostContext = context;
+    final params = ChessBoardProviderParams(
+      game: widget.game,
+      index: widget.index,
+    );
+    final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+    final actions = <_NotationActionItem>[
+      _NotationActionItem(
+        icon: Icons.delete_forever,
+        label: 'Remove subvariant',
+        color: kRedColor,
+        onSelected: (overlayContext) async {
+          Navigator.of(overlayContext).pop();
+          final snapshot = notifier.navigatorStateSnapshot();
+          await notifier.deleteVariationAtPointer(List<Number>.of(headPointer));
+          if (!mounted) return;
+          final currentContext = this.context;
+          if (snapshot != null) {
+            _showUndoSnackBar(
+              currentContext,
+              params,
+              snapshot,
+              'Variation removed',
+            );
+          } else {
+            _showInfoSnack(currentContext, 'Variation removed');
+          }
+        },
+      ),
+      _NotationActionItem(
+        icon: Icons.upgrade_rounded,
+        label: 'Promote main variant',
+        color: kPrimaryColor,
+        onSelected: (overlayContext) async {
+          Navigator.of(overlayContext).pop();
+          await notifier.promoteBranchToMainVariant(
+            List<Number>.of(headPointer),
+          );
+        },
+      ),
+    ];
+
+    await _pushNotationActionOverlay(
+      context: hostContext,
+      heroineTag: token.heroineTag ?? 'variation-action-${variation.id}',
+      title: 'Variation',
+      subtitle: 'Variation options',
+      actions: actions,
+    );
+  }
+
+  Future<void> _pushNotationActionOverlay({
+    required BuildContext context,
+    required String heroineTag,
+    required String title,
+    String? subtitle,
+    required List<_NotationActionItem> actions,
+  }) {
+    return Navigator.of(context).push(
+      _HeroinePreviewRoute(
+        child: _NotationActionOverlay(
+          heroineTag: heroineTag,
+          title: title,
+          subtitle: subtitle,
+          actions: actions,
+        ),
+      ),
+    );
+  }
+
   Widget _buildMovesLoadingSkeleton() {
     return Container(
       alignment: Alignment.centerLeft,
@@ -3152,163 +3159,44 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-          _SkeletonContainer(height: 16.h, width: 80.w, borderRadius: 4.sp),
-          SizedBox(height: 12.h),
-          ...List.generate(6, (rowIndex) {
-            return Padding(
-              padding: EdgeInsets.only(bottom: 8.h),
-              child: Wrap(
-                spacing: 8.sp,
-                children: [
-                  _SkeletonContainer(
-                    height: 14.h,
-                    width: (60 + (rowIndex % 3) * 20).w,
-                    borderRadius: 3.sp,
-                  ),
-                  _SkeletonContainer(
-                    height: 14.h,
-                    width: (45 + (rowIndex % 4) * 15).w,
-                    borderRadius: 3.sp,
-                  ),
-                ],
-              ),
-            );
-          }),
-          SizedBox(height: 8.h),
-          Wrap(
-            spacing: 6.sp,
-            runSpacing: 6.sp,
-            children: List.generate(8, (index) {
-              return _SkeletonContainer(
-                height: 14.h,
-                width: (35 + (index % 5) * 20).w,
-                borderRadius: 3.sp,
+            _SkeletonContainer(height: 16.h, width: 80.w, borderRadius: 4.sp),
+            SizedBox(height: 12.h),
+            ...List.generate(6, (rowIndex) {
+              return Padding(
+                padding: EdgeInsets.only(bottom: 8.h),
+                child: Wrap(
+                  spacing: 8.sp,
+                  children: [
+                    _SkeletonContainer(
+                      height: 14.h,
+                      width: (60 + (rowIndex % 3) * 20).w,
+                      borderRadius: 3.sp,
+                    ),
+                    _SkeletonContainer(
+                      height: 14.h,
+                      width: (45 + (rowIndex % 4) * 15).w,
+                      borderRadius: 3.sp,
+                    ),
+                  ],
+                ),
               );
             }),
-          ),
-        ],
+            SizedBox(height: 8.h),
+            Wrap(
+              spacing: 6.sp,
+              runSpacing: 6.sp,
+              children: List.generate(8, (index) {
+                return _SkeletonContainer(
+                  height: 14.h,
+                  width: (35 + (index % 5) * 20).w,
+                  borderRadius: 3.sp,
+                );
+              }),
+            ),
+          ],
         ),
       ),
     );
-  }
-
-  Future<void> _showMoveMenu(
-    BuildContext context,
-    ChessBoardProviderParams params,
-    ChessMovePointer? pointer,
-  ) async {
-    if (pointer == null) return;
-    final action = await showModalBottomSheet<_MoveAction>(
-      context: context,
-      builder: (context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.play_arrow),
-                title: const Text('Continue from here'),
-                onTap: () => Navigator.of(context).pop(_MoveAction.goTo),
-              ),
-              ListTile(
-                leading: const Icon(Icons.block),
-                title: const Text('Add null move after'),
-                onTap: () => Navigator.of(context).pop(_MoveAction.nullMove),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-
-    if (!mounted || action == null) return;
-    final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
-    switch (action) {
-      case _MoveAction.goTo:
-        notifier.goToMovePointer(pointer);
-        break;
-      case _MoveAction.nullMove:
-        notifier.goToMovePointer(pointer);
-        await notifier.insertNullMoveAfterCurrent();
-        if (!context.mounted) return;
-        _showInfoSnack(context, 'Null move inserted');
-        break;
-    }
-  }
-
-  Future<void> _showVariationMenu(
-    BuildContext context,
-    ChessBoardProviderParams params,
-    ChessMovePointer headPointer,
-    List<NotationMoveNode> moves,
-  ) async {
-    final action = await showModalBottomSheet<_VariationAction>(
-      context: context,
-      builder: (context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.call_split),
-                title: const Text('Start from here'),
-                onTap: () => Navigator.of(context).pop(_VariationAction.start),
-              ),
-              ListTile(
-                leading: const Icon(Icons.arrow_circle_up),
-                title: const Text('Promote to mainline'),
-                onTap:
-                    () => Navigator.of(context).pop(_VariationAction.promote),
-              ),
-              ListTile(
-                leading: const Icon(Icons.delete_outline),
-                title: const Text('Delete variation'),
-                onTap: () => Navigator.of(context).pop(_VariationAction.delete),
-              ),
-              ListTile(
-                leading: const Icon(Icons.copy),
-                title: const Text('Copy line'),
-                onTap: () => Navigator.of(context).pop(_VariationAction.copy),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-
-    if (!mounted || action == null) return;
-    final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
-    switch (action) {
-      case _VariationAction.start:
-        notifier.goToMovePointer(headPointer);
-        break;
-      case _VariationAction.promote:
-        final snapshot = notifier.navigatorStateSnapshot();
-        await notifier.promoteVariationAtPointer(headPointer);
-        if (!context.mounted) return;
-        if (snapshot != null) {
-          _showUndoSnackBar(context, params, snapshot, 'Variation promoted');
-        } else {
-          _showInfoSnack(context, 'Variation promoted');
-        }
-        break;
-      case _VariationAction.delete:
-        final snapshot = notifier.navigatorStateSnapshot();
-        await notifier.deleteVariationAtPointer(headPointer);
-        if (!context.mounted) return;
-        if (snapshot != null) {
-          _showUndoSnackBar(context, params, snapshot, 'Variation deleted');
-        } else {
-          _showInfoSnack(context, 'Variation deleted');
-        }
-        break;
-      case _VariationAction.copy:
-        final text = _formatVariationText(moves);
-        await Clipboard.setData(ClipboardData(text: text));
-        if (!context.mounted) return;
-        _showInfoSnack(context, 'Variation copied');
-        break;
-    }
   }
 
   void _showUndoSnackBar(
@@ -3337,23 +3225,12 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
   }
-
-  String _formatVariationText(List<NotationMoveNode> moves) {
-    final buffer = StringBuffer();
-    // Preserve natural PGN formatting, including ellipsis-only entries for black heads
-    for (final node in moves) {
-      buffer.write('${_formatMoveText(node)} ');
-    }
-    return buffer.toString().trim();
-  }
 }
 
 class _AnalysisActionButtons extends ConsumerWidget {
   final ChessBoardProviderParams params;
 
-  const _AnalysisActionButtons({
-    required this.params,
-  });
+  const _AnalysisActionButtons({required this.params});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -3378,14 +3255,14 @@ class _AnalysisActionButtons extends ConsumerWidget {
                     HapticFeedback.selectionClick();
                     final confirmed =
                         await _showAnalysisConfirmationDialog(
-                              context: context,
-                              title: 'Clear analysis?',
-                              message:
-                                  'This will remove every custom branch, including nested subvariants. This action cannot be undone.',
-                              confirmLabel: 'Clear',
-                              confirmColor: kRedColor,
-                            ) ??
-                            false;
+                          context: context,
+                          title: 'Clear analysis?',
+                          message:
+                              'This will remove every custom branch, including nested subvariants. This action cannot be undone.',
+                          confirmLabel: 'Clear',
+                          confirmColor: kRedColor,
+                        ) ??
+                        false;
                     if (!confirmed) return;
                     HapticFeedback.heavyImpact();
                     await notifier.clearUserAnalysis();
@@ -3400,12 +3277,13 @@ class _AnalysisActionButtons extends ConsumerWidget {
           shadowAlpha: 0.12,
           iconAlpha: 0.7,
           enabled: canInsertNullMove,
-          onPressed: canInsertNullMove
-              ? () {
-                HapticFeedback.mediumImpact();
-                notifier.insertNullMoveAfterCurrent();
-              }
-              : null,
+          onPressed:
+              canInsertNullMove
+                  ? () {
+                    HapticFeedback.mediumImpact();
+                    notifier.insertNullMoveAfterCurrent();
+                  }
+                  : null,
         ),
       ],
     );
@@ -3454,15 +3332,24 @@ class _RibbonAnalysisButtonState extends State<_RibbonAnalysisButton> {
     final pressMultiplier = _isPressed ? 1.5 : 1.0;
 
     return GestureDetector(
-      onTapDown: effectiveOnTap != null ? (_) {
-        setState(() => _isPressed = true);
-      } : null,
-      onTapUp: effectiveOnTap != null ? (_) {
-        setState(() => _isPressed = false);
-      } : null,
-      onTapCancel: effectiveOnTap != null ? () {
-        setState(() => _isPressed = false);
-      } : null,
+      onTapDown:
+          effectiveOnTap != null
+              ? (_) {
+                setState(() => _isPressed = true);
+              }
+              : null,
+      onTapUp:
+          effectiveOnTap != null
+              ? (_) {
+                setState(() => _isPressed = false);
+              }
+              : null,
+      onTapCancel:
+          effectiveOnTap != null
+              ? () {
+                setState(() => _isPressed = false);
+              }
+              : null,
       onTap: effectiveOnTap,
       child: Opacity(
         opacity: widget.enabled ? 1 : 0.35,
@@ -3471,8 +3358,12 @@ class _RibbonAnalysisButtonState extends State<_RibbonAnalysisButton> {
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                widget.color.withValues(alpha: (alphaTop * pressMultiplier).clamp(0.0, 1.0)),
-                widget.color.withValues(alpha: (alphaBottom * pressMultiplier).clamp(0.0, 1.0)),
+                widget.color.withValues(
+                  alpha: (alphaTop * pressMultiplier).clamp(0.0, 1.0),
+                ),
+                widget.color.withValues(
+                  alpha: (alphaBottom * pressMultiplier).clamp(0.0, 1.0),
+                ),
               ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
@@ -3485,7 +3376,9 @@ class _RibbonAnalysisButtonState extends State<_RibbonAnalysisButton> {
             ),
             boxShadow: [
               BoxShadow(
-                color: widget.color.withValues(alpha: (shadowAlpha * pressMultiplier).clamp(0.0, 1.0)),
+                color: widget.color.withValues(
+                  alpha: (shadowAlpha * pressMultiplier).clamp(0.0, 1.0),
+                ),
                 blurRadius: 12,
                 offset: const Offset(0, 6),
               ),
@@ -3551,10 +3444,6 @@ class _NotationDisplayToken {
     this.heroineTag,
   });
 }
-
-enum _MoveAction { goTo, nullMove }
-
-enum _VariationAction { start, promote, delete, copy }
 
 class _PrincipalVariationList extends ConsumerStatefulWidget {
   final int index;
@@ -3702,8 +3591,10 @@ class _PrincipalVariationListState
     // CRITICAL FIX: Only jump pages when position changes or user explicitly selects a variant
     // During silent updates (depth increases), preserve the user's current scroll position
     if (positionChanged) {
-      // Position changed - reset to first variant or explicitly selected one
-      targetIndex = ((newSelectedIndex ?? 0).clamp(0, maxIndex)).toInt();
+      // Position changed - keep the user's last viewed variant when possible
+      final desiredIndex =
+          _lastUserSelectedIndex ?? newSelectedIndex ?? _currentPage;
+      targetIndex = desiredIndex.clamp(0, maxIndex);
       _lastUserSelectedIndex = targetIndex;
     } else if (selectedIndexChanged &&
         newSelectedIndex != null &&
@@ -3841,7 +3732,10 @@ class _PrincipalVariationListState
     // During preview mode, only show the static preview card (pageCount = 1)
     final pageCount = hasLockedPv ? 1 : basePageCount;
 
-    List<InlineSpan> buildPreviewCardSpans(List<_PvToken> tokens, Color variantColor) {
+    List<InlineSpan> buildPreviewCardSpans(
+      List<_PvToken> tokens,
+      Color variantColor,
+    ) {
       final spans = <InlineSpan>[];
       final baseStyle = AppTypography.textXsMedium.copyWith(
         color: kWhiteColor.withValues(alpha: 0.95),
@@ -3858,12 +3752,7 @@ class _PrincipalVariationListState
         final isSelectedMove = isMove && token.moveIndex == currentNavIndex;
 
         if (!isMove) {
-          spans.add(
-            TextSpan(
-              text: '${token.text} ',
-              style: baseStyle,
-            ),
-          );
+          spans.add(TextSpan(text: '${token.text} ', style: baseStyle));
           continue;
         }
 
@@ -3892,10 +3781,7 @@ class _PrincipalVariationListState
                 // Navigate to this position in the preview card
                 notifier.navigateToPreviewCardIndex(token.moveIndex!);
               },
-              child: Text(
-                '${token.text} ',
-                style: moveStyle,
-              ),
+              child: Text('${token.text} ', style: moveStyle),
             ),
           ),
         );
@@ -3909,7 +3795,9 @@ class _PrincipalVariationListState
       final mergedPositions = widget.state.lockedPvMergedPositions;
       final previewVariantIndex = widget.state.pvPreviewVariantIndex ?? 0;
 
-      if (lockedLine == null || mergedMoves == null || mergedPositions == null) {
+      if (lockedLine == null ||
+          mergedMoves == null ||
+          mergedPositions == null) {
         return const SizedBox.shrink();
       }
 
@@ -3940,10 +3828,7 @@ class _PrincipalVariationListState
           width: MediaQuery.of(context).size.width - 40.sp,
           margin: EdgeInsets.symmetric(horizontal: 2.sp),
           decoration: BoxDecoration(
-            border: Border.all(
-              color: borderColor,
-              width: 1.5,
-            ),
+            border: Border.all(color: borderColor, width: 1.5),
             borderRadius: BorderRadius.circular(6.sp),
             color: backgroundColor,
           ),
@@ -4016,7 +3901,12 @@ class _PrincipalVariationListState
                               physics: const BouncingScrollPhysics(
                                 parent: AlwaysScrollableScrollPhysics(),
                               ),
-                              padding: EdgeInsets.fromLTRB(0, 10.sp, 12.sp, 10.sp),
+                              padding: EdgeInsets.fromLTRB(
+                                0,
+                                10.sp,
+                                12.sp,
+                                10.sp,
+                              ),
                               child: RichText(
                                 text: TextSpan(
                                   style: AppTypography.textXsMedium.copyWith(
@@ -4048,6 +3938,7 @@ class _PrincipalVariationListState
       required AnalysisLine line,
       required int variantIndex,
       required bool isSelected,
+      required bool hasLockedPreview,
     }) {
       final sanMoves = _formatPv(line.sanMoves, baseMoveNumber, isWhiteToMove);
       final evalText = _formatEvalLabel(line);
@@ -4074,8 +3965,10 @@ class _PrincipalVariationListState
           HapticFeedback.mediumImpact();
           final lastMoveIndex = line.sanMoves.length - 1;
           if (lastMoveIndex >= 0) {
-            final lastMoveText = pvTokens.lastWhere((t) => t.moveIndex != null).text;
-            final heroineTag = 'pv_move_${identityHashCode(line)}_${variantIndex}_$lastMoveIndex';
+            final lastMoveText =
+                pvTokens.lastWhere((t) => t.moveIndex != null).text;
+            final heroineTag =
+                'pv_move_${identityHashCode(line)}_${variantIndex}_$lastMoveIndex';
             _showMovePreviewAnimation(
               context,
               lastMoveText,
@@ -4104,110 +3997,134 @@ class _PrincipalVariationListState
               color: backgroundColor,
             ),
             clipBehavior: Clip.hardEdge,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+            child: Stack(
+              clipBehavior: Clip.none,
               children: [
-                // Compact evaluation badge on the left
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () {
-                    if (widget.state.isPvPreviewActive &&
-                        widget.state.lockedPvLine != null) {
-                      notifier.previewPrincipalVariationMoveAt(
-                        line,
-                        variantIndex,
-                        0,
-                      );
-                    } else {
-                      notifier.clearPvPreview();
-                      notifier.playPrincipalVariationMove(line);
-                    }
-                  },
-                  child: Container(
-                    width: 48.sp,
-                    decoration: BoxDecoration(
-                      color: activeVariantColor.withValues(alpha: 0.25),
-                      border: Border(
-                        right: BorderSide(
-                          color: activeVariantColor.withValues(alpha: 0.4),
-                          width: 1,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Compact evaluation badge on the left
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        setState(() {
+                          _lastUserSelectedIndex =
+                              hasLockedPreview
+                                  ? variantIndex + 1
+                                  : variantIndex;
+                        });
+                        if (widget.state.isPvPreviewActive &&
+                            widget.state.lockedPvLine != null) {
+                          notifier.previewPrincipalVariationMoveAt(
+                            line,
+                            variantIndex,
+                            0,
+                          );
+                        } else {
+                          notifier.clearPvPreview();
+                          notifier.playPrincipalVariationMove(line);
+                        }
+                      },
+                      child: Container(
+                        width: 48.sp,
+                        decoration: BoxDecoration(
+                          color: activeVariantColor.withValues(alpha: 0.25),
+                          border: Border(
+                            right: BorderSide(
+                              color: activeVariantColor.withValues(alpha: 0.4),
+                              width: 1,
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                    child: Center(
-                      child: Text(
-                        evalText,
-                        style: AppTypography.textSmBold.copyWith(
-                          color: kWhiteColor,
-                          fontSize: 12.sp,
-                          letterSpacing: -0.3,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                // Notation text - vertically scrollable middle section
-                Expanded(
-                  child: SingleChildScrollView(
-                    primary: false,
-                    scrollDirection: Axis.vertical,
-                    physics: const BouncingScrollPhysics(
-                      parent: AlwaysScrollableScrollPhysics(),
-                    ),
-                    padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 10.sp),
-                    child: RichText(
-                      text: TextSpan(
-                        style: AppTypography.textXsMedium.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.95),
-                          fontWeight: FontWeight.w600,
-                        ),
-                        children: _buildPvSpans(
-                          tokens: pvTokens,
-                          notifier: notifier,
-                          line: line,
-                          variantIndex: variantIndex,
-                          variantColor: activeVariantColor,
-                          previewMoveIndex:
-                              isPreviewingThisVariant
-                                  ? widget.state.pvPreviewMoveIndex
-                                  : null,
-                        ),
-                      ),
-                      softWrap: true,
-                    ),
-                  ),
-                ),
-                // '+' button on the right - inserts next best move
-                Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () {
-                      HapticFeedback.lightImpact();
-                      notifier.clearPvPreview();
-                      notifier.playPrincipalVariationMove(line);
-                    },
-                    splashColor: activeVariantColor.withValues(alpha: 0.3),
-                    highlightColor: activeVariantColor.withValues(alpha: 0.2),
-                    child: Container(
-                      width: 40.sp,
-                      decoration: BoxDecoration(
-                        color: activeVariantColor.withValues(alpha: 0.2),
-                        border: Border(
-                          left: BorderSide(
-                            color: activeVariantColor.withValues(alpha: 0.4),
-                            width: 1,
+                        child: Center(
+                          child: Text(
+                            evalText,
+                            style: AppTypography.textSmBold.copyWith(
+                              color: kWhiteColor,
+                              fontSize: 12.sp,
+                              letterSpacing: -0.3,
+                            ),
                           ),
                         ),
                       ),
-                      child: Center(
-                        child: Icon(
-                          Icons.add_rounded,
-                          color: kWhiteColor.withValues(alpha: 0.9),
-                          size: 20.sp,
+                    ),
+                    // Notation text - vertically scrollable middle section
+                    Expanded(
+                      child: SingleChildScrollView(
+                        primary: false,
+                        scrollDirection: Axis.vertical,
+                        physics: const BouncingScrollPhysics(
+                          parent: AlwaysScrollableScrollPhysics(),
+                        ),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 10.sp,
+                          vertical: 10.sp,
+                        ),
+                        child: RichText(
+                          text: TextSpan(
+                            style: AppTypography.textXsMedium.copyWith(
+                              color: kWhiteColor.withValues(alpha: 0.95),
+                              fontWeight: FontWeight.w600,
+                            ),
+                            children: _buildPvSpans(
+                              tokens: pvTokens,
+                              notifier: notifier,
+                              line: line,
+                              variantIndex: variantIndex,
+                              variantColor: activeVariantColor,
+                              previewMoveIndex:
+                                  isPreviewingThisVariant
+                                      ? widget.state.pvPreviewMoveIndex
+                                      : null,
+                            ),
+                          ),
+                          softWrap: true,
                         ),
                       ),
                     ),
-                  ),
+                    // '+' button on the right - inserts next best move
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          setState(() {
+                            _lastUserSelectedIndex =
+                                hasLockedPreview
+                                    ? variantIndex + 1
+                                    : variantIndex;
+                          });
+                          notifier.clearPvPreview();
+                          notifier.playPrincipalVariationMove(line);
+                        },
+                        splashColor: activeVariantColor.withValues(alpha: 0.3),
+                        highlightColor: activeVariantColor.withValues(
+                          alpha: 0.2,
+                        ),
+                        child: Container(
+                          width: 40.sp,
+                          decoration: BoxDecoration(
+                            color: activeVariantColor.withValues(alpha: 0.2),
+                            border: Border(
+                              left: BorderSide(
+                                color: activeVariantColor.withValues(
+                                  alpha: 0.4,
+                                ),
+                                width: 1,
+                              ),
+                            ),
+                          ),
+                          child: Center(
+                            child: Icon(
+                              Icons.add_rounded,
+                              color: kWhiteColor.withValues(alpha: 0.9),
+                              size: 20.sp,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -4217,16 +4134,16 @@ class _PrincipalVariationListState
     }
 
     return Column(
-        // CRITICAL: No key here! Adding a key that changes with eval causes Flutter
-        // to rebuild the entire widget tree, resetting PageController position.
-        // State is already managed via _currentPage and _lastUserSelectedIndex.
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Padding(
-            padding: EdgeInsets.fromLTRB(20.sp, 8.sp, 20.sp, 4.h),
-            child: SizedBox(
-              height: pvCardHeight,
-              child:
+      // CRITICAL: No key here! Adding a key that changes with eval causes Flutter
+      // to rebuild the entire widget tree, resetting PageController position.
+      // State is already managed via _currentPage and _lastUserSelectedIndex.
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(20.sp, 8.sp, 20.sp, 4.h),
+          child: SizedBox(
+            height: pvCardHeight,
+            child:
                 showEndOfGame
                     ? Center(
                       child: Container(
@@ -4290,9 +4207,10 @@ class _PrincipalVariationListState
                         }
 
                         // Adjust index for dynamic PV cards when static card is present
-                        final variantIndex =
-                            (hasLockedPv ? pageIndex - 1 : pageIndex)
-                                .clamp(0, clampedLines.length - 1);
+                        final variantIndex = (hasLockedPv
+                                ? pageIndex - 1
+                                : pageIndex)
+                            .clamp(0, clampedLines.length - 1);
 
                         if (!widget.state.isPvPreviewActive) {
                           notifier.selectVariant(
@@ -4323,12 +4241,13 @@ class _PrincipalVariationListState
                                   );
                           return Skeletonizer(
                             enabled: true,
-                          child: buildVariantCard(
-                            line: placeholderLine,
-                            variantIndex: 0,
-                            isSelected: false,
-                          ),
-                        );
+                            child: buildVariantCard(
+                              line: placeholderLine,
+                              variantIndex: 0,
+                              isSelected: false,
+                              hasLockedPreview: hasLockedPv,
+                            ),
+                          );
                         }
                         if (showEmptyState) {
                           return Container(
@@ -4387,79 +4306,81 @@ class _PrincipalVariationListState
                           line: line,
                           variantIndex: variantIndex,
                           isSelected: isSelected,
+                          hasLockedPreview: hasLockedPv,
                         );
                       },
                     ),
-            ),
           ),
-          if (pageCount > 1) ...[
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(pageCount, (index) {
-                final isLockedDot = hasLockedPv && index == 0;
-                final isActive = index == _currentPage;
-                final dynamicIndex = hasLockedPv ? index - 1 : index;
+        ),
+        if (pageCount > 1) ...[
+          SizedBox(height: 4.h),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(pageCount, (index) {
+              final isLockedDot = hasLockedPv && index == 0;
+              final isActive = index == _currentPage;
+              final dynamicIndex = hasLockedPv ? index - 1 : index;
 
-                Color dotColor;
-                Border? border;
+              Color dotColor;
+              Border? border;
 
-                if (isLockedDot) {
-                  dotColor =
-                      isActive
-                          ? kWhiteColor.withValues(alpha: 0.95)
-                          : kWhiteColor.withValues(alpha: 0.35);
-                  border = Border.all(
-                    color: kWhiteColor.withValues(alpha: isActive ? 1.0 : 0.65),
-                    width: isActive ? 1.5 : 1,
-                  );
-                } else if (displayLines.isNotEmpty) {
-                  final variantColor = notifier.getVariantColor(
-                    dynamicIndex.clamp(0, displayLines.length - 1),
-                    true,
-                  );
-                  dotColor =
-                      isActive
-                          ? variantColor
-                          : variantColor.withValues(alpha: 0.35);
-                } else {
-                  dotColor =
-                      isActive
-                          ? kWhiteColor.withValues(alpha: 0.85)
-                          : kWhiteColor.withValues(alpha: 0.3);
-                }
-
-                final double size = isLockedDot ? 8.w : 6.w;
-                return GestureDetector(
-                  onTap: () {
-                    if (!hasLockedPv ||
-                        widget.state.isPvPreviewActive == false ||
-                        index != 0) {
-                      _lastUserSelectedIndex = index;
-                    }
-                    _pageController.animateToPage(
-                      index,
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeInOut,
-                    );
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    margin: EdgeInsets.symmetric(horizontal: 4.sp),
-                    width: size,
-                    height: size,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: dotColor,
-                      border: border,
-                    ),
-                  ),
+              if (isLockedDot) {
+                dotColor =
+                    isActive
+                        ? kWhiteColor.withValues(alpha: 0.95)
+                        : kWhiteColor.withValues(alpha: 0.35);
+                border = Border.all(
+                  color: kWhiteColor.withValues(alpha: isActive ? 1.0 : 0.65),
+                  width: isActive ? 1.5 : 1,
                 );
-              }),
-            ),
-            SizedBox(height: 8.h),
-          ],
+              } else if (displayLines.isNotEmpty) {
+                final variantColor = notifier.getVariantColor(
+                  dynamicIndex.clamp(0, displayLines.length - 1),
+                  true,
+                );
+                dotColor =
+                    isActive
+                        ? variantColor
+                        : variantColor.withValues(alpha: 0.35);
+              } else {
+                dotColor =
+                    isActive
+                        ? kWhiteColor.withValues(alpha: 0.85)
+                        : kWhiteColor.withValues(alpha: 0.3);
+              }
+
+              final double size = isLockedDot ? 8.w : 6.w;
+              return GestureDetector(
+                onTap: () {
+                  if (!hasLockedPv ||
+                      widget.state.isPvPreviewActive == false ||
+                      index != 0) {
+                    _lastUserSelectedIndex = index;
+                  }
+                  _pageController.animateToPage(
+                    index,
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                  );
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  margin: EdgeInsets.symmetric(horizontal: 4.sp),
+                  width: size,
+                  height: size,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: dotColor,
+                    border: border,
+                  ),
+                ),
+              );
+            }),
+          ),
+          SizedBox(height: 4.h),
         ],
-      );
+      ],
+    );
   }
 
   List<_PvToken> _buildPvTokens(List<String> formattedMoves) {
@@ -4522,7 +4443,8 @@ class _PrincipalVariationListState
 
       // Create unique tag for heroine transition
       // Use identityHashCode to ensure uniqueness across different line instances
-      final heroineTag = 'pv_move_${identityHashCode(line)}_${variantIndex}_${token.moveIndex}';
+      final heroineTag =
+          'pv_move_${identityHashCode(line)}_${variantIndex}_${token.moveIndex}';
 
       // Use WidgetSpan with GestureDetector to handle tap and long press
       spans.add(
@@ -4557,10 +4479,7 @@ class _PrincipalVariationListState
               tag: heroineTag,
               child: Material(
                 color: Colors.transparent,
-                child: Text(
-                  '${token.text} ',
-                  style: moveStyle,
-                ),
+                child: Text('${token.text} ', style: moveStyle),
               ),
             ),
           ),
@@ -4926,23 +4845,17 @@ class _ShareGameScreen extends ConsumerWidget {
   }
 }
 
-class _NotationHeroOverlay extends StatelessWidget {
+class _NotationActionOverlay extends StatelessWidget {
   final String heroineTag;
   final String title;
-  final String summary;
-  final String pgn;
-  final Future<void> Function(BuildContext context)? onCopy;
-  final Future<void> Function(BuildContext context)? onShare;
-  final Future<void> Function(BuildContext context)? onUpgrade;
+  final String? subtitle;
+  final List<_NotationActionItem> actions;
 
-  const _NotationHeroOverlay({
+  const _NotationActionOverlay({
     required this.heroineTag,
     required this.title,
-    required this.summary,
-    required this.pgn,
-    this.onCopy,
-    this.onShare,
-    this.onUpgrade,
+    this.subtitle,
+    required this.actions,
   });
 
   @override
@@ -4950,145 +4863,98 @@ class _NotationHeroOverlay extends StatelessWidget {
     return ReactToHeroineDismiss(
       builder: (context, dismissProgress, offset, child) {
         final fade = (1 - dismissProgress).clamp(0.0, 1.0);
-        return Opacity(
-          opacity: fade,
-          child: child!,
-        );
+        return Opacity(opacity: fade, child: child!);
       },
       child: Stack(
         children: [
           Positioned.fill(
             child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-              child: Container(
-                color: Colors.black.withValues(alpha: 0.6),
-              ),
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              child: Container(color: Colors.black.withValues(alpha: 0.55)),
             ),
           ),
           Center(
             child: Heroine(
+              motion: CupertinoMotion.bouncy(),
               tag: heroineTag,
-              child: GestureDetector(
-                onTap: () {},
-                child: Container(
-                  width: double.infinity,
-                  margin: EdgeInsets.symmetric(horizontal: 20.sp),
-                  padding: EdgeInsets.all(20.sp),
-                  decoration: BoxDecoration(
-                    color: kBlackColor,
-                    borderRadius: BorderRadius.circular(18.sp),
-                    border: Border.all(
-                      color: kPrimaryColor.withValues(alpha: 0.35),
-                      width: 1.5,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: kBlackColor.withValues(alpha: 0.4),
-                        blurRadius: 28,
-                        offset: const Offset(0, 18),
-                      ),
-                    ],
+              child: Container(
+                width: double.infinity,
+                margin: EdgeInsets.symmetric(horizontal: 20.sp),
+                padding: EdgeInsets.all(20.sp),
+                decoration: BoxDecoration(
+                  color: kBlack2Color,
+                  borderRadius: BorderRadius.circular(18.sp),
+                  border: Border.all(
+                    color: kPrimaryColor.withValues(alpha: 0.35),
+                    width: 1.5,
                   ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.alt_route,
-                            color: kPrimaryColor,
-                            size: 20.ic,
-                          ),
-                          SizedBox(width: 10.w),
-                          Expanded(
-                            child: Text(
-                              title,
-                              style: AppTypography.textLgBold.copyWith(
-                                color: kWhiteColor,
-                              ),
-                            ),
-                          ),
-                          IconButton(
-                            icon: Icon(
-                              Icons.close,
-                              color: kWhiteColor70,
-                              size: 18.ic,
-                            ),
-                            onPressed: () => Navigator.of(context).pop(),
-                          ),
-                        ],
-                      ),
-                      SizedBox(height: 12.h),
-                      Text(
-                        summary,
-                        style: AppTypography.textSmMedium.copyWith(
-                          color: kWhiteColor,
-                        ),
-                      ),
-                      SizedBox(height: 16.h),
-                      Container(
-                        padding: EdgeInsets.all(14.sp),
-                        decoration: BoxDecoration(
-                          color: kWhiteColor.withValues(alpha: 0.04),
-                          borderRadius: BorderRadius.circular(12.sp),
-                          border: Border.all(
-                            color: kWhiteColor.withValues(alpha: 0.08),
-                          ),
-                        ),
-                        constraints: BoxConstraints(
-                          maxHeight: MediaQuery.of(context).size.height * 0.35,
-                        ),
-                        child: SingleChildScrollView(
-                          child: SelectableText(
-                            pgn,
-                            style: AppTypography.textXsMedium.copyWith(
-                              color: kWhiteColor.withValues(alpha: 0.9),
-                              height: 1.45,
-                              fontFamily: 'monospace',
+                  boxShadow: [
+                    BoxShadow(
+                      color: kBlackColor.withValues(alpha: 0.4),
+                      blurRadius: 26,
+                      offset: const Offset(0, 14),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.tune, color: kPrimaryColor, size: 20.ic),
+                        SizedBox(width: 10.w),
+                        Expanded(
+                          child: Text(
+                            title,
+                            style: AppTypography.textLgBold.copyWith(
+                              color: kWhiteColor,
                             ),
                           ),
                         ),
-                      ),
-                      SizedBox(height: 20.h),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: FilledButton.icon(
-                              onPressed:
-                                  onCopy == null
-                                      ? null
-                                      : () => onCopy!(context),
-                              icon: Icon(Icons.copy, size: 16.ic),
-                              label: const Text('Copy PGN'),
-                            ),
-                          ),
-                          SizedBox(width: 12.w),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed:
-                                  onShare == null
-                                      ? null
-                                      : () => onShare!(context),
-                              icon: Icon(Icons.share, size: 16.ic),
-                              label: const Text('Share'),
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (onUpgrade != null) ...[
-                        SizedBox(height: 12.h),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            onPressed: () => onUpgrade!(context),
-                            icon: Icon(Icons.upgrade, size: 16.ic),
-                            label: const Text('Upgrade to main variant'),
+                        IconButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: Icon(
+                            Icons.close,
+                            color: kWhiteColor70,
+                            size: 18.ic,
                           ),
                         ),
                       ],
+                    ),
+                    if (subtitle != null) ...[
+                      SizedBox(height: 6.h),
+                      Text(
+                        subtitle!,
+                        style: AppTypography.textSmMedium.copyWith(
+                          color: kWhiteColor70,
+                        ),
+                      ),
                     ],
-                  ),
+                    SizedBox(height: 16.h),
+                    ...actions.map(
+                      (action) => Padding(
+                        padding: EdgeInsets.only(bottom: 10.h),
+                        child: FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: action.color.withValues(
+                              alpha: 0.18,
+                            ),
+                            foregroundColor: kWhiteColor,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12.sp),
+                              side: BorderSide(
+                                color: action.color.withValues(alpha: 0.45),
+                              ),
+                            ),
+                          ),
+                          onPressed: () => action.onSelected(context),
+                          icon: Icon(action.icon, size: 18.ic),
+                          label: Text(action.label),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -5097,6 +4963,20 @@ class _NotationHeroOverlay extends StatelessWidget {
       ),
     );
   }
+}
+
+class _NotationActionItem {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final FutureOr<void> Function(BuildContext context) onSelected;
+
+  const _NotationActionItem({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onSelected,
+  });
 }
 
 /// Custom route with Heroine support for smooth hero transitions
@@ -5140,10 +5020,7 @@ class _HeroinePreviewRoute<T> extends PageRoute<T> with HeroinePageRouteMixin {
     Widget child,
   ) {
     // Fade transition for the overlay
-    return FadeTransition(
-      opacity: animation,
-      child: child,
-    );
+    return FadeTransition(opacity: animation, child: child);
   }
 }
 
@@ -5272,27 +5149,24 @@ class _MovePreviewAnimationOverlayState
     );
 
     // Scale down animation for dismissal (snappy spring)
-    _dismissScale = Tween<double>(
-      begin: 1.0,
-      end: 0.2,
-    ).animate(CurvedAnimation(
-      parent: _dismissController,
-      curve: const SnappySpringCurve(), // Quick and decisive
-    ));
+    _dismissScale = Tween<double>(begin: 1.0, end: 0.2).animate(
+      CurvedAnimation(
+        parent: _dismissController,
+        curve: const SnappySpringCurve(), // Quick and decisive
+      ),
+    );
 
     // Fade out animation for dismissal
-    _dismissOpacity = Tween<double>(
-      begin: 1.0,
-      end: 0.0,
-    ).animate(CurvedAnimation(
-      parent: _dismissController,
-      curve: const SnappySpringCurve(),
-    ));
+    _dismissOpacity = Tween<double>(begin: 1.0, end: 0.0).animate(
+      CurvedAnimation(
+        parent: _dismissController,
+        curve: const SnappySpringCurve(),
+      ),
+    );
 
     // Just play entrance animation without auto-closing
     _controller.forward();
   }
-
 
   void _startDrag() {
     _dragReturnController.stop();
@@ -5368,7 +5242,8 @@ class _MovePreviewAnimationOverlayState
     }
 
     // Reject on strong horizontal motion or downward drag
-    final rejectHorizontal = sideways > _dragDismissThreshold * 0.8 || velocityX > 800;
+    final rejectHorizontal =
+        sideways > _dragDismissThreshold * 0.8 || velocityX > 800;
     final rejectDownward = upward < -50 || (upward < 0 && -velocityY < -400);
 
     if (rejectHorizontal || rejectDownward) {
@@ -5389,7 +5264,8 @@ class _MovePreviewAnimationOverlayState
     ).animate(
       CurvedAnimation(
         parent: _dragReturnController,
-        curve: const BouncySpringCurve(), // Natural spring snap-back with overshoot
+        curve:
+            const BouncySpringCurve(), // Natural spring snap-back with overshoot
       ),
     );
     _dragReturnController.forward(from: 0);
@@ -5413,7 +5289,8 @@ class _MovePreviewAnimationOverlayState
 
     // Calculate direction with velocity
     final releaseVector = _dragOffset + (_currentDragVelocity * 0.002);
-    Offset direction = releaseVector == Offset.zero ? const Offset(0, 1) : releaseVector;
+    Offset direction =
+        releaseVector == Offset.zero ? const Offset(0, 1) : releaseVector;
     final normalized = direction / direction.distance;
 
     // Determine dismiss direction and choose appropriate animation
@@ -5425,7 +5302,10 @@ class _MovePreviewAnimationOverlayState
 
     if (isHorizontal) {
       // Horizontal swipe - slide off screen with slight rotation
-      target = Offset(normalized.dx > 0 ? screenSize.width : -screenSize.width, _dragOffset.dy);
+      target = Offset(
+        normalized.dx > 0 ? screenSize.width : -screenSize.width,
+        _dragOffset.dy,
+      );
       curve = Curves.easeInCubic;
     } else {
       // Downward swipe - drop off screen with gravity-like motion
@@ -5440,12 +5320,7 @@ class _MovePreviewAnimationOverlayState
     _dragReturnAnimation = Tween<Offset>(
       begin: _dragOffset,
       end: target,
-    ).animate(
-      CurvedAnimation(
-        parent: _dragReturnController,
-        curve: curve,
-      ),
-    );
+    ).animate(CurvedAnimation(parent: _dragReturnController, curve: curve));
 
     _dragReturnController.forward(from: 0);
   }
@@ -5512,10 +5387,7 @@ class _MovePreviewAnimationOverlayState
       begin: _dragOffset,
       end: Offset(0, -screenHeight * 0.8),
     ).animate(
-      CurvedAnimation(
-        parent: _dragReturnController,
-        curve: Curves.easeInExpo,
-      ),
+      CurvedAnimation(parent: _dragReturnController, curve: Curves.easeInExpo),
     );
 
     _dragReturnController.forward(from: 0).then((_) {
@@ -5552,29 +5424,30 @@ class _MovePreviewAnimationOverlayState
     HapticFeedback.mediumImpact();
 
     // Show confirmation dialog
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: kBlack2Color,
-        title: const Text('Promote to main variant?'),
-        content: const Text(
-          'This will replace the main variant with this line from the current position.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            style: TextButton.styleFrom(
-              foregroundColor: kPrimaryColor,
-            ),
-            child: const Text('Promote'),
-          ),
-        ],
-      ),
-    ) ?? false;
+    final confirmed =
+        await showDialog<bool>(
+          context: context,
+          builder:
+              (dialogContext) => AlertDialog(
+                backgroundColor: kBlack2Color,
+                title: const Text('Promote to main variant?'),
+                content: const Text(
+                  'This will replace the main variant with this line from the current position.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(false),
+                    child: const Text('Cancel'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(true),
+                    style: TextButton.styleFrom(foregroundColor: kPrimaryColor),
+                    child: const Text('Promote'),
+                  ),
+                ],
+              ),
+        ) ??
+        false;
 
     if (!confirmed || !mounted) return;
 
@@ -5649,13 +5522,16 @@ class _MovePreviewAnimationOverlayState
           final cardScaleValue = _cardScaleAnimation.value.clamp(0.0, 1.1);
           final dismissScaleValue = _dismissScale.value.clamp(0.0, 1.0);
           final baseScale = _isDismissing ? dismissScaleValue : cardScaleValue;
-          final backgroundOpacityValue = _isDismissing
-              ? ((1 - _dismissController.value).clamp(0.0, 1.0) * 0.5)
-              : (progress * 0.5);
-          final glowOpacity =
-              (math.sin(progress * math.pi * 3) * 0.2 + 0.8).clamp(0.0, 1.0);
-          final dragProgress =
-              (-_dragOffset.dy / _dragDismissThreshold).clamp(0.0, 1.0);
+          final backgroundOpacityValue =
+              _isDismissing
+                  ? ((1 - _dismissController.value).clamp(0.0, 1.0) * 0.5)
+                  : (progress * 0.5);
+          final glowOpacity = (math.sin(progress * math.pi * 3) * 0.2 + 0.8)
+              .clamp(0.0, 1.0);
+          final dragProgress = (-_dragOffset.dy / _dragDismissThreshold).clamp(
+            0.0,
+            1.0,
+          );
           final interactiveScaleFactor = 1 + (dragProgress * 0.2);
           final interactiveOffset = _dragOffset;
 
@@ -5663,19 +5539,31 @@ class _MovePreviewAnimationOverlayState
           final rotationAngle = (_dragOffset.dx / 180).clamp(-0.35, 0.35);
 
           // Add 3D perspective flip based on vertical drag
-          final flipAngleX = (dragProgress * 0.15) * math.pi; // Flip backward as dragging up
-          final flipAngleY = ((_dragOffset.dx / _maxDragRadius) * 0.2).clamp(-0.25, 0.25) * math.pi;
+          final flipAngleX =
+              (dragProgress * 0.15) * math.pi; // Flip backward as dragging up
+          final flipAngleY =
+              ((_dragOffset.dx / _maxDragRadius) * 0.2).clamp(-0.25, 0.25) *
+              math.pi;
 
           final rejectionPhase =
-              _pendingReject ? (1 - _dragReturnController.value).clamp(0.0, 1.0) : 0.0;
+              _pendingReject
+                  ? (1 - _dragReturnController.value).clamp(0.0, 1.0)
+                  : 0.0;
           final rejectionTwist =
-              _rejectDirection == null ? 0.0 : _rejectDirection!.dx.sign * rejectionPhase * 0.45;
-          final rejectionScale = _pendingReject ? (1 - rejectionPhase * 0.25) : 1.0;
-          final combinedScale = baseScale * interactiveScaleFactor * rejectionScale;
+              _rejectDirection == null
+                  ? 0.0
+                  : _rejectDirection!.dx.sign * rejectionPhase * 0.45;
+          final rejectionScale =
+              _pendingReject ? (1 - rejectionPhase * 0.25) : 1.0;
+          final combinedScale =
+              baseScale * interactiveScaleFactor * rejectionScale;
           final combinedRotation = rotationAngle + rejectionTwist;
 
           // Enhanced magic pulse with more intensity
-          final magicPulse = (dragProgress * 0.8 + _magicBurst * 1.2).clamp(0.0, 1.0);
+          final magicPulse = (dragProgress * 0.8 + _magicBurst * 1.2).clamp(
+            0.0,
+            1.0,
+          );
           final cardOpacityValue =
               ((_isDismissing ? _dismissOpacity.value : 1.0).clamp(0.0, 1.0)) *
               (_pendingReject ? (1 - rejectionPhase * 0.4) : 1.0);
@@ -5683,8 +5571,10 @@ class _MovePreviewAnimationOverlayState
           final spiralParticles = List.generate(particleCount, (index) {
             final angle = (index / particleCount) * 2 * math.pi;
             final spiralOffset = (index / particleCount) * 0.25;
-            final particleValue =
-                (particleProgress - spiralOffset).clamp(0.0, 1.0);
+            final particleValue = (particleProgress - spiralOffset).clamp(
+              0.0,
+              1.0,
+            );
 
             // More dynamic spiral with varying speeds
             final rotationAngle = angle + (particleValue * math.pi * 4);
@@ -5697,12 +5587,14 @@ class _MovePreviewAnimationOverlayState
             final size = (4 + (index % 5) * 2.5).sp;
             final dismissOpacity =
                 (1 - _dismissController.value).clamp(0.0, 1.0) * 1.0;
-            final particleOpacity = _isDismissing
-                ? dismissOpacity
-                : particleValue * (1 - particleValue * 0.4) * 1.0;
+            final particleOpacity =
+                _isDismissing
+                    ? dismissOpacity
+                    : particleValue * (1 - particleValue * 0.4) * 1.0;
 
             // Pulsating effect
-            final pulsate = 0.8 + 0.2 * math.sin(particleProgress * math.pi * 6 + index);
+            final pulsate =
+                0.8 + 0.2 * math.sin(particleProgress * math.pi * 6 + index);
 
             return Positioned(
               left: x,
@@ -5736,8 +5628,7 @@ class _MovePreviewAnimationOverlayState
           final milestoneRings = <Widget>[];
           if (!_isDismissing) {
             if (progress >= 0.25 && progress < 0.35) {
-              final ringProgress =
-                  ((progress - 0.25) / 0.10).clamp(0.0, 1.0);
+              final ringProgress = ((progress - 0.25) / 0.10).clamp(0.0, 1.0);
               milestoneRings.add(
                 Center(
                   child: Container(
@@ -5757,8 +5648,7 @@ class _MovePreviewAnimationOverlayState
               );
             }
             if (progress >= 0.50 && progress < 0.60) {
-              final ringProgress =
-                  ((progress - 0.50) / 0.10).clamp(0.0, 1.0);
+              final ringProgress = ((progress - 0.50) / 0.10).clamp(0.0, 1.0);
               milestoneRings.add(
                 Center(
                   child: Container(
@@ -5778,8 +5668,7 @@ class _MovePreviewAnimationOverlayState
               );
             }
             if (progress >= 0.75 && progress < 0.85) {
-              final ringProgress =
-                  ((progress - 0.75) / 0.10).clamp(0.0, 1.0);
+              final ringProgress = ((progress - 0.75) / 0.10).clamp(0.0, 1.0);
               milestoneRings.add(
                 Center(
                   child: Container(
@@ -5808,14 +5697,22 @@ class _MovePreviewAnimationOverlayState
               final stagger = (i / liftCount);
               final liftHeight = dragProgress * screenSize.height * 0.6;
               final horizontalSpread = (i - liftCount / 2) * 15.sp;
-              final yPosition = screenSize.height / 2 - liftHeight * (1 - stagger);
-              final xPosition = screenSize.width / 2 + horizontalSpread + interactiveOffset.dx * 0.5;
+              final yPosition =
+                  screenSize.height / 2 - liftHeight * (1 - stagger);
+              final xPosition =
+                  screenSize.width / 2 +
+                  horizontalSpread +
+                  interactiveOffset.dx * 0.5;
 
-              final particleOpacity = (dragProgress * (1 - stagger * 0.7)).clamp(0.0, 1.0);
+              final particleOpacity = (dragProgress * (1 - stagger * 0.7))
+                  .clamp(0.0, 1.0);
               final size = (3 + stagger * 8).sp;
 
               // Wavy motion as particles rise
-              final wavyX = math.sin(progress * math.pi * 4 + i * 0.5) * 8.sp * dragProgress;
+              final wavyX =
+                  math.sin(progress * math.pi * 4 + i * 0.5) *
+                  8.sp *
+                  dragProgress;
 
               ascendingParticles.add(
                 Positioned(
@@ -5836,7 +5733,9 @@ class _MovePreviewAnimationOverlayState
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: variantColor.withValues(alpha: particleOpacity * 0.6),
+                            color: variantColor.withValues(
+                              alpha: particleOpacity * 0.6,
+                            ),
                             blurRadius: 12,
                             spreadRadius: 2,
                           ),
@@ -5859,11 +5758,14 @@ class _MovePreviewAnimationOverlayState
             for (int i = 0; i < 6; i++) {
               final angle =
                   (particleProgress * math.pi * 2) + i * (math.pi / 3.0);
-              final orbitRadius = 70 + math.sin(particleProgress * math.pi * 2 + i) * 15;
+              final orbitRadius =
+                  70 + math.sin(particleProgress * math.pi * 2 + i) * 15;
               final x = centerBase.dx + orbitRadius * math.cos(angle);
               final y = centerBase.dy + orbitRadius * math.sin(angle);
               final size = (4 + (i % 2) * 2).sp;
-              final particleGlow = (0.3 + 0.3 * math.sin(angle + progress * math.pi * 2)) * (1 - dragProgress);
+              final particleGlow =
+                  (0.3 + 0.3 * math.sin(angle + progress * math.pi * 2)) *
+                  (1 - dragProgress);
               orbitingParticles.add(
                 Positioned(
                   left: x - size / 2,
@@ -5924,7 +5826,9 @@ class _MovePreviewAnimationOverlayState
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: variantColor.withValues(alpha: opacity * 0.8),
+                            color: variantColor.withValues(
+                              alpha: opacity * 0.8,
+                            ),
                             blurRadius: 16,
                             spreadRadius: 2,
                           ),
@@ -5943,10 +5847,7 @@ class _MovePreviewAnimationOverlayState
             child: ReactToHeroineDismiss(
               builder: (context, dismissProgress, offset, child) {
                 final overlayFade = (1 - dismissProgress).clamp(0.0, 1.0);
-                return Opacity(
-                  opacity: overlayFade,
-                  child: child!,
-                );
+                return Opacity(opacity: overlayFade, child: child!);
               },
               child: Stack(
                 children: [
@@ -5998,15 +5899,18 @@ class _MovePreviewAnimationOverlayState
                         child: Transform.scale(
                           scale: combinedScale,
                           child: Transform(
-                            transform: Matrix4.identity()
-                              ..setEntry(3, 2, 0.001) // Add perspective
-                              ..rotateX(flipAngleX) // 3D flip on X axis
-                              ..rotateY(flipAngleY) // 3D flip on Y axis
-                              ..rotateZ(combinedRotation), // Regular Z rotation
+                            transform:
+                                Matrix4.identity()
+                                  ..setEntry(3, 2, 0.001) // Add perspective
+                                  ..rotateX(flipAngleX) // 3D flip on X axis
+                                  ..rotateY(flipAngleY) // 3D flip on Y axis
+                                  ..rotateZ(
+                                    combinedRotation,
+                                  ), // Regular Z rotation
                             alignment: Alignment.center,
                             child: Opacity(
-                            opacity: cardOpacityValue,
-                            child: Container(
+                              opacity: cardOpacityValue,
+                              child: Container(
                                 constraints: BoxConstraints(
                                   maxWidth: screenSize.width * 0.8,
                                 ),
@@ -6026,8 +5930,9 @@ class _MovePreviewAnimationOverlayState
                                         color: variantColor.withValues(
                                           alpha: 0.25,
                                         ),
-                                        borderRadius:
-                                            BorderRadius.circular(16.sp),
+                                        borderRadius: BorderRadius.circular(
+                                          16.sp,
+                                        ),
                                         border: Border.all(
                                           color: variantColor.withValues(
                                             alpha: 0.8,
@@ -6069,15 +5974,22 @@ class _MovePreviewAnimationOverlayState
                                                 vertical: 6.sp,
                                               ),
                                               decoration: BoxDecoration(
-                                                color: variantColor.withValues(alpha: 0.3),
-                                                borderRadius: BorderRadius.circular(20.sp),
+                                                color: variantColor.withValues(
+                                                  alpha: 0.3,
+                                                ),
+                                                borderRadius:
+                                                    BorderRadius.circular(
+                                                      20.sp,
+                                                    ),
                                                 border: Border.all(
-                                                  color: variantColor.withValues(alpha: 0.6),
+                                                  color: variantColor
+                                                      .withValues(alpha: 0.6),
                                                   width: 1.5,
                                                 ),
                                                 boxShadow: [
                                                   BoxShadow(
-                                                    color: variantColor.withValues(alpha: 0.4),
+                                                    color: variantColor
+                                                        .withValues(alpha: 0.4),
                                                     blurRadius: 12,
                                                     spreadRadius: 2,
                                                   ),
@@ -6085,105 +5997,119 @@ class _MovePreviewAnimationOverlayState
                                               ),
                                               child: Text(
                                                 _formatEvalChange(),
-                                                style: AppTypography.textXsMedium.copyWith(
-                                                  color: kWhiteColor,
-                                                  fontSize: 16.sp,
-                                                  fontWeight: FontWeight.w800,
-                                                  letterSpacing: 1,
-                                                ),
+                                                style: AppTypography
+                                                    .textXsMedium
+                                                    .copyWith(
+                                                      color: kWhiteColor,
+                                                      fontSize: 16.sp,
+                                                      fontWeight:
+                                                          FontWeight.w800,
+                                                      letterSpacing: 1,
+                                                    ),
                                               ),
                                             ),
                                           SizedBox(height: 12.sp),
                                           // Main move text with hero animation
-                                      Builder(
-                                        builder: (context) {
-                                          final heroChild = Material(
-                                            color: Colors.transparent,
-                                            child: Text(
-                                              widget.moveText,
-                                              style: AppTypography
-                                                  .textXsMedium
-                                                  .copyWith(
-                                                color: kWhiteColor,
-                                                fontSize: 52.sp,
-                                                fontWeight: FontWeight.w900,
-                                                letterSpacing: 5,
-                                                height: 1.1,
-                                                shadows: [
-                                                  Shadow(
-                                                    color: variantColor
-                                                        .withValues(
-                                                      alpha: 0.9,
-                                                    ),
-                                                    blurRadius: 24,
-                                                  ),
-                                                  Shadow(
-                                                    color: Colors.black
-                                                        .withValues(
-                                                      alpha: 0.6,
-                                                    ),
-                                                    blurRadius: 6,
-                                                    offset:
-                                                        const Offset(0, 3),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          );
-                                          if (_skipHeroFlight) {
-                                            return heroChild;
-                                          }
-                                          return HeroineVelocity(
-                                            velocity: Velocity(
-                                              pixelsPerSecond:
-                                                  _currentDragVelocity,
-                                            ),
-                                            child: Heroine(
-                                              tag: widget.heroineTag,
-                                              child: heroChild,
-                                            ),
-                                          );
-                                        },
-                                      ),
+                                          Builder(
+                                            builder: (context) {
+                                              final heroChild = Material(
+                                                color: Colors.transparent,
+                                                child: Text(
+                                                  widget.moveText,
+                                                  style: AppTypography
+                                                      .textXsMedium
+                                                      .copyWith(
+                                                        color: kWhiteColor,
+                                                        fontSize: 52.sp,
+                                                        fontWeight:
+                                                            FontWeight.w900,
+                                                        letterSpacing: 5,
+                                                        height: 1.1,
+                                                        shadows: [
+                                                          Shadow(
+                                                            color: variantColor
+                                                                .withValues(
+                                                                  alpha: 0.9,
+                                                                ),
+                                                            blurRadius: 24,
+                                                          ),
+                                                          Shadow(
+                                                            color: Colors.black
+                                                                .withValues(
+                                                                  alpha: 0.6,
+                                                                ),
+                                                            blurRadius: 6,
+                                                            offset:
+                                                                const Offset(
+                                                                  0,
+                                                                  3,
+                                                                ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                ),
+                                              );
+                                              if (_skipHeroFlight) {
+                                                return heroChild;
+                                              }
+                                              return HeroineVelocity(
+                                                velocity: Velocity(
+                                                  pixelsPerSecond:
+                                                      _currentDragVelocity,
+                                                ),
+                                                child: Heroine(
+                                                  tag: widget.heroineTag,
+                                                  child: heroChild,
+                                                ),
+                                              );
+                                            },
+                                          ),
                                           SizedBox(height: 18.sp),
                                           // Continuation preview
                                           if (_formatPreviewMoves().isNotEmpty)
-                                          Container(
-                                            padding: EdgeInsets.symmetric(
-                                              horizontal: 18.sp,
-                                              vertical: 10.sp,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: Colors.black.withValues(
-                                                alpha: 0.5,
+                                            Container(
+                                              padding: EdgeInsets.symmetric(
+                                                horizontal: 18.sp,
+                                                vertical: 10.sp,
                                               ),
-                                              borderRadius:
-                                                  BorderRadius.circular(10.sp),
-                                              border: Border.all(
-                                                color: variantColor.withValues(
-                                                  alpha: 0.4,
+                                              decoration: BoxDecoration(
+                                                color: Colors.black.withValues(
+                                                  alpha: 0.5,
                                                 ),
-                                                width: 1,
-                                              ),
-                                            ),
-                                            child: Opacity(
-                                              opacity: (progress * 1.3)
-                                                  .clamp(0.0, 1.0),
-                                              child: Text(
-                                                _formatPreviewMoves(),
-                                                textAlign: TextAlign.center,
-                                                style: AppTypography
-                                                    .textXsMedium
-                                                    .copyWith(
-                                                  color: kWhiteColor.withValues(alpha: 0.95),
-                                                  fontSize: 15.sp,
-                                                  fontWeight: FontWeight.w600,
-                                                  letterSpacing: 1.2,
-                                                  height: 1.5,
+                                                borderRadius:
+                                                    BorderRadius.circular(
+                                                      10.sp,
+                                                    ),
+                                                border: Border.all(
+                                                  color: variantColor
+                                                      .withValues(alpha: 0.4),
+                                                  width: 1,
                                                 ),
                                               ),
+                                              child: Opacity(
+                                                opacity: (progress * 1.3).clamp(
+                                                  0.0,
+                                                  1.0,
+                                                ),
+                                                child: Text(
+                                                  _formatPreviewMoves(),
+                                                  textAlign: TextAlign.center,
+                                                  style: AppTypography
+                                                      .textXsMedium
+                                                      .copyWith(
+                                                        color: kWhiteColor
+                                                            .withValues(
+                                                              alpha: 0.95,
+                                                            ),
+                                                        fontSize: 15.sp,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                        letterSpacing: 1.2,
+                                                        height: 1.5,
+                                                      ),
+                                                ),
+                                              ),
                                             ),
-                                          ),
                                           SizedBox(height: 24.sp),
                                           // Action buttons
                                           Column(
@@ -6195,42 +6121,72 @@ class _MovePreviewAnimationOverlayState
                                                 child: Material(
                                                   color: Colors.transparent,
                                                   child: InkWell(
-                                                    onTap: _onPromoteMainVariant,
-                                                    borderRadius: BorderRadius.circular(10.sp),
-                                                    child: Container(
-                                                      padding: EdgeInsets.symmetric(
-                                                        vertical: 14.sp,
-                                                      ),
-                                                      decoration: BoxDecoration(
-                                                        gradient: LinearGradient(
-                                                          colors: [
-                                                            variantColor.withValues(alpha: 0.4),
-                                                            variantColor.withValues(alpha: 0.3),
-                                                          ],
+                                                    onTap:
+                                                        _onPromoteMainVariant,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          10.sp,
                                                         ),
-                                                        borderRadius: BorderRadius.circular(10.sp),
+                                                    child: Container(
+                                                      padding:
+                                                          EdgeInsets.symmetric(
+                                                            vertical: 14.sp,
+                                                          ),
+                                                      decoration: BoxDecoration(
+                                                        gradient:
+                                                            LinearGradient(
+                                                              colors: [
+                                                                variantColor
+                                                                    .withValues(
+                                                                      alpha:
+                                                                          0.4,
+                                                                    ),
+                                                                variantColor
+                                                                    .withValues(
+                                                                      alpha:
+                                                                          0.3,
+                                                                    ),
+                                                              ],
+                                                            ),
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              10.sp,
+                                                            ),
                                                         border: Border.all(
-                                                          color: variantColor.withValues(alpha: 0.6),
+                                                          color: variantColor
+                                                              .withValues(
+                                                                alpha: 0.6,
+                                                              ),
                                                           width: 1.5,
                                                         ),
                                                       ),
                                                       child: Row(
-                                                        mainAxisAlignment: MainAxisAlignment.center,
+                                                        mainAxisAlignment:
+                                                            MainAxisAlignment
+                                                                .center,
                                                         children: [
                                                           Icon(
-                                                            Icons.upgrade_rounded,
+                                                            Icons
+                                                                .upgrade_rounded,
                                                             color: kWhiteColor,
                                                             size: 18.sp,
                                                           ),
                                                           SizedBox(width: 8.sp),
                                                           Text(
                                                             'Promote Main Variant',
-                                                            style: AppTypography.textSmBold.copyWith(
-                                                              color: kWhiteColor,
-                                                              fontSize: 14.sp,
-                                                              fontWeight: FontWeight.w700,
-                                                              letterSpacing: 0.3,
-                                                            ),
+                                                            style: AppTypography
+                                                                .textSmBold
+                                                                .copyWith(
+                                                                  color:
+                                                                      kWhiteColor,
+                                                                  fontSize:
+                                                                      14.sp,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w700,
+                                                                  letterSpacing:
+                                                                      0.3,
+                                                                ),
                                                           ),
                                                         ],
                                                       ),
@@ -6246,36 +6202,65 @@ class _MovePreviewAnimationOverlayState
                                                   color: Colors.transparent,
                                                   child: InkWell(
                                                     onTap: _onInsertAllMoves,
-                                                    borderRadius: BorderRadius.circular(10.sp),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          10.sp,
+                                                        ),
                                                     child: Container(
-                                                      padding: EdgeInsets.symmetric(
-                                                        vertical: 14.sp,
-                                                      ),
+                                                      padding:
+                                                          EdgeInsets.symmetric(
+                                                            vertical: 14.sp,
+                                                          ),
                                                       decoration: BoxDecoration(
-                                                        color: Colors.black.withValues(alpha: 0.3),
-                                                        borderRadius: BorderRadius.circular(10.sp),
+                                                        color: Colors.black
+                                                            .withValues(
+                                                              alpha: 0.3,
+                                                            ),
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              10.sp,
+                                                            ),
                                                         border: Border.all(
-                                                          color: variantColor.withValues(alpha: 0.4),
+                                                          color: variantColor
+                                                              .withValues(
+                                                                alpha: 0.4,
+                                                              ),
                                                           width: 1,
                                                         ),
                                                       ),
                                                       child: Row(
-                                                        mainAxisAlignment: MainAxisAlignment.center,
+                                                        mainAxisAlignment:
+                                                            MainAxisAlignment
+                                                                .center,
                                                         children: [
                                                           Icon(
-                                                            Icons.add_circle_outline_rounded,
-                                                            color: kWhiteColor.withValues(alpha: 0.9),
+                                                            Icons
+                                                                .add_circle_outline_rounded,
+                                                            color: kWhiteColor
+                                                                .withValues(
+                                                                  alpha: 0.9,
+                                                                ),
                                                             size: 18.sp,
                                                           ),
                                                           SizedBox(width: 8.sp),
                                                           Text(
                                                             'Insert All Moves',
-                                                            style: AppTypography.textSmBold.copyWith(
-                                                              color: kWhiteColor.withValues(alpha: 0.9),
-                                                              fontSize: 14.sp,
-                                                              fontWeight: FontWeight.w600,
-                                                              letterSpacing: 0.3,
-                                                            ),
+                                                            style: AppTypography
+                                                                .textSmBold
+                                                                .copyWith(
+                                                                  color: kWhiteColor
+                                                                      .withValues(
+                                                                        alpha:
+                                                                            0.9,
+                                                                      ),
+                                                                  fontSize:
+                                                                      14.sp,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w600,
+                                                                  letterSpacing:
+                                                                      0.3,
+                                                                ),
                                                           ),
                                                         ],
                                                       ),
@@ -6291,36 +6276,65 @@ class _MovePreviewAnimationOverlayState
                                                   color: Colors.transparent,
                                                   child: InkWell(
                                                     onTap: _onPreview,
-                                                    borderRadius: BorderRadius.circular(10.sp),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          10.sp,
+                                                        ),
                                                     child: Container(
-                                                      padding: EdgeInsets.symmetric(
-                                                        vertical: 14.sp,
-                                                      ),
+                                                      padding:
+                                                          EdgeInsets.symmetric(
+                                                            vertical: 14.sp,
+                                                          ),
                                                       decoration: BoxDecoration(
-                                                        color: Colors.black.withValues(alpha: 0.3),
-                                                        borderRadius: BorderRadius.circular(10.sp),
+                                                        color: Colors.black
+                                                            .withValues(
+                                                              alpha: 0.3,
+                                                            ),
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              10.sp,
+                                                            ),
                                                         border: Border.all(
-                                                          color: variantColor.withValues(alpha: 0.4),
+                                                          color: variantColor
+                                                              .withValues(
+                                                                alpha: 0.4,
+                                                              ),
                                                           width: 1,
                                                         ),
                                                       ),
                                                       child: Row(
-                                                        mainAxisAlignment: MainAxisAlignment.center,
+                                                        mainAxisAlignment:
+                                                            MainAxisAlignment
+                                                                .center,
                                                         children: [
                                                           Icon(
-                                                            Icons.visibility_outlined,
-                                                            color: kWhiteColor.withValues(alpha: 0.9),
+                                                            Icons
+                                                                .visibility_outlined,
+                                                            color: kWhiteColor
+                                                                .withValues(
+                                                                  alpha: 0.9,
+                                                                ),
                                                             size: 18.sp,
                                                           ),
                                                           SizedBox(width: 8.sp),
                                                           Text(
                                                             'Preview',
-                                                            style: AppTypography.textSmBold.copyWith(
-                                                              color: kWhiteColor.withValues(alpha: 0.9),
-                                                              fontSize: 14.sp,
-                                                              fontWeight: FontWeight.w600,
-                                                              letterSpacing: 0.3,
-                                                            ),
+                                                            style: AppTypography
+                                                                .textSmBold
+                                                                .copyWith(
+                                                                  color: kWhiteColor
+                                                                      .withValues(
+                                                                        alpha:
+                                                                            0.9,
+                                                                      ),
+                                                                  fontSize:
+                                                                      14.sp,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w600,
+                                                                  letterSpacing:
+                                                                      0.3,
+                                                                ),
                                                           ),
                                                         ],
                                                       ),
@@ -6331,32 +6345,62 @@ class _MovePreviewAnimationOverlayState
                                               // Swipe up hint with animated arrow
                                               SizedBox(height: 16.sp),
                                               TweenAnimationBuilder<double>(
-                                                duration: const Duration(milliseconds: 1500),
-                                                tween: Tween(begin: 0.0, end: 1.0),
+                                                duration: const Duration(
+                                                  milliseconds: 1500,
+                                                ),
+                                                tween: Tween(
+                                                  begin: 0.0,
+                                                  end: 1.0,
+                                                ),
                                                 curve: Curves.easeInOut,
-                                                builder: (context, value, child) {
-                                                  final bounce = math.sin(value * math.pi * 2) * 4;
-                                                  final opacity = 0.4 + (math.sin(value * math.pi * 2) * 0.3);
+                                                builder: (
+                                                  context,
+                                                  value,
+                                                  child,
+                                                ) {
+                                                  final bounce =
+                                                      math.sin(
+                                                        value * math.pi * 2,
+                                                      ) *
+                                                      4;
+                                                  final opacity =
+                                                      0.4 +
+                                                      (math.sin(
+                                                            value * math.pi * 2,
+                                                          ) *
+                                                          0.3);
                                                   return Transform.translate(
                                                     offset: Offset(0, bounce),
                                                     child: Opacity(
                                                       opacity: opacity,
                                                       child: Column(
-                                                        mainAxisSize: MainAxisSize.min,
+                                                        mainAxisSize:
+                                                            MainAxisSize.min,
                                                         children: [
                                                           Icon(
-                                                            Icons.keyboard_arrow_up_rounded,
+                                                            Icons
+                                                                .keyboard_arrow_up_rounded,
                                                             color: variantColor,
                                                             size: 32.sp,
                                                           ),
                                                           Text(
                                                             'Swipe up to preview',
-                                                            style: AppTypography.textXsRegular.copyWith(
-                                                              color: kWhiteColor.withValues(alpha: 0.6),
-                                                              fontSize: 11.sp,
-                                                              fontWeight: FontWeight.w500,
-                                                              letterSpacing: 0.5,
-                                                            ),
+                                                            style: AppTypography
+                                                                .textXsRegular
+                                                                .copyWith(
+                                                                  color: kWhiteColor
+                                                                      .withValues(
+                                                                        alpha:
+                                                                            0.6,
+                                                                      ),
+                                                                  fontSize:
+                                                                      11.sp,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w500,
+                                                                  letterSpacing:
+                                                                      0.5,
+                                                                ),
                                                           ),
                                                         ],
                                                       ),

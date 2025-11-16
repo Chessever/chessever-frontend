@@ -945,6 +945,7 @@ class ChessBoardScreenNotifierNew
   }
 
   Future<void> deleteVariationAtPointer(ChessMovePointer pointer) async {
+    _exitPvPreviewIfActive();
     if (_analysisNavigator == null) return;
     final currentState = state.value;
     if (currentState == null) return;
@@ -954,10 +955,13 @@ class ChessBoardScreenNotifierNew
     }
     _analysisNavigator!.deleteVariationAtPointer(pointer);
     HapticFeedback.heavyImpact();
+    _syncAnalysisFromNavigator(_analysisNavigator!.state);
+    _updateEvaluation(force: true);
     await _persistAnalysisState();
   }
 
   Future<void> promoteVariationAtPointer(ChessMovePointer pointer) async {
+    _exitPvPreviewIfActive();
     if (_analysisNavigator == null) return;
     final currentState = state.value;
     if (currentState == null) return;
@@ -967,6 +971,8 @@ class ChessBoardScreenNotifierNew
     }
     _analysisNavigator!.promoteVariationToMainline(pointer);
     HapticFeedback.heavyImpact();
+    _syncAnalysisFromNavigator(_analysisNavigator!.state);
+    _updateEvaluation(force: true);
     await _persistAnalysisState();
   }
 
@@ -978,7 +984,83 @@ class ChessBoardScreenNotifierNew
     if (_analysisNavigator == null) return;
     _analysisNavigator!.insertNullMoveAtPointer();
     HapticFeedback.mediumImpact();
+    _syncAnalysisFromNavigator(_analysisNavigator!.state);
+    _updateEvaluation(force: true);
     await _persistAnalysisState();
+  }
+
+  Future<void> deleteContinuationFromPointer(ChessMovePointer pointer) async {
+    _exitPvPreviewIfActive();
+    if (_analysisNavigator == null) return;
+    final currentState = state.value;
+    if (currentState == null) return;
+    final cleared = _clearVariantSelection(currentState);
+    if (!identical(cleared, currentState)) {
+      state = AsyncValue.data(cleared);
+    }
+    _analysisNavigator!.deleteContinuationAfterPointer(pointer);
+    HapticFeedback.mediumImpact();
+    _syncAnalysisFromNavigator(_analysisNavigator!.state);
+    _updateEvaluation(force: true);
+    await _persistAnalysisState();
+  }
+
+  Future<void> insertNullMoveAfterPointer(ChessMovePointer pointer) async {
+    _exitPvPreviewIfActive();
+    if (_analysisNavigator == null) return;
+    final currentState = state.value;
+    if (currentState == null) return;
+    final cleared = _clearVariantSelection(currentState);
+    if (!identical(cleared, currentState)) {
+      state = AsyncValue.data(cleared);
+    }
+    _analysisNavigator!.insertNullMoveAtPointer(pointer);
+    HapticFeedback.mediumImpact();
+    _syncAnalysisFromNavigator(_analysisNavigator!.state);
+    _updateEvaluation(force: true);
+    await _persistAnalysisState();
+  }
+
+  Future<void> promoteBranchToMainVariant(ChessMovePointer pointer) async {
+    if (_analysisNavigator == null) return;
+    final currentState = state.value;
+    if (currentState == null) return;
+
+    final sourceGame =
+        currentState.analysisState.game ?? _analysisNavigator!.state.game;
+    final branchLine = _extractMainlineFromPointer(sourceGame, pointer);
+    if (branchLine == null || branchLine.isEmpty) {
+      _releaseLog(
+        '🎯 PROMOTE BRANCH: Failed to extract branch for pointer $pointer',
+      );
+      return;
+    }
+
+    final newGame = sourceGame.copyWith(mainline: branchLine);
+    final movePointer =
+        branchLine.isEmpty ? const <Number>[] : <Number>[branchLine.length - 1];
+
+    _analysisNavigator!.replaceState(
+      ChessGameNavigatorState(game: newGame, movePointer: movePointer),
+    );
+
+    final newPgn = exportGameToPgn(newGame);
+    final cleared = _clearVariantSelection(currentState);
+    state = AsyncValue.data(
+      cleared.copyWith(
+        pgnData: newPgn,
+        principalVariations: const [],
+        selectedVariantIndex: null,
+        variantMovePointer: const [],
+        variantBaseFen: null,
+      ),
+    );
+
+    _syncAnalysisFromNavigator(_analysisNavigator!.state);
+    await _persistAnalysisState();
+    _updateEvaluation(force: true);
+    HapticFeedback.heavyImpact();
+    _releaseLog('🎯 PROMOTE BRANCH: Completed promotion for pointer $pointer');
   }
 
   Future<void> clearUserAnalysis() async {
@@ -1069,10 +1151,7 @@ class ChessBoardScreenNotifierNew
     );
 
     // Use the navigator's new method to append PV moves
-    navigator.appendMovesFromPv(
-      moves: line.moves,
-      sanMoves: line.sanMoves,
-    );
+    navigator.appendMovesFromPv(moves: line.moves, sanMoves: line.sanMoves);
 
     // Sync state with navigator after insertion
     Future.microtask(() {
@@ -1093,8 +1172,10 @@ class ChessBoardScreenNotifierNew
     if (line.moves.isEmpty) return;
 
     final currentAnalysis = currentState.analysisState;
-    final previewFenBase =
-        currentAnalysis.position.fen.split(' ').take(3).join(' ');
+    final previewFenBase = currentAnalysis.position.fen
+        .split(' ')
+        .take(3)
+        .join(' ');
     final pvBaseFen = currentState.principalVariationsBaseFen;
     if (pvBaseFen != null) {
       final pvFenBase = pvBaseFen.split(' ').take(3).join(' ');
@@ -1112,15 +1193,20 @@ class ChessBoardScreenNotifierNew
     // If already in preview mode, use current preview state as base for nested preview
     // Otherwise, save current state as snapshot for first preview
     final ChessBoardStateNew baseState;
-    if (currentState.isPvPreviewActive && currentState.lockedPvMergedMoves != null) {
+    if (currentState.isPvPreviewActive &&
+        currentState.lockedPvMergedMoves != null) {
       // Nested preview: use current preview position as base
       baseState = currentState;
-      _releaseLog('🎯 PV PREVIEW: Creating nested preview from current preview state');
+      _releaseLog(
+        '🎯 PV PREVIEW: Creating nested preview from current preview state',
+      );
     } else {
       // First preview: save original state to restore later
       _pvPreviewSnapshot ??= currentState.copyWith();
       baseState = _pvPreviewSnapshot ?? currentState;
-      _releaseLog('🎯 PV PREVIEW: Creating first preview, saving original state');
+      _releaseLog(
+        '🎯 PV PREVIEW: Creating first preview, saving original state',
+      );
     }
     final baseAnalysis = baseState.analysisState;
 
@@ -1133,9 +1219,7 @@ class ChessBoardScreenNotifierNew
     for (int i = 0; i <= cappedIndex; i++) {
       final move = line.moves[i];
       if (!previewPosition.isLegal(move)) {
-        _releaseLog(
-          '🎯 PV PREVIEW: illegal move ${move.uci} at index $i',
-        );
+        _releaseLog('🎯 PV PREVIEW: illegal move ${move.uci} at index $i');
         return;
       }
       previewPosition = previewPosition.play(move);
@@ -1152,29 +1236,53 @@ class ChessBoardScreenNotifierNew
     // CRITICAL: When in nested preview, use the preview card's merged history as base
     final List<String> pgnHistory;
     final List<Move> baseMoveObjects;
-    if (currentState.isPvPreviewActive && currentState.lockedPvMergedMoves != null) {
+    if (currentState.isPvPreviewActive &&
+        currentState.lockedPvMergedMoves != null) {
       // Nested preview: Use preview card's merged history as base
       pgnHistory = currentState.lockedPvMergedMoves!;
-      baseMoveObjects = currentState.lockedPvMergedMoveObjects ?? baseAnalysis.combinedMoves;
-      _releaseLog('🎯 PV PREVIEW: Using preview card history as base (${pgnHistory.length} moves)');
+      baseMoveObjects =
+          currentState.lockedPvMergedMoveObjects ?? baseAnalysis.combinedMoves;
+      _releaseLog(
+        '🎯 PV PREVIEW: Using preview card history as base (${pgnHistory.length} moves)',
+      );
     } else {
-      // CRITICAL FIX: Only use moves up to CURRENT position, not all moves
-      // When at move 10 of 50, we should only take moves 0-10, not all 50
-      final currentMoveIndex = baseAnalysis.currentMoveIndex;
-      final allSans = currentState.analysisState.moveSans;
-      final allMoves = currentState.analysisState.allMoves;
-
-      // Take moves from start up to and including current position
-      // currentMoveIndex = -1 means before first move (starting position)
-      // currentMoveIndex = 0 means after first move, etc.
-      final endIndex = currentMoveIndex + 1; // +1 because we want inclusive
-      pgnHistory = endIndex > 0 && endIndex <= allSans.length
-          ? allSans.sublist(0, endIndex)
-          : <String>[];
-      baseMoveObjects = endIndex > 0 && endIndex <= allMoves.length
-          ? allMoves.sublist(0, endIndex)
-          : <Move>[];
-      _releaseLog('🎯 PV PREVIEW: Using analysis history up to move $currentMoveIndex (${pgnHistory.length} moves)');
+      // Prefer navigator history to ensure we capture the exact line (including parent variations)
+      final navigatorState = _analysisNavigator?.state;
+      if (navigatorState != null && navigatorState.game.mainline.isNotEmpty) {
+        final historySnapshot = _historySnapshotUpToPointer(navigatorState);
+        final currentMoveIndex = baseAnalysis.currentMoveIndex;
+        final cappedEndIndex = math.min(
+          historySnapshot.sanMoves.length,
+          math.max(0, currentMoveIndex + 1),
+        );
+        if (cappedEndIndex > 0) {
+          pgnHistory = historySnapshot.sanMoves.sublist(0, cappedEndIndex);
+          baseMoveObjects =
+              historySnapshot.moveObjects.length >= cappedEndIndex
+                  ? historySnapshot.moveObjects.sublist(0, cappedEndIndex)
+                  : List<Move>.of(historySnapshot.moveObjects);
+        } else {
+          pgnHistory = const [];
+          baseMoveObjects = const [];
+        }
+      } else {
+        // Fallback: use analysis state's linear history
+        final currentMoveIndex = baseAnalysis.currentMoveIndex;
+        final allSans = currentState.analysisState.moveSans;
+        final allMoves = currentState.analysisState.allMoves;
+        final endIndex = currentMoveIndex + 1;
+        pgnHistory =
+            endIndex > 0 && endIndex <= allSans.length
+                ? allSans.sublist(0, endIndex)
+                : <String>[];
+        baseMoveObjects =
+            endIndex > 0 && endIndex <= allMoves.length
+                ? allMoves.sublist(0, endIndex)
+                : <Move>[];
+      }
+      _releaseLog(
+        '🎯 PV PREVIEW: Using history snapshot (${pgnHistory.length} moves, ${baseMoveObjects.length} objects)',
+      );
     }
     final pvMoves = line.moves;
     final mergedMoves = [...pgnHistory, ...line.sanMoves];
@@ -1183,7 +1291,8 @@ class ChessBoardScreenNotifierNew
     // Build merged position history (start + every move)
     // CRITICAL: When in nested preview, reuse existing positions to avoid recalculation
     final List<Position> mergedPositions;
-    if (currentState.isPvPreviewActive && currentState.lockedPvMergedPositions != null) {
+    if (currentState.isPvPreviewActive &&
+        currentState.lockedPvMergedPositions != null) {
       // Nested preview: Extend the existing preview positions with new PV moves
       final existingPositions = currentState.lockedPvMergedPositions!;
       var positionCursor = existingPositions.last;
@@ -1193,7 +1302,9 @@ class ChessBoardScreenNotifierNew
         newPositions.add(positionCursor);
       }
       mergedPositions = [...existingPositions, ...newPositions];
-      _releaseLog('🎯 PV PREVIEW: Extended existing positions (${existingPositions.length} + ${newPositions.length} = ${mergedPositions.length})');
+      _releaseLog(
+        '🎯 PV PREVIEW: Extended existing positions (${existingPositions.length} + ${newPositions.length} = ${mergedPositions.length})',
+      );
     } else {
       // Build base positions from starting position + existing move objects
       Position startingPos;
@@ -1226,8 +1337,10 @@ class ChessBoardScreenNotifierNew
     }
 
     final baseMoveCount = baseMoveObjects.length;
-    final navigationIndex = (baseMoveCount + cappedIndex)
-        .clamp(0, combinedMoveObjects.length - 1);
+    final navigationIndex = (baseMoveCount + cappedIndex).clamp(
+      0,
+      combinedMoveObjects.length - 1,
+    );
 
     _releaseLog(
       '🎯 PV PREVIEW: Locking PV line (PGN history: ${pgnHistory.length}, PV moves: ${line.sanMoves.length}, merged: ${mergedMoves.length})',
@@ -1253,6 +1366,60 @@ class ChessBoardScreenNotifierNew
 
   void clearPvPreview() {
     _exitPvPreviewIfActive();
+  }
+
+  ({List<String> sanMoves, List<Move> moveObjects}) _historySnapshotUpToPointer(
+    ChessGameNavigatorState navigatorState,
+  ) {
+    final pointer = navigatorState.movePointer;
+    if (pointer.isEmpty) {
+      return (sanMoves: const [], moveObjects: const []);
+    }
+    final mainline = navigatorState.game.mainline;
+    if (mainline.isEmpty) {
+      return (sanMoves: const [], moveObjects: const []);
+    }
+
+    final sanMoves = <String>[];
+    final moveObjects = <Move>[];
+
+    void collectFromLine(ChessLine line, int pointerIndex) {
+      if (pointerIndex >= pointer.length) {
+        return;
+      }
+      if (line.isEmpty) {
+        return;
+      }
+
+      final rawMoveIndex = pointer[pointerIndex].toInt();
+      final cappedMoveIndex = rawMoveIndex.clamp(0, line.length - 1);
+
+      for (var i = 0; i <= cappedMoveIndex; i++) {
+        final chessMove = line[i];
+        sanMoves.add(chessMove.san);
+        final parsed = Move.parse(chessMove.uci);
+        if (parsed != null) {
+          moveObjects.add(parsed);
+        }
+      }
+
+      final nextPointerIndex = pointerIndex + 1;
+      if (nextPointerIndex >= pointer.length) {
+        return;
+      }
+      final variationIndex = pointer[nextPointerIndex].toInt();
+      final baseMove = line[cappedMoveIndex];
+      final variations = baseMove.variations;
+      if (variations == null ||
+          variationIndex < 0 ||
+          variationIndex >= variations.length) {
+        return;
+      }
+      collectFromLine(variations[variationIndex], pointerIndex + 2);
+    }
+
+    collectFromLine(mainline, 0);
+    return (sanMoves: sanMoves, moveObjects: moveObjects);
   }
 
   void navigateToPreviewCardIndex(int targetIndex) {
@@ -1321,7 +1488,9 @@ class ChessBoardScreenNotifierNew
       ),
     );
 
-    _releaseLog('🎯 APPLY PREVIEW: Preview state cleared, now inserting new move');
+    _releaseLog(
+      '🎯 APPLY PREVIEW: Preview state cleared, now inserting new move',
+    );
 
     // Now insert the first move from the tapped PV card
     if (line.moves.isNotEmpty) {
@@ -1385,9 +1554,10 @@ class ChessBoardScreenNotifierNew
         fen: resultPosition.fen,
         san: san,
         uci: move.uci,
-        turn: resultPosition.turn == Side.black
-            ? ChessColor.black
-            : ChessColor.white,
+        turn:
+            resultPosition.turn == Side.black
+                ? ChessColor.black
+                : ChessColor.white,
       );
       newMainline.add(chessMove);
       cursor = resultPosition;
@@ -1404,7 +1574,9 @@ class ChessBoardScreenNotifierNew
     );
 
     final movePointer =
-        newMainline.isEmpty ? const <Number>[] : <Number>[newMainline.length - 1];
+        newMainline.isEmpty
+            ? const <Number>[]
+            : <Number>[newMainline.length - 1];
 
     _analysisNavigator!.replaceState(
       ChessGameNavigatorState(game: newGame, movePointer: movePointer),
@@ -1436,6 +1608,57 @@ class ChessBoardScreenNotifierNew
     await _persistAnalysisState();
     _updateEvaluation(force: true);
     _releaseLog('🎯 PROMOTE PREVIEW: Promotion complete');
+  }
+
+  ChessLine? _extractMainlineFromPointer(
+    ChessGame game,
+    ChessMovePointer pointer,
+  ) {
+    if (game.mainline.isEmpty) {
+      return const <ChessMove>[];
+    }
+    ChessLine? currentLine = game.mainline;
+    final branch = <ChessMove>[];
+    var pointerIndex = 0;
+    var lastIncludedIndex = -1;
+
+    while (currentLine != null) {
+      if (pointerIndex >= pointer.length) {
+        for (var i = lastIncludedIndex + 1; i < currentLine.length; i++) {
+          branch.add(_stripVariations(currentLine[i]));
+        }
+        break;
+      }
+
+      final index = pointer[pointerIndex].toInt();
+      if (pointerIndex.isEven) {
+        if (index >= currentLine.length) {
+          return null;
+        }
+        for (var i = lastIncludedIndex + 1; i <= index; i++) {
+          branch.add(_stripVariations(currentLine[i]));
+        }
+        lastIncludedIndex = index;
+        pointerIndex++;
+      } else {
+        if (lastIncludedIndex < 0 || lastIncludedIndex >= currentLine.length) {
+          return null;
+        }
+        final variations = currentLine[lastIncludedIndex].variations;
+        if (variations == null || index >= variations.length) {
+          return null;
+        }
+        currentLine = variations[index];
+        lastIncludedIndex = -1;
+        pointerIndex++;
+      }
+    }
+
+    return branch;
+  }
+
+  ChessMove _stripVariations(ChessMove move) {
+    return move.copyWith(variations: null);
   }
 
   void navigateLockedPvForward() {
@@ -1502,7 +1725,8 @@ class ChessBoardScreenNotifierNew
 
     final maxIndex = moveObjects.length - 1;
     final clampedIndex = targetIndex.clamp(0, maxIndex);
-    if (!force && clampedIndex == (currentState.lockedPvNavigationIndex ?? -1)) {
+    if (!force &&
+        clampedIndex == (currentState.lockedPvNavigationIndex ?? -1)) {
       return;
     }
 
@@ -1534,7 +1758,9 @@ class ChessBoardScreenNotifierNew
     bool forceReset = false,
     bool preservePreview = false,
   }) {
-    _releaseLog('🎯 SELECT VARIANT: index=$variantIndex, preservePreview=$preservePreview');
+    _releaseLog(
+      '🎯 SELECT VARIANT: index=$variantIndex, preservePreview=$preservePreview',
+    );
     if (!preservePreview) {
       _exitPvPreviewIfActive();
     }
@@ -1572,35 +1798,36 @@ class ChessBoardScreenNotifierNew
     );
 
     // When preserving preview mode, explicitly maintain all preview-related state
-    final updatedState = preservePreview
-        ? currentState.copyWith(
-          selectedVariantIndex: variantIndex,
-          variantMovePointer: const [],
-          variantBaseFen: baseFen,
-          variantBaseMovePointer: basePointer,
-          variantBaseLastMove: currentState.analysisState.lastMove,
-          variantBaseMoveIndex: currentState.analysisState.currentMoveIndex,
-          shapes: arrowShapes,
-          // Explicitly preserve preview state to prevent accidental exit
-          isPvPreviewActive: currentState.isPvPreviewActive,
-          pvPreviewVariantIndex: currentState.pvPreviewVariantIndex,
-          pvPreviewMoveIndex: currentState.pvPreviewMoveIndex,
-          lockedPvLine: currentState.lockedPvLine,
-          lockedPvMergedMoves: currentState.lockedPvMergedMoves,
-          lockedPvMergedMoveObjects: currentState.lockedPvMergedMoveObjects,
-          lockedPvMergedPositions: currentState.lockedPvMergedPositions,
-          lockedPvBaseMoveCount: currentState.lockedPvBaseMoveCount,
-          lockedPvNavigationIndex: currentState.lockedPvNavigationIndex,
-        )
-        : currentState.copyWith(
-          selectedVariantIndex: variantIndex,
-          variantMovePointer: const [],
-          variantBaseFen: baseFen,
-          variantBaseMovePointer: basePointer,
-          variantBaseLastMove: currentState.analysisState.lastMove,
-          variantBaseMoveIndex: currentState.analysisState.currentMoveIndex,
-          shapes: arrowShapes,
-        );
+    final updatedState =
+        preservePreview
+            ? currentState.copyWith(
+              selectedVariantIndex: variantIndex,
+              variantMovePointer: const [],
+              variantBaseFen: baseFen,
+              variantBaseMovePointer: basePointer,
+              variantBaseLastMove: currentState.analysisState.lastMove,
+              variantBaseMoveIndex: currentState.analysisState.currentMoveIndex,
+              shapes: arrowShapes,
+              // Explicitly preserve preview state to prevent accidental exit
+              isPvPreviewActive: currentState.isPvPreviewActive,
+              pvPreviewVariantIndex: currentState.pvPreviewVariantIndex,
+              pvPreviewMoveIndex: currentState.pvPreviewMoveIndex,
+              lockedPvLine: currentState.lockedPvLine,
+              lockedPvMergedMoves: currentState.lockedPvMergedMoves,
+              lockedPvMergedMoveObjects: currentState.lockedPvMergedMoveObjects,
+              lockedPvMergedPositions: currentState.lockedPvMergedPositions,
+              lockedPvBaseMoveCount: currentState.lockedPvBaseMoveCount,
+              lockedPvNavigationIndex: currentState.lockedPvNavigationIndex,
+            )
+            : currentState.copyWith(
+              selectedVariantIndex: variantIndex,
+              variantMovePointer: const [],
+              variantBaseFen: baseFen,
+              variantBaseMovePointer: basePointer,
+              variantBaseLastMove: currentState.analysisState.lastMove,
+              variantBaseMoveIndex: currentState.analysisState.currentMoveIndex,
+              shapes: arrowShapes,
+            );
 
     _resumeVariantAutoPlay = false;
     _isPlayingVariant = false;
@@ -1649,9 +1876,7 @@ class ChessBoardScreenNotifierNew
           '🎯 PLAY VARIANT FORWARD: New PVs will be calculated for current position',
         );
         // Clear variant selection AND old PVs, then trigger fresh evaluation
-        final clearedState = _clearVariantSelection(
-          currentState,
-        ).copyWith(
+        final clearedState = _clearVariantSelection(currentState).copyWith(
           principalVariations: const [],
           principalVariationsBaseFen: null,
           isEvaluating: true,
@@ -1773,9 +1998,7 @@ class ChessBoardScreenNotifierNew
           '🎯 PLAY VARIANT FORWARD: Clearing stale variant and triggering fresh evaluation',
         );
         // Clear stale variant and PVs, trigger fresh evaluation
-        final clearedState = _clearVariantSelection(
-          currentState,
-        ).copyWith(
+        final clearedState = _clearVariantSelection(currentState).copyWith(
           principalVariations: const [],
           principalVariationsBaseFen: null,
           isEvaluating: true,
@@ -1873,9 +2096,7 @@ class ChessBoardScreenNotifierNew
         '🎯 PLAY VARIANT BACKWARD: New PVs will be calculated for current position',
       );
       // Clear variant selection AND old PVs, then trigger fresh evaluation
-      final clearedState = _clearVariantSelection(
-        currentState,
-      ).copyWith(
+      final clearedState = _clearVariantSelection(currentState).copyWith(
         principalVariations: const [],
         principalVariationsBaseFen: null,
         isEvaluating: true,
@@ -2276,9 +2497,7 @@ class ChessBoardScreenNotifierNew
     }
     final targetPointer =
         pointerOverride ?? currentState.analysisState.movePointer;
-    final navigatorState = ref.read(
-      chessGameNavigatorProvider(_analysisGame!),
-    );
+    final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
     const pointerEquality = ListEquality<int>();
     if (!pointerEquality.equals(navigatorState.movePointer, targetPointer)) {
       _analysisNavigator!.goToMovePointerUnchecked(
@@ -2400,7 +2619,9 @@ class ChessBoardScreenNotifierNew
 
     // If preview mode is active, navigate within preview instead of exiting
     if (currentState.isPvPreviewActive) {
-      _releaseLog('🎯 ANALYSIS STEP FORWARD: Preview mode active, navigating in preview');
+      _releaseLog(
+        '🎯 ANALYSIS STEP FORWARD: Preview mode active, navigating in preview',
+      );
       final currentNavIndex = currentState.lockedPvNavigationIndex ?? -1;
       final mergedMoves = currentState.lockedPvMergedMoves;
       if (mergedMoves != null && currentNavIndex < mergedMoves.length - 1) {
@@ -2453,7 +2674,9 @@ class ChessBoardScreenNotifierNew
 
     // If preview mode is active, navigate within preview instead of exiting
     if (currentState.isPvPreviewActive) {
-      _releaseLog('🎯 ANALYSIS STEP BACKWARD: Preview mode active, navigating in preview');
+      _releaseLog(
+        '🎯 ANALYSIS STEP BACKWARD: Preview mode active, navigating in preview',
+      );
       final currentNavIndex = currentState.lockedPvNavigationIndex ?? -1;
       if (currentNavIndex > 0) {
         _navigateToLockedPvIndex(currentNavIndex - 1);
@@ -2916,8 +3139,7 @@ class ChessBoardScreenNotifierNew
   }
 
   void _exitPvPreviewIfActive() {
-    if (_pvPreviewSnapshot == null &&
-        state.value?.isPvPreviewActive != true) {
+    if (_pvPreviewSnapshot == null && state.value?.isPvPreviewActive != true) {
       return;
     }
     final currentState = state.value;
@@ -4622,13 +4844,11 @@ class ChessBoardScreenNotifierNew
 
       // Check if current PVs match the position we're about to evaluate
       // Use stored PV base FEN to detect staleness
-      final pvBaseFen = currentState.principalVariationsBaseFen ??
+      final pvBaseFen =
+          currentState.principalVariationsBaseFen ??
           currentState.variantBaseFen;
       if (pvBaseFen != null && fenToEval != null) {
-        final pvFenBase = pvBaseFen
-            .split(' ')
-            .take(3)
-            .join(' ');
+        final pvFenBase = pvBaseFen.split(' ').take(3).join(' ');
         final currentFenBase = fenToEval.split(' ').take(3).join(' ');
 
         if (pvFenBase != currentFenBase) {
