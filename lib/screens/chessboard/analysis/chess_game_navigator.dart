@@ -973,20 +973,13 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
       return;
     }
 
-    if (pointer.last + 1 >= line.length) {
-      return;
-    }
-    final nextMove = line[pointer.last + 1];
     final updatedVariations = List<ChessLine>.of(
-      nextMove.variations ?? const <ChessLine>[],
+      move.variations ?? const <ChessLine>[],
     );
     updatedVariations.add([newMove]);
-    line[pointer.last + 1] = nextMove.copyWith(variations: updatedVariations);
+    line[pointer.last] = move.copyWith(variations: updatedVariations);
 
-    newPointer[newPointer.length - 1] = pointer.last + 1;
-    newPointer
-      ..add(updatedVariations.length - 1)
-      ..add(0);
+    newPointer = <Number>[...pointer, updatedVariations.length - 1, 0];
 
     replaceState(
       ChessGameNavigatorState(
