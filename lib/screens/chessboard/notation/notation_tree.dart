@@ -180,7 +180,11 @@ String exportGameToPgn(ChessGame game) {
   return buffer.toString();
 }
 
-String _lineToPgn({required ChessLine line, required int startPly}) {
+String _lineToPgn({
+  required ChessLine line,
+  required int startPly,
+  bool isVariation = false,
+}) {
   if (line.isEmpty) return '';
   final buffer = StringBuffer();
   var ply = startPly;
@@ -192,7 +196,12 @@ String _lineToPgn({required ChessLine line, required int startPly}) {
     final showNumber = isWhiteMove || i == 0;
 
     if (showNumber) {
-      buffer.write(isWhiteMove ? '$moveNumber. ' : '$moveNumber... ');
+      final bool suppressBlackNumber = isVariation && !isWhiteMove && i == 0;
+      if (suppressBlackNumber) {
+        buffer.write('... ');
+      } else {
+        buffer.write(isWhiteMove ? '$moveNumber. ' : '$moveNumber... ');
+      }
     }
 
     buffer.write('${move.san} ');
@@ -200,7 +209,11 @@ String _lineToPgn({required ChessLine line, required int startPly}) {
     final variations = move.variations ?? const <ChessLine>[];
     for (final variation in variations) {
       final variationText =
-          _lineToPgn(line: variation, startPly: ply + 1).trim();
+          _lineToPgn(
+            line: variation,
+            startPly: ply + 1,
+            isVariation: true,
+          ).trim();
       if (variationText.isNotEmpty) {
         buffer.write('($variationText) ');
       }

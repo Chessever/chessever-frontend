@@ -196,6 +196,7 @@ class ChessBoardScreenNotifierNew
           state = AsyncValue.data(
             currentState.copyWith(
               principalVariations: const [],
+              principalVariationsBaseFen: null,
               selectedVariantIndex: null,
               variantBaseFen: null,
               variantMovePointer: const [],
@@ -823,6 +824,7 @@ class ChessBoardScreenNotifierNew
           mate: null,
           isEvaluating: true, // Show loading indicator while evaluating
           principalVariations: const [],
+          principalVariationsBaseFen: null,
           selectedVariantIndex: null,
           variantMovePointer: const [],
           variantBaseFen: null,
@@ -885,6 +887,7 @@ class ChessBoardScreenNotifierNew
             suggestionLines: const [],
           ),
           principalVariations: const [],
+          principalVariationsBaseFen: null,
           selectedVariantIndex: null,
           variantMovePointer: const [],
           variantBaseFen: null,
@@ -1083,6 +1086,21 @@ class ChessBoardScreenNotifierNew
     final currentState = state.value;
     if (currentState == null) return;
     if (line.moves.isEmpty) return;
+
+    final currentAnalysis = currentState.analysisState;
+    final previewFenBase =
+        currentAnalysis.position.fen.split(' ').take(3).join(' ');
+    final pvBaseFen = currentState.principalVariationsBaseFen;
+    if (pvBaseFen != null) {
+      final pvFenBase = pvBaseFen.split(' ').take(3).join(' ');
+      if (pvFenBase != previewFenBase) {
+        _releaseLog(
+          '🎯 PV PREVIEW: PV lines are stale for current position, forcing re-evaluation',
+        );
+        _updateEvaluation(force: true);
+        return;
+      }
+    }
 
     final cappedIndex = targetMoveIndex.clamp(0, line.moves.length - 1);
 
@@ -1523,7 +1541,11 @@ class ChessBoardScreenNotifierNew
         // Clear variant selection AND old PVs, then trigger fresh evaluation
         final clearedState = _clearVariantSelection(
           currentState,
-        ).copyWith(principalVariations: const [], isEvaluating: true);
+        ).copyWith(
+          principalVariations: const [],
+          principalVariationsBaseFen: null,
+          isEvaluating: true,
+        );
         state = AsyncValue.data(clearedState);
         _updateEvaluation(
           force: true,
@@ -1643,7 +1665,11 @@ class ChessBoardScreenNotifierNew
         // Clear stale variant and PVs, trigger fresh evaluation
         final clearedState = _clearVariantSelection(
           currentState,
-        ).copyWith(principalVariations: const [], isEvaluating: true);
+        ).copyWith(
+          principalVariations: const [],
+          principalVariationsBaseFen: null,
+          isEvaluating: true,
+        );
         state = AsyncValue.data(clearedState);
         _updateEvaluation();
         return;
@@ -1739,7 +1765,11 @@ class ChessBoardScreenNotifierNew
       // Clear variant selection AND old PVs, then trigger fresh evaluation
       final clearedState = _clearVariantSelection(
         currentState,
-      ).copyWith(principalVariations: const [], isEvaluating: true);
+      ).copyWith(
+        principalVariations: const [],
+        principalVariationsBaseFen: null,
+        isEvaluating: true,
+      );
       state = AsyncValue.data(clearedState);
       _updateEvaluation(
         force: true,
@@ -3027,6 +3057,7 @@ class ChessBoardScreenNotifierNew
     // The caller already set these values and we must NOT reset them
     var nextState = currentState.copyWith(
       principalVariations: pvLines,
+      principalVariationsBaseFen: baseFen,
       analysisState: currentState.analysisState.copyWith(
         suggestionLines: pvLines,
       ),
@@ -3346,6 +3377,7 @@ class ChessBoardScreenNotifierNew
             mate: 0, // Checkmate delivered
             isEvaluating: false,
             principalVariations: const [], // No variations in checkmate
+            principalVariationsBaseFen: null,
           ),
         );
         return;
@@ -3368,6 +3400,7 @@ class ChessBoardScreenNotifierNew
             isEvaluating: false,
             evaluation: initialState.evaluation ?? 0.0,
             principalVariations: const [],
+            principalVariationsBaseFen: null,
           ),
         );
         return;
@@ -3426,6 +3459,7 @@ class ChessBoardScreenNotifierNew
           shapes: const ISet.empty(),
           isEvaluating: true,
           principalVariations: const [],
+          principalVariationsBaseFen: null,
           analysisState: baselineState.analysisState.copyWith(
             suggestionLines: const [],
           ),
@@ -3571,6 +3605,7 @@ class ChessBoardScreenNotifierNew
                 mate: _getConsistentMate(cascadeEval.pvs.first.mate, fen),
                 isEvaluating: true,
                 principalVariations: mergedCascade,
+                principalVariationsBaseFen: fen,
                 analysisState: snapshot.analysisState.copyWith(
                   suggestionLines: mergedCascade,
                 ),
@@ -3701,6 +3736,7 @@ class ChessBoardScreenNotifierNew
               isEvaluating: !hasPrimaryPv,
               mate: mateScore,
               principalVariations: mergedLines,
+              principalVariationsBaseFen: fen,
               analysisState: workingState.analysisState.copyWith(
                 suggestionLines: mergedLines,
               ),
@@ -3804,6 +3840,7 @@ class ChessBoardScreenNotifierNew
                   mate: _getConsistentMate(stockfishResult.pvs.first.mate, fen),
                   isEvaluating: false,
                   principalVariations: pvLines,
+                  principalVariationsBaseFen: fen,
                   analysisState: currentState.analysisState.copyWith(
                     suggestionLines: pvLines,
                   ),
@@ -3881,6 +3918,7 @@ class ChessBoardScreenNotifierNew
               mate: _getConsistentMate(primaryEval!.pvs.first.mate, fen),
               isEvaluating: true, // Keep loading state until PVs arrive
               principalVariations: const [],
+              principalVariationsBaseFen: null,
               analysisState: currentSnapshot.analysisState.copyWith(
                 suggestionLines: const [],
               ),
@@ -3954,6 +3992,7 @@ class ChessBoardScreenNotifierNew
                   state = AsyncValue.data(
                     latestState.copyWith(
                       principalVariations: mergedRetryLines,
+                      principalVariationsBaseFen: fen,
                       isEvaluating:
                           hasCompletePv ? false : latestState.isEvaluating,
                       variantBaseFen: fen,
@@ -4133,6 +4172,7 @@ class ChessBoardScreenNotifierNew
         isEvaluating: false,
         shapes: shapes,
         principalVariations: pvLines,
+        principalVariationsBaseFen: fen,
         // Only update variantBaseFen if NOT in variant exploration
         variantBaseFen:
             inVariantExploration ? currentSnapshot.variantBaseFen : fen,
@@ -4471,9 +4511,11 @@ class ChessBoardScreenNotifierNew
               : currentState.position?.fen;
 
       // Check if current PVs match the position we're about to evaluate
-      // Use variantBaseFen which tracks the position PVs were calculated for
-      if (currentState.variantBaseFen != null && fenToEval != null) {
-        final pvFenBase = currentState.variantBaseFen!
+      // Use stored PV base FEN to detect staleness
+      final pvBaseFen = currentState.principalVariationsBaseFen ??
+          currentState.variantBaseFen;
+      if (pvBaseFen != null && fenToEval != null) {
+        final pvFenBase = pvBaseFen
             .split(' ')
             .take(3)
             .join(' ');
@@ -4484,6 +4526,7 @@ class ChessBoardScreenNotifierNew
           state = AsyncValue.data(
             currentState.copyWith(
               principalVariations: const [],
+              principalVariationsBaseFen: null,
               selectedVariantIndex: null,
               variantBaseFen: null,
               variantMovePointer: const [],
