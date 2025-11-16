@@ -1782,7 +1782,6 @@ class _AnalysisGameBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final params = ChessBoardProviderParams(game: game, index: index);
     return Column(
       children: [
         _PlayerWidget(
@@ -1806,19 +1805,10 @@ class _AnalysisGameBody extends ConsumerWidget {
           state: state,
         ),
         if (state.isAnalysisMode && state.showPrincipalVariations) ...[
-          Stack(
-            clipBehavior: Clip.none,
-            children: [
-              _PrincipalVariationList(index: index, state: state, game: game),
-              Positioned(
-                top: 0,
-                right: -12.sp,
-                child: _AnalysisActionButtons(
-                  params: params,
-                  alignWithPvArea: true,
-                ),
-              ),
-            ],
+          _PrincipalVariationList(
+            index: index,
+            state: state,
+            game: game,
           ),
           // DISABLED: Analysis navigation arrows hidden
           // _AnalysisControlsRow(index: index, game: game),
@@ -2521,12 +2511,11 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                 ),
               ),
             ),
-          if (!widget.state.showPrincipalVariations)
-            Positioned(
-              top: 0,
-              right: -12.sp,
-              child: _AnalysisActionButtons(params: params),
-            ),
+          Positioned(
+            bottom: 16.sp,
+            right: -12.sp,
+            child: _AnalysisActionButtons(params: params),
+          ),
         ],
       ),
     );
@@ -2896,16 +2885,16 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   ) {
     final node = token.node;
     if (node == null) {
-      return kWhiteColor70;
+      return kWhiteColor;
     }
 
     if (token.pointerId == null) {
-      return kWhiteColor70;
+      return kWhiteColor;
     }
 
     final isPast = currentPly >= 0 && node.ply <= currentPly;
     if (node.isMainline) {
-      return isPast ? kWhiteColor : kWhiteColor70;
+      return isPast ? kWhiteColor : kWhiteColor;
     }
 
     final colorIndex = token.variationIndex ?? 0;
@@ -3050,7 +3039,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       final bool isFirstBlackInLine =
           !node.isWhiteMove && (node.showEllipsis || suppressBlackMovePrefix);
       if (isFirstBlackInLine) {
-        buffer.write('... ');
+        // For variation heads that start with black, omit the leading ellipsis
+        // to keep the line compact and consistent with PV cards
       } else {
         final separator = node.isWhiteMove ? '. ' : '... ';
         buffer.write('${node.moveNumber}$separator');
@@ -3359,11 +3349,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
 class _AnalysisActionButtons extends ConsumerWidget {
   final ChessBoardProviderParams params;
-  final bool alignWithPvArea;
 
   const _AnalysisActionButtons({
     required this.params,
-    this.alignWithPvArea = false,
   });
 
   @override
@@ -3371,6 +3359,7 @@ class _AnalysisActionButtons extends ConsumerWidget {
     final state = ref.watch(chessBoardScreenProviderNew(params)).valueOrNull;
     final analysisGame = state?.analysisState.game;
     final hasCustomAnalysis = _gameHasCustomVariations(analysisGame);
+    final canInsertNullMove = analysisGame != null;
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
 
     return Column(
@@ -3401,7 +3390,7 @@ class _AnalysisActionButtons extends ConsumerWidget {
                     await notifier.clearUserAnalysis();
                   },
         ),
-        SizedBox(height: alignWithPvArea ? 10.sp : 12.sp),
+        SizedBox(height: 12.sp),
         _RibbonAnalysisButton(
           icon: Icons.control_point_duplicate_rounded,
           color: kPrimaryColor,
@@ -3409,10 +3398,13 @@ class _AnalysisActionButtons extends ConsumerWidget {
           alphaBottom: 0.15,
           shadowAlpha: 0.12,
           iconAlpha: 0.7,
-          onPressed: () {
-            HapticFeedback.mediumImpact();
-            notifier.insertNullMoveAfterCurrent();
-          },
+          enabled: canInsertNullMove,
+          onPressed: canInsertNullMove
+              ? () {
+                HapticFeedback.mediumImpact();
+                notifier.insertNullMoveAfterCurrent();
+              }
+              : null,
         ),
       ],
     );
@@ -4223,17 +4215,17 @@ class _PrincipalVariationListState
       );
     }
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(20.sp, 8.sp, 20.sp, 8.sp),
-        child: Column(
+    return Column(
         // CRITICAL: No key here! Adding a key that changes with eval causes Flutter
         // to rebuild the entire widget tree, resetting PageController position.
         // State is already managed via _currentPage and _lastUserSelectedIndex.
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          SizedBox(
-            height: pvCardHeight,
-            child:
+          Padding(
+            padding: EdgeInsets.fromLTRB(20.sp, 8.sp, 20.sp, 4.h),
+            child: SizedBox(
+              height: pvCardHeight,
+              child:
                 showEndOfGame
                     ? Center(
                       child: Container(
@@ -4280,6 +4272,7 @@ class _PrincipalVariationListState
                               : const BouncingScrollPhysics(
                                 parent: AlwaysScrollableScrollPhysics(),
                               ),
+                      padEnds: false,
                       onPageChanged: (pageIndex) {
                         setState(() {
                           _currentPage = pageIndex;
@@ -4396,9 +4389,9 @@ class _PrincipalVariationListState
                         );
                       },
                     ),
+            ),
           ),
           if (pageCount > 1) ...[
-            SizedBox(height: 8.h),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: List.generate(pageCount, (index) {
@@ -4462,10 +4455,10 @@ class _PrincipalVariationListState
                 );
               }),
             ),
+            SizedBox(height: 8.h),
           ],
         ],
-      ),
-    );
+      );
   }
 
   List<_PvToken> _buildPvTokens(List<String> formattedMoves) {
@@ -4602,9 +4595,8 @@ class _PrincipalVariationListState
       if (isWhiteMove) {
         // White move: use standard notation (e.g., "1.")
         formatted.add('$moveNumber.');
-      } else if (i == 0) {
-        // First move is black: use ellipsis notation (e.g., "1...")
-        formatted.add('$moveNumber...');
+      } else {
+        // Black moves follow white moves without extra prefix
       }
 
       // Add the move notation
