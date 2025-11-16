@@ -65,9 +65,8 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
           previousEval == null || (widget.evaluation! - previousEval).abs() >= 0.1;
       _lastEval = widget.evaluation;
     } else if (positionChanged) {
-      // Position changed but no evaluation yet - reset to neutral
-      _shouldAnimate = previousEval != null && previousEval.abs() >= 0.1;
-      _lastEval = 0.0;
+      // Position changed but no evaluation yet - keep last value until new eval arrives
+      _shouldAnimate = false;
     } else {
       _shouldAnimate = false;
     }
@@ -75,8 +74,7 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
     if (widget.mate != null) {
       _lastMate = widget.mate;
     } else if (positionChanged) {
-      // Position changed - reset mate
-      _lastMate = 0;
+      // Position changed - keep previous mate info while new eval loads
     }
 
     if ((widget.evaluation != null || widget.mate != null) &&
