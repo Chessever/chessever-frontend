@@ -3863,7 +3863,7 @@ class _PrincipalVariationListState
           notifier.applyPreviewHistoryAndInsertMove(lockedLine);
         },
         child: Container(
-          width: MediaQuery.of(context).size.width - 40.sp,
+          width: double.infinity,
           margin: EdgeInsets.symmetric(horizontal: 2.sp),
           decoration: BoxDecoration(
             border: Border.all(color: borderColor, width: 1.5),
@@ -4030,7 +4030,7 @@ class _PrincipalVariationListState
           duration: const Duration(milliseconds: 140),
           curve: Curves.easeOut,
           child: Container(
-            width: MediaQuery.of(context).size.width - 40.sp,
+            width: double.infinity,
             margin: EdgeInsets.symmetric(horizontal: 2.sp),
             decoration: BoxDecoration(
               border: Border.all(
@@ -4184,7 +4184,7 @@ class _PrincipalVariationListState
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Padding(
-          padding: EdgeInsets.fromLTRB(20.sp, 8.sp, 20.sp, 4.h),
+          padding: EdgeInsets.fromLTRB(16.sp, 8.sp, 16.sp, 4.h),
           child: SizedBox(
             height: pvCardHeight,
             child:
@@ -5398,131 +5398,50 @@ class _MovePreviewAnimationOverlay extends StatefulWidget {
 }
 
 class _MovePreviewAnimationOverlayState
-    extends State<_MovePreviewAnimationOverlay>
-    with TickerProviderStateMixin {
+    extends State<_MovePreviewAnimationOverlay> {
   static const double _dragDismissThreshold = 140.0;
   static const double _maxDragRadius = 280.0;
-  late AnimationController _controller;
-  late AnimationController _dismissController;
-  late AnimationController _dragReturnController;
-  late Animation<double> _smoothProgress;
-  late Animation<double> _particleAnimation;
-  late Animation<double> _cardScaleAnimation;
-  late Animation<double> _dismissScale;
-  late Animation<double> _dismissOpacity;
-  Animation<Offset>? _dragReturnAnimation;
+
+  // Animation state
+  bool _isEntering = true;
+  bool _isDismissing = false;
   Offset _dragOffset = Offset.zero;
+  Offset _dragReturnTarget = Offset.zero;
+  bool _isReturning = false;
+
+  // Interaction state
   bool _isDraggingCard = false;
   Offset _currentDragVelocity = Offset.zero;
   Duration? _lastDragSampleTime;
   bool _hasTriggeredInstantApply = false;
   bool _pendingReject = false;
-  bool _skipHeroFlight = false;
   Offset? _rejectDirection;
   bool _completed = false;
-  bool _isDismissing = false;
   double _magicBurst = 0.0;
 
   @override
   void initState() {
     super.initState();
-    _dragOffset = Offset.zero;
-    _currentDragVelocity = Offset.zero;
-    _lastDragSampleTime = null;
-    _hasTriggeredInstantApply = false;
 
     // Initial haptic feedback on long press start
     HapticFeedback.mediumImpact();
 
-    // Main animation controller for 3.5-second loading (faster)
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 3500),
-      animationBehavior: AnimationBehavior.preserve,
-    );
-
-    // Dismiss animation controller (faster and snappier)
-    _dismissController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 280),
-    );
-
-    // Drag return controller for elastic snap-back (much faster)
-    _dragReturnController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 320),
-    );
-    _dragReturnController.addListener(() {
-      if (_dragReturnAnimation != null && mounted) {
+    // Trigger entrance animation
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
         setState(() {
-          _dragOffset = _dragReturnAnimation!.value;
+          _isEntering = false;
         });
       }
     });
-    _dragReturnController.addStatusListener((status) {
-      if (status == AnimationStatus.completed) {
-        final shouldDismiss = _pendingReject;
-        _pendingReject = false;
-        _dragReturnAnimation = null;
-        if (mounted) {
-          setState(() {
-            _dragOffset = Offset.zero;
-            _currentDragVelocity = Offset.zero;
-            _lastDragSampleTime = null;
-            _hasTriggeredInstantApply = false;
-          });
-        }
-        if (shouldDismiss) {
-          _dismissEarly(triggerHaptic: false);
-        }
-      }
-    });
-
-    // Use custom spring physics curves for natural motion
-    _smoothProgress = CurvedAnimation(
-      parent: _controller,
-      curve: const SnappySpringCurve(),
-    );
-
-    // Particle entrance animation with spring physics
-    _particleAnimation = CurvedAnimation(
-      parent: _controller,
-      curve: const SnappySpringCurve(), // Quick, responsive entrance
-    );
-
-    // Card scale uses bouncy spring for playful feel
-    _cardScaleAnimation = CurvedAnimation(
-      parent: _controller,
-      curve: const BouncySpringCurve(), // Natural iOS-style bouncy spring
-    );
-
-    // Scale down animation for dismissal (snappy spring)
-    _dismissScale = Tween<double>(begin: 1.0, end: 0.2).animate(
-      CurvedAnimation(
-        parent: _dismissController,
-        curve: const SnappySpringCurve(), // Quick and decisive
-      ),
-    );
-
-    // Fade out animation for dismissal
-    _dismissOpacity = Tween<double>(begin: 1.0, end: 0.0).animate(
-      CurvedAnimation(
-        parent: _dismissController,
-        curve: const SnappySpringCurve(),
-      ),
-    );
-
-    // Just play entrance animation without auto-closing
-    _controller.forward();
   }
 
   void _startDrag() {
-    _dragReturnController.stop();
-    _dragReturnAnimation = null;
     _lastDragSampleTime = null;
     _currentDragVelocity = Offset.zero;
     setState(() {
       _isDraggingCard = true;
+      _isReturning = false;
     });
   }
 
@@ -5606,17 +5525,30 @@ class _MovePreviewAnimationOverlayState
   }
 
   void _animateDragBack() {
-    _dragReturnAnimation = Tween<Offset>(
-      begin: _dragOffset,
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _dragReturnController,
-        curve:
-            const BouncySpringCurve(), // Natural spring snap-back with overshoot
-      ),
-    );
-    _dragReturnController.forward(from: 0);
+    setState(() {
+      _dragReturnTarget = Offset.zero;
+      _isReturning = true;
+    });
+
+    // Reset drag state after animation completes (bouncy motion is ~600ms)
+    Future.delayed(const Duration(milliseconds: 700), () {
+      if (mounted && !_isDraggingCard) {
+        final shouldDismiss = _pendingReject;
+        _pendingReject = false;
+
+        setState(() {
+          _dragOffset = Offset.zero;
+          _currentDragVelocity = Offset.zero;
+          _lastDragSampleTime = null;
+          _hasTriggeredInstantApply = false;
+          _isReturning = false;
+        });
+
+        if (shouldDismiss) {
+          _dismissEarly(triggerHaptic: false);
+        }
+      }
+    });
   }
 
   void _sparkMagicBurst() {
@@ -5630,10 +5562,6 @@ class _MovePreviewAnimationOverlayState
 
   void _rejectPreview() {
     if (_isDismissing) return;
-    setState(() {
-      _isDraggingCard = false;
-      _skipHeroFlight = true;
-    });
 
     // Calculate direction with velocity
     final releaseVector = _dragOffset + (_currentDragVelocity * 0.002);
@@ -5641,43 +5569,40 @@ class _MovePreviewAnimationOverlayState
         releaseVector == Offset.zero ? const Offset(0, 1) : releaseVector;
     final normalized = direction / direction.distance;
 
-    // Determine dismiss direction and choose appropriate animation
+    // Determine dismiss direction
     final isHorizontal = normalized.dx.abs() > normalized.dy.abs();
     final screenSize = MediaQuery.of(context).size;
 
     Offset target;
-    Curve curve;
-
     if (isHorizontal) {
-      // Horizontal swipe - slide off screen with slight rotation
+      // Horizontal swipe - slide off screen
       target = Offset(
         normalized.dx > 0 ? screenSize.width : -screenSize.width,
         _dragOffset.dy,
       );
-      curve = Curves.easeInCubic;
     } else {
-      // Downward swipe - drop off screen with gravity-like motion
+      // Downward swipe - drop off screen
       target = Offset(_dragOffset.dx, screenSize.height * 0.8);
-      curve = Curves.easeInQuad;
     }
 
-    _pendingReject = true;
-    _rejectDirection = normalized;
+    setState(() {
+      _isDraggingCard = false;
+      _pendingReject = true;
+      _rejectDirection = normalized;
+      _dragReturnTarget = target;
+      _isReturning = true;
+    });
 
-    // Animate the card away with chosen curve
-    _dragReturnAnimation = Tween<Offset>(
-      begin: _dragOffset,
-      end: target,
-    ).animate(CurvedAnimation(parent: _dragReturnController, curve: curve));
-
-    _dragReturnController.forward(from: 0);
+    // Dismiss after animation completes
+    Future.delayed(const Duration(milliseconds: 400), () {
+      if (mounted && _pendingReject) {
+        _dismissEarly(triggerHaptic: false);
+      }
+    });
   }
 
   @override
   void dispose() {
-    _controller.dispose();
-    _dismissController.dispose();
-    _dragReturnController.dispose();
     super.dispose();
   }
 
@@ -5714,10 +5639,6 @@ class _MovePreviewAnimationOverlayState
   void _activatePreviewWithMagic() {
     if (_completed) return;
     _completed = true;
-    setState(() {
-      _isDraggingCard = false;
-      _skipHeroFlight = true;
-    });
 
     // Magical burst effect
     _sparkMagicBurst();
@@ -5731,14 +5652,16 @@ class _MovePreviewAnimationOverlayState
 
     // Magical ascension animation
     final screenHeight = MediaQuery.of(context).size.height;
-    _dragReturnAnimation = Tween<Offset>(
-      begin: _dragOffset,
-      end: Offset(0, -screenHeight * 0.8),
-    ).animate(
-      CurvedAnimation(parent: _dragReturnController, curve: Curves.easeInExpo),
-    );
+    final target = Offset(0, -screenHeight * 0.8);
 
-    _dragReturnController.forward(from: 0).then((_) {
+    setState(() {
+      _isDraggingCard = false;
+      _dragReturnTarget = target;
+      _isReturning = true;
+    });
+
+    // Pop after ascension completes
+    Future.delayed(const Duration(milliseconds: 500), () {
       if (mounted) {
         Navigator.of(context).pop();
       }
@@ -5823,20 +5746,18 @@ class _MovePreviewAnimationOverlayState
     setState(() {
       _isDismissing = true;
       _isDraggingCard = false;
-      _dragReturnController.stop();
-      _dragReturnAnimation = null;
+      _isReturning = false;
       _dragOffset = Offset.zero;
       _currentDragVelocity = Offset.zero;
       _lastDragSampleTime = null;
       _hasTriggeredInstantApply = false;
-      _skipHeroFlight = false;
       _pendingReject = false;
       _rejectDirection = null;
       _magicBurst = 0.0;
     });
-    // Stop the loading animation if still running
-    _controller.stop();
-    _dismissController.forward().then((_) {
+
+    // Pop with hero transition after brief delay for dismiss animation
+    Future.delayed(const Duration(milliseconds: 280), () {
       if (mounted) {
         Navigator.of(context).pop();
       }
@@ -5847,11 +5768,12 @@ class _MovePreviewAnimationOverlayState
     if (!_completed && triggerHaptic) {
       HapticFeedback.lightImpact();
     }
+    setState(() {
+      _dragOffset = Offset.zero;
+      _isDraggingCard = false;
+      _isReturning = false;
+    });
     _closeWithMagicalAnimation();
-    _dragReturnController.stop();
-    _dragReturnAnimation = null;
-    _dragOffset = Offset.zero;
-    _isDraggingCard = false;
   }
 
   @override
@@ -5862,643 +5784,572 @@ class _MovePreviewAnimationOverlayState
 
     return Material(
       color: Colors.transparent,
-      child: AnimatedBuilder(
-        animation: Listenable.merge([_controller, _dismissController]),
-        builder: (context, child) {
-          final progress = _smoothProgress.value.clamp(0.0, 1.0);
-          final particleProgress = _particleAnimation.value.clamp(0.0, 1.0);
-          final cardScaleValue = _cardScaleAnimation.value.clamp(0.0, 1.1);
-          final dismissScaleValue = _dismissScale.value.clamp(0.0, 1.0);
-          final baseScale = _isDismissing ? dismissScaleValue : cardScaleValue;
-          final backgroundOpacityValue =
-              _isDismissing
-                  ? ((1 - _dismissController.value).clamp(0.0, 1.0) * 0.5)
-                  : (progress * 0.5);
-          final glowOpacity = (math.sin(progress * math.pi * 3) * 0.2 + 0.8)
-              .clamp(0.0, 1.0);
-          final dragProgress = (-_dragOffset.dy / _dragDismissThreshold).clamp(
-            0.0,
-            1.0,
-          );
-          final interactiveScaleFactor = 1 + (dragProgress * 0.2);
-          final interactiveOffset = _dragOffset;
+      child: SingleMotionBuilder(
+        motion: CupertinoMotion.bouncy(),
+        value: _isEntering ? 0.0 : 1.0,
+        builder: (context, entranceValue, child) {
+          return SingleMotionBuilder(
+            motion: CupertinoMotion.snappy(),
+            value: _isDismissing ? 1.0 : 0.0,
+            builder: (context, dismissValue, child) {
+              return MotionBuilder(
+                motion:
+                    _isReturning
+                        ? CupertinoMotion.bouncy()
+                        : CupertinoMotion.snappy(),
+                value: _isReturning ? _dragReturnTarget : _dragOffset,
+                converter: OffsetMotionConverter(),
+                builder: (context, currentOffset, child) {
+                  // Smooth progress with natural spring motion
+                  final progress = entranceValue.clamp(0.0, 1.0);
+                  final particleProgress = progress;
 
-          // Enhanced rotation with more dynamic response
-          final rotationAngle = (_dragOffset.dx / 180).clamp(-0.35, 0.35);
+                  // Card scale with bouncy spring - allows overshoot up to 1.15
+                  final cardScaleValue = (0.7 + (progress * 0.4)).clamp(
+                    0.0,
+                    1.15,
+                  );
 
-          // Add 3D perspective flip based on vertical drag
-          final flipAngleX =
-              (dragProgress * 0.15) * math.pi; // Flip backward as dragging up
-          final flipAngleY =
-              ((_dragOffset.dx / _maxDragRadius) * 0.2).clamp(-0.25, 0.25) *
-              math.pi;
+                  // Dismiss scale (shrink to 0.2)
+                  final dismissScaleValue = (1.0 - dismissValue * 0.8).clamp(
+                    0.0,
+                    1.0,
+                  );
 
-          final rejectionPhase =
-              _pendingReject
-                  ? (1 - _dragReturnController.value).clamp(0.0, 1.0)
-                  : 0.0;
-          final rejectionTwist =
-              _rejectDirection == null
-                  ? 0.0
-                  : _rejectDirection!.dx.sign * rejectionPhase * 0.45;
-          final rejectionScale =
-              _pendingReject ? (1 - rejectionPhase * 0.25) : 1.0;
-          final combinedScale =
-              baseScale * interactiveScaleFactor * rejectionScale;
-          final combinedRotation = rotationAngle + rejectionTwist;
+                  final baseScale =
+                      _isDismissing ? dismissScaleValue : cardScaleValue;
+                  final backgroundOpacityValue =
+                      _isDismissing
+                          ? ((1 - dismissValue).clamp(0.0, 1.0) * 0.5)
+                          : (progress * 0.5);
+                  final glowOpacity = (math.sin(progress * math.pi * 3) * 0.2 +
+                          0.8)
+                      .clamp(0.0, 1.0);
 
-          // Enhanced magic pulse with more intensity
-          final magicPulse = (dragProgress * 0.8 + _magicBurst * 1.2).clamp(
-            0.0,
-            1.0,
-          );
-          final cardOpacityValue =
-              ((_isDismissing ? _dismissOpacity.value : 1.0).clamp(0.0, 1.0)) *
-              (_pendingReject ? (1 - rejectionPhase * 0.4) : 1.0);
+                  // Use animated offset for smooth drag return
+                  final interactiveOffset =
+                      _isDraggingCard ? _dragOffset : currentOffset;
+                  final dragProgress = (-interactiveOffset.dy /
+                          _dragDismissThreshold)
+                      .clamp(0.0, 1.0);
+                  final interactiveScaleFactor = 1 + (dragProgress * 0.2);
 
-          final spiralParticles = List.generate(particleCount, (index) {
-            final angle = (index / particleCount) * 2 * math.pi;
-            final spiralOffset = (index / particleCount) * 0.25;
-            final particleValue = (particleProgress - spiralOffset).clamp(
-              0.0,
-              1.0,
-            );
+                  // Card opacity with dismiss fade
+                  final cardOpacityValue =
+                      (_isDismissing
+                          ? (1 - dismissValue).clamp(0.0, 1.0)
+                          : 1.0) *
+                      (_pendingReject
+                          ? (1 -
+                                  (currentOffset.distance /
+                                      screenSize.width *
+                                      0.5))
+                              .clamp(0.0, 1.0)
+                          : 1.0);
 
-            // More dynamic spiral with varying speeds
-            final rotationAngle = angle + (particleValue * math.pi * 4);
-            final distance = screenSize.width * 0.55 * (1 - particleValue);
+                  // Enhanced rotation with more dynamic response
+                  final rotationAngle = (interactiveOffset.dx / 180).clamp(
+                    -0.35,
+                    0.35,
+                  );
 
-            final x = screenSize.width / 2 + distance * cos(rotationAngle);
-            final y = screenSize.height / 2 + distance * sin(rotationAngle);
+                  // Add 3D perspective flip based on vertical drag
+                  final flipAngleX =
+                      (dragProgress * 0.15) *
+                      math.pi; // Flip backward as dragging up
+                  final flipAngleY =
+                      ((interactiveOffset.dx / _maxDragRadius) * 0.2).clamp(
+                        -0.25,
+                        0.25,
+                      ) *
+                      math.pi;
 
-            // Varying particle sizes for depth
-            final size = (4 + (index % 5) * 2.5).sp;
-            final dismissOpacity =
-                (1 - _dismissController.value).clamp(0.0, 1.0) * 1.0;
-            final particleOpacity =
-                _isDismissing
-                    ? dismissOpacity
-                    : particleValue * (1 - particleValue * 0.4) * 1.0;
+                  // Calculate rejection progress for smooth animation
+                  final totalDistance = _dragReturnTarget.distance;
+                  final currentDistance = currentOffset.distance;
+                  final rejectionPhase =
+                      _pendingReject && totalDistance > 0
+                          ? (1 -
+                              (currentDistance / totalDistance).clamp(0.0, 1.0))
+                          : 0.0;
+                  final rejectionTwist =
+                      _rejectDirection == null
+                          ? 0.0
+                          : _rejectDirection!.dx.sign * rejectionPhase * 0.45;
+                  final rejectionScale =
+                      _pendingReject ? (1 - rejectionPhase * 0.25) : 1.0;
+                  final combinedScale =
+                      baseScale * interactiveScaleFactor * rejectionScale;
+                  final combinedRotation = rotationAngle + rejectionTwist;
 
-            // Pulsating effect
-            final pulsate =
-                0.8 + 0.2 * math.sin(particleProgress * math.pi * 6 + index);
+                  // Enhanced magic pulse with more intensity
+                  final magicPulse = (dragProgress * 0.8 + _magicBurst * 1.2)
+                      .clamp(0.0, 1.0);
 
-            return Positioned(
-              left: x,
-              top: y,
-              child: Opacity(
-                opacity: particleOpacity.clamp(0.0, 1.0),
-                child: Container(
-                  width: size * pulsate,
-                  height: size * pulsate,
-                  decoration: BoxDecoration(
-                    gradient: RadialGradient(
-                      colors: [
-                        variantColor.withValues(alpha: 1.0),
-                        variantColor.withValues(alpha: 0.3),
-                      ],
-                    ),
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: variantColor.withValues(alpha: 0.9),
-                        blurRadius: 25,
-                        spreadRadius: 6,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          });
+                  final spiralParticles = List.generate(particleCount, (index) {
+                    final angle = (index / particleCount) * 2 * math.pi;
+                    final spiralOffset = (index / particleCount) * 0.25;
+                    final particleValue = (particleProgress - spiralOffset)
+                        .clamp(0.0, 1.0);
 
-          final milestoneRings = <Widget>[];
-          if (!_isDismissing) {
-            if (progress >= 0.25 && progress < 0.35) {
-              final ringProgress = ((progress - 0.25) / 0.10).clamp(0.0, 1.0);
-              milestoneRings.add(
-                Center(
-                  child: Container(
-                    width: screenSize.width * 0.3 * (1 + ringProgress * 0.5),
-                    height: screenSize.width * 0.3 * (1 + ringProgress * 0.5),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: variantColor.withValues(
-                          alpha: (1 - ringProgress) * 0.6,
-                        ),
-                        width: 3,
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }
-            if (progress >= 0.50 && progress < 0.60) {
-              final ringProgress = ((progress - 0.50) / 0.10).clamp(0.0, 1.0);
-              milestoneRings.add(
-                Center(
-                  child: Container(
-                    width: screenSize.width * 0.35 * (1 + ringProgress * 0.5),
-                    height: screenSize.width * 0.35 * (1 + ringProgress * 0.5),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: variantColor.withValues(
-                          alpha: (1 - ringProgress) * 0.7,
-                        ),
-                        width: 3.5,
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }
-            if (progress >= 0.75 && progress < 0.85) {
-              final ringProgress = ((progress - 0.75) / 0.10).clamp(0.0, 1.0);
-              milestoneRings.add(
-                Center(
-                  child: Container(
-                    width: screenSize.width * 0.4 * (1 + ringProgress * 0.5),
-                    height: screenSize.width * 0.4 * (1 + ringProgress * 0.5),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: variantColor.withValues(
-                          alpha: (1 - ringProgress) * 0.8,
-                        ),
-                        width: 4,
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }
-          }
+                    // More dynamic spiral with varying speeds
+                    final particleRotation =
+                        angle + (particleValue * math.pi * 4);
+                    final distance =
+                        screenSize.width * 0.55 * (1 - particleValue);
 
-          // Ascending "lifting" particles when dragging upward
-          final ascendingParticles = <Widget>[];
-          if (dragProgress > 0.1 || _isDraggingCard) {
-            const int liftCount = 20;
-            for (int i = 0; i < liftCount; i++) {
-              final stagger = (i / liftCount);
-              final liftHeight = dragProgress * screenSize.height * 0.6;
-              final horizontalSpread = (i - liftCount / 2) * 15.sp;
-              final yPosition =
-                  screenSize.height / 2 - liftHeight * (1 - stagger);
-              final xPosition =
-                  screenSize.width / 2 +
-                  horizontalSpread +
-                  interactiveOffset.dx * 0.5;
+                    final x =
+                        screenSize.width / 2 + distance * cos(particleRotation);
+                    final y =
+                        screenSize.height / 2 +
+                        distance * sin(particleRotation);
 
-              final particleOpacity = (dragProgress * (1 - stagger * 0.7))
-                  .clamp(0.0, 1.0);
-              final size = (3 + stagger * 8).sp;
+                    // Varying particle sizes for depth
+                    final size = (4 + (index % 5) * 2.5).sp;
+                    final dismissOpacity = (1 - dismissValue).clamp(0.0, 1.0);
+                    final particleOpacity =
+                        _isDismissing
+                            ? dismissOpacity
+                            : particleValue * (1 - particleValue * 0.4) * 1.0;
 
-              // Wavy motion as particles rise
-              final wavyX =
-                  math.sin(progress * math.pi * 4 + i * 0.5) *
-                  8.sp *
-                  dragProgress;
+                    // Pulsating effect
+                    final pulsate =
+                        0.8 +
+                        0.2 * math.sin(particleProgress * math.pi * 6 + index);
 
-              ascendingParticles.add(
-                Positioned(
-                  left: xPosition + wavyX,
-                  top: yPosition,
-                  child: Opacity(
-                    opacity: particleOpacity,
-                    child: Container(
-                      width: size,
-                      height: size,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: RadialGradient(
-                          colors: [
-                            variantColor.withValues(alpha: 0.9),
-                            variantColor.withValues(alpha: 0.0),
-                          ],
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: variantColor.withValues(
-                              alpha: particleOpacity * 0.6,
-                            ),
-                            blurRadius: 12,
-                            spreadRadius: 2,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }
-          }
-
-          // Subtle orbiting particles (reduced count for elegance)
-          final centerBase = Offset(
-            screenSize.width / 2 + interactiveOffset.dx,
-            screenSize.height / 2 + interactiveOffset.dy,
-          );
-          final orbitingParticles = <Widget>[];
-          if (!_isDraggingCard || dragProgress < 0.3) {
-            for (int i = 0; i < 6; i++) {
-              final angle =
-                  (particleProgress * math.pi * 2) + i * (math.pi / 3.0);
-              final orbitRadius =
-                  70 + math.sin(particleProgress * math.pi * 2 + i) * 15;
-              final x = centerBase.dx + orbitRadius * math.cos(angle);
-              final y = centerBase.dy + orbitRadius * math.sin(angle);
-              final size = (4 + (i % 2) * 2).sp;
-              final particleGlow =
-                  (0.3 + 0.3 * math.sin(angle + progress * math.pi * 2)) *
-                  (1 - dragProgress);
-              orbitingParticles.add(
-                Positioned(
-                  left: x - size / 2,
-                  top: y - size / 2,
-                  child: Opacity(
-                    opacity: particleGlow.clamp(0.0, 1.0),
-                    child: Container(
-                      width: size,
-                      height: size,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: RadialGradient(
-                          colors: [
-                            variantColor.withValues(alpha: 0.9),
-                            variantColor.withValues(alpha: 0.0),
-                          ],
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: variantColor.withValues(alpha: 0.5),
-                            blurRadius: 14,
-                            spreadRadius: 2,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }
-          }
-
-          final dragTrail = <Widget>[];
-          if (dragProgress > 0.05 || _isDraggingCard) {
-            const int trailCount = 6;
-            for (int i = 0; i < trailCount; i++) {
-              final fraction = (i + 1) / trailCount;
-              final dx = interactiveOffset.dx * fraction;
-              final dy = interactiveOffset.dy * fraction;
-              final size = (6 + i * 4).sp;
-              final opacity = (dragProgress * (1 - fraction)).clamp(0.0, 1.0);
-              dragTrail.add(
-                Positioned(
-                  left: (screenSize.width / 2) + dx - size / 2,
-                  top: (screenSize.height / 2) + dy - size / 2,
-                  child: Opacity(
-                    opacity: opacity,
-                    child: Container(
-                      width: size,
-                      height: size,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: RadialGradient(
-                          colors: [
-                            variantColor.withValues(alpha: 0.8),
-                            variantColor.withValues(alpha: 0.0),
-                          ],
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: variantColor.withValues(
-                              alpha: opacity * 0.8,
-                            ),
-                            blurRadius: 16,
-                            spreadRadius: 2,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }
-          }
-
-          return GestureDetector(
-            onTap: _dismissEarly,
-            behavior: HitTestBehavior.opaque,
-            child: ReactToHeroineDismiss(
-              builder: (context, dismissProgress, offset, child) {
-                final overlayFade = (1 - dismissProgress).clamp(0.0, 1.0);
-                return Opacity(opacity: overlayFade, child: child!);
-              },
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: Opacity(
-                      opacity: backgroundOpacityValue,
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                    return Positioned(
+                      left: x,
+                      top: y,
+                      child: Opacity(
+                        opacity: particleOpacity.clamp(0.0, 1.0),
                         child: Container(
-                          color: Colors.black.withValues(alpha: 0.6),
+                          width: size * pulsate,
+                          height: size * pulsate,
+                          decoration: BoxDecoration(
+                            gradient: RadialGradient(
+                              colors: [
+                                variantColor.withValues(alpha: 1.0),
+                                variantColor.withValues(alpha: 0.3),
+                              ],
+                            ),
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: variantColor.withValues(alpha: 0.9),
+                                blurRadius: 25,
+                                spreadRadius: 6,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                  ...spiralParticles,
-                  ...milestoneRings,
-                  ...orbitingParticles,
-                  ...ascendingParticles,
-                  if (magicPulse > 0)
-                    Positioned.fill(
-                      child: IgnorePointer(
-                        child: Opacity(
-                          opacity: magicPulse * 0.75,
-                          child: DecoratedBox(
+                    );
+                  });
+
+                  final milestoneRings = <Widget>[];
+                  if (!_isDismissing) {
+                    if (progress >= 0.25 && progress < 0.35) {
+                      final ringProgress = ((progress - 0.25) / 0.10).clamp(
+                        0.0,
+                        1.0,
+                      );
+                      milestoneRings.add(
+                        Center(
+                          child: Container(
+                            width:
+                                screenSize.width *
+                                0.3 *
+                                (1 + ringProgress * 0.5),
+                            height:
+                                screenSize.width *
+                                0.3 *
+                                (1 + ringProgress * 0.5),
                             decoration: BoxDecoration(
-                              gradient: RadialGradient(
-                                center: const Alignment(0, -0.3),
-                                radius: 1.0,
-                                colors: [
-                                  variantColor.withValues(alpha: 0.5),
-                                  variantColor.withValues(alpha: 0.2),
-                                  Colors.transparent,
-                                ],
-                                stops: const [0.0, 0.5, 1.0],
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: variantColor.withValues(
+                                  alpha: (1 - ringProgress) * 0.6,
+                                ),
+                                width: 3,
                               ),
                             ),
                           ),
                         ),
-                      ),
-                    ),
-                  Center(
-                    child: GestureDetector(
-                      onTap: () {},
-                      onPanStart: (_) => _startDrag(),
-                      onPanUpdate: _updateDrag,
-                      onPanEnd: _endDrag,
-                      child: Transform.translate(
-                        offset: interactiveOffset,
-                        child: Transform.scale(
-                          scale: combinedScale,
-                          child: Transform(
-                            transform:
-                                Matrix4.identity()
-                                  ..setEntry(3, 2, 0.001) // Add perspective
-                                  ..rotateX(flipAngleX) // 3D flip on X axis
-                                  ..rotateY(flipAngleY) // 3D flip on Y axis
-                                  ..rotateZ(
-                                    combinedRotation,
-                                  ), // Regular Z rotation
-                            alignment: Alignment.center,
-                            child: Opacity(
-                              opacity: cardOpacityValue,
-                              child: Container(
-                                constraints: BoxConstraints(
-                                  maxWidth: screenSize.width * 0.8,
+                      );
+                    }
+                    if (progress >= 0.50 && progress < 0.60) {
+                      final ringProgress = ((progress - 0.50) / 0.10).clamp(
+                        0.0,
+                        1.0,
+                      );
+                      milestoneRings.add(
+                        Center(
+                          child: Container(
+                            width:
+                                screenSize.width *
+                                0.35 *
+                                (1 + ringProgress * 0.5),
+                            height:
+                                screenSize.width *
+                                0.35 *
+                                (1 + ringProgress * 0.5),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: variantColor.withValues(
+                                  alpha: (1 - ringProgress) * 0.7,
                                 ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(16.sp),
-                                  child: BackdropFilter(
-                                    filter: ImageFilter.blur(
-                                      sigmaX: 40,
-                                      sigmaY: 40,
+                                width: 3.5,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+                    if (progress >= 0.75 && progress < 0.85) {
+                      final ringProgress = ((progress - 0.75) / 0.10).clamp(
+                        0.0,
+                        1.0,
+                      );
+                      milestoneRings.add(
+                        Center(
+                          child: Container(
+                            width:
+                                screenSize.width *
+                                0.4 *
+                                (1 + ringProgress * 0.5),
+                            height:
+                                screenSize.width *
+                                0.4 *
+                                (1 + ringProgress * 0.5),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: variantColor.withValues(
+                                  alpha: (1 - ringProgress) * 0.8,
+                                ),
+                                width: 4,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+                  }
+
+                  // Ascending "lifting" particles when dragging upward
+                  final ascendingParticles = <Widget>[];
+                  if (dragProgress > 0.1 || _isDraggingCard) {
+                    const int liftCount = 20;
+                    for (int i = 0; i < liftCount; i++) {
+                      final stagger = (i / liftCount);
+                      final liftHeight = dragProgress * screenSize.height * 0.6;
+                      final horizontalSpread = (i - liftCount / 2) * 15.sp;
+                      final yPosition =
+                          screenSize.height / 2 - liftHeight * (1 - stagger);
+                      final xPosition =
+                          screenSize.width / 2 +
+                          horizontalSpread +
+                          interactiveOffset.dx * 0.5;
+
+                      final particleOpacity =
+                          (dragProgress * (1 - stagger * 0.7)).clamp(0.0, 1.0);
+                      final size = (3 + stagger * 8).sp;
+
+                      // Wavy motion as particles rise
+                      final wavyX =
+                          math.sin(progress * math.pi * 4 + i * 0.5) *
+                          8.sp *
+                          dragProgress;
+
+                      ascendingParticles.add(
+                        Positioned(
+                          left: xPosition + wavyX,
+                          top: yPosition,
+                          child: Opacity(
+                            opacity: particleOpacity,
+                            child: Container(
+                              width: size,
+                              height: size,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: RadialGradient(
+                                  colors: [
+                                    variantColor.withValues(alpha: 0.9),
+                                    variantColor.withValues(alpha: 0.0),
+                                  ],
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: variantColor.withValues(
+                                      alpha: particleOpacity * 0.6,
                                     ),
-                                    child: Container(
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: 32.sp,
-                                        vertical: 28.sp,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: variantColor.withValues(
-                                          alpha: 0.25,
-                                        ),
-                                        borderRadius: BorderRadius.circular(
-                                          16.sp,
-                                        ),
-                                        border: Border.all(
-                                          color: variantColor.withValues(
-                                            alpha: 0.8,
-                                          ),
-                                          width: 2.0,
-                                        ),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: variantColor.withValues(
-                                              alpha: glowOpacity * 0.8,
-                                            ),
-                                            blurRadius: 60,
-                                            spreadRadius: 12,
-                                          ),
-                                          BoxShadow(
-                                            color: variantColor.withValues(
-                                              alpha: 0.4,
-                                            ),
-                                            blurRadius: 80,
-                                            spreadRadius: 20,
-                                          ),
-                                          BoxShadow(
-                                            color: Colors.black.withValues(
-                                              alpha: 0.4,
-                                            ),
-                                            blurRadius: 20,
-                                            offset: const Offset(0, 10),
-                                          ),
+                                    blurRadius: 12,
+                                    spreadRadius: 2,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+                  }
+
+                  // Subtle orbiting particles (reduced count for elegance)
+                  final centerBase = Offset(
+                    screenSize.width / 2 + interactiveOffset.dx,
+                    screenSize.height / 2 + interactiveOffset.dy,
+                  );
+                  final orbitingParticles = <Widget>[];
+                  if (!_isDraggingCard || dragProgress < 0.3) {
+                    for (int i = 0; i < 6; i++) {
+                      final angle =
+                          (particleProgress * math.pi * 2) +
+                          i * (math.pi / 3.0);
+                      final orbitRadius =
+                          70 +
+                          math.sin(particleProgress * math.pi * 2 + i) * 15;
+                      final x = centerBase.dx + orbitRadius * math.cos(angle);
+                      final y = centerBase.dy + orbitRadius * math.sin(angle);
+                      final size = (4 + (i % 2) * 2).sp;
+                      final particleGlow =
+                          (0.3 +
+                              0.3 * math.sin(angle + progress * math.pi * 2)) *
+                          (1 - dragProgress);
+                      orbitingParticles.add(
+                        Positioned(
+                          left: x - size / 2,
+                          top: y - size / 2,
+                          child: Opacity(
+                            opacity: particleGlow.clamp(0.0, 1.0),
+                            child: Container(
+                              width: size,
+                              height: size,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: RadialGradient(
+                                  colors: [
+                                    variantColor.withValues(alpha: 0.9),
+                                    variantColor.withValues(alpha: 0.0),
+                                  ],
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: variantColor.withValues(alpha: 0.5),
+                                    blurRadius: 14,
+                                    spreadRadius: 2,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+                  }
+
+                  final dragTrail = <Widget>[];
+                  if (dragProgress > 0.05 || _isDraggingCard) {
+                    const int trailCount = 6;
+                    for (int i = 0; i < trailCount; i++) {
+                      final fraction = (i + 1) / trailCount;
+                      final dx = interactiveOffset.dx * fraction;
+                      final dy = interactiveOffset.dy * fraction;
+                      final size = (6 + i * 4).sp;
+                      final opacity = (dragProgress * (1 - fraction)).clamp(
+                        0.0,
+                        1.0,
+                      );
+                      dragTrail.add(
+                        Positioned(
+                          left: (screenSize.width / 2) + dx - size / 2,
+                          top: (screenSize.height / 2) + dy - size / 2,
+                          child: Opacity(
+                            opacity: opacity,
+                            child: Container(
+                              width: size,
+                              height: size,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: RadialGradient(
+                                  colors: [
+                                    variantColor.withValues(alpha: 0.8),
+                                    variantColor.withValues(alpha: 0.0),
+                                  ],
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: variantColor.withValues(
+                                      alpha: opacity * 0.8,
+                                    ),
+                                    blurRadius: 16,
+                                    spreadRadius: 2,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+                  }
+
+                  return GestureDetector(
+                    onTap: _dismissEarly,
+                    behavior: HitTestBehavior.opaque,
+                    child: ReactToHeroineDismiss(
+                      builder: (context, dismissProgress, offset, child) {
+                        final overlayFade = (1 - dismissProgress).clamp(
+                          0.0,
+                          1.0,
+                        );
+                        return Opacity(opacity: overlayFade, child: child!);
+                      },
+                      child: Stack(
+                        children: [
+                          Positioned.fill(
+                            child: Opacity(
+                              opacity: backgroundOpacityValue,
+                              child: BackdropFilter(
+                                filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                                child: Container(
+                                  color: Colors.black.withValues(alpha: 0.6),
+                                ),
+                              ),
+                            ),
+                          ),
+                          ...spiralParticles,
+                          ...milestoneRings,
+                          ...orbitingParticles,
+                          ...ascendingParticles,
+                          if (magicPulse > 0)
+                            Positioned.fill(
+                              child: IgnorePointer(
+                                child: Opacity(
+                                  opacity: magicPulse * 0.75,
+                                  child: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      gradient: RadialGradient(
+                                        center: const Alignment(0, -0.3),
+                                        radius: 1.0,
+                                        colors: [
+                                          variantColor.withValues(alpha: 0.5),
+                                          variantColor.withValues(alpha: 0.2),
+                                          Colors.transparent,
                                         ],
+                                        stops: const [0.0, 0.5, 1.0],
                                       ),
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          // Evaluation badge at top
-                                          if (_formatEvalChange().isNotEmpty)
-                                            Container(
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          Center(
+                            child: GestureDetector(
+                              onTap: () {},
+                              onPanStart: (_) => _startDrag(),
+                              onPanUpdate: _updateDrag,
+                              onPanEnd: _endDrag,
+                              child: Transform.translate(
+                                offset: interactiveOffset,
+                                child: Transform.scale(
+                                  scale: combinedScale,
+                                  child: Transform(
+                                    transform:
+                                        Matrix4.identity()
+                                          ..setEntry(
+                                            3,
+                                            2,
+                                            0.001,
+                                          ) // Add perspective
+                                          ..rotateX(
+                                            flipAngleX,
+                                          ) // 3D flip on X axis
+                                          ..rotateY(
+                                            flipAngleY,
+                                          ) // 3D flip on Y axis
+                                          ..rotateZ(
+                                            combinedRotation,
+                                          ), // Regular Z rotation
+                                    alignment: Alignment.center,
+                                    child: Opacity(
+                                      opacity: cardOpacityValue,
+                                      child: Container(
+                                        constraints: BoxConstraints(
+                                          maxWidth: screenSize.width * 0.8,
+                                        ),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(
+                                            16.sp,
+                                          ),
+                                          child: BackdropFilter(
+                                            filter: ImageFilter.blur(
+                                              sigmaX: 40,
+                                              sigmaY: 40,
+                                            ),
+                                            child: Container(
                                               padding: EdgeInsets.symmetric(
-                                                horizontal: 12.sp,
-                                                vertical: 6.sp,
+                                                horizontal: 32.sp,
+                                                vertical: 28.sp,
                                               ),
                                               decoration: BoxDecoration(
                                                 color: variantColor.withValues(
-                                                  alpha: 0.3,
+                                                  alpha: 0.25,
                                                 ),
                                                 borderRadius:
                                                     BorderRadius.circular(
-                                                      20.sp,
+                                                      16.sp,
                                                     ),
                                                 border: Border.all(
                                                   color: variantColor
-                                                      .withValues(alpha: 0.6),
-                                                  width: 1.5,
+                                                      .withValues(alpha: 0.8),
+                                                  width: 2.0,
                                                 ),
                                                 boxShadow: [
                                                   BoxShadow(
                                                     color: variantColor
+                                                        .withValues(
+                                                          alpha:
+                                                              glowOpacity * 0.8,
+                                                        ),
+                                                    blurRadius: 60,
+                                                    spreadRadius: 12,
+                                                  ),
+                                                  BoxShadow(
+                                                    color: variantColor
                                                         .withValues(alpha: 0.4),
-                                                    blurRadius: 12,
-                                                    spreadRadius: 2,
+                                                    blurRadius: 80,
+                                                    spreadRadius: 20,
+                                                  ),
+                                                  BoxShadow(
+                                                    color: Colors.black
+                                                        .withValues(alpha: 0.4),
+                                                    blurRadius: 20,
+                                                    offset: const Offset(0, 10),
                                                   ),
                                                 ],
                                               ),
-                                              child: Text(
-                                                _formatEvalChange(),
-                                                style: AppTypography
-                                                    .textXsMedium
-                                                    .copyWith(
-                                                      color: kWhiteColor,
-                                                      fontSize: 16.sp,
-                                                      fontWeight:
-                                                          FontWeight.w800,
-                                                      letterSpacing: 1,
-                                                    ),
-                                              ),
-                                            ),
-                                          SizedBox(height: 12.sp),
-                                          // Main move text with hero animation
-                                          Builder(
-                                            builder: (context) {
-                                              final heroChild = Material(
-                                                color: Colors.transparent,
-                                                child: Text(
-                                                  widget.moveText,
-                                                  style: AppTypography
-                                                      .textXsMedium
-                                                      .copyWith(
-                                                        color: kWhiteColor,
-                                                        fontSize: 52.sp,
-                                                        fontWeight:
-                                                            FontWeight.w900,
-                                                        letterSpacing: 5,
-                                                        height: 1.1,
-                                                        shadows: [
-                                                          Shadow(
-                                                            color: variantColor
-                                                                .withValues(
-                                                                  alpha: 0.9,
-                                                                ),
-                                                            blurRadius: 24,
-                                                          ),
-                                                          Shadow(
-                                                            color: Colors.black
-                                                                .withValues(
-                                                                  alpha: 0.6,
-                                                                ),
-                                                            blurRadius: 6,
-                                                            offset:
-                                                                const Offset(
-                                                                  0,
-                                                                  3,
-                                                                ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                ),
-                                              );
-                                              if (_skipHeroFlight) {
-                                                return heroChild;
-                                              }
-                                              return HeroineVelocity(
-                                                velocity: Velocity(
-                                                  pixelsPerSecond:
-                                                      _currentDragVelocity,
-                                                ),
-                                                child: Heroine(
-                                                  tag: widget.heroineTag,
-                                                  child: heroChild,
-                                                ),
-                                              );
-                                            },
-                                          ),
-                                          SizedBox(height: 18.sp),
-                                          // Continuation preview
-                                          if (_formatPreviewMoves().isNotEmpty)
-                                            Container(
-                                              padding: EdgeInsets.symmetric(
-                                                horizontal: 18.sp,
-                                                vertical: 10.sp,
-                                              ),
-                                              decoration: BoxDecoration(
-                                                color: Colors.black.withValues(
-                                                  alpha: 0.5,
-                                                ),
-                                                borderRadius:
-                                                    BorderRadius.circular(
-                                                      10.sp,
-                                                    ),
-                                                border: Border.all(
-                                                  color: variantColor
-                                                      .withValues(alpha: 0.4),
-                                                  width: 1,
-                                                ),
-                                              ),
-                                              child: Opacity(
-                                                opacity: (progress * 1.3).clamp(
-                                                  0.0,
-                                                  1.0,
-                                                ),
-                                                child: Text(
-                                                  _formatPreviewMoves(),
-                                                  textAlign: TextAlign.center,
-                                                  style: AppTypography
-                                                      .textXsMedium
-                                                      .copyWith(
-                                                        color: kWhiteColor
-                                                            .withValues(
-                                                              alpha: 0.95,
-                                                            ),
-                                                        fontSize: 15.sp,
-                                                        fontWeight:
-                                                            FontWeight.w600,
-                                                        letterSpacing: 1.2,
-                                                        height: 1.5,
-                                                      ),
-                                                ),
-                                              ),
-                                            ),
-                                          SizedBox(height: 24.sp),
-                                          // Action buttons
-                                          Column(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              // Promote Main Variant button
-                                              SizedBox(
-                                                width: double.infinity,
-                                                child: Material(
-                                                  color: Colors.transparent,
-                                                  child: InkWell(
-                                                    onTap:
-                                                        _onPromoteMainVariant,
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          10.sp,
-                                                        ),
-                                                    child: Container(
+                                              child: Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  // Evaluation badge at top
+                                                  if (_formatEvalChange()
+                                                      .isNotEmpty)
+                                                    Container(
                                                       padding:
                                                           EdgeInsets.symmetric(
-                                                            vertical: 14.sp,
+                                                            horizontal: 12.sp,
+                                                            vertical: 6.sp,
                                                           ),
                                                       decoration: BoxDecoration(
-                                                        gradient:
-                                                            LinearGradient(
-                                                              colors: [
-                                                                variantColor
-                                                                    .withValues(
-                                                                      alpha:
-                                                                          0.4,
-                                                                    ),
-                                                                variantColor
-                                                                    .withValues(
-                                                                      alpha:
-                                                                          0.3,
-                                                                    ),
-                                                              ],
+                                                        color: variantColor
+                                                            .withValues(
+                                                              alpha: 0.3,
                                                             ),
                                                         borderRadius:
                                                             BorderRadius.circular(
-                                                              10.sp,
+                                                              20.sp,
                                                             ),
                                                         border: Border.all(
                                                           color: variantColor
@@ -6507,62 +6358,103 @@ class _MovePreviewAnimationOverlayState
                                                               ),
                                                           width: 1.5,
                                                         ),
+                                                        boxShadow: [
+                                                          BoxShadow(
+                                                            color: variantColor
+                                                                .withValues(
+                                                                  alpha: 0.4,
+                                                                ),
+                                                            blurRadius: 12,
+                                                            spreadRadius: 2,
+                                                          ),
+                                                        ],
                                                       ),
-                                                      child: Row(
-                                                        mainAxisAlignment:
-                                                            MainAxisAlignment
-                                                                .center,
-                                                        children: [
-                                                          Icon(
-                                                            Icons
-                                                                .upgrade_rounded,
+                                                      child: Text(
+                                                        _formatEvalChange(),
+                                                        style: AppTypography
+                                                            .textXsMedium
+                                                            .copyWith(
+                                                              color:
+                                                                  kWhiteColor,
+                                                              fontSize: 16.sp,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w800,
+                                                              letterSpacing: 1,
+                                                            ),
+                                                      ),
+                                                    ),
+                                                  SizedBox(height: 12.sp),
+                                                  // Main move text with hero animation
+                                                  Builder(
+                                                    builder: (context) {
+                                                      final heroChild = Material(
+                                                        color:
+                                                            Colors.transparent,
+                                                        child: Text(
+                                                          widget.moveText,
+                                                          style: AppTypography.textXsMedium.copyWith(
                                                             color: kWhiteColor,
-                                                            size: 18.sp,
+                                                            fontSize: 52.sp,
+                                                            fontWeight:
+                                                                FontWeight.w900,
+                                                            letterSpacing: 5,
+                                                            height: 1.1,
+                                                            shadows: [
+                                                              Shadow(
+                                                                color: variantColor
+                                                                    .withValues(
+                                                                      alpha:
+                                                                          0.9,
+                                                                    ),
+                                                                blurRadius: 24,
+                                                              ),
+                                                              Shadow(
+                                                                color: Colors
+                                                                    .black
+                                                                    .withValues(
+                                                                      alpha:
+                                                                          0.6,
+                                                                    ),
+                                                                blurRadius: 6,
+                                                                offset:
+                                                                    const Offset(
+                                                                      0,
+                                                                      3,
+                                                                    ),
+                                                              ),
+                                                            ],
                                                           ),
-                                                          SizedBox(width: 8.sp),
-                                                          Text(
-                                                            'Promote Main Variant',
-                                                            style: AppTypography
-                                                                .textSmBold
-                                                                .copyWith(
-                                                                  color:
-                                                                      kWhiteColor,
-                                                                  fontSize:
-                                                                      14.sp,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .w700,
-                                                                  letterSpacing:
-                                                                      0.3,
-                                                                ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                              SizedBox(height: 10.sp),
-                                              // Insert All Moves button
-                                              SizedBox(
-                                                width: double.infinity,
-                                                child: Material(
-                                                  color: Colors.transparent,
-                                                  child: InkWell(
-                                                    onTap: _onInsertAllMoves,
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          10.sp,
                                                         ),
-                                                    child: Container(
+                                                      );
+                                                      // Always use Heroine for magical hero transition
+                                                      return HeroineVelocity(
+                                                        velocity: Velocity(
+                                                          pixelsPerSecond:
+                                                              _currentDragVelocity,
+                                                        ),
+                                                        child: Heroine(
+                                                          tag:
+                                                              widget.heroineTag,
+                                                          child: heroChild,
+                                                        ),
+                                                      );
+                                                    },
+                                                  ),
+                                                  SizedBox(height: 18.sp),
+                                                  // Continuation preview
+                                                  if (_formatPreviewMoves()
+                                                      .isNotEmpty)
+                                                    Container(
                                                       padding:
                                                           EdgeInsets.symmetric(
-                                                            vertical: 14.sp,
+                                                            horizontal: 18.sp,
+                                                            vertical: 10.sp,
                                                           ),
                                                       decoration: BoxDecoration(
                                                         color: Colors.black
                                                             .withValues(
-                                                              alpha: 0.3,
+                                                              alpha: 0.5,
                                                             ),
                                                         borderRadius:
                                                             BorderRadius.circular(
@@ -6576,195 +6468,372 @@ class _MovePreviewAnimationOverlayState
                                                           width: 1,
                                                         ),
                                                       ),
-                                                      child: Row(
-                                                        mainAxisAlignment:
-                                                            MainAxisAlignment
-                                                                .center,
-                                                        children: [
-                                                          Icon(
-                                                            Icons
-                                                                .add_circle_outline_rounded,
-                                                            color: kWhiteColor
-                                                                .withValues(
-                                                                  alpha: 0.9,
-                                                                ),
-                                                            size: 18.sp,
-                                                          ),
-                                                          SizedBox(width: 8.sp),
-                                                          Text(
-                                                            'Insert All Moves',
-                                                            style: AppTypography
-                                                                .textSmBold
-                                                                .copyWith(
-                                                                  color: kWhiteColor
-                                                                      .withValues(
-                                                                        alpha:
-                                                                            0.9,
-                                                                      ),
-                                                                  fontSize:
-                                                                      14.sp,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .w600,
-                                                                  letterSpacing:
-                                                                      0.3,
-                                                                ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                              SizedBox(height: 10.sp),
-                                              // Preview button
-                                              SizedBox(
-                                                width: double.infinity,
-                                                child: Material(
-                                                  color: Colors.transparent,
-                                                  child: InkWell(
-                                                    onTap: _onPreview,
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          10.sp,
-                                                        ),
-                                                    child: Container(
-                                                      padding:
-                                                          EdgeInsets.symmetric(
-                                                            vertical: 14.sp,
-                                                          ),
-                                                      decoration: BoxDecoration(
-                                                        color: Colors.black
-                                                            .withValues(
-                                                              alpha: 0.3,
-                                                            ),
-                                                        borderRadius:
-                                                            BorderRadius.circular(
-                                                              10.sp,
-                                                            ),
-                                                        border: Border.all(
-                                                          color: variantColor
-                                                              .withValues(
-                                                                alpha: 0.4,
+                                                      child: Opacity(
+                                                        opacity: (progress *
+                                                                1.3)
+                                                            .clamp(0.0, 1.0),
+                                                        child: Text(
+                                                          _formatPreviewMoves(),
+                                                          textAlign:
+                                                              TextAlign.center,
+                                                          style: AppTypography
+                                                              .textXsMedium
+                                                              .copyWith(
+                                                                color: kWhiteColor
+                                                                    .withValues(
+                                                                      alpha:
+                                                                          0.95,
+                                                                    ),
+                                                                fontSize: 15.sp,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w600,
+                                                                letterSpacing:
+                                                                    1.2,
+                                                                height: 1.5,
                                                               ),
-                                                          width: 1,
                                                         ),
                                                       ),
-                                                      child: Row(
-                                                        mainAxisAlignment:
-                                                            MainAxisAlignment
-                                                                .center,
-                                                        children: [
-                                                          Icon(
-                                                            Icons
-                                                                .visibility_outlined,
-                                                            color: kWhiteColor
-                                                                .withValues(
-                                                                  alpha: 0.9,
-                                                                ),
-                                                            size: 18.sp,
-                                                          ),
-                                                          SizedBox(width: 8.sp),
-                                                          Text(
-                                                            'Preview',
-                                                            style: AppTypography
-                                                                .textSmBold
-                                                                .copyWith(
-                                                                  color: kWhiteColor
-                                                                      .withValues(
-                                                                        alpha:
-                                                                            0.9,
-                                                                      ),
-                                                                  fontSize:
-                                                                      14.sp,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .w600,
-                                                                  letterSpacing:
-                                                                      0.3,
-                                                                ),
-                                                          ),
-                                                        ],
-                                                      ),
                                                     ),
-                                                  ),
-                                                ),
-                                              ),
-                                              // Swipe up hint with animated arrow
-                                              SizedBox(height: 16.sp),
-                                              TweenAnimationBuilder<double>(
-                                                duration: const Duration(
-                                                  milliseconds: 1500,
-                                                ),
-                                                tween: Tween(
-                                                  begin: 0.0,
-                                                  end: 1.0,
-                                                ),
-                                                curve: Curves.easeInOut,
-                                                builder: (
-                                                  context,
-                                                  value,
-                                                  child,
-                                                ) {
-                                                  final bounce =
-                                                      math.sin(
-                                                        value * math.pi * 2,
-                                                      ) *
-                                                      4;
-                                                  final opacity =
-                                                      0.4 +
-                                                      (math.sin(
-                                                            value * math.pi * 2,
-                                                          ) *
-                                                          0.3);
-                                                  return Transform.translate(
-                                                    offset: Offset(0, bounce),
-                                                    child: Opacity(
-                                                      opacity: opacity,
-                                                      child: Column(
-                                                        mainAxisSize:
-                                                            MainAxisSize.min,
-                                                        children: [
-                                                          Icon(
-                                                            Icons
-                                                                .keyboard_arrow_up_rounded,
-                                                            color: variantColor,
-                                                            size: 32.sp,
-                                                          ),
-                                                          Text(
-                                                            'Swipe up to preview',
-                                                            style: AppTypography
-                                                                .textXsRegular
-                                                                .copyWith(
-                                                                  color: kWhiteColor
+                                                  SizedBox(height: 24.sp),
+                                                  // Action buttons
+                                                  Column(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      // Promote Main Variant button
+                                                      SizedBox(
+                                                        width: double.infinity,
+                                                        child: Material(
+                                                          color:
+                                                              Colors
+                                                                  .transparent,
+                                                          child: InkWell(
+                                                            onTap:
+                                                                _onPromoteMainVariant,
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  10.sp,
+                                                                ),
+                                                            child: Container(
+                                                              padding:
+                                                                  EdgeInsets.symmetric(
+                                                                    vertical:
+                                                                        14.sp,
+                                                                  ),
+                                                              decoration: BoxDecoration(
+                                                                gradient: LinearGradient(
+                                                                  colors: [
+                                                                    variantColor
+                                                                        .withValues(
+                                                                          alpha:
+                                                                              0.4,
+                                                                        ),
+                                                                    variantColor
+                                                                        .withValues(
+                                                                          alpha:
+                                                                              0.3,
+                                                                        ),
+                                                                  ],
+                                                                ),
+                                                                borderRadius:
+                                                                    BorderRadius.circular(
+                                                                      10.sp,
+                                                                    ),
+                                                                border: Border.all(
+                                                                  color: variantColor
                                                                       .withValues(
                                                                         alpha:
                                                                             0.6,
                                                                       ),
-                                                                  fontSize:
-                                                                      11.sp,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .w500,
-                                                                  letterSpacing:
-                                                                      0.5,
+                                                                  width: 1.5,
                                                                 ),
+                                                              ),
+                                                              child: Row(
+                                                                mainAxisAlignment:
+                                                                    MainAxisAlignment
+                                                                        .center,
+                                                                children: [
+                                                                  Icon(
+                                                                    Icons
+                                                                        .upgrade_rounded,
+                                                                    color:
+                                                                        kWhiteColor,
+                                                                    size: 18.sp,
+                                                                  ),
+                                                                  SizedBox(
+                                                                    width: 8.sp,
+                                                                  ),
+                                                                  Text(
+                                                                    'Promote Main Variant',
+                                                                    style: AppTypography.textSmBold.copyWith(
+                                                                      color:
+                                                                          kWhiteColor,
+                                                                      fontSize:
+                                                                          14.sp,
+                                                                      fontWeight:
+                                                                          FontWeight
+                                                                              .w700,
+                                                                      letterSpacing:
+                                                                          0.3,
+                                                                    ),
+                                                                  ),
+                                                                ],
+                                                              ),
+                                                            ),
                                                           ),
-                                                        ],
+                                                        ),
                                                       ),
-                                                    ),
-                                                  );
-                                                },
-                                                onEnd: () {
-                                                  // Loop the animation
-                                                  if (mounted) {
-                                                    setState(() {});
-                                                  }
-                                                },
+                                                      SizedBox(height: 10.sp),
+                                                      // Insert All Moves button
+                                                      SizedBox(
+                                                        width: double.infinity,
+                                                        child: Material(
+                                                          color:
+                                                              Colors
+                                                                  .transparent,
+                                                          child: InkWell(
+                                                            onTap:
+                                                                _onInsertAllMoves,
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  10.sp,
+                                                                ),
+                                                            child: Container(
+                                                              padding:
+                                                                  EdgeInsets.symmetric(
+                                                                    vertical:
+                                                                        14.sp,
+                                                                  ),
+                                                              decoration: BoxDecoration(
+                                                                color: Colors
+                                                                    .black
+                                                                    .withValues(
+                                                                      alpha:
+                                                                          0.3,
+                                                                    ),
+                                                                borderRadius:
+                                                                    BorderRadius.circular(
+                                                                      10.sp,
+                                                                    ),
+                                                                border: Border.all(
+                                                                  color: variantColor
+                                                                      .withValues(
+                                                                        alpha:
+                                                                            0.4,
+                                                                      ),
+                                                                  width: 1,
+                                                                ),
+                                                              ),
+                                                              child: Row(
+                                                                mainAxisAlignment:
+                                                                    MainAxisAlignment
+                                                                        .center,
+                                                                children: [
+                                                                  Icon(
+                                                                    Icons
+                                                                        .add_circle_outline_rounded,
+                                                                    color: kWhiteColor
+                                                                        .withValues(
+                                                                          alpha:
+                                                                              0.9,
+                                                                        ),
+                                                                    size: 18.sp,
+                                                                  ),
+                                                                  SizedBox(
+                                                                    width: 8.sp,
+                                                                  ),
+                                                                  Text(
+                                                                    'Insert All Moves',
+                                                                    style: AppTypography.textSmBold.copyWith(
+                                                                      color: kWhiteColor.withValues(
+                                                                        alpha:
+                                                                            0.9,
+                                                                      ),
+                                                                      fontSize:
+                                                                          14.sp,
+                                                                      fontWeight:
+                                                                          FontWeight
+                                                                              .w600,
+                                                                      letterSpacing:
+                                                                          0.3,
+                                                                    ),
+                                                                  ),
+                                                                ],
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      SizedBox(height: 10.sp),
+                                                      // Preview button
+                                                      SizedBox(
+                                                        width: double.infinity,
+                                                        child: Material(
+                                                          color:
+                                                              Colors
+                                                                  .transparent,
+                                                          child: InkWell(
+                                                            onTap: _onPreview,
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  10.sp,
+                                                                ),
+                                                            child: Container(
+                                                              padding:
+                                                                  EdgeInsets.symmetric(
+                                                                    vertical:
+                                                                        14.sp,
+                                                                  ),
+                                                              decoration: BoxDecoration(
+                                                                color: Colors
+                                                                    .black
+                                                                    .withValues(
+                                                                      alpha:
+                                                                          0.3,
+                                                                    ),
+                                                                borderRadius:
+                                                                    BorderRadius.circular(
+                                                                      10.sp,
+                                                                    ),
+                                                                border: Border.all(
+                                                                  color: variantColor
+                                                                      .withValues(
+                                                                        alpha:
+                                                                            0.4,
+                                                                      ),
+                                                                  width: 1,
+                                                                ),
+                                                              ),
+                                                              child: Row(
+                                                                mainAxisAlignment:
+                                                                    MainAxisAlignment
+                                                                        .center,
+                                                                children: [
+                                                                  Icon(
+                                                                    Icons
+                                                                        .visibility_outlined,
+                                                                    color: kWhiteColor
+                                                                        .withValues(
+                                                                          alpha:
+                                                                              0.9,
+                                                                        ),
+                                                                    size: 18.sp,
+                                                                  ),
+                                                                  SizedBox(
+                                                                    width: 8.sp,
+                                                                  ),
+                                                                  Text(
+                                                                    'Preview',
+                                                                    style: AppTypography.textSmBold.copyWith(
+                                                                      color: kWhiteColor.withValues(
+                                                                        alpha:
+                                                                            0.9,
+                                                                      ),
+                                                                      fontSize:
+                                                                          14.sp,
+                                                                      fontWeight:
+                                                                          FontWeight
+                                                                              .w600,
+                                                                      letterSpacing:
+                                                                          0.3,
+                                                                    ),
+                                                                  ),
+                                                                ],
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      // Swipe up hint with animated arrow
+                                                      SizedBox(height: 16.sp),
+                                                      TweenAnimationBuilder<
+                                                        double
+                                                      >(
+                                                        duration:
+                                                            const Duration(
+                                                              milliseconds:
+                                                                  1500,
+                                                            ),
+                                                        tween: Tween(
+                                                          begin: 0.0,
+                                                          end: 1.0,
+                                                        ),
+                                                        curve: Curves.easeInOut,
+                                                        builder: (
+                                                          context,
+                                                          value,
+                                                          child,
+                                                        ) {
+                                                          final bounce =
+                                                              math.sin(
+                                                                value *
+                                                                    math.pi *
+                                                                    2,
+                                                              ) *
+                                                              4;
+                                                          final opacity =
+                                                              0.4 +
+                                                              (math.sin(
+                                                                    value *
+                                                                        math.pi *
+                                                                        2,
+                                                                  ) *
+                                                                  0.3);
+                                                          return Transform.translate(
+                                                            offset: Offset(
+                                                              0,
+                                                              bounce,
+                                                            ),
+                                                            child: Opacity(
+                                                              opacity: opacity,
+                                                              child: Column(
+                                                                mainAxisSize:
+                                                                    MainAxisSize
+                                                                        .min,
+                                                                children: [
+                                                                  Icon(
+                                                                    Icons
+                                                                        .keyboard_arrow_up_rounded,
+                                                                    color:
+                                                                        variantColor,
+                                                                    size: 32.sp,
+                                                                  ),
+                                                                  Text(
+                                                                    'Swipe up to preview',
+                                                                    style: AppTypography.textXsRegular.copyWith(
+                                                                      color: kWhiteColor.withValues(
+                                                                        alpha:
+                                                                            0.6,
+                                                                      ),
+                                                                      fontSize:
+                                                                          11.sp,
+                                                                      fontWeight:
+                                                                          FontWeight
+                                                                              .w500,
+                                                                      letterSpacing:
+                                                                          0.5,
+                                                                    ),
+                                                                  ),
+                                                                ],
+                                                              ),
+                                                            ),
+                                                          );
+                                                        },
+                                                        onEnd: () {
+                                                          // Loop the animation
+                                                          if (mounted) {
+                                                            setState(() {});
+                                                          }
+                                                        },
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ],
                                               ),
-                                            ],
+                                            ),
                                           ),
-                                        ],
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -6772,14 +6841,14 @@ class _MovePreviewAnimationOverlayState
                               ),
                             ),
                           ),
-                        ),
+                          ...dragTrail,
+                        ],
                       ),
                     ),
-                  ),
-                  ...dragTrail,
-                ],
-              ),
-            ),
+                  );
+                },
+              );
+            },
           );
         },
       ),
