@@ -1190,28 +1190,34 @@ class ChessBoardScreenNotifierNew
       mergedPositions = [...existingPositions, ...newPositions];
       _releaseLog('🎯 PV PREVIEW: Extended existing positions (${existingPositions.length} + ${newPositions.length} = ${mergedPositions.length})');
     } else {
-      // CRITICAL FIX: Use existing position history up to current move, then append PV moves
-      // This avoids recalculating positions and ensures we start from the correct position
-      final currentMoveIndex = baseAnalysis.currentMoveIndex;
-      final allPositions = baseAnalysis.positionHistory;
+      // Build base positions from starting position + existing move objects
+      Position startingPos;
+      if (baseAnalysis.startingPosition != null) {
+        startingPos = baseAnalysis.startingPosition!;
+      } else if (baseState.startingPosition != null) {
+        startingPos = baseState.startingPosition!;
+      } else if (baseState.position != null) {
+        startingPos = baseState.position!;
+      } else {
+        startingPos = baseAnalysis.position;
+      }
+      final basePositions = <Position>[startingPos];
+      var cursor = startingPos;
+      for (final move in baseMoveObjects) {
+        cursor = cursor.play(move);
+        basePositions.add(cursor);
+      }
 
-      // Take positions from start up to and including current position
-      // Position history has: [start, after move 0, after move 1, ...]
-      // So for currentMoveIndex = 0, we want positions [0, 1] (start + after move 0)
-      final endIndex = currentMoveIndex + 2; // +2 to include start and current position
-      final basePositions = endIndex > 0 && endIndex <= allPositions.length
-          ? allPositions.sublist(0, endIndex)
-          : (allPositions.isNotEmpty ? [allPositions.first] : [Chess.initial]);
-
-      // Now append PV moves from the last base position
-      var positionCursor = basePositions.last;
+      // Append PV moves from the last base position
       final newPositions = <Position>[];
       for (final move in pvMoves) {
-        positionCursor = positionCursor.play(move);
-        newPositions.add(positionCursor);
+        cursor = cursor.play(move);
+        newPositions.add(cursor);
       }
       mergedPositions = [...basePositions, ...newPositions];
-      _releaseLog('🎯 PV PREVIEW: Used existing positions up to move $currentMoveIndex (${basePositions.length}) + PV moves (${newPositions.length}) = ${mergedPositions.length}');
+      _releaseLog(
+        '🎯 PV PREVIEW: Built base positions (${basePositions.length}) + PV moves (${newPositions.length}) = ${mergedPositions.length}',
+      );
     }
 
     final baseMoveCount = baseMoveObjects.length;
