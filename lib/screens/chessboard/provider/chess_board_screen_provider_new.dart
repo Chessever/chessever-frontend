@@ -1160,8 +1160,8 @@ class ChessBoardScreenNotifierNew
       // CRITICAL FIX: Only use moves up to CURRENT position, not all moves
       // When at move 10 of 50, we should only take moves 0-10, not all 50
       final currentMoveIndex = baseAnalysis.currentMoveIndex;
-      final allSans = baseAnalysis.combinedMoveSans;
-      final allMoves = baseAnalysis.combinedMoves;
+      final allSans = currentState.analysisState.moveSans;
+      final allMoves = currentState.analysisState.allMoves;
 
       // Take moves from start up to and including current position
       // currentMoveIndex = -1 means before first move (starting position)
