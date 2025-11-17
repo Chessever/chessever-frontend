@@ -1098,86 +1098,6 @@ double _cpToWinProb(int cp, {double k = 0.004}) {
   return 1.0 / (1.0 + math.exp(-k * cp));
 }
 
-/// Detect game phase based on FEN
-/// - Opening: Queens on board + high material count
-/// - Endgame: Queens off OR very low material (≤10 points of minor/major pieces)
-/// - Middlegame: Everything else
-GamePhase _detectGamePhase(String fen) {
-  final parts = fen.split(' ');
-  if (parts.isEmpty) return GamePhase.middlegame;
-
-  final board = parts[0];
-
-  // Check if queens are on board
-  final hasWhiteQueen = board.contains('Q');
-  final hasBlackQueen = board.contains('q');
-  final queensOn = hasWhiteQueen || hasBlackQueen;
-
-  // Count material (simplified)
-  int material = 0;
-  material += 'R'.allMatches(board).length * 5; // Rooks
-  material += 'r'.allMatches(board).length * 5;
-  material += 'B'.allMatches(board).length * 3; // Bishops
-  material += 'b'.allMatches(board).length * 3;
-  material += 'N'.allMatches(board).length * 3; // Knights
-  material += 'n'.allMatches(board).length * 3;
-  material += 'Q'.allMatches(board).length * 9; // Queens
-  material += 'q'.allMatches(board).length * 9;
-
-  // Endgame: queens off and low material, or very low material regardless
-  if ((!queensOn && material <= 10) || material <= 6) {
-    return GamePhase.endgame;
-  }
-
-  // Opening: queens on and high material
-  if (queensOn && material >= 30) {
-    return GamePhase.opening;
-  }
-
-  return GamePhase.middlegame;
-}
-
-class _PhaseThresholds {
-  final double blunder;
-  final double inaccuracy;
-  final double great;
-  final double interesting;
-
-  const _PhaseThresholds({
-    required this.blunder,
-    required this.inaccuracy,
-    required this.great,
-    required this.interesting,
-  });
-}
-
-const Map<GamePhase, _PhaseThresholds> _phaseThresholdsMap = {
-  GamePhase.opening: _PhaseThresholds(
-    blunder: 0.45,
-    inaccuracy: 0.08,
-    great: 0.18,
-    interesting: 0.04,
-  ),
-  GamePhase.middlegame: _PhaseThresholds(
-    blunder: 0.40,
-    inaccuracy: 0.06,
-    great: 0.22,
-    interesting: 0.05,
-  ),
-  GamePhase.endgame: _PhaseThresholds(
-    blunder: 0.30,
-    inaccuracy: 0.03,
-    great: 0.15,
-    interesting: 0.03,
-  ),
-};
-
-int _pvCpForPlayer(List<Pv> pvs, int index, bool isWhiteMove, {required int fallback}) {
-  if (index >= pvs.length) return fallback;
-  final cp = pvs[index].cp;
-  return isWhiteMove ? cp : -cp;
-}
-
 bool _isWhiteToMove(String fen) {
   final parts = fen.split(' ');
   if (parts.length < 2) return true;
@@ -1197,48 +1117,6 @@ bool _sanMatches(String? sanA, String normalizedSanB) {
   return normalizedA == normalizedSanB;
 }
 
-int _materialBalance(String fen) {
-  final board = fen.split(' ').first;
-  int score = 0;
-  for (int i = 0; i < board.length; i++) {
-    final char = board[i];
-    if (char == '/') continue;
-    if (RegExp(r'\d').hasMatch(char)) continue;
-
-    int value;
-    switch (char.toLowerCase()) {
-      case 'p':
-        value = 1;
-        break;
-      case 'n':
-      case 'b':
-        value = 3;
-        break;
-      case 'r':
-        value = 5;
-        break;
-      case 'q':
-        value = 9;
-        break;
-      default:
-        value = 0;
-    }
-
-    if (char == char.toUpperCase()) {
-      score += value;
-    } else {
-      score -= value;
-    }
-  }
-  return score;
-}
-
-AdvantageTier _advantageTier(int cp) {
-  if (cp.abs() <= 100) return AdvantageTier.equal;
-  if (cp.abs() <= 220) return AdvantageTier.slight;
-  return AdvantageTier.winning;
-}
-
 enum PositionOutcome { losing, draw, winning }
 
 PositionOutcome _outcomeForPlayer(int cp) {
@@ -1249,30 +1127,6 @@ PositionOutcome _outcomeForPlayer(int cp) {
 
 /// Count how many moves in PVs are "near-best" (within threshold of best move)
 /// Uses both centipawn and win-probability thresholds
-int _countNearBestMoves(
-  List<Pv> pvs, {
-  int cpThreshold = 30,
-  double wpThreshold = 0.02,
-}) {
-  if (pvs.isEmpty) return 0;
-
-  final bestCp = pvs[0].cp;
-  final bestWp = _cpToWinProb(bestCp);
-
-  int count = 0;
-  for (final pv in pvs) {
-    final cp = pv.cp;
-    final wp = _cpToWinProb(cp);
-
-    // Consider "near-best" if within EITHER threshold
-    if ((bestCp - cp).abs() <= cpThreshold || (bestWp - wp).abs() <= wpThreshold) {
-      count++;
-    }
-  }
-
-  return count;
-}
-
 /// Detect if position is already decided (outcome essentially determined)
 /// Returns true if:
 /// - Absolute eval ≥ 500cp

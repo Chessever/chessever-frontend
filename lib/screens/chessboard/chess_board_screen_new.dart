@@ -3115,7 +3115,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             Navigator.of(overlayContext).pop();
             final snapshot = notifier.navigatorStateSnapshot();
             await notifier.deleteVariationAtPointer(
-              List<Number>.of(variantHeadPointer!),
+              List<Number>.of(variantHeadPointer),
             );
             if (!mounted) return;
             final currentContext = this.context;
@@ -3139,7 +3139,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           onSelected: (overlayContext) async {
             Navigator.of(overlayContext).pop();
             await notifier.promoteVariationAtPointer(
-              List<Number>.of(variantHeadPointer!),
+              List<Number>.of(variantHeadPointer),
             );
           },
         ),
@@ -3305,16 +3305,88 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     ChessGameNavigatorState snapshot,
     String message,
   ) {
-    ScaffoldMessenger.of(context).showSnackBar(
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
       SnackBar(
-        content: Text(message),
-        action: SnackBarAction(
-          label: 'Undo',
-          onPressed: () {
-            ref
-                .read(chessBoardScreenProviderNew(params).notifier)
-                .restoreNavigatorState(snapshot);
-          },
+        duration: const Duration(seconds: 4),
+        behavior: SnackBarBehavior.floating,
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 20.h),
+        padding: EdgeInsets.zero,
+        content: Container(
+          padding: EdgeInsets.symmetric(horizontal: 18.sp, vertical: 16.sp),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(22.sp),
+            gradient: LinearGradient(
+              colors: [
+                kPrimaryColor.withValues(alpha: 0.9),
+                kPrimaryColor.withValues(alpha: 0.65),
+                kBlack2Color.withValues(alpha: 0.85),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: kPrimaryColor.withValues(alpha: 0.35),
+                blurRadius: 32,
+                spreadRadius: 6,
+                offset: const Offset(0, 14),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(10.sp),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(14.sp),
+                ),
+                child: Icon(
+                  Icons.auto_fix_high_rounded,
+                  color: kWhiteColor,
+                  size: 20.ic,
+                ),
+              ),
+              SizedBox(width: 12.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      message,
+                      style: AppTypography.textSmBold.copyWith(
+                        color: kWhiteColor,
+                      ),
+                    ),
+                    SizedBox(height: 4.h),
+                    Text(
+                      'Tap to bring the variation back.',
+                      style: AppTypography.textXsRegular.copyWith(
+                        color: kWhiteColor.withValues(alpha: 0.75),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  ref
+                      .read(chessBoardScreenProviderNew(params).notifier)
+                      .restoreNavigatorState(snapshot);
+                  messenger.hideCurrentSnackBar();
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: kWhiteColor,
+                  padding: EdgeInsets.symmetric(horizontal: 12.w),
+                ),
+                child: const Text('UNDO'),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -3455,9 +3527,9 @@ class _RibbonAnalysisButtonState extends State<_RibbonAnalysisButton> {
       child: Opacity(
         opacity: widget.enabled ? 1 : 0.35,
         child: Container(
-          width: 48.sp,
+          width: 40.sp,
           alignment: Alignment.center,
-          padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 9.sp),
+          padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 9.sp),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
@@ -4981,16 +5053,37 @@ class _NotationActionOverlay extends StatefulWidget {
   State<_NotationActionOverlay> createState() => _NotationActionOverlayState();
 }
 
-class _NotationActionOverlayState extends State<_NotationActionOverlay> {
+class _NotationActionOverlayState extends State<_NotationActionOverlay>
+    with TickerProviderStateMixin {
   static const double _dragDismissThreshold = 120.0;
 
   bool _isEntering = true;
   double _glowIntensity = 0.0;
   bool _hasPlayedThresholdHaptic = false;
+  Offset _cardOffset = Offset.zero;
+  Offset _animationStart = Offset.zero;
+  Offset _animationTarget = Offset.zero;
+  Curve _animationCurve = Curves.easeOut;
+  VoidCallback? _animationComplete;
+  bool _isDragging = false;
+  Offset _trackedVelocity = Offset.zero;
+  Duration? _lastSampleTime;
+  late final AnimationController _offsetController;
 
   @override
   void initState() {
     super.initState();
+    _offsetController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 450),
+    )
+      ..addListener(_handleOffsetTick)
+      ..addStatusListener((status) {
+        if (status == AnimationStatus.completed) {
+          _animationComplete?.call();
+          _animationComplete = null;
+        }
+      });
 
     // Initial haptic feedback
     HapticFeedback.mediumImpact();
@@ -5009,55 +5102,114 @@ class _NotationActionOverlayState extends State<_NotationActionOverlay> {
     Navigator.of(context).pop();
   }
 
-  Offset _dragOffset = Offset.zero;
-  bool _isDragging = false;
-
-  void _startDrag() {
+  void _handleOffsetTick() {
+    final progress = _animationCurve.transform(_offsetController.value);
     setState(() {
-      _isDragging = true;
+      _cardOffset = Offset.lerp(_animationStart, _animationTarget, progress)!;
+      _glowIntensity = (_cardOffset.distance / (_dragDismissThreshold * 1.4))
+          .clamp(0.0, 1.0);
     });
   }
 
-  void _updateDrag(DragUpdateDetails details) {
-    final newOffset = _dragOffset + details.delta;
-    final distance = newOffset.distance;
-    final newGlow = (distance / _dragDismissThreshold).clamp(0.0, 1.0);
+  void _startDrag(DragStartDetails details) {
+    _offsetController.stop();
+    _isDragging = true;
+    _trackedVelocity = Offset.zero;
+    _lastSampleTime = details.sourceTimeStamp;
+  }
 
-    // Haptic feedback when approaching dismiss threshold
-    if (newGlow > 0.85 && !_hasPlayedThresholdHaptic) {
-      HapticFeedback.selectionClick();
-      _hasPlayedThresholdHaptic = true;
-    } else if (newGlow <= 0.85) {
-      _hasPlayedThresholdHaptic = false;
+  void _updateDrag(DragUpdateDetails details) {
+    final timestamp = details.sourceTimeStamp;
+    if (timestamp != null && _lastSampleTime != null) {
+      final delta = timestamp - _lastSampleTime!;
+      final seconds = delta.inMicroseconds / 1e6;
+      if (seconds > 0) {
+        final velocity = details.delta / seconds;
+        _trackedVelocity = Offset.lerp(_trackedVelocity, velocity, 0.35)!;
+      }
+    }
+    _lastSampleTime = timestamp;
+
+    final proposed = _cardOffset + details.delta;
+    final radius = proposed.distance;
+    Offset limitedOffset = proposed;
+    const maxRadius = 260.0;
+    if (radius > maxRadius) {
+      final excess = radius - maxRadius;
+      final rubberBand = maxRadius + excess * 0.25;
+      limitedOffset = proposed / radius * rubberBand;
     }
 
-    if (mounted) {
-      setState(() {
-        _dragOffset = newOffset;
-        _glowIntensity = newGlow;
-      });
+    setState(() {
+      _cardOffset = limitedOffset;
+      _glowIntensity =
+          (_cardOffset.distance / (_dragDismissThreshold * 1.4)).clamp(
+        0.0,
+        1.0,
+      );
+    });
+
+    if (_glowIntensity > 0.85 && !_hasPlayedThresholdHaptic) {
+      HapticFeedback.selectionClick();
+      _hasPlayedThresholdHaptic = true;
+    } else if (_glowIntensity <= 0.75 && _hasPlayedThresholdHaptic) {
+      _hasPlayedThresholdHaptic = false;
     }
   }
 
   void _endDrag(DragEndDetails details) {
-    final distance = _dragOffset.distance;
-    final velocityMagnitude = details.velocity.pixelsPerSecond.distance;
+    _isDragging = false;
+    final releaseVelocity =
+        details.velocity.pixelsPerSecond + (_trackedVelocity * 0.2);
+    final distance = _cardOffset.distance;
+    final shouldDismiss =
+        distance > _dragDismissThreshold || releaseVelocity.distance > 1200;
 
-    // More lenient threshold for fluid dismissal
-    if (distance > _dragDismissThreshold * 0.85 || velocityMagnitude > 600) {
+    if (shouldDismiss) {
       HapticFeedback.mediumImpact();
-      Navigator.of(context).pop();
+      final directionVector =
+          (_cardOffset + releaseVelocity * 0.2).distance == 0
+              ? const Offset(0, 1)
+              : (_cardOffset + releaseVelocity * 0.2);
+      final normalized = directionVector / directionVector.distance;
+      final screen = MediaQuery.of(context).size;
+      final travelDistance =
+          math.max(screen.width, screen.height) * 0.9 * normalized.distance;
+      final target = _cardOffset + normalized * travelDistance;
+      _animateOffsetTo(
+        target,
+        duration: const Duration(milliseconds: 520),
+        curve: Curves.easeOutCubic,
+        onComplete: () => Navigator.of(context).pop(),
+      );
     } else {
-      // Snap back with smooth animation
-      if (mounted) {
-        setState(() {
-          _dragOffset = Offset.zero;
-          _glowIntensity = 0.0;
-          _isDragging = false;
-          _hasPlayedThresholdHaptic = false;
-        });
-      }
+      _animateOffsetTo(
+        Offset.zero,
+        duration: const Duration(milliseconds: 650),
+        curve: Curves.elasticOut,
+      );
+      _hasPlayedThresholdHaptic = false;
     }
+  }
+
+  void _animateOffsetTo(
+    Offset target, {
+    required Duration duration,
+    Curve curve = Curves.easeOut,
+    VoidCallback? onComplete,
+  }) {
+    _animationStart = _cardOffset;
+    _animationTarget = target;
+    _animationCurve = curve;
+    _animationComplete = onComplete;
+    _offsetController.duration = duration;
+    _offsetController.forward(from: 0.0);
+  }
+
+  @override
+  void dispose() {
+    _offsetController.dispose();
+    super.dispose();
   }
 
   @override
@@ -5092,206 +5244,155 @@ class _NotationActionOverlayState extends State<_NotationActionOverlay> {
             motion: CupertinoMotion.bouncy(),
             value: _isEntering ? 0.0 : 1.0,
             builder: (context, value, child) {
-              // Entrance animation
-              final scale = 0.7 + (value * 0.3);
-              final opacity = value.clamp(0.0, 1.0);
-
-              return Transform.translate(
-                offset: _dragOffset,
+              final cardOpacity = value.clamp(0.0, 1.0);
+              final scale = lerpDouble(0.88, 1.0, value) ?? 1.0;
+              return Opacity(
+                opacity: cardOpacity,
                 child: Transform.scale(
                   scale: scale,
-                  child: Opacity(opacity: opacity, child: child),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    dragStartBehavior: DragStartBehavior.down,
+                    onPanStart: _startDrag,
+                    onPanUpdate: _updateDrag,
+                    onPanEnd: _endDrag,
+                    child: _LiquidHeroSurface(
+                      heroineTag: widget.heroineTag,
+                      motion: const CupertinoMotion.interactive(),
+                      offset: _cardOffset,
+                      glowStrength: _glowIntensity,
+                      entryProgress: value,
+                      accentColor: kPrimaryColor,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          if (_glowIntensity > 0.0)
+                            Positioned.fill(
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(24.sp),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: kPrimaryColor.withValues(
+                                        alpha: _glowIntensity * 0.35,
+                                      ),
+                                      blurRadius: 35 * _glowIntensity,
+                                      spreadRadius: 10 * _glowIntensity,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          Material(
+                            color: Colors.transparent,
+                            child: Container(
+                              width: double.infinity,
+                              margin: EdgeInsets.symmetric(horizontal: 20.sp),
+                              padding: EdgeInsets.all(22.sp),
+                              decoration: BoxDecoration(
+                                color: kBlack2Color.withValues(alpha: 0.96),
+                                borderRadius: BorderRadius.circular(24.sp),
+                                border: Border.all(
+                                  color: kPrimaryColor.withValues(
+                                    alpha: 0.3 + (_glowIntensity * 0.4),
+                                  ),
+                                  width: 1.6 + (_glowIntensity * 0.7),
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(
+                                      alpha: 0.55,
+                                    ),
+                                    blurRadius: 40 + (_glowIntensity * 12),
+                                    offset: Offset(
+                                      0,
+                                      18 + (_glowIntensity * 10),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _ActionOverlayHeader(
+                                    title: widget.title,
+                                    subtitle: widget.subtitle,
+                                  ),
+                                  SizedBox(height: 20.h),
+                                  ...List.generate(widget.actions.length,
+                                      (index) {
+                                    final action = widget.actions[index];
+                                    final staggerDelay = index * 0.12;
+                                    final buttonEntranceValue =
+                                        _isEntering ? 0.0 : 1.0;
+                                    return IgnorePointer(
+                                      ignoring: _isDragging,
+                                      child: SingleMotionBuilder(
+                                        motion: CupertinoMotion.bouncy(),
+                                        value: buttonEntranceValue,
+                                        builder: (context, value, child) {
+                                          final delayed = (value - staggerDelay)
+                                              .clamp(0.0, 1.0);
+                                          final normalized =
+                                              (staggerDelay >= 1.0
+                                                      ? 0.0
+                                                      : delayed /
+                                                          (1.0 - staggerDelay))
+                                                  .clamp(0.0, 1.0);
+                                          return Transform.translate(
+                                            offset: Offset(
+                                              0,
+                                              (1.0 - normalized) * 28,
+                                            ),
+                                            child: Opacity(
+                                              opacity: normalized,
+                                              child: child,
+                                            ),
+                                          );
+                                        },
+                                        child: Padding(
+                                          padding:
+                                              EdgeInsets.only(bottom: 12.h),
+                                          child: _ActionButton(
+                                            action: action,
+                                            onPressed: () =>
+                                                action.onSelected(context),
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }),
+                                  SizedBox(height: 4.h),
+                                  Center(
+                                    child: AnimatedOpacity(
+                                      duration:
+                                          const Duration(milliseconds: 180),
+                                      opacity: 0.4 + (_glowIntensity * 0.35),
+                                      child: Text(
+                                        'Flick away to dismiss',
+                                        style:
+                                            AppTypography.textXsRegular.copyWith(
+                                          color: kWhiteColor.withValues(
+                                            alpha: 0.55,
+                                          ),
+                                          fontStyle: FontStyle.italic,
+                                          letterSpacing: 0.4,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               );
             },
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              dragStartBehavior: DragStartBehavior.down,
-              // Use pan gestures for fluid multi-directional dragging
-              onPanStart: (_) => _startDrag(),
-              onPanUpdate: _updateDrag,
-              onPanEnd: _endDrag,
-              child: Heroine(
-                motion: CupertinoMotion.bouncy(),
-                tag: widget.heroineTag,
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    // Glow effect when dragging
-                    if (_glowIntensity > 0.0)
-                      Positioned.fill(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(20.sp),
-                            boxShadow: [
-                              BoxShadow(
-                                color: kPrimaryColor.withValues(
-                                  alpha: _glowIntensity * 0.4,
-                                ),
-                                blurRadius: 30 * _glowIntensity,
-                                spreadRadius: 8 * _glowIntensity,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-
-                    // Main card content
-                    Material(
-                      color: Colors.transparent,
-                      child: Container(
-                        width: double.infinity,
-                        margin: EdgeInsets.symmetric(horizontal: 20.sp),
-                        padding: EdgeInsets.all(20.sp),
-                        decoration: BoxDecoration(
-                          color: kBlack2Color,
-                          borderRadius: BorderRadius.circular(20.sp),
-                          border: Border.all(
-                            color: kPrimaryColor.withValues(
-                              alpha: 0.35 + (_glowIntensity * 0.25),
-                            ),
-                            width: 1.5 + (_glowIntensity * 0.5),
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: kBlackColor.withValues(alpha: 0.5),
-                              blurRadius: 30 + (_glowIntensity * 10),
-                              offset: Offset(0, 14 + (_glowIntensity * 6)),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Header
-                            Row(
-                              children: [
-                                Container(
-                                  padding: EdgeInsets.all(8.sp),
-                                  decoration: BoxDecoration(
-                                    color: kPrimaryColor.withValues(
-                                      alpha: 0.15,
-                                    ),
-                                    borderRadius: BorderRadius.circular(10.sp),
-                                  ),
-                                  child: Icon(
-                                    Icons.extension_rounded,
-                                    color: kPrimaryColor,
-                                    size: 20.ic,
-                                  ),
-                                ),
-                                SizedBox(width: 12.w),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        widget.title,
-                                        style: AppTypography.textLgBold
-                                            .copyWith(color: kWhiteColor),
-                                      ),
-                                      if (widget.subtitle != null)
-                                        Text(
-                                          widget.subtitle!,
-                                          style: AppTypography.textXsRegular
-                                              .copyWith(
-                                                color: kWhiteColor.withValues(
-                                                  alpha: 0.6,
-                                                ),
-                                              ),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                                // Drag indicator
-                                Container(
-                                  padding: EdgeInsets.all(6.sp),
-                                  decoration: BoxDecoration(
-                                    color: kWhiteColor.withValues(alpha: 0.08),
-                                    borderRadius: BorderRadius.circular(8.sp),
-                                  ),
-                                  child: Icon(
-                                    Icons.drag_indicator_rounded,
-                                    color: kWhiteColor.withValues(alpha: 0.4),
-                                    size: 18.ic,
-                                  ),
-                                ),
-                              ],
-                            ),
-
-                            SizedBox(height: 20.h),
-
-                            // Action buttons with stagger animation - ignore when dragging
-                            ...List.generate(widget.actions.length, (index) {
-                              final action = widget.actions[index];
-                              // Stagger each button
-                              final staggerDelay = index * 0.12;
-                              final buttonEntranceValue =
-                                  _isEntering ? 0.0 : 1.0;
-
-                              return IgnorePointer(
-                                ignoring: _isDragging,
-                                child: SingleMotionBuilder(
-                                  motion: CupertinoMotion.bouncy(),
-                                  value: buttonEntranceValue,
-                                  builder: (context, value, child) {
-                                    // Apply stagger effect
-                                    final delayedValue = (value - staggerDelay)
-                                        .clamp(0.0, 1.0);
-                                    final normalizedValue = (staggerDelay >= 1.0
-                                            ? 0.0
-                                            : delayedValue /
-                                                (1.0 - staggerDelay))
-                                        .clamp(0.0, 1.0);
-
-                                    return Transform.translate(
-                                      offset: Offset(
-                                        0,
-                                        (1.0 - normalizedValue) * 20,
-                                      ),
-                                      child: Opacity(
-                                        opacity: normalizedValue,
-                                        child: child,
-                                      ),
-                                    );
-                                  },
-                                  child: Padding(
-                                    padding: EdgeInsets.only(bottom: 10.h),
-                                    child: _ActionButton(
-                                      action: action,
-                                      onPressed:
-                                          () => action.onSelected(context),
-                                    ),
-                                  ),
-                                ),
-                              );
-                            }),
-
-                            SizedBox(height: 8.h),
-
-                            // Dismiss hint
-                            Center(
-                              child: Opacity(
-                                opacity: 0.4 + (_glowIntensity * 0.3),
-                                child: Text(
-                                  'Swipe to dismiss',
-                                  style: AppTypography.textXsRegular.copyWith(
-                                    color: kWhiteColor.withValues(alpha: 0.5),
-                                    fontStyle: FontStyle.italic,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
           ),
         ),
       ],
@@ -5389,6 +5490,153 @@ class _ActionButtonState extends State<_ActionButton> {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+class _ActionOverlayHeader extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+
+  const _ActionOverlayHeader({required this.title, this.subtitle});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          padding: EdgeInsets.all(10.sp),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                kPrimaryColor.withValues(alpha: 0.4),
+                kPrimaryColor.withValues(alpha: 0.15),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(14.sp),
+            boxShadow: [
+              BoxShadow(
+                color: kPrimaryColor.withValues(alpha: 0.25),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Icon(
+            Icons.auto_awesome_rounded,
+            color: kWhiteColor,
+            size: 20.ic,
+          ),
+        ),
+        SizedBox(width: 14.w),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: AppTypography.textLgBold.copyWith(
+                  color: kWhiteColor,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              if (subtitle != null)
+                Text(
+                  subtitle!,
+                  style: AppTypography.textXsRegular.copyWith(
+                    color: kWhiteColor.withValues(alpha: 0.65),
+                    letterSpacing: 0.2,
+                  ),
+                ),
+            ],
+          ),
+        ),
+        Container(
+          height: 32.h,
+          padding: EdgeInsets.symmetric(horizontal: 10.sp),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: kWhiteColor.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: kWhiteColor.withValues(alpha: 0.12),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.drag_handle_rounded,
+                color: kWhiteColor.withValues(alpha: 0.55),
+                size: 16.ic,
+              ),
+              SizedBox(width: 4.w),
+              Text(
+                'Drag',
+                style: AppTypography.textXsRegular.copyWith(
+                  color: kWhiteColor.withValues(alpha: 0.6),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LiquidHeroSurface extends StatelessWidget {
+  final String heroineTag;
+  final Motion motion;
+  final Offset offset;
+  final double glowStrength;
+  final double entryProgress;
+  final Color accentColor;
+  final Widget child;
+
+  const _LiquidHeroSurface({
+    required this.heroineTag,
+    required this.motion,
+    required this.offset,
+    required this.glowStrength,
+    required this.entryProgress,
+    required this.accentColor,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final dragFactor = (offset.distance / 260).clamp(0.0, 1.0);
+    final depthScale = (1 - dragFactor * 0.05) *
+        (0.9 + (entryProgress.clamp(0.0, 1.0) * 0.1));
+    final tiltX = (offset.dy / 1200).clamp(-0.35, 0.35);
+    final tiltY = (offset.dx / 1200).clamp(-0.35, 0.35);
+
+    final matrix = Matrix4.identity()
+      ..translate(offset.dx, offset.dy)
+      ..setEntry(3, 2, 0.0015)
+      ..rotateX(tiltX)
+      ..rotateY(-tiltY)
+      ..scale(depthScale);
+
+    final aura = BoxShadow(
+      color: accentColor.withValues(alpha: 0.25 + glowStrength * 0.4),
+      blurRadius: 40 + glowStrength * 20,
+      spreadRadius: 8 + glowStrength * 6,
+      offset: Offset(0, 18),
+    );
+
+    return Transform(
+      transform: matrix,
+      alignment: Alignment.center,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOut,
+        decoration: BoxDecoration(boxShadow: [aura]),
+        child: Heroine(tag: heroineTag, motion: motion, child: child),
       ),
     );
   }
@@ -5583,8 +5831,8 @@ class _MovePreviewAnimationOverlayState
   void _endDrag(DragEndDetails details) {
     final upward = -_dragOffset.dy;
     final sideways = _dragOffset.dx.abs();
-    final velocityY = -details.velocity.pixelsPerSecond.dy; // Negative = upward
-    final velocityX = details.velocity.pixelsPerSecond.dx.abs();
+    final releaseVelocity = details.velocity.pixelsPerSecond;
+    final velocityY = -releaseVelocity.dy; // Negative = upward
 
     // More fluid gesture detection - focus on intent, not perfect path
     // Use velocity direction as primary indicator of intent
@@ -5612,18 +5860,12 @@ class _MovePreviewAnimationOverlayState
       return;
     }
 
-    // Only reject on clearly intentional horizontal/downward gestures
-    // More lenient - focus on strong opposing intent rather than any deviation
-    final horizontalRatio = upward > 0 ? sideways / upward : double.infinity;
-    final isHorizontalDominant = horizontalRatio > 1.5; // Strongly horizontal
-    final hasStrongHorizontalVelocity = velocityX > 1000; // Clear horizontal intent
-    final rejectHorizontal = isHorizontalDominant || hasStrongHorizontalVelocity;
-
-    final rejectDownward = upward < -80 || (upward < -20 && -velocityY < -600);
-
-    if (rejectHorizontal || rejectDownward) {
+    final releaseSpeed = releaseVelocity.distance;
+    final shouldFlingAway =
+        releaseSpeed > 450 || _dragOffset.distance > _dragDismissThreshold * 0.75;
+    if (shouldFlingAway) {
       HapticFeedback.mediumImpact();
-      _rejectPreview();
+      _flingAway(releaseVelocity);
       return;
     }
 
@@ -5668,11 +5910,12 @@ class _MovePreviewAnimationOverlayState
     });
   }
 
-  void _rejectPreview() {
+  void _flingAway(Offset releaseVelocity) {
     if (_isDismissing) return;
 
     // Calculate direction with velocity for natural continuation
-    final releaseVector = _dragOffset + (_currentDragVelocity * 0.003);
+    final releaseVector =
+        (_dragOffset * 0.7) + ((_currentDragVelocity + releaseVelocity) * 0.003);
     Offset direction =
         releaseVector == Offset.zero ? const Offset(0, 1) : releaseVector;
     final normalized = direction / direction.distance;

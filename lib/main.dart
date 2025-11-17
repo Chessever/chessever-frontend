@@ -29,7 +29,6 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:purchases_flutter/purchases_flutter.dart' as purchases;
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -160,7 +159,6 @@ Future<void> main() async {
 
       // Non-critical: Load audio assets in background (don't block app startup)
       unawaited(AudioPlayerService.instance.initializeAndLoadAllAssets());
-      // await _initRevenueCat();
 
       await SentryFlutter.init(
         (options) {
@@ -174,20 +172,6 @@ Future<void> main() async {
     (error, stackTrace) {
       Sentry.captureException(error, stackTrace: stackTrace);
     },
-  );
-}
-
-Future<void> _initRevenueCat() async {
-  // ignore: unused_element
-  await purchases.Purchases.setLogLevel(
-    purchases.LogLevel.debug,
-  ); // Enable debug logs
-  // final SupabaseClient = Supabase.instance.client;
-  // final user = SupabaseClient.auth.currentUser;
-  // await Purchases.setDebugLogsEnabled(true);
-  await purchases.Purchases.configure(
-    purchases.PurchasesConfiguration(_getEnv('RevenueCatAPIKey')),
-    // appUserId: '',
   );
 }
 
