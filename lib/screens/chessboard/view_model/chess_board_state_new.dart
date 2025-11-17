@@ -217,8 +217,8 @@ class AnalysisBoardState {
     ];
   }
 
-  static List<String> _movesToUci(List<Move> moves) =>
-      moves.map((move) => move.uci).toList(growable: false);
+  static List<String> _movesToUci(List<Move?> moves) =>
+      moves.map((move) => move?.uci ?? '0000').toList(growable: false);
 
   static List<String> _positionsToFen(List<Position> positions) =>
       positions.map((position) => position.fen).toList(growable: false);
@@ -339,7 +339,7 @@ class ChessBoardStateNew {
   final int? lockedPvNavigationIndex;
 
   /// Combined move objects (PGN history + PV moves) for preview navigation
-  final List<Move>? lockedPvMergedMoveObjects;
+  final List<Move?>? lockedPvMergedMoveObjects;
 
   /// Position history aligned with [lockedPvMergedMoveObjects]
   final List<Position>? lockedPvMergedPositions;
@@ -401,8 +401,8 @@ class ChessBoardStateNew {
 
   static const _noChange = Object();
 
-  static List<String> _movesToUci(List<Move> moves) =>
-      moves.map((move) => move.uci).toList(growable: false);
+  static List<String> _movesToUci(List<Move?> moves) =>
+      moves.map((move) => move?.uci ?? '0000').toList(growable: false);
 
   ChessBoardStateNew copyWith({
     Object? position = _noChange,
@@ -532,7 +532,7 @@ class ChessBoardStateNew {
       lockedPvMergedMoveObjects:
           identical(lockedPvMergedMoveObjects, _noChange)
               ? this.lockedPvMergedMoveObjects
-              : lockedPvMergedMoveObjects as List<Move>?,
+              : lockedPvMergedMoveObjects as List<Move?>?,
       lockedPvMergedPositions:
           identical(lockedPvMergedPositions, _noChange)
               ? this.lockedPvMergedPositions
@@ -609,8 +609,8 @@ class ChessBoardStateNew {
         ) &&
         other.lockedPvNavigationIndex == lockedPvNavigationIndex &&
         _stringListEquality.equals(
-          _movesToUci(other.lockedPvMergedMoveObjects ?? const []),
-          _movesToUci(lockedPvMergedMoveObjects ?? const []),
+          _movesToUci(other.lockedPvMergedMoveObjects ?? const <Move?>[]),
+          _movesToUci(lockedPvMergedMoveObjects ?? const <Move?>[]),
         ) &&
         _stringListEquality.equals(
           AnalysisBoardState._positionsToFen(
