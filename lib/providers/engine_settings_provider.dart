@@ -70,18 +70,14 @@ class EngineDepthTrackerNotifier
     required EngineSearchProgress progress,
     String? context,
   }) {
-    final label = _componentLabel(component);
-    final fragment = progress.fenFragment;
-    final fragmentLength = fragment.length < 20 ? fragment.length : 20;
-    final fragmentPreview = fragment.substring(0, fragmentLength);
-    final fragmentSuffix = fragment.length > fragmentLength ? '...' : '';
-    final fenInfo =
-        fragment.isEmpty ? '' : ' ($fragmentPreview$fragmentSuffix)';
-    final ctx = (context == null || context.isEmpty) ? '' : ' [$context]';
-    // TEMPO-01-COMMENT
-    // debugPrint(
-    //   '🧠 DepthTracker: $label depth=${progress.depth} knodes=${progress.kiloNodes}$fenInfo$ctx',
-    // );
+    // final label = _componentLabel(component);
+    // final fragment = progress.fenFragment;
+    // final fragmentLength = fragment.length < 20 ? fragment.length : 20;
+    // final fragmentPreview = fragment.substring(0, fragmentLength);
+    // final fragmentSuffix = fragment.length > fragmentLength ? '...' : '';
+    // final fenInfo =
+    //     fragment.isEmpty ? '' : ' ($fragmentPreview$fragmentSuffix)';
+    // final ctx = (context == null || context.isEmpty) ? '' : ' [$context]';
     state = {...state, component: progress};
   }
 

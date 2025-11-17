@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 
 class AppBarIcons extends StatelessWidget {
-  final Function() onTap;
+  final VoidCallback onTap;
   final String image;
   final EdgeInsetsGeometry? padding;
 
