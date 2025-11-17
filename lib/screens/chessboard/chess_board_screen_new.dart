@@ -36,6 +36,7 @@ import 'package:collection/collection.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:fast_immutable_collections/fast_immutable_collections.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/svg_asset.dart';
@@ -2602,7 +2603,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           token.pointerId!,
           token.text,
           token.node?.move.san == '--',
-          token.variationHeadPointer,
+          _variantHeadPointerForToken(token),
         );
       },
       child: Stack(
@@ -3038,16 +3039,49 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     return false;
   }
 
+  ChessMovePointer? _variantHeadPointerForMove(ChessMovePointer pointer) {
+    if (pointer.length < 3) {
+      return null;
+    }
+    for (int i = pointer.length - 2; i >= 0; i--) {
+      if (i.isOdd) {
+        final head = List<Number>.of(pointer.sublist(0, i + 1));
+        head.add(0);
+        return head;
+      }
+    }
+    return null;
+  }
+
+  ChessMovePointer? _variantHeadPointerForToken(_NotationDisplayToken token) {
+    final variation = token.variation;
+    if (variation != null) {
+      final head = <Number>[
+        ...variation.parentPointer,
+        variation.variationIndex,
+        0,
+      ];
+      return head;
+    }
+    if (token.pointer != null) {
+      return _variantHeadPointerForMove(token.pointer!);
+    }
+    final head = token.variationHeadPointer;
+    return head == null ? null : List<Number>.of(head);
+  }
+
   Future<void> _showMoveActions(
     ChessBoardProviderParams params,
     ChessMovePointer pointer,
     String pointerId,
     String moveText,
     bool isNullMove,
-    ChessMovePointer? variationHeadPointer,
+    ChessMovePointer? variantHeadOverride,
   ) async {
     final hostContext = context;
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+    final variantHeadPointer =
+        variantHeadOverride ?? _variantHeadPointerForMove(pointer);
     final actions = <_NotationActionItem>[
       _NotationActionItem(
         icon: Icons.delete_outline,
@@ -3069,7 +3103,32 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           await notifier.insertNullMoveAfterPointer(List<Number>.of(pointer));
         },
       ),
-      if (variationHeadPointer != null)
+      if (variantHeadPointer != null)
+        _NotationActionItem(
+          icon: Icons.delete_forever,
+          label: 'Delete variant',
+          color: kRedColor,
+          onSelected: (overlayContext) async {
+            Navigator.of(overlayContext).pop();
+            final snapshot = notifier.navigatorStateSnapshot();
+            await notifier.deleteVariationAtPointer(
+              List<Number>.of(variantHeadPointer),
+            );
+            if (!mounted) return;
+            final currentContext = this.context;
+            if (snapshot != null) {
+              _showUndoSnackBar(
+                currentContext,
+                params,
+                snapshot,
+                'Variant removed',
+              );
+            } else {
+              _showInfoSnack(currentContext, 'Variant removed');
+            }
+          },
+        ),
+      if (variantHeadPointer != null)
         _NotationActionItem(
           icon: Icons.trending_up_rounded,
           label: 'Promote variant',
@@ -3077,7 +3136,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           onSelected: (overlayContext) async {
             Navigator.of(overlayContext).pop();
             await notifier.promoteVariationAtPointer(
-              List<Number>.of(variationHeadPointer),
+              List<Number>.of(variantHeadPointer),
             );
           },
         ),
@@ -3103,7 +3162,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
   Future<void> _showVariationActions(_NotationDisplayToken token) async {
     final variation = token.variation;
-    final headPointer = token.variationHeadPointer;
+    final headPointer = _variantHeadPointerForToken(token);
     if (variation == null || headPointer == null) {
       return;
     }
@@ -3127,7 +3186,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       ),
       _NotationActionItem(
         icon: Icons.delete_forever,
-        label: 'Remove subvariant',
+        label: 'Delete variant',
         color: kRedColor,
         onSelected: (overlayContext) async {
           Navigator.of(overlayContext).pop();
@@ -3280,6 +3339,7 @@ class _AnalysisActionButtons extends ConsumerWidget {
 
     return Column(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         _RibbonAnalysisButton(
           icon: Icons.auto_delete_outlined,
@@ -3392,7 +3452,9 @@ class _RibbonAnalysisButtonState extends State<_RibbonAnalysisButton> {
       child: Opacity(
         opacity: widget.enabled ? 1 : 0.35,
         child: Container(
-          padding: EdgeInsets.symmetric(horizontal: 13.5.sp, vertical: 10.sp),
+          width: 48.sp,
+          alignment: Alignment.center,
+          padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 9.sp),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
@@ -3609,7 +3671,6 @@ class _PrincipalVariationListState
     if (pageCount == 0) {
       _lastUserSelectedIndex ??=
           oldWidget.state.selectedVariantIndex ?? _currentPage;
-      _currentPage = 0;
       return;
     }
 
@@ -4356,73 +4417,84 @@ class _PrincipalVariationListState
                     ),
           ),
         ),
-        if (pageCount > 1) ...[
-          SizedBox(height: 4.h),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(pageCount, (index) {
-              final isLockedDot = hasLockedPv && index == 0;
-              final isActive = index == _currentPage;
-              final dynamicIndex = hasLockedPv ? index - 1 : index;
+        SizedBox(height: 4.h),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(pageCount > 0 ? pageCount : 1, (index) {
+            if (pageCount == 0) {
+              return Container(
+                margin: EdgeInsets.symmetric(horizontal: 4.sp),
+                width: 6.w,
+                height: 6.w,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: kWhiteColor.withValues(alpha: 0.1),
+                ),
+              );
+            }
+            final isLockedDot = hasLockedPv && index == 0;
+            final isActive = index == _currentPage;
+            final dynamicIndex = hasLockedPv ? index - 1 : index;
 
-              Color dotColor;
-              Border? border;
+            Color dotColor;
+            Border? border;
 
-              if (isLockedDot) {
-                dotColor =
-                    isActive
-                        ? kWhiteColor.withValues(alpha: 0.95)
-                        : kWhiteColor.withValues(alpha: 0.35);
-                border = Border.all(
-                  color: kWhiteColor.withValues(alpha: isActive ? 1.0 : 0.65),
-                  width: isActive ? 1.5 : 1,
-                );
-              } else if (displayLines.isNotEmpty) {
-                final variantColor = notifier.getVariantColor(
-                  dynamicIndex.clamp(0, displayLines.length - 1),
-                  true,
-                );
-                dotColor =
-                    isActive
-                        ? variantColor
-                        : variantColor.withValues(alpha: 0.35);
-              } else {
-                dotColor =
-                    isActive
-                        ? kWhiteColor.withValues(alpha: 0.85)
-                        : kWhiteColor.withValues(alpha: 0.3);
-              }
+            if (isLockedDot) {
+              dotColor =
+                  isActive
+                      ? kWhiteColor.withValues(alpha: 0.95)
+                      : kWhiteColor.withValues(alpha: 0.35);
+              border = Border.all(
+                color: kWhiteColor.withValues(alpha: isActive ? 1.0 : 0.65),
+                width: isActive ? 1.5 : 1,
+              );
+            } else if (displayLines.isNotEmpty) {
+              final variantColor = notifier.getVariantColor(
+                dynamicIndex.clamp(0, displayLines.length - 1),
+                true,
+              );
+              dotColor =
+                  isActive
+                      ? variantColor
+                      : variantColor.withValues(alpha: 0.35);
+            } else {
+              dotColor =
+                  isActive
+                      ? kWhiteColor.withValues(alpha: 0.85)
+                      : kWhiteColor.withValues(alpha: 0.3);
+            }
 
-              final double size = isLockedDot ? 8.w : 6.w;
-              return GestureDetector(
-                onTap: () {
-                  if (!hasLockedPv ||
-                      widget.state.isPvPreviewActive == false ||
-                      index != 0) {
-                    _lastUserSelectedIndex = index;
-                  }
+            final double size = isLockedDot ? 8.w : 6.w;
+            return GestureDetector(
+              onTap: () {
+                if (!hasLockedPv ||
+                    widget.state.isPvPreviewActive == false ||
+                    index != 0) {
+                  _lastUserSelectedIndex = index;
+                }
+                if (_pageController.hasClients && pageCount > 0) {
                   _pageController.animateToPage(
                     index,
                     duration: const Duration(milliseconds: 300),
                     curve: Curves.easeInOut,
                   );
-                },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  margin: EdgeInsets.symmetric(horizontal: 4.sp),
-                  width: size,
-                  height: size,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: dotColor,
-                    border: border,
-                  ),
+                }
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                margin: EdgeInsets.symmetric(horizontal: 4.sp),
+                width: size,
+                height: size,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: dotColor,
+                  border: border,
                 ),
-              );
-            }),
-          ),
-          SizedBox(height: 4.h),
-        ],
+              ),
+            );
+          }),
+        ),
+        SizedBox(height: 4.h),
       ],
     );
   }
@@ -4968,11 +5040,12 @@ class _NotationActionOverlayState extends State<_NotationActionOverlay> {
     final distance = _dragOffset.distance;
     final velocityMagnitude = details.velocity.pixelsPerSecond.distance;
 
-    if (distance > _dragDismissThreshold || velocityMagnitude > 800) {
+    // More lenient threshold for fluid dismissal
+    if (distance > _dragDismissThreshold * 0.85 || velocityMagnitude > 600) {
       HapticFeedback.mediumImpact();
       Navigator.of(context).pop();
     } else {
-      // Snap back
+      // Snap back with smooth animation
       if (mounted) {
         setState(() {
           _dragOffset = Offset.zero;
@@ -5029,12 +5102,12 @@ class _NotationActionOverlayState extends State<_NotationActionOverlay> {
               );
             },
             child: GestureDetector(
-              onVerticalDragStart: (_) => _startDrag(),
-              onVerticalDragUpdate: _updateDrag,
-              onVerticalDragEnd: _endDrag,
-              onHorizontalDragStart: (_) => _startDrag(),
-              onHorizontalDragUpdate: _updateDrag,
-              onHorizontalDragEnd: _endDrag,
+              behavior: HitTestBehavior.opaque,
+              dragStartBehavior: DragStartBehavior.down,
+              // Use pan gestures for fluid multi-directional dragging
+              onPanStart: (_) => _startDrag(),
+              onPanUpdate: _updateDrag,
+              onPanEnd: _endDrag,
               child: Heroine(
                 motion: CupertinoMotion.bouncy(),
                 tag: widget.heroineTag,
@@ -5147,7 +5220,7 @@ class _NotationActionOverlayState extends State<_NotationActionOverlay> {
 
                             SizedBox(height: 20.h),
 
-                            // Action buttons with stagger animation
+                            // Action buttons with stagger animation - ignore when dragging
                             ...List.generate(widget.actions.length, (index) {
                               final action = widget.actions[index];
                               // Stagger each button
@@ -5155,34 +5228,39 @@ class _NotationActionOverlayState extends State<_NotationActionOverlay> {
                               final buttonEntranceValue =
                                   _isEntering ? 0.0 : 1.0;
 
-                              return SingleMotionBuilder(
-                                motion: CupertinoMotion.bouncy(),
-                                value: buttonEntranceValue,
-                                builder: (context, value, child) {
-                                  // Apply stagger effect
-                                  final delayedValue = (value - staggerDelay)
-                                      .clamp(0.0, 1.0);
-                                  final normalizedValue = (staggerDelay >= 1.0
-                                          ? 0.0
-                                          : delayedValue / (1.0 - staggerDelay))
-                                      .clamp(0.0, 1.0);
+                              return IgnorePointer(
+                                ignoring: _isDragging,
+                                child: SingleMotionBuilder(
+                                  motion: CupertinoMotion.bouncy(),
+                                  value: buttonEntranceValue,
+                                  builder: (context, value, child) {
+                                    // Apply stagger effect
+                                    final delayedValue = (value - staggerDelay)
+                                        .clamp(0.0, 1.0);
+                                    final normalizedValue = (staggerDelay >= 1.0
+                                            ? 0.0
+                                            : delayedValue /
+                                                (1.0 - staggerDelay))
+                                        .clamp(0.0, 1.0);
 
-                                  return Transform.translate(
-                                    offset: Offset(
-                                      0,
-                                      (1.0 - normalizedValue) * 20,
+                                    return Transform.translate(
+                                      offset: Offset(
+                                        0,
+                                        (1.0 - normalizedValue) * 20,
+                                      ),
+                                      child: Opacity(
+                                        opacity: normalizedValue,
+                                        child: child,
+                                      ),
+                                    );
+                                  },
+                                  child: Padding(
+                                    padding: EdgeInsets.only(bottom: 10.h),
+                                    child: _ActionButton(
+                                      action: action,
+                                      onPressed:
+                                          () => action.onSelected(context),
                                     ),
-                                    child: Opacity(
-                                      opacity: normalizedValue,
-                                      child: child,
-                                    ),
-                                  );
-                                },
-                                child: Padding(
-                                  padding: EdgeInsets.only(bottom: 10.h),
-                                  child: _ActionButton(
-                                    action: action,
-                                    onPressed: () => action.onSelected(context),
                                   ),
                                 ),
                               );
@@ -5418,6 +5496,7 @@ class _MovePreviewAnimationOverlayState
   Offset? _rejectDirection;
   bool _completed = false;
   double _magicBurst = 0.0;
+  bool _showExpandedMoveText = false;
 
   @override
   void initState() {
@@ -5433,6 +5512,14 @@ class _MovePreviewAnimationOverlayState
           _isEntering = false;
         });
       }
+    });
+
+    // Delay the large move-text reveal until the hero flight settles
+    Future.delayed(const Duration(milliseconds: 280), () {
+      if (!mounted) return;
+      setState(() {
+        _showExpandedMoveText = true;
+      });
     });
   }
 
@@ -5496,22 +5583,40 @@ class _MovePreviewAnimationOverlayState
     final velocityY = -details.velocity.pixelsPerSecond.dy; // Negative = upward
     final velocityX = details.velocity.pixelsPerSecond.dx.abs();
 
-    // Check for upward swipe to activate preview (magical gesture)
-    final hasUpwardVelocity = velocityY > 500;
-    final hasUpwardDistance = upward > _dragDismissThreshold * 0.7;
-    final isMainlyVertical = sideways < _dragDismissThreshold * 0.5;
+    // More fluid gesture detection - focus on intent, not perfect path
+    // Use velocity direction as primary indicator of intent
+    final hasUpwardVelocity = velocityY > 400; // More lenient threshold
+    final hasStrongUpwardVelocity = velocityY > 800;
+    final hasUpwardDistance = upward > _dragDismissThreshold * 0.6; // More lenient
 
-    if ((hasUpwardVelocity || hasUpwardDistance) && isMainlyVertical) {
+    // Check vertical-to-horizontal ratio instead of absolute values
+    // This allows diagonal swipes if the upward component is dominant
+    final verticalRatio = sideways > 0 ? upward / sideways : double.infinity;
+    final isUpwardDominant = verticalRatio > 0.8; // Allows ~51° angle or steeper
+
+    // Accept if:
+    // 1. Strong upward velocity (user clearly flicked up), OR
+    // 2. Good upward velocity with reasonable angle, OR
+    // 3. Sufficient upward distance with upward-dominant direction
+    final shouldActivate = hasStrongUpwardVelocity ||
+        (hasUpwardVelocity && isUpwardDominant) ||
+        (hasUpwardDistance && verticalRatio > 1.2); // Even more lenient for distance
+
+    if (shouldActivate) {
       // Magical upward swipe - activate preview!
       HapticFeedback.heavyImpact();
       _activatePreviewWithMagic();
       return;
     }
 
-    // Reject on strong horizontal motion or downward drag
-    final rejectHorizontal =
-        sideways > _dragDismissThreshold * 0.8 || velocityX > 800;
-    final rejectDownward = upward < -50 || (upward < 0 && -velocityY < -400);
+    // Only reject on clearly intentional horizontal/downward gestures
+    // More lenient - focus on strong opposing intent rather than any deviation
+    final horizontalRatio = upward > 0 ? sideways / upward : double.infinity;
+    final isHorizontalDominant = horizontalRatio > 1.5; // Strongly horizontal
+    final hasStrongHorizontalVelocity = velocityX > 1000; // Clear horizontal intent
+    final rejectHorizontal = isHorizontalDominant || hasStrongHorizontalVelocity;
+
+    final rejectDownward = upward < -80 || (upward < -20 && -velocityY < -600);
 
     if (rejectHorizontal || rejectDownward) {
       HapticFeedback.mediumImpact();
@@ -5563,27 +5668,18 @@ class _MovePreviewAnimationOverlayState
   void _rejectPreview() {
     if (_isDismissing) return;
 
-    // Calculate direction with velocity
-    final releaseVector = _dragOffset + (_currentDragVelocity * 0.002);
+    // Calculate direction with velocity for natural continuation
+    final releaseVector = _dragOffset + (_currentDragVelocity * 0.003);
     Offset direction =
         releaseVector == Offset.zero ? const Offset(0, 1) : releaseVector;
     final normalized = direction / direction.distance;
 
-    // Determine dismiss direction
-    final isHorizontal = normalized.dx.abs() > normalized.dy.abs();
     final screenSize = MediaQuery.of(context).size;
 
-    Offset target;
-    if (isHorizontal) {
-      // Horizontal swipe - slide off screen
-      target = Offset(
-        normalized.dx > 0 ? screenSize.width : -screenSize.width,
-        _dragOffset.dy,
-      );
-    } else {
-      // Downward swipe - drop off screen
-      target = Offset(_dragOffset.dx, screenSize.height * 0.8);
-    }
+    // Follow the natural fling direction - don't snap to axes!
+    // Calculate how far to go in the fling direction to exit screen
+    final scale = math.max(screenSize.width, screenSize.height) * 1.5;
+    final target = _dragOffset + (normalized * scale);
 
     setState(() {
       _isDraggingCard = false;
@@ -5650,9 +5746,20 @@ class _MovePreviewAnimationOverlayState
       widget.moveIndex,
     );
 
-    // Magical ascension animation
-    final screenHeight = MediaQuery.of(context).size.height;
-    final target = Offset(0, -screenHeight * 0.8);
+    // Follow the natural fling direction instead of snapping to center
+    final screenSize = MediaQuery.of(context).size;
+
+    // Calculate direction based on current drag offset and velocity
+    final releaseVector = _dragOffset + (_currentDragVelocity * 0.003);
+    final direction = releaseVector == Offset.zero
+        ? const Offset(0, -1) // Default upward if no velocity
+        : releaseVector;
+    final normalized = direction / direction.distance;
+
+    // Calculate target point off-screen in the fling direction
+    // Scale by screen dimensions to ensure it goes far enough
+    final scale = math.max(screenSize.width, screenSize.height) * 1.2;
+    final target = _dragOffset + (normalized * scale);
 
     setState(() {
       _isDraggingCard = false;
@@ -6247,6 +6354,8 @@ class _MovePreviewAnimationOverlayState
                             ),
                           Center(
                             child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              dragStartBehavior: DragStartBehavior.down,
                               onTap: () {},
                               onPanStart: (_) => _startDrag(),
                               onPanUpdate: _updateDrag,
@@ -6388,12 +6497,23 @@ class _MovePreviewAnimationOverlayState
                                                   // Main move text with hero animation
                                                   Builder(
                                                     builder: (context) {
-                                                      final heroChild = Material(
-                                                        color:
-                                                            Colors.transparent,
-                                                        child: Text(
-                                                          widget.moveText,
-                                                          style: AppTypography.textXsMedium.copyWith(
+                                                      final baseStyle =
+                                                          AppTypography
+                                                              .textXsMedium
+                                                              .copyWith(
+                                                                color:
+                                                                    kWhiteColor,
+                                                                fontSize: 16.sp,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w700,
+                                                                letterSpacing:
+                                                                    -0.2,
+                                                                height: 1.1,
+                                                              );
+                                                      final expandedStyle = AppTypography
+                                                          .textXsMedium
+                                                          .copyWith(
                                                             color: kWhiteColor,
                                                             fontSize: 52.sp,
                                                             fontWeight:
@@ -6424,6 +6544,29 @@ class _MovePreviewAnimationOverlayState
                                                                     ),
                                                               ),
                                                             ],
+                                                          );
+                                                      final targetStyle =
+                                                          _showExpandedMoveText
+                                                              ? expandedStyle
+                                                              : baseStyle;
+
+                                                      final heroChild = Material(
+                                                        color:
+                                                            Colors.transparent,
+                                                        child: AnimatedDefaultTextStyle(
+                                                          duration:
+                                                              const Duration(
+                                                                milliseconds:
+                                                                    260,
+                                                              ),
+                                                          curve:
+                                                              Curves.easeInOut,
+                                                          style: targetStyle,
+                                                          child: Text(
+                                                            widget.moveText,
+                                                            textAlign:
+                                                                TextAlign
+                                                                    .center,
                                                           ),
                                                         ),
                                                       );
@@ -6496,338 +6639,345 @@ class _MovePreviewAnimationOverlayState
                                                       ),
                                                     ),
                                                   SizedBox(height: 24.sp),
-                                                  // Action buttons
-                                                  Column(
-                                                    mainAxisSize:
-                                                        MainAxisSize.min,
-                                                    children: [
-                                                      // Promote Main Variant button
-                                                      SizedBox(
-                                                        width: double.infinity,
-                                                        child: Material(
-                                                          color:
-                                                              Colors
-                                                                  .transparent,
-                                                          child: InkWell(
-                                                            onTap:
-                                                                _onPromoteMainVariant,
-                                                            borderRadius:
-                                                                BorderRadius.circular(
-                                                                  10.sp,
-                                                                ),
-                                                            child: Container(
-                                                              padding:
-                                                                  EdgeInsets.symmetric(
-                                                                    vertical:
-                                                                        14.sp,
+                                                  // Action buttons - ignore pointer when dragging
+                                                  IgnorePointer(
+                                                    ignoring: _isDraggingCard,
+                                                    child: Column(
+                                                      mainAxisSize:
+                                                          MainAxisSize.min,
+                                                      children: [
+                                                        // Promote Main Variant button
+                                                        SizedBox(
+                                                          width:
+                                                              double.infinity,
+                                                          child: Material(
+                                                            color:
+                                                                Colors
+                                                                    .transparent,
+                                                            child: InkWell(
+                                                              onTap:
+                                                                  _onPromoteMainVariant,
+                                                              borderRadius:
+                                                                  BorderRadius.circular(
+                                                                    10.sp,
                                                                   ),
-                                                              decoration: BoxDecoration(
-                                                                gradient: LinearGradient(
-                                                                  colors: [
-                                                                    variantColor
+                                                              child: Container(
+                                                                padding:
+                                                                    EdgeInsets.symmetric(
+                                                                      vertical:
+                                                                          14.sp,
+                                                                    ),
+                                                                decoration: BoxDecoration(
+                                                                  gradient: LinearGradient(
+                                                                    colors: [
+                                                                      variantColor.withValues(
+                                                                        alpha:
+                                                                            0.4,
+                                                                      ),
+                                                                      variantColor.withValues(
+                                                                        alpha:
+                                                                            0.3,
+                                                                      ),
+                                                                    ],
+                                                                  ),
+                                                                  borderRadius:
+                                                                      BorderRadius.circular(
+                                                                        10.sp,
+                                                                      ),
+                                                                  border: Border.all(
+                                                                    color: variantColor
+                                                                        .withValues(
+                                                                          alpha:
+                                                                              0.6,
+                                                                        ),
+                                                                    width: 1.5,
+                                                                  ),
+                                                                ),
+                                                                child: Row(
+                                                                  mainAxisAlignment:
+                                                                      MainAxisAlignment
+                                                                          .center,
+                                                                  children: [
+                                                                    Icon(
+                                                                      Icons
+                                                                          .upgrade_rounded,
+                                                                      color:
+                                                                          kWhiteColor,
+                                                                      size:
+                                                                          18.sp,
+                                                                    ),
+                                                                    SizedBox(
+                                                                      width:
+                                                                          8.sp,
+                                                                    ),
+                                                                    Text(
+                                                                      'Promote Main Variant',
+                                                                      style: AppTypography.textSmBold.copyWith(
+                                                                        color:
+                                                                            kWhiteColor,
+                                                                        fontSize:
+                                                                            14.sp,
+                                                                        fontWeight:
+                                                                            FontWeight.w700,
+                                                                        letterSpacing:
+                                                                            0.3,
+                                                                      ),
+                                                                    ),
+                                                                  ],
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        SizedBox(height: 10.sp),
+                                                        // Insert All Moves button
+                                                        SizedBox(
+                                                          width:
+                                                              double.infinity,
+                                                          child: Material(
+                                                            color:
+                                                                Colors
+                                                                    .transparent,
+                                                            child: InkWell(
+                                                              onTap:
+                                                                  _onInsertAllMoves,
+                                                              borderRadius:
+                                                                  BorderRadius.circular(
+                                                                    10.sp,
+                                                                  ),
+                                                              child: Container(
+                                                                padding:
+                                                                    EdgeInsets.symmetric(
+                                                                      vertical:
+                                                                          14.sp,
+                                                                    ),
+                                                                decoration: BoxDecoration(
+                                                                  color: Colors
+                                                                      .black
+                                                                      .withValues(
+                                                                        alpha:
+                                                                            0.3,
+                                                                      ),
+                                                                  borderRadius:
+                                                                      BorderRadius.circular(
+                                                                        10.sp,
+                                                                      ),
+                                                                  border: Border.all(
+                                                                    color: variantColor
                                                                         .withValues(
                                                                           alpha:
                                                                               0.4,
                                                                         ),
-                                                                    variantColor
-                                                                        .withValues(
+                                                                    width: 1,
+                                                                  ),
+                                                                ),
+                                                                child: Row(
+                                                                  mainAxisAlignment:
+                                                                      MainAxisAlignment
+                                                                          .center,
+                                                                  children: [
+                                                                    Icon(
+                                                                      Icons
+                                                                          .add_circle_outline_rounded,
+                                                                      color: kWhiteColor.withValues(
+                                                                        alpha:
+                                                                            0.9,
+                                                                      ),
+                                                                      size:
+                                                                          18.sp,
+                                                                    ),
+                                                                    SizedBox(
+                                                                      width:
+                                                                          8.sp,
+                                                                    ),
+                                                                    Text(
+                                                                      'Insert All Moves',
+                                                                      style: AppTypography.textSmBold.copyWith(
+                                                                        color: kWhiteColor.withValues(
                                                                           alpha:
-                                                                              0.3,
+                                                                              0.9,
                                                                         ),
+                                                                        fontSize:
+                                                                            14.sp,
+                                                                        fontWeight:
+                                                                            FontWeight.w600,
+                                                                        letterSpacing:
+                                                                            0.3,
+                                                                      ),
+                                                                    ),
                                                                   ],
                                                                 ),
-                                                                borderRadius:
-                                                                    BorderRadius.circular(
-                                                                      10.sp,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        SizedBox(height: 10.sp),
+                                                        // Preview button
+                                                        SizedBox(
+                                                          width:
+                                                              double.infinity,
+                                                          child: Material(
+                                                            color:
+                                                                Colors
+                                                                    .transparent,
+                                                            child: InkWell(
+                                                              onTap: _onPreview,
+                                                              borderRadius:
+                                                                  BorderRadius.circular(
+                                                                    10.sp,
+                                                                  ),
+                                                              child: Container(
+                                                                padding:
+                                                                    EdgeInsets.symmetric(
+                                                                      vertical:
+                                                                          14.sp,
                                                                     ),
-                                                                border: Border.all(
-                                                                  color: variantColor
+                                                                decoration: BoxDecoration(
+                                                                  color: Colors
+                                                                      .black
                                                                       .withValues(
                                                                         alpha:
-                                                                            0.6,
+                                                                            0.3,
                                                                       ),
-                                                                  width: 1.5,
+                                                                  borderRadius:
+                                                                      BorderRadius.circular(
+                                                                        10.sp,
+                                                                      ),
+                                                                  border: Border.all(
+                                                                    color: variantColor
+                                                                        .withValues(
+                                                                          alpha:
+                                                                              0.4,
+                                                                        ),
+                                                                    width: 1,
+                                                                  ),
+                                                                ),
+                                                                child: Row(
+                                                                  mainAxisAlignment:
+                                                                      MainAxisAlignment
+                                                                          .center,
+                                                                  children: [
+                                                                    Icon(
+                                                                      Icons
+                                                                          .visibility_outlined,
+                                                                      color: kWhiteColor.withValues(
+                                                                        alpha:
+                                                                            0.9,
+                                                                      ),
+                                                                      size:
+                                                                          18.sp,
+                                                                    ),
+                                                                    SizedBox(
+                                                                      width:
+                                                                          8.sp,
+                                                                    ),
+                                                                    Text(
+                                                                      'Preview',
+                                                                      style: AppTypography.textSmBold.copyWith(
+                                                                        color: kWhiteColor.withValues(
+                                                                          alpha:
+                                                                              0.9,
+                                                                        ),
+                                                                        fontSize:
+                                                                            14.sp,
+                                                                        fontWeight:
+                                                                            FontWeight.w600,
+                                                                        letterSpacing:
+                                                                            0.3,
+                                                                      ),
+                                                                    ),
+                                                                  ],
                                                                 ),
                                                               ),
-                                                              child: Row(
-                                                                mainAxisAlignment:
-                                                                    MainAxisAlignment
-                                                                        .center,
-                                                                children: [
-                                                                  Icon(
-                                                                    Icons
-                                                                        .upgrade_rounded,
-                                                                    color:
-                                                                        kWhiteColor,
-                                                                    size: 18.sp,
-                                                                  ),
-                                                                  SizedBox(
-                                                                    width: 8.sp,
-                                                                  ),
-                                                                  Text(
-                                                                    'Promote Main Variant',
-                                                                    style: AppTypography.textSmBold.copyWith(
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        // Swipe up hint with animated arrow
+                                                        SizedBox(height: 16.sp),
+                                                        TweenAnimationBuilder<
+                                                          double
+                                                        >(
+                                                          duration:
+                                                              const Duration(
+                                                                milliseconds:
+                                                                    1500,
+                                                              ),
+                                                          tween: Tween(
+                                                            begin: 0.0,
+                                                            end: 1.0,
+                                                          ),
+                                                          curve:
+                                                              Curves.easeInOut,
+                                                          builder: (
+                                                            context,
+                                                            value,
+                                                            child,
+                                                          ) {
+                                                            final bounce =
+                                                                math.sin(
+                                                                  value *
+                                                                      math.pi *
+                                                                      2,
+                                                                ) *
+                                                                4;
+                                                            final opacity =
+                                                                0.4 +
+                                                                (math.sin(
+                                                                      value *
+                                                                          math.pi *
+                                                                          2,
+                                                                    ) *
+                                                                    0.3);
+                                                            return Transform.translate(
+                                                              offset: Offset(
+                                                                0,
+                                                                bounce,
+                                                              ),
+                                                              child: Opacity(
+                                                                opacity:
+                                                                    opacity,
+                                                                child: Column(
+                                                                  mainAxisSize:
+                                                                      MainAxisSize
+                                                                          .min,
+                                                                  children: [
+                                                                    Icon(
+                                                                      Icons
+                                                                          .keyboard_arrow_up_rounded,
                                                                       color:
-                                                                          kWhiteColor,
-                                                                      fontSize:
-                                                                          14.sp,
-                                                                      fontWeight:
-                                                                          FontWeight
-                                                                              .w700,
-                                                                      letterSpacing:
-                                                                          0.3,
+                                                                          variantColor,
+                                                                      size:
+                                                                          32.sp,
                                                                     ),
-                                                                  ),
-                                                                ],
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        ),
-                                                      ),
-                                                      SizedBox(height: 10.sp),
-                                                      // Insert All Moves button
-                                                      SizedBox(
-                                                        width: double.infinity,
-                                                        child: Material(
-                                                          color:
-                                                              Colors
-                                                                  .transparent,
-                                                          child: InkWell(
-                                                            onTap:
-                                                                _onInsertAllMoves,
-                                                            borderRadius:
-                                                                BorderRadius.circular(
-                                                                  10.sp,
-                                                                ),
-                                                            child: Container(
-                                                              padding:
-                                                                  EdgeInsets.symmetric(
-                                                                    vertical:
-                                                                        14.sp,
-                                                                  ),
-                                                              decoration: BoxDecoration(
-                                                                color: Colors
-                                                                    .black
-                                                                    .withValues(
-                                                                      alpha:
-                                                                          0.3,
-                                                                    ),
-                                                                borderRadius:
-                                                                    BorderRadius.circular(
-                                                                      10.sp,
-                                                                    ),
-                                                                border: Border.all(
-                                                                  color: variantColor
-                                                                      .withValues(
-                                                                        alpha:
-                                                                            0.4,
-                                                                      ),
-                                                                  width: 1,
-                                                                ),
-                                                              ),
-                                                              child: Row(
-                                                                mainAxisAlignment:
-                                                                    MainAxisAlignment
-                                                                        .center,
-                                                                children: [
-                                                                  Icon(
-                                                                    Icons
-                                                                        .add_circle_outline_rounded,
-                                                                    color: kWhiteColor
-                                                                        .withValues(
+                                                                    Text(
+                                                                      'Swipe up to preview',
+                                                                      style: AppTypography.textXsRegular.copyWith(
+                                                                        color: kWhiteColor.withValues(
                                                                           alpha:
-                                                                              0.9,
+                                                                              0.6,
                                                                         ),
-                                                                    size: 18.sp,
-                                                                  ),
-                                                                  SizedBox(
-                                                                    width: 8.sp,
-                                                                  ),
-                                                                  Text(
-                                                                    'Insert All Moves',
-                                                                    style: AppTypography.textSmBold.copyWith(
-                                                                      color: kWhiteColor.withValues(
-                                                                        alpha:
-                                                                            0.9,
+                                                                        fontSize:
+                                                                            11.sp,
+                                                                        fontWeight:
+                                                                            FontWeight.w500,
+                                                                        letterSpacing:
+                                                                            0.5,
                                                                       ),
-                                                                      fontSize:
-                                                                          14.sp,
-                                                                      fontWeight:
-                                                                          FontWeight
-                                                                              .w600,
-                                                                      letterSpacing:
-                                                                          0.3,
                                                                     ),
-                                                                  ),
-                                                                ],
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        ),
-                                                      ),
-                                                      SizedBox(height: 10.sp),
-                                                      // Preview button
-                                                      SizedBox(
-                                                        width: double.infinity,
-                                                        child: Material(
-                                                          color:
-                                                              Colors
-                                                                  .transparent,
-                                                          child: InkWell(
-                                                            onTap: _onPreview,
-                                                            borderRadius:
-                                                                BorderRadius.circular(
-                                                                  10.sp,
-                                                                ),
-                                                            child: Container(
-                                                              padding:
-                                                                  EdgeInsets.symmetric(
-                                                                    vertical:
-                                                                        14.sp,
-                                                                  ),
-                                                              decoration: BoxDecoration(
-                                                                color: Colors
-                                                                    .black
-                                                                    .withValues(
-                                                                      alpha:
-                                                                          0.3,
-                                                                    ),
-                                                                borderRadius:
-                                                                    BorderRadius.circular(
-                                                                      10.sp,
-                                                                    ),
-                                                                border: Border.all(
-                                                                  color: variantColor
-                                                                      .withValues(
-                                                                        alpha:
-                                                                            0.4,
-                                                                      ),
-                                                                  width: 1,
+                                                                  ],
                                                                 ),
                                                               ),
-                                                              child: Row(
-                                                                mainAxisAlignment:
-                                                                    MainAxisAlignment
-                                                                        .center,
-                                                                children: [
-                                                                  Icon(
-                                                                    Icons
-                                                                        .visibility_outlined,
-                                                                    color: kWhiteColor
-                                                                        .withValues(
-                                                                          alpha:
-                                                                              0.9,
-                                                                        ),
-                                                                    size: 18.sp,
-                                                                  ),
-                                                                  SizedBox(
-                                                                    width: 8.sp,
-                                                                  ),
-                                                                  Text(
-                                                                    'Preview',
-                                                                    style: AppTypography.textSmBold.copyWith(
-                                                                      color: kWhiteColor.withValues(
-                                                                        alpha:
-                                                                            0.9,
-                                                                      ),
-                                                                      fontSize:
-                                                                          14.sp,
-                                                                      fontWeight:
-                                                                          FontWeight
-                                                                              .w600,
-                                                                      letterSpacing:
-                                                                          0.3,
-                                                                    ),
-                                                                  ),
-                                                                ],
-                                                              ),
-                                                            ),
-                                                          ),
+                                                            );
+                                                          },
+                                                          onEnd: () {
+                                                            // Loop the animation
+                                                            if (mounted) {
+                                                              setState(() {});
+                                                            }
+                                                          },
                                                         ),
-                                                      ),
-                                                      // Swipe up hint with animated arrow
-                                                      SizedBox(height: 16.sp),
-                                                      TweenAnimationBuilder<
-                                                        double
-                                                      >(
-                                                        duration:
-                                                            const Duration(
-                                                              milliseconds:
-                                                                  1500,
-                                                            ),
-                                                        tween: Tween(
-                                                          begin: 0.0,
-                                                          end: 1.0,
-                                                        ),
-                                                        curve: Curves.easeInOut,
-                                                        builder: (
-                                                          context,
-                                                          value,
-                                                          child,
-                                                        ) {
-                                                          final bounce =
-                                                              math.sin(
-                                                                value *
-                                                                    math.pi *
-                                                                    2,
-                                                              ) *
-                                                              4;
-                                                          final opacity =
-                                                              0.4 +
-                                                              (math.sin(
-                                                                    value *
-                                                                        math.pi *
-                                                                        2,
-                                                                  ) *
-                                                                  0.3);
-                                                          return Transform.translate(
-                                                            offset: Offset(
-                                                              0,
-                                                              bounce,
-                                                            ),
-                                                            child: Opacity(
-                                                              opacity: opacity,
-                                                              child: Column(
-                                                                mainAxisSize:
-                                                                    MainAxisSize
-                                                                        .min,
-                                                                children: [
-                                                                  Icon(
-                                                                    Icons
-                                                                        .keyboard_arrow_up_rounded,
-                                                                    color:
-                                                                        variantColor,
-                                                                    size: 32.sp,
-                                                                  ),
-                                                                  Text(
-                                                                    'Swipe up to preview',
-                                                                    style: AppTypography.textXsRegular.copyWith(
-                                                                      color: kWhiteColor.withValues(
-                                                                        alpha:
-                                                                            0.6,
-                                                                      ),
-                                                                      fontSize:
-                                                                          11.sp,
-                                                                      fontWeight:
-                                                                          FontWeight
-                                                                              .w500,
-                                                                      letterSpacing:
-                                                                          0.5,
-                                                                    ),
-                                                                  ),
-                                                                ],
-                                                              ),
-                                                            ),
-                                                          );
-                                                        },
-                                                        onEnd: () {
-                                                          // Loop the animation
-                                                          if (mounted) {
-                                                            setState(() {});
-                                                          }
-                                                        },
-                                                      ),
-                                                    ],
+                                                      ],
+                                                    ),
                                                   ),
                                                 ],
                                               ),
