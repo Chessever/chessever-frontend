@@ -252,8 +252,12 @@ class GroupEventScreen extends HookConsumerWidget {
                         final cachedEventFavoritePlayers =
                             ref.watch(eventFavoritePlayersCacheProvider);
 
+                        // Disable favorite prioritization for past events
+                        final shouldApplyFavoriteSorting =
+                            currentCategory != GroupEventCategory.past;
+
                         final finalEvents =
-                            isSearching
+                            isSearching || !shouldApplyFavoriteSorting
                                 ? filteredEvents
                                 : ref
                                     .read(tournamentSortingServiceProvider)

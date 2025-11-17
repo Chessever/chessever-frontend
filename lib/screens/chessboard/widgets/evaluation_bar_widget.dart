@@ -42,7 +42,7 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget>
     with SingleTickerProviderStateMixin {
   double? _lastEval;
   int? _lastMate;
-  String? _lastEvalPositionKey;
+  bool _awaitingNewEvaluation = false;
   late AnimationController _controller;
   late CurvedAnimation _curve;
   double _animationStartRatio = 0.5;
@@ -53,9 +53,7 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget>
     super.initState();
     _lastEval = widget.evaluation;
     _lastMate = widget.mate;
-    if (widget.evaluation != null && widget.positionKey != null) {
-      _lastEvalPositionKey = widget.positionKey;
-    }
+    _awaitingNewEvaluation = (widget.evaluation == null && widget.mate == null);
     final initialEval = widget.evaluation ?? 0.0;
     final initialMate = widget.mate ?? 0;
     _targetRatio = _ratioForEval(initialEval, initialMate);
@@ -79,31 +77,38 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget>
   @override
   void didUpdateWidget(covariant EvaluationBarWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final positionChanged = widget.positionKey != oldWidget.positionKey;
-    if (positionChanged) {
-      _lastEvalPositionKey = widget.positionKey;
-      _lastEval = widget.evaluation;
-      _lastMate = widget.mate;
-      _animateToRatio(_whiteRatio(0.0));
-    }
     bool changed = false;
+
+    if (widget.positionKey != oldWidget.positionKey) {
+      _awaitingNewEvaluation = true;
+      changed = true;
+    }
+
+    bool hasNewEval = false;
+    double? latestEval;
+    int? latestMate;
+
     if (widget.evaluation != null && widget.evaluation != _lastEval) {
       _lastEval = widget.evaluation;
-      if (widget.positionKey != null) {
-        _lastEvalPositionKey = widget.positionKey;
-      }
-      changed = true;
+      latestEval = widget.evaluation;
+      hasNewEval = true;
     }
     if (widget.mate != null && widget.mate != _lastMate) {
       _lastMate = widget.mate;
-      if (widget.positionKey != null) {
-        _lastEvalPositionKey = widget.positionKey;
-      }
+      latestMate = widget.mate;
+      hasNewEval = true;
+    }
+
+    if (hasNewEval) {
+      _awaitingNewEvaluation = false;
+      final effectiveEval =
+          (latestMate ?? _lastMate ?? 0) != 0
+              ? ((latestMate ?? _lastMate ?? 0) > 0 ? 10.0 : -10.0)
+              : (latestEval ?? _lastEval ?? 0.0);
+      _animateToRatio(_whiteRatio(effectiveEval));
       changed = true;
     }
-    if (positionChanged) {
-      changed = true;
-    }
+
     if (changed) {
       setState(() {});
     }
@@ -136,20 +141,12 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget>
     // This should NEVER be negated based on whose turn it is
     final displayEval = rawEval;
     final displayMate = rawMate;
-    final awaitingNewPositionData =
-        widget.positionKey != null &&
-        widget.positionKey != (_lastEvalPositionKey ?? widget.positionKey);
+    final awaitingNewPositionData = _awaitingNewEvaluation;
     final hasEval =
         !awaitingNewPositionData &&
         ((widget.evaluation != null || _lastEval != null) || displayMate != 0);
-    final showLoading = widget.isEvaluating && !hasEval;
-
-    final double evalForRatio =
-        displayMate != 0 ? (displayMate > 0 ? 10.0 : -10.0) : displayEval;
-
-    if (!awaitingNewPositionData) {
-      _animateToRatio(_whiteRatio(evalForRatio));
-    }
+    final showLoading =
+        awaitingNewPositionData || (widget.isEvaluating && !hasEval);
 
     final whiteRatio = _currentAnimatedRatio();
     final blackRatio = 1.0 - whiteRatio;

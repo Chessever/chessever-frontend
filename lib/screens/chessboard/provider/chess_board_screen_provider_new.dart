@@ -234,7 +234,7 @@ class ChessBoardScreenNotifierNew
           }
         }
       }
-    });
+    }, fireImmediately: true);
   }
 
   String? _currentPositionFen() {
@@ -1250,11 +1250,7 @@ class ChessBoardScreenNotifierNew
       final navigatorState = _analysisNavigator?.state;
       if (navigatorState != null && navigatorState.game.mainline.isNotEmpty) {
         final historySnapshot = _historySnapshotUpToPointer(navigatorState);
-        final currentMoveIndex = baseAnalysis.currentMoveIndex;
-        final cappedEndIndex = math.min(
-          historySnapshot.sanMoves.length,
-          math.max(0, currentMoveIndex + 1),
-        );
+        final cappedEndIndex = historySnapshot.sanMoves.length;
         if (cappedEndIndex > 0) {
           pgnHistory = historySnapshot.sanMoves.sublist(0, cappedEndIndex);
           baseMoveObjects =

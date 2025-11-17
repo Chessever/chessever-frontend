@@ -622,7 +622,7 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
         if (line.isEmpty) {
           return line;
         }
-        final keepLength = trimIndex.clamp(0, line.length - 1) + 1;
+        final keepLength = trimIndex.clamp(0, line.length);
         return List<ChessMove>.of(line.take(keepLength));
       },
     );
