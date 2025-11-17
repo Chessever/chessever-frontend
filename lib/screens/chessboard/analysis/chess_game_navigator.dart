@@ -167,7 +167,10 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
 
     final newVariations = List<ChessLine>.of(variations);
     newVariations[variationIndex] = updatedVariation;
-    final updatedMove = move.copyWith(variations: newVariations);
+    final updatedMove = move.copyWith(
+      variations: newVariations,
+      overrideVariations: true,
+    );
 
     final newLine = List<ChessMove>.of(source);
     newLine[moveIndex] = updatedMove;
@@ -217,7 +220,10 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
 
     final newVariations = List<ChessLine>.of(variations);
     newVariations[variationIndex] = updatedVariation;
-    final updatedMove = move.copyWith(variations: newVariations);
+    final updatedMove = move.copyWith(
+      variations: newVariations,
+      overrideVariations: true,
+    );
 
     final newLine = List<ChessMove>.of(source);
     newLine[moveIndex] = updatedMove;
@@ -244,7 +250,10 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
       variations.add([newMove]);
       onAdded(variations.length - 1);
       final newLine = List<ChessMove>.of(source);
-      newLine[moveIndex] = move.copyWith(variations: variations);
+      newLine[moveIndex] = move.copyWith(
+        variations: variations,
+        overrideVariations: true,
+      );
       return newLine;
     }
 
@@ -270,7 +279,10 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
     final newVariations = List<ChessLine>.of(variations);
     newVariations[variationIndex] = updatedVariation;
     final newLine = List<ChessMove>.of(source);
-    newLine[moveIndex] = move.copyWith(variations: newVariations);
+    newLine[moveIndex] = move.copyWith(
+      variations: newVariations,
+      overrideVariations: true,
+    );
     return newLine;
   }
 
@@ -480,7 +492,10 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
         ChessGameNavigatorState(
           game: state.game.copyWith(
             mainline: [
-              firstMove.copyWith(variations: updatedVariations),
+              firstMove.copyWith(
+                variations: updatedVariations,
+                overrideVariations: true,
+              ),
               ...state.game.mainline.sublist(1),
             ],
           ),
@@ -586,6 +601,7 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
         variations.removeAt(variationIndex);
         final updatedMove = move.copyWith(
           variations: variations.isEmpty ? null : variations,
+          overrideVariations: true,
         );
         final newLine = List<ChessMove>.of(line);
         newLine[moveIndex] = updatedMove;
@@ -694,7 +710,10 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
 
         final keptVariation = variations[variationIndex];
         final newVariations = <ChessLine>[keptVariation];
-        final updatedMove = move.copyWith(variations: newVariations);
+        final updatedMove = move.copyWith(
+          variations: newVariations,
+          overrideVariations: true,
+        );
 
         final newLine = List<ChessMove>.of(line);
         newLine[moveIndex] = updatedMove;
@@ -960,7 +979,10 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
         ChessGameNavigatorState(
           game: state.game.copyWith(
             mainline: [
-              firstMove.copyWith(variations: updatedVariations),
+              firstMove.copyWith(
+                variations: updatedVariations,
+                overrideVariations: true,
+              ),
               ...state.game.mainline.sublist(1),
             ],
           ),
@@ -1011,7 +1033,10 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
       move.variations ?? const <ChessLine>[],
     );
     updatedVariations.add([newMove]);
-    line[pointer.last] = move.copyWith(variations: updatedVariations);
+    line[pointer.last] = move.copyWith(
+      variations: updatedVariations,
+      overrideVariations: true,
+    );
 
     newPointer = <Number>[...pointer, updatedVariations.length - 1, 0];
 

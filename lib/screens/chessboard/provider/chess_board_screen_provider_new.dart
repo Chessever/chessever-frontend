@@ -1739,7 +1739,7 @@ class ChessBoardScreenNotifierNew
   }
 
   ChessMove _stripVariations(ChessMove move) {
-    return move.copyWith(variations: null);
+    return move.copyWith(variations: null, overrideVariations: true);
   }
 
   void navigateLockedPvForward() {
