@@ -724,6 +724,8 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
 
         if (sanitizedVariation.isNotEmpty) {
           newLine.addAll(sanitizedVariation);
+        }
+        if (sanitizedVariation.isNotEmpty) {
           final pointer = List<Number>.of(parentPointer);
           if (pointer.isEmpty) {
             pointer.add(moveIndex + 1);
