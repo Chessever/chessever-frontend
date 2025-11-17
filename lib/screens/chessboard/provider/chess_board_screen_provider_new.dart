@@ -70,6 +70,18 @@ void _releaseLog(String message) {
   }
 }
 
+class _BranchHistory {
+  final List<String> sanMoves;
+  final List<Move?> moveObjects;
+  final List<Position> positions;
+
+  const _BranchHistory({
+    required this.sanMoves,
+    required this.moveObjects,
+    required this.positions,
+  });
+}
+
 class ChessBoardScreenNotifierNew
     extends StateNotifier<AsyncValue<ChessBoardStateNew>> {
   ChessBoardScreenNotifierNew(
@@ -1235,32 +1247,41 @@ class ChessBoardScreenNotifierNew
     // Create locked PV line: merge PGN history with PV moves
     // CRITICAL: When in nested preview, use the preview card's merged history as base
     final List<String> pgnHistory;
-    final List<Move> baseMoveObjects;
+    final List<Move?> baseMoveObjects;
+    List<Position> basePositions = const <Position>[];
     if (currentState.isPvPreviewActive &&
         currentState.lockedPvMergedMoves != null) {
       // Nested preview: Use preview card's merged history as base
       pgnHistory = currentState.lockedPvMergedMoves!;
       baseMoveObjects =
-          currentState.lockedPvMergedMoveObjects ?? baseAnalysis.combinedMoves;
+          currentState.lockedPvMergedMoveObjects ??
+              List<Move?>.of(baseAnalysis.combinedMoves);
+      basePositions =
+          currentState.lockedPvMergedPositions != null
+              ? List<Position>.of(currentState.lockedPvMergedPositions!)
+              : <Position>[];
       _releaseLog(
         '🎯 PV PREVIEW: Using preview card history as base (${pgnHistory.length} moves)',
       );
     } else {
       // Prefer navigator history to ensure we capture the exact line (including parent variations)
       final navigatorState = _analysisNavigator?.state;
-      if (navigatorState != null && navigatorState.game.mainline.isNotEmpty) {
-        final historySnapshot = _historySnapshotUpToPointer(navigatorState);
-        final cappedEndIndex = historySnapshot.sanMoves.length;
-        if (cappedEndIndex > 0) {
-          pgnHistory = historySnapshot.sanMoves.sublist(0, cappedEndIndex);
-          baseMoveObjects =
-              historySnapshot.moveObjects.length >= cappedEndIndex
-                  ? historySnapshot.moveObjects.sublist(0, cappedEndIndex)
-                  : List<Move>.of(historySnapshot.moveObjects);
-        } else {
-          pgnHistory = const [];
-          baseMoveObjects = const [];
-        }
+      final ChessGame? sourceGame =
+          navigatorState?.game ?? baseState.analysisState.game;
+      final ChessMovePointer effectivePointer =
+          navigatorState != null && navigatorState.movePointer.isNotEmpty
+              ? navigatorState.movePointer
+              : baseState.analysisState.movePointer;
+
+      final historySnapshot =
+          sourceGame == null
+              ? null
+              : _collectBranchHistory(sourceGame, effectivePointer);
+
+      if (historySnapshot != null) {
+        pgnHistory = List<String>.of(historySnapshot.sanMoves);
+        baseMoveObjects = List<Move?>.of(historySnapshot.moveObjects);
+        basePositions = List<Position>.of(historySnapshot.positions);
       } else {
         // Fallback: use analysis state's linear history
         final currentMoveIndex = baseAnalysis.currentMoveIndex;
@@ -1271,13 +1292,35 @@ class ChessBoardScreenNotifierNew
             endIndex > 0 && endIndex <= allSans.length
                 ? allSans.sublist(0, endIndex)
                 : <String>[];
-        baseMoveObjects =
+        final movesSlice =
             endIndex > 0 && endIndex <= allMoves.length
                 ? allMoves.sublist(0, endIndex)
                 : <Move>[];
+        baseMoveObjects = List<Move?>.of(movesSlice);
+
+        Position startingPos;
+        if (baseAnalysis.startingPosition != null) {
+          startingPos = baseAnalysis.startingPosition!;
+        } else if (baseState.startingPosition != null) {
+          startingPos = baseState.startingPosition!;
+        } else if (baseState.position != null) {
+          startingPos = baseState.position!;
+        } else {
+          startingPos = baseAnalysis.position;
+        }
+        basePositions = <Position>[startingPos];
+        var cursor = startingPos;
+        for (final move in baseMoveObjects) {
+          if (move == null) {
+            continue;
+          }
+          cursor = cursor.play(move);
+          basePositions.add(cursor);
+        }
       }
+      final loggedPositions = basePositions;
       _releaseLog(
-        '🎯 PV PREVIEW: Using history snapshot (${pgnHistory.length} moves, ${baseMoveObjects.length} objects)',
+        '🎯 PV PREVIEW: Using history snapshot (${pgnHistory.length} moves, ${baseMoveObjects.length} objects, ${loggedPositions.length} positions)',
       );
     }
     final pvMoves = line.moves;
@@ -1302,33 +1345,43 @@ class ChessBoardScreenNotifierNew
         '🎯 PV PREVIEW: Extended existing positions (${existingPositions.length} + ${newPositions.length} = ${mergedPositions.length})',
       );
     } else {
-      // Build base positions from starting position + existing move objects
-      Position startingPos;
-      if (baseAnalysis.startingPosition != null) {
-        startingPos = baseAnalysis.startingPosition!;
-      } else if (baseState.startingPosition != null) {
-        startingPos = baseState.startingPosition!;
-      } else if (baseState.position != null) {
-        startingPos = baseState.position!;
+      List<Position> basePositionHistory;
+      if (basePositions.isNotEmpty) {
+        basePositionHistory = List<Position>.of(basePositions);
       } else {
-        startingPos = baseAnalysis.position;
-      }
-      final basePositions = <Position>[startingPos];
-      var cursor = startingPos;
-      for (final move in baseMoveObjects) {
-        cursor = cursor.play(move);
-        basePositions.add(cursor);
+        Position startingPos;
+        if (baseAnalysis.startingPosition != null) {
+          startingPos = baseAnalysis.startingPosition!;
+        } else if (baseState.startingPosition != null) {
+          startingPos = baseState.startingPosition!;
+        } else if (baseState.position != null) {
+          startingPos = baseState.position!;
+        } else {
+          startingPos = baseAnalysis.position;
+        }
+        basePositionHistory = <Position>[startingPos];
+        var cursor = startingPos;
+        for (final move in baseMoveObjects) {
+          if (move == null) {
+            continue;
+          }
+          cursor = cursor.play(move);
+          basePositionHistory.add(cursor);
+        }
       }
 
-      // Append PV moves from the last base position
+      var positionCursor =
+          basePositionHistory.isNotEmpty
+              ? basePositionHistory.last
+              : baseAnalysis.position;
       final newPositions = <Position>[];
       for (final move in pvMoves) {
-        cursor = cursor.play(move);
-        newPositions.add(cursor);
+        positionCursor = positionCursor.play(move);
+        newPositions.add(positionCursor);
       }
-      mergedPositions = [...basePositions, ...newPositions];
+      mergedPositions = [...basePositionHistory, ...newPositions];
       _releaseLog(
-        '🎯 PV PREVIEW: Built base positions (${basePositions.length}) + PV moves (${newPositions.length}) = ${mergedPositions.length}',
+        '🎯 PV PREVIEW: Built base positions (${basePositionHistory.length}) + PV moves (${newPositions.length}) = ${mergedPositions.length}',
       );
     }
 
@@ -1364,58 +1417,87 @@ class ChessBoardScreenNotifierNew
     _exitPvPreviewIfActive();
   }
 
-  ({List<String> sanMoves, List<Move> moveObjects}) _historySnapshotUpToPointer(
-    ChessGameNavigatorState navigatorState,
+  _BranchHistory? _collectBranchHistory(
+    ChessGame game,
+    ChessMovePointer pointer,
   ) {
-    final pointer = navigatorState.movePointer;
-    if (pointer.isEmpty) {
-      return (sanMoves: const [], moveObjects: const []);
-    }
-    final mainline = navigatorState.game.mainline;
-    if (mainline.isEmpty) {
-      return (sanMoves: const [], moveObjects: const []);
-    }
-
     final sanMoves = <String>[];
-    final moveObjects = <Move>[];
+    final moveObjects = <Move?>[];
+    final positions = <Position>[];
 
-    void collectFromLine(ChessLine line, int pointerIndex) {
-      if (pointerIndex >= pointer.length) {
-        return;
+    var position = Position.setupPosition(
+      Rule.chess,
+      Setup.parseFen(game.startingFen),
+    );
+    positions.add(position);
+
+    if (game.mainline.isEmpty) {
+      return _BranchHistory(
+        sanMoves: sanMoves,
+        moveObjects: moveObjects,
+        positions: positions,
+      );
+    }
+
+    ChessLine? currentLine = game.mainline;
+    var pointerIndex = 0;
+    var lastIncludedIndex = -1;
+
+    while (currentLine != null) {
+      if (currentLine.isEmpty) {
+        break;
       }
-      if (line.isEmpty) {
-        return;
+
+      final rawMoveIndex =
+          pointerIndex < pointer.length
+              ? pointer[pointerIndex].toInt()
+              : currentLine.length - 1;
+      if (rawMoveIndex < 0) {
+        break;
       }
+      final cappedMoveIndex = rawMoveIndex.clamp(0, currentLine.length - 1);
 
-      final rawMoveIndex = pointer[pointerIndex].toInt();
-      final cappedMoveIndex = rawMoveIndex.clamp(0, line.length - 1);
-
-      for (var i = 0; i <= cappedMoveIndex; i++) {
-        final chessMove = line[i];
-        sanMoves.add(chessMove.san);
+      for (var i = lastIncludedIndex + 1; i <= cappedMoveIndex; i++) {
+        final chessMove = currentLine[i];
         final parsed = Move.parse(chessMove.uci);
-        if (parsed != null) {
-          moveObjects.add(parsed);
-        }
+        position = Position.setupPosition(
+          Rule.chess,
+          Setup.parseFen(chessMove.fen),
+        );
+        positions.add(position);
+        sanMoves.add(chessMove.san);
+        moveObjects.add(parsed);
       }
 
-      final nextPointerIndex = pointerIndex + 1;
-      if (nextPointerIndex >= pointer.length) {
-        return;
+      lastIncludedIndex = cappedMoveIndex;
+      pointerIndex++;
+      if (pointerIndex >= pointer.length) {
+        break;
       }
-      final variationIndex = pointer[nextPointerIndex].toInt();
-      final baseMove = line[cappedMoveIndex];
+
+      final variationIndex = pointer[pointerIndex].toInt();
+      pointerIndex++;
+
+      if (lastIncludedIndex < 0 || lastIncludedIndex >= currentLine.length) {
+        break;
+      }
+
+      final baseMove = currentLine[lastIncludedIndex];
       final variations = baseMove.variations;
       if (variations == null ||
           variationIndex < 0 ||
           variationIndex >= variations.length) {
-        return;
+        break;
       }
-      collectFromLine(variations[variationIndex], pointerIndex + 2);
+      currentLine = variations[variationIndex];
+      lastIncludedIndex = -1;
     }
 
-    collectFromLine(mainline, 0);
-    return (sanMoves: sanMoves, moveObjects: moveObjects);
+    return _BranchHistory(
+      sanMoves: sanMoves,
+      moveObjects: moveObjects,
+      positions: positions,
+    );
   }
 
   void navigateToPreviewCardIndex(int targetIndex) {
@@ -1540,16 +1622,19 @@ class ChessBoardScreenNotifierNew
       final Position resultPosition;
       if (i + 1 < lockedPositions.length) {
         resultPosition = lockedPositions[i + 1];
-      } else {
+      } else if (move != null) {
         resultPosition = cursor.play(move);
+      } else {
+        resultPosition = cursor;
       }
 
-      final san = i < lockedSans.length ? lockedSans[i] : move.uci;
+      final san =
+          i < lockedSans.length ? lockedSans[i] : move?.uci ?? '--';
       final chessMove = ChessMove(
         num: resultPosition.fullmoves,
         fen: resultPosition.fen,
         san: san,
-        uci: move.uci,
+        uci: move?.uci ?? '0000',
         turn:
             resultPosition.turn == Side.black
                 ? ChessColor.black
