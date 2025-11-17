@@ -685,54 +685,82 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
       return;
     }
 
-    ChessLine updatedMainline = state.game.mainline;
-    bool applied = false;
+    final variationIndexPosition = variationHeadPointer.length - 2;
+    if (!variationIndexPosition.isOdd) {
+      debugPrint('🎯 NAVIGATOR promoteVariation: pointer missing variation info');
+      return;
+    }
 
-    for (int i = 1; i < variationHeadPointer.length; i += 2) {
-      final variationIndex = variationHeadPointer[i];
-      final parentPointer = variationHeadPointer.sublist(0, i);
+    final variationIndex = variationHeadPointer[variationIndexPosition];
+    final parentPointer = variationHeadPointer.sublist(0, variationIndexPosition);
 
-      updatedMainline = _rebuildLine(updatedMainline, parentPointer, 0, (
-        line,
-        moveIndex,
-      ) {
+    ChessMovePointer? promotedPointer;
+
+    final updatedMainline = _rebuildLine(
+      state.game.mainline,
+      parentPointer,
+      0,
+      (line, moveIndex) {
         if (line.isEmpty || moveIndex >= line.length) {
           return line;
         }
         final move = line[moveIndex];
-        final variations = move.variations?.toList();
+        final variations = move.variations;
         if (variations == null || variationIndex >= variations.length) {
           return line;
         }
-        if (variations.length == 1) {
-          return line;
+
+        final variationLine = variations[variationIndex];
+        final sanitizedVariation = _stripLineVariations(variationLine);
+
+        final newLine = List<ChessMove>.of(line.take(moveIndex + 1));
+        if (newLine.isNotEmpty) {
+          final strippedMove = newLine.last.copyWith(
+            variations: null,
+            overrideVariations: true,
+          );
+          newLine[newLine.length - 1] = strippedMove;
         }
 
-        final keptVariation = variations[variationIndex];
-        final newVariations = <ChessLine>[keptVariation];
-        final updatedMove = move.copyWith(
-          variations: newVariations,
-          overrideVariations: true,
-        );
+        if (sanitizedVariation.isNotEmpty) {
+          newLine.addAll(sanitizedVariation);
+          final pointer = List<Number>.of(parentPointer);
+          if (pointer.isEmpty) {
+            pointer.add(moveIndex + 1);
+          } else {
+            pointer[pointer.length - 1] = moveIndex + 1;
+          }
+          promotedPointer = pointer;
+        } else {
+          promotedPointer = List<Number>.of(parentPointer);
+        }
 
-        final newLine = List<ChessMove>.of(line);
-        newLine[moveIndex] = updatedMove;
-        applied = true;
         return newLine;
-      });
-    }
+      },
+    );
 
-    if (!applied) {
-      debugPrint('🎯 NAVIGATOR promoteVariation: no updates applied');
+    if (promotedPointer == null) {
+      debugPrint('🎯 NAVIGATOR promoteVariation: nothing to promote');
       return;
     }
 
     replaceState(
       ChessGameNavigatorState(
         game: state.game.copyWith(mainline: updatedMainline),
-        movePointer: List<Number>.of(variationHeadPointer),
+        movePointer: promotedPointer!,
       ),
     );
+  }
+
+  ChessLine _stripLineVariations(ChessLine line) {
+    return line
+        .map(
+          (move) => move.copyWith(
+            variations: null,
+            overrideVariations: true,
+          ),
+        )
+        .toList();
   }
 
   ChessLine _removeVariationIfEmpty(
