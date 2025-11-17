@@ -2603,6 +2603,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           token.pointerId!,
           token.text,
           token.node?.move.san == '--',
+          token.node?.isMainline ?? false,
           _variantHeadPointerForToken(token),
         );
       },
@@ -3076,12 +3077,14 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     String pointerId,
     String moveText,
     bool isNullMove,
+    bool isMainlineMove,
     ChessMovePointer? variantHeadOverride,
   ) async {
     final hostContext = context;
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
     final variantHeadPointer =
         variantHeadOverride ?? _variantHeadPointerForMove(pointer);
+    final canModifyVariant = variantHeadPointer != null && !isMainlineMove;
     final actions = <_NotationActionItem>[
       _NotationActionItem(
         icon: Icons.delete_outline,
@@ -3103,7 +3106,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           await notifier.insertNullMoveAfterPointer(List<Number>.of(pointer));
         },
       ),
-      if (variantHeadPointer != null)
+      if (canModifyVariant)
         _NotationActionItem(
           icon: Icons.delete_forever,
           label: 'Delete variant',
@@ -3112,7 +3115,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             Navigator.of(overlayContext).pop();
             final snapshot = notifier.navigatorStateSnapshot();
             await notifier.deleteVariationAtPointer(
-              List<Number>.of(variantHeadPointer),
+              List<Number>.of(variantHeadPointer!),
             );
             if (!mounted) return;
             final currentContext = this.context;
@@ -3128,7 +3131,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             }
           },
         ),
-      if (variantHeadPointer != null)
+      if (canModifyVariant)
         _NotationActionItem(
           icon: Icons.trending_up_rounded,
           label: 'Promote variant',
@@ -3136,7 +3139,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           onSelected: (overlayContext) async {
             Navigator.of(overlayContext).pop();
             await notifier.promoteVariationAtPointer(
-              List<Number>.of(variantHeadPointer),
+              List<Number>.of(variantHeadPointer!),
             );
           },
         ),

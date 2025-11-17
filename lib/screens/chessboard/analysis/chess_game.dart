@@ -195,6 +195,7 @@ class ChessMove {
     ChessColor? turn,
     String? clockTime,
     List<ChessLine>? variations,
+    bool overrideVariations = false,
   }) {
     return ChessMove(
       num: num ?? this.num,
@@ -203,7 +204,7 @@ class ChessMove {
       uci: uci ?? this.uci,
       turn: turn ?? this.turn,
       clockTime: clockTime ?? this.clockTime,
-      variations: variations ?? this.variations,
+      variations: overrideVariations ? variations : this.variations,
     );
   }
 }
