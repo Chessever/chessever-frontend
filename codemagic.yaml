@@ -1,0 +1,104 @@
+workflows:
+  android-workflow:
+    name: Android Workflow
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    environment:
+      android_signing:
+        - keystore_reference
+      groups:
+        - app_credentials # Add this group in Codemagic UI with your .env variables
+      vars:
+        JAVA_HOME: /Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home
+      flutter: stable
+    scripts:
+      - name: Get Flutter packages
+        script: |
+          flutter pub get
+
+      - name: Create .env file
+        script: |
+          echo "Creating .env file from environment variables..."
+          cat <<EOF > .env
+          SUPABASE_URL=$SUPABASE_URL
+          SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY
+          GOOGLE_WEB_CLIENT_ID=$GOOGLE_WEB_CLIENT_ID
+          GOOGLE_IOS_CLIENT_ID=$GOOGLE_IOS_CLIENT_ID
+          RevenueCatAPIKey=$RevenueCatAPIKey
+          SENTRY_FLUTTER=$SENTRY_FLUTTER
+          AMPLITUDE=$AMPLITUDE
+          CLARITY_PROJECT_ID=$CLARITY_PROJECT_ID
+          EOF
+          echo ".env file created successfully"
+
+      - name: Build Android release
+        script: |
+          flutter build appbundle --release
+
+    artifacts:
+      - build/**/outputs/**/*.aab
+      - build/**/outputs/**/*.apk
+      - build/**/outputs/**/mapping.txt
+
+    publishing:
+      email:
+        recipients:
+          - your-email@example.com # Update this
+      google_play:
+        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        track: internal
+
+  ios-workflow:
+    name: iOS Workflow
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.yourcompany.chessever2 # Update this
+      groups:
+        - app_credentials
+      vars:
+        XCODE_WORKSPACE: "Runner.xcworkspace"
+        XCODE_SCHEME: "Runner"
+      flutter: stable
+      xcode: latest
+    scripts:
+      - name: Get Flutter packages
+        script: |
+          flutter pub get
+
+      - name: Create .env file
+        script: |
+          echo "Creating .env file from environment variables..."
+          cat <<EOF > .env
+          SUPABASE_URL=$SUPABASE_URL
+          SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY
+          GOOGLE_WEB_CLIENT_ID=$GOOGLE_WEB_CLIENT_ID
+          GOOGLE_IOS_CLIENT_ID=$GOOGLE_IOS_CLIENT_ID
+          RevenueCatAPIKey=$RevenueCatAPIKey
+          SENTRY_FLUTTER=$SENTRY_FLUTTER
+          AMPLITUDE=$AMPLITUDE
+          CLARITY_PROJECT_ID=$CLARITY_PROJECT_ID
+          EOF
+          echo ".env file created successfully"
+
+      - name: Install pods
+        script: |
+          cd ios && pod install
+
+      - name: Build iOS release
+        script: |
+          flutter build ipa --release --export-options-plist=/Users/builder/export_options.plist
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - flutter_drive.log
+
+    publishing:
+      email:
+        recipients:
+          - your-email@example.com # Update this
+      app_store_connect:
+        auth: integration
