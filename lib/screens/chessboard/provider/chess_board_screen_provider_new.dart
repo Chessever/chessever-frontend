@@ -2084,16 +2084,39 @@ class ChessBoardScreenNotifierNew
       // This makes PV moves part of the permanent analysis history
       if (_analysisNavigator != null) {
         _releaseLog('🎯 PLAY VARIANT FORWARD: Committing move to navigator');
-        final (_, san) = currentState.analysisState.position.makeSan(nextMove);
+        final (positionAfterMove, san) =
+            currentState.analysisState.position.makeSan(nextMove);
 
-        // Clear variant selection after committing - we're now on mainline
-        final clearedState = _clearVariantSelection(currentState);
-        state = AsyncValue.data(clearedState);
+        final rebasedState = _rebaseVariantAfterCommittedMove(
+          currentState: currentState,
+          committedMoveIndex: nextMoveIndex,
+          positionAfterMove: positionAfterMove,
+          committedMove: nextMove,
+        );
+        state = AsyncValue.data(rebasedState);
 
         // Make move through navigator - this is now the single source of truth
         _ensureNavigatorPointerSynced();
         _analysisNavigator!.makeOrGoToMove(nextMove.uci);
         _playSoundForSan(san);
+
+        final navigatorSnapshot = _analysisGame == null
+            ? null
+            : ref.read(chessGameNavigatorProvider(_analysisGame!));
+        if (navigatorSnapshot != null) {
+          final latestState = state.value;
+          if (latestState != null && latestState.selectedVariantIndex != null) {
+            state = AsyncValue.data(
+              latestState.copyWith(
+                variantBaseMovePointer: navigatorSnapshot.movePointer,
+                variantBaseMoveIndex:
+                    navigatorSnapshot.movePointer.isEmpty
+                        ? null
+                        : navigatorSnapshot.movePointer.last.toInt(),
+              ),
+            );
+          }
+        }
 
         // Trigger new evaluation for the new position
         // Cache will be checked first, fresh eval if needed
@@ -3444,6 +3467,77 @@ class ChessBoardScreenNotifierNew
       variantBaseMovePointer: null,
       variantBaseLastMove: null,
       variantBaseMoveIndex: null,
+    );
+  }
+
+  ChessBoardStateNew _rebaseVariantAfterCommittedMove({
+    required ChessBoardStateNew currentState,
+    required int committedMoveIndex,
+    required Position positionAfterMove,
+    required Move committedMove,
+  }) {
+    final selectedIndex = currentState.selectedVariantIndex;
+    if (selectedIndex == null ||
+        selectedIndex >= currentState.principalVariations.length) {
+      return _clearVariantSelection(
+        currentState.copyWith(
+          principalVariations: const [],
+          principalVariationsBaseFen: positionAfterMove.fen,
+          analysisState: currentState.analysisState.copyWith(
+            suggestionLines: const [],
+            position: positionAfterMove,
+            lastMove: committedMove,
+            validMoves: makeLegalMoves(positionAfterMove),
+            currentMoveIndex: currentState.analysisState.currentMoveIndex + 1,
+          ),
+        ),
+      );
+    }
+
+    final variant = currentState.principalVariations[selectedIndex];
+    final continuationStart = committedMoveIndex + 1;
+    if (continuationStart >= variant.moves.length) {
+      return _clearVariantSelection(
+        currentState.copyWith(
+          principalVariations: const [],
+          principalVariationsBaseFen: positionAfterMove.fen,
+          analysisState: currentState.analysisState.copyWith(
+            suggestionLines: const [],
+            position: positionAfterMove,
+            lastMove: committedMove,
+            validMoves: makeLegalMoves(positionAfterMove),
+            currentMoveIndex: currentState.analysisState.currentMoveIndex + 1,
+          ),
+        ),
+      );
+    }
+
+    final trimmedVariant = variant.copyWith(
+      moves: variant.moves.sublist(continuationStart),
+      sanMoves: variant.sanMoves.sublist(continuationStart),
+    );
+    final rebasedLines = <AnalysisLine>[trimmedVariant];
+    final arrowShapes = _getAllVariantArrowShapes(rebasedLines, 0);
+
+    final updatedAnalysis = currentState.analysisState.copyWith(
+      position: positionAfterMove,
+      lastMove: committedMove,
+      validMoves: makeLegalMoves(positionAfterMove),
+      currentMoveIndex: currentState.analysisState.currentMoveIndex + 1,
+      suggestionLines: rebasedLines,
+    );
+
+    return currentState.copyWith(
+      principalVariations: rebasedLines,
+      principalVariationsBaseFen: positionAfterMove.fen,
+      analysisState: updatedAnalysis,
+      selectedVariantIndex: 0,
+      variantMovePointer: const [],
+      variantBaseFen: positionAfterMove.fen,
+      variantBaseMovePointer: currentState.analysisState.movePointer,
+      variantBaseLastMove: committedMove,
+      variantBaseMoveIndex: currentState.analysisState.currentMoveIndex + 1,
+      shapes: arrowShapes,
     );
   }
 
