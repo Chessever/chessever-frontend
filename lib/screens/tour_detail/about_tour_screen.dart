@@ -9,6 +9,7 @@ import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/utils/url_launcher_provider.dart';
+import 'package:chessever2/widgets/heroine/no_padding_fade_shuttle_builder.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
@@ -63,9 +64,10 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
       return;
     }
 
-    final fallbackId = about.groupBroadcastId?.isNotEmpty == true
-        ? about.groupBroadcastId
-        : about.id.isNotEmpty
+    final fallbackId =
+        about.groupBroadcastId?.isNotEmpty == true
+            ? about.groupBroadcastId
+            : about.id.isNotEmpty
             ? about.id
             : null;
 
@@ -107,7 +109,8 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
         .read(locationServiceProvider)
         .getCountryCode(aboutModel.location);
 
-    var ratedPlayers = aboutModel.players.where((p) => p.rating != null).toList();
+    var ratedPlayers =
+        aboutModel.players.where((p) => p.rating != null).toList();
     if (ratedPlayers.isNotEmpty) {
       ratedPlayers.sort((a, b) => b.rating!.compareTo(a.rating!));
       ratedPlayers = ratedPlayers.take(4).toList();
@@ -116,7 +119,12 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
     final domain = aboutModel.extractDomain();
 
     return Scaffold(
-      bottomNavigationBar: _buildBottomBar(context, domain, isSkeleton, aboutModel),
+      bottomNavigationBar: _buildBottomBar(
+        context,
+        domain,
+        isSkeleton,
+        aboutModel,
+      ),
       body: Container(
         margin: EdgeInsets.symmetric(horizontal: 20.sp),
         child: SingleChildScrollView(
@@ -128,6 +136,7 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
               SizedBox(height: 16.h),
               Heroine(
                 tag: _heroTag,
+                flightShuttleBuilder: const NoPaddingFadeShuttleBuilder(),
                 child: ClipRRect(
                   borderRadius: BorderRadius.only(
                     topLeft: Radius.circular(12.br),
@@ -184,9 +193,7 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
                               : null,
                       description: aboutModel.location,
                     ),
-                    SizedBox(
-                      height: MediaQuery.of(context).viewPadding.bottom,
-                    ),
+                    SizedBox(height: MediaQuery.of(context).viewPadding.bottom),
                   ],
                 ),
               ),
@@ -236,11 +243,7 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
       width: double.infinity,
       color: kDarkGreyColor,
       alignment: Alignment.center,
-      child: Icon(
-        Icons.image_not_supported,
-        color: kWhiteColor,
-        size: 50.sp,
-      ),
+      child: Icon(Icons.image_not_supported, color: kWhiteColor, size: 50.sp),
     );
   }
 
@@ -263,19 +266,16 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
           bottom: MediaQuery.of(context).viewPadding.bottom,
         ),
         child: GestureDetector(
-          onTap: isSkeleton
-              ? null
-              : () => ref
-                  .read(urlLauncherProvider)
-                  .launchCustomUrl(aboutModel.websiteUrl),
+          onTap:
+              isSkeleton
+                  ? null
+                  : () => ref
+                      .read(urlLauncherProvider)
+                      .launchCustomUrl(aboutModel.websiteUrl),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              SvgWidget(
-                SvgAsset.websiteIcon,
-                height: 12.h,
-                width: 12.h,
-              ),
+              SvgWidget(SvgAsset.websiteIcon, height: 12.h, width: 12.h),
               SizedBox(width: 4.w),
               Flexible(
                 child: Text(
