@@ -69,7 +69,16 @@ class EngineDepthTrackerNotifier
     required EngineComponent component,
     required EngineSearchProgress progress,
     String? context,
+    bool allowDecrease = true,
   }) {
+    final existing = state[component];
+    if (!allowDecrease && existing != null && progress.depth <= existing.depth) {
+      state = {
+        ...state,
+        component: existing.copyWith(timestamp: progress.timestamp),
+      };
+      return;
+    }
     // final label = _componentLabel(component);
     // final fragment = progress.fenFragment;
     // final fragmentLength = fragment.length < 20 ? fragment.length : 20;

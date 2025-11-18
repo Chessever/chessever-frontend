@@ -3957,7 +3957,7 @@ class _PrincipalVariationListState
       final desiredIndex =
           _lastUserSelectedIndex ?? newSelectedIndex ?? _currentPage;
       targetIndex = desiredIndex.clamp(0, maxIndex);
-      _lastUserSelectedIndex = targetIndex;
+      _lastUserSelectedIndex ??= desiredIndex;
     } else if (selectedIndexChanged &&
         newSelectedIndex != null &&
         newSelectedIndex <= maxIndex) {
@@ -5388,86 +5388,91 @@ class _NotationActionSheetState extends State<_NotationActionSheet> {
     final viewInsets = MediaQuery.of(context).viewInsets.bottom;
     final actions = widget.actions;
 
-    return SafeArea(
-      top: false,
-      child: AnimatedPadding(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOut,
-        padding: EdgeInsets.only(bottom: viewInsets),
-        child: Container(
-          decoration: BoxDecoration(
-            color: kBlack2Color.withValues(alpha: 0.96),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28.sp)),
-            border: Border.all(color: kWhiteColor.withValues(alpha: 0.05)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.55),
-                blurRadius: 30,
-                offset: const Offset(0, -8),
-              ),
-            ],
-          ),
-          child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            child: Padding(
-              padding: EdgeInsets.only(
-                left: 20.sp,
-                right: 20.sp,
-                top: 14.sp,
-                bottom: 16.sp,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40.w,
-                      height: 4.h,
-                      decoration: BoxDecoration(
-                        color: kWhiteColor.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(999),
+    final sheetColor = kBlack2Color.withValues(alpha: 0.96);
+
+    return Container(
+      color: sheetColor,
+      child: SafeArea(
+        top: false,
+        child: AnimatedPadding(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          padding: EdgeInsets.only(bottom: viewInsets),
+          child: Container(
+            decoration: BoxDecoration(
+              color: sheetColor,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28.sp)),
+              border: Border.all(color: kWhiteColor.withValues(alpha: 0.05)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.55),
+                  blurRadius: 30,
+                  offset: const Offset(0, -8),
+                ),
+              ],
+            ),
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: 20.sp,
+                  right: 20.sp,
+                  top: 14.sp,
+                  bottom: 16.sp,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40.w,
+                        height: 4.h,
+                        decoration: BoxDecoration(
+                          color: kWhiteColor.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
                       ),
                     ),
-                  ),
-                  SizedBox(height: 16.h),
-                  Text(
-                    widget.title,
-                    style: AppTypography.textLgBold.copyWith(
-                      color: kWhiteColor,
-                      letterSpacing: 0.25,
-                    ),
-                  ),
-                  if (widget.subtitle != null) ...[
-                    SizedBox(height: 4.h),
+                    SizedBox(height: 16.h),
                     Text(
-                      widget.subtitle!,
-                      style: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor70,
+                      widget.title,
+                      style: AppTypography.textLgBold.copyWith(
+                        color: kWhiteColor,
+                        letterSpacing: 0.25,
                       ),
                     ),
-                  ],
-                  if (actions.isNotEmpty) ...[
-                    SizedBox(height: 12.h),
-                    for (var i = 0; i < actions.length; i++) ...[
-                      _buildActionTile(actions[i]),
-                      if (i != actions.length - 1) SizedBox(height: 8.h),
+                    if (widget.subtitle != null) ...[
+                      SizedBox(height: 4.h),
+                      Text(
+                        widget.subtitle!,
+                        style: AppTypography.textSmRegular.copyWith(
+                          color: kWhiteColor70,
+                        ),
+                      ),
+                    ],
+                    if (actions.isNotEmpty) ...[
+                      SizedBox(height: 12.h),
+                      for (var i = 0; i < actions.length; i++) ...[
+                        _buildActionTile(actions[i]),
+                        if (i != actions.length - 1) SizedBox(height: 8.h),
+                      ],
+                    ],
+                    if (widget.commentConfig != null) ...[
+                      SizedBox(height: 16.h),
+                      Divider(color: kWhiteColor.withValues(alpha: 0.08)),
+                      SizedBox(height: 16.h),
+                      Text(
+                        'Variant comment',
+                        style: AppTypography.textSmMedium.copyWith(
+                          color: kWhiteColor,
+                        ),
+                      ),
+                      SizedBox(height: 8.h),
+                      _buildCommentInput(),
                     ],
                   ],
-                  if (widget.commentConfig != null) ...[
-                    SizedBox(height: 16.h),
-                    Divider(color: kWhiteColor.withValues(alpha: 0.08)),
-                    SizedBox(height: 16.h),
-                    Text(
-                      'Variant comment',
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: kWhiteColor,
-                      ),
-                    ),
-                    SizedBox(height: 8.h),
-                    _buildCommentInput(),
-                  ],
-                ],
+                ),
               ),
             ),
           ),
