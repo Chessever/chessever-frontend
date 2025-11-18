@@ -1174,6 +1174,37 @@ class ChessBoardScreenNotifierNew
     });
   }
 
+  void updateVariationComment({
+    required String variationId,
+    required String comment,
+  }) {
+    final currentState = state.value;
+    if (currentState == null) {
+      return;
+    }
+    final trimmed = comment.trim();
+    final nextComments = Map<String, String>.from(
+      currentState.variationComments,
+    );
+
+    final existing = nextComments[variationId];
+    if (trimmed.isEmpty) {
+      if (existing == null) {
+        return;
+      }
+      nextComments.remove(variationId);
+    } else {
+      if (existing == trimmed) {
+        return;
+      }
+      nextComments[variationId] = trimmed;
+    }
+
+    state = AsyncValue.data(
+      currentState.copyWith(variationComments: nextComments),
+    );
+  }
+
   void previewPrincipalVariationMoveAt(
     AnalysisLine line,
     int variantIndex,

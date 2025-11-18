@@ -42,8 +42,6 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:flutter_svg/svg.dart';
-import 'package:heroine/heroine.dart';
-import 'package:motor/motor.dart';
 
 /// Spring-based curve that mimics iOS snappy motion
 /// Quick, precise animation with subtle natural settling
@@ -2248,6 +2246,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       depth: 0,
       pointerMap: pointerMap,
       forcedOpenIds: forcedOpenIds,
+      variationComments: widget.state.variationComments,
     );
 
     if (tokens.isEmpty) {
@@ -2290,6 +2289,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                         pointerForHighlightId,
                         tailPointerId,
                       );
+                    case _NotationTokenType.comment:
+                      return _buildVariationCommentChip(token);
                     case _NotationTokenType.openParen:
                     case _NotationTokenType.closeParen:
                     case _NotationTokenType.ellipsis:
@@ -2596,11 +2597,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       },
       onLongPress: () {
         final pointer = token.pointer;
-        if (pointer == null || token.pointerId == null) return;
+        if (pointer == null) return;
         _showMoveActions(
           params,
           pointer,
-          token.pointerId!,
           token.text,
           token.node?.move.san == '--',
           token.node?.isMainline ?? false,
@@ -2686,12 +2686,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       return child;
     }
 
-    final heroChild = ExcludeSemantics(
+    final decoratedChild = ExcludeSemantics(
       excluding: true,
-      child: Heroine(
-        tag: token.heroineTag ?? 'variation-${token.variation!.id}',
-        child: child,
-      ),
+      child: child,
     );
 
     return GestureDetector(
@@ -2703,7 +2700,56 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       onLongPress: () {
         _showVariationActions(token);
       },
-      child: heroChild,
+      child: decoratedChild,
+    );
+  }
+
+  Widget _buildVariationCommentChip(_NotationDisplayToken token) {
+    final text = token.commentText ?? token.text;
+    if (text.trim().isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final baseDepth = token.depth.clamp(1, 6);
+    final accentColor = _colorForVariationDepth(baseDepth);
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 6.sp),
+      margin: EdgeInsets.only(left: 4.sp, right: 2.sp, top: 2.sp),
+      decoration: BoxDecoration(
+        color: kBlack2Color.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(10.sp),
+        border: Border.all(color: accentColor.withValues(alpha: 0.4), width: 0.8),
+        boxShadow: [
+          BoxShadow(
+            color: accentColor.withValues(alpha: 0.25),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.mode_comment_outlined,
+            size: 12.sp,
+            color: accentColor.withValues(alpha: 0.9),
+          ),
+          SizedBox(width: 6.sp),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: 180.w),
+            child: Text(
+              text,
+              style: AppTypography.textXsRegular.copyWith(
+                color: kWhiteColor,
+                fontStyle: FontStyle.italic,
+              ),
+              softWrap: true,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2792,6 +2838,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     NotationVariationNode? variationContext,
     required Map<String, NotationMoveNode> pointerMap,
     required Set<String> forcedOpenIds,
+    required Map<String, String> variationComments,
   }) {
     final tokens = <_NotationDisplayToken>[];
     for (var i = 0; i < moves.length; i++) {
@@ -2890,9 +2937,29 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
               variationContext: variation,
               pointerMap: pointerMap,
               forcedOpenIds: forcedOpenIds,
+              variationComments: variationComments,
             ),
           );
         }
+
+        final variationComment = variationComments[variation.id];
+        if (variationComment != null && variationComment.isNotEmpty) {
+          tokens.add(
+            _NotationDisplayToken(
+              type: _NotationTokenType.comment,
+              text: variationComment,
+              depth: variation.depth,
+              variationIndex: variation.variationIndex,
+              variation: variation,
+              variationHeadPointer:
+                  variation.moves.isNotEmpty
+                      ? List<Number>.of(variation.moves.first.pointer)
+                      : null,
+              commentText: variationComment,
+            ),
+          );
+        }
+
         tokens.add(
           _NotationDisplayToken(
             type: _NotationTokenType.closeParen,
@@ -3074,7 +3141,6 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   Future<void> _showMoveActions(
     ChessBoardProviderParams params,
     ChessMovePointer pointer,
-    String pointerId,
     String moveText,
     bool isNullMove,
     bool isMainlineMove,
@@ -3090,8 +3156,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         icon: Icons.delete_outline,
         label: 'Delete from here',
         color: kRedColor,
-        onSelected: (overlayContext) async {
-          Navigator.of(overlayContext).pop();
+        onSelected: (_) async {
           await notifier.deleteContinuationFromPointer(
             List<Number>.of(pointer),
           );
@@ -3101,8 +3166,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         icon: Icons.block,
         label: 'Add null move after',
         color: kPrimaryColor,
-        onSelected: (overlayContext) async {
-          Navigator.of(overlayContext).pop();
+        onSelected: (_) async {
           await notifier.insertNullMoveAfterPointer(List<Number>.of(pointer));
         },
       ),
@@ -3111,8 +3175,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           icon: Icons.delete_forever,
           label: 'Delete variant',
           color: kRedColor,
-          onSelected: (overlayContext) async {
-            Navigator.of(overlayContext).pop();
+          onSelected: (_) async {
             final snapshot = notifier.navigatorStateSnapshot();
             await notifier.deleteVariationAtPointer(
               List<Number>.of(variantHeadPointer),
@@ -3136,8 +3199,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           icon: Icons.trending_up_rounded,
           label: 'Promote variant',
           color: kPrimaryColor,
-          onSelected: (overlayContext) async {
-            Navigator.of(overlayContext).pop();
+          onSelected: (_) async {
             await notifier.promoteVariationAtPointer(
               List<Number>.of(variantHeadPointer),
             );
@@ -3147,16 +3209,14 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         icon: Icons.upgrade_rounded,
         label: 'Promote main variant',
         color: kPrimaryColor,
-        onSelected: (overlayContext) async {
-          Navigator.of(overlayContext).pop();
+        onSelected: (_) async {
           await notifier.promoteBranchToMainVariant(List<Number>.of(pointer));
         },
       ),
     ];
 
-    await _pushNotationActionOverlay(
+    await _showNotationActionSheet(
       context: hostContext,
-      heroineTag: 'move-action-$pointerId',
       title: isNullMove ? 'Null move' : moveText,
       subtitle: 'Move options',
       actions: actions,
@@ -3175,13 +3235,14 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       index: widget.index,
     );
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+    final initialComment =
+        widget.state.variationComments[variation.id] ?? '';
     final actions = <_NotationActionItem>[
       _NotationActionItem(
         icon: Icons.trending_up_rounded,
         label: 'Promote variant',
         color: kPrimaryColor,
-        onSelected: (overlayContext) async {
-          Navigator.of(overlayContext).pop();
+        onSelected: (_) async {
           await notifier.promoteVariationAtPointer(
             List<Number>.of(headPointer),
           );
@@ -3191,8 +3252,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         icon: Icons.delete_forever,
         label: 'Delete variant',
         color: kRedColor,
-        onSelected: (overlayContext) async {
-          Navigator.of(overlayContext).pop();
+        onSelected: (_) async {
           final snapshot = notifier.navigatorStateSnapshot();
           await notifier.deleteVariationAtPointer(List<Number>.of(headPointer));
           if (!mounted) return;
@@ -3213,8 +3273,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         icon: Icons.upgrade_rounded,
         label: 'Promote main variant',
         color: kPrimaryColor,
-        onSelected: (overlayContext) async {
-          Navigator.of(overlayContext).pop();
+        onSelected: (_) async {
           await notifier.promoteBranchToMainVariant(
             List<Number>.of(headPointer),
           );
@@ -3222,31 +3281,34 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       ),
     ];
 
-    await _pushNotationActionOverlay(
+    final commentConfig = _VariationCommentSheetConfig(
+      initialValue: initialComment,
+      onSubmit: (ctx, value) async {
+        final trimmed = value.trim();
+        final normalizedInitial = initialComment.trim();
+        if (trimmed == normalizedInitial) {
+          _showInfoSnack(ctx, 'No changes');
+          return;
+        }
+        notifier.updateVariationComment(
+          variationId: variation.id,
+          comment: trimmed,
+        );
+        if (!mounted) return;
+        if (trimmed.isEmpty) {
+          _showInfoSnack(ctx, 'Comment removed');
+        } else {
+          _showInfoSnack(ctx, 'Comment added');
+        }
+      },
+    );
+
+    await _showNotationActionSheet(
       context: hostContext,
-      heroineTag: token.heroineTag ?? 'variation-action-${variation.id}',
       title: 'Variation',
       subtitle: 'Variation options',
       actions: actions,
-    );
-  }
-
-  Future<void> _pushNotationActionOverlay({
-    required BuildContext context,
-    required String heroineTag,
-    required String title,
-    String? subtitle,
-    required List<_NotationActionItem> actions,
-  }) {
-    return Navigator.of(context).push(
-      _HeroinePreviewRoute(
-        child: _NotationActionOverlay(
-          heroineTag: heroineTag,
-          title: title,
-          subtitle: subtitle,
-          actions: actions,
-        ),
-      ),
+      commentConfig: commentConfig,
     );
   }
 
@@ -3582,6 +3644,7 @@ enum _NotationTokenType {
   closeParen,
   ellipsis,
   variationPlaceholder,
+  comment,
 }
 
 class _NotationDisplayToken {
@@ -3600,6 +3663,7 @@ class _NotationDisplayToken {
   final bool defaultsToCollapsed;
   final bool isForcedOpen;
   final String? heroineTag;
+  final String? commentText;
 
   const _NotationDisplayToken({
     required this.type,
@@ -3617,6 +3681,7 @@ class _NotationDisplayToken {
     this.defaultsToCollapsed = false,
     this.isForcedOpen = false,
     this.heroineTag,
+    this.commentText,
   });
 }
 
@@ -4142,24 +4207,25 @@ class _PrincipalVariationListState
         },
         onLongPress: () {
           HapticFeedback.mediumImpact();
-          final lastMoveIndex = line.sanMoves.length - 1;
-          if (lastMoveIndex >= 0) {
-            final lastMoveText =
-                pvTokens.lastWhere((t) => t.moveIndex != null).text;
-            // Make tag unique by including game ID, page index, and timestamp
-            final heroineTag =
-                'pv_move_${widget.game.gameId}_${widget.index}_${variantIndex}_$lastMoveIndex';
-            _showMovePreviewAnimation(
-              context,
-              lastMoveText,
-              heroineTag,
-              line,
-              variantIndex,
-              lastMoveIndex,
-              notifier,
-              activeVariantColor,
-            );
+          _PvToken? focusToken;
+          for (final token in pvTokens.reversed) {
+            if (token.moveIndex != null) {
+              focusToken = token;
+              break;
+            }
           }
+          if (focusToken == null || focusToken.moveIndex == null) {
+            return;
+          }
+          _showPvMoveActionSheet(
+            context,
+            focusToken.text,
+            line,
+            variantIndex,
+            focusToken.moveIndex!,
+            notifier,
+            activeVariantColor,
+          );
         },
         child: AnimatedScale(
           scale: isPressed ? 0.97 : 1.0,
@@ -4632,11 +4698,6 @@ class _PrincipalVariationListState
               )
               : baseStyle;
 
-      // Create unique tag for heroine transition
-      // Use identityHashCode to ensure uniqueness across different line instances
-      final heroineTag =
-          'pv_move_${identityHashCode(line)}_${variantIndex}_${token.moveIndex}';
-
       // Use WidgetSpan with GestureDetector to handle tap and long press
       spans.add(
         WidgetSpan(
@@ -4654,11 +4715,9 @@ class _PrincipalVariationListState
             },
             onLongPress: () {
               HapticFeedback.mediumImpact();
-              // Long press: show hero animation and preview after 1.5s
-              _showMovePreviewAnimation(
+              _showPvMoveActionSheet(
                 context,
                 token.text,
-                heroineTag,
                 line,
                 variantIndex,
                 token.moveIndex!,
@@ -4666,12 +4725,9 @@ class _PrincipalVariationListState
                 variantColor,
               );
             },
-            child: Heroine(
-              tag: heroineTag,
-              child: Material(
-                color: Colors.transparent,
-                child: Text('${token.text} ', style: moveStyle),
-              ),
+            child: Material(
+              color: Colors.transparent,
+              child: Text('${token.text} ', style: moveStyle),
             ),
           ),
         ),
@@ -4714,6 +4770,90 @@ class _PrincipalVariationListState
       formatted.add(sanMoves[i]);
     }
     return formatted;
+  }
+
+  Future<void> _showPvMoveActionSheet(
+    BuildContext context,
+    String moveLabel,
+    AnalysisLine line,
+    int variantIndex,
+    int moveIndex,
+    ChessBoardScreenNotifierNew notifier,
+    Color accentColor,
+  ) async {
+    final hostContext = context;
+    final actions = <_NotationActionItem>[
+      _NotationActionItem(
+        icon: Icons.visibility_rounded,
+        label: 'Preview from here',
+        color: accentColor,
+        onSelected: (_) async {
+          notifier.previewPrincipalVariationMoveAt(
+            line,
+            variantIndex,
+            moveIndex,
+          );
+        },
+      ),
+      _NotationActionItem(
+        icon: Icons.playlist_add_check_circle_rounded,
+        label: 'Insert entire line',
+        color: kPrimaryColor,
+        onSelected: (_) async {
+          notifier.clearPvPreview();
+          notifier.insertPvMoves(line);
+        },
+      ),
+      _NotationActionItem(
+        icon: Icons.auto_awesome_rounded,
+        label: 'Promote to main variant',
+        color: kWhiteColor,
+        onSelected: (ctx) async {
+          final confirmed =
+              await showDialog<bool>(
+                    context: ctx,
+                    builder: (dialogContext) => AlertDialog(
+                      backgroundColor: kBlack2Color,
+                      title: const Text('Replace main line?'),
+                      content: const Text(
+                        'This will overwrite the current main line with the selected engine variation.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(dialogContext).pop(false),
+                          child: const Text('Cancel'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.of(dialogContext).pop(true),
+                          style: TextButton.styleFrom(
+                            foregroundColor: kPrimaryColor,
+                          ),
+                          child: const Text('Promote'),
+                        ),
+                      ],
+                    ),
+                  ) ??
+                  false;
+          if (!confirmed) {
+            return;
+          }
+          notifier.previewPrincipalVariationMoveAt(
+            line,
+            variantIndex,
+            moveIndex,
+          );
+          await Future.delayed(const Duration(milliseconds: 50));
+          notifier.promotePreviewToMainVariant();
+        },
+      ),
+    ];
+
+    await _showNotationActionSheet(
+      context: hostContext,
+      title: moveLabel,
+      subtitle: 'Engine line options',
+      actions: actions,
+    );
   }
 
   void _jumpToPage(int targetPage, {required bool animate}) {
@@ -4777,31 +4917,6 @@ class _PrincipalVariationListState
           .selectVariant(index, preservePreview: shouldPreserve);
       _pendingVariantSelectionIndex = null;
     });
-  }
-
-  void _showMovePreviewAnimation(
-    BuildContext context,
-    String moveText,
-    String heroineTag,
-    AnalysisLine line,
-    int variantIndex,
-    int moveIndex,
-    ChessBoardScreenNotifierNew notifier,
-    Color variantColor,
-  ) {
-    Navigator.of(context).push(
-      _HeroinePreviewRoute(
-        child: _MovePreviewAnimationOverlay(
-          moveText: moveText,
-          heroineTag: heroineTag,
-          line: line,
-          variantIndex: variantIndex,
-          moveIndex: moveIndex,
-          notifier: notifier,
-          variantColor: variantColor,
-        ),
-      ),
-    );
   }
 
   int get maxPageIndex {
@@ -5036,617 +5151,11 @@ class _ShareGameScreen extends ConsumerWidget {
   }
 }
 
-class _NotationActionOverlay extends StatefulWidget {
-  final String heroineTag;
-  final String title;
-  final String? subtitle;
-  final List<_NotationActionItem> actions;
-
-  const _NotationActionOverlay({
-    required this.heroineTag,
-    required this.title,
-    this.subtitle,
-    required this.actions,
-  });
-
-  @override
-  State<_NotationActionOverlay> createState() => _NotationActionOverlayState();
-}
-
-class _NotationActionOverlayState extends State<_NotationActionOverlay>
-    with TickerProviderStateMixin {
-  static const double _dragDismissThreshold = 120.0;
-
-  bool _isEntering = true;
-  double _glowIntensity = 0.0;
-  bool _hasPlayedThresholdHaptic = false;
-  Offset _cardOffset = Offset.zero;
-  Offset _animationStart = Offset.zero;
-  Offset _animationTarget = Offset.zero;
-  Curve _animationCurve = Curves.easeOut;
-  VoidCallback? _animationComplete;
-  bool _isDragging = false;
-  Offset _trackedVelocity = Offset.zero;
-  Duration? _lastSampleTime;
-  late final AnimationController _offsetController;
-
-  @override
-  void initState() {
-    super.initState();
-    _offsetController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 450),
-    )
-      ..addListener(_handleOffsetTick)
-      ..addStatusListener((status) {
-        if (status == AnimationStatus.completed) {
-          _animationComplete?.call();
-          _animationComplete = null;
-        }
-      });
-
-    // Initial haptic feedback
-    HapticFeedback.mediumImpact();
-
-    // Trigger entrance animation
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        setState(() {
-          _isEntering = false;
-        });
-      }
-    });
-  }
-
-  void _dismiss() {
-    Navigator.of(context).pop();
-  }
-
-  void _handleOffsetTick() {
-    final progress = _animationCurve.transform(_offsetController.value);
-    setState(() {
-      _cardOffset = Offset.lerp(_animationStart, _animationTarget, progress)!;
-      _glowIntensity = (_cardOffset.distance / (_dragDismissThreshold * 1.4))
-          .clamp(0.0, 1.0);
-    });
-  }
-
-  void _startDrag(DragStartDetails details) {
-    _offsetController.stop();
-    _isDragging = true;
-    _trackedVelocity = Offset.zero;
-    _lastSampleTime = details.sourceTimeStamp;
-  }
-
-  void _updateDrag(DragUpdateDetails details) {
-    final timestamp = details.sourceTimeStamp;
-    if (timestamp != null && _lastSampleTime != null) {
-      final delta = timestamp - _lastSampleTime!;
-      final seconds = delta.inMicroseconds / 1e6;
-      if (seconds > 0) {
-        final velocity = details.delta / seconds;
-        _trackedVelocity = Offset.lerp(_trackedVelocity, velocity, 0.35)!;
-      }
-    }
-    _lastSampleTime = timestamp;
-
-    final proposed = _cardOffset + details.delta;
-    final radius = proposed.distance;
-    Offset limitedOffset = proposed;
-    const maxRadius = 260.0;
-    if (radius > maxRadius) {
-      final excess = radius - maxRadius;
-      final rubberBand = maxRadius + excess * 0.25;
-      limitedOffset = proposed / radius * rubberBand;
-    }
-
-    setState(() {
-      _cardOffset = limitedOffset;
-      _glowIntensity =
-          (_cardOffset.distance / (_dragDismissThreshold * 1.4)).clamp(
-        0.0,
-        1.0,
-      );
-    });
-
-    if (_glowIntensity > 0.85 && !_hasPlayedThresholdHaptic) {
-      HapticFeedback.selectionClick();
-      _hasPlayedThresholdHaptic = true;
-    } else if (_glowIntensity <= 0.75 && _hasPlayedThresholdHaptic) {
-      _hasPlayedThresholdHaptic = false;
-    }
-  }
-
-  void _endDrag(DragEndDetails details) {
-    _isDragging = false;
-    final releaseVelocity =
-        details.velocity.pixelsPerSecond + (_trackedVelocity * 0.2);
-    final distance = _cardOffset.distance;
-    final shouldDismiss =
-        distance > _dragDismissThreshold || releaseVelocity.distance > 1200;
-
-    if (shouldDismiss) {
-      HapticFeedback.mediumImpact();
-      final directionVector =
-          (_cardOffset + releaseVelocity * 0.2).distance == 0
-              ? const Offset(0, 1)
-              : (_cardOffset + releaseVelocity * 0.2);
-      final normalized = directionVector / directionVector.distance;
-      final screen = MediaQuery.of(context).size;
-      final travelDistance =
-          math.max(screen.width, screen.height) * 0.9 * normalized.distance;
-      final target = _cardOffset + normalized * travelDistance;
-      _animateOffsetTo(
-        target,
-        duration: const Duration(milliseconds: 520),
-        curve: Curves.easeOutCubic,
-        onComplete: () => Navigator.of(context).pop(),
-      );
-    } else {
-      _animateOffsetTo(
-        Offset.zero,
-        duration: const Duration(milliseconds: 650),
-        curve: Curves.elasticOut,
-      );
-      _hasPlayedThresholdHaptic = false;
-    }
-  }
-
-  void _animateOffsetTo(
-    Offset target, {
-    required Duration duration,
-    Curve curve = Curves.easeOut,
-    VoidCallback? onComplete,
-  }) {
-    _animationStart = _cardOffset;
-    _animationTarget = target;
-    _animationCurve = curve;
-    _animationComplete = onComplete;
-    _offsetController.duration = duration;
-    _offsetController.forward(from: 0.0);
-  }
-
-  @override
-  void dispose() {
-    _offsetController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        // Background with blur that reacts to heroine dismiss
-        ReactToHeroineDismiss(
-          builder: (context, dismissProgress, offset, child) {
-            final progress = 1.0 - dismissProgress;
-            final blurAmount = 4.0 * progress;
-            final backgroundOpacity = 0.3 * progress;
-
-            return GestureDetector(
-              onTap: _dismiss,
-              child: BackdropFilter(
-                filter: ImageFilter.blur(
-                  sigmaX: blurAmount,
-                  sigmaY: blurAmount,
-                ),
-                child: Container(
-                  color: Colors.black.withValues(alpha: backgroundOpacity),
-                ),
-              ),
-            );
-          },
-        ),
-
-        // Main card with drag-to-dismiss
-        Center(
-          child: SingleMotionBuilder(
-            motion: CupertinoMotion.bouncy(),
-            value: _isEntering ? 0.0 : 1.0,
-            builder: (context, value, child) {
-              final cardOpacity = value.clamp(0.0, 1.0);
-              final scale = lerpDouble(0.88, 1.0, value) ?? 1.0;
-              return Opacity(
-                opacity: cardOpacity,
-                child: Transform.scale(
-                  scale: scale,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    dragStartBehavior: DragStartBehavior.down,
-                    onPanStart: _startDrag,
-                    onPanUpdate: _updateDrag,
-                    onPanEnd: _endDrag,
-                    child: _LiquidHeroSurface(
-                      heroineTag: widget.heroineTag,
-                      motion: const CupertinoMotion.interactive(),
-                      offset: _cardOffset,
-                      glowStrength: _glowIntensity,
-                      entryProgress: value,
-                      accentColor: kPrimaryColor,
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          if (_glowIntensity > 0.0)
-                            Positioned.fill(
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(24.sp),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: kPrimaryColor.withValues(
-                                        alpha: _glowIntensity * 0.35,
-                                      ),
-                                      blurRadius: 35 * _glowIntensity,
-                                      spreadRadius: 10 * _glowIntensity,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          Material(
-                            color: Colors.transparent,
-                            child: Container(
-                              width: double.infinity,
-                              margin: EdgeInsets.symmetric(horizontal: 20.sp),
-                              padding: EdgeInsets.all(22.sp),
-                              decoration: BoxDecoration(
-                                color: kBlack2Color.withValues(alpha: 0.96),
-                                borderRadius: BorderRadius.circular(24.sp),
-                                border: Border.all(
-                                  color: kPrimaryColor.withValues(
-                                    alpha: 0.3 + (_glowIntensity * 0.4),
-                                  ),
-                                  width: 1.6 + (_glowIntensity * 0.7),
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(
-                                      alpha: 0.55,
-                                    ),
-                                    blurRadius: 40 + (_glowIntensity * 12),
-                                    offset: Offset(
-                                      0,
-                                      18 + (_glowIntensity * 10),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _ActionOverlayHeader(
-                                    title: widget.title,
-                                    subtitle: widget.subtitle,
-                                  ),
-                                  SizedBox(height: 20.h),
-                                  ...List.generate(widget.actions.length,
-                                      (index) {
-                                    final action = widget.actions[index];
-                                    final staggerDelay = index * 0.12;
-                                    final buttonEntranceValue =
-                                        _isEntering ? 0.0 : 1.0;
-                                    return IgnorePointer(
-                                      ignoring: _isDragging,
-                                      child: SingleMotionBuilder(
-                                        motion: CupertinoMotion.bouncy(),
-                                        value: buttonEntranceValue,
-                                        builder: (context, value, child) {
-                                          final delayed = (value - staggerDelay)
-                                              .clamp(0.0, 1.0);
-                                          final normalized =
-                                              (staggerDelay >= 1.0
-                                                      ? 0.0
-                                                      : delayed /
-                                                          (1.0 - staggerDelay))
-                                                  .clamp(0.0, 1.0);
-                                          return Transform.translate(
-                                            offset: Offset(
-                                              0,
-                                              (1.0 - normalized) * 28,
-                                            ),
-                                            child: Opacity(
-                                              opacity: normalized,
-                                              child: child,
-                                            ),
-                                          );
-                                        },
-                                        child: Padding(
-                                          padding:
-                                              EdgeInsets.only(bottom: 12.h),
-                                          child: _ActionButton(
-                                            action: action,
-                                            onPressed: () =>
-                                                action.onSelected(context),
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  }),
-                                  SizedBox(height: 4.h),
-                                  Center(
-                                    child: AnimatedOpacity(
-                                      duration:
-                                          const Duration(milliseconds: 180),
-                                      opacity: 0.4 + (_glowIntensity * 0.35),
-                                      child: Text(
-                                        'Flick away to dismiss',
-                                        style:
-                                            AppTypography.textXsRegular.copyWith(
-                                          color: kWhiteColor.withValues(
-                                            alpha: 0.55,
-                                          ),
-                                          fontStyle: FontStyle.italic,
-                                          letterSpacing: 0.4,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Beautiful action button with hover and press states
-class _ActionButton extends StatefulWidget {
-  final _NotationActionItem action;
-  final VoidCallback onPressed;
-
-  const _ActionButton({required this.action, required this.onPressed});
-
-  @override
-  State<_ActionButton> createState() => _ActionButtonState();
-}
-
-class _ActionButtonState extends State<_ActionButton> {
-  bool _isPressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) {
-        setState(() => _isPressed = true);
-        HapticFeedback.lightImpact();
-      },
-      onTapUp: (_) {
-        setState(() => _isPressed = false);
-        widget.onPressed();
-      },
-      onTapCancel: () {
-        setState(() => _isPressed = false);
-      },
-      child: SingleMotionBuilder(
-        motion: CupertinoMotion.snappy(),
-        value: _isPressed ? 0.95 : 1.0,
-        builder: (context, scale, child) {
-          return Transform.scale(
-            scale: scale,
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 18.sp, vertical: 14.sp),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    widget.action.color.withValues(
-                      alpha: _isPressed ? 0.28 : 0.18,
-                    ),
-                    widget.action.color.withValues(
-                      alpha: _isPressed ? 0.18 : 0.12,
-                    ),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(14.sp),
-                border: Border.all(
-                  color: widget.action.color.withValues(
-                    alpha: _isPressed ? 0.6 : 0.45,
-                  ),
-                  width: 1.5,
-                ),
-                boxShadow:
-                    _isPressed
-                        ? []
-                        : [
-                          BoxShadow(
-                            color: widget.action.color.withValues(alpha: 0.2),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-              ),
-              child: Row(
-                children: [
-                  Icon(widget.action.icon, color: kWhiteColor, size: 20.ic),
-                  SizedBox(width: 12.w),
-                  Expanded(
-                    child: Text(
-                      widget.action.label,
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: kWhiteColor,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  Icon(
-                    Icons.arrow_forward_ios_rounded,
-                    color: kWhiteColor.withValues(alpha: 0.4),
-                    size: 14.ic,
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _ActionOverlayHeader extends StatelessWidget {
-  final String title;
-  final String? subtitle;
-
-  const _ActionOverlayHeader({required this.title, this.subtitle});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          padding: EdgeInsets.all(10.sp),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                kPrimaryColor.withValues(alpha: 0.4),
-                kPrimaryColor.withValues(alpha: 0.15),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(14.sp),
-            boxShadow: [
-              BoxShadow(
-                color: kPrimaryColor.withValues(alpha: 0.25),
-                blurRadius: 16,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          child: Icon(
-            Icons.auto_awesome_rounded,
-            color: kWhiteColor,
-            size: 20.ic,
-          ),
-        ),
-        SizedBox(width: 14.w),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: AppTypography.textLgBold.copyWith(
-                  color: kWhiteColor,
-                  letterSpacing: 0.3,
-                ),
-              ),
-              if (subtitle != null)
-                Text(
-                  subtitle!,
-                  style: AppTypography.textXsRegular.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.65),
-                    letterSpacing: 0.2,
-                  ),
-                ),
-            ],
-          ),
-        ),
-        Container(
-          height: 32.h,
-          padding: EdgeInsets.symmetric(horizontal: 10.sp),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: kWhiteColor.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: kWhiteColor.withValues(alpha: 0.12),
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.drag_handle_rounded,
-                color: kWhiteColor.withValues(alpha: 0.55),
-                size: 16.ic,
-              ),
-              SizedBox(width: 4.w),
-              Text(
-                'Drag',
-                style: AppTypography.textXsRegular.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.6),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _LiquidHeroSurface extends StatelessWidget {
-  final String heroineTag;
-  final Motion motion;
-  final Offset offset;
-  final double glowStrength;
-  final double entryProgress;
-  final Color accentColor;
-  final Widget child;
-
-  const _LiquidHeroSurface({
-    required this.heroineTag,
-    required this.motion,
-    required this.offset,
-    required this.glowStrength,
-    required this.entryProgress,
-    required this.accentColor,
-    required this.child,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final dragFactor = (offset.distance / 260).clamp(0.0, 1.0);
-    final depthScale = (1 - dragFactor * 0.05) *
-        (0.9 + (entryProgress.clamp(0.0, 1.0) * 0.1));
-    final tiltX = (offset.dy / 1200).clamp(-0.35, 0.35);
-    final tiltY = (offset.dx / 1200).clamp(-0.35, 0.35);
-
-    final matrix = Matrix4.identity()
-      ..translate(offset.dx, offset.dy)
-      ..setEntry(3, 2, 0.0015)
-      ..rotateX(tiltX)
-      ..rotateY(-tiltY)
-      ..scale(depthScale);
-
-    final aura = BoxShadow(
-      color: accentColor.withValues(alpha: 0.25 + glowStrength * 0.4),
-      blurRadius: 40 + glowStrength * 20,
-      spreadRadius: 8 + glowStrength * 6,
-      offset: Offset(0, 18),
-    );
-
-    return Transform(
-      transform: matrix,
-      alignment: Alignment.center,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 140),
-        curve: Curves.easeOut,
-        decoration: BoxDecoration(boxShadow: [aura]),
-        child: Heroine(tag: heroineTag, motion: motion, child: child),
-      ),
-    );
-  }
-}
-
 class _NotationActionItem {
   final IconData icon;
   final String label;
   final Color color;
-  final FutureOr<void> Function(BuildContext context) onSelected;
+  final FutureOr<void> Function(BuildContext hostContext) onSelected;
 
   const _NotationActionItem({
     required this.icon,
@@ -5656,1612 +5165,316 @@ class _NotationActionItem {
   });
 }
 
-/// Custom route with Heroine support for smooth hero transitions
-class _HeroinePreviewRoute<T> extends PageRoute<T> with HeroinePageRouteMixin {
-  final Widget child;
-
-  _HeroinePreviewRoute({required this.child});
-
-  @override
-  Color? get barrierColor => Colors.transparent;
-
-  @override
-  String? get barrierLabel => null;
-
-  @override
-  bool get opaque => false;
-
-  @override
-  bool get maintainState => true;
-
-  @override
-  Duration get transitionDuration => const Duration(milliseconds: 450);
-
-  @override
-  Duration get reverseTransitionDuration => const Duration(milliseconds: 320);
-
-  @override
-  Widget buildPage(
-    BuildContext context,
-    Animation<double> animation,
-    Animation<double> secondaryAnimation,
-  ) {
-    return child;
-  }
-
-  @override
-  Widget buildTransitions(
-    BuildContext context,
-    Animation<double> animation,
-    Animation<double> secondaryAnimation,
-    Widget child,
-  ) {
-    // Fade transition for the overlay
-    return FadeTransition(opacity: animation, child: child);
-  }
+Future<void> _showNotationActionSheet({
+  required BuildContext context,
+  required String title,
+  String? subtitle,
+  required List<_NotationActionItem> actions,
+  _VariationCommentSheetConfig? commentConfig,
+}) async {
+  final hostContext = context;
+  await showModalBottomSheet<void>(
+    context: hostContext,
+    useRootNavigator: true,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    barrierColor: Colors.black.withValues(alpha: 0.65),
+    builder: (_) {
+      return _NotationActionSheet(
+        title: title,
+        subtitle: subtitle,
+        actions: actions,
+        hostContext: hostContext,
+        commentConfig: commentConfig,
+      );
+    },
+  );
 }
 
-/// Overlay widget that shows the move preview animation with loading bar
-class _MovePreviewAnimationOverlay extends StatefulWidget {
-  final String moveText;
-  final String heroineTag;
-  final AnalysisLine line;
-  final int variantIndex;
-  final int moveIndex;
-  final ChessBoardScreenNotifierNew notifier;
-  final Color variantColor;
 
-  const _MovePreviewAnimationOverlay({
-    required this.moveText,
-    required this.heroineTag,
-    required this.line,
-    required this.variantIndex,
-    required this.moveIndex,
-    required this.notifier,
-    required this.variantColor,
+class _VariationCommentSheetConfig {
+  final String? initialValue;
+  final FutureOr<void> Function(BuildContext context, String value) onSubmit;
+
+  const _VariationCommentSheetConfig({
+    this.initialValue,
+    required this.onSubmit,
+  });
+}
+
+class _NotationActionSheet extends StatefulWidget {
+  final String title;
+  final String? subtitle;
+  final List<_NotationActionItem> actions;
+  final BuildContext hostContext;
+  final _VariationCommentSheetConfig? commentConfig;
+
+  const _NotationActionSheet({
+    required this.title,
+    this.subtitle,
+    required this.actions,
+    required this.hostContext,
+    this.commentConfig,
   });
 
   @override
-  State<_MovePreviewAnimationOverlay> createState() =>
-      _MovePreviewAnimationOverlayState();
+  State<_NotationActionSheet> createState() => _NotationActionSheetState();
 }
 
-class _MovePreviewAnimationOverlayState
-    extends State<_MovePreviewAnimationOverlay> {
-  static const double _dragDismissThreshold = 140.0;
-  static const double _maxDragRadius = 280.0;
-
-  // Animation state
-  bool _isEntering = true;
-  bool _isDismissing = false;
-  Offset _dragOffset = Offset.zero;
-  Offset _dragReturnTarget = Offset.zero;
-  bool _isReturning = false;
-
-  // Interaction state
-  bool _isDraggingCard = false;
-  Offset _currentDragVelocity = Offset.zero;
-  Duration? _lastDragSampleTime;
-  bool _hasTriggeredInstantApply = false;
-  bool _pendingReject = false;
-  Offset? _rejectDirection;
-  bool _completed = false;
-  double _magicBurst = 0.0;
-  bool _showExpandedMoveText = false;
+class _NotationActionSheetState extends State<_NotationActionSheet> {
+  late final TextEditingController _commentController;
+  bool _hasEdited = false;
+  bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
-
-    // Initial haptic feedback on long press start
-    HapticFeedback.mediumImpact();
-
-    // Trigger entrance animation
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        setState(() {
-          _isEntering = false;
-        });
-      }
-    });
-
-    // Delay the large move-text reveal until the hero flight settles
-    Future.delayed(const Duration(milliseconds: 280), () {
-      if (!mounted) return;
-      setState(() {
-        _showExpandedMoveText = true;
-      });
-    });
-  }
-
-  void _startDrag() {
-    _lastDragSampleTime = null;
-    _currentDragVelocity = Offset.zero;
-    setState(() {
-      _isDraggingCard = true;
-      _isReturning = false;
-    });
-  }
-
-  void _updateDrag(DragUpdateDetails details) {
-    final timestamp = details.sourceTimeStamp;
-    if (timestamp != null) {
-      if (_lastDragSampleTime != null) {
-        final deltaMicros =
-            (timestamp - _lastDragSampleTime!).inMicroseconds.toDouble();
-        if (deltaMicros > 0) {
-          final seconds = deltaMicros / 1e6;
-          final velocity = details.delta / seconds;
-          // More responsive velocity tracking with less smoothing
-          _currentDragVelocity = _currentDragVelocity * 0.3 + velocity * 0.7;
-        }
-      }
-      _lastDragSampleTime = timestamp;
-    }
-
-    final dragLimit = _computeDynamicDragLimit(MediaQuery.of(context).size);
-
-    // Direct drag response without lerping for instant finger tracking
-    final proposed = _dragOffset + details.delta;
-    final radius = proposed.distance;
-    Offset limitedOffset;
-    if (radius > dragLimit) {
-      // Apply rubber-band effect at the edge
-      final excess = radius - dragLimit;
-      final rubberBand = dragLimit + excess * 0.3;
-      limitedOffset = proposed / radius * rubberBand;
-    } else {
-      limitedOffset = proposed;
-    }
-
-    setState(() {
-      _dragOffset = limitedOffset; // Direct assignment - no lerp!
-    });
-
-    final upward = -_dragOffset.dy;
-    final sideways = _dragOffset.dx.abs();
-    // Provide haptic feedback when reaching threshold
-    if (!_hasTriggeredInstantApply &&
-        upward > _dragDismissThreshold * 0.9 &&
-        sideways < _dragDismissThreshold * 0.6) {
-      _hasTriggeredInstantApply = true;
-      HapticFeedback.heavyImpact();
-      _sparkMagicBurst();
-    }
-  }
-
-  void _endDrag(DragEndDetails details) {
-    final upward = -_dragOffset.dy;
-    final sideways = _dragOffset.dx.abs();
-    final releaseVelocity = details.velocity.pixelsPerSecond;
-    final velocityY = -releaseVelocity.dy; // Negative = upward
-
-    // More fluid gesture detection - focus on intent, not perfect path
-    // Use velocity direction as primary indicator of intent
-    final hasUpwardVelocity = velocityY > 400; // More lenient threshold
-    final hasStrongUpwardVelocity = velocityY > 800;
-    final hasUpwardDistance = upward > _dragDismissThreshold * 0.6; // More lenient
-
-    // Check vertical-to-horizontal ratio instead of absolute values
-    // This allows diagonal swipes if the upward component is dominant
-    final verticalRatio = sideways > 0 ? upward / sideways : double.infinity;
-    final isUpwardDominant = verticalRatio > 0.8; // Allows ~51° angle or steeper
-
-    // Accept if:
-    // 1. Strong upward velocity (user clearly flicked up), OR
-    // 2. Good upward velocity with reasonable angle, OR
-    // 3. Sufficient upward distance with upward-dominant direction
-    final shouldActivate = hasStrongUpwardVelocity ||
-        (hasUpwardVelocity && isUpwardDominant) ||
-        (hasUpwardDistance && verticalRatio > 1.2); // Even more lenient for distance
-
-    if (shouldActivate) {
-      // Magical upward swipe - activate preview!
-      HapticFeedback.heavyImpact();
-      _activatePreviewWithMagic();
-      return;
-    }
-
-    final releaseSpeed = releaseVelocity.distance;
-    final shouldFlingAway =
-        releaseSpeed > 320 || _dragOffset.distance > _dragDismissThreshold * 0.65;
-    if (shouldFlingAway) {
-      HapticFeedback.mediumImpact();
-      _flingAway(releaseVelocity);
-      return;
-    }
-
-    // Snap back to center after dragging
-    _isDraggingCard = false;
-    _animateDragBack(releaseVelocity: releaseVelocity);
-  }
-
-  void _animateDragBack({Offset? releaseVelocity}) {
-    // Simple: snap back to center, let Motor handle the physics
-    setState(() {
-      _dragReturnTarget = Offset.zero;
-      _isReturning = true;
-    });
-
-    // Reset state after Motor animation completes
-    Future.delayed(const Duration(milliseconds: 600), () {
-      if (mounted && !_isDraggingCard) {
-        final shouldDismiss = _pendingReject;
-        _pendingReject = false;
-
-        setState(() {
-          _dragOffset = Offset.zero;
-          _currentDragVelocity = Offset.zero;
-          _lastDragSampleTime = null;
-          _hasTriggeredInstantApply = false;
-          _isReturning = false;
-        });
-
-        if (shouldDismiss) {
-          _dismissEarly(triggerHaptic: false);
-        }
-      }
-    });
-  }
-
-  void _sparkMagicBurst() {
-    setState(() => _magicBurst = 1.0);
-    Future.delayed(const Duration(milliseconds: 300), () {
-      if (mounted) {
-        setState(() => _magicBurst = 0.0);
-      }
-    });
-  }
-
-  void _flingAway(Offset releaseVelocity) {
-    if (_isDismissing) return;
-
-    // Calculate direction with velocity for natural continuation
-    final releaseVector =
-        (_dragOffset * 0.7) + ((_currentDragVelocity + releaseVelocity) * 0.003);
-    Offset direction =
-        releaseVector == Offset.zero ? const Offset(0, 1) : releaseVector;
-    final normalized = direction / direction.distance;
-
-    final screenSize = MediaQuery.of(context).size;
-
-    // Follow the natural fling direction - don't snap to axes!
-    // Calculate how far to go in the fling direction to exit screen
-    final scale = math.max(screenSize.width, screenSize.height) * 1.5;
-    final target = _dragOffset + (normalized * scale);
-
-    setState(() {
-      _isDraggingCard = false;
-      _pendingReject = true;
-      _rejectDirection = normalized;
-      _dragReturnTarget = target;
-      _isReturning = true;
-    });
-
-    // Dismiss after animation completes
-    Future.delayed(const Duration(milliseconds: 400), () {
-      if (mounted && _pendingReject) {
-        _dismissEarly(triggerHaptic: false);
-      }
-    });
-  }
-
-  double _computeDynamicDragLimit(Size screenSize) {
-    final diagonal = math.sqrt(
-      screenSize.width * screenSize.width +
-          screenSize.height * screenSize.height,
+    _commentController = TextEditingController(
+      text: widget.commentConfig?.initialValue ?? '',
     );
-    return math.max(_maxDragRadius, diagonal * 0.45);
+    if (widget.commentConfig != null) {
+      _commentController.addListener(_handleCommentChanged);
+    }
   }
 
   @override
   void dispose() {
+    if (widget.commentConfig != null) {
+      _commentController.removeListener(_handleCommentChanged);
+    }
+    _commentController.dispose();
     super.dispose();
   }
 
-  String _formatPreviewMoves() {
-    // Get the moves from the PV line that will be added
-    final moves = widget.line.sanMoves;
-    if (moves.isEmpty) return '';
-
-    // Show moves starting from the selected move index
-    final remainingMoves = moves.skip(widget.moveIndex).take(4).toList();
-    if (remainingMoves.isEmpty) return '';
-
-    final moveList = remainingMoves.join(' ');
-    final hasMore = moves.length > widget.moveIndex + 4;
-    return moveList + (hasMore ? ' ...' : '');
-  }
-
-  String _formatEvalChange() {
-    final eval = widget.line.evaluation;
-    if (eval == null && !widget.line.isMate) return '';
-
-    if (widget.line.isMate) {
-      final mate = widget.line.mate ?? 0;
-      final absMate = mate.abs();
-      final prefix = mate >= 0 ? '#+' : '#-';
-      return '$prefix$absMate';
+  void _handleCommentChanged() {
+    if (widget.commentConfig == null) return;
+    final baseValue = widget.commentConfig?.initialValue ?? '';
+    final edited = _commentController.text != baseValue;
+    if (_hasEdited != edited) {
+      setState(() {
+        _hasEdited = edited;
+      });
     }
-
-    final formatted = eval!.abs().toStringAsFixed(1);
-    final sign = eval >= 0 ? '+' : '-';
-    return '$sign$formatted';
-  }
-
-  void _activatePreviewWithMagic() {
-    if (_completed) return;
-    _completed = true;
-
-    // Magical burst effect
-    _sparkMagicBurst();
-
-    // Activate preview mode
-    widget.notifier.previewPrincipalVariationMoveAt(
-      widget.line,
-      widget.variantIndex,
-      widget.moveIndex,
-    );
-
-    // Follow the natural fling direction instead of snapping to center
-    final screenSize = MediaQuery.of(context).size;
-
-    // Calculate direction based on current drag offset and velocity
-    final releaseVector = _dragOffset + (_currentDragVelocity * 0.003);
-    final direction = releaseVector == Offset.zero
-        ? const Offset(0, -1) // Default upward if no velocity
-        : releaseVector;
-    final normalized = direction / direction.distance;
-
-    // Calculate target point off-screen in the fling direction
-    // Scale by screen dimensions to ensure it goes far enough
-    final scale = math.max(screenSize.width, screenSize.height) * 1.2;
-    final target = _dragOffset + (normalized * scale);
-
-    setState(() {
-      _isDraggingCard = false;
-      _dragReturnTarget = target;
-      _isReturning = true;
-    });
-
-    // Pop after ascension completes
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
-    });
-  }
-
-  void _onPreview() {
-    if (_completed) return;
-    _completed = true;
-    HapticFeedback.heavyImpact();
-    widget.notifier.previewPrincipalVariationMoveAt(
-      widget.line,
-      widget.variantIndex,
-      widget.moveIndex,
-    );
-    _closeWithMagicalAnimation();
-  }
-
-  void _onInsertAllMoves() {
-    if (_completed) return;
-    _completed = true;
-    HapticFeedback.heavyImpact();
-    // Insert all moves from this PV line
-    widget.notifier.clearPvPreview();
-    widget.notifier.insertPvMoves(widget.line);
-    _closeWithMagicalAnimation();
-  }
-
-  void _onPromoteMainVariant() async {
-    if (_completed) return;
-    HapticFeedback.mediumImpact();
-
-    // Show confirmation dialog
-    final confirmed =
-        await showDialog<bool>(
-          context: context,
-          builder:
-              (dialogContext) => AlertDialog(
-                backgroundColor: kBlack2Color,
-                title: const Text('Promote to main variant?'),
-                content: const Text(
-                  'This will replace the main variant with this line from the current position.',
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(dialogContext).pop(false),
-                    child: const Text('Cancel'),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.of(dialogContext).pop(true),
-                    style: TextButton.styleFrom(foregroundColor: kPrimaryColor),
-                    child: const Text('Promote'),
-                  ),
-                ],
-              ),
-        ) ??
-        false;
-
-    if (!confirmed || !mounted) return;
-
-    _completed = true;
-    HapticFeedback.heavyImpact();
-
-    // Enter preview mode first
-    widget.notifier.previewPrincipalVariationMoveAt(
-      widget.line,
-      widget.variantIndex,
-      widget.moveIndex,
-    );
-
-    // Wait a frame then promote using the line we just previewed
-    await Future.delayed(const Duration(milliseconds: 50));
-    if (mounted) {
-      widget.notifier.promotePreviewToMainVariant();
-    }
-
-    _closeWithMagicalAnimation();
-  }
-
-  void _closeWithMagicalAnimation() {
-    if (_isDismissing) return;
-    setState(() {
-      _isDismissing = true;
-      _isDraggingCard = false;
-      _isReturning = false;
-      _dragOffset = Offset.zero;
-      _currentDragVelocity = Offset.zero;
-      _lastDragSampleTime = null;
-      _hasTriggeredInstantApply = false;
-      _pendingReject = false;
-      _rejectDirection = null;
-      _magicBurst = 0.0;
-    });
-
-    // Pop with hero transition after brief delay for dismiss animation
-    Future.delayed(const Duration(milliseconds: 280), () {
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
-    });
-  }
-
-  void _dismissEarly({bool triggerHaptic = true}) {
-    if (!_completed && triggerHaptic) {
-      HapticFeedback.lightImpact();
-    }
-    setState(() {
-      _dragOffset = Offset.zero;
-      _isDraggingCard = false;
-      _isReturning = false;
-    });
-    _closeWithMagicalAnimation();
   }
 
   @override
   Widget build(BuildContext context) {
-    final screenSize = MediaQuery.of(context).size;
-    final variantColor = widget.variantColor;
-    const particleCount = 45; // More particles for magical effect
+    final viewInsets = MediaQuery.of(context).viewInsets.bottom;
+    final actions = widget.actions;
 
-    return Material(
-      color: Colors.transparent,
-      child: SingleMotionBuilder(
-        motion: CupertinoMotion.bouncy(),
-        value: _isEntering ? 0.0 : 1.0,
-        builder: (context, entranceValue, child) {
-          return SingleMotionBuilder(
-            motion: CupertinoMotion.snappy(),
-            value: _isDismissing ? 1.0 : 0.0,
-            builder: (context, dismissValue, child) {
-              return MotionBuilder(
-                motion:
-                    _isReturning
-                        ? CupertinoMotion.bouncy()
-                        : CupertinoMotion.snappy(),
-                value: _isReturning ? _dragReturnTarget : _dragOffset,
-                converter: OffsetMotionConverter(),
-                builder: (context, currentOffset, child) {
-                  // Smooth progress with natural spring motion
-                  final progress = entranceValue.clamp(0.0, 1.0);
-                  final particleProgress = progress;
-
-                  // Card scale with bouncy spring - allows overshoot up to 1.15
-                  final cardScaleValue = (0.7 + (progress * 0.4)).clamp(
-                    0.0,
-                    1.15,
-                  );
-
-                  // Dismiss scale (shrink to 0.2)
-                  final dismissScaleValue = (1.0 - dismissValue * 0.8).clamp(
-                    0.0,
-                    1.0,
-                  );
-
-                  final baseScale =
-                      _isDismissing ? dismissScaleValue : cardScaleValue;
-                  final backgroundOpacityValue =
-                      _isDismissing
-                          ? ((1 - dismissValue).clamp(0.0, 1.0) * 0.5)
-                          : (progress * 0.5);
-                  final glowOpacity = (math.sin(progress * math.pi * 3) * 0.2 +
-                          0.8)
-                      .clamp(0.0, 1.0);
-
-                  // Use animated offset for smooth drag return
-                  final interactiveOffset =
-                      _isDraggingCard ? _dragOffset : currentOffset;
-                  final dragProgress = (-interactiveOffset.dy /
-                          _dragDismissThreshold)
-                      .clamp(0.0, 1.0);
-                  final interactiveScaleFactor = 1 + (dragProgress * 0.2);
-
-                  // Card opacity with dismiss fade
-                  final cardOpacityValue =
-                      (_isDismissing
-                          ? (1 - dismissValue).clamp(0.0, 1.0)
-                          : 1.0) *
-                      (_pendingReject
-                          ? (1 -
-                                  (currentOffset.distance /
-                                      screenSize.width *
-                                      0.5))
-                              .clamp(0.0, 1.0)
-                          : 1.0);
-
-                  // Enhanced rotation with more dynamic response
-                  final rotationAngle = (interactiveOffset.dx / 180).clamp(
-                    -0.35,
-                    0.35,
-                  );
-
-                  // Add 3D perspective flip based on vertical drag
-                  final flipAngleX =
-                      (dragProgress * 0.15) *
-                      math.pi; // Flip backward as dragging up
-                  final flipAngleY =
-                      ((interactiveOffset.dx / _maxDragRadius) * 0.2).clamp(
-                        -0.25,
-                        0.25,
-                      ) *
-                      math.pi;
-
-                  // Calculate rejection progress for smooth animation
-                  final totalDistance = _dragReturnTarget.distance;
-                  final currentDistance = currentOffset.distance;
-                  final rejectionPhase =
-                      _pendingReject && totalDistance > 0
-                          ? (1 -
-                              (currentDistance / totalDistance).clamp(0.0, 1.0))
-                          : 0.0;
-                  final rejectionTwist =
-                      _rejectDirection == null
-                          ? 0.0
-                          : _rejectDirection!.dx.sign * rejectionPhase * 0.45;
-                  final rejectionScale =
-                      _pendingReject ? (1 - rejectionPhase * 0.25) : 1.0;
-                  final combinedScale =
-                      baseScale * interactiveScaleFactor * rejectionScale;
-                  final combinedRotation = rotationAngle + rejectionTwist;
-
-                  // Enhanced magic pulse with more intensity
-                  final magicPulse = (dragProgress * 0.8 + _magicBurst * 1.2)
-                      .clamp(0.0, 1.0);
-
-                  final spiralParticles = List.generate(particleCount, (index) {
-                    final angle = (index / particleCount) * 2 * math.pi;
-                    final spiralOffset = (index / particleCount) * 0.25;
-                    final particleValue = (particleProgress - spiralOffset)
-                        .clamp(0.0, 1.0);
-
-                    // More dynamic spiral with varying speeds
-                    final particleRotation =
-                        angle + (particleValue * math.pi * 4);
-                    final distance =
-                        screenSize.width * 0.55 * (1 - particleValue);
-
-                    final x =
-                        screenSize.width / 2 + distance * cos(particleRotation);
-                    final y =
-                        screenSize.height / 2 +
-                        distance * sin(particleRotation);
-
-                    // Varying particle sizes for depth
-                    final size = (4 + (index % 5) * 2.5).sp;
-                    final dismissOpacity = (1 - dismissValue).clamp(0.0, 1.0);
-                    final particleOpacity =
-                        _isDismissing
-                            ? dismissOpacity
-                            : particleValue * (1 - particleValue * 0.4) * 1.0;
-
-                    // Pulsating effect
-                    final pulsate =
-                        0.8 +
-                        0.2 * math.sin(particleProgress * math.pi * 6 + index);
-
-                    return Positioned(
-                      left: x,
-                      top: y,
-                      child: Opacity(
-                        opacity: particleOpacity.clamp(0.0, 1.0),
-                        child: Container(
-                          width: size * pulsate,
-                          height: size * pulsate,
-                          decoration: BoxDecoration(
-                            gradient: RadialGradient(
-                              colors: [
-                                variantColor.withValues(alpha: 1.0),
-                                variantColor.withValues(alpha: 0.3),
-                              ],
-                            ),
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: variantColor.withValues(alpha: 0.9),
-                                blurRadius: 25,
-                                spreadRadius: 6,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  });
-
-                  final milestoneRings = <Widget>[];
-                  if (!_isDismissing) {
-                    if (progress >= 0.25 && progress < 0.35) {
-                      final ringProgress = ((progress - 0.25) / 0.10).clamp(
-                        0.0,
-                        1.0,
-                      );
-                      milestoneRings.add(
-                        Center(
-                          child: Container(
-                            width:
-                                screenSize.width *
-                                0.3 *
-                                (1 + ringProgress * 0.5),
-                            height:
-                                screenSize.width *
-                                0.3 *
-                                (1 + ringProgress * 0.5),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: variantColor.withValues(
-                                  alpha: (1 - ringProgress) * 0.6,
-                                ),
-                                width: 3,
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    }
-                    if (progress >= 0.50 && progress < 0.60) {
-                      final ringProgress = ((progress - 0.50) / 0.10).clamp(
-                        0.0,
-                        1.0,
-                      );
-                      milestoneRings.add(
-                        Center(
-                          child: Container(
-                            width:
-                                screenSize.width *
-                                0.35 *
-                                (1 + ringProgress * 0.5),
-                            height:
-                                screenSize.width *
-                                0.35 *
-                                (1 + ringProgress * 0.5),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: variantColor.withValues(
-                                  alpha: (1 - ringProgress) * 0.7,
-                                ),
-                                width: 3.5,
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    }
-                    if (progress >= 0.75 && progress < 0.85) {
-                      final ringProgress = ((progress - 0.75) / 0.10).clamp(
-                        0.0,
-                        1.0,
-                      );
-                      milestoneRings.add(
-                        Center(
-                          child: Container(
-                            width:
-                                screenSize.width *
-                                0.4 *
-                                (1 + ringProgress * 0.5),
-                            height:
-                                screenSize.width *
-                                0.4 *
-                                (1 + ringProgress * 0.5),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: variantColor.withValues(
-                                  alpha: (1 - ringProgress) * 0.8,
-                                ),
-                                width: 4,
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    }
-                  }
-
-                  // Ascending "lifting" particles when dragging upward
-                  final ascendingParticles = <Widget>[];
-                  if (dragProgress > 0.1 || _isDraggingCard) {
-                    const int liftCount = 20;
-                    for (int i = 0; i < liftCount; i++) {
-                      final stagger = (i / liftCount);
-                      final liftHeight = dragProgress * screenSize.height * 0.6;
-                      final horizontalSpread = (i - liftCount / 2) * 15.sp;
-                      final yPosition =
-                          screenSize.height / 2 - liftHeight * (1 - stagger);
-                      final xPosition =
-                          screenSize.width / 2 +
-                          horizontalSpread +
-                          interactiveOffset.dx * 0.5;
-
-                      final particleOpacity =
-                          (dragProgress * (1 - stagger * 0.7)).clamp(0.0, 1.0);
-                      final size = (3 + stagger * 8).sp;
-
-                      // Wavy motion as particles rise
-                      final wavyX =
-                          math.sin(progress * math.pi * 4 + i * 0.5) *
-                          8.sp *
-                          dragProgress;
-
-                      ascendingParticles.add(
-                        Positioned(
-                          left: xPosition + wavyX,
-                          top: yPosition,
-                          child: Opacity(
-                            opacity: particleOpacity,
-                            child: Container(
-                              width: size,
-                              height: size,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                gradient: RadialGradient(
-                                  colors: [
-                                    variantColor.withValues(alpha: 0.9),
-                                    variantColor.withValues(alpha: 0.0),
-                                  ],
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: variantColor.withValues(
-                                      alpha: particleOpacity * 0.6,
-                                    ),
-                                    blurRadius: 12,
-                                    spreadRadius: 2,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    }
-                  }
-
-                  // Subtle orbiting particles (reduced count for elegance)
-                  final centerBase = Offset(
-                    screenSize.width / 2 + interactiveOffset.dx,
-                    screenSize.height / 2 + interactiveOffset.dy,
-                  );
-                  final orbitingParticles = <Widget>[];
-                  if (!_isDraggingCard || dragProgress < 0.3) {
-                    for (int i = 0; i < 6; i++) {
-                      final angle =
-                          (particleProgress * math.pi * 2) +
-                          i * (math.pi / 3.0);
-                      final orbitRadius =
-                          70 +
-                          math.sin(particleProgress * math.pi * 2 + i) * 15;
-                      final x = centerBase.dx + orbitRadius * math.cos(angle);
-                      final y = centerBase.dy + orbitRadius * math.sin(angle);
-                      final size = (4 + (i % 2) * 2).sp;
-                      final particleGlow =
-                          (0.3 +
-                              0.3 * math.sin(angle + progress * math.pi * 2)) *
-                          (1 - dragProgress);
-                      orbitingParticles.add(
-                        Positioned(
-                          left: x - size / 2,
-                          top: y - size / 2,
-                          child: Opacity(
-                            opacity: particleGlow.clamp(0.0, 1.0),
-                            child: Container(
-                              width: size,
-                              height: size,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                gradient: RadialGradient(
-                                  colors: [
-                                    variantColor.withValues(alpha: 0.9),
-                                    variantColor.withValues(alpha: 0.0),
-                                  ],
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: variantColor.withValues(alpha: 0.5),
-                                    blurRadius: 14,
-                                    spreadRadius: 2,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    }
-                  }
-
-                  final dragTrail = <Widget>[];
-                  if (dragProgress > 0.05 || _isDraggingCard) {
-                    const int trailCount = 6;
-                    for (int i = 0; i < trailCount; i++) {
-                      final fraction = (i + 1) / trailCount;
-                      final dx = interactiveOffset.dx * fraction;
-                      final dy = interactiveOffset.dy * fraction;
-                      final size = (6 + i * 4).sp;
-                      final opacity = (dragProgress * (1 - fraction)).clamp(
-                        0.0,
-                        1.0,
-                      );
-                      dragTrail.add(
-                        Positioned(
-                          left: (screenSize.width / 2) + dx - size / 2,
-                          top: (screenSize.height / 2) + dy - size / 2,
-                          child: Opacity(
-                            opacity: opacity,
-                            child: Container(
-                              width: size,
-                              height: size,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                gradient: RadialGradient(
-                                  colors: [
-                                    variantColor.withValues(alpha: 0.8),
-                                    variantColor.withValues(alpha: 0.0),
-                                  ],
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: variantColor.withValues(
-                                      alpha: opacity * 0.8,
-                                    ),
-                                    blurRadius: 16,
-                                    spreadRadius: 2,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    }
-                  }
-
-                  return GestureDetector(
-                    onTap: _dismissEarly,
-                    behavior: HitTestBehavior.opaque,
-                    child: ReactToHeroineDismiss(
-                      builder: (context, dismissProgress, offset, child) {
-                        final overlayFade = (1 - dismissProgress).clamp(
-                          0.0,
-                          1.0,
-                        );
-                        return Opacity(opacity: overlayFade, child: child!);
-                      },
-                      child: Stack(
-                        children: [
-                          Positioned.fill(
-                            child: Opacity(
-                              opacity: backgroundOpacityValue,
-                              child: BackdropFilter(
-                                filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                                child: Container(
-                                  color: Colors.black.withValues(alpha: 0.6),
-                                ),
-                              ),
-                            ),
-                          ),
-                          ...spiralParticles,
-                          ...milestoneRings,
-                          ...orbitingParticles,
-                          ...ascendingParticles,
-                          if (magicPulse > 0)
-                            Positioned.fill(
-                              child: IgnorePointer(
-                                child: Opacity(
-                                  opacity: magicPulse * 0.75,
-                                  child: DecoratedBox(
-                                    decoration: BoxDecoration(
-                                      gradient: RadialGradient(
-                                        center: const Alignment(0, -0.3),
-                                        radius: 1.0,
-                                        colors: [
-                                          variantColor.withValues(alpha: 0.5),
-                                          variantColor.withValues(alpha: 0.2),
-                                          Colors.transparent,
-                                        ],
-                                        stops: const [0.0, 0.5, 1.0],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          Center(
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              dragStartBehavior: DragStartBehavior.down,
-                              onTap: () {},
-                              onPanStart: (_) => _startDrag(),
-                              onPanUpdate: _updateDrag,
-                              onPanEnd: _endDrag,
-                              child: Transform.translate(
-                                offset: interactiveOffset,
-                                child: Transform.scale(
-                                  scale: combinedScale,
-                                  child: Transform(
-                                    transform:
-                                        Matrix4.identity()
-                                          ..setEntry(
-                                            3,
-                                            2,
-                                            0.001,
-                                          ) // Add perspective
-                                          ..rotateX(
-                                            flipAngleX,
-                                          ) // 3D flip on X axis
-                                          ..rotateY(
-                                            flipAngleY,
-                                          ) // 3D flip on Y axis
-                                          ..rotateZ(
-                                            combinedRotation,
-                                          ), // Regular Z rotation
-                                    alignment: Alignment.center,
-                                    child: Opacity(
-                                      opacity: cardOpacityValue,
-                                      child: Container(
-                                        constraints: BoxConstraints(
-                                          maxWidth: screenSize.width * 0.8,
-                                        ),
-                                        child: ClipRRect(
-                                          borderRadius: BorderRadius.circular(
-                                            16.sp,
-                                          ),
-                                          child: BackdropFilter(
-                                            filter: ImageFilter.blur(
-                                              sigmaX: 40,
-                                              sigmaY: 40,
-                                            ),
-                                            child: Container(
-                                              padding: EdgeInsets.symmetric(
-                                                horizontal: 32.sp,
-                                                vertical: 28.sp,
-                                              ),
-                                              decoration: BoxDecoration(
-                                                color: variantColor.withValues(
-                                                  alpha: 0.25,
-                                                ),
-                                                borderRadius:
-                                                    BorderRadius.circular(
-                                                      16.sp,
-                                                    ),
-                                                border: Border.all(
-                                                  color: variantColor
-                                                      .withValues(alpha: 0.8),
-                                                  width: 2.0,
-                                                ),
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: variantColor
-                                                        .withValues(
-                                                          alpha:
-                                                              glowOpacity * 0.8,
-                                                        ),
-                                                    blurRadius: 60,
-                                                    spreadRadius: 12,
-                                                  ),
-                                                  BoxShadow(
-                                                    color: variantColor
-                                                        .withValues(alpha: 0.4),
-                                                    blurRadius: 80,
-                                                    spreadRadius: 20,
-                                                  ),
-                                                  BoxShadow(
-                                                    color: Colors.black
-                                                        .withValues(alpha: 0.4),
-                                                    blurRadius: 20,
-                                                    offset: const Offset(0, 10),
-                                                  ),
-                                                ],
-                                              ),
-                                              child: Column(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  // Evaluation badge at top
-                                                  if (_formatEvalChange()
-                                                      .isNotEmpty)
-                                                    Container(
-                                                      padding:
-                                                          EdgeInsets.symmetric(
-                                                            horizontal: 12.sp,
-                                                            vertical: 6.sp,
-                                                          ),
-                                                      decoration: BoxDecoration(
-                                                        color: variantColor
-                                                            .withValues(
-                                                              alpha: 0.3,
-                                                            ),
-                                                        borderRadius:
-                                                            BorderRadius.circular(
-                                                              20.sp,
-                                                            ),
-                                                        border: Border.all(
-                                                          color: variantColor
-                                                              .withValues(
-                                                                alpha: 0.6,
-                                                              ),
-                                                          width: 1.5,
-                                                        ),
-                                                        boxShadow: [
-                                                          BoxShadow(
-                                                            color: variantColor
-                                                                .withValues(
-                                                                  alpha: 0.4,
-                                                                ),
-                                                            blurRadius: 12,
-                                                            spreadRadius: 2,
-                                                          ),
-                                                        ],
-                                                      ),
-                                                      child: Text(
-                                                        _formatEvalChange(),
-                                                        style: AppTypography
-                                                            .textXsMedium
-                                                            .copyWith(
-                                                              color:
-                                                                  kWhiteColor,
-                                                              fontSize: 16.sp,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w800,
-                                                              letterSpacing: 1,
-                                                            ),
-                                                      ),
-                                                    ),
-                                                  SizedBox(height: 12.sp),
-                                                  // Main move text with hero animation
-                                                  Builder(
-                                                    builder: (context) {
-                                                      final baseStyle =
-                                                          AppTypography
-                                                              .textXsMedium
-                                                              .copyWith(
-                                                                color:
-                                                                    kWhiteColor,
-                                                                fontSize: 16.sp,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .w700,
-                                                                letterSpacing:
-                                                                    -0.2,
-                                                                height: 1.1,
-                                                              );
-                                                      final expandedStyle = AppTypography
-                                                          .textXsMedium
-                                                          .copyWith(
-                                                            color: kWhiteColor,
-                                                            fontSize: 52.sp,
-                                                            fontWeight:
-                                                                FontWeight.w900,
-                                                            letterSpacing: 5,
-                                                            height: 1.1,
-                                                            shadows: [
-                                                              Shadow(
-                                                                color: variantColor
-                                                                    .withValues(
-                                                                      alpha:
-                                                                          0.9,
-                                                                    ),
-                                                                blurRadius: 24,
-                                                              ),
-                                                              Shadow(
-                                                                color: Colors
-                                                                    .black
-                                                                    .withValues(
-                                                                      alpha:
-                                                                          0.6,
-                                                                    ),
-                                                                blurRadius: 6,
-                                                                offset:
-                                                                    const Offset(
-                                                                      0,
-                                                                      3,
-                                                                    ),
-                                                              ),
-                                                            ],
-                                                          );
-                                                      final targetStyle =
-                                                          _showExpandedMoveText
-                                                              ? expandedStyle
-                                                              : baseStyle;
-
-                                                      final heroChild = Material(
-                                                        color:
-                                                            Colors.transparent,
-                                                        child: AnimatedDefaultTextStyle(
-                                                          duration:
-                                                              const Duration(
-                                                                milliseconds:
-                                                                    260,
-                                                              ),
-                                                          curve:
-                                                              Curves.easeInOut,
-                                                          style: targetStyle,
-                                                          child: Text(
-                                                            widget.moveText,
-                                                            textAlign:
-                                                                TextAlign
-                                                                    .center,
-                                                          ),
-                                                        ),
-                                                      );
-                                                      // Always use Heroine for magical hero transition
-                                                      return HeroineVelocity(
-                                                        velocity: Velocity(
-                                                          pixelsPerSecond:
-                                                              _currentDragVelocity,
-                                                        ),
-                                                        child: Heroine(
-                                                          tag:
-                                                              widget.heroineTag,
-                                                          child: heroChild,
-                                                        ),
-                                                      );
-                                                    },
-                                                  ),
-                                                  SizedBox(height: 18.sp),
-                                                  // Continuation preview
-                                                  if (_formatPreviewMoves()
-                                                      .isNotEmpty)
-                                                    Container(
-                                                      padding:
-                                                          EdgeInsets.symmetric(
-                                                            horizontal: 18.sp,
-                                                            vertical: 10.sp,
-                                                          ),
-                                                      decoration: BoxDecoration(
-                                                        color: Colors.black
-                                                            .withValues(
-                                                              alpha: 0.5,
-                                                            ),
-                                                        borderRadius:
-                                                            BorderRadius.circular(
-                                                              10.sp,
-                                                            ),
-                                                        border: Border.all(
-                                                          color: variantColor
-                                                              .withValues(
-                                                                alpha: 0.4,
-                                                              ),
-                                                          width: 1,
-                                                        ),
-                                                      ),
-                                                      child: Opacity(
-                                                        opacity: (progress *
-                                                                1.3)
-                                                            .clamp(0.0, 1.0),
-                                                        child: Text(
-                                                          _formatPreviewMoves(),
-                                                          textAlign:
-                                                              TextAlign.center,
-                                                          style: AppTypography
-                                                              .textXsMedium
-                                                              .copyWith(
-                                                                color: kWhiteColor
-                                                                    .withValues(
-                                                                      alpha:
-                                                                          0.95,
-                                                                    ),
-                                                                fontSize: 15.sp,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .w600,
-                                                                letterSpacing:
-                                                                    1.2,
-                                                                height: 1.5,
-                                                              ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  SizedBox(height: 24.sp),
-                                                  // Action buttons - ignore pointer when dragging
-                                                  IgnorePointer(
-                                                    ignoring: _isDraggingCard,
-                                                    child: Column(
-                                                      mainAxisSize:
-                                                          MainAxisSize.min,
-                                                      children: [
-                                                        // Promote Main Variant button
-                                                        SizedBox(
-                                                          width:
-                                                              double.infinity,
-                                                          child: Material(
-                                                            color:
-                                                                Colors
-                                                                    .transparent,
-                                                            child: InkWell(
-                                                              onTap:
-                                                                  _onPromoteMainVariant,
-                                                              borderRadius:
-                                                                  BorderRadius.circular(
-                                                                    10.sp,
-                                                                  ),
-                                                              child: Container(
-                                                                padding:
-                                                                    EdgeInsets.symmetric(
-                                                                      vertical:
-                                                                          14.sp,
-                                                                    ),
-                                                                decoration: BoxDecoration(
-                                                                  gradient: LinearGradient(
-                                                                    colors: [
-                                                                      variantColor.withValues(
-                                                                        alpha:
-                                                                            0.4,
-                                                                      ),
-                                                                      variantColor.withValues(
-                                                                        alpha:
-                                                                            0.3,
-                                                                      ),
-                                                                    ],
-                                                                  ),
-                                                                  borderRadius:
-                                                                      BorderRadius.circular(
-                                                                        10.sp,
-                                                                      ),
-                                                                  border: Border.all(
-                                                                    color: variantColor
-                                                                        .withValues(
-                                                                          alpha:
-                                                                              0.6,
-                                                                        ),
-                                                                    width: 1.5,
-                                                                  ),
-                                                                ),
-                                                                child: Row(
-                                                                  mainAxisAlignment:
-                                                                      MainAxisAlignment
-                                                                          .center,
-                                                                  children: [
-                                                                    Icon(
-                                                                      Icons
-                                                                          .upgrade_rounded,
-                                                                      color:
-                                                                          kWhiteColor,
-                                                                      size:
-                                                                          18.sp,
-                                                                    ),
-                                                                    SizedBox(
-                                                                      width:
-                                                                          8.sp,
-                                                                    ),
-                                                                    Text(
-                                                                      'Promote Main Variant',
-                                                                      style: AppTypography.textSmBold.copyWith(
-                                                                        color:
-                                                                            kWhiteColor,
-                                                                        fontSize:
-                                                                            14.sp,
-                                                                        fontWeight:
-                                                                            FontWeight.w700,
-                                                                        letterSpacing:
-                                                                            0.3,
-                                                                      ),
-                                                                    ),
-                                                                  ],
-                                                                ),
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        ),
-                                                        SizedBox(height: 10.sp),
-                                                        // Insert All Moves button
-                                                        SizedBox(
-                                                          width:
-                                                              double.infinity,
-                                                          child: Material(
-                                                            color:
-                                                                Colors
-                                                                    .transparent,
-                                                            child: InkWell(
-                                                              onTap:
-                                                                  _onInsertAllMoves,
-                                                              borderRadius:
-                                                                  BorderRadius.circular(
-                                                                    10.sp,
-                                                                  ),
-                                                              child: Container(
-                                                                padding:
-                                                                    EdgeInsets.symmetric(
-                                                                      vertical:
-                                                                          14.sp,
-                                                                    ),
-                                                                decoration: BoxDecoration(
-                                                                  color: Colors
-                                                                      .black
-                                                                      .withValues(
-                                                                        alpha:
-                                                                            0.3,
-                                                                      ),
-                                                                  borderRadius:
-                                                                      BorderRadius.circular(
-                                                                        10.sp,
-                                                                      ),
-                                                                  border: Border.all(
-                                                                    color: variantColor
-                                                                        .withValues(
-                                                                          alpha:
-                                                                              0.4,
-                                                                        ),
-                                                                    width: 1,
-                                                                  ),
-                                                                ),
-                                                                child: Row(
-                                                                  mainAxisAlignment:
-                                                                      MainAxisAlignment
-                                                                          .center,
-                                                                  children: [
-                                                                    Icon(
-                                                                      Icons
-                                                                          .add_circle_outline_rounded,
-                                                                      color: kWhiteColor.withValues(
-                                                                        alpha:
-                                                                            0.9,
-                                                                      ),
-                                                                      size:
-                                                                          18.sp,
-                                                                    ),
-                                                                    SizedBox(
-                                                                      width:
-                                                                          8.sp,
-                                                                    ),
-                                                                    Text(
-                                                                      'Insert All Moves',
-                                                                      style: AppTypography.textSmBold.copyWith(
-                                                                        color: kWhiteColor.withValues(
-                                                                          alpha:
-                                                                              0.9,
-                                                                        ),
-                                                                        fontSize:
-                                                                            14.sp,
-                                                                        fontWeight:
-                                                                            FontWeight.w600,
-                                                                        letterSpacing:
-                                                                            0.3,
-                                                                      ),
-                                                                    ),
-                                                                  ],
-                                                                ),
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        ),
-                                                        SizedBox(height: 10.sp),
-                                                        // Preview button
-                                                        SizedBox(
-                                                          width:
-                                                              double.infinity,
-                                                          child: Material(
-                                                            color:
-                                                                Colors
-                                                                    .transparent,
-                                                            child: InkWell(
-                                                              onTap: _onPreview,
-                                                              borderRadius:
-                                                                  BorderRadius.circular(
-                                                                    10.sp,
-                                                                  ),
-                                                              child: Container(
-                                                                padding:
-                                                                    EdgeInsets.symmetric(
-                                                                      vertical:
-                                                                          14.sp,
-                                                                    ),
-                                                                decoration: BoxDecoration(
-                                                                  color: Colors
-                                                                      .black
-                                                                      .withValues(
-                                                                        alpha:
-                                                                            0.3,
-                                                                      ),
-                                                                  borderRadius:
-                                                                      BorderRadius.circular(
-                                                                        10.sp,
-                                                                      ),
-                                                                  border: Border.all(
-                                                                    color: variantColor
-                                                                        .withValues(
-                                                                          alpha:
-                                                                              0.4,
-                                                                        ),
-                                                                    width: 1,
-                                                                  ),
-                                                                ),
-                                                                child: Row(
-                                                                  mainAxisAlignment:
-                                                                      MainAxisAlignment
-                                                                          .center,
-                                                                  children: [
-                                                                    Icon(
-                                                                      Icons
-                                                                          .visibility_outlined,
-                                                                      color: kWhiteColor.withValues(
-                                                                        alpha:
-                                                                            0.9,
-                                                                      ),
-                                                                      size:
-                                                                          18.sp,
-                                                                    ),
-                                                                    SizedBox(
-                                                                      width:
-                                                                          8.sp,
-                                                                    ),
-                                                                    Text(
-                                                                      'Preview',
-                                                                      style: AppTypography.textSmBold.copyWith(
-                                                                        color: kWhiteColor.withValues(
-                                                                          alpha:
-                                                                              0.9,
-                                                                        ),
-                                                                        fontSize:
-                                                                            14.sp,
-                                                                        fontWeight:
-                                                                            FontWeight.w600,
-                                                                        letterSpacing:
-                                                                            0.3,
-                                                                      ),
-                                                                    ),
-                                                                  ],
-                                                                ),
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        ),
-                                                        // Swipe up hint with animated arrow
-                                                        SizedBox(height: 16.sp),
-                                                        TweenAnimationBuilder<
-                                                          double
-                                                        >(
-                                                          duration:
-                                                              const Duration(
-                                                                milliseconds:
-                                                                    1500,
-                                                              ),
-                                                          tween: Tween(
-                                                            begin: 0.0,
-                                                            end: 1.0,
-                                                          ),
-                                                          curve:
-                                                              Curves.easeInOut,
-                                                          builder: (
-                                                            context,
-                                                            value,
-                                                            child,
-                                                          ) {
-                                                            final bounce =
-                                                                math.sin(
-                                                                  value *
-                                                                      math.pi *
-                                                                      2,
-                                                                ) *
-                                                                4;
-                                                            final opacity =
-                                                                0.4 +
-                                                                (math.sin(
-                                                                      value *
-                                                                          math.pi *
-                                                                          2,
-                                                                    ) *
-                                                                    0.3);
-                                                            return Transform.translate(
-                                                              offset: Offset(
-                                                                0,
-                                                                bounce,
-                                                              ),
-                                                              child: Opacity(
-                                                                opacity:
-                                                                    opacity,
-                                                                child: Column(
-                                                                  mainAxisSize:
-                                                                      MainAxisSize
-                                                                          .min,
-                                                                  children: [
-                                                                    Icon(
-                                                                      Icons
-                                                                          .keyboard_arrow_up_rounded,
-                                                                      color:
-                                                                          variantColor,
-                                                                      size:
-                                                                          32.sp,
-                                                                    ),
-                                                                    Text(
-                                                                      'Swipe up to preview',
-                                                                      style: AppTypography.textXsRegular.copyWith(
-                                                                        color: kWhiteColor.withValues(
-                                                                          alpha:
-                                                                              0.6,
-                                                                        ),
-                                                                        fontSize:
-                                                                            11.sp,
-                                                                        fontWeight:
-                                                                            FontWeight.w500,
-                                                                        letterSpacing:
-                                                                            0.5,
-                                                                      ),
-                                                                    ),
-                                                                  ],
-                                                                ),
-                                                              ),
-                                                            );
-                                                          },
-                                                          onEnd: () {
-                                                            // Loop the animation
-                                                            if (mounted) {
-                                                              setState(() {});
-                                                            }
-                                                          },
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          ...dragTrail,
-                        ],
+    return SafeArea(
+      top: false,
+      child: AnimatedPadding(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+        padding: EdgeInsets.only(bottom: viewInsets),
+        child: Container(
+          decoration: BoxDecoration(
+            color: kBlack2Color.withValues(alpha: 0.96),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28.sp)),
+            border: Border.all(color: kWhiteColor.withValues(alpha: 0.05)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.55),
+                blurRadius: 30,
+                offset: const Offset(0, -8),
+              ),
+            ],
+          ),
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: Padding(
+              padding: EdgeInsets.only(
+                left: 20.sp,
+                right: 20.sp,
+                top: 14.sp,
+                bottom: 16.sp,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40.w,
+                      height: 4.h,
+                      decoration: BoxDecoration(
+                        color: kWhiteColor.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(999),
                       ),
                     ),
-                  );
-                },
-              );
-            },
-          );
-        },
+                  ),
+                  SizedBox(height: 16.h),
+                  Text(
+                    widget.title,
+                    style: AppTypography.textLgBold.copyWith(
+                      color: kWhiteColor,
+                      letterSpacing: 0.25,
+                    ),
+                  ),
+                  if (widget.subtitle != null) ...[
+                    SizedBox(height: 4.h),
+                    Text(
+                      widget.subtitle!,
+                      style: AppTypography.textSmRegular.copyWith(
+                        color: kWhiteColor70,
+                      ),
+                    ),
+                  ],
+                  SizedBox(height: 12.h),
+                  for (var i = 0; i < actions.length; i++) ...[
+                    _buildActionTile(actions[i]),
+                    if (i != actions.length - 1) SizedBox(height: 8.h),
+                  ],
+                  if (widget.commentConfig != null) ...[
+                    SizedBox(height: 16.h),
+                    Divider(color: kWhiteColor.withValues(alpha: 0.08)),
+                    SizedBox(height: 16.h),
+                    Text(
+                      'Variant comment',
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: kWhiteColor,
+                      ),
+                    ),
+                    SizedBox(height: 8.h),
+                    _buildCommentInput(),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
 
-  double cos(double radians) => math.cos(radians);
-  double sin(double radians) => math.sin(radians);
+  Widget _buildActionTile(_NotationActionItem action) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14.sp),
+        onTap: () => _handleActionTap(action),
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 14.sp),
+          decoration: BoxDecoration(
+            color: kWhiteColor.withValues(alpha: 0.02),
+            borderRadius: BorderRadius.circular(14.sp),
+            border: Border.all(color: kWhiteColor.withValues(alpha: 0.05)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                decoration: BoxDecoration(
+                  color: action.color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10.sp),
+                ),
+                padding: EdgeInsets.all(8.sp),
+                child: Icon(action.icon, color: action.color, size: 18.ic),
+              ),
+              SizedBox(width: 12.w),
+              Expanded(
+                child: Text(
+                  action.label,
+                  style: AppTypography.textMdMedium.copyWith(
+                    color: kWhiteColor,
+                  ),
+                ),
+              ),
+              Icon(
+                Icons.arrow_forward_ios_rounded,
+                color: kWhiteColor.withValues(alpha: 0.35),
+                size: 14.ic,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCommentInput() {
+    final config = widget.commentConfig;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: _commentController,
+          maxLines: 3,
+          minLines: 1,
+          style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: kBlack2Color.withValues(alpha: 0.6),
+            hintText: 'Add a quick thought…',
+            hintStyle: AppTypography.textSmRegular.copyWith(
+              color: kWhiteColor70,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12.sp),
+              borderSide: BorderSide(
+                color: kWhiteColor.withValues(alpha: 0.1),
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12.sp),
+              borderSide: BorderSide(
+                color: kPrimaryColor.withValues(alpha: 0.8),
+              ),
+            ),
+          ),
+        ),
+        SizedBox(height: 12.h),
+        Row(
+          children: [
+            TextButton(
+              onPressed:
+                  _commentController.text.isEmpty
+                      ? null
+                      : () {
+                        _commentController.clear();
+                      },
+              child: const Text('Clear'),
+            ),
+            const Spacer(),
+            FilledButton(
+              onPressed:
+                  config == null || _isSaving || !_hasEdited
+                      ? null
+                      : _handleSaveComment,
+              style: FilledButton.styleFrom(
+                backgroundColor: kPrimaryColor,
+                foregroundColor: kWhiteColor,
+                padding: EdgeInsets.symmetric(
+                  horizontal: 18.w,
+                  vertical: 10.h,
+                ),
+              ),
+              child: _isSaving
+                  ? SizedBox(
+                      height: 14.h,
+                      width: 14.h,
+                      child: const CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Save comment'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Future<void> _handleActionTap(_NotationActionItem action) async {
+    HapticFeedback.selectionClick();
+    Navigator.of(context).pop();
+    await Future.sync(() => action.onSelected(widget.hostContext));
+  }
+
+  Future<void> _handleSaveComment() async {
+    final config = widget.commentConfig;
+    if (config == null) return;
+    setState(() => _isSaving = true);
+    final text = _commentController.text;
+    Navigator.of(context).pop();
+    await Future.sync(() => config.onSubmit(widget.hostContext, text));
+  }
 }
