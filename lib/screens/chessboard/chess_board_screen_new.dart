@@ -2640,11 +2640,16 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
   Widget _buildAuxToken(_NotationDisplayToken token) {
     final isVariationToken =
-        token.variation != null && token.type != _NotationTokenType.ellipsis;
-    final depthColor =
-        token.depth > 0
-            ? _colorForVariationDepth(token.depth)
-            : kWhiteColor.withValues(alpha: 0.75);
+        token.type != _NotationTokenType.ellipsis &&
+        (token.variation != null || token.variationColorKey != null);
+    Color depthColor;
+    if (isVariationToken) {
+      depthColor = _accentColorForToken(token);
+    } else if (token.depth > 0) {
+      depthColor = _colorForVariationDepth(token.depth);
+    } else {
+      depthColor = kWhiteColor.withValues(alpha: 0.75);
+    }
 
     Widget child;
     if (token.type == _NotationTokenType.variationPlaceholder) {
@@ -2711,7 +2716,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     }
 
     final baseDepth = token.depth.clamp(1, 6);
-    final accentColor = _colorForVariationDepth(baseDepth);
+    final accentColor = _colorForVariationAccent(
+      baseDepth,
+      seed: token.variationColorKey ?? variation.id,
+    );
     final isTruncated = fullText.length > _variationCommentPreviewChars;
     final preview =
         isTruncated
@@ -2813,6 +2821,29 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     Color(0xFF8EB2CB),
   ];
 
+  Color _accentColorForToken(_NotationDisplayToken token) {
+    final depth = math.max(1, token.depth);
+    final seed = token.variationColorKey ?? token.variation?.id;
+    return _colorForVariationAccent(depth, seed: seed);
+  }
+
+  Color _colorForVariationAccent(int depth, {String? seed}) {
+    if (seed == null || seed.isEmpty) {
+      return _colorForVariationDepth(depth);
+    }
+    return _colorFromSeed(seed);
+  }
+
+  Color _colorFromSeed(String seed) {
+    final normalizedSeed = seed.hashCode & 0x7fffffff;
+    final random = math.Random(normalizedSeed);
+    final hue = random.nextDouble() * 360.0;
+    final saturation = 0.45 + random.nextDouble() * 0.35;
+    final lightness = 0.45 + random.nextDouble() * 0.25;
+    final hslColor = HSLColor.fromAHSL(1.0, hue, saturation, lightness);
+    return hslColor.toColor();
+  }
+
   Color _colorForVariationDepth(int depth) {
     if (depth <= 0) {
       return kWhiteColor;
@@ -2836,7 +2867,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       return isPast ? kWhiteColor : kWhiteColor;
     }
 
-    final depthColor = _colorForVariationDepth(token.depth);
+    final depthColor = _colorForVariationAccent(
+      token.depth,
+      seed: token.variationColorKey ?? token.variation?.id,
+    );
     return depthColor.withValues(alpha: isPast ? 0.95 : 0.75);
   }
 
@@ -2876,6 +2910,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           isVariationHead: isVariationHead,
           variationHeadPointer: variationHeadPointer,
           variationMoves: variationMovesList,
+          variationColorKey: variationContext?.id,
         ),
       );
 
@@ -2916,6 +2951,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                     ? List<Number>.of(variation.moves.first.pointer)
                     : null,
             heroineTag: '$variationHeroTagBase-open',
+            variationColorKey: variation.id,
           ),
         );
         if (collapsed) {
@@ -2935,6 +2971,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                       ? List<Number>.of(variation.moves.first.pointer)
                       : null,
               heroineTag: '$variationHeroTagBase-placeholder',
+              variationColorKey: variation.id,
             ),
           );
         } else {
@@ -2964,6 +3001,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                       ? List<Number>.of(variation.moves.first.pointer)
                       : null,
               commentText: variationComment,
+              variationColorKey: variation.id,
             ),
           );
         }
@@ -2984,6 +3022,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                     ? List<Number>.of(variation.moves.first.pointer)
                     : null,
             heroineTag: '$variationHeroTagBase-close',
+            variationColorKey: variation.id,
           ),
         );
       }
@@ -3743,6 +3782,7 @@ class _NotationDisplayToken {
   final bool isForcedOpen;
   final String? heroineTag;
   final String? commentText;
+  final String? variationColorKey;
 
   const _NotationDisplayToken({
     required this.type,
@@ -3761,6 +3801,7 @@ class _NotationDisplayToken {
     this.isForcedOpen = false,
     this.heroineTag,
     this.commentText,
+    this.variationColorKey,
   });
 }
 
