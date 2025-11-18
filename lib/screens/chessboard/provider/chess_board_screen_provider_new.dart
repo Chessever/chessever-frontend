@@ -1183,21 +1183,25 @@ class ChessBoardScreenNotifierNew
       return;
     }
     final trimmed = comment.trim();
+    final limited =
+        trimmed.length > kVariationCommentMaxChars
+            ? trimmed.substring(0, kVariationCommentMaxChars)
+            : trimmed;
     final nextComments = Map<String, String>.from(
       currentState.variationComments,
     );
 
     final existing = nextComments[variationId];
-    if (trimmed.isEmpty) {
+    if (limited.isEmpty) {
       if (existing == null) {
         return;
       }
       nextComments.remove(variationId);
     } else {
-      if (existing == trimmed) {
+      if (existing == limited) {
         return;
       }
-      nextComments[variationId] = trimmed;
+      nextComments[variationId] = limited;
     }
 
     state = AsyncValue.data(
@@ -5216,3 +5220,4 @@ List<Map<String, dynamic>> _analysisLinesWorker(Map<String, dynamic> payload) {
     return const [];
   }
 }
+const int kVariationCommentMaxChars = 280;
