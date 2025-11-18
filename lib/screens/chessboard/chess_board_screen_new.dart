@@ -2290,7 +2290,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                         tailPointerId,
                       );
                     case _NotationTokenType.comment:
-                      return _buildVariationCommentChip(token);
+                      return _buildVariationCommentChip(token, params);
                     case _NotationTokenType.openParen:
                     case _NotationTokenType.closeParen:
                     case _NotationTokenType.ellipsis:
@@ -2704,51 +2704,63 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     );
   }
 
-  Widget _buildVariationCommentChip(_NotationDisplayToken token) {
-    final text = token.commentText ?? token.text;
-    if (text.trim().isEmpty) {
+  Widget _buildVariationCommentChip(
+    _NotationDisplayToken token,
+    ChessBoardProviderParams params,
+  ) {
+    final fullText = token.commentText?.trim() ?? token.text.trim();
+    final variation = token.variation;
+    if (fullText.isEmpty || variation == null) {
       return const SizedBox.shrink();
     }
 
     final baseDepth = token.depth.clamp(1, 6);
     final accentColor = _colorForVariationDepth(baseDepth);
+    final isTruncated = fullText.length > _variationCommentPreviewChars;
+    final preview =
+        isTruncated
+            ? '${fullText.substring(0, _variationCommentPreviewChars).trimRight()}…'
+            : fullText;
 
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 6.sp),
-      margin: EdgeInsets.only(left: 4.sp, right: 2.sp, top: 2.sp),
-      decoration: BoxDecoration(
-        color: kBlack2Color.withValues(alpha: 0.7),
-        borderRadius: BorderRadius.circular(10.sp),
-        border: Border.all(color: accentColor.withValues(alpha: 0.4), width: 0.8),
-        boxShadow: [
-          BoxShadow(
-            color: accentColor.withValues(alpha: 0.25),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.mode_comment_outlined,
-            size: 12.sp,
-            color: accentColor.withValues(alpha: 0.9),
-          ),
-          SizedBox(width: 6.sp),
-          ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: 180.w),
-            child: Text(
-              text,
-              style: AppTypography.textXsRegular.copyWith(
-                color: kWhiteColor,
-                fontStyle: FontStyle.italic,
-              ),
-              softWrap: true,
+    return GestureDetector(
+      onTap: () => _showVariationCommentSheet(variation, params),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 6.sp),
+        margin: EdgeInsets.only(left: 4.sp, right: 2.sp, top: 2.sp),
+        decoration: BoxDecoration(
+          color: kBlack2Color.withValues(alpha: 0.75),
+          borderRadius: BorderRadius.circular(10.sp),
+          border: Border.all(color: accentColor.withValues(alpha: 0.5), width: 0.8),
+          boxShadow: [
+            BoxShadow(
+              color: accentColor.withValues(alpha: 0.25),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
             ),
-          ),
-        ],
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.mode_comment_outlined,
+              size: 12.sp,
+              color: accentColor.withValues(alpha: 0.9),
+            ),
+            SizedBox(width: 6.sp),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: 200.w),
+              child: Text(
+                preview,
+                style: AppTypography.textXsRegular.copyWith(
+                  color: kWhiteColor,
+                  fontStyle: FontStyle.italic,
+                ),
+                softWrap: true,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2798,11 +2810,11 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   }
 
   static const List<Color> _variationDepthPalette = [
-    Color(0xFFA98BFF),
-    Color(0xFFFF9EB5),
-    Color(0xFFFFE28C),
-    Color(0xFF8EE0C7),
-    Color(0xFF8EC6FF),
+    Color(0xFFE9EDCC),
+    Color(0xFFD6E3BC),
+    Color(0xFFBFD3CB),
+    Color(0xFFA6C2DA),
+    Color(0xFF8EB2CB),
   ];
 
   Color _colorForVariationDepth(int depth) {
@@ -3205,14 +3217,15 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             );
           },
         ),
-      _NotationActionItem(
-        icon: Icons.upgrade_rounded,
-        label: 'Promote main variant',
-        color: kPrimaryColor,
-        onSelected: (_) async {
-          await notifier.promoteBranchToMainVariant(List<Number>.of(pointer));
-        },
-      ),
+      if (!isMainlineMove)
+        _NotationActionItem(
+          icon: Icons.upgrade_rounded,
+          label: 'Promote main variant',
+          color: kPrimaryColor,
+          onSelected: (_) async {
+            await notifier.promoteBranchToMainVariant(List<Number>.of(pointer));
+          },
+        ),
     ];
 
     await _showNotationActionSheet(
@@ -3235,8 +3248,11 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       index: widget.index,
     );
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
-    final initialComment =
-        widget.state.variationComments[variation.id] ?? '';
+    final commentConfig = _buildVariationCommentConfig(
+      variation: variation,
+      notifier: notifier,
+      hostContext: hostContext,
+    );
     final actions = <_NotationActionItem>[
       _NotationActionItem(
         icon: Icons.trending_up_rounded,
@@ -3281,34 +3297,64 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       ),
     ];
 
-    final commentConfig = _VariationCommentSheetConfig(
-      initialValue: initialComment,
-      onSubmit: (ctx, value) async {
-        final trimmed = value.trim();
-        final normalizedInitial = initialComment.trim();
-        if (trimmed == normalizedInitial) {
-          _showInfoSnack(ctx, 'No changes');
-          return;
-        }
-        notifier.updateVariationComment(
-          variationId: variation.id,
-          comment: trimmed,
-        );
-        if (!mounted) return;
-        if (trimmed.isEmpty) {
-          _showInfoSnack(ctx, 'Comment removed');
-        } else {
-          _showInfoSnack(ctx, 'Comment added');
-        }
-      },
-    );
-
     await _showNotationActionSheet(
       context: hostContext,
       title: 'Variation',
       subtitle: 'Variation options',
       actions: actions,
       commentConfig: commentConfig,
+    );
+  }
+
+  Future<void> _showVariationCommentSheet(
+    NotationVariationNode variation,
+    ChessBoardProviderParams params,
+  ) async {
+    final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+    final config = _buildVariationCommentConfig(
+      variation: variation,
+      notifier: notifier,
+      hostContext: context,
+    );
+    await _showNotationActionSheet(
+      context: context,
+      title: 'Variant note',
+      subtitle: 'Add a thought for this branch',
+      actions: const [],
+      commentConfig: config,
+    );
+  }
+
+  _VariationCommentSheetConfig _buildVariationCommentConfig({
+    required NotationVariationNode variation,
+    required ChessBoardScreenNotifierNew notifier,
+    required BuildContext hostContext,
+  }) {
+    final initialComment = widget.state.variationComments[variation.id] ?? '';
+    return _VariationCommentSheetConfig(
+      initialValue: initialComment,
+      onSubmit: (ctx, value) async {
+        if (!mounted) return;
+        final trimmed = value.trim();
+        final normalizedInitial = initialComment.trim();
+        if (trimmed == normalizedInitial) {
+          _showInfoSnack(hostContext, 'No changes');
+          return;
+        }
+        final limited =
+            trimmed.length > _variationCommentMaxChars
+                ? trimmed.substring(0, _variationCommentMaxChars)
+                : trimmed;
+        notifier.updateVariationComment(
+          variationId: variation.id,
+          comment: limited,
+        );
+        if (limited.isEmpty) {
+          _showInfoSnack(hostContext, 'Comment removed');
+        } else {
+          _showInfoSnack(hostContext, 'Comment added');
+        }
+      },
     );
   }
 
@@ -3455,9 +3501,46 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   }
 
   void _showInfoSnack(BuildContext context, String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+        elevation: 0,
+        duration: const Duration(seconds: 2),
+        margin: EdgeInsets.symmetric(horizontal: 20.w, vertical: 16.h),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18.sp),
+          side: BorderSide(color: kWhiteColor.withValues(alpha: 0.08)),
+        ),
+        content: Row(
+          children: [
+            Container(
+              padding: EdgeInsets.all(6.sp),
+              decoration: BoxDecoration(
+                color: kPrimaryColor.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(10.sp),
+              ),
+              child: Icon(
+                Icons.info_outline,
+                size: 16.ic,
+                color: kPrimaryColor,
+              ),
+            ),
+            SizedBox(width: 12.w),
+            Expanded(
+              child: Text(
+                message,
+                style: AppTypography.textSmMedium.copyWith(
+                  color: kWhiteColor,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -3505,7 +3588,7 @@ class _AnalysisActionButtons extends ConsumerWidget {
         ),
         SizedBox(height: 12.sp),
         _RibbonAnalysisButton(
-          icon: Icons.control_point_duplicate_rounded,
+          icon: Icons.filter_center_focus_rounded,
           color: kPrimaryColor,
           alphaTop: 0.20,
           alphaBottom: 0.15,
@@ -3684,6 +3767,9 @@ class _NotationDisplayToken {
     this.commentText,
   });
 }
+
+const int _variationCommentPreviewChars = 80;
+const int _variationCommentMaxChars = 280;
 
 class _PrincipalVariationList extends ConsumerStatefulWidget {
   final int index;
@@ -5321,10 +5407,12 @@ class _NotationActionSheetState extends State<_NotationActionSheet> {
                       ),
                     ),
                   ],
-                  SizedBox(height: 12.h),
-                  for (var i = 0; i < actions.length; i++) ...[
-                    _buildActionTile(actions[i]),
-                    if (i != actions.length - 1) SizedBox(height: 8.h),
+                  if (actions.isNotEmpty) ...[
+                    SizedBox(height: 12.h),
+                    for (var i = 0; i < actions.length; i++) ...[
+                      _buildActionTile(actions[i]),
+                      if (i != actions.length - 1) SizedBox(height: 8.h),
+                    ],
                   ],
                   if (widget.commentConfig != null) ...[
                     SizedBox(height: 16.h),
@@ -5401,6 +5489,7 @@ class _NotationActionSheetState extends State<_NotationActionSheet> {
           controller: _commentController,
           maxLines: 3,
           minLines: 1,
+          maxLength: _variationCommentMaxChars,
           style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
           decoration: InputDecoration(
             filled: true,

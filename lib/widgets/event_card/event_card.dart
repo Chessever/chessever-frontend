@@ -53,8 +53,27 @@ class EventCard extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // LIVE status or time until start (prominently displayed)
-                  _StatusDisplay(tourEventCardModel: tourEventCardModel),
+                  // Event name with live indicator
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          tourEventCardModel.title,
+                          style: AppTypography.textSmMedium.copyWith(
+                            color: kWhiteColor,
+                            fontSize: 14.sp,
+                            height: 1.2,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ),
+                      ),
+                      _StatusIndicator(
+                        tourEventCardModel: tourEventCardModel,
+                      ),
+                    ],
+                  ),
 
                   SizedBox(height: 4.h),
 
@@ -150,84 +169,84 @@ class _EventImage extends ConsumerWidget {
     return Heroine(
       tag: heroTag,
       flightShuttleBuilder: const NoPaddingFadeShuttleBuilder(),
-      child: Container(
-        width: 80.w,
-        height: 60.h,
-        decoration: BoxDecoration(
-          color: kLightBlack,
-          borderRadius: BorderRadius.circular(6.br),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: imageAsync.when(
-          data: (imageUrl) {
-            if (imageUrl != null && imageUrl.isNotEmpty) {
-              return CachedNetworkImage(
-                imageUrl: imageUrl,
-                fit: BoxFit.cover,
-                fadeInDuration: const Duration(milliseconds: 300),
-                fadeOutDuration: const Duration(milliseconds: 200),
-                memCacheWidth:
-                    (80 * MediaQuery.of(context).devicePixelRatio).round(),
-                memCacheHeight:
-                    (60 * MediaQuery.of(context).devicePixelRatio).round(),
-                placeholder:
-                    (context, url) => Skeletonizer(
-                      enabled: true,
-                      ignoreContainers: true,
-                      effect: const ShimmerEffect(
-                        baseColor: Color(0xFF2A2A2A),
-                        highlightColor: Color(0xFF3A3A3A),
-                        duration: Duration(seconds: 1),
-                      ),
-                      child: Container(color: kLightBlack),
+      child: SizedBox(
+        width: 90.w, // Give width constraint for AspectRatio to work in Row
+        child: AspectRatio(
+          aspectRatio: 3 / 2, // AspectRatio calculates height from width
+          child: Container(
+            decoration: BoxDecoration(
+              color: kLightBlack,
+              borderRadius: BorderRadius.circular(6.br),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: imageAsync.when(
+              data: (imageUrl) {
+                if (imageUrl != null && imageUrl.isNotEmpty) {
+                  return CachedNetworkImage(
+                    imageUrl: imageUrl,
+                    fit: BoxFit.cover,
+                    fadeInDuration: const Duration(milliseconds: 300),
+                    fadeOutDuration: const Duration(milliseconds: 200),
+                    placeholder:
+                        (context, url) => Skeletonizer(
+                          enabled: true,
+                          ignoreContainers: true,
+                          effect: const ShimmerEffect(
+                            baseColor: Color(0xFF2A2A2A),
+                            highlightColor: Color(0xFF3A3A3A),
+                            duration: Duration(seconds: 1),
+                          ),
+                          child: Container(color: kLightBlack),
+                        ),
+                    errorWidget:
+                        (context, url, error) => Center(
+                          child: Icon(
+                            Icons.image_not_supported_outlined,
+                            color: kWhiteColor.withValues(alpha: 0.3),
+                            size: 24.sp,
+                          ),
+                        ),
+                  );
+                }
+                // No image available
+                return Center(
+                  child: Icon(
+                    Icons.image_outlined,
+                    color: kWhiteColor.withValues(alpha: 0.3),
+                    size: 24.sp,
+                  ),
+                );
+              },
+              loading:
+                  () => Skeletonizer(
+                    enabled: true,
+                    ignoreContainers: true,
+                    effect: const ShimmerEffect(
+                      baseColor: Color(0xFF2A2A2A),
+                      highlightColor: Color(0xFF3A3A3A),
+                      duration: Duration(seconds: 1),
                     ),
-                errorWidget:
-                    (context, url, error) => Center(
-                      child: Icon(
-                        Icons.image_not_supported_outlined,
-                        color: kWhiteColor.withValues(alpha: 0.3),
-                        size: 24.sp,
-                      ),
+                    child: Container(color: kLightBlack),
+                  ),
+              error:
+                  (_, __) => Center(
+                    child: Icon(
+                      Icons.image_not_supported_outlined,
+                      color: kWhiteColor.withValues(alpha: 0.3),
+                      size: 24.sp,
                     ),
-              );
-            }
-            // No image available
-            return Center(
-              child: Icon(
-                Icons.image_outlined,
-                color: kWhiteColor.withValues(alpha: 0.3),
-                size: 24.sp,
-              ),
-            );
-          },
-          loading:
-              () => Skeletonizer(
-                enabled: true,
-                ignoreContainers: true,
-                effect: const ShimmerEffect(
-                  baseColor: Color(0xFF2A2A2A),
-                  highlightColor: Color(0xFF3A3A3A),
-                  duration: Duration(seconds: 1),
-                ),
-                child: Container(color: kLightBlack),
-              ),
-          error:
-              (_, __) => Center(
-                child: Icon(
-                  Icons.image_not_supported_outlined,
-                  color: kWhiteColor.withValues(alpha: 0.3),
-                  size: 24.sp,
-                ),
-              ),
+                  ),
+            ),
+          ),
         ),
       ),
     );
   }
 }
 
-// Status Display - LIVE or time until start
-class _StatusDisplay extends ConsumerWidget {
-  const _StatusDisplay({required this.tourEventCardModel});
+// Status Indicator - Subtle indicators next to event name
+class _StatusIndicator extends ConsumerWidget {
+  const _StatusIndicator({required this.tourEventCardModel});
 
   final GroupEventCardModel tourEventCardModel;
 
@@ -235,96 +254,87 @@ class _StatusDisplay extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     switch (tourEventCardModel.tourEventCategory) {
       case TourEventCategory.live:
-        return _LiveStatus();
+        return _LiveIndicator();
       case TourEventCategory.upcoming:
-        return _UpcomingStatus(
+        return _UpcomingIndicator(
           timeUntilStart: tourEventCardModel.timeUntilStart,
         );
       case TourEventCategory.completed:
-        return _CompletedStatus();
+        return _CompletedIndicator();
       case TourEventCategory.ongoing:
-        return _OngoingStatus();
+        return _OngoingIndicator();
     }
   }
 }
 
-class _LiveStatus extends StatelessWidget {
-  const _LiveStatus();
+class _LiveIndicator extends StatelessWidget {
+  const _LiveIndicator();
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
-          decoration: BoxDecoration(
-            color: Colors.red,
-            borderRadius: BorderRadius.circular(4.br),
-          ),
-          child: Text(
-            'LIVE',
-            style: AppTypography.textSmBold.copyWith(
-              color: kWhiteColor,
-              fontSize: 12.sp,
-              letterSpacing: 0.5,
+    return Padding(
+      padding: EdgeInsets.only(left: 6.w),
+      child: Container(
+        width: 8.w,
+        height: 8.h,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: kPrimaryColor,
+          boxShadow: [
+            BoxShadow(
+              color: kPrimaryColor.withValues(alpha: 0.4),
+              blurRadius: 4,
+              spreadRadius: 1,
             ),
-          ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
 
-class _UpcomingStatus extends StatelessWidget {
+class _OngoingIndicator extends StatelessWidget {
+  const _OngoingIndicator();
+
+  @override
+  Widget build(BuildContext context) {
+    // No dot indicator for ongoing - just nothing
+    return SizedBox.shrink();
+  }
+}
+
+class _UpcomingIndicator extends StatelessWidget {
   final String timeUntilStart;
 
-  const _UpcomingStatus({required this.timeUntilStart});
+  const _UpcomingIndicator({required this.timeUntilStart});
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      timeUntilStart,
-      style: AppTypography.textSmMedium.copyWith(
-        color: kWhiteColor,
-        fontSize: 14.sp,
-      ),
-    );
-  }
-}
-
-class _CompletedStatus extends StatelessWidget {
-  const _CompletedStatus();
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      "Completed",
-      style: AppTypography.textSmMedium.copyWith(
-        color: kWhiteColor70,
-        fontSize: 14.sp,
-      ),
-    );
-  }
-}
-
-class _OngoingStatus extends StatelessWidget {
-  const _OngoingStatus();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
-      decoration: BoxDecoration(
-        color: kPrimaryColor.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(4.br),
-        border: Border.all(color: kPrimaryColor, width: 1),
-      ),
+    return Padding(
+      padding: EdgeInsets.only(left: 6.w),
       child: Text(
-        'ONGOING',
-        style: AppTypography.textSmBold.copyWith(
-          color: kPrimaryColor,
-          fontSize: 12.sp,
-          letterSpacing: 0.5,
+        timeUntilStart,
+        style: AppTypography.textXsMedium.copyWith(
+          color: kWhiteColor.withValues(alpha: 0.6),
+          fontSize: 11.sp,
+        ),
+      ),
+    );
+  }
+}
+
+class _CompletedIndicator extends StatelessWidget {
+  const _CompletedIndicator();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(left: 6.w),
+      child: Text(
+        "Completed",
+        style: AppTypography.textXsMedium.copyWith(
+          color: kWhiteColor.withValues(alpha: 0.5),
+          fontSize: 11.sp,
         ),
       ),
     );
