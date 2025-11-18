@@ -12,6 +12,7 @@ import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
+import 'package:heroine/heroine.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class AboutTourScreen extends ConsumerWidget {
@@ -82,15 +83,18 @@ class AboutTourScreen extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       SizedBox(height: 16.h),
-                      ClipRRect(
-                        borderRadius: BorderRadius.only(
-                          topLeft: Radius.circular(12.br),
-                          topRight: Radius.circular(12.br),
-                        ),
-                        child: NetworkImageWidget(
-                          height: 240.h,
-                          imageUrl: data.aboutTourModel.imageUrl,
-                          placeHolder: PngAsset.premiumIcon,
+                      Heroine(
+                        tag: 'event-image-${data.aboutTourModel.groupBroadcastId ?? data.aboutTourModel.id}',
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.only(
+                            topLeft: Radius.circular(12.br),
+                            topRight: Radius.circular(12.br),
+                          ),
+                          child: NetworkImageWidget(
+                            height: 240.h,
+                            imageUrl: data.aboutTourModel.imageUrl,
+                            placeHolder: PngAsset.premiumIcon,
+                          ),
                         ),
                       ),
                       SizedBox(height: 12.h),
