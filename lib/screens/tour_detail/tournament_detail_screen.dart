@@ -82,7 +82,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
 
   @override
   void initState() {
-    pageController = PageController(initialPage: 1);
+    pageController = PageController(initialPage: 0); // About tab is now default
     super.initState();
   }
 

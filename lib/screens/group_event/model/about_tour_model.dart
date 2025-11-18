@@ -11,6 +11,7 @@ class AboutTourModel extends Equatable {
   final String date;
   final String location;
   final String websiteUrl;
+  final String? groupBroadcastId;
 
   const AboutTourModel({
     required this.id,
@@ -22,6 +23,7 @@ class AboutTourModel extends Equatable {
     required this.date,
     required this.location,
     required this.websiteUrl,
+    this.groupBroadcastId,
   });
 
   factory AboutTourModel.fromTour(Tour tour) {
@@ -40,6 +42,7 @@ class AboutTourModel extends Equatable {
       location: tour.info.location ?? '',
       //todo: add a fallback
       websiteUrl: tour.info.website ?? '',
+      groupBroadcastId: tour.groupBroadcastId,
     );
   }
   factory AboutTourModel.empty() {
@@ -87,5 +90,6 @@ class AboutTourModel extends Equatable {
     date,
     location,
     websiteUrl,
+    groupBroadcastId,
   ];
 }

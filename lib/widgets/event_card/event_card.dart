@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
@@ -6,10 +7,12 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/event_card/event_image_provider.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/svg.dart';
+import 'package:heroine/heroine.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 
 class EventCard extends ConsumerWidget {
   final GroupEventCardModel tourEventCardModel;
@@ -32,57 +35,38 @@ class EventCard extends ConsumerWidget {
       child: Container(
         decoration: BoxDecoration(
           color: kBlack2Color,
-          borderRadius: BorderRadius.only(
-            topRight: Radius.circular(8.br),
-            topLeft: Radius.circular(8.br),
-          ),
+          borderRadius: BorderRadius.circular(8.br),
         ),
-        padding: EdgeInsets.only(
-          top: 6.sp,
-          bottom: 6.sp,
-          left: 8.sp,
-          right: 8.sp,
-        ),
+        padding: EdgeInsets.all(6.sp),
         child: Row(
-          crossAxisAlignment:
-              CrossAxisAlignment
-                  .center, // Center vertically in the entire container
-          mainAxisAlignment: MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
+            // Event Image on the left
+            _EventImage(groupBroadcastId: tourEventCardModel.id),
+            SizedBox(width: 12.w),
+
+            // Content in the middle
             Expanded(
-              flex: 9,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Flexible(
-                        child: Text(
-                          tourEventCardModel.title,
-                          style: AppTypography.textSmMedium.copyWith(
-                            color: kWhiteColor,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
-                        ),
-                      ),
-                      SizedBox(width: 8.w),
-                      _ShowStatus(tourEventCardModel: tourEventCardModel),
-                    ],
-                  ),
+                  // LIVE status or time until start (prominently displayed)
+                  _StatusDisplay(tourEventCardModel: tourEventCardModel),
 
-                  // Small vertical spacing
-                  SizedBox(height: 2.h),
+                  SizedBox(height: 4.h),
 
-                  // Second row with details
+                  // Event details (dates, time control, ELO)
                   Row(
                     children: [
                       if (tourEventCardModel.dates.trim().isNotEmpty) ...[
-                        Text(
-                          tourEventCardModel.dates,
-                          style: AppTypography.textXsMedium.copyWith(
-                            color: kWhiteColor70,
+                        Flexible(
+                          child: Text(
+                            tourEventCardModel.dates,
+                            style: AppTypography.textXsMedium.copyWith(
+                              color: kWhiteColor70,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         _buildDotWidget(),
@@ -102,10 +86,11 @@ class EventCard extends ConsumerWidget {
                 ],
               ),
             ),
-            Expanded(
-              flex: 1,
-              child: _StarWidget(tourEventCardModel: tourEventCardModel),
-            ),
+
+            SizedBox(width: 8.w),
+
+            // Star icon on the right
+            _StarWidget(tourEventCardModel: tourEventCardModel),
           ],
         ),
       ),
@@ -149,8 +134,91 @@ class EventCard extends ConsumerWidget {
   }
 }
 
-class _ShowStatus extends ConsumerWidget {
-  const _ShowStatus({required this.tourEventCardModel});
+// Event Image Widget with cached network image
+class _EventImage extends ConsumerWidget {
+  final String groupBroadcastId;
+
+  const _EventImage({required this.groupBroadcastId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final imageAsync = ref.watch(eventImageProvider(groupBroadcastId));
+    final heroTag = 'event-image-$groupBroadcastId';
+
+    return Heroine(
+      tag: heroTag,
+      child: Container(
+        width: 80.w,
+        height: 60.h,
+        decoration: BoxDecoration(
+          color: kLightBlack,
+          borderRadius: BorderRadius.circular(6.br),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: imageAsync.when(
+          data: (imageUrl) {
+            if (imageUrl != null && imageUrl.isNotEmpty) {
+              return CachedNetworkImage(
+                imageUrl: imageUrl,
+                fit: BoxFit.cover,
+                placeholder: (context, url) => Skeletonizer(
+                  enabled: true,
+                  ignoreContainers: true,
+                  effect: const ShimmerEffect(
+                    baseColor: Color(0xFF2A2A2A),
+                    highlightColor: Color(0xFF3A3A3A),
+                    duration: Duration(seconds: 1),
+                  ),
+                  child: Container(
+                    color: kLightBlack,
+                  ),
+                ),
+                errorWidget: (context, url, error) => Center(
+                  child: Icon(
+                    Icons.image_not_supported_outlined,
+                    color: kWhiteColor.withValues(alpha: 0.3),
+                    size: 24.sp,
+                  ),
+                ),
+              );
+            }
+            // No image available
+            return Center(
+              child: Icon(
+                Icons.image_outlined,
+                color: kWhiteColor.withValues(alpha: 0.3),
+                size: 24.sp,
+              ),
+            );
+          },
+          loading: () => Skeletonizer(
+            enabled: true,
+            ignoreContainers: true,
+            effect: const ShimmerEffect(
+              baseColor: Color(0xFF2A2A2A),
+              highlightColor: Color(0xFF3A3A3A),
+              duration: Duration(seconds: 1),
+            ),
+            child: Container(
+              color: kLightBlack,
+            ),
+          ),
+          error: (_, __) => Center(
+            child: Icon(
+              Icons.image_not_supported_outlined,
+              color: kWhiteColor.withValues(alpha: 0.3),
+              size: 24.sp,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Status Display - LIVE or time until start
+class _StatusDisplay extends ConsumerWidget {
+  const _StatusDisplay({required this.tourEventCardModel});
 
   final GroupEventCardModel tourEventCardModel;
 
@@ -158,51 +226,97 @@ class _ShowStatus extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     switch (tourEventCardModel.tourEventCategory) {
       case TourEventCategory.live:
-        return _LiveTag();
+        return _LiveStatus();
       case TourEventCategory.upcoming:
-        return _UpcomingTag(tourEventCardModel: tourEventCardModel);
+        return _UpcomingStatus(timeUntilStart: tourEventCardModel.timeUntilStart);
       case TourEventCategory.completed:
-        return _CompletedTag();
+        return _CompletedStatus();
       case TourEventCategory.ongoing:
-        return SizedBox.shrink();
+        return _OngoingStatus();
     }
   }
 }
 
-class _UpcomingTag extends StatelessWidget {
-  const _UpcomingTag({required this.tourEventCardModel});
+class _LiveStatus extends StatelessWidget {
+  const _LiveStatus();
 
-  final GroupEventCardModel tourEventCardModel;
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+          decoration: BoxDecoration(
+            color: Colors.red,
+            borderRadius: BorderRadius.circular(4.br),
+          ),
+          child: Text(
+            'LIVE',
+            style: AppTypography.textSmBold.copyWith(
+              color: kWhiteColor,
+              fontSize: 12.sp,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _UpcomingStatus extends StatelessWidget {
+  final String timeUntilStart;
+
+  const _UpcomingStatus({required this.timeUntilStart});
 
   @override
   Widget build(BuildContext context) {
     return Text(
-      tourEventCardModel.timeUntilStart,
-      style: AppTypography.textXsMedium.copyWith(
-        color: kWhiteColor.withOpacity(0.7),
+      timeUntilStart,
+      style: AppTypography.textSmMedium.copyWith(
+        color: kWhiteColor,
+        fontSize: 14.sp,
       ),
     );
   }
 }
 
-class _CompletedTag extends StatelessWidget {
-  const _CompletedTag();
+class _CompletedStatus extends StatelessWidget {
+  const _CompletedStatus();
 
   @override
   Widget build(BuildContext context) {
     return Text(
       "Completed",
-      style: AppTypography.textXsMedium.copyWith(color: kWhiteColor70),
+      style: AppTypography.textSmMedium.copyWith(
+        color: kWhiteColor70,
+        fontSize: 14.sp,
+      ),
     );
   }
 }
 
-class _LiveTag extends StatelessWidget {
-  const _LiveTag();
+class _OngoingStatus extends StatelessWidget {
+  const _OngoingStatus();
 
   @override
   Widget build(BuildContext context) {
-    return SvgPicture.asset(SvgAsset.selectedSvg, width: 16.w, height: 16.h);
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+      decoration: BoxDecoration(
+        color: Colors.orange.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(4.br),
+        border: Border.all(color: Colors.orange, width: 1),
+      ),
+      child: Text(
+        'ONGOING',
+        style: AppTypography.textSmBold.copyWith(
+          color: Colors.orange,
+          fontSize: 12.sp,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
   }
 }
 
@@ -342,34 +456,6 @@ class _HeartIconWithCount extends StatelessWidget {
               ),
             ),
         ],
-      ),
-    );
-  }
-}
-
-class _CountrymenStarWidget extends ConsumerStatefulWidget {
-  const _CountrymenStarWidget();
-
-  @override
-  ConsumerState<_CountrymenStarWidget> createState() =>
-      _CountrymenStarWidgetState();
-}
-
-class _CountrymenStarWidgetState extends ConsumerState<_CountrymenStarWidget> {
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () {},
-      child: Container(
-        alignment: Alignment.centerRight,
-        width: 32.w,
-        height: 40.h,
-        child: SvgWidget(
-          SvgAsset.countryMan,
-          semanticsLabel: 'Country Man',
-          height: 32.h,
-          width: 32.w,
-        ),
       ),
     );
   }
