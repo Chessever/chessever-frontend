@@ -1684,18 +1684,14 @@ class _BottomNavBar extends ConsumerWidget {
         navigatorState != null
             ? (navigatorState.canGoBackward || baseCanMoveBackward)
             : baseCanMoveBackward;
-    final previewMoves = state.lockedPvMergedMoves;
-    final previewIndex = state.lockedPvNavigationIndex ?? 0;
+    final previewMoveCount = state.lockedPvLine?.moves.length ?? 0;
+    final previewIndex = state.lockedPvNavigationIndex ?? -1;
     final isPreviewActive =
-        state.isPvPreviewActive &&
-        previewMoves != null &&
-        previewMoves.isNotEmpty;
+        state.isPvPreviewActive && previewMoveCount > 0;
     final previewCanMoveForward =
-        isPreviewActive ? previewIndex < previewMoves.length - 1 : false;
-    // CRITICAL FIX: In preview mode, can go backward as long as we have moves
-    // previewIndex >= 0 means we can go backward (even from index 0 to starting position)
+        isPreviewActive ? previewIndex < previewMoveCount - 1 : false;
     final previewCanMoveBackward =
-        isPreviewActive ? previewIndex >= 0 && previewMoves.isNotEmpty : false;
+        isPreviewActive ? previewIndex > 0 : false;
     final effectiveCanMoveForward =
         isPreviewActive ? previewCanMoveForward : canMoveForward;
     final effectiveCanMoveBackward =
@@ -4116,22 +4112,25 @@ class _PrincipalVariationListState
 
     Widget buildStaticPvCard() {
       final lockedLine = widget.state.lockedPvLine;
-      final mergedMoves = widget.state.lockedPvMergedMoves;
       final mergedPositions = widget.state.lockedPvMergedPositions;
+      final baseMoveCount = widget.state.lockedPvBaseMoveCount ?? 0;
       final previewVariantIndex = widget.state.pvPreviewVariantIndex ?? 0;
 
       if (lockedLine == null ||
-          mergedMoves == null ||
-          mergedPositions == null) {
+          mergedPositions == null ||
+          mergedPositions.isEmpty) {
         return const SizedBox.shrink();
       }
 
-      // Format the merged moves for display
-      // Use the starting position to determine the correct move number
-      final startingPosition = mergedPositions.first;
+      // Format only the PV moves for display using the position where the
+      // preview started (moves before the PV are hidden from the notation).
+      final pvStartIndex =
+          baseMoveCount.clamp(0, mergedPositions.length - 1).toInt();
+      final startingPosition = mergedPositions[pvStartIndex];
       final startMoveNumber = startingPosition.fullmoves;
       final isWhiteToMove = startingPosition.turn == Side.white;
-      final sanMoves = _formatPv(mergedMoves, startMoveNumber, isWhiteToMove);
+      final sanMoves =
+          _formatPv(lockedLine.sanMoves, startMoveNumber, isWhiteToMove);
       final evalText = _formatEvalLabel(lockedLine);
 
       // Use the same color as the originating PV card
