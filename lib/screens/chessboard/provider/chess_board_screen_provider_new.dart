@@ -1235,6 +1235,19 @@ class ChessBoardScreenNotifierNew
       }
     }
 
+    // Pause any ongoing evaluation while preview mode is active so the engine
+    // doesn't keep searching new positions in the background.
+    _cancelEvaluation = true;
+    _cancelEvalWatchdog(resetPending: true);
+    _clearActiveEvalState();
+    unawaited(() async {
+      try {
+        await StockfishSingleton().cancelAllEvaluations();
+      } finally {
+        _cancelEvaluation = false;
+      }
+    }());
+
     final cappedIndex = targetMoveIndex.clamp(0, line.moves.length - 1);
 
     // If already in preview mode, use current preview state as base for nested preview
@@ -1421,10 +1434,7 @@ class ChessBoardScreenNotifierNew
     }
 
     final baseMoveCount = baseMoveObjects.length;
-    final navigationIndex = (baseMoveCount + cappedIndex).clamp(
-      0,
-      combinedMoveObjects.length - 1,
-    );
+    final navigationIndex = cappedIndex;
 
     _releaseLog(
       '🎯 PV PREVIEW: Locking PV line (PGN history: ${pgnHistory.length}, PV moves: ${line.sanMoves.length}, merged: ${mergedMoves.length})',
@@ -1442,6 +1452,7 @@ class ChessBoardScreenNotifierNew
         lockedPvMergedPositions: mergedPositions,
         lockedPvBaseMoveCount: baseMoveCount,
         lockedPvNavigationIndex: navigationIndex,
+        isEvaluating: false,
       ),
     );
 
@@ -1557,16 +1568,15 @@ class ChessBoardScreenNotifierNew
 
     final lockedLine = currentState.lockedPvLine!;
     final currentNavIndex = currentState.lockedPvNavigationIndex ?? -1;
-    final baseMoveCount = currentState.lockedPvBaseMoveCount ?? 0;
     final totalPvMoves = lockedLine.moves.length;
 
     _releaseLog(
-      '🎯 APPLY PREVIEW: currentNavIndex=$currentNavIndex, baseMoveCount=$baseMoveCount, lockedPvMoves=$totalPvMoves',
+      '🎯 APPLY PREVIEW: currentNavIndex=$currentNavIndex, lockedPvMoves=$totalPvMoves',
     );
 
     final movesToCommit = math.min(
       totalPvMoves,
-      math.max(0, currentNavIndex - baseMoveCount + 1),
+      math.max(0, currentNavIndex + 1),
     );
     _releaseLog('🎯 APPLY PREVIEW: Need to commit $movesToCommit PV moves');
 
@@ -1785,15 +1795,14 @@ class ChessBoardScreenNotifierNew
     if (!currentState.isPvPreviewActive) {
       return;
     }
-    if (currentState.lockedPvLine == null ||
-        currentState.lockedPvMergedMoveObjects == null) {
+    final pvLine = currentState.lockedPvLine;
+    if (pvLine == null) {
       return;
     }
 
     final currentIndex = currentState.lockedPvNavigationIndex ?? -1;
-    final maxIndex = currentState.lockedPvMergedMoveObjects!.length - 1;
-
-    if (currentIndex >= maxIndex) {
+    final maxIndex = pvLine.moves.length - 1;
+    if (maxIndex < 0 || currentIndex >= maxIndex) {
       return;
     }
 
@@ -1809,8 +1818,8 @@ class ChessBoardScreenNotifierNew
     if (!currentState.isPvPreviewActive) {
       return;
     }
-    if (currentState.lockedPvLine == null ||
-        currentState.lockedPvMergedMoveObjects == null) {
+    final pvLine = currentState.lockedPvLine;
+    if (pvLine == null) {
       return;
     }
 
@@ -1832,22 +1841,34 @@ class ChessBoardScreenNotifierNew
     final moveObjects = currentState.lockedPvMergedMoveObjects;
     final positions = currentState.lockedPvMergedPositions;
     final baseCount = currentState.lockedPvBaseMoveCount ?? 0;
-    if (mergedMoves == null || moveObjects == null || positions == null) {
+    final pvMoveCount = currentState.lockedPvLine?.moves.length ?? 0;
+    if (mergedMoves == null ||
+        moveObjects == null ||
+        positions == null ||
+        pvMoveCount == 0) {
       return;
     }
     if (moveObjects.isEmpty || positions.length != moveObjects.length + 1) {
       return;
     }
 
-    final maxIndex = moveObjects.length - 1;
-    final clampedIndex = targetIndex.clamp(0, maxIndex);
+    final maxPvIndex = pvMoveCount - 1;
+    final clampedPvIndex = targetIndex.clamp(0, maxPvIndex);
     if (!force &&
-        clampedIndex == (currentState.lockedPvNavigationIndex ?? -1)) {
+        clampedPvIndex == (currentState.lockedPvNavigationIndex ?? -1)) {
       return;
     }
 
-    final position = positions[clampedIndex + 1];
-    final lastMove = moveObjects[clampedIndex];
+    final absoluteIndex = baseCount + clampedPvIndex;
+    if (absoluteIndex < 0 || absoluteIndex >= moveObjects.length) {
+      return;
+    }
+    if (absoluteIndex + 1 >= positions.length) {
+      return;
+    }
+
+    final position = positions[absoluteIndex + 1];
+    final lastMove = moveObjects[absoluteIndex];
 
     final updatedAnalysis = currentState.analysisState.copyWith(
       position: position,
@@ -1858,14 +1879,11 @@ class ChessBoardScreenNotifierNew
     state = AsyncValue.data(
       currentState.copyWith(
         analysisState: updatedAnalysis,
-        lockedPvNavigationIndex: clampedIndex,
-        pvPreviewMoveIndex:
-            clampedIndex >= baseCount ? clampedIndex - baseCount : null,
+        lockedPvNavigationIndex: clampedPvIndex,
+        pvPreviewMoveIndex: clampedPvIndex,
+        isEvaluating: false,
       ),
     );
-
-    // Always update evaluation during preview navigation
-    _updateEvaluation(force: true);
   }
 
   /// Select a variant (engine suggestion) for navigation
@@ -2739,9 +2757,13 @@ class ChessBoardScreenNotifierNew
         '🎯 ANALYSIS STEP FORWARD: Preview mode active, navigating in preview',
       );
       final currentNavIndex = currentState.lockedPvNavigationIndex ?? -1;
-      final mergedMoves = currentState.lockedPvMergedMoves;
-      if (mergedMoves != null && currentNavIndex < mergedMoves.length - 1) {
-        _navigateToLockedPvIndex(currentNavIndex + 1);
+      final pvLength = currentState.lockedPvLine?.moves.length ?? 0;
+      if (pvLength == 0) {
+        return;
+      }
+      final nextIndex = currentNavIndex < 0 ? 0 : currentNavIndex + 1;
+      if (nextIndex < pvLength) {
+        _navigateToLockedPvIndex(nextIndex);
       }
       return;
     }
@@ -2796,6 +2818,8 @@ class ChessBoardScreenNotifierNew
       final currentNavIndex = currentState.lockedPvNavigationIndex ?? -1;
       if (currentNavIndex > 0) {
         _navigateToLockedPvIndex(currentNavIndex - 1);
+      } else if (currentNavIndex == -1) {
+        _navigateToLockedPvIndex(0);
       }
       return;
     }
@@ -3711,6 +3735,14 @@ class ChessBoardScreenNotifierNew
         return;
       }
 
+      if (initialState.isPvPreviewActive) {
+        _releaseLog('🚫 EVAL: Preview active, evaluation paused');
+        if (initialState.isEvaluating) {
+          state = AsyncValue.data(initialState.copyWith(isEvaluating: false));
+        }
+        return;
+      }
+
       // CRITICAL: Skip evaluation entirely if this is not the currently visible game
       // This prevents resource-intensive Stockfish analysis from running for off-screen games
       final currentVisiblePage = ref.read(currentlyVisiblePageIndexProvider);
@@ -3725,30 +3757,10 @@ class ChessBoardScreenNotifierNew
         return;
       }
 
-      // When in preview mode, evaluate the preview card's current position
-      // This allows PV cards to show suggestions based on the preview position
-      final Position? currentPosition;
-      if (initialState.isPvPreviewActive &&
-          initialState.lockedPvMergedPositions != null &&
-          initialState.lockedPvNavigationIndex != null) {
-        final navIndex = initialState.lockedPvNavigationIndex!;
-        final positions = initialState.lockedPvMergedPositions!;
-        // Position array: [0]=start, [1]=after move 0, [2]=after move 1, etc.
-        // So for move at navIndex, the position after is at navIndex + 1
-        if (navIndex >= 0 && navIndex + 1 < positions.length) {
-          currentPosition = positions[navIndex + 1];
-        } else {
-          currentPosition =
-              initialState.isAnalysisMode
-                  ? initialState.analysisState.position
-                  : initialState.position;
-        }
-      } else {
-        currentPosition =
-            initialState.isAnalysisMode
-                ? initialState.analysisState.position
-                : initialState.position;
-      }
+      final Position? currentPosition =
+          initialState.isAnalysisMode
+              ? initialState.analysisState.position
+              : initialState.position;
       final fen = currentPosition?.fen;
       if (fen == null) {
         // CRITICAL FIX: Clear evaluating state on early return
@@ -4950,8 +4962,13 @@ class ChessBoardScreenNotifierNew
       _clearActiveEvalState();
     }
 
-    // CRITICAL: Clear stale PVs immediately when position changes
     final currentState = state.value;
+    if (currentState?.isPvPreviewActive == true) {
+      _releaseLog('🚫 EVAL: Preview active, skipping evaluation request');
+      return;
+    }
+
+    // CRITICAL: Clear stale PVs immediately when position changes
     if (currentState != null && currentState.principalVariations.isNotEmpty) {
       final fenToEval =
           currentState.isAnalysisMode
