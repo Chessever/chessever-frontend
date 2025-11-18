@@ -5799,14 +5799,16 @@ class _MovePreviewAnimationOverlayState
       _lastDragSampleTime = timestamp;
     }
 
+    final dragLimit = _computeDynamicDragLimit(MediaQuery.of(context).size);
+
     // Direct drag response without lerping for instant finger tracking
     final proposed = _dragOffset + details.delta;
     final radius = proposed.distance;
     Offset limitedOffset;
-    if (radius > _maxDragRadius) {
+    if (radius > dragLimit) {
       // Apply rubber-band effect at the edge
-      final excess = radius - _maxDragRadius;
-      final rubberBand = _maxDragRadius + excess * 0.3;
+      final excess = radius - dragLimit;
+      final rubberBand = dragLimit + excess * 0.3;
       limitedOffset = proposed / radius * rubberBand;
     } else {
       limitedOffset = proposed;
@@ -5862,7 +5864,7 @@ class _MovePreviewAnimationOverlayState
 
     final releaseSpeed = releaseVelocity.distance;
     final shouldFlingAway =
-        releaseSpeed > 450 || _dragOffset.distance > _dragDismissThreshold * 0.75;
+        releaseSpeed > 320 || _dragOffset.distance > _dragDismissThreshold * 0.65;
     if (shouldFlingAway) {
       HapticFeedback.mediumImpact();
       _flingAway(releaseVelocity);
@@ -5871,13 +5873,27 @@ class _MovePreviewAnimationOverlayState
 
     // Snap back to center after dragging
     _isDraggingCard = false;
-    _animateDragBack();
+    _animateDragBack(releaseVelocity: releaseVelocity);
   }
 
-  void _animateDragBack() {
+  void _animateDragBack({Offset? releaseVelocity}) {
+    final projected = _dragOffset + (releaseVelocity ?? Offset.zero) * 0.12;
+    final limit = _computeDynamicDragLimit(MediaQuery.of(context).size);
+    final distance = projected.distance;
+    final clamped =
+        distance > limit ? projected / distance * limit : projected;
+
     setState(() {
-      _dragReturnTarget = Offset.zero;
+      _dragReturnTarget = clamped;
       _isReturning = true;
+    });
+
+    const glideDuration = Duration(milliseconds: 280);
+    Future.delayed(glideDuration, () {
+      if (!mounted || _isDraggingCard) return;
+      setState(() {
+        _dragReturnTarget = Offset.zero;
+      });
     });
 
     // Reset drag state after animation completes (bouncy motion is ~600ms)
@@ -5941,6 +5957,14 @@ class _MovePreviewAnimationOverlayState
         _dismissEarly(triggerHaptic: false);
       }
     });
+  }
+
+  double _computeDynamicDragLimit(Size screenSize) {
+    final diagonal = math.sqrt(
+      screenSize.width * screenSize.width +
+          screenSize.height * screenSize.height,
+    );
+    return math.max(_maxDragRadius, diagonal * 0.45);
   }
 
   @override
