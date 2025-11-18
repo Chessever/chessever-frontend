@@ -1,4 +1,6 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -7,272 +9,285 @@ import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/utils/url_launcher_provider.dart';
-import 'package:chessever2/widgets/network_image_widget.dart';
-import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:heroine/heroine.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 
-class AboutTourScreen extends ConsumerWidget {
+class AboutTourScreen extends ConsumerStatefulWidget {
   const AboutTourScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return ref
-        .watch(tourDetailScreenProvider)
-        .when(
-          data: (data) {
-            final countryCode = ref
-                .read(locationServiceProvider)
-                .getCountryCode(data.aboutTourModel.location);
-            final players = data.aboutTourModel.players;
+  ConsumerState<AboutTourScreen> createState() => _AboutTourScreenState();
+}
 
-            // Filter out players with null rating
-            var ratedPlayers = players.where((p) => p.rating != null).toList();
-            if (ratedPlayers.isNotEmpty) {
-              // Sort by highest rating first
-              ratedPlayers.sort((a, b) => b.rating!.compareTo(a.rating!));
+class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
+  static const _skeletonEffect = ShimmerEffect(
+    baseColor: Color(0xFF2A2A2A),
+    highlightColor: Color(0xFF3A3A3A),
+    duration: Duration(seconds: 1),
+  );
 
-              ratedPlayers = ratedPlayers.take(4).toList();
-            }
+  static const AboutTourModel _fallbackAboutModel = AboutTourModel(
+    id: 'Chessever',
+    name: 'Chessever',
+    description: 'Chessever',
+    imageUrl: '',
+    players: [],
+    timeControl: 'Chessever',
+    date: 'Chessever',
+    location: 'US',
+    websiteUrl: 'https://www.chessever.com/',
+  );
 
-            return Scaffold(
-              bottomNavigationBar: Container(
-                padding: EdgeInsets.only(
-                  bottom: MediaQuery.of(context).viewPadding.bottom,
-                ),
-                child:
-                    data.aboutTourModel.extractDomain().isEmpty
-                        ? SizedBox.shrink()
-                        : GestureDetector(
-                          onTap:
-                              () => ref
-                                  .read(urlLauncherProvider)
-                                  .launchCustomUrl(
-                                    data.aboutTourModel.websiteUrl,
-                                  ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              SvgWidget(
-                                SvgAsset.websiteIcon,
-                                height: 12.h,
-                                width: 12.h,
-                              ),
-                              SizedBox(width: 4.w),
-                              Text(
-                                data.aboutTourModel.extractDomain(),
-                                maxLines: 1,
-                                style: AppTypography.textXsMedium.copyWith(
-                                  color: kPrimaryColor,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-              ),
-              body: Container(
-                margin: EdgeInsets.symmetric(horizontal: 20.sp),
-                child: SingleChildScrollView(
-                  padding: EdgeInsets.zero,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.start,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(height: 16.h),
-                      Heroine(
-                        tag: 'event-image-${data.aboutTourModel.groupBroadcastId ?? data.aboutTourModel.id}',
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.only(
-                            topLeft: Radius.circular(12.br),
-                            topRight: Radius.circular(12.br),
-                          ),
-                          child: NetworkImageWidget(
-                            height: 240.h,
-                            imageUrl: data.aboutTourModel.imageUrl,
-                            placeHolder: PngAsset.premiumIcon,
-                          ),
-                        ),
-                      ),
-                      SizedBox(height: 12.h),
-                      Text(
-                        data.aboutTourModel.description,
-                        style: AppTypography.textSmMedium.copyWith(
-                          color: kWhiteColor70,
-                        ),
-                      ),
-                      SizedBox(height: 12.h),
-                      _TitleDescWidget(
-                        title: 'Players',
-                        description: ratedPlayers
-                            .map((e) => e.displayName)
-                            .join(', '),
-                      ),
+  late String _heroTag;
+  bool _hasStableHeroTag = false;
 
-                      SizedBox(height: 12),
-                      _TitleDescWidget(
-                        title: 'Time Control',
-                        description: data.aboutTourModel.timeControl,
-                      ),
-                      SizedBox(height: 12.h),
-                      _TitleDescWidget(
-                        title: 'Date',
-                        description: data.aboutTourModel.date,
-                      ),
-                      SizedBox(height: 12.h),
-                      _CountryFlag(
-                        title: 'Location',
-                        flag:
-                            countryCode.isNotEmpty
-                                ? CountryFlag.fromCountryCode(
-                                  countryCode,
-                                  width: 16.w,
-                                  height: 12.h,
-                                )
-                                : null,
-                        description: data.aboutTourModel.location,
-                      ),
-                      SizedBox(
-                        height: MediaQuery.of(context).viewPadding.bottom,
-                      ),
-                    ],
+  @override
+  void initState() {
+    super.initState();
+    final selectedGroupId = ref.read(selectedBroadcastModelProvider)?.id;
+    _hasStableHeroTag = selectedGroupId?.isNotEmpty ?? false;
+    _heroTag = _buildHeroTag(selectedGroupId);
+  }
+
+  String _buildHeroTag(String? id) {
+    final resolvedId = (id?.isNotEmpty ?? false) ? id : 'placeholder';
+    return 'event-image-$resolvedId';
+  }
+
+  void _maybeUpdateHeroTagFromAbout(AboutTourModel about) {
+    if (_hasStableHeroTag) {
+      return;
+    }
+
+    final fallbackId = about.groupBroadcastId?.isNotEmpty == true
+        ? about.groupBroadcastId
+        : about.id.isNotEmpty
+            ? about.id
+            : null;
+
+    if (fallbackId == null) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _hasStableHeroTag) {
+        return;
+      }
+      setState(() {
+        _heroTag = _buildHeroTag(fallbackId);
+        _hasStableHeroTag = true;
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tourDetailAsync = ref.watch(tourDetailScreenProvider);
+
+    tourDetailAsync.whenOrNull(
+      data: (data) => _maybeUpdateHeroTagFromAbout(data.aboutTourModel),
+    );
+
+    final aboutModel = tourDetailAsync.when(
+      data: (data) => data.aboutTourModel,
+      loading: () => _fallbackAboutModel,
+      error: (_, __) => _fallbackAboutModel,
+    );
+
+    final isSkeleton = tourDetailAsync.maybeWhen(
+      data: (_) => false,
+      orElse: () => true,
+    );
+
+    final countryCode = ref
+        .read(locationServiceProvider)
+        .getCountryCode(aboutModel.location);
+
+    var ratedPlayers = aboutModel.players.where((p) => p.rating != null).toList();
+    if (ratedPlayers.isNotEmpty) {
+      ratedPlayers.sort((a, b) => b.rating!.compareTo(a.rating!));
+      ratedPlayers = ratedPlayers.take(4).toList();
+    }
+
+    final domain = aboutModel.extractDomain();
+
+    return Scaffold(
+      bottomNavigationBar: _buildBottomBar(context, domain, isSkeleton, aboutModel),
+      body: Container(
+        margin: EdgeInsets.symmetric(horizontal: 20.sp),
+        child: SingleChildScrollView(
+          padding: EdgeInsets.zero,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(height: 16.h),
+              Heroine(
+                tag: _heroTag,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(12.br),
+                    topRight: Radius.circular(12.br),
+                  ),
+                  child: SizedBox(
+                    height: 240.h,
+                    width: double.infinity,
+                    child: _buildHeroChild(context, aboutModel, isSkeleton),
                   ),
                 ),
               ),
-            );
-          },
-          error: (e, _) {
-            return _DummyView();
-          },
-          loading: () {
-            return _DummyView();
-          },
-        );
-  }
-}
-
-class _DummyView extends ConsumerWidget {
-  const _DummyView({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final dummyAboutModel = AboutTourModel(
-      id: 'Chessever',
-      name: 'Chessever',
-      description: 'Chessever',
-      imageUrl: 'Chessever',
-      players: [],
-      timeControl: 'Chessever',
-      date: 'Chessever',
-      location: 'US',
-      websiteUrl: 'https://www.chessever.com/',
-    );
-    return Scaffold(
-      bottomNavigationBar: SkeletonWidget(
-        child: Container(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewPadding.bottom,
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              SvgWidget(SvgAsset.websiteIcon, height: 12, width: 12),
-              SizedBox(width: 4),
-              Text(
-                dummyAboutModel.extractDomain(),
-                maxLines: 1,
-                style: AppTypography.textXsMedium.copyWith(
-                  color: kPrimaryColor,
-                  overflow: TextOverflow.ellipsis,
+              SizedBox(height: 12.h),
+              Skeletonizer(
+                enabled: isSkeleton,
+                ignoreContainers: true,
+                effect: _skeletonEffect,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      aboutModel.description,
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: kWhiteColor70,
+                      ),
+                    ),
+                    SizedBox(height: 12.h),
+                    _TitleDescWidget(
+                      title: 'Players',
+                      description: ratedPlayers
+                          .map((e) => e.displayName)
+                          .join(', '),
+                    ),
+                    SizedBox(height: 12),
+                    _TitleDescWidget(
+                      title: 'Time Control',
+                      description: aboutModel.timeControl,
+                    ),
+                    SizedBox(height: 12.h),
+                    _TitleDescWidget(
+                      title: 'Date',
+                      description: aboutModel.date,
+                    ),
+                    SizedBox(height: 12.h),
+                    _CountryFlag(
+                      title: 'Location',
+                      flag:
+                          countryCode.isNotEmpty
+                              ? CountryFlag.fromCountryCode(
+                                countryCode,
+                                width: 16.w,
+                                height: 12.h,
+                              )
+                              : null,
+                      description: aboutModel.location,
+                    ),
+                    SizedBox(
+                      height: MediaQuery.of(context).viewPadding.bottom,
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
         ),
       ),
-      body: SkeletonWidget(
-        child: Container(
-          margin: EdgeInsets.symmetric(horizontal: 20),
-          child: SingleChildScrollView(
-            padding: EdgeInsets.zero,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.start,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(12),
-                    topRight: Radius.circular(12),
+    );
+  }
+
+  Widget _buildHeroChild(
+    BuildContext context,
+    AboutTourModel aboutModel,
+    bool isSkeleton,
+  ) {
+    if (!isSkeleton && aboutModel.imageUrl.isNotEmpty) {
+      return CachedNetworkImage(
+        imageUrl: aboutModel.imageUrl,
+        fit: BoxFit.cover,
+        fadeInDuration: const Duration(milliseconds: 300),
+        fadeOutDuration: const Duration(milliseconds: 200),
+        alignment: Alignment.topCenter,
+        placeholder: (context, url) => _buildHeroPlaceholder(),
+        errorWidget: (context, url, error) => _buildHeroError(),
+      );
+    }
+
+    return _buildHeroPlaceholder();
+  }
+
+  Widget _buildHeroPlaceholder() {
+    return Container(
+      height: 240.h,
+      color: kLightBlack,
+      alignment: Alignment.center,
+      child: Image.asset(
+        PngAsset.premiumIcon,
+        height: 100.h,
+        fit: BoxFit.contain,
+      ),
+    );
+  }
+
+  Widget _buildHeroError() {
+    return Container(
+      height: 240.h,
+      width: double.infinity,
+      color: kDarkGreyColor,
+      alignment: Alignment.center,
+      child: Icon(
+        Icons.image_not_supported,
+        color: kWhiteColor,
+        size: 50.sp,
+      ),
+    );
+  }
+
+  Widget _buildBottomBar(
+    BuildContext context,
+    String domain,
+    bool isSkeleton,
+    AboutTourModel aboutModel,
+  ) {
+    if (!isSkeleton && domain.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Skeletonizer(
+      enabled: isSkeleton,
+      ignoreContainers: true,
+      effect: _skeletonEffect,
+      child: Container(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewPadding.bottom,
+        ),
+        child: GestureDetector(
+          onTap: isSkeleton
+              ? null
+              : () => ref
+                  .read(urlLauncherProvider)
+                  .launchCustomUrl(aboutModel.websiteUrl),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SvgWidget(
+                SvgAsset.websiteIcon,
+                height: 12.h,
+                width: 12.h,
+              ),
+              SizedBox(width: 4.w),
+              Flexible(
+                child: Text(
+                  domain.isEmpty ? 'Chessever' : domain,
+                  maxLines: 1,
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: kPrimaryColor,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  child: NetworkImageWidget(
-                    height: 240,
-                    imageUrl: dummyAboutModel.imageUrl,
-                    placeHolder: PngAsset.premiumIcon,
-                  ),
                 ),
-                SizedBox(height: 12),
-                Text(
-                  dummyAboutModel.description,
-                  style: AppTypography.textSmMedium.copyWith(
-                    color: kWhiteColor70,
-                  ),
-                ),
-                SizedBox(height: 12),
-                _TitleDescWidget(
-                  title: 'Players',
-                  description: dummyAboutModel.players.join(', '),
-                ),
-                SizedBox(height: 12),
-                _TitleDescWidget(
-                  title: 'Time Control',
-                  description: dummyAboutModel.timeControl,
-                ),
-                SizedBox(height: 12),
-                _TitleDescWidget(
-                  title: 'Date',
-                  description: dummyAboutModel.date,
-                ),
-                SizedBox(height: 12),
-                _CountryFlag(
-                  title: 'Location',
-                  flag: CountryFlag.fromCountryCode(
-                    ref
-                        .read(locationServiceProvider)
-                        .getCountryCode(dummyAboutModel.location),
-                    width: 16,
-                    height: 12,
-                  ),
-                  description: dummyAboutModel.location,
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    InkWell(
-                      onTap: () {},
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                        ),
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 10.sp,
-                          vertical: 10.sp,
-                        ),
-                        child: SvgWidget(
-                          SvgAsset.boat,
-                          height: 32.h,
-                          width: 32.w,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: MediaQuery.of(context).viewPadding.bottom),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
