@@ -161,6 +161,10 @@ class _EventImage extends ConsumerWidget {
               return CachedNetworkImage(
                 imageUrl: imageUrl,
                 fit: BoxFit.cover,
+                fadeInDuration: const Duration(milliseconds: 300),
+                fadeOutDuration: const Duration(milliseconds: 200),
+                memCacheWidth: (80 * MediaQuery.of(context).devicePixelRatio).round(),
+                memCacheHeight: (60 * MediaQuery.of(context).devicePixelRatio).round(),
                 placeholder: (context, url) => Skeletonizer(
                   enabled: true,
                   ignoreContainers: true,
@@ -304,14 +308,14 @@ class _OngoingStatus extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
       decoration: BoxDecoration(
-        color: Colors.orange.withValues(alpha: 0.2),
+        color: kPrimaryColor.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(4.br),
-        border: Border.all(color: Colors.orange, width: 1),
+        border: Border.all(color: kPrimaryColor, width: 1),
       ),
       child: Text(
         'ONGOING',
         style: AppTypography.textSmBold.copyWith(
-          color: Colors.orange,
+          color: kPrimaryColor,
           fontSize: 12.sp,
           letterSpacing: 0.5,
         ),
