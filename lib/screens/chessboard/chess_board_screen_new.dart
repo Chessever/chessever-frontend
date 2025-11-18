@@ -5877,27 +5877,14 @@ class _MovePreviewAnimationOverlayState
   }
 
   void _animateDragBack({Offset? releaseVelocity}) {
-    final projected = _dragOffset + (releaseVelocity ?? Offset.zero) * 0.12;
-    final limit = _computeDynamicDragLimit(MediaQuery.of(context).size);
-    final distance = projected.distance;
-    final clamped =
-        distance > limit ? projected / distance * limit : projected;
-
+    // Simple: snap back to center, let Motor handle the physics
     setState(() {
-      _dragReturnTarget = clamped;
+      _dragReturnTarget = Offset.zero;
       _isReturning = true;
     });
 
-    const glideDuration = Duration(milliseconds: 280);
-    Future.delayed(glideDuration, () {
-      if (!mounted || _isDraggingCard) return;
-      setState(() {
-        _dragReturnTarget = Offset.zero;
-      });
-    });
-
-    // Reset drag state after animation completes (bouncy motion is ~600ms)
-    Future.delayed(const Duration(milliseconds: 700), () {
+    // Reset state after Motor animation completes
+    Future.delayed(const Duration(milliseconds: 600), () {
       if (mounted && !_isDraggingCard) {
         final shouldDismiss = _pendingReject;
         _pendingReject = false;
