@@ -1235,19 +1235,6 @@ class ChessBoardScreenNotifierNew
       }
     }
 
-    // Pause any ongoing evaluation while preview mode is active so the engine
-    // doesn't keep searching new positions in the background.
-    _cancelEvaluation = true;
-    _cancelEvalWatchdog(resetPending: true);
-    _clearActiveEvalState();
-    unawaited(() async {
-      try {
-        await StockfishSingleton().cancelAllEvaluations();
-      } finally {
-        _cancelEvaluation = false;
-      }
-    }());
-
     final cappedIndex = targetMoveIndex.clamp(0, line.moves.length - 1);
 
     // If already in preview mode, use current preview state as base for nested preview
@@ -1453,6 +1440,7 @@ class ChessBoardScreenNotifierNew
         lockedPvBaseMoveCount: baseMoveCount,
         lockedPvNavigationIndex: navigationIndex,
         isEvaluating: false,
+        shapes: const ISet.empty(),
       ),
     );
 
@@ -1925,10 +1913,13 @@ class ChessBoardScreenNotifierNew
       '🎯 SELECT VARIANT: Locking base state (fen=$baseFen, pointer=$basePointer)',
     );
 
-    // Show all 3 variants as arrows
-    final arrowShapes = _getAllVariantArrowShapes(
-      currentState.principalVariations,
-      variantIndex,
+    // Show all variants as arrows (unless preview is active)
+    final arrowShapes = _maybeSuppressShapes(
+      currentState,
+      _getAllVariantArrowShapes(
+        currentState.principalVariations,
+        variantIndex,
+      ),
     );
 
     // When preserving preview mode, explicitly maintain all preview-related state
@@ -2120,7 +2111,11 @@ class ChessBoardScreenNotifierNew
 
         // Trigger new evaluation for the new position
         // Cache will be checked first, fresh eval if needed
-        _updateEvaluation(force: true);
+        _updateEvaluation(
+          force: true,
+          preserveCurrentPvs: true,
+          preserveDepthProgress: true,
+        );
         return;
       }
 
@@ -2178,10 +2173,13 @@ class ChessBoardScreenNotifierNew
         ),
       );
 
-      // Show all variants as arrows
-      final arrowShapes = _getAllVariantArrowShapes(
-        currentState.principalVariations,
-        currentState.selectedVariantIndex!,
+      // Show all variants as arrows (unless suppressed)
+      final arrowShapes = _maybeSuppressShapes(
+        updatedState,
+        _getAllVariantArrowShapes(
+          currentState.principalVariations,
+          currentState.selectedVariantIndex!,
+        ),
       );
 
       state = AsyncValue.data(updatedState.copyWith(shapes: arrowShapes));
@@ -2302,7 +2300,10 @@ class ChessBoardScreenNotifierNew
       ),
     );
 
-    final arrowShapes = _variantArrowShapes(selectedVariant, newPointer.length);
+    final arrowShapes = _maybeSuppressShapes(
+      updatedState,
+      _variantArrowShapes(selectedVariant, newPointer.length),
+    );
 
     state = AsyncValue.data(updatedState.copyWith(shapes: arrowShapes));
     final sanMoves = selectedVariant.sanMoves;
@@ -3341,7 +3342,11 @@ class ChessBoardScreenNotifierNew
     // CRITICAL: Only force new evaluation if position changed
     // If returning to same position, let ongoing evaluation continue without interference
     if (positionChanged) {
-      _updateEvaluation(force: true);
+      _updateEvaluation(
+        force: true,
+        preserveCurrentPvs: true,
+        preserveDepthProgress: true,
+      );
     }
     // If position unchanged, don't call _updateEvaluation at all
     // Let the ongoing background evaluation continue uninterrupted
@@ -3517,7 +3522,10 @@ class ChessBoardScreenNotifierNew
       sanMoves: variant.sanMoves.sublist(continuationStart),
     );
     final rebasedLines = <AnalysisLine>[trimmedVariant];
-    final arrowShapes = _getAllVariantArrowShapes(rebasedLines, 0);
+    final arrowShapes = _maybeSuppressShapes(
+      currentState,
+      _getAllVariantArrowShapes(rebasedLines, 0),
+    );
 
     final updatedAnalysis = currentState.analysisState.copyWith(
       position: positionAfterMove,
@@ -3646,7 +3654,10 @@ class ChessBoardScreenNotifierNew
 
     if (shouldDefaultSelect) {
       // New variant selection - lock current position as base
-      final arrowShapes = _getAllVariantArrowShapes(pvLines, 0);
+      final arrowShapes = _maybeSuppressShapes(
+        nextState,
+        _getAllVariantArrowShapes(pvLines, 0),
+      );
       nextState = nextState.copyWith(
         selectedVariantIndex: 0,
         variantBaseFen: baseFen,
@@ -3680,7 +3691,7 @@ class ChessBoardScreenNotifierNew
           variantBaseLastMove: currentState.variantBaseLastMove,
           variantBaseMoveIndex: currentState.variantBaseMoveIndex,
           variantMovePointer: previousVariantPointer,
-          shapes: arrowShapes,
+          shapes: _maybeSuppressShapes(nextState, arrowShapes),
         );
       } else {
         // Not in variant exploration - safe to update base
@@ -3725,7 +3736,7 @@ class ChessBoardScreenNotifierNew
             variantBaseLastMove: currentState.analysisState.lastMove,
             variantBaseMoveIndex: currentState.analysisState.currentMoveIndex,
             variantMovePointer: const [],
-            shapes: arrowShapes,
+            shapes: _maybeSuppressShapes(nextState, arrowShapes),
           );
         } else {
           // Variant is invalid, clear selection
@@ -3737,7 +3748,9 @@ class ChessBoardScreenNotifierNew
       // No variant selected - but if in preview mode, still show PV arrows
       if (currentState.isPvPreviewActive && pvLines.isNotEmpty) {
         final arrowShapes = _getAllVariantArrowShapes(pvLines, 0);
-        nextState = nextState.copyWith(shapes: arrowShapes);
+        nextState = nextState.copyWith(
+          shapes: _maybeSuppressShapes(nextState, arrowShapes),
+        );
       } else {
         nextState = _clearVariantSelection(nextState);
       }
@@ -3816,7 +3829,12 @@ class ChessBoardScreenNotifierNew
     return position;
   }
 
-  Future<void> _evaluatePosition({bool force = false}) async {
+  Future<void> _evaluatePosition({
+    bool force = false,
+    bool preserveCurrentPvs = false,
+    bool preserveDepthProgress = false,
+    bool skipPvUpdates = false,
+  }) async {
     int? requestId;
     String? lastEvaluatedFen;
     try {
@@ -3829,13 +3847,10 @@ class ChessBoardScreenNotifierNew
         return;
       }
 
-      if (initialState.isPvPreviewActive) {
-        _releaseLog('🚫 EVAL: Preview active, evaluation paused');
-        if (initialState.isEvaluating) {
-          state = AsyncValue.data(initialState.copyWith(isEvaluating: false));
-        }
-        return;
-      }
+      final previewActive = initialState.isPvPreviewActive;
+      final effectiveSkipPv = skipPvUpdates || previewActive;
+      final keepPvs = preserveCurrentPvs || effectiveSkipPv;
+      final keepDepth = preserveDepthProgress || previewActive;
 
       // CRITICAL: Skip evaluation entirely if this is not the currently visible game
       // This prevents resource-intensive Stockfish analysis from running for off-screen games
@@ -3986,18 +4001,20 @@ class ChessBoardScreenNotifierNew
 
       _registerPendingEvaluation(fen);
 
-      depthTracker.clear(
-        EngineComponent.evaluationGauge,
-        reason: 'new evaluation request',
-      );
-      depthTracker.clear(
-        EngineComponent.principalVariation,
-        reason: 'new evaluation request',
-      );
-      depthTracker.clear(
-        EngineComponent.cascadeEval,
-        reason: 'new evaluation request',
-      );
+      if (!keepDepth) {
+        depthTracker.clear(
+          EngineComponent.evaluationGauge,
+          reason: 'new evaluation request',
+        );
+        depthTracker.clear(
+          EngineComponent.principalVariation,
+          reason: 'new evaluation request',
+        );
+        depthTracker.clear(
+          EngineComponent.cascadeEval,
+          reason: 'new evaluation request',
+        );
+      }
 
       final currentRequestId = requestId = ++_evalRequestCounter;
       _activeEvalKey = cacheKey;
@@ -4005,20 +4022,34 @@ class ChessBoardScreenNotifierNew
       _activeEvalStartTime = DateTime.now(); // Track when this request started
 
       final baselineState = state.value ?? initialState;
-      _releaseLog(
-        '🎯 EVAL: Clearing stale PVs, starting fresh evaluation for FEN: ${fen.split(' ').take(3).join(' ')}...',
-      );
-      state = AsyncValue.data(
-        baselineState.copyWith(
-          shapes: const ISet.empty(),
-          isEvaluating: true,
-          principalVariations: const [],
-          principalVariationsBaseFen: null,
-          analysisState: baselineState.analysisState.copyWith(
-            suggestionLines: const [],
+      if (keepPvs) {
+        _releaseLog(
+          '🎯 EVAL: Refreshing evaluation while preserving current PVs for ${fen.split(' ').take(3).join(' ')}',
+        );
+      } else {
+        _releaseLog(
+          '🎯 EVAL: Clearing stale PVs, starting fresh evaluation for FEN: ${fen.split(' ').take(3).join(' ')}...',
+        );
+      }
+      if (keepPvs) {
+        state = AsyncValue.data(
+          baselineState.copyWith(
+            isEvaluating: true,
           ),
-        ),
-      );
+        );
+      } else {
+        state = AsyncValue.data(
+          baselineState.copyWith(
+            shapes: const ISet.empty(),
+            isEvaluating: true,
+            principalVariations: const [],
+            principalVariationsBaseFen: null,
+            analysisState: baselineState.analysisState.copyWith(
+              suggestionLines: const [],
+            ),
+          ),
+        );
+      }
 
       _releaseLog(
         '🎯 EVAL START: Evaluating position $fen (requesting $configuredMultiPV PVs)',
@@ -4210,6 +4241,7 @@ class ChessBoardScreenNotifierNew
             component: EngineComponent.evaluationGauge,
             progress: progress,
             context: 'local stockfish D:$depth',
+            allowDecrease: !preserveDepthProgress,
           );
         },
         onPvUpdate: (pvs, depth) {
@@ -4271,12 +4303,14 @@ class ChessBoardScreenNotifierNew
                 component: EngineComponent.evaluationGauge,
                 progress: progress,
                 context: 'progressive D:$depth',
+                allowDecrease: !preserveDepthProgress,
               );
             }
             depthTracker.update(
               component: EngineComponent.principalVariation,
               progress: progress,
               context: 'progressive D:$depth',
+              allowDecrease: !preserveDepthProgress,
             );
             pendingProgress = null;
 
@@ -4362,11 +4396,13 @@ class ChessBoardScreenNotifierNew
             component: EngineComponent.evaluationGauge,
             progress: finalProgress,
             context: 'progressive final',
+            allowDecrease: !preserveDepthProgress,
           );
           depthTracker.update(
             component: EngineComponent.principalVariation,
             progress: finalProgress,
             context: 'progressive final',
+            allowDecrease: !preserveDepthProgress,
           );
           if (pvLines.isEmpty) {
             var finalLines = await _buildPrincipalVariations(
@@ -4720,34 +4756,49 @@ class ChessBoardScreenNotifierNew
         shapes = getBestMoveShape(position, evalForShapes);
       }
 
-      currentSnapshot = currentSnapshot.copyWith(
-        evaluation: evaluation,
-        mate: mateScore,
-        isEvaluating: false,
-        shapes: shapes,
-        principalVariations: pvLines,
-        principalVariationsBaseFen: fen,
-        // Only update variantBaseFen if NOT in variant exploration
-        variantBaseFen:
-            inVariantExploration ? currentSnapshot.variantBaseFen : fen,
-        variantBaseMovePointer:
-            inVariantExploration
-                ? currentSnapshot.variantBaseMovePointer
-                : basePointer,
-        analysisState: currentSnapshot.analysisState.copyWith(
-          suggestionLines: pvLines,
-        ),
-      );
-      state = AsyncValue.data(currentSnapshot);
+      final overlayShapes =
+          currentSnapshot.isPvPreviewActive
+              ? const ISet<Shape>.empty()
+              : shapes;
 
-      // CRITICAL: Apply PV results to handle variant extension and auto-resume
-      _applyPrincipalVariationResults(
-        currentState: currentSnapshot,
-        currentPosition: position,
-        baseFen: fen,
-        baseMovePointer: basePointer,
-        pvLines: pvLines,
-      );
+      if (effectiveSkipPv) {
+        currentSnapshot = currentSnapshot.copyWith(
+          evaluation: evaluation,
+          mate: mateScore,
+          isEvaluating: false,
+          shapes: overlayShapes,
+        );
+        state = AsyncValue.data(currentSnapshot);
+      } else {
+        currentSnapshot = currentSnapshot.copyWith(
+          evaluation: evaluation,
+          mate: mateScore,
+          isEvaluating: false,
+          shapes: overlayShapes,
+          principalVariations: pvLines,
+          principalVariationsBaseFen: fen,
+          // Only update variantBaseFen if NOT in variant exploration
+          variantBaseFen:
+              inVariantExploration ? currentSnapshot.variantBaseFen : fen,
+          variantBaseMovePointer:
+              inVariantExploration
+                  ? currentSnapshot.variantBaseMovePointer
+                  : basePointer,
+          analysisState: currentSnapshot.analysisState.copyWith(
+            suggestionLines: pvLines,
+          ),
+        );
+        state = AsyncValue.data(currentSnapshot);
+
+        // CRITICAL: Apply PV results to handle variant extension and auto-resume
+        _applyPrincipalVariationResults(
+          currentState: currentSnapshot,
+          currentPosition: position,
+          baseFen: fen,
+          baseMovePointer: basePointer,
+          pvLines: pvLines,
+        );
+      }
 
       // Note: Removed supplemental eval since Stockfish is now primary with MultiPV=3
     } catch (e) {
@@ -5041,9 +5092,23 @@ class ChessBoardScreenNotifierNew
     return arrows.toISet();
   }
 
+  ISet<Shape> _maybeSuppressShapes(
+    ChessBoardStateNew state,
+    ISet<Shape> candidate,
+  ) {
+    if (state.isPvPreviewActive) {
+      return const ISet.empty();
+    }
+    return candidate;
+  }
+
   String _normalizeFen(String fen) => fen.split(' ').take(4).join(' ');
 
-  void _updateEvaluation({bool force = false}) {
+  void _updateEvaluation({
+    bool force = false,
+    bool preserveCurrentPvs = false,
+    bool preserveDepthProgress = false,
+  }) {
     if (_isLongPressing) return;
 
     if (force) {
@@ -5057,10 +5122,12 @@ class ChessBoardScreenNotifierNew
     }
 
     final currentState = state.value;
-    if (currentState?.isPvPreviewActive == true) {
-      _releaseLog('🚫 EVAL: Preview active, skipping evaluation request');
-      return;
-    }
+    final previewActive = currentState?.isPvPreviewActive == true;
+    final effectivePreservePvs =
+        previewActive ? true : preserveCurrentPvs;
+    final effectivePreserveDepth =
+        previewActive ? true : preserveDepthProgress;
+    final skipPvUpdates = previewActive;
 
     // CRITICAL: Clear stale PVs immediately when position changes
     if (currentState != null && currentState.principalVariations.isNotEmpty) {
@@ -5104,7 +5171,12 @@ class ChessBoardScreenNotifierNew
       );
       final visibleIndex = ref.read(currentlyVisiblePageIndexProvider);
       final shouldForce = force || (visibleIndex == index);
-      _evaluatePosition(force: shouldForce);
+      _evaluatePosition(
+        force: shouldForce,
+        preserveCurrentPvs: effectivePreservePvs,
+        preserveDepthProgress: effectivePreserveDepth,
+        skipPvUpdates: skipPvUpdates,
+      );
     }
 
     if (force) {
