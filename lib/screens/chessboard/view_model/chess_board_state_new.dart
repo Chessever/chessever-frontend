@@ -284,6 +284,8 @@ class ChessBoardStateNew {
       ListEquality<AnalysisLine>();
   static const ListEquality<dynamic> _dynamicListEquality =
       ListEquality<dynamic>();
+  static const MapEquality<String, String> _stringMapEquality =
+      MapEquality<String, String>();
 
   final Position? position;
   final Position? startingPosition;
@@ -316,6 +318,9 @@ class ChessBoardStateNew {
   hasUnseenMoves; // Flag to indicate if there are unseen moves (for live games)
   /// FEN position where current PVs were generated
   final String? variantBaseFen;
+
+  /// User-supplied annotations for variations keyed by variation id
+  final Map<String, String> variationComments;
 
   /// Navigator position where PVs start
   final ChessMovePointer? variantBaseMovePointer;
@@ -397,6 +402,7 @@ class ChessBoardStateNew {
     this.lockedPvMergedMoveObjects,
     this.lockedPvMergedPositions,
     this.lockedPvBaseMoveCount,
+    this.variationComments = const <String, String>{},
   });
 
   static const _noChange = Object();
@@ -444,6 +450,7 @@ class ChessBoardStateNew {
     Object? lockedPvMergedMoveObjects = _noChange,
     Object? lockedPvMergedPositions = _noChange,
     Object? lockedPvBaseMoveCount = _noChange,
+    Map<String, String>? variationComments,
   }) {
     final newAnalysisState = analysisState ?? this.analysisState;
 
@@ -541,6 +548,7 @@ class ChessBoardStateNew {
           identical(lockedPvBaseMoveCount, _noChange)
               ? this.lockedPvBaseMoveCount
               : lockedPvBaseMoveCount as int?,
+      variationComments: variationComments ?? this.variationComments,
       analysisState: newAnalysisState,
     );
   }
@@ -621,6 +629,10 @@ class ChessBoardStateNew {
           ),
         ) &&
         other.lockedPvBaseMoveCount == lockedPvBaseMoveCount &&
+        _stringMapEquality.equals(
+          other.variationComments,
+          variationComments,
+        ) &&
         other.selectedVariantIndex == selectedVariantIndex &&
         other.shapes == shapes &&
         other.analysisState == analysisState &&
@@ -691,6 +703,7 @@ class ChessBoardStateNew {
             AnalysisBoardState._positionsToFen(lockedPvMergedPositions!),
           ),
       lockedPvBaseMoveCount,
+      _stringMapEquality.hash(variationComments),
     ]);
   }
 }
