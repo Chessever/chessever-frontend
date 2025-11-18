@@ -8,6 +8,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/event_card/event_image_provider.dart';
+import 'package:chessever2/widgets/heroine/no_padding_fade_shuttle_builder.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:heroine/heroine.dart';
@@ -23,12 +24,13 @@ class EventCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return GestureDetector(
-      onTap: onTap != null
-          ? () {
-              HapticFeedbackService.cardTap();
-              onTap!();
-            }
-          : null,
+      onTap:
+          onTap != null
+              ? () {
+                HapticFeedbackService.cardTap();
+                onTap!();
+              }
+              : null,
       onLongPressStart: (detail) {
         HapticFeedbackService.contextMenu();
       },
@@ -147,6 +149,7 @@ class _EventImage extends ConsumerWidget {
 
     return Heroine(
       tag: heroTag,
+      flightShuttleBuilder: const NoPaddingFadeShuttleBuilder(),
       child: Container(
         width: 80.w,
         height: 60.h,
@@ -163,27 +166,29 @@ class _EventImage extends ConsumerWidget {
                 fit: BoxFit.cover,
                 fadeInDuration: const Duration(milliseconds: 300),
                 fadeOutDuration: const Duration(milliseconds: 200),
-                memCacheWidth: (80 * MediaQuery.of(context).devicePixelRatio).round(),
-                memCacheHeight: (60 * MediaQuery.of(context).devicePixelRatio).round(),
-                placeholder: (context, url) => Skeletonizer(
-                  enabled: true,
-                  ignoreContainers: true,
-                  effect: const ShimmerEffect(
-                    baseColor: Color(0xFF2A2A2A),
-                    highlightColor: Color(0xFF3A3A3A),
-                    duration: Duration(seconds: 1),
-                  ),
-                  child: Container(
-                    color: kLightBlack,
-                  ),
-                ),
-                errorWidget: (context, url, error) => Center(
-                  child: Icon(
-                    Icons.image_not_supported_outlined,
-                    color: kWhiteColor.withValues(alpha: 0.3),
-                    size: 24.sp,
-                  ),
-                ),
+                memCacheWidth:
+                    (80 * MediaQuery.of(context).devicePixelRatio).round(),
+                memCacheHeight:
+                    (60 * MediaQuery.of(context).devicePixelRatio).round(),
+                placeholder:
+                    (context, url) => Skeletonizer(
+                      enabled: true,
+                      ignoreContainers: true,
+                      effect: const ShimmerEffect(
+                        baseColor: Color(0xFF2A2A2A),
+                        highlightColor: Color(0xFF3A3A3A),
+                        duration: Duration(seconds: 1),
+                      ),
+                      child: Container(color: kLightBlack),
+                    ),
+                errorWidget:
+                    (context, url, error) => Center(
+                      child: Icon(
+                        Icons.image_not_supported_outlined,
+                        color: kWhiteColor.withValues(alpha: 0.3),
+                        size: 24.sp,
+                      ),
+                    ),
               );
             }
             // No image available
@@ -195,25 +200,25 @@ class _EventImage extends ConsumerWidget {
               ),
             );
           },
-          loading: () => Skeletonizer(
-            enabled: true,
-            ignoreContainers: true,
-            effect: const ShimmerEffect(
-              baseColor: Color(0xFF2A2A2A),
-              highlightColor: Color(0xFF3A3A3A),
-              duration: Duration(seconds: 1),
-            ),
-            child: Container(
-              color: kLightBlack,
-            ),
-          ),
-          error: (_, __) => Center(
-            child: Icon(
-              Icons.image_not_supported_outlined,
-              color: kWhiteColor.withValues(alpha: 0.3),
-              size: 24.sp,
-            ),
-          ),
+          loading:
+              () => Skeletonizer(
+                enabled: true,
+                ignoreContainers: true,
+                effect: const ShimmerEffect(
+                  baseColor: Color(0xFF2A2A2A),
+                  highlightColor: Color(0xFF3A3A3A),
+                  duration: Duration(seconds: 1),
+                ),
+                child: Container(color: kLightBlack),
+              ),
+          error:
+              (_, __) => Center(
+                child: Icon(
+                  Icons.image_not_supported_outlined,
+                  color: kWhiteColor.withValues(alpha: 0.3),
+                  size: 24.sp,
+                ),
+              ),
         ),
       ),
     );
@@ -232,7 +237,9 @@ class _StatusDisplay extends ConsumerWidget {
       case TourEventCategory.live:
         return _LiveStatus();
       case TourEventCategory.upcoming:
-        return _UpcomingStatus(timeUntilStart: tourEventCardModel.timeUntilStart);
+        return _UpcomingStatus(
+          timeUntilStart: tourEventCardModel.timeUntilStart,
+        );
       case TourEventCategory.completed:
         return _CompletedStatus();
       case TourEventCategory.ongoing:
@@ -343,8 +350,9 @@ class _StarWidget extends ConsumerWidget {
     );
 
     // Check if event has favorite players
-    final eventFavoritePlayersAsync =
-        ref.watch(eventFavoritePlayersProvider(tourEventCardModel.id));
+    final eventFavoritePlayersAsync = ref.watch(
+      eventFavoritePlayersProvider(tourEventCardModel.id),
+    );
 
     // Get current value and check if already cached
     final currentCache = ref.watch(eventFavoritePlayersCacheProvider);
@@ -360,9 +368,10 @@ class _StarWidget extends ConsumerWidget {
         }
         return data;
       },
-      orElse: () =>
-          currentCache[tourEventCardModel.id] ??
-          const EventFavoritePlayers.empty(),
+      orElse:
+          () =>
+              currentCache[tourEventCardModel.id] ??
+              const EventFavoritePlayers.empty(),
     );
 
     // Priority: Star icon (user favorited) ALWAYS takes precedence
@@ -385,21 +394,26 @@ class _StarWidget extends ConsumerWidget {
       onTap: () {
         HapticFeedbackService.pin();
 
-        ref.read(favoriteEventsProvider.notifier).toggleFavorite(
-          eventId: tourEventCardModel.id,
-          eventName: tourEventCardModel.title,
-          timeControl: tourEventCardModel.timeControl,
-          maxAvgElo: tourEventCardModel.maxAvgElo > 0
-              ? tourEventCardModel.maxAvgElo
-              : null,
-          dates: tourEventCardModel.dates.isNotEmpty
-              ? tourEventCardModel.dates
-              : null,
-        ).catchError((e) {
-          debugPrint('[EventCard] Error toggling favorite: $e');
-          // Silently handle error - state will be corrected on next refresh
-          return false;
-        });
+        ref
+            .read(favoriteEventsProvider.notifier)
+            .toggleFavorite(
+              eventId: tourEventCardModel.id,
+              eventName: tourEventCardModel.title,
+              timeControl: tourEventCardModel.timeControl,
+              maxAvgElo:
+                  tourEventCardModel.maxAvgElo > 0
+                      ? tourEventCardModel.maxAvgElo
+                      : null,
+              dates:
+                  tourEventCardModel.dates.isNotEmpty
+                      ? tourEventCardModel.dates
+                      : null,
+            )
+            .catchError((e) {
+              debugPrint('[EventCard] Error toggling favorite: $e');
+              // Silently handle error - state will be corrected on next refresh
+              return false;
+            });
       },
       child: Container(
         alignment: Alignment.centerRight,
