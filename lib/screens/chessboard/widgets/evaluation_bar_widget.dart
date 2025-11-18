@@ -8,6 +8,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:motor/motor.dart';
 
 /// Evaluation bar shown beside the active chess board.
 /// It reflects the evaluation managed by the board provider and keeps the last
@@ -38,15 +39,11 @@ class EvaluationBarWidget extends StatefulWidget {
   State<EvaluationBarWidget> createState() => _EvaluationBarWidgetState();
 }
 
-class _EvaluationBarWidgetState extends State<EvaluationBarWidget>
-    with SingleTickerProviderStateMixin {
+class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
   double? _lastEval;
   int? _lastMate;
   bool _awaitingNewEvaluation = false;
-  late AnimationController _controller;
-  late CurvedAnimation _curve;
-  double _animationStartRatio = 0.5;
-  double _targetRatio = 0.5;
+  double _whiteRatioTarget = 0.5;
 
   @override
   void initState() {
@@ -56,22 +53,7 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget>
     _awaitingNewEvaluation = (widget.evaluation == null && widget.mate == null);
     final initialEval = widget.evaluation ?? 0.0;
     final initialMate = widget.mate ?? 0;
-    _targetRatio = _ratioForEval(initialEval, initialMate);
-    _animationStartRatio = _targetRatio;
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 320),
-    )..addListener(() {
-      setState(() {});
-    });
-    _controller.value = 1.0;
-    _curve = CurvedAnimation(parent: _controller, curve: Curves.easeInOut);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+    _whiteRatioTarget = _ratioForEval(initialEval, initialMate);
   }
 
   @override
@@ -105,7 +87,10 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget>
           (latestMate ?? _lastMate ?? 0) != 0
               ? ((latestMate ?? _lastMate ?? 0) > 0 ? 10.0 : -10.0)
               : (latestEval ?? _lastEval ?? 0.0);
-      _animateToRatio(_whiteRatio(effectiveEval));
+      final newRatio = _whiteRatio(effectiveEval);
+      if ((newRatio - _whiteRatioTarget).abs() > 0.0005) {
+        _whiteRatioTarget = newRatio.clamp(0.0, 1.0).toDouble();
+      }
       changed = true;
     }
 
@@ -115,21 +100,6 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget>
   }
 
   double _whiteRatio(double eval) => _normalizedEvalToRatio(eval);
-
-  double _currentAnimatedRatio() {
-    final t = _curve.value;
-    return _animationStartRatio + (_targetRatio - _animationStartRatio) * t;
-  }
-
-  void _animateToRatio(double newRatio) {
-    final clamped = newRatio.clamp(0.0, 1.0);
-    if ((clamped - _targetRatio).abs() < 0.0005) {
-      return;
-    }
-    _animationStartRatio = _currentAnimatedRatio();
-    _targetRatio = clamped;
-    _controller.forward(from: 0.0);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -148,65 +118,78 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget>
     final showLoading =
         awaitingNewPositionData || (widget.isEvaluating && !hasEval);
 
-    final whiteRatio = _currentAnimatedRatio();
-    final blackRatio = 1.0 - whiteRatio;
-    final whiteHeight = whiteRatio * widget.height;
-    final blackHeight = blackRatio * widget.height;
+    return SingleMotionBuilder(
+      motion: const CupertinoMotion.smooth(),
+      value: _whiteRatioTarget,
+      builder: (context, animatedRatio, _) {
+        final whiteRatio = animatedRatio.clamp(0.0, 1.0).toDouble();
+        final blackRatio = 1.0 - whiteRatio;
+        final whiteHeight = whiteRatio * widget.height;
+        final blackHeight = blackRatio * widget.height;
 
-    final topHeight = widget.isFlipped ? whiteHeight : blackHeight;
-    final bottomHeight = widget.isFlipped ? blackHeight : whiteHeight;
-    final topColor = widget.isFlipped ? kWhiteColor : kPopUpColor;
-    final bottomColor = widget.isFlipped ? kPopUpColor : kWhiteColor;
+        final topHeight = widget.isFlipped ? whiteHeight : blackHeight;
+        final bottomHeight = widget.isFlipped ? blackHeight : whiteHeight;
+        final topColor = widget.isFlipped ? kWhiteColor : kPopUpColor;
+        final bottomColor = widget.isFlipped ? kPopUpColor : kWhiteColor;
 
-    return SizedBox(
-      width: widget.width,
-      height: widget.height,
-      child: Stack(
-        children: [
-          Align(
-            alignment: Alignment.topCenter,
-            child: Container(
-              width: widget.width,
-              height: topHeight,
-              color: topColor,
-            ),
-          ),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: Container(
-              width: widget.width,
-              height: bottomHeight,
-              color: bottomColor,
-            ),
-          ),
-          Center(
-            child: Container(width: widget.width, height: 2, color: kRedColor),
-          ),
-          Center(
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 1.w, vertical: 0.5.h),
-              decoration: BoxDecoration(
-                color: kPrimaryColor,
-                borderRadius: BorderRadius.circular(2.br),
-              ),
-              child: Text(
-                showLoading
-                    ? '...'
-                    : (displayEval.abs() >= 10.0 && displayMate != 0)
-                    ? '#${displayMate.abs()}'
-                    : displayEval.abs().toStringAsFixed(1),
-                maxLines: 1,
-                textAlign: TextAlign.center,
-                style: AppTypography.textSmRegular.copyWith(
-                  color: Colors.white,
-                  fontSize: 3.5.f,
-                  fontWeight: FontWeight.w600,
+        return SizedBox(
+          width: widget.width,
+          height: widget.height,
+          child: Stack(
+            children: [
+              Align(
+                alignment: Alignment.topCenter,
+                child: Container(
+                  width: widget.width,
+                  height: topHeight,
+                  color: topColor,
                 ),
               ),
-            ),
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: Container(
+                  width: widget.width,
+                  height: bottomHeight,
+                  color: bottomColor,
+                ),
+              ),
+              Center(
+                child: Container(
+                  width: widget.width,
+                  height: 2,
+                  color: kRedColor,
+                ),
+              ),
+              Center(
+                child: Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 1.w,
+                    vertical: 0.5.h,
+                  ),
+                  decoration: BoxDecoration(
+                    color: kPrimaryColor,
+                    borderRadius: BorderRadius.circular(2.br),
+                  ),
+                  child: Text(
+                    showLoading
+                        ? '...'
+                        : (displayEval.abs() >= 10.0 && displayMate != 0)
+                        ? '#${displayMate.abs()}'
+                        : displayEval.abs().toStringAsFixed(1),
+                    maxLines: 1,
+                    textAlign: TextAlign.center,
+                    style: AppTypography.textSmRegular.copyWith(
+                      color: Colors.white,
+                      fontSize: 3.5.f,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
