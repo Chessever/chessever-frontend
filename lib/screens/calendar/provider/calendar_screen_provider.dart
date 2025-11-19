@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/supabase/calendar_event/calendar_event_repository.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
@@ -30,24 +31,37 @@ class _CalendarScreenNotifier extends StateNotifier<AsyncValue<List<String>>> {
       state = const AsyncValue.loading();
 
       final selectedYear = ref.read(selectedYearProvider);
-      final broadcasts = await ref.read(supabaseSearchProvider(query).future);
 
-      final tourEventCardModel =
-          broadcasts
-              .map(
-                (b) => GroupEventCardModel.fromGroupBroadcast(
-                  b,
-                  ref.read(liveBroadcastIdsProvider),
-                ),
-              )
-              .toList();
+      // Search both group broadcasts AND calendar events
+      final broadcasts = await ref.read(supabaseSearchProvider(query).future);
+      final calendarEvents = await ref
+          .read(calendarEventRepositoryProvider)
+          .searchCalendarEvents(query);
+
+      // Convert broadcasts to card models
+      final broadcastCards = broadcasts
+          .map(
+            (b) => GroupEventCardModel.fromGroupBroadcast(
+              b,
+              ref.read(liveBroadcastIdsProvider),
+            ),
+          )
+          .toList();
+
+      // Convert calendar events to card models
+      final calendarCards = calendarEvents
+          .map((e) => GroupEventCardModel.fromCalendarEvent(e))
+          .toList();
+
+      // Combine both lists
+      final allEventCards = [...broadcastCards, ...calendarCards];
 
       final monthConverter = ref.read(monthProvider);
       final Set<String> eventMonths = {};
 
-      for (var a = 0; a < tourEventCardModel.length; a++) {
-        final start = tourEventCardModel[a].startDate;
-        final end = tourEventCardModel[a].endDate;
+      for (var a = 0; a < allEventCards.length; a++) {
+        final start = allEventCards[a].startDate;
+        final end = allEventCards[a].endDate;
 
         // Safety check in case dates are null
         if (start == null || end == null) continue;

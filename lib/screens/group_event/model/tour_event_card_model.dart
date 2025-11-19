@@ -1,8 +1,14 @@
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
+import 'package:chessever2/repository/supabase/calendar_event/calendar_event.dart';
 import 'package:chessever2/utils/time_utils.dart';
 import 'package:equatable/equatable.dart';
 
 enum TourEventCategory { live, ongoing, upcoming, completed }
+
+enum EventSource {
+  lichessBroadcast,  // From group_broadcasts (Lichess events)
+  communityEvent,    // From calendar_events (external sources)
+}
 
 class GroupEventCardModel extends Equatable {
   const GroupEventCardModel({
@@ -15,6 +21,8 @@ class GroupEventCardModel extends Equatable {
     required this.timeControl,
     required this.endDate,
     required this.startDate,
+    this.location,
+    this.eventSource = EventSource.lichessBroadcast,
   });
 
   final String id;
@@ -26,6 +34,8 @@ class GroupEventCardModel extends Equatable {
   final String timeControl;
   final DateTime? endDate;
   final DateTime? startDate;
+  final String? location;
+  final EventSource eventSource;
 
   factory GroupEventCardModel.fromGroupBroadcast(
     GroupBroadcast groupBroadcast,
@@ -49,6 +59,36 @@ class GroupEventCardModel extends Equatable {
       timeControl: groupBroadcast.timeControl ?? '',
       endDate: utcEnd,
       startDate: utcStart,
+      eventSource: EventSource.lichessBroadcast,
+    );
+  }
+
+  factory GroupEventCardModel.fromCalendarEvent(
+    CalendarEvent calendarEvent,
+  ) {
+    final utcStart = calendarEvent.startDate;
+    final utcEnd = calendarEvent.endDate;
+
+    // Use event name as ID for calendar events
+    final eventId = 'cal_${calendarEvent.name.hashCode}';
+
+    return GroupEventCardModel(
+      id: eventId,
+      title: calendarEvent.name,
+      dates: TimeUtils.formatDateRange(utcStart, utcEnd),
+      maxAvgElo: 0, // Calendar events don't have ELO ratings
+      timeUntilStart: TimeUtils.timeUntilStart(utcStart),
+      tourEventCategory: getCategory(
+        groupId: eventId,
+        startDate: utcStart,
+        endDate: utcEnd,
+        liveGroupIds: [], // Calendar events are never "live"
+      ),
+      timeControl: calendarEvent.timeControl ?? 'Standard',
+      endDate: utcEnd,
+      startDate: utcStart,
+      location: calendarEvent.location,
+      eventSource: EventSource.communityEvent,
     );
   }
 
@@ -113,5 +153,7 @@ class GroupEventCardModel extends Equatable {
     tourEventCategory,
     timeControl,
     endDate,
+    location,
+    eventSource,
   ];
 }
