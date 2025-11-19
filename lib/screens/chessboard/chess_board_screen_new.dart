@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
@@ -29,6 +30,7 @@ import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_wi
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
+import 'package:chessever2/utils/keyboard_animation_builder.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/string_utils.dart';
 import 'package:chessground/chessground.dart';
@@ -1010,6 +1012,7 @@ class _GamePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       bottomNavigationBar: _BottomNavBar(
         index: currentGameIndex,
         state: state,
@@ -1052,6 +1055,7 @@ class _LoadingScreen extends StatelessWidget {
     final boardSize = screenWidth - sideBarWidth - 32.w;
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       appBar: _AppBar(
         game: games[currentGameIndex],
         games: games,
@@ -1779,42 +1783,99 @@ class _AnalysisGameBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Column(
-      children: [
-        _PlayerWidget(
-          game: game,
-          isFlipped: state.isBoardFlipped,
-          blackPlayer: false,
-          state: state,
-        ),
-        SizedBox(height: 2.h),
-        _BoardWithSidebar(
-          index: index,
-          currentPageIndex: currentPageIndex,
-          state: state,
-          game: game,
-        ),
-        SizedBox(height: 2.h),
-        _PlayerWidget(
-          game: game,
-          isFlipped: state.isBoardFlipped,
-          blackPlayer: true,
-          state: state,
-        ),
-        if (state.isAnalysisMode && state.showPrincipalVariations) ...[
-          _PrincipalVariationList(index: index, state: state, game: game),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableHeight =
+            constraints.maxHeight.isFinite
+                ? constraints.maxHeight
+                : MediaQuery.of(context).size.height;
+        final compactThreshold = 620.h;
+        final useCompactLayout = availableHeight < compactThreshold;
+
+        final pvSection = <Widget>[];
+        if (state.isAnalysisMode && state.showPrincipalVariations) {
+          pvSection.add(SizedBox(height: 2.h));
+          final pvList = _PrincipalVariationList(
+            index: index,
+            state: state,
+            game: game,
+          );
+          if (useCompactLayout) {
+            pvSection.add(pvList);
+          } else {
+            pvSection.add(
+              Flexible(
+                flex: 0,
+                child: pvList,
+              ),
+            );
+          }
           // DISABLED: Analysis navigation arrows hidden
           // _AnalysisControlsRow(index: index, game: game),
-        ],
-        Expanded(
-          child: _MovesDisplay(
+        }
+
+        final headerChildren = <Widget>[
+          _PlayerWidget(
+            game: game,
+            isFlipped: state.isBoardFlipped,
+            blackPlayer: false,
+            state: state,
+          ),
+          SizedBox(height: 1.h),
+          _BoardWithSidebar(
             index: index,
             currentPageIndex: currentPageIndex,
             state: state,
             game: game,
           ),
-        ),
-      ],
+          SizedBox(height: 1.h),
+          _PlayerWidget(
+            game: game,
+            isFlipped: state.isBoardFlipped,
+            blackPlayer: true,
+            state: state,
+          ),
+          ...pvSection,
+        ];
+
+        if (useCompactLayout) {
+          final movesPanelHeight = math.max(220.h, availableHeight * 0.55);
+          return SingleChildScrollView(
+            padding: EdgeInsets.only(bottom: 12.h),
+            physics: const ClampingScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ...headerChildren,
+                SizedBox(height: 12.h),
+                SizedBox(
+                  height: movesPanelHeight,
+                  child: _MovesDisplay(
+                    index: index,
+                    currentPageIndex: currentPageIndex,
+                    state: state,
+                    game: game,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return Column(
+          children: [
+            ...headerChildren,
+            Expanded(
+              child: _MovesDisplay(
+                index: index,
+                currentPageIndex: currentPageIndex,
+                state: state,
+                game: game,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -3247,6 +3308,33 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           await notifier.insertNullMoveAfterPointer(List<Number>.of(pointer));
         },
       ),
+      _NotationActionItem(
+        icon: Icons.add_comment_outlined,
+        label: 'Add comment',
+        color: kWhiteColor,
+        onSelected: (_) async {
+          final pointerId = NotationPointer.encode(pointer);
+          final currentComment =
+              widget.state.variationComments[pointerId] ?? '';
+          final focusNode = FocusNode();
+          await showSmoothDialog(
+            context: hostContext,
+            focusNode: focusNode,
+            anchorToBottom: false,
+            builder: (context) => _CommentDialog(
+              initialComment: currentComment,
+              focusNode: focusNode,
+              onSave: (comment) {
+                notifier.updateVariationComment(
+                  variationId: pointerId,
+                  comment: comment,
+                );
+              },
+            ),
+          );
+          focusNode.dispose();
+        },
+      ),
       if (canModifyVariant)
         _NotationActionItem(
           icon: Icons.delete_forever,
@@ -3313,22 +3401,34 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       index: widget.index,
     );
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
-    final commentConfig = _buildVariationCommentConfig(
-      variation: variation,
-      notifier: notifier,
-      hostContext: hostContext,
-    );
     final actions = <_NotationActionItem>[
-      // _NotationActionItem(
-      //   icon: Icons.trending_up_rounded,
-      //   label: 'Promote variant',
-      //   color: kPrimaryColor,
-      //   onSelected: (_) async {
-      //     await notifier.promoteVariationAtPointer(
-      //       List<Number>.of(headPointer),
-      //     );
-      //   },
-      // ),
+      _NotationActionItem(
+        icon: Icons.add_comment_outlined,
+        label: 'Add comment',
+        color: kWhiteColor,
+        onSelected: (_) async {
+          final pointerId = NotationPointer.encode(headPointer);
+          final currentComment = widget.state.variationComments[pointerId] ?? '';
+          final focusNode = FocusNode();
+          
+          await showSmoothDialog(
+            context: hostContext,
+            focusNode: focusNode,
+            anchorToBottom: false,
+            builder: (context) => _CommentDialog(
+              initialComment: currentComment,
+              focusNode: focusNode,
+              onSave: (comment) {
+                notifier.updateVariationComment(
+                  variationId: pointerId,
+                  comment: comment,
+                );
+              },
+            ),
+          );
+          focusNode.dispose();
+        },
+      ),
       _NotationActionItem(
         icon: Icons.delete_forever,
         label: 'Delete variant',
@@ -3367,7 +3467,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       title: 'Variation',
       subtitle: 'Variation options',
       actions: actions,
-      commentConfig: commentConfig,
+      commentConfig: null, // We handle comments via the action item now
     );
   }
 
@@ -3621,6 +3721,7 @@ class _AnalysisActionButtons extends ConsumerWidget {
             showSmoothDialog(
               context: context,
               focusNode: focusNode,
+              anchorToBottom: false,
               builder:
                   (context) => _CommentDialog(
                     initialComment: currentComment,
@@ -5668,113 +5769,379 @@ class _CommentDialog extends StatefulWidget {
   State<_CommentDialog> createState() => _CommentDialogState();
 }
 
-class _CommentDialogState extends State<_CommentDialog> {
+class _CommentDialogState extends State<_CommentDialog>
+    with SingleTickerProviderStateMixin {
   late TextEditingController _controller;
+  late AnimationController _animationController;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _fadeAnimation;
+  bool _hasChanges = false;
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.initialComment);
-    // Request focus after a short delay to ensure the dialog is built
+    _controller.addListener(_onTextChanged);
+
+    // Setup entrance animation
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
+
+    _scaleAnimation = CurvedAnimation(
+      parent: _animationController,
+      curve: const SnappySpringCurve(),
+    );
+
+    _fadeAnimation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeOut,
+    );
+
+    // Start animation and focus field
+    _animationController.forward();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       widget.focusNode.requestFocus();
     });
   }
 
+  void _onTextChanged() {
+    final hasChanges = _controller.text != widget.initialComment;
+    if (_hasChanges != hasChanges) {
+      setState(() {
+        _hasChanges = hasChanges;
+      });
+    }
+  }
+
   @override
   void dispose() {
+    _controller.removeListener(_onTextChanged);
     _controller.dispose();
+    _animationController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleSave() async {
+    if (!_hasChanges) {
+      Navigator.of(context).pop();
+      return;
+    }
+
+    HapticFeedback.mediumImpact();
+    await _animationController.reverse();
+    if (!mounted) return;
+
+    widget.onSave(_controller.text);
+    Navigator.of(context).pop();
+  }
+
+  Future<void> _handleCancel() async {
+    HapticFeedback.lightImpact();
+    await _animationController.reverse();
+    if (!mounted) return;
+    Navigator.of(context).pop();
   }
 
   @override
   Widget build(BuildContext context) {
+    // Get platform-specific keyboard height default
+    final keyboardTotalHeight = Platform.isIOS ? 336.0 : 286.9;
+
+    return MediaQuery.removeViewInsets(
+      context: context,
+      removeBottom: true,
+      removeTop: true,
+      child: GestureDetector(
+        onTap: _handleCancel,
+        behavior: HitTestBehavior.opaque,
+        child: Stack(
+          children: [
+            FadeTransition(
+              opacity: _fadeAnimation,
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                child: Container(color: Colors.black.withValues(alpha: 0.6)),
+              ),
+            ),
+            Positioned.fill(
+              child: KeyboardAnimationBuilder(
+                focusNode: widget.focusNode,
+                keyboardTotalHeight: keyboardTotalHeight,
+                interpolateLastPart: Platform.isIOS,
+                interpolationConfig: InterpolationConfig.fidelity,
+                warmUpFrame: true,
+                builder: (context, keyboardHeight) {
+                final mediaQuery = MediaQuery.of(context);
+                final safePadding = mediaQuery.padding;
+                final screenSize = mediaQuery.size;
+                final effectiveKeyboardHeight =
+                    keyboardHeight.clamp(0.0, keyboardTotalHeight);
+                final normalizedShift =
+                    (effectiveKeyboardHeight / screenSize.height)
+                        .clamp(0.0, 0.45);
+                final alignmentY = -normalizedShift;
+                final bottomPadding =
+                    safePadding.bottom + 24.h +
+                    (effectiveKeyboardHeight * 0.25);
+
+                return Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    20.sp,
+                    safePadding.top + 24.h,
+                    20.sp,
+                    bottomPadding,
+                  ),
+                  child: Align(
+                    alignment: Alignment(0, alignmentY),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth:
+                            math.min(520.w, screenSize.width - 32.w),
+                        maxHeight: screenSize.height * 0.65,
+                      ),
+                      child: GestureDetector(
+                        onTap: () {},
+                        child: ScaleTransition(
+                          scale: _scaleAnimation,
+                          alignment: Alignment.center,
+                          child: FadeTransition(
+                            opacity: _fadeAnimation,
+                            child: _buildCommentDialogCard(context),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCommentDialogCard(BuildContext context) {
     return Container(
-      width: 85.w,
-      padding: EdgeInsets.all(16.sp),
+      width: double.infinity,
       decoration: BoxDecoration(
         color: kBlack2Color,
-        borderRadius: BorderRadius.circular(16.br),
+        borderRadius: BorderRadius.circular(24.sp),
         border: Border.all(
-          color: kWhiteColor.withValues(alpha: 0.1),
-          width: 1,
+          color: kPrimaryColor.withValues(alpha: 0.3),
+          width: 2,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.5),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
+            color: Colors.black.withValues(alpha: 0.7),
+            blurRadius: 40,
+            offset: const Offset(0, -10),
+            spreadRadius: 5,
           ),
         ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Add Comment',
-            style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
-          ),
-          SizedBox(height: 12.sp),
-          TextField(
-            controller: _controller,
-            focusNode: widget.focusNode,
-            style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
-            maxLines: 3,
-            decoration: InputDecoration(
-              hintText: 'Enter your comment...',
-              hintStyle: AppTypography.textSmRegular.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.5),
-              ),
-              filled: true,
-              fillColor: kWhiteColor.withValues(alpha: 0.05),
-              contentPadding: EdgeInsets.all(12.sp),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12.br),
-                borderSide: BorderSide(
-                  color: kWhiteColor.withValues(alpha: 0.1),
-                ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12.br),
-                borderSide: const BorderSide(color: kPrimaryColor),
+          Center(
+            child: Container(
+              margin: EdgeInsets.only(top: 12.sp, bottom: 8.sp),
+              width: 36.w,
+              height: 4.h,
+              decoration: BoxDecoration(
+                color: kWhiteColor.withValues(alpha: 0.25),
+                borderRadius: BorderRadius.circular(2.sp),
               ),
             ),
           ),
-          SizedBox(height: 16.sp),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                style: TextButton.styleFrom(
-                  foregroundColor: kWhiteColor.withValues(alpha: 0.7),
-                ),
-                child: Text(
-                  'Cancel',
-                  style: AppTypography.textSmMedium,
-                ),
-              ),
-              SizedBox(width: 8.sp),
-              TextButton(
-                onPressed: () {
-                  widget.onSave(_controller.text);
-                  Navigator.of(context).pop();
-                },
-                style: TextButton.styleFrom(
-                  foregroundColor: kPrimaryColor,
-                  backgroundColor: kPrimaryColor.withValues(alpha: 0.1),
-                  padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 8.sp),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8.br),
+          Padding(
+            padding: EdgeInsets.fromLTRB(20.sp, 8.sp, 20.sp, 12.sp),
+            child: Row(
+              children: [
+                Container(
+                  padding: EdgeInsets.all(10.sp),
+                  decoration: BoxDecoration(
+                    color: kPrimaryColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12.sp),
+                  ),
+                  child: Icon(
+                    Icons.comment_outlined,
+                    color: kPrimaryColor,
+                    size: 20.sp,
                   ),
                 ),
-                child: Text(
-                  'Save',
-                  style: AppTypography.textSmMedium,
+                SizedBox(width: 12.w),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Add Comment',
+                        style: AppTypography.textLgBold.copyWith(
+                          color: kWhiteColor,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                      Text(
+                        'Share your thoughts on this position',
+                        style: AppTypography.textXsRegular.copyWith(
+                          color: kWhiteColor.withValues(alpha: 0.6),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            height: 1,
+            margin: EdgeInsets.symmetric(horizontal: 20.sp),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Colors.transparent,
+                  kWhiteColor.withValues(alpha: 0.1),
+                  Colors.transparent,
+                ],
+              ),
+            ),
+          ),
+          Flexible(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.all(20.sp),
+              child: TextField(
+                controller: _controller,
+                focusNode: widget.focusNode,
+                style: AppTypography.textMdRegular.copyWith(
+                  color: kWhiteColor,
+                  height: 1.5,
+                ),
+                maxLines: null,
+                minLines: 3,
+                maxLength: _variationCommentMaxChars,
+                textInputAction: TextInputAction.newline,
+                decoration: InputDecoration(
+                  hintText: 'What do you think about this position?',
+                  hintStyle: AppTypography.textMdRegular.copyWith(
+                    color: kWhiteColor.withValues(alpha: 0.4),
+                  ),
+                  filled: true,
+                  fillColor: kWhiteColor.withValues(alpha: 0.03),
+                  contentPadding: EdgeInsets.all(16.sp),
+                  counterStyle: AppTypography.textXsRegular.copyWith(
+                    color: kWhiteColor.withValues(alpha: 0.5),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16.sp),
+                    borderSide: BorderSide(
+                      color: kWhiteColor.withValues(alpha: 0.1),
+                      width: 1.5,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16.sp),
+                    borderSide: BorderSide(
+                      color: kPrimaryColor.withValues(alpha: 0.6),
+                      width: 2,
+                    ),
+                  ),
                 ),
               ),
-            ],
+            ),
+          ),
+          Container(
+            padding: EdgeInsets.fromLTRB(
+              20.sp,
+              12.sp,
+              20.sp,
+              20.sp + MediaQuery.of(context).padding.bottom,
+            ),
+            decoration: BoxDecoration(
+              border: Border(
+                top: BorderSide(
+                  color: kWhiteColor.withValues(alpha: 0.05),
+                  width: 1,
+                ),
+              ),
+            ),
+            child: Row(
+              children: [
+                if (_controller.text.isNotEmpty)
+                  Expanded(
+                    child: TextButton.icon(
+                      onPressed: () {
+                        HapticFeedback.selectionClick();
+                        _controller.clear();
+                      },
+                      style: TextButton.styleFrom(
+                        foregroundColor: kWhiteColor.withValues(alpha: 0.7),
+                        padding: EdgeInsets.symmetric(vertical: 14.sp),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12.sp),
+                        ),
+                      ),
+                      icon: Icon(Icons.clear, size: 18.sp),
+                      label: Text(
+                        'Clear',
+                        style: AppTypography.textSmMedium,
+                      ),
+                    ),
+                  ),
+                if (_controller.text.isNotEmpty) SizedBox(width: 12.w),
+                Expanded(
+                  child: TextButton(
+                    onPressed: _handleCancel,
+                    style: TextButton.styleFrom(
+                      foregroundColor: kWhiteColor.withValues(alpha: 0.8),
+                      padding: EdgeInsets.symmetric(vertical: 14.sp),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12.sp),
+                        side: BorderSide(
+                          color: kWhiteColor.withValues(alpha: 0.15),
+                        ),
+                      ),
+                    ),
+                    child: Text(
+                      'Cancel',
+                      style: AppTypography.textSmMedium,
+                    ),
+                  ),
+                ),
+                SizedBox(width: 12.w),
+                Expanded(
+                  flex: 2,
+                  child: FilledButton.icon(
+                    onPressed: _handleSave,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _hasChanges
+                          ? kPrimaryColor
+                          : kWhiteColor.withValues(alpha: 0.1),
+                      foregroundColor: _hasChanges
+                          ? kWhiteColor
+                          : kWhiteColor.withValues(alpha: 0.4),
+                      padding: EdgeInsets.symmetric(vertical: 14.sp),
+                      elevation: _hasChanges ? 4 : 0,
+                      shadowColor: _hasChanges
+                          ? kPrimaryColor.withValues(alpha: 0.5)
+                          : null,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12.sp),
+                      ),
+                    ),
+                    icon: Icon(Icons.check_circle_outline, size: 20.sp),
+                    label: Text(
+                      _hasChanges ? 'Save Comment' : 'No Changes',
+                      style: AppTypography.textSmBold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
