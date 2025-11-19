@@ -1011,7 +1011,7 @@ class _GamePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    final scaffold = Scaffold(
       resizeToAvoidBottomInset: false,
       bottomNavigationBar: _BottomNavBar(
         index: currentGameIndex,
@@ -1031,6 +1031,11 @@ class _GamePage extends StatelessWidget {
         game: game,
         state: state,
       ),
+    );
+    return MediaQuery.removeViewInsets(
+      context: context,
+      removeBottom: true,
+      child: scaffold,
     );
   }
 }
@@ -1054,7 +1059,7 @@ class _LoadingScreen extends StatelessWidget {
     final screenWidth = MediaQuery.of(context).size.width;
     final boardSize = screenWidth - sideBarWidth - 32.w;
 
-    return Scaffold(
+    final scaffold = Scaffold(
       resizeToAvoidBottomInset: false,
       appBar: _AppBar(
         game: games[currentGameIndex],
@@ -1220,6 +1225,11 @@ class _LoadingScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+    return MediaQuery.removeViewInsets(
+      context: context,
+      removeBottom: true,
+      child: scaffold,
     );
   }
 }
@@ -3401,33 +3411,18 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       index: widget.index,
     );
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+    final commentConfig = _buildVariationCommentConfig(
+      variation: variation,
+      notifier: notifier,
+      hostContext: hostContext,
+    );
     final actions = <_NotationActionItem>[
       _NotationActionItem(
         icon: Icons.add_comment_outlined,
         label: 'Add comment',
         color: kWhiteColor,
-        onSelected: (_) async {
-          final pointerId = NotationPointer.encode(headPointer);
-          final currentComment = widget.state.variationComments[pointerId] ?? '';
-          final focusNode = FocusNode();
-          
-          await showSmoothDialog(
-            context: hostContext,
-            focusNode: focusNode,
-            anchorToBottom: false,
-            builder: (context) => _CommentDialog(
-              initialComment: currentComment,
-              focusNode: focusNode,
-              onSave: (comment) {
-                notifier.updateVariationComment(
-                  variationId: pointerId,
-                  comment: comment,
-                );
-              },
-            ),
-          );
-          focusNode.dispose();
-        },
+        onSelected: (_) async {},
+        triggersCommentEditor: true,
       ),
       _NotationActionItem(
         icon: Icons.delete_forever,
@@ -3467,26 +3462,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       title: 'Variation',
       subtitle: 'Variation options',
       actions: actions,
-      commentConfig: null, // We handle comments via the action item now
-    );
-  }
-
-  Future<void> _showVariationCommentSheet(
-    NotationVariationNode variation,
-    ChessBoardProviderParams params,
-  ) async {
-    final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
-    final config = _buildVariationCommentConfig(
-      variation: variation,
-      notifier: notifier,
-      hostContext: context,
-    );
-    await _showNotationActionSheet(
-      context: context,
-      title: 'Variant note',
-      subtitle: 'Add a thought for this branch',
-      actions: const [],
-      commentConfig: config,
+      commentConfig: commentConfig,
     );
   }
 
@@ -5423,12 +5399,14 @@ class _NotationActionItem {
   final String label;
   final Color color;
   final FutureOr<void> Function(BuildContext hostContext) onSelected;
+  final bool triggersCommentEditor;
 
   const _NotationActionItem({
     required this.icon,
     required this.label,
     required this.color,
     required this.onSelected,
+    this.triggersCommentEditor = false,
   });
 }
 
@@ -5492,6 +5470,7 @@ class _NotationActionSheetState extends State<_NotationActionSheet> {
   late final TextEditingController _commentController;
   bool _hasEdited = false;
   bool _isSaving = false;
+  bool _isShowingCommentEditor = false;
 
   @override
   void initState() {
@@ -5522,6 +5501,30 @@ class _NotationActionSheetState extends State<_NotationActionSheet> {
         _hasEdited = edited;
       });
     }
+  }
+
+  void _openCommentEditor() {
+    if (widget.commentConfig == null) return;
+    final baseValue = widget.commentConfig?.initialValue ?? '';
+    setState(() {
+      _isShowingCommentEditor = true;
+      _hasEdited = false;
+      _commentController
+        ..text = baseValue
+        ..selection = TextSelection.collapsed(offset: baseValue.length);
+    });
+  }
+
+  void _closeCommentEditor() {
+    if (!_isShowingCommentEditor) return;
+    final baseValue = widget.commentConfig?.initialValue ?? '';
+    setState(() {
+      _isShowingCommentEditor = false;
+      _hasEdited = false;
+      _commentController
+        ..text = baseValue
+        ..selection = TextSelection.collapsed(offset: baseValue.length);
+    });
   }
 
   @override
@@ -5576,42 +5579,11 @@ class _NotationActionSheetState extends State<_NotationActionSheet> {
                       ),
                     ),
                     SizedBox(height: 16.h),
-                    Text(
-                      widget.title,
-                      style: AppTypography.textLgBold.copyWith(
-                        color: kWhiteColor,
-                        letterSpacing: 0.25,
-                      ),
-                    ),
-                    if (widget.subtitle != null) ...[
-                      SizedBox(height: 4.h),
-                      Text(
-                        widget.subtitle!,
-                        style: AppTypography.textSmRegular.copyWith(
-                          color: kWhiteColor70,
-                        ),
-                      ),
-                    ],
-                    if (actions.isNotEmpty) ...[
-                      SizedBox(height: 12.h),
-                      for (var i = 0; i < actions.length; i++) ...[
-                        _buildActionTile(actions[i]),
-                        if (i != actions.length - 1) SizedBox(height: 8.h),
-                      ],
-                    ],
-                    if (widget.commentConfig != null) ...[
-                      SizedBox(height: 16.h),
-                      Divider(color: kWhiteColor.withValues(alpha: 0.08)),
-                      SizedBox(height: 16.h),
-                      Text(
-                        'Variant comment',
-                        style: AppTypography.textSmMedium.copyWith(
-                          color: kWhiteColor,
-                        ),
-                      ),
-                      SizedBox(height: 8.h),
-                      _buildCommentInput(),
-                    ],
+                    if (_isShowingCommentEditor &&
+                        widget.commentConfig != null)
+                      _buildCommentEditorSection()
+                    else
+                      _buildActionsSection(actions),
                   ],
                 ),
               ),
@@ -5619,6 +5591,84 @@ class _NotationActionSheetState extends State<_NotationActionSheet> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildActionsSection(List<_NotationActionItem> actions) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          widget.title,
+          style: AppTypography.textLgBold.copyWith(
+            color: kWhiteColor,
+            letterSpacing: 0.25,
+          ),
+        ),
+        if (widget.subtitle != null) ...[
+          SizedBox(height: 4.h),
+          Text(
+            widget.subtitle!,
+            style: AppTypography.textSmRegular.copyWith(
+              color: kWhiteColor70,
+            ),
+          ),
+        ],
+        if (actions.isNotEmpty) ...[
+          SizedBox(height: 12.h),
+          for (var i = 0; i < actions.length; i++) ...[
+            _buildActionTile(actions[i]),
+            if (i != actions.length - 1) SizedBox(height: 8.h),
+          ],
+        ],
+      ],
+    );
+  }
+
+  Widget _buildCommentEditorSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            IconButton(
+              icon: Icon(
+                Icons.arrow_back_ios_new_rounded,
+                color: kWhiteColor,
+                size: 18.ic,
+              ),
+              onPressed: _closeCommentEditor,
+              splashRadius: 20.sp,
+            ),
+            SizedBox(width: 4.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Variant comment',
+                    style: AppTypography.textLgBold.copyWith(
+                      color: kWhiteColor,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                  SizedBox(height: 2.h),
+                  Text(
+                    'Leave a note for this branch.',
+                    style: AppTypography.textSmRegular.copyWith(
+                      color: kWhiteColor70,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: 12.h),
+        Divider(color: kWhiteColor.withValues(alpha: 0.08)),
+        SizedBox(height: 12.h),
+        _buildCommentInput(),
+      ],
     );
   }
 
@@ -5739,6 +5789,11 @@ class _NotationActionSheetState extends State<_NotationActionSheet> {
   }
 
   Future<void> _handleActionTap(_NotationActionItem action) async {
+    if (action.triggersCommentEditor && widget.commentConfig != null) {
+      HapticFeedback.selectionClick();
+      _openCommentEditor();
+      return;
+    }
     HapticFeedback.selectionClick();
     Navigator.of(context).pop();
     await Future.sync(() => action.onSelected(widget.hostContext));
@@ -5878,23 +5933,22 @@ class _CommentDialogState extends State<_CommentDialog>
                 final screenSize = mediaQuery.size;
                 final effectiveKeyboardHeight =
                     keyboardHeight.clamp(0.0, keyboardTotalHeight);
-                final normalizedShift =
-                    (effectiveKeyboardHeight / screenSize.height)
-                        .clamp(0.0, 0.45);
-                final alignmentY = -normalizedShift;
-                final bottomPadding =
-                    safePadding.bottom + 24.h +
-                    (effectiveKeyboardHeight * 0.25);
-
+                final desiredGap = 24.h;
+                final double liftDistance = math
+                    .min(
+                      math.max(effectiveKeyboardHeight - desiredGap, 0),
+                      screenSize.height * 0.4,
+                    )
+                    .toDouble();
                 return Padding(
                   padding: EdgeInsets.fromLTRB(
                     20.sp,
                     safePadding.top + 24.h,
                     20.sp,
-                    bottomPadding,
+                    safePadding.bottom + 24.h,
                   ),
                   child: Align(
-                    alignment: Alignment(0, alignmentY),
+                    alignment: Alignment.center,
                     child: ConstrainedBox(
                       constraints: BoxConstraints(
                         maxWidth:
@@ -5908,7 +5962,10 @@ class _CommentDialogState extends State<_CommentDialog>
                           alignment: Alignment.center,
                           child: FadeTransition(
                             opacity: _fadeAnimation,
-                            child: _buildCommentDialogCard(context),
+                            child: Transform.translate(
+                              offset: Offset(0, -liftDistance),
+                              child: _buildCommentDialogCard(context),
+                            ),
                           ),
                         ),
                       ),
