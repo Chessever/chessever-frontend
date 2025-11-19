@@ -40,6 +40,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/smooth_dialog.dart';
 import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:flutter_svg/svg.dart';
 
@@ -2144,6 +2145,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   final ListEquality<int> _pointerEquality = const ListEquality<int>();
   final Set<String> _collapsedVariationIds = <String>{};
   final Set<String> _expandedVariationIds = <String>{};
+  final Set<String> _expandedCommentIds = <String>{};
   bool _hasInitiallyScrolled = false;
   String? _lastSignature;
   ChessMovePointer? _lastPointer;
@@ -2710,59 +2712,70 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     ChessBoardProviderParams params,
   ) {
     final fullText = token.commentText?.trim() ?? token.text.trim();
-    final variation = token.variation;
-    if (fullText.isEmpty || variation == null) {
+    if (fullText.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    final baseDepth = token.depth.clamp(1, 6);
-    final accentColor = _colorForVariationAccent(
-      baseDepth,
-      seed: token.variationColorKey ?? variation.id,
-    );
-    final isTruncated = fullText.length > _variationCommentPreviewChars;
-    final preview =
-        isTruncated
-            ? '${fullText.substring(0, _variationCommentPreviewChars).trimRight()}…'
+    final id = token.pointerId ?? token.variation?.id;
+    if (id == null) return const SizedBox.shrink();
+
+    final isExpanded = _expandedCommentIds.contains(id);
+    final isLong = fullText.length > _variationCommentPreviewChars;
+
+    final displayText =
+        (isLong && !isExpanded)
+            ? '${fullText.substring(0, _variationCommentPreviewChars).trimRight()}...'
             : fullText;
 
+    final depth = token.depth;
+    final accentColor = _colorForVariationAccent(
+      math.max(1, depth),
+      seed: token.variationColorKey ?? token.variation?.id,
+    );
+
     return GestureDetector(
-      onTap: () => _showVariationCommentSheet(variation, params),
+      onTap: () {
+        if (isLong) {
+          setState(() {
+            if (isExpanded) {
+              _expandedCommentIds.remove(id);
+            } else {
+              _expandedCommentIds.add(id);
+            }
+          });
+          HapticFeedback.selectionClick();
+        }
+      },
       child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 6.sp),
-        margin: EdgeInsets.only(left: 4.sp, right: 2.sp, top: 2.sp),
+        width: double.infinity,
+        margin: EdgeInsets.symmetric(vertical: 4.sp, horizontal: 2.sp),
+        padding: EdgeInsets.all(8.sp),
         decoration: BoxDecoration(
-          color: kBlack2Color.withValues(alpha: 0.75),
-          borderRadius: BorderRadius.circular(10.sp),
-          border: Border.all(color: accentColor.withValues(alpha: 0.5), width: 0.8),
-          boxShadow: [
-            BoxShadow(
-              color: accentColor.withValues(alpha: 0.25),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
+          color: kBlack2Color.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(8.sp),
+          border: Border.all(
+            color: accentColor.withValues(alpha: 0.3),
+            width: 1,
+          ),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(
-              Icons.mode_comment_outlined,
-              size: 12.sp,
-              color: accentColor.withValues(alpha: 0.9),
-            ),
-            SizedBox(width: 6.sp),
-            ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: 200.w),
-              child: Text(
-                preview,
-                style: AppTypography.textXsRegular.copyWith(
-                  color: kWhiteColor,
-                  fontStyle: FontStyle.italic,
-                ),
-                softWrap: true,
+            Text(
+              displayText,
+              style: AppTypography.textSmRegular.copyWith(
+                color: kWhiteColor.withValues(alpha: 0.9),
+                height: 1.4,
               ),
             ),
+            if (isLong)
+              Padding(
+                padding: EdgeInsets.only(top: 4.sp),
+                child: Text(
+                  isExpanded ? 'Show less' : 'Read more',
+                  style: AppTypography.textXsMedium.copyWith(color: accentColor),
+                ),
+              ),
           ],
         ),
       ),
@@ -2913,6 +2926,23 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           variationColorKey: variationContext?.id,
         ),
       );
+
+      final moveComment = variationComments[pointerId];
+      if (moveComment != null && moveComment.isNotEmpty) {
+        tokens.add(
+          _NotationDisplayToken(
+            type: _NotationTokenType.comment,
+            text: moveComment,
+            depth: depth,
+            pointerId: pointerId,
+            variation: variationContext,
+            variationIndex: variationContext?.variationIndex,
+            variationColorKey: variationContext?.id,
+          ),
+        );
+      }
+
+
 
       for (final variation in node.variations) {
         final defaultCollapsed = _shouldCollapseByDefault(variation);
@@ -3241,17 +3271,17 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             }
           },
         ),
-      if (canModifyVariant)
-        _NotationActionItem(
-          icon: Icons.trending_up_rounded,
-          label: 'Promote variant',
-          color: kPrimaryColor,
-          onSelected: (_) async {
-            await notifier.promoteVariationAtPointer(
-              List<Number>.of(variantHeadPointer),
-            );
-          },
-        ),
+      // if (canModifyVariant)
+      //   _NotationActionItem(
+      //     icon: Icons.trending_up_rounded,
+      //     label: 'Promote variant',
+      //     color: kPrimaryColor,
+      //     onSelected: (_) async {
+      //       await notifier.promoteVariationAtPointer(
+      //         List<Number>.of(variantHeadPointer),
+      //       );
+      //     },
+      //   ),
       if (!isMainlineMove)
         _NotationActionItem(
           icon: Icons.upgrade_rounded,
@@ -3289,16 +3319,16 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       hostContext: hostContext,
     );
     final actions = <_NotationActionItem>[
-      _NotationActionItem(
-        icon: Icons.trending_up_rounded,
-        label: 'Promote variant',
-        color: kPrimaryColor,
-        onSelected: (_) async {
-          await notifier.promoteVariationAtPointer(
-            List<Number>.of(headPointer),
-          );
-        },
-      ),
+      // _NotationActionItem(
+      //   icon: Icons.trending_up_rounded,
+      //   label: 'Promote variant',
+      //   color: kPrimaryColor,
+      //   onSelected: (_) async {
+      //     await notifier.promoteVariationAtPointer(
+      //       List<Number>.of(headPointer),
+      //     );
+      //   },
+      // ),
       _NotationActionItem(
         icon: Icons.delete_forever,
         label: 'Delete variant',
@@ -3596,6 +3626,38 @@ class _AnalysisActionButtons extends ConsumerWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
+        _RibbonAnalysisButton(
+          icon: Icons.add_comment_outlined,
+          color: kWhiteColor,
+          enabled: true,
+          iconAlpha: 0.9,
+          onPressed: () {
+            final pointer = state?.analysisState.movePointer;
+            if (pointer == null || pointer.isEmpty) {
+              return;
+            }
+            final pointerId = NotationPointer.encode(pointer);
+            final currentComment = state?.variationComments[pointerId] ?? '';
+
+            final focusNode = FocusNode();
+            showSmoothDialog(
+              context: context,
+              focusNode: focusNode,
+              builder:
+                  (context) => _CommentDialog(
+                    initialComment: currentComment,
+                    focusNode: focusNode,
+                    onSave: (comment) {
+                      notifier.updateVariationComment(
+                        variationId: pointerId,
+                        comment: comment,
+                      );
+                    },
+                  ),
+            ).then((_) => focusNode.dispose());
+          },
+        ),
+        SizedBox(height: 12.sp),
         _RibbonAnalysisButton(
           icon: Icons.auto_delete_outlined,
           color: kRedColor,
@@ -5610,5 +5672,134 @@ class _NotationActionSheetState extends State<_NotationActionSheet> {
     final text = _commentController.text;
     Navigator.of(context).pop();
     await Future.sync(() => config.onSubmit(widget.hostContext, text));
+  }
+}
+
+class _CommentDialog extends StatefulWidget {
+  final String initialComment;
+  final ValueChanged<String> onSave;
+  final FocusNode focusNode;
+
+  const _CommentDialog({
+    required this.initialComment,
+    required this.onSave,
+    required this.focusNode,
+  });
+
+  @override
+  State<_CommentDialog> createState() => _CommentDialogState();
+}
+
+class _CommentDialogState extends State<_CommentDialog> {
+  late TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialComment);
+    // Request focus after a short delay to ensure the dialog is built
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.focusNode.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 85.w,
+      padding: EdgeInsets.all(16.sp),
+      decoration: BoxDecoration(
+        color: kBlack2Color,
+        borderRadius: BorderRadius.circular(16.br),
+        border: Border.all(
+          color: kWhiteColor.withValues(alpha: 0.1),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.5),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Add Comment',
+            style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
+          ),
+          SizedBox(height: 12.sp),
+          TextField(
+            controller: _controller,
+            focusNode: widget.focusNode,
+            style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
+            maxLines: 3,
+            decoration: InputDecoration(
+              hintText: 'Enter your comment...',
+              hintStyle: AppTypography.textSmRegular.copyWith(
+                color: kWhiteColor.withValues(alpha: 0.5),
+              ),
+              filled: true,
+              fillColor: kWhiteColor.withValues(alpha: 0.05),
+              contentPadding: EdgeInsets.all(12.sp),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12.br),
+                borderSide: BorderSide(
+                  color: kWhiteColor.withValues(alpha: 0.1),
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12.br),
+                borderSide: const BorderSide(color: kPrimaryColor),
+              ),
+            ),
+          ),
+          SizedBox(height: 16.sp),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                style: TextButton.styleFrom(
+                  foregroundColor: kWhiteColor.withValues(alpha: 0.7),
+                ),
+                child: Text(
+                  'Cancel',
+                  style: AppTypography.textSmMedium,
+                ),
+              ),
+              SizedBox(width: 8.sp),
+              TextButton(
+                onPressed: () {
+                  widget.onSave(_controller.text);
+                  Navigator.of(context).pop();
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: kPrimaryColor,
+                  backgroundColor: kPrimaryColor.withValues(alpha: 0.1),
+                  padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 8.sp),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8.br),
+                  ),
+                ),
+                child: Text(
+                  'Save',
+                  style: AppTypography.textSmMedium,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
