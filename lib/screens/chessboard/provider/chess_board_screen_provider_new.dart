@@ -669,7 +669,7 @@ class ChessBoardScreenNotifierNew
       if (_analysisGame == null) {
         await _initializeAnalysisBoard();
       } else if (_analysisNavigator != null) {
-        final liveAnalysisGame = ChessGame.fromPgn(game.gameId, pgn);
+        final liveAnalysisGame = _createChessGameFromPgn(pgn);
         _analysisNavigator!.updateWithLatestGame(liveAnalysisGame);
         unawaited(_persistAnalysisState());
       }
@@ -1093,7 +1093,7 @@ class ChessBoardScreenNotifierNew
       return;
     }
 
-    final baseGame = ChessGame.fromPgn(game.gameId, basePgn);
+    final baseGame = _createChessGameFromPgn(basePgn);
     _analysisNavigator!
       ..replaceState(
         ChessGameNavigatorState(game: baseGame, movePointer: const []),
@@ -2428,7 +2428,7 @@ class ChessBoardScreenNotifierNew
     }
 
     final pgn = updatedState.pgnData!;
-    _analysisGame = ChessGame.fromPgn(game.gameId, pgn);
+    _analysisGame = _createChessGameFromPgn(pgn);
 
     final storage = ref.read(sharedPreferencesRepository);
     _analysisStateManager = ChessGameNavigatorStateManager(storage: storage);
@@ -2477,6 +2477,16 @@ class ChessBoardScreenNotifierNew
 
     final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
     await _analysisStateManager!.saveState(navigatorState);
+  }
+
+  ChessGame _createChessGameFromPgn(String pgn) {
+    final parsed = ChessGame.fromPgn(game.gameId, pgn);
+    if (!game.gameStatus.isOngoing) {
+      return parsed;
+    }
+    final metadata = Map<String, dynamic>.from(parsed.metadata)
+      ..[ChessGame.metadataIsLiveKey] = true;
+    return parsed.copyWith(metadata: metadata);
   }
 
   bool isPromotionPawnMove(NormalMove move) {

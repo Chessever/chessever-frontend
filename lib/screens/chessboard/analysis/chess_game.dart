@@ -7,6 +7,8 @@ typedef ChessLine = List<ChessMove>;
 final RegExp _timeRegex = RegExp(r'\[%clk (\d+:\d+:\d+)\]');
 
 class ChessGame {
+  static const String metadataIsLiveKey = 'isLiveGame';
+
   final String gameId;
   final String startingFen;
   final Map<String, dynamic> metadata;
@@ -53,6 +55,15 @@ class ChessGame {
       metadata: metadata ?? this.metadata,
       mainline: mainline ?? this.mainline,
     );
+  }
+
+  bool get isLiveGame {
+    final flag = metadata[metadataIsLiveKey];
+    if (flag is bool) return flag;
+    if (flag is String) {
+      return flag.toLowerCase() == 'true';
+    }
+    return false;
   }
 
   String? get timeControl => metadata['TimeControl'] as String?;

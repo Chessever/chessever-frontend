@@ -415,7 +415,8 @@ class ChessBoardScreenNew extends ConsumerStatefulWidget {
   ConsumerState<ChessBoardScreenNew> createState() => _ChessBoardScreenState();
 }
 
-class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
+class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
+    with WidgetsBindingObserver {
   late PageController _pageController;
   bool analysisMode = false;
   int? _lastViewedIndex;
@@ -502,6 +503,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
     _currentPageIndex = safeIndex;
 
     // Note: We'll enable streaming in didChangeDependencies when ref is available
+    WidgetsBinding.instance.addObserver(this);
   }
 
   @override
@@ -668,8 +670,58 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew> {
     });
   }
 
+  void _handleLifecycleResume() {
+    if (!mounted || widget.games.isEmpty) return;
+    final safeIndex = _currentPageIndex.clamp(0, widget.games.length - 1);
+    final currentGame = _resolveGameForIndex(safeIndex);
+    final params = ChessBoardProviderParams(
+      game: currentGame,
+      index: safeIndex,
+    );
+    try {
+      final notifier = ref.read(
+        chessBoardScreenProviderNew(params).notifier,
+      );
+      unawaited(notifier.onBecameVisible(force: true));
+    } catch (e) {
+      debugPrint('Error refreshing Stockfish on resume: $e');
+    }
+  }
+
+  void _handleLifecyclePaused() {
+    if (!mounted || widget.games.isEmpty) return;
+    final safeIndex = _currentPageIndex.clamp(0, widget.games.length - 1);
+    final currentGame = _resolveGameForIndex(safeIndex);
+    final params = ChessBoardProviderParams(
+      game: currentGame,
+      index: safeIndex,
+    );
+    try {
+      final notifier = ref.read(
+        chessBoardScreenProviderNew(params).notifier,
+      );
+      unawaited(notifier.onBecameInvisible());
+    } catch (e) {
+      debugPrint('Error pausing Stockfish on lifecycle change: $e');
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (!mounted) return;
+    if (state == AppLifecycleState.resumed) {
+      _handleLifecycleResume();
+    } else if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _handleLifecyclePaused();
+    }
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pageController.dispose();
     super.dispose();
   }
@@ -3299,6 +3351,34 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     final variantHeadPointer =
         variantHeadOverride ?? _variantHeadPointerForMove(pointer);
     final canModifyVariant = variantHeadPointer != null && !isMainlineMove;
+    final pointerId = NotationPointer.encode(pointer);
+    final currentComment = widget.state.variationComments[pointerId] ?? '';
+    
+    final commentConfig = _VariationCommentSheetConfig(
+      initialValue: currentComment,
+      onSubmit: (ctx, value) async {
+        if (!mounted) return;
+        final trimmed = value.trim();
+        final normalizedInitial = currentComment.trim();
+        if (trimmed == normalizedInitial) {
+          _showInfoSnack(hostContext, 'No changes');
+          return;
+        }
+        final limited = trimmed.length > _variationCommentMaxChars
+            ? trimmed.substring(0, _variationCommentMaxChars)
+            : trimmed;
+        notifier.updateVariationComment(
+          variationId: pointerId,
+          comment: limited,
+        );
+        if (limited.isEmpty) {
+          _showInfoSnack(hostContext, 'Comment removed');
+        } else {
+          _showInfoSnack(hostContext, 'Comment added');
+        }
+      },
+    );
+
     final actions = <_NotationActionItem>[
       _NotationActionItem(
         icon: Icons.delete_outline,
@@ -3322,28 +3402,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         icon: Icons.add_comment_outlined,
         label: 'Add comment',
         color: kWhiteColor,
-        onSelected: (_) async {
-          final pointerId = NotationPointer.encode(pointer);
-          final currentComment =
-              widget.state.variationComments[pointerId] ?? '';
-          final focusNode = FocusNode();
-          await showSmoothDialog(
-            context: hostContext,
-            focusNode: focusNode,
-            anchorToBottom: false,
-            builder: (context) => _CommentDialog(
-              initialComment: currentComment,
-              focusNode: focusNode,
-              onSave: (comment) {
-                notifier.updateVariationComment(
-                  variationId: pointerId,
-                  comment: comment,
-                );
-              },
-            ),
-          );
-          focusNode.dispose();
-        },
+        triggersCommentEditor: true,
+        onSelected: (_) async {},
       ),
       if (canModifyVariant)
         _NotationActionItem(
@@ -3396,6 +3456,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       title: isNullMove ? 'Null move' : moveText,
       subtitle: 'Move options',
       actions: actions,
+      commentConfig: commentConfig,
     );
   }
 
@@ -4739,48 +4800,22 @@ class _PrincipalVariationListState
                           );
                         }
                         if (showEmptyState) {
-                          return Container(
-                            width: MediaQuery.of(context).size.width - 40.sp,
-                            margin: EdgeInsets.symmetric(horizontal: 2.sp),
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: kWhiteColor.withValues(alpha: 0.1),
-                                width: 1.5,
-                              ),
-                              borderRadius: BorderRadius.circular(6.sp),
-                              color: Colors.black.withValues(alpha: 0.3),
+                          final placeholderLine = const AnalysisLine(
+                            sanMoves: ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5'],
+                            evaluation: 35,
+                          );
+                          return Skeletonizer(
+                            enabled: true,
+                            effect: ShimmerEffect(
+                              baseColor: kWhiteColor.withValues(alpha: 0.05),
+                              highlightColor: kWhiteColor.withValues(alpha: 0.1),
+                              duration: const Duration(milliseconds: 1500),
                             ),
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 12.sp,
-                              vertical: 16.sp,
-                            ),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.max,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.horizontal_rule_rounded,
-                                  color: kWhiteColor.withValues(alpha: 0.4),
-                                  size: 20.sp,
-                                ),
-                                SizedBox(height: 6.sp),
-                                Flexible(
-                                  child: Text(
-                                    widget.state.isEvaluating
-                                        ? 'Preparing analysis...'
-                                        : 'No engine lines available',
-                                    textAlign: TextAlign.center,
-                                    softWrap: true,
-                                    maxLines: 3,
-                                    overflow: TextOverflow.fade,
-                                    style: AppTypography.textXsMedium.copyWith(
-                                      color: kWhiteColor.withValues(alpha: 0.7),
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ),
-                              ],
+                            child: buildVariantCard(
+                              line: placeholderLine,
+                              variantIndex: 0,
+                              isSelected: false,
+                              hasLockedPreview: false,
                             ),
                           );
                         }
@@ -5468,6 +5503,7 @@ class _NotationActionSheet extends StatefulWidget {
 
 class _NotationActionSheetState extends State<_NotationActionSheet> {
   late final TextEditingController _commentController;
+  final FocusNode _commentFocusNode = FocusNode();
   bool _hasEdited = false;
   bool _isSaving = false;
   bool _isShowingCommentEditor = false;
@@ -5489,6 +5525,7 @@ class _NotationActionSheetState extends State<_NotationActionSheet> {
       _commentController.removeListener(_handleCommentChanged);
     }
     _commentController.dispose();
+    _commentFocusNode.dispose();
     super.dispose();
   }
 
@@ -5512,6 +5549,9 @@ class _NotationActionSheetState extends State<_NotationActionSheet> {
       _commentController
         ..text = baseValue
         ..selection = TextSelection.collapsed(offset: baseValue.length);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _commentFocusNode.requestFocus();
     });
   }
 
@@ -5539,8 +5579,8 @@ class _NotationActionSheetState extends State<_NotationActionSheet> {
       child: SafeArea(
         top: false,
         child: AnimatedPadding(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
+          duration: const Duration(milliseconds: 350),
+          curve: const SnappySpringCurve(),
           padding: EdgeInsets.only(bottom: viewInsets),
           child: Container(
             decoration: BoxDecoration(
@@ -5723,6 +5763,7 @@ class _NotationActionSheetState extends State<_NotationActionSheet> {
       children: [
         TextField(
           controller: _commentController,
+          focusNode: _commentFocusNode,
           maxLines: 3,
           minLines: 1,
           maxLength: _variationCommentMaxChars,
@@ -5933,13 +5974,13 @@ class _CommentDialogState extends State<_CommentDialog>
                 final screenSize = mediaQuery.size;
                 final effectiveKeyboardHeight =
                     keyboardHeight.clamp(0.0, keyboardTotalHeight);
-                final desiredGap = 24.h;
-                final double liftDistance = math
-                    .min(
-                      math.max(effectiveKeyboardHeight - desiredGap, 0),
-                      screenSize.height * 0.4,
-                    )
-                    .toDouble();
+                
+                // Calculate lift to center in available space
+                // Available space center is (screenHeight - keyboardHeight) / 2
+                // Current center is screenHeight / 2
+                // Lift = Current - Available = keyboardHeight / 2
+                final double liftDistance = effectiveKeyboardHeight / 2;
+
                 return Padding(
                   padding: EdgeInsets.fromLTRB(
                     20.sp,

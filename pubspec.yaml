@@ -129,6 +129,7 @@ dependencies:
   icons_launcher: ^3.0.3
   heroine: ^0.5.0
   motor: ^1.0.0-dev.0
+  smooth_sheets: ^0.15.0
 
 dev_dependencies:
   flutter_test:
