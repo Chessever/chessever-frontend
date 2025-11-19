@@ -4351,6 +4351,7 @@ class ChessBoardScreenNotifierNew
         },
       );
 
+      var stockfishFailed = false;
       try {
         final stockfishResult = await stockfishFuture;
 
@@ -4462,10 +4463,31 @@ class ChessBoardScreenNotifierNew
           }
         }
       } catch (e, stack) {
+        stockfishFailed = true;
         _releaseLog(
           '🎯 EVAL ERROR: Stockfish progressive run failed for $fen: $e',
         );
         _releaseLog('Stack: $stack');
+      }
+
+      if (stockfishFailed && mounted && !_cancelEvaluation) {
+        Future.microtask(() {
+          if (!mounted || _cancelEvaluation) return;
+          final latestState = state.value;
+          if (latestState == null) return;
+          final latestPosition =
+              latestState.isAnalysisMode
+                  ? latestState.analysisState.position
+                  : latestState.position;
+          final latestFen = latestPosition?.fen;
+          if (latestFen != null &&
+              _normalizeFen(latestFen) == _normalizeFen(fen)) {
+            _releaseLog(
+              '🎯 EVAL: Retrying evaluation after Stockfish failure',
+            );
+            _evaluatePosition(force: true);
+          }
+        });
       }
 
       if (evaluation == null && (primaryEval?.pvs.isNotEmpty ?? false)) {
