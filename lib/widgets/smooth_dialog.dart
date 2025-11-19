@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:motor/motor.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'keyboard_animation_builder.dart';
 
 // Simple cache for keyboard height
@@ -15,6 +16,7 @@ Future<T?> showSmoothDialog<T>({
   required BuildContext context,
   required WidgetBuilder builder,
   FocusNode? focusNode,
+  bool anchorToBottom = true,
 }) {
   return showGeneralDialog<T>(
     context: context,
@@ -26,6 +28,7 @@ Future<T?> showSmoothDialog<T>({
       return SmoothDialogWrapper(
         builder: builder,
         focusNode: focusNode,
+        anchorToBottom: anchorToBottom,
       );
     },
   );
@@ -34,11 +37,13 @@ Future<T?> showSmoothDialog<T>({
 class SmoothDialogWrapper extends StatefulWidget {
   final WidgetBuilder builder;
   final FocusNode? focusNode;
+  final bool anchorToBottom;
 
   const SmoothDialogWrapper({
     super.key,
     required this.builder,
     this.focusNode,
+    this.anchorToBottom = true,
   });
 
   @override
@@ -80,21 +85,40 @@ class _SmoothDialogWrapperState extends State<SmoothDialogWrapper> {
           opacity: opacity,
           child: Transform.scale(
             scale: scale,
-            child: KeyboardAnimationBuilder(
-              keyboardTotalHeight: KeyboardHeightStorage.height,
-              interpolateLastPart: true,
-              focusNode: widget.focusNode,
-              builder: (context, keyboardHeight) {
-                 return Padding(
-                   padding: EdgeInsets.only(bottom: keyboardHeight),
-                   child: Center(
-                     child: Material(
-                       color: Colors.transparent,
-                       child: widget.builder(context),
-                     ),
-                   ),
-                 );
-              },
+            child: _buildDialogContent(context),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDialogContent(BuildContext context) {
+    final child = Material(
+      color: Colors.transparent,
+      child: widget.builder(context),
+    );
+
+    if (!widget.anchorToBottom) {
+      return MediaQuery.removeViewInsets(
+        context: context,
+        removeBottom: true,
+        removeTop: true,
+        child: child,
+      );
+    }
+
+    return KeyboardAnimationBuilder(
+      keyboardTotalHeight: KeyboardHeightStorage.height,
+      interpolateLastPart: true,
+      focusNode: widget.focusNode,
+      builder: (context, keyboardHeight) {
+        return Padding(
+          padding: EdgeInsets.only(bottom: keyboardHeight),
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: EdgeInsets.only(bottom: 24.h),
+              child: child,
             ),
           ),
         );
