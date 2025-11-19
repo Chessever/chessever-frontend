@@ -1,3 +1,5 @@
+import 'package:chessever2/repository/supabase/calendar_event/calendar_event.dart';
+import 'package:chessever2/repository/supabase/calendar_event/calendar_event_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
@@ -30,11 +32,13 @@ class _CalendarDetailScreenController
   final CalendarFilterArgs filterArgs;
 
   List<GroupBroadcast> groupBroadcast = [];
+  List<CalendarEvent> calendarEvents = [];
 
   Future<void> _init({List<String>? newLiveId}) async {
     try {
       final liveIds = newLiveId ?? <String>[];
 
+      // Fetch both group broadcasts and calendar events
       final current = await ref
           .read(groupBroadcastRepositoryProvider)
           .getCurrentMonthGroupBroadcasts(
@@ -42,38 +46,63 @@ class _CalendarDetailScreenController
             selectedYear: filterArgs.year,
           );
 
+      final calEvents = await ref
+          .read(calendarEventRepositoryProvider)
+          .getCalendarEventsForMonth(
+            selectedMonth: filterArgs.month,
+            selectedYear: filterArgs.year,
+          );
+
       groupBroadcast = current;
+      calendarEvents = calEvents;
 
       final tours = [...current];
 
-      if (tours.isEmpty) {
+      final monthStart = DateTime(filterArgs.year, filterArgs.month, 1);
+      final monthEnd = DateTime(filterArgs.year, filterArgs.month + 1, 0);
+
+      // Filter group broadcasts
+      final filteredBroadcasts = tours.where((t) {
+        if (t.dateStart == null || t.dateEnd == null) return false;
+        return t.dateStart!.isBefore(
+              monthEnd.add(const Duration(days: 1)),
+            ) &&
+            t.dateEnd!.isAfter(
+              monthStart.subtract(const Duration(days: 1)),
+            );
+      }).toList();
+
+      // Filter calendar events
+      final filteredCalEvents = calEvents.where((e) {
+        if (e.startDate == null || e.endDate == null) return false;
+        return e.startDate!.isBefore(
+              monthEnd.add(const Duration(days: 1)),
+            ) &&
+            e.endDate!.isAfter(
+              monthStart.subtract(const Duration(days: 1)),
+            );
+      }).toList();
+
+      // Convert to card models
+      final broadcastCards = filteredBroadcasts
+          .map((t) => GroupEventCardModel.fromGroupBroadcast(t, liveIds))
+          .toList();
+
+      final calendarCards = filteredCalEvents
+          .map((e) => GroupEventCardModel.fromCalendarEvent(e))
+          .toList();
+
+      // Combine both lists
+      final allCards = [...broadcastCards, ...calendarCards];
+
+      if (allCards.isEmpty) {
         state = const AsyncValue.data([]);
         return;
       }
 
-      final filtered =
-          tours.where((t) {
-            if (t.dateStart == null || t.dateEnd == null) return false;
-
-            final monthStart = DateTime(filterArgs.year, filterArgs.month, 1);
-            final monthEnd = DateTime(filterArgs.year, filterArgs.month + 1, 0);
-
-            return t.dateStart!.isBefore(
-                  monthEnd.add(const Duration(days: 1)),
-                ) &&
-                t.dateEnd!.isAfter(
-                  monthStart.subtract(const Duration(days: 1)),
-                );
-          }).toList();
-
-      final cards =
-          filtered
-              .map((t) => GroupEventCardModel.fromGroupBroadcast(t, liveIds))
-              .toList();
-
       final sortedEvents = ref
           .read(tournamentSortingServiceProvider)
-          .sortAllTours(cards);
+          .sortAllTours(allCards);
 
       state = AsyncValue.data(sortedEvents);
     } catch (e, st) {
@@ -134,12 +163,21 @@ class _CalendarDetailScreenController
 
   Future<void> search(String query) async {
     try {
-      final tours = groupBroadcast.map(
+      // Convert group broadcasts to cards
+      final broadcastCards = groupBroadcast.map(
         (e) => GroupEventCardModel.fromGroupBroadcast(
           e,
           ref.read(liveBroadcastIdsProvider),
         ),
       );
+
+      // Convert calendar events to cards
+      final calendarCards = calendarEvents.map(
+        (e) => GroupEventCardModel.fromCalendarEvent(e),
+      );
+
+      // Combine both
+      final allCards = [...broadcastCards, ...calendarCards];
 
       final selectedMonth = ref.read(selectedMonthProvider);
       final selectedYear = ref.read(selectedYearProvider);
@@ -147,34 +185,39 @@ class _CalendarDetailScreenController
       final monthStart = DateTime(selectedYear, selectedMonth, 1);
       final monthEnd = DateTime(selectedYear, selectedMonth + 1, 0);
 
-      var filtered =
-          tours.where((t) {
-            if (t.startDate == null || t.endDate == null) return false;
-            return t.startDate!.isBefore(
-                  monthEnd.add(const Duration(days: 1)),
-                ) &&
-                t.endDate!.isAfter(
-                  monthStart.subtract(const Duration(days: 1)),
-                );
-          }).toList();
+      var filtered = allCards.where((t) {
+        if (t.startDate == null || t.endDate == null) return false;
+        return t.startDate!.isBefore(
+              monthEnd.add(const Duration(days: 1)),
+            ) &&
+            t.endDate!.isAfter(
+              monthStart.subtract(const Duration(days: 1)),
+            );
+      }).toList();
 
       final q = query.trim().toLowerCase();
       if (q.isNotEmpty) {
-        filtered =
-            filtered.where((t) {
-              final nameMatch = t.title.toLowerCase().contains(q);
-              final tcMatch = t.timeControl.toLowerCase().contains(q);
-              return nameMatch || tcMatch;
-            }).toList();
+        filtered = filtered.where((t) {
+          final nameMatch = t.title.toLowerCase().contains(q);
+          final tcMatch = t.timeControl.toLowerCase().contains(q);
+          final locationMatch =
+              t.location?.toLowerCase().contains(q) ?? false;
+          return nameMatch || tcMatch || locationMatch;
+        }).toList();
 
         filtered.sort((a, b) {
           int score(GroupEventCardModel t) {
             final name = t.title.toLowerCase();
             final tc = t.timeControl.toLowerCase();
+            final loc = t.location?.toLowerCase() ?? '';
 
-            if (name == q || tc == q) return 100;
-            if (name.startsWith(q) || tc.startsWith(q)) return 10;
-            if (name.contains(q) || tc.contains(q)) return 1;
+            if (name == q || tc == q || loc == q) return 100;
+            if (name.startsWith(q) || tc.startsWith(q) || loc.startsWith(q)) {
+              return 10;
+            }
+            if (name.contains(q) || tc.contains(q) || loc.contains(q)) {
+              return 1;
+            }
             return 0;
           }
 
@@ -193,7 +236,30 @@ class _CalendarDetailScreenController
     required String id,
   }) async {
     try {
-      // First try to find in current list
+      // Check if this is a calendar event (community event)
+      if (id.startsWith('cal_')) {
+        // Community events don't have detail pages yet
+        // For now, we'll show a snackbar with the event info
+        // TODO: Create a detail page for community events
+        final event = calendarEvents.firstWhere(
+          (e) => 'cal_${e.name.hashCode}' == id,
+          orElse: () => throw Exception('Event not found'),
+        );
+
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '${event.name}\n${event.location ?? 'Location TBA'}',
+              ),
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Regular group broadcast handling
       GroupBroadcast? selectedBroadcast;
       for (final broadcast in groupBroadcast) {
         if (broadcast.id == id) {

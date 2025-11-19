@@ -53,7 +53,7 @@ class EventCard extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Event name with live indicator
+                  // Event name with live indicator and community badge
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
@@ -72,12 +72,39 @@ class EventCard extends ConsumerWidget {
                       _StatusIndicator(
                         tourEventCardModel: tourEventCardModel,
                       ),
+                      // Community event badge
+                      if (tourEventCardModel.eventSource ==
+                          EventSource.communityEvent) ...[
+                        SizedBox(width: 6.w),
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 6.w,
+                            vertical: 2.h,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF6366F1).withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(4.br),
+                            border: Border.all(
+                              color: const Color(0xFF6366F1).withOpacity(0.3),
+                              width: 1,
+                            ),
+                          ),
+                          child: Text(
+                            'COMMUNITY',
+                            style: AppTypography.textXsMedium.copyWith(
+                              color: const Color(0xFF818CF8),
+                              fontSize: 9.sp,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
 
                   SizedBox(height: 4.h),
 
-                  // Event details (dates, time control, ELO)
+                  // Event details (dates, time control, location/ELO)
                   Row(
                     children: [
                       if (tourEventCardModel.dates.trim().isNotEmpty) ...[
@@ -93,14 +120,45 @@ class EventCard extends ConsumerWidget {
                         _buildDotWidget(),
                       ],
                       _buildTimeControlIcon(),
-                      if (tourEventCardModel.maxAvgElo > 0) ...[
-                        _buildDotWidget(),
-                        Text(
-                          "Ø ${tourEventCardModel.maxAvgElo}",
-                          style: AppTypography.textXsMedium.copyWith(
-                            color: kWhiteColor70,
+                      // Show location for community events, ELO for broadcasts
+                      if (tourEventCardModel.eventSource ==
+                          EventSource.communityEvent) ...[
+                        if (tourEventCardModel.location != null &&
+                            tourEventCardModel.location!.isNotEmpty) ...[
+                          _buildDotWidget(),
+                          Flexible(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.location_on_outlined,
+                                  size: 12.sp,
+                                  color: kWhiteColor70,
+                                ),
+                                SizedBox(width: 2.w),
+                                Flexible(
+                                  child: Text(
+                                    tourEventCardModel.location!,
+                                    style: AppTypography.textXsMedium.copyWith(
+                                      color: kWhiteColor70,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
+                        ],
+                      ] else ...[
+                        if (tourEventCardModel.maxAvgElo > 0) ...[
+                          _buildDotWidget(),
+                          Text(
+                            "Ø ${tourEventCardModel.maxAvgElo}",
+                            style: AppTypography.textXsMedium.copyWith(
+                              color: kWhiteColor70,
+                            ),
+                          ),
+                        ],
                       ],
                     ],
                   ),

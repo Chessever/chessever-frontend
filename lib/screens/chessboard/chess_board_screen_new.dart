@@ -31,6 +31,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chessever2/utils/keyboard_animation_builder.dart';
+import 'package:chessever2/providers/keyboard_total_height_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/string_utils.dart';
 import 'package:chessground/chessground.dart';
@@ -1108,7 +1109,7 @@ class _LoadingScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sideBarWidth = 20.w;
-    final screenWidth = MediaQuery.of(context).size.width;
+    final screenWidth = MediaQuery.sizeOf(context).width;
     final boardSize = screenWidth - sideBarWidth - 32.w;
 
     final scaffold = Scaffold(
@@ -1850,7 +1851,7 @@ class _AnalysisGameBody extends ConsumerWidget {
         final availableHeight =
             constraints.maxHeight.isFinite
                 ? constraints.maxHeight
-                : MediaQuery.of(context).size.height;
+                : MediaQuery.sizeOf(context).height;
         final compactThreshold = 620.h;
         final useCompactLayout = availableHeight < compactThreshold;
 
@@ -2034,7 +2035,7 @@ class _BoardWithSidebar extends ConsumerWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final sideBarWidth = showEngineGauge ? 20.w : 0.w;
-        final screenWidth = MediaQuery.of(context).size.width;
+        final screenWidth = MediaQuery.sizeOf(context).width;
         final boardSize = screenWidth - sideBarWidth - 32.w;
 
         // Analysis mode is always active, always use analysis state
@@ -2312,6 +2313,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       _moveKeys.clear();
       _hasInitiallyScrolled = false;
       _lastSignature = signature;
+      // Reset cached variation collapse state when the notation tree changes
+      _collapsedVariationIds.clear();
+      _expandedVariationIds.clear();
     }
 
     final notationParams = NotationTreeParams(
@@ -2858,16 +2862,11 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
     return GestureDetector(
       onTap: () {
-        if (isLong) {
-          setState(() {
-            if (isExpanded) {
-              _expandedCommentIds.remove(id);
-            } else {
-              _expandedCommentIds.add(id);
-            }
-          });
-          HapticFeedback.selectionClick();
-        }
+        _editNotationComment(token, params, fullText);
+      },
+      onLongPress: () {
+        if (!isLong) return;
+        _toggleCommentExpansion(id, isExpanded);
       },
       child: Container(
         width: double.infinity,
@@ -2894,15 +2893,61 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             if (isLong)
               Padding(
                 padding: EdgeInsets.only(top: 4.sp),
-                child: Text(
-                  isExpanded ? 'Show less' : 'Read more',
-                  style: AppTypography.textXsMedium.copyWith(color: accentColor),
+                child: GestureDetector(
+                  onTap: () => _toggleCommentExpansion(id, isExpanded),
+                  child: Text(
+                    isExpanded ? 'Show less' : 'Read more',
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: accentColor,
+                    ),
+                  ),
                 ),
               ),
           ],
         ),
       ),
     );
+  }
+
+  void _toggleCommentExpansion(String id, bool isExpanded) {
+    setState(() {
+      if (isExpanded) {
+        _expandedCommentIds.remove(id);
+      } else {
+        _expandedCommentIds.add(id);
+      }
+    });
+    HapticFeedback.selectionClick();
+  }
+
+  Future<void> _editNotationComment(
+    _NotationDisplayToken token,
+    ChessBoardProviderParams params,
+    String fallbackText,
+  ) async {
+    final pointerId = token.pointerId ?? token.variation?.id;
+    if (pointerId == null) {
+      return;
+    }
+    final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+    final initial = widget.state.variationComments[pointerId] ?? fallbackText;
+    final focusNode = FocusNode();
+    await showSmoothDialog(
+      context: context,
+      focusNode: focusNode,
+      anchorToBottom: false,
+      builder: (ctx) => _CommentDialog(
+        initialComment: initial,
+        focusNode: focusNode,
+        onSave: (comment) {
+          notifier.updateVariationComment(
+            variationId: pointerId,
+            comment: comment,
+          );
+        },
+      ),
+    );
+    focusNode.dispose();
   }
 
   void _focusVariationHead(NotationVariationNode variation) {
@@ -4697,7 +4742,7 @@ class _PrincipalVariationListState
                 showEndOfGame
                     ? Center(
                       child: Container(
-                        width: MediaQuery.of(context).size.width - 40.sp,
+                        width: MediaQuery.sizeOf(context).width - 40.sp,
                         margin: EdgeInsets.symmetric(horizontal: 2.sp),
                         decoration: BoxDecoration(
                           border: Border.all(
@@ -5482,7 +5527,7 @@ class _VariationCommentSheetConfig {
   });
 }
 
-class _NotationActionSheet extends StatefulWidget {
+class _NotationActionSheet extends ConsumerStatefulWidget {
   final String title;
   final String? subtitle;
   final List<_NotationActionItem> actions;
@@ -5498,12 +5543,12 @@ class _NotationActionSheet extends StatefulWidget {
   });
 
   @override
-  State<_NotationActionSheet> createState() => _NotationActionSheetState();
+  ConsumerState<_NotationActionSheet> createState() => _NotationActionSheetState();
 }
 
-class _NotationActionSheetState extends State<_NotationActionSheet> {
+class _NotationActionSheetState extends ConsumerState<_NotationActionSheet> {
   late final TextEditingController _commentController;
-  final FocusNode _commentFocusNode = FocusNode();
+  FocusNode? _commentFocusNode;
   bool _hasEdited = false;
   bool _isSaving = false;
   bool _isShowingCommentEditor = false;
@@ -5516,6 +5561,7 @@ class _NotationActionSheetState extends State<_NotationActionSheet> {
     );
     if (widget.commentConfig != null) {
       _commentController.addListener(_handleCommentChanged);
+      _commentFocusNode = FocusNode();
     }
   }
 
@@ -5525,7 +5571,7 @@ class _NotationActionSheetState extends State<_NotationActionSheet> {
       _commentController.removeListener(_handleCommentChanged);
     }
     _commentController.dispose();
-    _commentFocusNode.dispose();
+    _commentFocusNode?.dispose();
     super.dispose();
   }
 
@@ -5551,7 +5597,7 @@ class _NotationActionSheetState extends State<_NotationActionSheet> {
         ..selection = TextSelection.collapsed(offset: baseValue.length);
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _commentFocusNode.requestFocus();
+      if (mounted) _commentFocusNode?.requestFocus();
     });
   }
 
@@ -5569,67 +5615,99 @@ class _NotationActionSheetState extends State<_NotationActionSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final viewInsets = MediaQuery.of(context).viewInsets.bottom;
     final actions = widget.actions;
 
     final sheetColor = kBlack2Color.withValues(alpha: 0.96);
+    final keyboardTotalHeight = ref.watch(keyboardTotalHeightProvider);
+
+    Widget buildSheetContent() {
+      return Container(
+        decoration: BoxDecoration(
+          color: sheetColor,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28.sp)),
+          border: Border.all(color: kWhiteColor.withValues(alpha: 0.05)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.55),
+              blurRadius: 30,
+              offset: const Offset(0, -8),
+            ),
+          ],
+        ),
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 20.sp,
+              right: 20.sp,
+              top: 14.sp,
+              bottom: 16.sp,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40.w,
+                    height: 4.h,
+                    decoration: BoxDecoration(
+                      color: kWhiteColor.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                SizedBox(height: 16.h),
+                if (_isShowingCommentEditor && widget.commentConfig != null)
+                  _buildCommentEditorSection()
+                else
+                  _buildActionsSection(actions),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final content = buildSheetContent();
+    final hasCommentEditor = widget.commentConfig != null;
+    Widget child = content;
+
+    if (hasCommentEditor) {
+      child = KeyboardAnimationBuilder(
+        focusNode: _commentFocusNode,
+        keyboardTotalHeight: keyboardTotalHeight,
+        interpolateLastPart: true,
+        onChange: (height) {
+          if (height > 0) {
+            ref.read(keyboardTotalHeightProvider.notifier).update(height);
+          }
+        },
+        builder: (context, keyboardHeight) {
+          final inset = keyboardHeight > 0
+              ? keyboardHeight
+              : MediaQuery.viewInsetsOf(context).bottom;
+          return Padding(
+            padding: EdgeInsets.only(bottom: inset),
+            child: content,
+          );
+        },
+      );
+    }
 
     return Container(
       color: sheetColor,
       child: SafeArea(
         top: false,
-        child: AnimatedPadding(
-          duration: const Duration(milliseconds: 350),
-          curve: const SnappySpringCurve(),
-          padding: EdgeInsets.only(bottom: viewInsets),
-          child: Container(
-            decoration: BoxDecoration(
-              color: sheetColor,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(28.sp)),
-              border: Border.all(color: kWhiteColor.withValues(alpha: 0.05)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.55),
-                  blurRadius: 30,
-                  offset: const Offset(0, -8),
+        child:
+            hasCommentEditor
+                ? child
+                : Padding(
+                  padding: EdgeInsets.only(
+                    bottom: MediaQuery.viewInsetsOf(context).bottom,
+                  ),
+                  child: child,
                 ),
-              ],
-            ),
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              child: Padding(
-                padding: EdgeInsets.only(
-                  left: 20.sp,
-                  right: 20.sp,
-                  top: 14.sp,
-                  bottom: 16.sp,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 40.w,
-                        height: 4.h,
-                        decoration: BoxDecoration(
-                          color: kWhiteColor.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: 16.h),
-                    if (_isShowingCommentEditor &&
-                        widget.commentConfig != null)
-                      _buildCommentEditorSection()
-                    else
-                      _buildActionsSection(actions),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -5842,15 +5920,30 @@ class _NotationActionSheetState extends State<_NotationActionSheet> {
 
   Future<void> _handleSaveComment() async {
     final config = widget.commentConfig;
-    if (config == null) return;
+    if (config == null || _isSaving) return;
     setState(() => _isSaving = true);
     final text = _commentController.text;
+    try {
+      await Future.sync(() => config.onSubmit(widget.hostContext, text));
+    } catch (error, stackTrace) {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          context: ErrorDescription('Saving notation comment'),
+        ),
+      );
+      return;
+    }
+    if (!mounted) return;
     Navigator.of(context).pop();
-    await Future.sync(() => config.onSubmit(widget.hostContext, text));
   }
 }
 
-class _CommentDialog extends StatefulWidget {
+class _CommentDialog extends ConsumerStatefulWidget {
   final String initialComment;
   final ValueChanged<String> onSave;
   final FocusNode focusNode;
@@ -5862,10 +5955,10 @@ class _CommentDialog extends StatefulWidget {
   });
 
   @override
-  State<_CommentDialog> createState() => _CommentDialogState();
+  ConsumerState<_CommentDialog> createState() => _CommentDialogState();
 }
 
-class _CommentDialogState extends State<_CommentDialog>
+class _CommentDialogState extends ConsumerState<_CommentDialog>
     with SingleTickerProviderStateMixin {
   late TextEditingController _controller;
   late AnimationController _animationController;
@@ -5943,7 +6036,7 @@ class _CommentDialogState extends State<_CommentDialog>
   @override
   Widget build(BuildContext context) {
     // Get platform-specific keyboard height default
-    final keyboardTotalHeight = Platform.isIOS ? 336.0 : 286.9;
+    final keyboardTotalHeight = ref.watch(keyboardTotalHeightProvider);
 
     return MediaQuery.removeViewInsets(
       context: context,
@@ -5962,16 +6055,22 @@ class _CommentDialogState extends State<_CommentDialog>
               ),
             ),
             Positioned.fill(
-              child: KeyboardAnimationBuilder(
-                focusNode: widget.focusNode,
-                keyboardTotalHeight: keyboardTotalHeight,
-                interpolateLastPart: Platform.isIOS,
-                interpolationConfig: InterpolationConfig.fidelity,
-                warmUpFrame: true,
+            child: KeyboardAnimationBuilder(
+              focusNode: widget.focusNode,
+              keyboardTotalHeight: keyboardTotalHeight,
+              interpolateLastPart: Platform.isIOS,
+              interpolationConfig: InterpolationConfig.fidelity,
+              warmUpFrame: true,
+              onChange: (height) {
+                if (height > 0) {
+                  ref
+                      .read(keyboardTotalHeightProvider.notifier)
+                      .update(height);
+                }
+              },
                 builder: (context, keyboardHeight) {
-                final mediaQuery = MediaQuery.of(context);
-                final safePadding = mediaQuery.padding;
-                final screenSize = mediaQuery.size;
+                final safePadding = MediaQuery.paddingOf(context);
+                final screenSize = MediaQuery.sizeOf(context);
                 final effectiveKeyboardHeight =
                     keyboardHeight.clamp(0.0, keyboardTotalHeight);
                 
@@ -6157,7 +6256,7 @@ class _CommentDialogState extends State<_CommentDialog>
               20.sp,
               12.sp,
               20.sp,
-              20.sp + MediaQuery.of(context).padding.bottom,
+              20.sp + MediaQuery.paddingOf(context).bottom,
             ),
             decoration: BoxDecoration(
               border: Border(

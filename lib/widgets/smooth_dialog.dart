@@ -1,16 +1,11 @@
-import 'package:flutter/material.dart';
-import 'package:motor/motor.dart';
-import 'package:chessever2/utils/responsive_helper.dart';
-import 'keyboard_animation_builder.dart';
+import 'dart:io';
 
-// Simple cache for keyboard height
-class KeyboardHeightStorage {
-  static double _height = 336.0; // Default iOS height approx
-  static double get height => _height;
-  static set height(double value) {
-    if (value > 50) _height = value; // Ignore small changes
-  }
-}
+import 'package:flutter/material.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:motor/motor.dart';
+import 'package:chessever2/providers/keyboard_total_height_provider.dart';
+import 'package:chessever2/utils/keyboard_animation_builder.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 
 Future<T?> showSmoothDialog<T>({
   required BuildContext context,
@@ -34,7 +29,7 @@ Future<T?> showSmoothDialog<T>({
   );
 }
 
-class SmoothDialogWrapper extends StatefulWidget {
+class SmoothDialogWrapper extends ConsumerStatefulWidget {
   final WidgetBuilder builder;
   final FocusNode? focusNode;
   final bool anchorToBottom;
@@ -47,10 +42,10 @@ class SmoothDialogWrapper extends StatefulWidget {
   });
 
   @override
-  State<SmoothDialogWrapper> createState() => _SmoothDialogWrapperState();
+  ConsumerState<SmoothDialogWrapper> createState() => _SmoothDialogWrapperState();
 }
 
-class _SmoothDialogWrapperState extends State<SmoothDialogWrapper> {
+class _SmoothDialogWrapperState extends ConsumerState<SmoothDialogWrapper> {
   double _targetValue = 0.0;
 
   @override
@@ -68,10 +63,10 @@ class _SmoothDialogWrapperState extends State<SmoothDialogWrapper> {
 
   @override
   Widget build(BuildContext context) {
-    // Update keyboard height if we see a larger one
-    final currentInsets = MediaQuery.of(context).viewInsets.bottom;
+    // Update the shared keyboard cache if system insets report something bigger
+    final currentInsets = MediaQuery.viewInsetsOf(context).bottom;
     if (currentInsets > 0) {
-      KeyboardHeightStorage.height = currentInsets;
+      ref.read(keyboardTotalHeightProvider.notifier).update(currentInsets);
     }
 
     return SingleMotionBuilder(
@@ -107,10 +102,16 @@ class _SmoothDialogWrapperState extends State<SmoothDialogWrapper> {
       );
     }
 
+    final keyboardTotalHeight = ref.watch(keyboardTotalHeightProvider);
     return KeyboardAnimationBuilder(
-      keyboardTotalHeight: KeyboardHeightStorage.height,
-      interpolateLastPart: true,
+      keyboardTotalHeight: keyboardTotalHeight,
+      interpolateLastPart: Platform.isIOS,
       focusNode: widget.focusNode,
+      onChange: (height) {
+        if (height > 0) {
+          ref.read(keyboardTotalHeightProvider.notifier).update(height);
+        }
+      },
       builder: (context, keyboardHeight) {
         return Padding(
           padding: EdgeInsets.only(bottom: keyboardHeight),
