@@ -877,7 +877,10 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
       return;
     }
 
-    if (isAtLineEnd) {
+    final isOnMainline = state.movePointer.length <= 1;
+    final isLiveMainline = isOnMainline && state.game.isLiveGame;
+
+    if (isAtLineEnd && !isLiveMainline) {
       // Append moves to the end of the current line
       debugPrint(
         '🎯 NAVIGATOR appendMovesFromPv: Appending ${chessMoves.length} moves to end of line',
