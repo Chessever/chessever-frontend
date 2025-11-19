@@ -265,17 +265,32 @@ class StockfishSingleton {
       '🏭 QUEUE PROCESSOR: Starting, ${_jobQueue.length} jobs in queue',
     );
 
-    while (_jobQueue.isNotEmpty) {
-      final job = _jobQueue.removeAt(0);
-      _currentJob = job;
-      debugPrint('⚙️ PROCESSING: ${job.fen} (${_jobQueue.length} remaining)');
-      await _processCurrentJob();
-      _pendingJobs.remove(job.key);
-      _currentJob = null;
+    try {
+      while (_jobQueue.isNotEmpty) {
+        final job = _jobQueue.removeAt(0);
+        _currentJob = job;
+        debugPrint('⚙️ PROCESSING: ${job.fen} (${_jobQueue.length} remaining)');
+        try {
+          await _processCurrentJob();
+        } catch (e, st) {
+          debugPrint('❌ QUEUE PROCESSOR: Job failed for ${job.fen}: $e');
+          debugPrint('$st');
+          await _resetEngineAfterFailure();
+        } finally {
+          _pendingJobs.remove(job.key);
+          _currentJob = null;
+        }
+      }
+    } finally {
+      _isProcessing = false;
+      if (_jobQueue.isNotEmpty) {
+        debugPrint(
+          '⚠️ QUEUE PROCESSOR: Aborted with ${_jobQueue.length} pending jobs',
+        );
+      } else {
+        debugPrint('✅ QUEUE PROCESSOR: All jobs complete');
+      }
     }
-
-    _isProcessing = false;
-    debugPrint('✅ QUEUE PROCESSOR: All jobs complete');
   }
 
   Future<void> _processCurrentJob() async {
@@ -290,228 +305,240 @@ class StockfishSingleton {
     final onDepthUpdate = job.onDepthUpdate;
     final completer = job.completer;
 
-    // Ensure engine is ready and reset for fresh search
-    if (_engine == null || _engine!.state.value != StockfishState.ready) {
-      _engine?.dispose();
-      _engine = Stockfish();
-      await _waitUntilReady();
-    }
-    await _softResetEngine();
+    try {
+      // Ensure engine is ready and reset for fresh search
+      if (_engine == null || _engine!.state.value != StockfishState.ready) {
+        _engine?.dispose();
+        _engine = Stockfish();
+        await _waitUntilReady();
+      }
+      await _softResetEngine();
 
-    // Check if job was cancelled while waiting for engine
-    if (_currentJob != job || completer.isCompleted) return;
-
-    final List<Pv> pvs = [];
-    int knodes = 0;
-    int finalDepth = 0;
-    bool evaluationComplete = false;
-    int lastPvUpdateDepthReported = 0;
-
-    final isDynamicSearch = searchDuration != null;
-    debugPrint(
-      '🔍 STOCKFISH: Analyzing $fen ${isDynamicSearch ? "(dynamic ${searchDuration.inSeconds}s)" : "(depth $depth)"}',
-    );
-
-    _currentSubscription = _engine!.stdout.listen((line) {
-      // Check if this is still the current job
+      // Check if job was cancelled while waiting for engine
       if (_currentJob != job || completer.isCompleted) return;
-      line = line.trim();
-      // TEMPO-01-COMMENT
-      // debugPrint('🟢 STOCKFISH STDOUT: $line');
-      // Parse info lines for analysis data
-      if (line.startsWith('info depth')) {
-        final depthMatch = RegExp(r'depth (\d+)').firstMatch(line);
-        final knodesMatch = RegExp(r'nodes (\d+)').firstMatch(line);
 
-        if (depthMatch != null) {
-          final currentDepth = int.parse(depthMatch.group(1)!);
-          final int currentKnodes =
-              knodesMatch != null
-                  ? (int.parse(knodesMatch.group(1)!) / 1000).round()
-                  : 0;
+      final List<Pv> pvs = [];
+      int knodes = 0;
+      int finalDepth = 0;
+      bool evaluationComplete = false;
+      int lastPvUpdateDepthReported = 0;
 
-          finalDepth = currentDepth;
+      final isDynamicSearch = searchDuration != null;
+      debugPrint(
+        '🔍 STOCKFISH: Analyzing $fen ${isDynamicSearch ? "(dynamic ${searchDuration.inSeconds}s)" : "(depth $depth)"}',
+      );
 
-          if (onDepthUpdate != null) {
-            final searchLabel =
-                isDynamicSearch
-                    ? 'Time-based (${searchDuration.inSeconds}s)'
-                    : 'Depth-based (target $depth)';
-            // TEMPO-01-COMMENT
-            // debugPrint(
-            //   '⚡ ═══ ENGINE DEPTH UPDATE ═══\n'
-            //   '   Current Depth: $currentDepth\n'
-            //   '   Nodes: ${currentKnodes}k\n'
-            //   '   Search Mode: $searchLabel\n'
-            //   '   Max Depth: ${maxDepth ?? "-"}\n'
-            //   '   UCI Output: ${line.substring(0, line.length.clamp(0, 80).toInt())}\n'
-            //   '   ════════════════════════════════════',
-            // );
-            onDepthUpdate(currentDepth, currentKnodes);
-          }
-        }
+      _currentSubscription = _engine!.stdout.listen((line) {
+        // Check if this is still the current job
+        if (_currentJob != job || completer.isCompleted) return;
+        line = line.trim();
+        // TEMPO-01-COMMENT
+        // debugPrint('🟢 STOCKFISH STDOUT: $line');
+        // Parse info lines for analysis data
+        if (line.startsWith('info depth')) {
+          final depthMatch = RegExp(r'depth (\d+)').firstMatch(line);
+          final knodesMatch = RegExp(r'nodes (\d+)').firstMatch(line);
 
-        if (knodesMatch != null) {
-          knodes = (int.parse(knodesMatch.group(1)!) / 1000).round();
-        }
+          if (depthMatch != null) {
+            final currentDepth = int.parse(depthMatch.group(1)!);
+            final int currentKnodes =
+                knodesMatch != null
+                    ? (int.parse(knodesMatch.group(1)!) / 1000).round()
+                    : 0;
 
-        // Parse score and moves for the principal variation
-        final pvMatch = RegExp(r'\bpv (.+)').firstMatch(line);
-        if (pvMatch != null) {
-          final moves = pvMatch.group(1)!.trim();
+            finalDepth = currentDepth;
 
-          var multipvIndex = 1;
-          final multipvMatch = RegExp(r'multipv (\d+)').firstMatch(line);
-          if (multipvMatch != null) {
-            multipvIndex = int.parse(multipvMatch.group(1)!);
-          }
-
-          while (pvs.length < multipvIndex) {
-            pvs.add(Pv(moves: '', cp: 0));
+            if (onDepthUpdate != null) {
+              final searchLabel =
+                  isDynamicSearch
+                      ? 'Time-based (${searchDuration.inSeconds}s)'
+                      : 'Depth-based (target $depth)';
+              // TEMPO-01-COMMENT
+              // debugPrint(
+              //   '⚡ ═══ ENGINE DEPTH UPDATE ═══\n'
+              //   '   Current Depth: $currentDepth\n'
+              //   '   Nodes: ${currentKnodes}k\n'
+              //   '   Search Mode: $searchLabel\n'
+              //   '   Max Depth: ${maxDepth ?? "-"}\n'
+              //   '   UCI Output: ${line.substring(0, line.length.clamp(0, 80).toInt())}\n'
+              //   '   ════════════════════════════════════',
+              // );
+              onDepthUpdate(currentDepth, currentKnodes);
+            }
           }
 
-          // Parse score (either cp or mate)
-          final cpMatch = RegExp(r'score cp (-?\d+)').firstMatch(line);
-          final mateMatch = RegExp(r'score mate (-?\d+)').firstMatch(line);
-
-          if (cpMatch != null) {
-            final cp = int.parse(cpMatch.group(1)!);
-            final pv = Pv(moves: moves, cp: cp, isMate: false);
-            pvs[multipvIndex - 1] = pv;
-          } else if (mateMatch != null) {
-            final mate = int.parse(mateMatch.group(1)!);
-            final cp = mate.sign * 100000; // Convert mate to large cp value
-            final pv = Pv(moves: moves, cp: cp, isMate: true, mate: mate);
-            pvs[multipvIndex - 1] = pv;
+          if (knodesMatch != null) {
+            knodes = (int.parse(knodesMatch.group(1)!) / 1000).round();
           }
-        }
 
-        // Emit PV snapshot updates once per increased depth
-        if (job.onPvUpdate != null && finalDepth > lastPvUpdateDepthReported) {
-          final snapshot = pvs
-              .where((pv) => pv.moves.isNotEmpty)
-              .toList(growable: false);
-          if (snapshot.isNotEmpty) {
-            try {
-              job.onPvUpdate!(snapshot, finalDepth);
-              lastPvUpdateDepthReported = finalDepth;
-            } catch (_) {
-              // Ignore callback errors
+          // Parse score and moves for the principal variation
+          final pvMatch = RegExp(r'\bpv (.+)').firstMatch(line);
+          if (pvMatch != null) {
+            final moves = pvMatch.group(1)!.trim();
+
+            var multipvIndex = 1;
+            final multipvMatch = RegExp(r'multipv (\d+)').firstMatch(line);
+            if (multipvMatch != null) {
+              multipvIndex = int.parse(multipvMatch.group(1)!);
+            }
+
+            while (pvs.length < multipvIndex) {
+              pvs.add(Pv(moves: '', cp: 0));
+            }
+
+            // Parse score (either cp or mate)
+            final cpMatch = RegExp(r'score cp (-?\d+)').firstMatch(line);
+            final mateMatch = RegExp(r'score mate (-?\d+)').firstMatch(line);
+
+            if (cpMatch != null) {
+              final cp = int.parse(cpMatch.group(1)!);
+              final pv = Pv(moves: moves, cp: cp, isMate: false);
+              pvs[multipvIndex - 1] = pv;
+            } else if (mateMatch != null) {
+              final mate = int.parse(mateMatch.group(1)!);
+              final cp = mate.sign * 100000; // Convert mate to large cp value
+              final pv = Pv(moves: moves, cp: cp, isMate: true, mate: mate);
+              pvs[multipvIndex - 1] = pv;
+            }
+          }
+
+          // Emit PV snapshot updates once per increased depth
+          if (job.onPvUpdate != null &&
+              finalDepth > lastPvUpdateDepthReported) {
+            final snapshot = pvs
+                .where((pv) => pv.moves.isNotEmpty)
+                .toList(growable: false);
+            if (snapshot.isNotEmpty) {
+              try {
+                job.onPvUpdate!(snapshot, finalDepth);
+                lastPvUpdateDepthReported = finalDepth;
+              } catch (_) {
+                // Ignore callback errors
+              }
             }
           }
         }
-      }
 
-      // When analysis is complete
-      if (line.startsWith('bestmove') && !evaluationComplete) {
-        evaluationComplete = true;
-        final filteredPvs = pvs
-            .where((pv) => pv.moves.isNotEmpty)
-            .toList(growable: false);
+        // When analysis is complete
+        if (line.startsWith('bestmove') && !evaluationComplete) {
+          evaluationComplete = true;
+          final filteredPvs = pvs
+              .where((pv) => pv.moves.isNotEmpty)
+              .toList(growable: false);
 
-        // CRITICAL: Check if depth is 0 (no info lines parsed)
-        if (finalDepth == 0) {
-          if (filteredPvs.isNotEmpty) {
-            debugPrint(
-              '⚠️ BESTMOVE without info depth - setting fallback depth',
-            );
-            // Fallback to at least the minimum report depth to avoid UI getting stuck
-            final minimum = EngineSearchProgress.minReportDepth;
-            finalDepth = depth < minimum ? minimum : depth;
+          // CRITICAL: Check if depth is 0 (no info lines parsed)
+          if (finalDepth == 0) {
+            if (filteredPvs.isNotEmpty) {
+              debugPrint(
+                '⚠️ BESTMOVE without info depth - setting fallback depth',
+              );
+              // Fallback to at least the minimum report depth to avoid UI getting stuck
+              final minimum = EngineSearchProgress.minReportDepth;
+              finalDepth = depth < minimum ? minimum : depth;
+            } else {
+              debugPrint(
+                '❌ CRITICAL: Stockfish returned NO depth info AND NO PVs for $fen',
+              );
+              debugPrint(
+                '   Requested: ${isDynamicSearch ? "dynamic ${searchDuration.inSeconds}s" : "depth $depth"}',
+              );
+              debugPrint('   Last UCI line: $line');
+              debugPrint(
+                '   This might be an invalid position or engine error',
+              );
+            }
+          }
+
+          debugPrint(
+            '♟️ STOCKFISH RAW PVs (@depth=$finalDepth): ${filteredPvs.map((pv) => pv.moves).join(' | ')}',
+          );
+          final normalizedPvs = _normalizeToWhitePerspective(filteredPvs, fen);
+
+          debugPrint(
+            '✅ STOCKFISH COMPLETE: depth=$finalDepth, pvs=${filteredPvs.length}, knodes=$knodes',
+          );
+          if (filteredPvs.isEmpty) {
+            debugPrint('⚠️ WARNING: No PVs found for $fen');
           } else {
             debugPrint(
-              '❌ CRITICAL: Stockfish returned NO depth info AND NO PVs for $fen',
+              '   Best move: ${filteredPvs[0].moves.split(' ').first}, cp=${filteredPvs[0].cp}',
             );
-            debugPrint(
-              '   Requested: ${isDynamicSearch ? "dynamic ${searchDuration.inSeconds}s" : "depth $depth"}',
-            );
-            debugPrint('   Last UCI line: $line');
-            debugPrint('   This might be an invalid position or engine error');
+          }
+
+          if (onDepthUpdate != null && finalDepth > 0) {
+            onDepthUpdate(finalDepth, knodes);
+          }
+
+          final result = EnhancedCloudEval(
+            fen: fen,
+            knodes: knodes,
+            depth: finalDepth,
+            pvs: normalizedPvs.isEmpty ? [Pv(moves: '', cp: 0)] : normalizedPvs,
+            isCancelled: false,
+            requestedMultiPv: job.multiPV,
+          );
+          if (!completer.isCompleted) {
+            completer.complete(result);
+            unawaited(_currentSubscription?.cancel());
+            _currentSubscription = null;
           }
         }
+      });
 
-        debugPrint(
-          '♟️ STOCKFISH RAW PVs (@depth=$finalDepth): ${filteredPvs.map((pv) => pv.moves).join(' | ')}',
-        );
-        final normalizedPvs = _normalizeToWhitePerspective(filteredPvs, fen);
+      try {
+        // PERFORMANCE FIX: Removed 'ucinewgame' - it clears hash before EVERY position
+        // This was causing depth 0 bugs and killing performance
+        // The working commit (a85edea1a0ded3f1772efb3baf1756c793c054b0) didn't use ucinewgame
+        // Stockfish is smart enough to handle position changes without clearing hash
 
-        debugPrint(
-          '✅ STOCKFISH COMPLETE: depth=$finalDepth, pvs=${filteredPvs.length}, knodes=$knodes',
-        );
-        if (filteredPvs.isEmpty) {
-          debugPrint('⚠️ WARNING: No PVs found for $fen');
-        } else {
+        _engine!.stdin = 'setoption name MultiPV value $multiPV';
+        _engine!.stdin = 'position fen $fen';
+
+        if (isDynamicSearch) {
+          final moveTimeMs = searchDuration.inMilliseconds;
           debugPrint(
-            '   Best move: ${filteredPvs[0].moves.split(' ').first}, cp=${filteredPvs[0].cp}',
+            '   → Sending: MultiPV $multiPV, movetime ${moveTimeMs}ms${maxDepth != null ? ", depth $maxDepth" : ""}',
           );
+          if (maxDepth != null) {
+            _engine!.stdin = 'go movetime $moveTimeMs depth $maxDepth';
+          } else {
+            _engine!.stdin = 'go movetime $moveTimeMs';
+          }
+        } else {
+          debugPrint('   → Sending: MultiPV $multiPV, depth $depth');
+          _engine!.stdin = 'go depth $depth';
         }
-
-        if (onDepthUpdate != null && finalDepth > 0) {
-          onDepthUpdate(finalDepth, knodes);
-        }
-
-        final result = EnhancedCloudEval(
-          fen: fen,
-          knodes: knodes,
-          depth: finalDepth,
-          pvs: normalizedPvs.isEmpty ? [Pv(moves: '', cp: 0)] : normalizedPvs,
-          isCancelled: false,
-          requestedMultiPv: job.multiPV,
-        );
+      } catch (e) {
+        debugPrint('❌ ERROR sending commands to Stockfish: $e');
         if (!completer.isCompleted) {
-          completer.complete(result);
-          unawaited(_currentSubscription?.cancel());
+          final errorResult = EnhancedCloudEval(
+            fen: fen,
+            knodes: 0,
+            depth: 0,
+            pvs: [Pv(moves: '', cp: 0)],
+            isCancelled: false,
+            requestedMultiPv: job.multiPV,
+          );
+          completer.complete(errorResult);
+          _currentJob = null;
           _currentSubscription = null;
         }
+        return;
       }
-    });
 
-    try {
-      // PERFORMANCE FIX: Removed 'ucinewgame' - it clears hash before EVERY position
-      // This was causing depth 0 bugs and killing performance
-      // The working commit (a85edea1a0ded3f1772efb3baf1756c793c054b0) didn't use ucinewgame
-      // Stockfish is smart enough to handle position changes without clearing hash
+      // No extra timeout: rely exclusively on UCI go command to stop search
 
-      _engine!.stdin = 'setoption name MultiPV value $multiPV';
-      _engine!.stdin = 'position fen $fen';
-
-      if (isDynamicSearch) {
-        final moveTimeMs = searchDuration.inMilliseconds;
-        debugPrint(
-          '   → Sending: MultiPV $multiPV, movetime ${moveTimeMs}ms${maxDepth != null ? ", depth $maxDepth" : ""}',
-        );
-        if (maxDepth != null) {
-          _engine!.stdin = 'go movetime $moveTimeMs depth $maxDepth';
-        } else {
-          _engine!.stdin = 'go movetime $moveTimeMs';
-        }
-      } else {
-        debugPrint('   → Sending: MultiPV $multiPV, depth $depth');
-        _engine!.stdin = 'go depth $depth';
-      }
-    } catch (e) {
-      debugPrint('❌ ERROR sending commands to Stockfish: $e');
+      // CRITICAL FIX: Wait for the completer to complete before returning
+      // This ensures the queue processor doesn't move to the next job until this one is done
+      await completer.future;
+    } catch (e, st) {
+      debugPrint('❌ STOCKFISH: Failed to process job for $fen: $e');
+      debugPrint('$st');
       if (!completer.isCompleted) {
-        final errorResult = EnhancedCloudEval(
-          fen: fen,
-          knodes: 0,
-          depth: 0,
-          pvs: [Pv(moves: '', cp: 0)],
-          isCancelled: false,
-          requestedMultiPv: job.multiPV,
-        );
-        completer.complete(errorResult);
-        _currentJob = null;
-        _currentSubscription = null;
+        completer.completeError(e, st);
       }
-      return;
+      rethrow;
     }
-
-    // No extra timeout: rely exclusively on UCI go command to stop search
-
-    // CRITICAL FIX: Wait for the completer to complete before returning
-    // This ensures the queue processor doesn't move to the next job until this one is done
-    await completer.future;
   }
 
   List<Pv> _normalizeToWhitePerspective(List<Pv> pvs, String fen) {
@@ -630,6 +657,19 @@ class StockfishSingleton {
     _engine?.dispose();
     _engine = null;
     _evaluationCache.clear();
+  }
+
+  Future<void> _resetEngineAfterFailure() async {
+    try {
+      await _currentSubscription?.cancel();
+    } catch (_) {}
+    _currentSubscription = null;
+    if (_engine != null) {
+      try {
+        _engine!.dispose();
+      } catch (_) {}
+    }
+    _engine = null;
   }
 
   void clearCache() {
