@@ -3484,82 +3484,60 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       SnackBar(
         duration: const Duration(seconds: 4),
         behavior: SnackBarBehavior.floating,
-        elevation: 0,
-        backgroundColor: Colors.transparent,
+        backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+        elevation: 2,
         margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 20.h),
-        padding: EdgeInsets.zero,
-        content: Container(
-          padding: EdgeInsets.symmetric(horizontal: 18.sp, vertical: 16.sp),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(22.sp),
-            gradient: LinearGradient(
-              colors: [
-                kPrimaryColor.withValues(alpha: 0.9),
-                kPrimaryColor.withValues(alpha: 0.65),
-                kBlack2Color.withValues(alpha: 0.85),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12.sp),
+          side: BorderSide(
+            color: kWhiteColor.withValues(alpha: 0.1),
+            width: 1,
+          ),
+        ),
+        content: Row(
+          children: [
+            Container(
+              padding: EdgeInsets.all(8.sp),
+              decoration: BoxDecoration(
+                color: kRedColor.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8.sp),
+              ),
+              child: Icon(
+                Icons.delete_outline,
+                color: kRedColor,
+                size: 18.ic,
+              ),
             ),
-            boxShadow: [
-              BoxShadow(
-                color: kPrimaryColor.withValues(alpha: 0.35),
-                blurRadius: 32,
-                spreadRadius: 6,
-                offset: const Offset(0, 14),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: EdgeInsets.all(10.sp),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(14.sp),
-                ),
-                child: Icon(
-                  Icons.auto_fix_high_rounded,
+            SizedBox(width: 12.w),
+            Expanded(
+              child: Text(
+                message,
+                style: AppTypography.textSmMedium.copyWith(
                   color: kWhiteColor,
-                  size: 20.ic,
                 ),
               ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      message,
-                      style: AppTypography.textSmBold.copyWith(
-                        color: kWhiteColor,
-                      ),
-                    ),
-                    SizedBox(height: 4.h),
-                    Text(
-                      'Tap to bring the variation back.',
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.75),
-                      ),
-                    ),
-                  ],
+            ),
+            TextButton(
+              onPressed: () {
+                ref
+                    .read(chessBoardScreenProviderNew(params).notifier)
+                    .restoreNavigatorState(snapshot);
+                messenger.hideCurrentSnackBar();
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: kPrimaryColor,
+                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Text(
+                'UNDO',
+                style: AppTypography.textSmBold.copyWith(
+                  color: kPrimaryColor,
                 ),
               ),
-              TextButton(
-                onPressed: () {
-                  ref
-                      .read(chessBoardScreenProviderNew(params).notifier)
-                      .restoreNavigatorState(snapshot);
-                  messenger.hideCurrentSnackBar();
-                },
-                style: TextButton.styleFrom(
-                  foregroundColor: kWhiteColor,
-                  padding: EdgeInsets.symmetric(horizontal: 12.w),
-                ),
-                child: const Text('UNDO'),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
