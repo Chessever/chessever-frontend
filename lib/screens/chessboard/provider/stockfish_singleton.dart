@@ -307,11 +307,7 @@ class StockfishSingleton {
 
     try {
       // Ensure engine is ready and reset for fresh search
-      if (_engine == null || _engine!.state.value != StockfishState.ready) {
-        _engine?.dispose();
-        _engine = Stockfish();
-        await _waitUntilReady();
-      }
+      await _ensureEngineReady();
       await _softResetEngine();
 
       // Check if job was cancelled while waiting for engine
@@ -349,20 +345,6 @@ class StockfishSingleton {
             finalDepth = currentDepth;
 
             if (onDepthUpdate != null) {
-              final searchLabel =
-                  isDynamicSearch
-                      ? 'Time-based (${searchDuration.inSeconds}s)'
-                      : 'Depth-based (target $depth)';
-              // TEMPO-01-COMMENT
-              // debugPrint(
-              //   '⚡ ═══ ENGINE DEPTH UPDATE ═══\n'
-              //   '   Current Depth: $currentDepth\n'
-              //   '   Nodes: ${currentKnodes}k\n'
-              //   '   Search Mode: $searchLabel\n'
-              //   '   Max Depth: ${maxDepth ?? "-"}\n'
-              //   '   UCI Output: ${line.substring(0, line.length.clamp(0, 80).toInt())}\n'
-              //   '   ════════════════════════════════════',
-              // );
               onDepthUpdate(currentDepth, currentKnodes);
             }
           }
@@ -581,20 +563,78 @@ class StockfishSingleton {
         .toList(growable: false);
   }
 
-  Future<void> _waitUntilReady() async {
-    if (_engine!.state.value == StockfishState.ready) return;
+  Future<void> _waitUntilReady({
+    Duration timeout = const Duration(seconds: 2),
+  }) async {
+    if (_engine == null) {
+      throw StateError('Stockfish engine is not initialized');
+    }
+
+    if (_engine!.state.value == StockfishState.ready) {
+      await _configureEngineForAnalysis();
+      return;
+    }
 
     final completer = Completer<void>();
     late VoidCallback listener;
+    late final Timer timer;
+
     listener = () {
-      if (_engine!.state.value == StockfishState.ready) {
-        _engine!.state.removeListener(listener);
-        if (!completer.isCompleted) completer.complete();
+      if (_engine?.state.value == StockfishState.ready &&
+          !completer.isCompleted) {
+        completer.complete();
       }
     };
-    _engine!.state.addListener(listener);
-    await completer.future;
 
+    _engine!.state.addListener(listener);
+
+    timer = Timer(timeout, () {
+      if (!completer.isCompleted) {
+        completer.completeError(
+          TimeoutException(
+            'Stockfish did not become ready within ${timeout.inMilliseconds}ms',
+          ),
+        );
+      }
+    });
+
+    try {
+      await completer.future;
+      await _configureEngineForAnalysis();
+    } finally {
+      timer.cancel();
+      try {
+        _engine!.state.removeListener(listener);
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _ensureEngineReady() async {
+    int attempt = 0;
+    while (true) {
+      attempt++;
+      try {
+        if (_engine == null || _engine!.state.value == StockfishState.error) {
+          try {
+            _engine?.dispose();
+          } catch (_) {}
+          _engine = Stockfish();
+        }
+        await _waitUntilReady();
+        return;
+      } catch (e, st) {
+        debugPrint(
+          '⚠️ STOCKFISH INIT: Engine not ready (attempt $attempt) – $e',
+        );
+        debugPrint('$st');
+        await _resetEngineAfterFailure();
+        if (attempt >= 2) rethrow;
+      }
+    }
+  }
+
+  Future<void> _configureEngineForAnalysis() async {
+    if (_engine == null) return;
     // CRITICAL: Configure Stockfish for analysis (not tablebase lookup)
     // Disable tablebase probing to force actual search with depth progression
     try {

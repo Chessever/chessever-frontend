@@ -78,6 +78,7 @@ class AnalysisBoardState {
       ListEquality<String>();
   static const ListEquality<AnalysisLine> _analysisLineListEquality =
       ListEquality<AnalysisLine>();
+  static const _noChange = Object();
 
   final Move? lastMove;
   final NormalMove? promotionMove;
@@ -148,7 +149,7 @@ class AnalysisBoardState {
   AnalysisBoardState copyWith({
     String? fen,
     Move? lastMove,
-    NormalMove? promotionMove,
+    Object? promotionMove = _noChange,
     ValidMoves? validMoves,
     List<Position>? positionHistory,
     List<String>? moveSans,
@@ -166,7 +167,10 @@ class AnalysisBoardState {
   }) {
     return AnalysisBoardState(
       lastMove: lastMove ?? this.lastMove,
-      promotionMove: promotionMove ?? this.promotionMove,
+      promotionMove:
+          identical(promotionMove, _noChange)
+              ? this.promotionMove
+              : promotionMove as NormalMove?,
       validMoves: validMoves ?? this.validMoves,
       positionHistory: positionHistory ?? this.positionHistory,
       moveSans: moveSans ?? this.moveSans,
@@ -232,7 +236,20 @@ class AnalysisBoardState {
       return false;
     }
 
-    return other.currentMoveIndex == currentMoveIndex &&
+    final lastMovesEqual =
+        (other.lastMove == null && lastMove == null) ||
+        (other.lastMove != null &&
+            lastMove != null &&
+            other.lastMove!.uci == lastMove!.uci);
+    final promotionMovesEqual =
+        (other.promotionMove == null && promotionMove == null) ||
+        (other.promotionMove != null &&
+            promotionMove != null &&
+            other.promotionMove!.uci == promotionMove!.uci);
+
+    return lastMovesEqual &&
+        promotionMovesEqual &&
+        other.currentMoveIndex == currentMoveIndex &&
         other.branchPointMoveIndex == branchPointMoveIndex &&
         other.position.fen == position.fen &&
         _stringListEquality.equals(other.moveSans, moveSans) &&
@@ -262,6 +279,8 @@ class AnalysisBoardState {
   @override
   int get hashCode {
     return Object.hashAll([
+      lastMove?.uci,
+      promotionMove?.uci,
       currentMoveIndex,
       branchPointMoveIndex,
       position.fen,
