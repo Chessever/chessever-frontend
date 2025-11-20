@@ -237,12 +237,23 @@ class _CalendarDetailScreenController
   }) async {
     try {
       // Check if this is a calendar event (community event)
-      if (id.startsWith('cal_')) {
+      if (id.startsWith('cal_event_')) {
         // Community events don't have detail pages yet
         // For now, we'll show a snackbar with the event info
         // TODO: Create a detail page for community events
+
+        // Extract the sanitized name from the ID
+        final sanitizedName = id.replaceFirst('cal_event_', '');
+
+        // Find the event by matching the sanitized name
         final event = calendarEvents.firstWhere(
-          (e) => 'cal_${e.name.hashCode}' == id,
+          (e) {
+            final eventSanitized = e.name
+                .replaceAll(' ', '_')
+                .replaceAll(RegExp(r'[^\w\-]'), '')
+                .toLowerCase();
+            return eventSanitized == sanitizedName;
+          },
           orElse: () => throw Exception('Event not found'),
         );
 

@@ -69,8 +69,13 @@ class GroupEventCardModel extends Equatable {
     final utcStart = calendarEvent.startDate;
     final utcEnd = calendarEvent.endDate;
 
-    // Use event name as ID for calendar events
-    final eventId = 'cal_${calendarEvent.name.hashCode}';
+    // Use event name as ID for calendar events (name is primary key in DB)
+    // Replace special characters to ensure valid ID format
+    final sanitizedName = calendarEvent.name
+        .replaceAll(' ', '_')
+        .replaceAll(RegExp(r'[^\w\-]'), '')
+        .toLowerCase();
+    final eventId = 'cal_event_$sanitizedName';
 
     return GroupEventCardModel(
       id: eventId,
