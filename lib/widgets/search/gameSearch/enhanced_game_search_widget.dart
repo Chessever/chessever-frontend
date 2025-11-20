@@ -1,7 +1,7 @@
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/search/gameSearch/game_search_overlay.dart';
+// import 'package:chessever2/widgets/search/gameSearch/game_search_overlay.dart'; // Unused: overlay is disabled
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -30,15 +30,15 @@ class EnhancedGamesSearchBar extends ConsumerStatefulWidget {
 
 class _EnhancedGamesSearchBarState extends ConsumerState<EnhancedGamesSearchBar>
     with TickerProviderStateMixin {
-  bool _showOverlay = false;
+  // bool _showOverlay = false; // Unused: overlay is disabled
   final FocusNode _focusNode = FocusNode();
 
   // Track current query state
   String _currentQuery = '';
 
-  late AnimationController _overlayController;
+  // late AnimationController _overlayController; // Unused: overlay is disabled
   late AnimationController _searchBarController;
-  late Animation<double> _overlayAnimation;
+  // late Animation<double> _overlayAnimation; // Unused: overlay is disabled
   late Animation<double> _searchBarScaleAnimation;
 
   @override
@@ -50,20 +50,22 @@ class _EnhancedGamesSearchBarState extends ConsumerState<EnhancedGamesSearchBar>
 
     _focusNode.addListener(_onFocusChange);
 
-    _overlayController = AnimationController(
-      duration: const Duration(milliseconds: 300),
-      vsync: this,
-    );
+    // Overlay controller is disabled
+    // _overlayController = AnimationController(
+    //   duration: const Duration(milliseconds: 300),
+    //   vsync: this,
+    // );
 
     _searchBarController = AnimationController(
       duration: const Duration(milliseconds: 200),
       vsync: this,
     );
 
-    _overlayAnimation = CurvedAnimation(
-      parent: _overlayController,
-      curve: Curves.easeInOut,
-    );
+    // Overlay animation is disabled
+    // _overlayAnimation = CurvedAnimation(
+    //   parent: _overlayController,
+    //   curve: Curves.easeInOut,
+    // );
 
     _searchBarScaleAnimation = Tween<double>(begin: 1.0, end: 1.02).animate(
       CurvedAnimation(parent: _searchBarController, curve: Curves.easeInOut),
@@ -74,7 +76,7 @@ class _EnhancedGamesSearchBarState extends ConsumerState<EnhancedGamesSearchBar>
   void dispose() {
     _focusNode.removeListener(_onFocusChange);
     _focusNode.dispose();
-    _overlayController.dispose();
+    // _overlayController.dispose(); // Overlay is disabled
     _searchBarController.dispose();
     super.dispose();
   }
@@ -82,42 +84,43 @@ class _EnhancedGamesSearchBarState extends ConsumerState<EnhancedGamesSearchBar>
   void _onFocusChange() {
     if (_focusNode.hasFocus) {
       _searchBarController.forward();
-      // Show overlay if there's text
-      if (_currentQuery.isNotEmpty) {
-        _updateOverlayVisibility(true);
-      }
+      // Overlay visibility updates are disabled
+      // if (_currentQuery.isNotEmpty) {
+      //   _updateOverlayVisibility(true);
+      // }
     } else {
       _searchBarController.reverse();
-      _updateOverlayVisibility(false);
+      // _updateOverlayVisibility(false); // Overlay is disabled
     }
   }
 
-  void _updateOverlayVisibility(bool show) {
-    if (_showOverlay != show) {
-      setState(() {
-        _showOverlay = show;
-      });
-
-      if (show) {
-        _overlayController.forward();
-      } else {
-        _overlayController.reverse();
-      }
-    }
-  }
+  // COMMENTED OUT: Overlay visibility management is disabled
+  // void _updateOverlayVisibility(bool show) {
+  //   if (_showOverlay != show) {
+  //     setState(() {
+  //       _showOverlay = show;
+  //     });
+  //
+  //     if (show) {
+  //       _overlayController.forward();
+  //     } else {
+  //       _overlayController.reverse();
+  //     }
+  //   }
+  // }
 
   // Single method to handle all text changes
   void _handleTextChange(String value) {
     debugPrint('🎯 _handleTextChange called with: "$value"');
 
-    // Update internal state
+    // Update internal state (kept for potential future use)
     setState(() {
       _currentQuery = value;
     });
 
-    // Update overlay visibility based on text and focus
-    final shouldShowOverlay = _focusNode.hasFocus && value.isNotEmpty;
-    _updateOverlayVisibility(shouldShowOverlay);
+    // Overlay visibility updates are disabled
+    // final shouldShowOverlay = _focusNode.hasFocus && value.isNotEmpty;
+    // _updateOverlayVisibility(shouldShowOverlay);
 
     // Notify parent component
     debugPrint('🎯 Notifying parent with: "$value"');
@@ -125,29 +128,31 @@ class _EnhancedGamesSearchBarState extends ConsumerState<EnhancedGamesSearchBar>
   }
 
   void _hideOverlay() {
-    _updateOverlayVisibility(false);
+    // Simplified: just unfocus since overlay is disabled
     _focusNode.unfocus();
     _searchBarController.reverse();
   }
 
-  void _onGameSelected(Games games) {
-    _hideOverlay();
-    widget.onGameSelected?.call(games);
-  }
+  // COMMENTED OUT: Game selection from overlay is disabled
+  // void _onGameSelected(Games games) {
+  //   _hideOverlay();
+  //   widget.onGameSelected?.call(games);
+  // }
 
   @override
   Widget build(BuildContext context) {
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        // Background tap detector
-        if (_showOverlay)
-          Positioned.fill(
-            child: GestureDetector(
-              onTap: _hideOverlay,
-              child: Container(color: Colors.transparent),
-            ),
-          ),
+        // COMMENTED OUT: Background tap detector for dropdown overlay
+        // The dropdown is disabled because we already filter games live in the Games List View
+        // if (_showOverlay)
+        //   Positioned.fill(
+        //     child: GestureDetector(
+        //       onTap: _hideOverlay,
+        //       child: Container(color: Colors.transparent),
+        //     ),
+        //   ),
 
         Column(
           children: [
@@ -169,32 +174,34 @@ class _EnhancedGamesSearchBarState extends ConsumerState<EnhancedGamesSearchBar>
               },
             ),
 
-            // Search overlay
-            AnimatedBuilder(
-              animation: _overlayAnimation,
-              builder: (context, child) {
-                return ClipRect(
-                  child: Align(
-                    alignment: Alignment.topCenter,
-                    heightFactor: _overlayAnimation.value,
-                    child: Container(
-                      margin: EdgeInsets.only(top: 8.sp),
-                      child: Transform.translate(
-                        offset: Offset(0, (1 - _overlayAnimation.value) * -20),
-                        child: Opacity(
-                          opacity: _overlayAnimation.value,
-                          child: GamesSearchOverlay(
-                            query:
-                                _currentQuery, // Use internal state instead of controller
-                            onGameTap: _onGameSelected,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
+            // COMMENTED OUT: Search overlay dropdown
+            // The dropdown showing search results is redundant because we already
+            // filter games live in the Games List View below. This keeps the UI cleaner.
+            // AnimatedBuilder(
+            //   animation: _overlayAnimation,
+            //   builder: (context, child) {
+            //     return ClipRect(
+            //       child: Align(
+            //         alignment: Alignment.topCenter,
+            //         heightFactor: _overlayAnimation.value,
+            //         child: Container(
+            //           margin: EdgeInsets.only(top: 8.sp),
+            //           child: Transform.translate(
+            //             offset: Offset(0, (1 - _overlayAnimation.value) * -20),
+            //             child: Opacity(
+            //               opacity: _overlayAnimation.value,
+            //               child: GamesSearchOverlay(
+            //                 query:
+            //                     _currentQuery, // Use internal state instead of controller
+            //                 onGameTap: _onGameSelected,
+            //               ),
+            //             ),
+            //           ),
+            //         ),
+            //       ),
+            //     );
+            //   },
+            // ),
           ],
         ),
       ],

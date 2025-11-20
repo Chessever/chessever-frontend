@@ -33,13 +33,15 @@ class CalendarEventRepository extends BaseRepository {
       );
 
       // Build query to find events that overlap with the month
+      // An event overlaps if: start_date <= month_end AND end_date >= month_start
+      final startDateStr = startOfMonth.toIso8601String().split('T')[0];
+      final endDateStr = endOfMonth.toIso8601String().split('T')[0];
+
       PostgrestTransformBuilder<PostgrestList> query = supabaseClient
           .from('calendar_events')
           .select()
-          .or(
-            'and(start_date.gte.${startOfMonth.toIso8601String().split('T')[0]},start_date.lte.${endOfMonth.toIso8601String().split('T')[0]}),'
-            'and(end_date.gte.${startOfMonth.toIso8601String().split('T')[0]},end_date.lte.${endOfMonth.toIso8601String().split('T')[0]})',
-          )
+          .lte('start_date', endDateStr)
+          .gte('end_date', startDateStr)
           .order(orderBy, ascending: ascending)
           .limit(limit);
 
@@ -84,13 +86,14 @@ class CalendarEventRepository extends BaseRepository {
       final startOfYear = DateTime(year, 1, 1);
       final endOfYear = DateTime(year, 12, 31, 23, 59, 59);
 
+      final startDateStr = startOfYear.toIso8601String().split('T')[0];
+      final endDateStr = endOfYear.toIso8601String().split('T')[0];
+
       final response = await supabase
           .from('calendar_events')
           .select()
-          .or(
-            'and(start_date.gte.${startOfYear.toIso8601String().split('T')[0]},start_date.lte.${endOfYear.toIso8601String().split('T')[0]}),'
-            'and(end_date.gte.${startOfYear.toIso8601String().split('T')[0]},end_date.lte.${endOfYear.toIso8601String().split('T')[0]})',
-          )
+          .lte('start_date', endDateStr)
+          .gte('end_date', startDateStr)
           .order(orderBy, ascending: ascending)
           .limit(limit);
 

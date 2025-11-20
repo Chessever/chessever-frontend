@@ -250,21 +250,25 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
                 );
               },
               loading: () {
-                final mockData = GroupEventCardModel(
-                  id: 'tour_001',
-                  title: 'World Chess Championship 2025',
-                  dates: '2025-03-15',
-                  maxAvgElo: 200,
-                  timeUntilStart: 'Starts in 8 months',
-                  tourEventCategory: TourEventCategory.live,
-                  timeControl: 'Standard',
-                  endDate: null,
-                  startDate: null,
+                // Generate unique skeleton cards to avoid duplicate hero tags
+                final skeletonCards = List.generate(
+                  10,
+                  (index) => GroupEventCardModel(
+                    id: 'skeleton_loading_$index', // Unique ID for each skeleton
+                    title: 'Loading Tournament $index',
+                    dates: 'Loading...',
+                    maxAvgElo: 2000 + (index * 50),
+                    timeUntilStart: 'Loading...',
+                    tourEventCategory: TourEventCategory.upcoming,
+                    timeControl: 'Standard',
+                    endDate: null,
+                    startDate: null,
+                  ),
                 );
                 return Expanded(
                   child: SkeletonWidget(
                     child: AllEventsTabWidget(
-                      filteredEvents: List.generate(10, (index) => mockData),
+                      filteredEvents: skeletonCards,
                       onSelect: (_) {},
                     ),
                   ),

@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io';
+// import 'dart:io'; // UNUSED: Removed with old dialog approach
 import 'dart:math' as math;
 import 'dart:ui';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
@@ -30,8 +30,8 @@ import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_wi
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
-import 'package:chessever2/utils/keyboard_animation_builder.dart';
-import 'package:chessever2/providers/keyboard_total_height_provider.dart';
+// import 'package:chessever2/utils/keyboard_animation_builder.dart'; // UNUSED: Removed with old dialog
+// import 'package:chessever2/providers/keyboard_total_height_provider.dart'; // UNUSED: Removed with old dialog
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/string_utils.dart';
 import 'package:chessground/chessground.dart';
@@ -43,9 +43,10 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/svg_asset.dart';
-import 'package:chessever2/widgets/smooth_dialog.dart';
 import 'package:chessever2/widgets/divider_widget.dart';
+// import 'package:chessever2/widgets/smooth_dialog.dart'; // UNUSED: Removed with old dialog
 import 'package:flutter_svg/svg.dart';
+import 'package:smooth_sheets/smooth_sheets.dart';
 
 /// Spring-based curve that mimics iOS snappy motion
 /// Quick, precise animation with subtle natural settling
@@ -2861,50 +2862,108 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       seed: token.variationColorKey ?? token.variation?.id,
     );
 
-    return GestureDetector(
-      onTap: () {
-        _editNotationComment(token, params, fullText);
-      },
-      onLongPress: () {
-        if (!isLong) return;
-        _toggleCommentExpansion(id, isExpanded);
-      },
-      child: Container(
-        width: double.infinity,
-        margin: EdgeInsets.symmetric(vertical: 4.sp, horizontal: 2.sp),
-        padding: EdgeInsets.all(8.sp),
-        decoration: BoxDecoration(
-          color: kBlack2Color.withValues(alpha: 0.5),
-          borderRadius: BorderRadius.circular(8.sp),
-          border: Border.all(
-            color: accentColor.withValues(alpha: 0.3),
-            width: 1,
+    return Container(
+      margin: EdgeInsets.symmetric(vertical: 4.sp, horizontal: 2.sp),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8.sp),
+        boxShadow: [
+          BoxShadow(
+            color: accentColor.withValues(alpha: 0.15),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              displayText,
-              style: AppTypography.textSmRegular.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.9),
-                height: 1.4,
+        ],
+      ),
+      child: Material(
+        color: kBlack2Color.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(8.sp),
+        child: InkWell(
+          onTap: () {
+            HapticFeedback.lightImpact();
+            _editNotationComment(token, params, fullText);
+          },
+          onLongPress: () {
+            if (!isLong) return;
+            HapticFeedback.mediumImpact();
+            _toggleCommentExpansion(id, isExpanded);
+          },
+          borderRadius: BorderRadius.circular(8.sp),
+          splashColor: accentColor.withValues(alpha: 0.15),
+          highlightColor: accentColor.withValues(alpha: 0.08),
+          child: Container(
+            width: double.infinity,
+            padding: EdgeInsets.all(8.sp),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8.sp),
+              border: Border.all(
+                color: accentColor.withValues(alpha: 0.3),
+                width: 1,
               ),
             ),
-            if (isLong)
-              Padding(
-                padding: EdgeInsets.only(top: 4.sp),
-                child: GestureDetector(
-                  onTap: () => _toggleCommentExpansion(id, isExpanded),
-                  child: Text(
-                    isExpanded ? 'Show less' : 'Read more',
-                    style: AppTypography.textXsMedium.copyWith(
-                      color: accentColor,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        displayText,
+                        style: AppTypography.textSmRegular.copyWith(
+                          color: kWhiteColor.withValues(alpha: 0.9),
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      Icons.edit_note_rounded,
+                      size: 16.sp,
+                      color: accentColor.withValues(alpha: 0.5),
+                    ),
+                  ],
+                ),
+                if (isLong)
+                  Padding(
+                    padding: EdgeInsets.only(top: 6.sp),
+                    child: InkWell(
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        _toggleCommentExpansion(id, isExpanded);
+                      },
+                      borderRadius: BorderRadius.circular(4.sp),
+                      child: Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 6.sp,
+                          vertical: 2.sp,
+                        ),
+                        decoration: BoxDecoration(
+                          color: accentColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(4.sp),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              isExpanded ? 'Show less' : 'Read more',
+                              style: AppTypography.textXsMedium.copyWith(
+                                color: accentColor,
+                              ),
+                            ),
+                            SizedBox(width: 4.w),
+                            Icon(
+                              isExpanded
+                                  ? Icons.expand_less_rounded
+                                  : Icons.expand_more_rounded,
+                              size: 14.sp,
+                              color: accentColor,
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-          ],
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -2930,25 +2989,45 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     if (pointerId == null) {
       return;
     }
+
+    HapticFeedback.selectionClick();
+
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
-    final initial = widget.state.variationComments[pointerId] ?? fallbackText;
-    final focusNode = FocusNode();
-    await showSmoothDialog(
-      context: context,
-      focusNode: focusNode,
-      anchorToBottom: false,
-      builder: (ctx) => _CommentDialog(
-        initialComment: initial,
-        focusNode: focusNode,
-        onSave: (comment) {
-          notifier.updateVariationComment(
-            variationId: pointerId,
-            comment: comment,
-          );
-        },
-      ),
+    final currentComment = widget.state.variationComments[pointerId] ?? fallbackText;
+    final hostContext = context;
+
+    final commentConfig = _VariationCommentSheetConfig(
+      initialValue: currentComment,
+      onSubmit: (ctx, value) async {
+        final trimmed = value.trim();
+        final normalizedInitial = currentComment.trim();
+        if (trimmed == normalizedInitial) {
+          return;
+        }
+        final limited = trimmed.length > _variationCommentMaxChars
+            ? trimmed.substring(0, _variationCommentMaxChars)
+            : trimmed;
+        notifier.updateVariationComment(
+          variationId: pointerId,
+          comment: limited,
+        );
+      },
     );
-    focusNode.dispose();
+
+    final route = ModalSheetRoute<void>(
+      barrierDismissible: true,
+      swipeDismissible: true,
+      barrierColor: Colors.black.withValues(alpha: 0.65),
+      barrierLabel: 'Close comment editor',
+      viewportPadding: MediaQuery.viewPaddingOf(context),
+      builder:
+          (_) => _DirectCommentSheet(
+            config: commentConfig,
+            hostContext: hostContext,
+          ),
+    );
+
+    await Navigator.of(context).push(route);
   }
 
   void _focusVariationHead(NotationVariationNode variation) {
@@ -3770,6 +3849,57 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   }
 }
 
+class _DirectCommentSheet extends ConsumerWidget {
+  final _VariationCommentSheetConfig config;
+  final BuildContext hostContext;
+
+  const _DirectCommentSheet({
+    required this.config,
+    required this.hostContext,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sheetColor = kBlack2Color.withValues(alpha: 0.96);
+    final navigator = Navigator(
+      onGenerateInitialRoutes: (_, __) => [
+        PagedSheetRoute(
+          scrollConfiguration: const SheetScrollConfiguration(),
+          dragConfiguration: const SheetDragConfiguration(),
+          initialOffset: const SheetOffset.proportionalToViewport(0.7),
+          snapGrid: SheetSnapGrid(
+            snaps: const [
+              SheetOffset.proportionalToViewport(0.7),
+              SheetOffset.proportionalToViewport(0.92),
+            ],
+            minFlingSpeed: 100,
+          ),
+          builder:
+              (context) => _NotationCommentPage(
+                config: config,
+                hostContext: hostContext,
+              ),
+        ),
+      ],
+    );
+
+    return SheetKeyboardDismissible(
+      dismissBehavior:
+          const DragDownSheetKeyboardDismissBehavior(isContentScrollAware: true),
+      child: PagedSheet(
+        decoration: MaterialSheetDecoration(
+          size: SheetSize.stretch,
+          color: sheetColor,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28.sp)),
+          clipBehavior: Clip.antiAlias,
+        ),
+        shrinkChildToAvoidDynamicOverlap: true,
+        navigator: navigator,
+      ),
+    );
+  }
+}
+
 class _AnalysisActionButtons extends ConsumerWidget {
   final ChessBoardProviderParams params;
 
@@ -3792,31 +3922,50 @@ class _AnalysisActionButtons extends ConsumerWidget {
           color: kWhiteColor,
           enabled: true,
           iconAlpha: 0.9,
-          onPressed: () {
+          onPressed: () async {
             final pointer = state?.analysisState.movePointer;
             if (pointer == null || pointer.isEmpty) {
               return;
             }
+
+            HapticFeedback.selectionClick();
+
             final pointerId = NotationPointer.encode(pointer);
             final currentComment = state?.variationComments[pointerId] ?? '';
+            final hostContext = context;
 
-            final focusNode = FocusNode();
-            showSmoothDialog(
-              context: context,
-              focusNode: focusNode,
-              anchorToBottom: false,
+            final commentConfig = _VariationCommentSheetConfig(
+              initialValue: currentComment,
+              onSubmit: (ctx, value) async {
+                final trimmed = value.trim();
+                final normalizedInitial = currentComment.trim();
+                if (trimmed == normalizedInitial) {
+                  return;
+                }
+                final limited = trimmed.length > _variationCommentMaxChars
+                    ? trimmed.substring(0, _variationCommentMaxChars)
+                    : trimmed;
+                notifier.updateVariationComment(
+                  variationId: pointerId,
+                  comment: limited,
+                );
+              },
+            );
+
+            final route = ModalSheetRoute<void>(
+              barrierDismissible: true,
+              swipeDismissible: true,
+              barrierColor: Colors.black.withValues(alpha: 0.65),
+              barrierLabel: 'Close comment editor',
+              viewportPadding: MediaQuery.viewPaddingOf(context),
               builder:
-                  (context) => _CommentDialog(
-                    initialComment: currentComment,
-                    focusNode: focusNode,
-                    onSave: (comment) {
-                      notifier.updateVariationComment(
-                        variationId: pointerId,
-                        comment: comment,
-                      );
-                    },
+                  (_) => _DirectCommentSheet(
+                    config: commentConfig,
+                    hostContext: hostContext,
                   ),
-            ).then((_) => focusNode.dispose());
+            );
+
+            await Navigator.of(context).push(route);
           },
         ),
         SizedBox(height: 12.sp),
@@ -5499,22 +5648,23 @@ Future<void> _showNotationActionSheet({
   _VariationCommentSheetConfig? commentConfig,
 }) async {
   final hostContext = context;
-  await showModalBottomSheet<void>(
-    context: hostContext,
-    useRootNavigator: true,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
+  final route = ModalSheetRoute<void>(
+    barrierDismissible: true,
+    swipeDismissible: true,
     barrierColor: Colors.black.withValues(alpha: 0.65),
-    builder: (_) {
-      return _NotationActionSheet(
-        title: title,
-        subtitle: subtitle,
-        actions: actions,
-        hostContext: hostContext,
-        commentConfig: commentConfig,
-      );
-    },
+    barrierLabel: 'Close notation actions',
+    viewportPadding: MediaQuery.viewPaddingOf(context),
+    builder:
+        (_) => _NotationActionSheet(
+          title: title,
+          subtitle: subtitle,
+          actions: actions,
+          hostContext: hostContext,
+          commentConfig: commentConfig,
+        ),
   );
+
+  await Navigator.of(context).push(route);
 }
 
 
@@ -5528,7 +5678,7 @@ class _VariationCommentSheetConfig {
   });
 }
 
-class _NotationActionSheet extends ConsumerStatefulWidget {
+class _NotationActionSheet extends ConsumerWidget {
   final String title;
   final String? subtitle;
   final List<_NotationActionItem> actions;
@@ -5544,259 +5694,175 @@ class _NotationActionSheet extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<_NotationActionSheet> createState() => _NotationActionSheetState();
-}
-
-class _NotationActionSheetState extends ConsumerState<_NotationActionSheet> {
-  late final TextEditingController _commentController;
-  FocusNode? _commentFocusNode;
-  bool _hasEdited = false;
-  bool _isSaving = false;
-  bool _isShowingCommentEditor = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _commentController = TextEditingController(
-      text: widget.commentConfig?.initialValue ?? '',
-    );
-    if (widget.commentConfig != null) {
-      _commentController.addListener(_handleCommentChanged);
-      _commentFocusNode = FocusNode();
-    }
-  }
-
-  @override
-  void dispose() {
-    if (widget.commentConfig != null) {
-      _commentController.removeListener(_handleCommentChanged);
-    }
-    _commentController.dispose();
-    _commentFocusNode?.dispose();
-    super.dispose();
-  }
-
-  void _handleCommentChanged() {
-    if (widget.commentConfig == null) return;
-    final baseValue = widget.commentConfig?.initialValue ?? '';
-    final edited = _commentController.text != baseValue;
-    if (_hasEdited != edited) {
-      setState(() {
-        _hasEdited = edited;
-      });
-    }
-  }
-
-  void _openCommentEditor() {
-    if (widget.commentConfig == null) return;
-    final baseValue = widget.commentConfig?.initialValue ?? '';
-    setState(() {
-      _isShowingCommentEditor = true;
-      _hasEdited = false;
-      _commentController
-        ..text = baseValue
-        ..selection = TextSelection.collapsed(offset: baseValue.length);
-    });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _commentFocusNode?.requestFocus();
-    });
-  }
-
-  void _closeCommentEditor() {
-    if (!_isShowingCommentEditor) return;
-    final baseValue = widget.commentConfig?.initialValue ?? '';
-    setState(() {
-      _isShowingCommentEditor = false;
-      _hasEdited = false;
-      _commentController
-        ..text = baseValue
-        ..selection = TextSelection.collapsed(offset: baseValue.length);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final actions = widget.actions;
-
+  Widget build(BuildContext context, WidgetRef ref) {
     final sheetColor = kBlack2Color.withValues(alpha: 0.96);
-    final keyboardTotalHeight = ref.watch(keyboardTotalHeightProvider);
+    final navigator = Navigator(
+      onGenerateInitialRoutes: (_, __) => [
+        PagedSheetRoute(
+          scrollConfiguration: const SheetScrollConfiguration(),
+          dragConfiguration: const SheetDragConfiguration(),
+          initialOffset: const SheetOffset.proportionalToViewport(0.45),
+          snapGrid: SheetSnapGrid(
+            snaps: const [
+              SheetOffset.proportionalToViewport(0.45),
+              SheetOffset.proportionalToViewport(0.85),
+            ],
+            minFlingSpeed: 900,
+          ),
+          builder:
+              (context) => _NotationActionListPage(
+                title: title,
+                subtitle: subtitle,
+                actions: actions,
+                commentConfig: commentConfig,
+                hostContext: hostContext,
+              ),
+        ),
+      ],
+    );
 
-    Widget buildSheetContent() {
-      return Container(
-        decoration: BoxDecoration(
+    return SheetKeyboardDismissible(
+      dismissBehavior:
+          const DragDownSheetKeyboardDismissBehavior(isContentScrollAware: true),
+      child: PagedSheet(
+        decoration: MaterialSheetDecoration(
+          size: SheetSize.stretch, // keep full height so page transitions stay anchored
           color: sheetColor,
           borderRadius: BorderRadius.vertical(top: Radius.circular(28.sp)),
-          border: Border.all(color: kWhiteColor.withValues(alpha: 0.05)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.55),
-              blurRadius: 30,
-              offset: const Offset(0, -8),
-            ),
-          ],
+          clipBehavior: Clip.antiAlias,
         ),
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          child: Padding(
-            padding: EdgeInsets.only(
-              left: 20.sp,
-              right: 20.sp,
-              top: 14.sp,
-              bottom: 16.sp,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40.w,
-                    height: 4.h,
-                    decoration: BoxDecoration(
-                      color: kWhiteColor.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                ),
-                SizedBox(height: 16.h),
-                if (_isShowingCommentEditor && widget.commentConfig != null)
-                  _buildCommentEditorSection()
-                else
-                  _buildActionsSection(actions),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    final content = buildSheetContent();
-    final hasCommentEditor = widget.commentConfig != null;
-    Widget child = content;
-
-    if (hasCommentEditor) {
-      child = KeyboardAnimationBuilder(
-        focusNode: _commentFocusNode,
-        keyboardTotalHeight: keyboardTotalHeight,
-        interpolateLastPart: true,
-        onChange: (height) {
-          if (height > 0) {
-            ref.read(keyboardTotalHeightProvider.notifier).update(height);
-          }
-        },
-        builder: (context, keyboardHeight) {
-          final inset = keyboardHeight > 0
-              ? keyboardHeight
-              : MediaQuery.viewInsetsOf(context).bottom;
-          return Padding(
-            padding: EdgeInsets.only(bottom: inset),
-            child: content,
-          );
-        },
-      );
-    }
-
-    return Container(
-      color: sheetColor,
-      child: SafeArea(
-        top: false,
-        child:
-            hasCommentEditor
-                ? child
-                : Padding(
-                  padding: EdgeInsets.only(
-                    bottom: MediaQuery.viewInsetsOf(context).bottom,
-                  ),
-                  child: child,
-                ),
+        shrinkChildToAvoidDynamicOverlap: true,
+        navigator: navigator,
       ),
     );
   }
+}
 
-  Widget _buildActionsSection(List<_NotationActionItem> actions) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          widget.title,
-          style: AppTypography.textLgBold.copyWith(
-            color: kWhiteColor,
-            letterSpacing: 0.25,
+class _NotationActionListPage extends ConsumerWidget {
+  final String title;
+  final String? subtitle;
+  final List<_NotationActionItem> actions;
+  final _VariationCommentSheetConfig? commentConfig;
+  final BuildContext hostContext;
+
+  const _NotationActionListPage({
+    required this.title,
+    required this.actions,
+    required this.hostContext,
+    this.subtitle,
+    this.commentConfig,
+  });
+
+  Future<void> _handleActionTap(
+    BuildContext context,
+    _NotationActionItem action,
+  ) async {
+    HapticFeedback.selectionClick();
+
+    if (action.triggersCommentEditor && commentConfig != null) {
+      await Navigator.of(context).push(
+        PagedSheetRoute(
+          scrollConfiguration: const SheetScrollConfiguration(),
+          dragConfiguration: const SheetDragConfiguration(),
+          initialOffset: const SheetOffset.proportionalToViewport(0.7),
+          snapGrid: SheetSnapGrid(
+            snaps: const [
+              SheetOffset.proportionalToViewport(0.7),
+              SheetOffset.proportionalToViewport(0.92),
+            ],
+            minFlingSpeed: 100,
           ),
+          builder:
+              (context) => _NotationCommentPage(
+                config: commentConfig!,
+                hostContext: hostContext,
+              ),
         ),
-        if (widget.subtitle != null) ...[
-          SizedBox(height: 4.h),
-          Text(
-            widget.subtitle!,
-            style: AppTypography.textSmRegular.copyWith(
-              color: kWhiteColor70,
+      );
+      return;
+    }
+
+    Navigator.of(hostContext).pop();
+    await Future.sync(() => action.onSelected(hostContext));
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final viewInsets = MediaQuery.viewInsetsOf(context);
+    final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
+
+    // When keyboard is visible, add its height to bottom padding so sheet rides with keyboard
+    final bottomPadding = viewInsets.bottom > 0
+        ? viewInsets.bottom + 12.sp
+        : math.max(20.sp, safeBottom + 8.sp);
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        20.sp,
+        12.sp,
+        20.sp,
+        bottomPadding,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 40.w,
+              height: 4.h,
+              decoration: BoxDecoration(
+                color: kWhiteColor.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(999),
+              ),
             ),
           ),
-        ],
-        if (actions.isNotEmpty) ...[
           SizedBox(height: 12.h),
-          for (var i = 0; i < actions.length; i++) ...[
-            _buildActionTile(actions[i]),
-            if (i != actions.length - 1) SizedBox(height: 8.h),
+          Text(
+            title,
+            style: AppTypography.textLgBold.copyWith(
+              color: kWhiteColor,
+              letterSpacing: 0.25,
+            ),
+          ),
+          if (subtitle != null) ...[
+            SizedBox(height: 4.h),
+            Text(
+              subtitle!,
+              style: AppTypography.textSmRegular.copyWith(
+                color: kWhiteColor70,
+              ),
+            ),
+          ],
+          if (actions.isNotEmpty) ...[
+            SizedBox(height: 12.h),
+            for (var i = 0; i < actions.length; i++) ...[
+              _NotationActionTile(
+                action: actions[i],
+                onTap: () => _handleActionTap(context, actions[i]),
+              ),
+              if (i != actions.length - 1) SizedBox(height: 8.h),
+            ],
           ],
         ],
-      ],
+      ),
     );
   }
+}
 
-  Widget _buildCommentEditorSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            IconButton(
-              icon: Icon(
-                Icons.arrow_back_ios_new_rounded,
-                color: kWhiteColor,
-                size: 18.ic,
-              ),
-              onPressed: _closeCommentEditor,
-              splashRadius: 20.sp,
-            ),
-            SizedBox(width: 4.w),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Variant comment',
-                    style: AppTypography.textLgBold.copyWith(
-                      color: kWhiteColor,
-                      letterSpacing: 0.3,
-                    ),
-                  ),
-                  SizedBox(height: 2.h),
-                  Text(
-                    'Leave a note for this branch.',
-                    style: AppTypography.textSmRegular.copyWith(
-                      color: kWhiteColor70,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        SizedBox(height: 12.h),
-        Divider(color: kWhiteColor.withValues(alpha: 0.08)),
-        SizedBox(height: 12.h),
-        _buildCommentInput(),
-      ],
-    );
-  }
+class _NotationActionTile extends StatelessWidget {
+  final _NotationActionItem action;
+  final VoidCallback onTap;
 
-  Widget _buildActionTile(_NotationActionItem action) {
+  const _NotationActionTile({required this.action, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(14.sp),
-        onTap: () => _handleActionTap(action),
+        onTap: onTap,
         child: Container(
           padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 14.sp),
           decoration: BoxDecoration(
@@ -5824,7 +5890,9 @@ class _NotationActionSheetState extends ConsumerState<_NotationActionSheet> {
                 ),
               ),
               Icon(
-                Icons.arrow_forward_ios_rounded,
+                action.triggersCommentEditor
+                    ? Icons.drive_file_rename_outline
+                    : Icons.arrow_forward_ios_rounded,
                 color: kWhiteColor.withValues(alpha: 0.35),
                 size: 14.ic,
               ),
@@ -5834,102 +5902,75 @@ class _NotationActionSheetState extends ConsumerState<_NotationActionSheet> {
       ),
     );
   }
+}
 
-  Widget _buildCommentInput() {
-    final config = widget.commentConfig;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        TextField(
-          controller: _commentController,
-          focusNode: _commentFocusNode,
-          maxLines: 3,
-          minLines: 1,
-          maxLength: _variationCommentMaxChars,
-          style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
-          decoration: InputDecoration(
-            filled: true,
-            fillColor: kBlack2Color.withValues(alpha: 0.6),
-            hintText: 'Add a quick thought…',
-            hintStyle: AppTypography.textSmRegular.copyWith(
-              color: kWhiteColor70,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12.sp),
-              borderSide: BorderSide(
-                color: kWhiteColor.withValues(alpha: 0.1),
-              ),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12.sp),
-              borderSide: BorderSide(
-                color: kPrimaryColor.withValues(alpha: 0.8),
-              ),
-            ),
-          ),
-        ),
-        SizedBox(height: 12.h),
-        Row(
-          children: [
-            TextButton(
-              onPressed:
-                  _commentController.text.isEmpty
-                      ? null
-                      : () {
-                        _commentController.clear();
-                      },
-              child: const Text('Clear'),
-            ),
-            const Spacer(),
-            FilledButton(
-              onPressed:
-                  config == null || _isSaving || !_hasEdited
-                      ? null
-                      : _handleSaveComment,
-              style: FilledButton.styleFrom(
-                backgroundColor: kPrimaryColor,
-                foregroundColor: kWhiteColor,
-                padding: EdgeInsets.symmetric(
-                  horizontal: 18.w,
-                  vertical: 10.h,
-                ),
-              ),
-              child: _isSaving
-                  ? SizedBox(
-                      height: 14.h,
-                      width: 14.h,
-                      child: const CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Save comment'),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
+class _NotationCommentPage extends ConsumerStatefulWidget {
+  final _VariationCommentSheetConfig config;
+  final BuildContext hostContext;
 
-  Future<void> _handleActionTap(_NotationActionItem action) async {
-    if (action.triggersCommentEditor && widget.commentConfig != null) {
-      HapticFeedback.selectionClick();
-      _openCommentEditor();
-      return;
-    }
-    HapticFeedback.selectionClick();
-    Navigator.of(context).pop();
-    await Future.sync(() => action.onSelected(widget.hostContext));
-  }
+  const _NotationCommentPage({
+    required this.config,
+    required this.hostContext,
+  });
 
-  Future<void> _handleSaveComment() async {
-    final config = widget.commentConfig;
-    if (config == null || _isSaving) return;
-    setState(() => _isSaving = true);
-    final text = _commentController.text;
-    try {
-      await Future.sync(() => config.onSubmit(widget.hostContext, text));
-    } catch (error, stackTrace) {
+  @override
+  ConsumerState<_NotationCommentPage> createState() =>
+      _NotationCommentPageState();
+}
+
+class _NotationCommentPageState
+    extends ConsumerState<_NotationCommentPage> {
+  late final TextEditingController _controller;
+  late final FocusNode _focusNode;
+  bool _isSaving = false;
+  bool _hasEdited = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(
+      text: widget.config.initialValue ?? '',
+    )..addListener(_onChanged);
+
+    _focusNode = FocusNode();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        setState(() => _isSaving = false);
+        _focusNode.requestFocus();
       }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_onChanged);
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _onChanged() {
+    final baseValue = widget.config.initialValue ?? '';
+    final edited = _controller.text != baseValue;
+    if (edited != _hasEdited) {
+      setState(() => _hasEdited = edited);
+    }
+  }
+
+  Future<void> _handleSave() async {
+    if (_isSaving || !_hasEdited) return;
+    setState(() => _isSaving = true);
+    try {
+      await Future.sync(
+        () => widget.config.onSubmit(
+          widget.hostContext,
+          _controller.text,
+        ),
+      );
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+    } catch (error, stackTrace) {
+      setState(() => _isSaving = false);
       FlutterError.reportError(
         FlutterErrorDetails(
           exception: error,
@@ -5937,13 +5978,160 @@ class _NotationActionSheetState extends ConsumerState<_NotationActionSheet> {
           context: ErrorDescription('Saving notation comment'),
         ),
       );
-      return;
     }
-    if (!mounted) return;
-    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final viewInsets = MediaQuery.viewInsetsOf(context);
+    final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
+
+    // When keyboard appears, push content up so TextField stays visible above keyboard
+    // Extra padding ensures buttons are well above keyboard on all devices
+    final bottomPadding = viewInsets.bottom > 0
+        ? viewInsets.bottom + 40.sp
+        : math.max(20.sp, safeBottom + 8.sp);
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20.sp, 16.sp, 20.sp, bottomPadding),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header with back button and title
+          Row(
+            children: [
+              IconButton(
+                icon: Icon(
+                  Icons.arrow_back_ios_new_rounded,
+                  color: kWhiteColor,
+                  size: 18.ic,
+                ),
+                onPressed: () {
+                  // Try to pop from current navigator first (for paged sheets)
+                  // If that fails, pop from root navigator (for direct sheets)
+                  if (!Navigator.of(context).canPop()) {
+                    Navigator.of(context, rootNavigator: true).pop();
+                  } else {
+                    Navigator.of(context).pop();
+                  }
+                },
+                splashRadius: 20.sp,
+              ),
+              SizedBox(width: 4.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Variant comment',
+                      style: AppTypography.textLgBold.copyWith(
+                        color: kWhiteColor,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                    SizedBox(height: 2.h),
+                    Text(
+                      'Leave a note for this branch.',
+                      style: AppTypography.textSmRegular.copyWith(
+                        color: kWhiteColor70,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 12.h),
+          Divider(color: kWhiteColor.withValues(alpha: 0.08)),
+          SizedBox(height: 12.h),
+
+          // Text field - flexible height but not taking all space
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: 120.h,
+              maxHeight: 280.h,
+            ),
+            child: TextField(
+              controller: _controller,
+              focusNode: _focusNode,
+              maxLines: null,
+              minLines: 4,
+              maxLength: _variationCommentMaxChars,
+              style: AppTypography.textSmRegular.copyWith(
+                color: kWhiteColor,
+              ),
+              textInputAction: TextInputAction.newline,
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: kBlack2Color.withValues(alpha: 0.6),
+                hintText: 'Add a quick thought…',
+                hintStyle: AppTypography.textSmRegular.copyWith(
+                  color: kWhiteColor70,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12.sp),
+                  borderSide: BorderSide(
+                    color: kWhiteColor.withValues(alpha: 0.1),
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12.sp),
+                  borderSide: BorderSide(
+                    color: kPrimaryColor.withValues(alpha: 0.8),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          SizedBox(height: 12.h),
+
+          // Action buttons
+          Row(
+            children: [
+              TextButton(
+                onPressed:
+                    _controller.text.isEmpty
+                        ? null
+                        : () {
+                          HapticFeedback.selectionClick();
+                          _controller.clear();
+                        },
+                child: const Text('Clear'),
+              ),
+              const Spacer(),
+              FilledButton(
+                onPressed: _isSaving || !_hasEdited ? null : _handleSave,
+                style: FilledButton.styleFrom(
+                  backgroundColor: kPrimaryColor,
+                  foregroundColor: kWhiteColor,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 18.w,
+                    vertical: 10.h,
+                  ),
+                ),
+                child: _isSaving
+                    ? SizedBox(
+                        height: 14.h,
+                        width: 14.h,
+                        child: const CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: kWhiteColor,
+                        ),
+                      )
+                    : const Text('Save comment'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
 
+// DEPRECATED: Old dialog-based comment approach replaced with smooth bottom sheet
+// Keeping for reference - can be removed in future cleanup
+/*
 class _CommentDialog extends ConsumerStatefulWidget {
   final String initialComment;
   final ValueChanged<String> onSave;
@@ -6057,7 +6245,7 @@ class _CommentDialogState extends ConsumerState<_CommentDialog>
             ),
             Positioned.fill(
             child: KeyboardAnimationBuilder(
-              focusNode: widget.focusNode,
+              focusNode: _focusNode,
               keyboardTotalHeight: keyboardTotalHeight,
               interpolateLastPart: Platform.isIOS,
               interpolationConfig: InterpolationConfig.fidelity,
@@ -6214,7 +6402,7 @@ class _CommentDialogState extends ConsumerState<_CommentDialog>
               padding: EdgeInsets.all(20.sp),
               child: TextField(
                 controller: _controller,
-                focusNode: widget.focusNode,
+                focusNode: _focusNode,
                 style: AppTypography.textMdRegular.copyWith(
                   color: kWhiteColor,
                   height: 1.5,
@@ -6346,3 +6534,5 @@ class _CommentDialogState extends ConsumerState<_CommentDialog>
     );
   }
 }
+*/
+// End of deprecated _CommentDialog class
