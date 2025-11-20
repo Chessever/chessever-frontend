@@ -4359,6 +4359,8 @@ class _PrincipalVariationListState
     final newSelectedIndex = widget.state.selectedVariantIndex;
     final selectedIndexChanged = oldSelectedIndex != newSelectedIndex;
     final userSelected = _lastUserSelectedIndex;
+    final ignoreSelectedChangeAfterPosition =
+        positionChanged && userSelected != null;
 
     int targetIndex;
 
@@ -4373,9 +4375,14 @@ class _PrincipalVariationListState
     } else if (selectedIndexChanged &&
         newSelectedIndex != null &&
         newSelectedIndex <= maxIndex) {
-      // User explicitly selected a variant (selectedVariantIndex changed) - honor that selection
-      targetIndex = newSelectedIndex;
-      _lastUserSelectedIndex = newSelectedIndex;
+      // If position just changed, prefer the user's last selection to avoid flicker
+      if (ignoreSelectedChangeAfterPosition && userSelected != null) {
+        targetIndex = userSelected;
+      } else {
+        // User explicitly selected a variant (selectedVariantIndex changed) - honor that selection
+        targetIndex = newSelectedIndex;
+        _lastUserSelectedIndex = newSelectedIndex;
+      }
     } else if (userSelected != null && userSelected <= maxIndex) {
       // Silent update (e.g., depth increase) - preserve user's current position
       targetIndex = userSelected;
