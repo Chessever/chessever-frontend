@@ -1447,7 +1447,7 @@ class ChessBoardScreenNotifierNew
         lockedPvMergedPositions: mergedPositions,
         lockedPvBaseMoveCount: baseMoveCount,
         lockedPvNavigationIndex: navigationIndex,
-        isEvaluating: false,
+        isEvaluating: true,
         shapes: const ISet.empty(),
       ),
     );
@@ -1877,8 +1877,15 @@ class ChessBoardScreenNotifierNew
         analysisState: updatedAnalysis,
         lockedPvNavigationIndex: clampedPvIndex,
         pvPreviewMoveIndex: clampedPvIndex,
-        isEvaluating: false,
+        isEvaluating: true,
       ),
+    );
+
+    // Keep eval bar alive during preview navigation; PV arrows/cards stay suppressed elsewhere
+    _updateEvaluation(
+      force: true,
+      preserveCurrentPvs: true,
+      preserveDepthProgress: true,
     );
   }
 
