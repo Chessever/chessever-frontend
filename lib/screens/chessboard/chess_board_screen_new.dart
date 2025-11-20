@@ -964,6 +964,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         }
       },
       child: Scaffold(
+        resizeToAvoidBottomInset: false,
         // REMOVED: RawGestureDetector was blocking PageView swipes
         body: PageView.builder(
           padEnds: true,
