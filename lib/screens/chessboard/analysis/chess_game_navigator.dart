@@ -508,6 +508,38 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
     debugPrint('🎯 NAVIGATOR makeOrGoToMove: Adding move at current position');
 
     final isAtLineEnd = currentIndex == currentLine.length - 1;
+    final isOnMainlinePath =
+        state.movePointer.isEmpty ||
+        state.movePointer.asMap().entries.every((entry) => !entry.key.isOdd);
+
+    if (isAtLineEnd && isOnMainlinePath && state.movePointer.isNotEmpty) {
+      debugPrint(
+        '🎯 NAVIGATOR makeOrGoToMove: Mainline tail -> force new variation',
+      );
+      int? newVariationIndex;
+      final updatedMainline = _addVariationToPointer(
+        state.game.mainline,
+        state.movePointer,
+        0,
+        newMove,
+        (index) => newVariationIndex = index,
+      );
+      if (newVariationIndex == null) {
+        debugPrint(
+          '🎯 NAVIGATOR makeOrGoToMove: Failed to attach forced mainline variation',
+        );
+        return;
+      }
+
+      final newPointer = <Number>[...state.movePointer, newVariationIndex!, 0];
+      replaceState(
+        ChessGameNavigatorState(
+          game: state.game.copyWith(mainline: updatedMainline),
+          movePointer: newPointer,
+        ),
+      );
+      return;
+    }
 
     if (isAtLineEnd) {
       debugPrint(

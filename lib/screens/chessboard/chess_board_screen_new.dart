@@ -3508,6 +3508,14 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     final canModifyVariant = variantHeadPointer != null && !isMainlineMove;
     final pointerId = NotationPointer.encode(pointer);
     final currentComment = widget.state.variationComments[pointerId] ?? '';
+    String? moveTimeLabel;
+    if (isMainlineMove && pointer.isNotEmpty) {
+      final moveIndex = pointer.first.toInt();
+      if (moveIndex >= 0 && moveIndex < widget.state.moveTimes.length) {
+        final raw = widget.state.moveTimes[moveIndex].trim();
+        moveTimeLabel = raw.isNotEmpty ? raw : null;
+      }
+    }
     
     final commentConfig = _VariationCommentSheetConfig(
       initialValue: currentComment,
@@ -3612,6 +3620,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       subtitle: 'Move options',
       actions: actions,
       commentConfig: commentConfig,
+      moveTimeLabel: moveTimeLabel,
     );
   }
 
@@ -5676,6 +5685,7 @@ Future<void> _showNotationActionSheet({
   String? subtitle,
   required List<_NotationActionItem> actions,
   _VariationCommentSheetConfig? commentConfig,
+  String? moveTimeLabel,
 }) async {
   final hostContext = context;
   final route = ModalSheetRoute<void>(
@@ -5691,6 +5701,7 @@ Future<void> _showNotationActionSheet({
           actions: actions,
           hostContext: hostContext,
           commentConfig: commentConfig,
+          moveTimeLabel: moveTimeLabel,
         ),
   );
 
@@ -5714,6 +5725,7 @@ class _NotationActionSheet extends ConsumerWidget {
   final List<_NotationActionItem> actions;
   final BuildContext hostContext;
   final _VariationCommentSheetConfig? commentConfig;
+  final String? moveTimeLabel;
 
   const _NotationActionSheet({
     required this.title,
@@ -5721,6 +5733,7 @@ class _NotationActionSheet extends ConsumerWidget {
     required this.actions,
     required this.hostContext,
     this.commentConfig,
+    this.moveTimeLabel,
   });
 
   @override
@@ -5731,11 +5744,11 @@ class _NotationActionSheet extends ConsumerWidget {
         PagedSheetRoute(
           scrollConfiguration: const SheetScrollConfiguration(),
           dragConfiguration: const SheetDragConfiguration(),
-          initialOffset: const SheetOffset.proportionalToViewport(0.45),
+          initialOffset: const SheetOffset.proportionalToViewport(0.35),
           snapGrid: SheetSnapGrid(
             snaps: const [
-              SheetOffset.proportionalToViewport(0.45),
-              SheetOffset.proportionalToViewport(0.85),
+              SheetOffset.proportionalToViewport(0.35),
+              SheetOffset.proportionalToViewport(0.75),
             ],
             minFlingSpeed: 900,
           ),
@@ -5746,6 +5759,7 @@ class _NotationActionSheet extends ConsumerWidget {
                 actions: actions,
                 commentConfig: commentConfig,
                 hostContext: hostContext,
+                moveTimeLabel: moveTimeLabel,
               ),
         ),
       ],
@@ -5774,6 +5788,7 @@ class _NotationActionListPage extends ConsumerWidget {
   final List<_NotationActionItem> actions;
   final _VariationCommentSheetConfig? commentConfig;
   final BuildContext hostContext;
+  final String? moveTimeLabel;
 
   const _NotationActionListPage({
     required this.title,
@@ -5781,6 +5796,7 @@ class _NotationActionListPage extends ConsumerWidget {
     required this.hostContext,
     this.subtitle,
     this.commentConfig,
+    this.moveTimeLabel,
   });
 
   Future<void> _handleActionTap(
@@ -5848,22 +5864,58 @@ class _NotationActionListPage extends ConsumerWidget {
             ),
           ),
           SizedBox(height: 12.h),
-          Text(
-            title,
-            style: AppTypography.textLgBold.copyWith(
-              color: kWhiteColor,
-              letterSpacing: 0.25,
-            ),
-          ),
-          if (subtitle != null) ...[
-            SizedBox(height: 4.h),
-            Text(
-              subtitle!,
-              style: AppTypography.textSmRegular.copyWith(
-                color: kWhiteColor70,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: AppTypography.textLgBold.copyWith(
+                        color: kWhiteColor,
+                        letterSpacing: 0.25,
+                      ),
+                    ),
+                    if (subtitle != null) ...[
+                      SizedBox(height: 4.h),
+                      Text(
+                        subtitle!,
+                        style: AppTypography.textSmRegular.copyWith(
+                          color: kWhiteColor70,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
-            ),
-          ],
+              if (moveTimeLabel != null) ...[
+                SizedBox(width: 12.w),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Time spent',
+                      style: AppTypography.textXsMedium.copyWith(
+                        color: kWhiteColor70,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                    SizedBox(height: 4.h),
+                    Text(
+                      moveTimeLabel!,
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: kWhiteColor,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
           if (actions.isNotEmpty) ...[
             SizedBox(height: 12.h),
             for (var i = 0; i < actions.length; i++) ...[
