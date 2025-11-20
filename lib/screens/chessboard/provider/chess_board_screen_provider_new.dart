@@ -1101,6 +1101,14 @@ class ChessBoardScreenNotifierNew
       ..goToTail();
 
     _analysisNavigator!.goToTail();
+
+    // Clear all variation comments
+    if (currentState.variationComments.isNotEmpty) {
+      state = AsyncValue.data(
+        currentState.copyWith(variationComments: const <String, String>{}),
+      );
+    }
+
     await _persistAnalysisState();
   }
 

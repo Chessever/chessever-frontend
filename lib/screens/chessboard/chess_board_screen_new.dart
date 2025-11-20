@@ -425,6 +425,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   int _currentPageIndex = 0;
   final Set<String> _syncedLatestPositions = <String>{};
   bool _isRevertingPage = false;
+  ProviderSubscription<AsyncValue<ChessBoardStateNew>>? _boardKeepAliveSub;
+  ChessBoardProviderParams? _keepAliveParams;
 
   GamesTourModel _resolveGameForIndex(int index) {
     if (widget.games.isEmpty) {
@@ -496,6 +498,31 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     _syncedLatestPositions.add(gameId);
   }
 
+  /// Keep the active board provider alive even before build starts watching it.
+  /// This prevents the autoDispose notifier from being disposed while we kick off
+  /// early work (parseMoves / initial eval) from initState/didChangeDependencies.
+  void _keepBoardProviderAlive(int pageIndex) {
+    if (widget.games.isEmpty) return;
+
+    final params = ChessBoardProviderParams(
+      game: _resolveGameForIndex(pageIndex),
+      index: pageIndex,
+    );
+
+    if (_keepAliveParams == params) return;
+
+    _boardKeepAliveSub?.close();
+    _keepAliveParams = params;
+    _boardKeepAliveSub = ref.listenManual<AsyncValue<ChessBoardStateNew>>(
+      chessBoardScreenProviderNew(params),
+      (_, __) {},
+      fireImmediately: false,
+      onError: (err, st) {
+        debugPrint('Error keeping chess board provider alive: $err');
+      },
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -503,6 +530,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     final safeIndex = widget.currentIndex.clamp(0, widget.games.length - 1);
     _pageController = PageController(initialPage: safeIndex);
     _currentPageIndex = safeIndex;
+    _keepBoardProviderAlive(_currentPageIndex);
 
     // Note: We'll enable streaming in didChangeDependencies when ref is available
     WidgetsBinding.instance.addObserver(this);
@@ -610,6 +638,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     setState(() {
       _currentPageIndex = newIndex;
     });
+    _keepBoardProviderAlive(newIndex);
 
     // CRITICAL: Update the global provider to track which page is visible
     // This prevents off-screen games from playing audio
@@ -724,6 +753,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _boardKeepAliveSub?.close();
     _pageController.dispose();
     super.dispose();
   }
@@ -3866,11 +3896,11 @@ class _DirectCommentSheet extends ConsumerWidget {
         PagedSheetRoute(
           scrollConfiguration: const SheetScrollConfiguration(),
           dragConfiguration: const SheetDragConfiguration(),
-          initialOffset: const SheetOffset.proportionalToViewport(0.7),
+          initialOffset: const SheetOffset.proportionalToViewport(0.8),
           snapGrid: SheetSnapGrid(
             snaps: const [
-              SheetOffset.proportionalToViewport(0.7),
-              SheetOffset.proportionalToViewport(0.92),
+              SheetOffset.proportionalToViewport(0.8),
+              SheetOffset.proportionalToViewport(0.95),
             ],
             minFlingSpeed: 100,
           ),
@@ -5764,11 +5794,11 @@ class _NotationActionListPage extends ConsumerWidget {
         PagedSheetRoute(
           scrollConfiguration: const SheetScrollConfiguration(),
           dragConfiguration: const SheetDragConfiguration(),
-          initialOffset: const SheetOffset.proportionalToViewport(0.7),
+          initialOffset: const SheetOffset.proportionalToViewport(0.8),
           snapGrid: SheetSnapGrid(
             snaps: const [
-              SheetOffset.proportionalToViewport(0.7),
-              SheetOffset.proportionalToViewport(0.92),
+              SheetOffset.proportionalToViewport(0.8),
+              SheetOffset.proportionalToViewport(0.95),
             ],
             minFlingSpeed: 100,
           ),
@@ -5989,7 +6019,7 @@ class _NotationCommentPageState
     // When keyboard appears, push content up so TextField stays visible above keyboard
     // Extra padding ensures buttons are well above keyboard on all devices
     final bottomPadding = viewInsets.bottom > 0
-        ? viewInsets.bottom + 40.sp
+        ? viewInsets.bottom + 52.sp
         : math.max(20.sp, safeBottom + 8.sp);
 
     return Padding(
