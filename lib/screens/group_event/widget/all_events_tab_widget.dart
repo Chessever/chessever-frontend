@@ -106,29 +106,36 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget>
           ),
         );
 
+        // Use index as suffix to prevent duplicate hero tags if same event appears twice
+        final heroSuffix = 'all-$index';
+
         Widget eventCard;
         switch (tourEventCardModel.tourEventCategory) {
           case TourEventCategory.live:
             eventCard = EventCard(
               tourEventCardModel: tourEventCardModel,
+              heroTagSuffix: heroSuffix,
               onTap: () => widget.onSelect(tourEventCardModel),
             );
             break;
           case TourEventCategory.upcoming:
             eventCard = EventCard(
               tourEventCardModel: tourEventCardModel,
+              heroTagSuffix: heroSuffix,
               onTap: () => widget.onSelect(tourEventCardModel),
             );
             break;
           case TourEventCategory.ongoing:
             eventCard = EventCard(
               tourEventCardModel: tourEventCardModel,
+              heroTagSuffix: heroSuffix,
               onTap: () => widget.onSelect(tourEventCardModel),
             );
             break;
           case TourEventCategory.completed:
             eventCard = EventCard(
               tourEventCardModel: tourEventCardModel,
+              heroTagSuffix: heroSuffix,
               onTap: () => widget.onSelect(tourEventCardModel),
             );
             break;

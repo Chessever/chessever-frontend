@@ -55,6 +55,9 @@ class PlayerPaginationNotifier
   String _search = '';
   String? _countryCode;
 
+  /// Expose fetching state for UI loading indicators
+  bool get isFetching => _isFetching;
+
   PlayerPaginationNotifier(this._viewModel, this._ref, {bool isOnboarding = false})
       : _isOnboarding = isOnboarding,
         super(const AsyncValue.loading());
