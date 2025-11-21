@@ -29,6 +29,12 @@ class AuthScreenNotifier extends StateNotifier<AuthScreenState> {
     );
   }
 
+  Future<void> signInAsGuest() async {
+    await _performSignIn(
+      () => ref.read(authStateProvider.notifier).signInAnonymously(),
+    );
+  }
+
   Future<void> _performSignIn(Future<AppUser> Function() signInMethod) async {
     debugPrint('🔵 [AUTH] Starting sign-in flow...');
     state = state.copyWith(isLoading: true, errorMessage: null);

@@ -2,12 +2,11 @@ import 'package:chessever2/repository/supabase/calendar_event/calendar_event.dar
 import 'package:chessever2/repository/supabase/calendar_event/calendar_event_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
-import 'package:chessever2/screens/calendar/calendar_screen.dart';
+import 'package:chessever2/screens/calendar/provider/calendar_screen_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
-import 'package:chessever2/screens/group_event/widget/filter_popup/group_event_filter_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -16,8 +15,8 @@ final calendarDetailScreenProvider = AutoDisposeStateNotifierProvider.family<
   _CalendarDetailScreenController,
   AsyncValue<List<GroupEventCardModel>>,
   CalendarFilterArgs
->((ref, filterArges) {
-  return _CalendarDetailScreenController(ref: ref, filterArgs: filterArges);
+>((ref, filterArgs) {
+  return _CalendarDetailScreenController(ref: ref, filterArgs: filterArgs);
 });
 
 class _CalendarDetailScreenController
@@ -25,7 +24,7 @@ class _CalendarDetailScreenController
   _CalendarDetailScreenController({required this.ref, required this.filterArgs})
     : super(const AsyncValue.loading()) {
     _init();
-    _listenToLiveIds();
+    _listenToFilters();
   }
 
   final Ref ref;
@@ -34,10 +33,14 @@ class _CalendarDetailScreenController
   List<GroupBroadcast> groupBroadcast = [];
   List<CalendarEvent> calendarEvents = [];
 
-  Future<void> _init({List<String>? newLiveId}) async {
-    try {
-      final liveIds = newLiveId ?? <String>[];
+  void _listenToFilters() {
+    ref.listen(calendarSearchQueryProvider, (_, __) => _applyFilters());
+    ref.listen(calendarTimeControlProvider, (_, __) => _applyFilters());
+    ref.listen(liveGroupBroadcastIdsProvider, (_, __) => _applyFilters());
+  }
 
+  Future<void> _init() async {
+    try {
       // Fetch both group broadcasts and calendar events
       final current = await ref
           .read(groupBroadcastRepositoryProvider)
@@ -56,179 +59,104 @@ class _CalendarDetailScreenController
       groupBroadcast = current;
       calendarEvents = calEvents;
 
-      final tours = [...current];
-
-      final monthStart = DateTime(filterArgs.year, filterArgs.month, 1);
-      final monthEnd = DateTime(filterArgs.year, filterArgs.month + 1, 0);
-
-      // Filter group broadcasts
-      final filteredBroadcasts = tours.where((t) {
-        if (t.dateStart == null || t.dateEnd == null) return false;
-        return t.dateStart!.isBefore(
-              monthEnd.add(const Duration(days: 1)),
-            ) &&
-            t.dateEnd!.isAfter(
-              monthStart.subtract(const Duration(days: 1)),
-            );
-      }).toList();
-
-      // Filter calendar events
-      final filteredCalEvents = calEvents.where((e) {
-        if (e.startDate == null || e.endDate == null) return false;
-        return e.startDate!.isBefore(
-              monthEnd.add(const Duration(days: 1)),
-            ) &&
-            e.endDate!.isAfter(
-              monthStart.subtract(const Duration(days: 1)),
-            );
-      }).toList();
-
-      // Convert to card models
-      final broadcastCards = filteredBroadcasts
-          .map((t) => GroupEventCardModel.fromGroupBroadcast(t, liveIds))
-          .toList();
-
-      final calendarCards = filteredCalEvents
-          .map((e) => GroupEventCardModel.fromCalendarEvent(e))
-          .toList();
-
-      // Combine both lists
-      final allCards = [...broadcastCards, ...calendarCards];
-
-      if (allCards.isEmpty) {
-        state = const AsyncValue.data([]);
-        return;
-      }
-
-      final sortedEvents = ref
-          .read(tournamentSortingServiceProvider)
-          .sortAllTours(allCards);
-
-      state = AsyncValue.data(sortedEvents);
+      _applyFilters();
     } catch (e, st) {
       state = AsyncValue.error(e, st);
     }
   }
 
-  void _listenToLiveIds() {
-    ref.listen<AsyncValue<List<String>>>(liveGroupBroadcastIdsProvider, (
-      previous,
-      next,
-    ) {
-      next.whenData((liveIds) {
-        // Only update if live IDs actually changed
-        if (ref.read(liveBroadcastIdsProvider).length != liveIds.length ||
-            !ref
-                .read(liveBroadcastIdsProvider)
-                .every((id) => liveIds.contains(id))) {
-          ref.read(liveBroadcastIdsProvider.notifier).state = liveIds;
-          _init(newLiveId: liveIds);
-        }
-      });
-    });
-  }
-
-  void reset() {
+  void _applyFilters() {
+    final searchQuery = ref.read(calendarSearchQueryProvider).toLowerCase();
+    final timeControl = ref.read(calendarTimeControlProvider);
     final liveIds = ref.read(liveBroadcastIdsProvider);
 
-    final tours = [...groupBroadcast];
+    final monthStart = DateTime(filterArgs.year, filterArgs.month, 1);
+    final monthEnd = DateTime(filterArgs.year, filterArgs.month + 1, 0, 23, 59, 59);
 
-    if (tours.isEmpty) {
+    // Filter group broadcasts
+    final filteredBroadcasts = groupBroadcast.where((t) {
+      final range = resolveCalendarDateRange(t.dateStart, t.dateEnd);
+      if (range == null) return false;
+
+      if (!_overlapsMonth(range, monthStart, monthEnd)) return false;
+
+      return _matchesFilters(
+        t.name,
+        null,
+        t.timeControl,
+        searchQuery,
+        timeControl,
+      );
+    }).toList();
+
+    // Filter calendar events
+    final filteredCalEvents = calendarEvents.where((e) {
+      final range = resolveCalendarDateRange(e.startDate, e.endDate);
+      if (range == null) return false;
+
+      if (!_overlapsMonth(range, monthStart, monthEnd)) return false;
+
+      return _matchesFilters(
+        e.name,
+        e.location,
+        e.timeControl,
+        searchQuery,
+        timeControl,
+      );
+    }).toList();
+
+    // Convert to card models
+    final broadcastCards = filteredBroadcasts
+        .map((t) => GroupEventCardModel.fromGroupBroadcast(t, liveIds))
+        .toList();
+
+    final calendarCards = filteredCalEvents
+        .map((e) => GroupEventCardModel.fromCalendarEvent(e))
+        .toList();
+
+    // Combine both lists
+    final allCards = [...broadcastCards, ...calendarCards];
+
+    if (allCards.isEmpty) {
       state = const AsyncValue.data([]);
       return;
     }
 
-    final filtered =
-        tours.where((t) {
-          if (t.dateStart == null || t.dateEnd == null) return false;
-
-          final monthStart = DateTime(filterArgs.year, filterArgs.month, 1);
-          final monthEnd = DateTime(filterArgs.year, filterArgs.month + 1, 0);
-
-          return t.dateStart!.isBefore(monthEnd.add(const Duration(days: 1))) &&
-              t.dateEnd!.isAfter(monthStart.subtract(const Duration(days: 1)));
-        }).toList();
-
-    final cards =
-        filtered
-            .map((t) => GroupEventCardModel.fromGroupBroadcast(t, liveIds))
-            .toList();
-
     final sortedEvents = ref
         .read(tournamentSortingServiceProvider)
-        .sortAllTours(cards);
+        .sortCalendarEvents(allCards);
 
     state = AsyncValue.data(sortedEvents);
   }
 
-  Future<void> search(String query) async {
-    try {
-      // Convert group broadcasts to cards
-      final broadcastCards = groupBroadcast.map(
-        (e) => GroupEventCardModel.fromGroupBroadcast(
-          e,
-          ref.read(liveBroadcastIdsProvider),
-        ),
-      );
-
-      // Convert calendar events to cards
-      final calendarCards = calendarEvents.map(
-        (e) => GroupEventCardModel.fromCalendarEvent(e),
-      );
-
-      // Combine both
-      final allCards = [...broadcastCards, ...calendarCards];
-
-      final selectedMonth = ref.read(selectedMonthProvider);
-      final selectedYear = ref.read(selectedYearProvider);
-
-      final monthStart = DateTime(selectedYear, selectedMonth, 1);
-      final monthEnd = DateTime(selectedYear, selectedMonth + 1, 0);
-
-      var filtered = allCards.where((t) {
-        if (t.startDate == null || t.endDate == null) return false;
-        return t.startDate!.isBefore(
-              monthEnd.add(const Duration(days: 1)),
-            ) &&
-            t.endDate!.isAfter(
-              monthStart.subtract(const Duration(days: 1)),
-            );
-      }).toList();
-
-      final q = query.trim().toLowerCase();
-      if (q.isNotEmpty) {
-        filtered = filtered.where((t) {
-          final nameMatch = t.title.toLowerCase().contains(q);
-          final tcMatch = t.timeControl.toLowerCase().contains(q);
-          final locationMatch =
-              t.location?.toLowerCase().contains(q) ?? false;
-          return nameMatch || tcMatch || locationMatch;
-        }).toList();
-
-        filtered.sort((a, b) {
-          int score(GroupEventCardModel t) {
-            final name = t.title.toLowerCase();
-            final tc = t.timeControl.toLowerCase();
-            final loc = t.location?.toLowerCase() ?? '';
-
-            if (name == q || tc == q || loc == q) return 100;
-            if (name.startsWith(q) || tc.startsWith(q) || loc.startsWith(q)) {
-              return 10;
-            }
-            if (name.contains(q) || tc.contains(q) || loc.contains(q)) {
-              return 1;
-            }
-            return 0;
-          }
-
-          return score(b).compareTo(score(a));
-        });
+  bool _matchesFilters(
+    String name,
+    String? location,
+    String? timeControl,
+    String searchQuery,
+    String? filterTimeControl,
+  ) {
+    final normalizedFilter = normalizeTimeControl(filterTimeControl);
+    if (normalizedFilter != null) {
+      final eventTime = normalizeTimeControl(timeControl);
+      if (eventTime != normalizedFilter) {
+        return false;
       }
-
-      state = AsyncValue.data(filtered);
-    } catch (e, st) {
-      state = AsyncValue.error(e, st);
     }
+
+    return CalendarSearchHelper.matches(
+      title: name,
+      location: location,
+      searchQuery: searchQuery,
+    );
+  }
+
+  bool _overlapsMonth(
+    DateTimeRange range,
+    DateTime monthStart,
+    DateTime monthEnd,
+  ) {
+    return !range.start.isAfter(monthEnd) && !range.end.isBefore(monthStart);
   }
 
   void onSelectTournament({
@@ -238,14 +166,8 @@ class _CalendarDetailScreenController
     try {
       // Check if this is a calendar event (community event)
       if (id.startsWith('cal_event_')) {
-        // Community events don't have detail pages yet
-        // For now, we'll show a snackbar with the event info
-        // TODO: Create a detail page for community events
-
-        // Extract the sanitized name from the ID
         final sanitizedName = id.replaceFirst('cal_event_', '');
 
-        // Find the event by matching the sanitized name
         final event = calendarEvents.firstWhere(
           (e) {
             final eventSanitized = e.name
@@ -279,7 +201,6 @@ class _CalendarDetailScreenController
         }
       }
 
-      // If not found in current list, fetch directly from repository
       selectedBroadcast ??= await ref
           .read(groupBroadcastRepositoryProvider)
           .getGroupBroadcastById(id);
@@ -290,75 +211,10 @@ class _CalendarDetailScreenController
       if (context.mounted && ref.read(selectedBroadcastModelProvider) != null) {
         Navigator.pushNamed(context, '/tournament_detail_screen');
       }
-    } catch (e, st) {}
-  }
-
-  Future<void> applyAllFilters({
-    List<String>? filters,
-    required RangeValues eloRange,
-  }) async {
-    final groupBroadcast = this.groupBroadcast;
-
-    // Normalize filters
-    final filterSet =
-        (filters ?? const <String>[])
-            .map((f) => f.trim().toLowerCase())
-            .toSet();
-
-    // Separate status vs format filters
-    final requestedStatuses = <String>{
-      EventStatus.live.name,
-      EventStatus.completed.name,
-    }.intersection(filterSet);
-
-    final requestedFormats = filterSet.difference(requestedStatuses);
-
-    // Fetch live IDs once (avoid per-item await)
-    final liveIds = await ref.read(liveGroupBroadcastIdsProvider.future);
-
-    final filteredTours = await Future.wait(
-      groupBroadcast.map((tour) async {
-        // Status filter: handle live and completed
-        bool matchesStatus = true;
-        if (requestedStatuses.isNotEmpty) {
-          final isLive = liveIds.contains(tour.id);
-          final isCompleted = !isLive;
-
-          matchesStatus =
-              (requestedStatuses.contains(EventStatus.live.name) && isLive) ||
-              (requestedStatuses.contains(EventStatus.completed.name) &&
-                  isCompleted);
-          if (!matchesStatus) return null;
-        }
-
-        // Format filter: blitz/rapid/standard
-        bool matchesFormat = true;
-        if (requestedFormats.isNotEmpty) {
-          final tourFormat = tour.timeControl?.trim().toLowerCase();
-          matchesFormat =
-              tourFormat != null && requestedFormats.contains(tourFormat);
-          if (!matchesFormat) return null;
-        }
-
-        // Elo filter (inclusive)
-        final minElo = eloRange.start.round();
-        final maxElo = eloRange.end.round();
-        if (tour.maxAvgElo != null) {
-          if (tour.maxAvgElo! < minElo || tour.maxAvgElo! > maxElo) {
-            return null;
-          }
-        }
-
-        return tour;
-      }),
-    );
-
-    state = AsyncValue.data(
-      filteredTours
-          .whereType<GroupBroadcast>()
-          .map((t) => GroupEventCardModel.fromGroupBroadcast(t, liveIds))
-          .toList(),
-    );
+    } catch (e, st) {
+      debugPrint('Failed to open calendar event: $e');
+      debugPrintStack(stackTrace: st);
+    }
   }
 
   Future<void> refresh() async {

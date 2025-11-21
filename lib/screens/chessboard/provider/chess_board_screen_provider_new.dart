@@ -1934,6 +1934,7 @@ class ChessBoardScreenNotifierNew
       _getAllVariantArrowShapes(
         currentState.principalVariations,
         variantIndex,
+        isThreatsMode: currentState.isThreatsMode,
       ),
     );
 
@@ -2194,6 +2195,7 @@ class ChessBoardScreenNotifierNew
         _getAllVariantArrowShapes(
           currentState.principalVariations,
           currentState.selectedVariantIndex!,
+          isThreatsMode: currentState.isThreatsMode,
         ),
       );
 
@@ -2317,7 +2319,11 @@ class ChessBoardScreenNotifierNew
 
     final arrowShapes = _maybeSuppressShapes(
       updatedState,
-      _variantArrowShapes(selectedVariant, newPointer.length),
+      _variantArrowShapes(
+        selectedVariant,
+        newPointer.length,
+        isThreatsMode: currentState.isThreatsMode,
+      ),
     );
 
     state = AsyncValue.data(updatedState.copyWith(shapes: arrowShapes));
@@ -3549,7 +3555,11 @@ class ChessBoardScreenNotifierNew
     final rebasedLines = <AnalysisLine>[trimmedVariant];
     final arrowShapes = _maybeSuppressShapes(
       currentState,
-      _getAllVariantArrowShapes(rebasedLines, 0),
+      _getAllVariantArrowShapes(
+        rebasedLines,
+        0,
+        isThreatsMode: currentState.isThreatsMode,
+      ),
     );
 
     final updatedAnalysis = currentState.analysisState.copyWith(
@@ -3598,6 +3608,7 @@ class ChessBoardScreenNotifierNew
       baseFen,
       variant.moves,
       currentPosition.fen,
+      isThreatsMode: currentState.isThreatsMode,
     );
 
     if (progress < 0) {
@@ -3681,7 +3692,11 @@ class ChessBoardScreenNotifierNew
       // New variant selection - lock current position as base
       final arrowShapes = _maybeSuppressShapes(
         nextState,
-        _getAllVariantArrowShapes(pvLines, 0),
+        _getAllVariantArrowShapes(
+          pvLines,
+          0,
+          isThreatsMode: currentState.isThreatsMode,
+        ),
       );
       nextState = nextState.copyWith(
         selectedVariantIndex: 0,
@@ -3707,6 +3722,7 @@ class ChessBoardScreenNotifierNew
         final arrowShapes = _getAllVariantArrowShapes(
           pvLines,
           previousSelection,
+          isThreatsMode: currentState.isThreatsMode,
         );
         nextState = nextState.copyWith(
           selectedVariantIndex: previousSelection,
@@ -3753,6 +3769,7 @@ class ChessBoardScreenNotifierNew
           final arrowShapes = _getAllVariantArrowShapes(
             pvLines,
             previousSelection,
+            isThreatsMode: currentState.isThreatsMode,
           );
           nextState = nextState.copyWith(
             selectedVariantIndex: previousSelection,
@@ -3772,7 +3789,11 @@ class ChessBoardScreenNotifierNew
     } else {
       // No variant selected - but if in preview mode, still show PV arrows
       if (currentState.isPvPreviewActive && pvLines.isNotEmpty) {
-        final arrowShapes = _getAllVariantArrowShapes(pvLines, 0);
+        final arrowShapes = _getAllVariantArrowShapes(
+          pvLines,
+          0,
+          isThreatsMode: currentState.isThreatsMode,
+        );
         nextState = nextState.copyWith(
           shapes: _maybeSuppressShapes(nextState, arrowShapes),
         );
@@ -3818,18 +3839,24 @@ class ChessBoardScreenNotifierNew
   int _calculateVariantProgress(
     String baseFen,
     List<Move> moves,
-    String currentFen,
-  ) {
+    String currentFen, {
+    bool isThreatsMode = false,
+  }) {
     try {
+      final effectiveBaseFen =
+          isThreatsMode ? _getThreatFen(baseFen) : baseFen;
+      final effectiveCurrentFen =
+          isThreatsMode ? _getThreatFen(currentFen) : currentFen;
+
       var position = Position.setupPosition(
         Rule.chess,
-        Setup.parseFen(baseFen),
+        Setup.parseFen(effectiveBaseFen),
       );
-      if (position.fen == currentFen) return 0;
+      if (position.fen == effectiveCurrentFen) return 0;
 
       for (int i = 0; i < moves.length; i++) {
         position = position.play(moves[i]);
-        if (position.fen == currentFen) {
+        if (position.fen == effectiveCurrentFen) {
           return i + 1;
         }
       }
@@ -3845,7 +3872,12 @@ class ChessBoardScreenNotifierNew
     int movesToApply,
   ) {
     final baseFen = state.variantBaseFen ?? state.analysisState.position.fen;
-    var position = Position.setupPosition(Rule.chess, Setup.parseFen(baseFen));
+    final effectiveBaseFen =
+        state.isThreatsMode ? _getThreatFen(baseFen) : baseFen;
+    var position = Position.setupPosition(
+      Rule.chess,
+      Setup.parseFen(effectiveBaseFen),
+    );
 
     for (int i = 0; i < movesToApply && i < variant.moves.length; i++) {
       position = position.play(variant.moves[i]);
@@ -3901,6 +3933,20 @@ class ChessBoardScreenNotifierNew
         state = AsyncValue.data(initialState.copyWith(isEvaluating: false));
         return;
       }
+
+      // In threats mode, analyze from opponent's perspective
+      final isThreatsMode = initialState.isThreatsMode;
+      final fenToAnalyze = isThreatsMode ? _getThreatFen(fen) : fen;
+      final Position positionForAnalysis =
+          isThreatsMode
+              ? Position.setupPosition(Rule.chess, Setup.parseFen(fenToAnalyze))
+              : currentPosition!;
+      
+      if (isThreatsMode) {
+        _releaseLog('🎯 THREATS MODE: Analyzing opponent threats for position: $fen');
+        _releaseLog('   Threat FEN: $fenToAnalyze');
+      }
+
       lastEvaluatedFen = fen;
 
       // Get engine settings FIRST to get configured PV count for cache key
@@ -3945,7 +3991,7 @@ class ChessBoardScreenNotifierNew
       }
 
       // Generate cache key with multiPV count to avoid wrong PV count collisions
-      final cacheKey = _fenCacheKey(fen, multiPV: configuredMultiPV);
+      final cacheKey = _fenCacheKey(fenToAnalyze, multiPV: configuredMultiPV);
 
       final depthTracker = ref.read(engineDepthTrackerProvider.notifier);
 
@@ -4090,7 +4136,7 @@ class ChessBoardScreenNotifierNew
         final cascadeEval = await ref.read(
           cascadeEvalProviderForBoard(
             CascadeEvalParams(
-              fen: fen,
+              fen: fenToAnalyze,
               multiPV: configuredMultiPV,
               isCurrentPosition: true,
               enableLichessFallback: false,
@@ -4101,10 +4147,10 @@ class ChessBoardScreenNotifierNew
           primaryEval = cascadeEval;
           final rawCp = cascadeEval.pvs.first.cp;
           final rawEval = rawCp / 100.0;
-          evaluation = _getConsistentEvaluation(rawEval, fen);
+          evaluation = _getConsistentEvaluation(rawEval, fenToAnalyze);
           final cascadeMate = _getConsistentMate(
             cascadeEval.pvs.first.mate,
-            fen,
+            fenToAnalyze,
           );
 
           if (mounted) {
@@ -4120,17 +4166,17 @@ class ChessBoardScreenNotifierNew
             }
           }
 
-          final cascadeFenParts = fen.split(' ');
+          final cascadeFenParts = fenToAnalyze.split(' ');
           final cascadeSideToMove =
               cascadeFenParts.length >= 2 ? cascadeFenParts[1] : '-';
           _releaseLog(
-            '🔍 EVAL PIPELINE: fen=$fen, side=$cascadeSideToMove, rawCp=$rawCp, rawEval=$rawEval, evaluation=$evaluation, whitePerspective=${cascadeEval.pvs.first.whitePerspective}',
+            '🔍 EVAL PIPELINE: fen=$fenToAnalyze, side=$cascadeSideToMove, rawCp=$rawCp, rawEval=$rawEval, evaluation=$evaluation, whitePerspective=${cascadeEval.pvs.first.whitePerspective}',
           );
           _releaseLog(
             '🎯 EVAL: Building principal variations from cloud source...',
           );
           final cascadeLines = await _buildPrincipalVariations(
-            fen,
+            fenToAnalyze,
             cascadeEval.pvs,
           );
           var mergedCascadeLines = _mergePvProgress(pvLines, cascadeLines);
@@ -4179,7 +4225,7 @@ class ChessBoardScreenNotifierNew
             }
 
             final retryLines = await _buildPrincipalVariations(
-              fen,
+              fenToAnalyze,
               cascadeEval.pvs,
             );
             if (retryLines.isNotEmpty) {
@@ -4212,7 +4258,7 @@ class ChessBoardScreenNotifierNew
               pvLines = mergedCascade;
               final updatedCascade = snapshot.copyWith(
                 evaluation: evaluation,
-                mate: _getConsistentMate(cascadeEval.pvs.first.mate, fen),
+                mate: _getConsistentMate(cascadeEval.pvs.first.mate, fenToAnalyze),
                 isEvaluating: true,
                 principalVariations: mergedCascade,
                 principalVariationsBaseFen: fen,
@@ -4248,7 +4294,7 @@ class ChessBoardScreenNotifierNew
       final isCurrentlyVisible = currentVisiblePage == index;
       EngineSearchProgress? pendingProgress;
       final stockfishFuture = StockfishSingleton().evaluatePosition(
-        fen,
+        fenToAnalyze,
         depth: combinedMaxDepth,
         multiPV: multiPV,
         isCurrentPosition: isCurrentlyVisible,
@@ -4259,7 +4305,7 @@ class ChessBoardScreenNotifierNew
           final progress = EngineSearchProgress(
             depth: depth,
             kiloNodes: knodes,
-            fenFragment: fen,
+            fenFragment: fenToAnalyze,
           );
           pendingProgress = progress;
           depthTracker.update(
@@ -4286,8 +4332,8 @@ class ChessBoardScreenNotifierNew
             if (currentFenBase != targetFenBase) return;
 
             final cp = pvs.first.cp;
-            final newEval = _getConsistentEvaluation(cp / 100.0, fen);
-            final mateScore = _getConsistentMate(pvs.first.mate, fen);
+            final newEval = _getConsistentEvaluation(cp / 100.0, fenToAnalyze);
+            final mateScore = _getConsistentMate(pvs.first.mate, fenToAnalyze);
             evaluation = newEval;
 
             var workingState = currentState.copyWith(
@@ -4297,14 +4343,14 @@ class ChessBoardScreenNotifierNew
             );
             state = AsyncValue.data(workingState);
 
-            var lines = await _buildPrincipalVariations(fen, pvs);
+            var lines = await _buildPrincipalVariations(fenToAnalyze, pvs);
             if (lines.isEmpty) return;
             if (lines.length > multiPV) {
               lines = lines.take(multiPV).toList(growable: false);
             }
 
             primaryEval = CloudEval(
-              fen: fen,
+              fen: fenToAnalyze,
               knodes: 0,
               depth: depth,
               pvs: pvs,
@@ -4321,7 +4367,7 @@ class ChessBoardScreenNotifierNew
                 EngineSearchProgress(
                   depth: depth,
                   kiloNodes: 0,
-                  fenFragment: fen,
+                  fenFragment: fenToAnalyze,
                 );
             if (pendingProgress == null) {
               depthTracker.update(
@@ -4407,7 +4453,7 @@ class ChessBoardScreenNotifierNew
         if (!mounted || _cancelEvaluation) return;
         if (stockfishResult.pvs.isNotEmpty) {
           primaryEval = CloudEval(
-            fen: fen,
+            fen: fenToAnalyze,
             knodes: stockfishResult.knodes,
             depth: stockfishResult.depth,
             pvs: stockfishResult.pvs,
@@ -4416,7 +4462,7 @@ class ChessBoardScreenNotifierNew
           final finalProgress = EngineSearchProgress(
             depth: stockfishResult.depth,
             kiloNodes: stockfishResult.knodes,
-            fenFragment: fen,
+            fenFragment: fenToAnalyze,
           );
           depthTracker.update(
             component: EngineComponent.evaluationGauge,
@@ -4432,7 +4478,7 @@ class ChessBoardScreenNotifierNew
           );
           if (pvLines.isEmpty) {
             var finalLines = await _buildPrincipalVariations(
-              fen,
+              fenToAnalyze,
               stockfishResult.pvs,
             );
             if (finalLines.isNotEmpty) {
@@ -4451,9 +4497,12 @@ class ChessBoardScreenNotifierNew
                 final updatedState = currentState.copyWith(
                   evaluation: _getConsistentEvaluation(
                     stockfishResult.pvs.first.cp / 100.0,
-                    fen,
+                    fenToAnalyze,
                   ),
-                  mate: _getConsistentMate(stockfishResult.pvs.first.mate, fen),
+                  mate: _getConsistentMate(
+                    stockfishResult.pvs.first.mate,
+                    fenToAnalyze,
+                  ),
                   isEvaluating: false,
                   principalVariations: pvLines,
                   principalVariationsBaseFen: fen,
@@ -4508,7 +4557,7 @@ class ChessBoardScreenNotifierNew
       if (evaluation == null && (primaryEval?.pvs.isNotEmpty ?? false)) {
         evaluation = _getConsistentEvaluation(
           primaryEval!.pvs.first.cp / 100.0,
-          fen,
+          fenToAnalyze,
         );
       }
 
@@ -4532,7 +4581,7 @@ class ChessBoardScreenNotifierNew
 
       evaluation ??= _getConsistentEvaluation(
         primaryEval!.pvs.first.cp / 100.0,
-        fen,
+        fenToAnalyze,
       );
 
       // CRITICAL: Always show evaluation even if PVs fail
@@ -4552,7 +4601,7 @@ class ChessBoardScreenNotifierNew
           state = AsyncValue.data(
             currentSnapshot.copyWith(
               evaluation: evaluation,
-              mate: _getConsistentMate(primaryEval!.pvs.first.mate, fen),
+              mate: _getConsistentMate(primaryEval!.pvs.first.mate, fenToAnalyze),
               isEvaluating: true, // Keep loading state until PVs arrive
               principalVariations: const [],
               principalVariationsBaseFen: null,
@@ -4593,7 +4642,7 @@ class ChessBoardScreenNotifierNew
               '🔄 RETRY: Re-building PVs for position $targetFenBase',
             );
             final retryPvLines = await _buildPrincipalVariations(
-              fen,
+              fenToAnalyze,
               evalForRetry.pvs,
             );
 
@@ -4669,14 +4718,14 @@ class ChessBoardScreenNotifierNew
         final cache = ref.read(localEvalCacheProvider);
         final persist = ref.read(persistCloudEvalProvider);
         Future.wait([
-          persist.call(fen, primaryEval!),
+          persist.call(fenToAnalyze, primaryEval!),
           cache.save(
-            fen,
+            fenToAnalyze,
             primaryEval!,
             multiPV: primaryEval!.requestedMultiPv ?? primaryEval!.pvs.length,
           ),
         ]).catchError((e) {
-          _releaseLog('Background persist failed for $fen: $e');
+          _releaseLog('Background persist failed for $fenToAnalyze: $e');
           return <void>[];
         });
       } else if (primaryEval != null) {
@@ -4771,19 +4820,23 @@ class ChessBoardScreenNotifierNew
           currentSnapshot.variantMovePointer.isNotEmpty &&
           currentSnapshot.variantBaseFen != null;
 
+      final Position positionForArrows =
+          currentSnapshot.isThreatsMode ? positionForAnalysis : position;
+
       // CRITICAL: Use multi-variant arrows if variant selected, otherwise use best move
       final ISet<Shape> shapes;
       if (currentSnapshot.selectedVariantIndex != null && pvLines.isNotEmpty) {
         shapes = _getAllVariantArrowShapes(
           pvLines,
           currentSnapshot.selectedVariantIndex!,
+          isThreatsMode: currentSnapshot.isThreatsMode,
         );
       } else {
         // Fallback: if primaryEval is null, build a minimal CloudEval from pvLines
         final evalForShapes =
             primaryEval ??
             CloudEval(
-              fen: position.fen,
+              fen: positionForArrows.fen,
               knodes: 0,
               depth: 0,
               pvs:
@@ -4800,7 +4853,7 @@ class ChessBoardScreenNotifierNew
                       .toList(),
               requestedMultiPv: pvLines.length,
             );
-        shapes = getBestMoveShape(position, evalForShapes);
+        shapes = getBestMoveShape(positionForArrows, evalForShapes);
       }
 
       final overlayShapes =
@@ -4987,11 +5040,14 @@ class ChessBoardScreenNotifierNew
 
         try {
           // Use different colors/opacity for primary, secondary, tertiary moves
-          final arrowColor = switch (i) {
-            0 => const Color.fromARGB(255, 152, 179, 154),
-            1 => const Color.fromARGB(200, 152, 179, 154),
-            _ => const Color.fromARGB(150, 152, 179, 154),
-          };
+          final isThreatsMode = state.value?.isThreatsMode ?? false;
+          final arrowColor = isThreatsMode
+              ? const Color(0xFFFF0000).withValues(alpha: i == 0 ? 1.0 : 0.7)
+              : switch (i) {
+                  0 => const Color.fromARGB(255, 152, 179, 154),
+                  1 => const Color.fromARGB(200, 152, 179, 154),
+                  _ => const Color.fromARGB(150, 152, 179, 154),
+                };
 
           if (bestMove.contains('@')) {
             // Drop move (e.g., "p@e4")
@@ -5067,7 +5123,11 @@ class ChessBoardScreenNotifierNew
     return shapes;
   }
 
-  ISet<Shape> _variantArrowShapes(AnalysisLine variant, int nextMoveIndex) {
+  ISet<Shape> _variantArrowShapes(
+    AnalysisLine variant,
+    int nextMoveIndex, {
+    bool isThreatsMode = false,
+  }) {
     if (nextMoveIndex < 0 || nextMoveIndex >= variant.moves.length) {
       return const ISet.empty();
     }
@@ -5077,7 +5137,9 @@ class ChessBoardScreenNotifierNew
     }
     try {
       final arrow = Arrow(
-        color: kPrimaryColor.withValues(alpha: 0.8),
+        color: isThreatsMode
+            ? const Color(0xFFFF0000).withValues(alpha: 0.8)
+            : kPrimaryColor.withValues(alpha: 0.8),
         orig: move.from,
         dest: move.to,
       );
@@ -5116,8 +5178,9 @@ class ChessBoardScreenNotifierNew
 
   ISet<Shape> _getAllVariantArrowShapes(
     List<AnalysisLine> variants,
-    int selectedIndex,
-  ) {
+    int selectedIndex, {
+    bool isThreatsMode = false,
+  }) {
     final arrows = <Arrow>[];
 
     for (int i = 0; i < variants.length && i < 5; i++) {
@@ -5128,7 +5191,12 @@ class ChessBoardScreenNotifierNew
       if (move is! NormalMove) continue;
 
       try {
-        final arrowColor = getVariantColor(i, i == selectedIndex);
+        final arrowColor =
+            isThreatsMode
+                ? const Color(0xFFFF0000).withValues(
+                    alpha: i == 0 ? 0.95 : 0.7,
+                  )
+                : getVariantColor(i, i == selectedIndex);
 
         arrows.add(Arrow(color: arrowColor, orig: move.from, dest: move.to));
       } catch (_) {
@@ -5150,6 +5218,31 @@ class ChessBoardScreenNotifierNew
   }
 
   String _normalizeFen(String fen) => fen.split(' ').take(4).join(' ');
+
+  /// Generate a "threat FEN" by flipping the side to move
+  /// This allows analyzing what the opponent threatens on the current position
+  String _getThreatFen(String fen) {
+    final parts = fen.split(' ');
+    if (parts.length < 4) return fen;
+
+    final turn = parts[1];
+    final newTurn = turn == 'w' ? 'b' : 'w';
+    parts[1] = newTurn;
+    parts[3] = '-'; // Clear en passant target square
+    return parts.join(' ');
+  }
+
+  /// Toggle threats mode on/off
+  void toggleThreatsMode() {
+    final currentState = state.value;
+    if (currentState == null) return;
+
+    final newMode = !currentState.isThreatsMode;
+    state = AsyncValue.data(currentState.copyWith(isThreatsMode: newMode));
+
+    // Force re-evaluation to show threats or return to normal
+    _evaluatePosition(force: true);
+  }
 
   void _updateEvaluation({
     bool force = false,

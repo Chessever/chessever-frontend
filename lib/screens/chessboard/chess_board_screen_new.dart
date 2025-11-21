@@ -1465,7 +1465,13 @@ class _AppBarState extends ConsumerState<_AppBar> {
                 setState(() {
                   _showThreatsEnabled = !_showThreatsEnabled;
                 });
-                // TODO: Implement show threats logic
+                final params = ChessBoardProviderParams(
+                  game: widget.game,
+                  index: widget.currentGameIndex,
+                );
+                ref
+                    .read(chessBoardScreenProviderNew(params).notifier)
+                    .toggleThreatsMode();
               },
         ),
         SizedBox(width: 4.w),

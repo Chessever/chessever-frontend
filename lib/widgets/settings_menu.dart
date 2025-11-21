@@ -10,6 +10,7 @@ class SettingsMenu extends StatelessWidget {
   final bool isSmallScreen;
   final bool isLargeScreen;
   final VoidCallback? onBoardSettingsPressed;
+  final VoidCallback? onDeleteAccountPressed;
   final Widget? boardSettingsIcon;
 
   const SettingsMenu({
@@ -17,6 +18,7 @@ class SettingsMenu extends StatelessWidget {
     this.isSmallScreen = false,
     this.isLargeScreen = false,
     this.onBoardSettingsPressed,
+    this.onDeleteAccountPressed,
     this.boardSettingsIcon,
   });
 
@@ -50,7 +52,7 @@ class SettingsMenu extends StatelessWidget {
                     onBoardSettingsPressed!();
                   }
                 : null,
-            child: Container(
+            child: SizedBox(
               height: 36,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.start,
@@ -84,6 +86,47 @@ class SettingsMenu extends StatelessWidget {
             ),
           ),
           SizedBox(height: 15.h),
+          
+          // Delete Account
+          if (onDeleteAccountPressed != null)
+            InkWell(
+              onTap: () {
+                HapticFeedbackService.navigation();
+                onDeleteAccountPressed!();
+              },
+              child: SizedBox(
+                height: 36,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 24.w,
+                      child: Icon(Icons.delete_forever, color: kRedColor, size: 20.ic),
+                    ),
+                    SizedBox(width: 4.w),
+                    Expanded(
+                      child: Text(
+                        'Delete Account',
+                        style: AppTypography.textMdMedium.copyWith(
+                          color: kRedColor,
+                        ),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 36,
+                      child: SvgPicture.asset(
+                        SvgAsset.right_arrow,
+                        height: 24.h,
+                        width: 24.w,
+                        colorFilter: const ColorFilter.mode(kRedColor, BlendMode.srcIn),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          if (onDeleteAccountPressed != null) SizedBox(height: 15.h),
         ],
       ),
     );

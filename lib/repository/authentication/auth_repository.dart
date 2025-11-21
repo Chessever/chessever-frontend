@@ -378,6 +378,34 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
     }
   }
 
+  Future<void> deleteAccount() async {
+    state = const AsyncValue.data(AppAuthState.loading());
+    
+    try {
+      // Call RPC to delete user account (common pattern for Supabase)
+      // This assumes a 'delete_user_account' function exists in Postgres
+      await _supabase.rpc('delete_user_account');
+      
+      // Sign out after deletion
+      await signOut();
+    } catch (e, st) {
+      await ref.read(errorLoggerProvider).logError(e, st);
+      
+      // If RPC fails, try to at least sign out and clear local data
+      // But rethrow so UI can show error
+      try {
+        await signOut();
+      } catch (_) {}
+      
+      final rawMessage = _exceptionMessage(e);
+      final message = rawMessage.isEmpty
+          ? 'Failed to delete account. Please contact support.'
+          : rawMessage;
+      state = AsyncValue.data(AppAuthState.error(message));
+      rethrow;
+    }
+  }
+
   Future<void> _ensureGoogleInitialized() {
     final existing = _googleInitCompleter;
     if (existing != null) {

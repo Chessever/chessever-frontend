@@ -63,26 +63,4 @@ class LibraryFolder with LibraryFolderMappable {
     };
   }
 
-  /// Copy with new values
-  LibraryFolder copyWith({
-    String? id,
-    String? userId,
-    String? name,
-    String? color,
-    String? icon,
-    int? orderIndex,
-    DateTime? createdAt,
-    DateTime? updatedAt,
-  }) {
-    return LibraryFolder(
-      id: id ?? this.id,
-      userId: userId ?? this.userId,
-      name: name ?? this.name,
-      color: color ?? this.color,
-      icon: icon ?? this.icon,
-      orderIndex: orderIndex ?? this.orderIndex,
-      createdAt: createdAt ?? this.createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
-    );
-  }
 }

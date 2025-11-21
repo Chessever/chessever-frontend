@@ -120,44 +120,6 @@ class SavedAnalysis with SavedAnalysisMappable {
     };
   }
 
-  /// Copy with new values
-  SavedAnalysis copyWith({
-    String? id,
-    String? userId,
-    String? folderId,
-    String? title,
-    String? sourceGameId,
-    String? sourceTournamentId,
-    ChessGame? chessGame,
-    Map<String, dynamic>? analysisState,
-    Map<String, String>? variationComments,
-    int? lastViewedPosition,
-    List<String>? tags,
-    String? notes,
-    bool? isFavorite,
-    DateTime? createdAt,
-    DateTime? updatedAt,
-    DateTime? lastOpenedAt,
-  }) {
-    return SavedAnalysis(
-      id: id ?? this.id,
-      userId: userId ?? this.userId,
-      folderId: folderId ?? this.folderId,
-      title: title ?? this.title,
-      sourceGameId: sourceGameId ?? this.sourceGameId,
-      sourceTournamentId: sourceTournamentId ?? this.sourceTournamentId,
-      chessGame: chessGame ?? this.chessGame,
-      analysisState: analysisState ?? this.analysisState,
-      variationComments: variationComments ?? this.variationComments,
-      lastViewedPosition: lastViewedPosition ?? this.lastViewedPosition,
-      tags: tags ?? this.tags,
-      notes: notes ?? this.notes,
-      isFavorite: isFavorite ?? this.isFavorite,
-      createdAt: createdAt ?? this.createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
-      lastOpenedAt: lastOpenedAt ?? this.lastOpenedAt,
-    );
-  }
 
   /// Get move count from chess game
   int get moveCount => chessGame.mainline.length;

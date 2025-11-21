@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
+import 'package:chessever2/screens/calendar/provider/calendar_screen_provider.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/calendar/provider/calendar_detail_screen_provider.dart';
@@ -8,7 +9,6 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/month_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup.dart';
 import 'package:chessever2/widgets/event_card/starred_provider.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart';
@@ -27,6 +27,12 @@ class CalendarDetailsScreen extends ConsumerStatefulWidget {
 class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
   final TextEditingController searchController = TextEditingController();
   final FocusNode focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    searchController.text = ref.read(calendarSearchQueryProvider);
+  }
 
   @override
   void dispose() {
@@ -93,7 +99,7 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
                                     border: Border.all(
                                       color:
                                           focusNode.hasFocus
-                                              ? kPrimaryColor.withOpacity(0.5)
+                                              ? kPrimaryColor.withValues(alpha: 0.5)
                                               : Colors.transparent,
                                       width: 2.0,
                                     ),
@@ -102,7 +108,7 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
                                             ? [
                                               BoxShadow(
                                                 color: kPrimaryColor
-                                                    .withOpacity(0.15),
+                                                    .withValues(alpha: 0.15),
                                                 blurRadius: 12,
                                                 offset: const Offset(0, 4),
                                               ),
@@ -111,73 +117,22 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
                                   ),
                                   child: SimpleSearchBar(
                                     controller: searchController,
-                                    hintText: 'Search tournaments or players',
+                                    hintText: 'Search events or country',
                                     focusNode: focusNode,
                                     onCloseTap: () {
                                       searchController.clear();
                                       focusNode.unfocus();
                                       ref
-                                          .read(
-                                            calendarDetailScreenProvider(
-                                              CalendarFilterArgs(
-                                                month: selectedMonth,
-                                                year: selectedYear,
-                                              ),
-                                            ).notifier,
-                                          )
-                                          .refresh();
+                                          .read(calendarSearchQueryProvider.notifier)
+                                          .state = '';
                                     },
                                     onChanged:
                                         (query) => ref
                                             .read(
-                                              calendarDetailScreenProvider(
-                                                CalendarFilterArgs(
-                                                  month: selectedMonth,
-                                                  year: selectedYear,
-                                                ),
-                                              ).notifier,
+                                              calendarSearchQueryProvider.notifier,
                                             )
-                                            .search(query),
-                                    onOpenFilter: () {
-                                      showDialog(
-                                        context: context,
-                                        barrierColor: kLightBlack,
-                                        builder:
-                                            (context) => FilterPopup(
-                                              onApplyFilters: (filterState) {
-                                                ref
-                                                    .read(
-                                                      calendarDetailScreenProvider(
-                                                        CalendarFilterArgs(
-                                                          month: selectedMonth,
-                                                          year: selectedYear,
-                                                        ),
-                                                      ).notifier,
-                                                    )
-                                                    .applyAllFilters(
-                                                      eloRange:
-                                                          filterState.eloRange,
-                                                      filters:
-                                                          filterState
-                                                              .formatsAndStates
-                                                              .toList(),
-                                                    );
-                                              },
-                                              onResetFilters: () {
-                                                ref
-                                                    .read(
-                                                      calendarDetailScreenProvider(
-                                                        CalendarFilterArgs(
-                                                          month: selectedMonth,
-                                                          year: selectedYear,
-                                                        ),
-                                                      ).notifier,
-                                                    )
-                                                    .reset();
-                                              },
-                                            ),
-                                      );
-                                    },
+                                            .state = query,
+                                    onOpenFilter: null,
                                   ),
                                 ),
                               ),

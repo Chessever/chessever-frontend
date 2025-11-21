@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/screens/chessboard/chess_board_settings_page.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -30,6 +31,41 @@ class SettingsDialog extends ConsumerWidget {
           // Navigate to the full ChessBoardSettingsPage
           Navigator.of(context).push(
             ChessBoardSettingsPage.route(),
+          );
+        },
+        onDeleteAccountPressed: () {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Delete Account'),
+              content: const Text(
+                'Are you sure you want to delete your account? This action cannot be undone.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    Navigator.of(context).pop(); // Close dialog
+                    Navigator.of(context).pop(); // Close settings
+                    
+                    try {
+                      await ref.read(authStateProvider.notifier).deleteAccount();
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Failed to delete account: $e')),
+                        );
+                      }
+                    }
+                  },
+                  style: TextButton.styleFrom(foregroundColor: kRedColor),
+                  child: const Text('Delete'),
+                ),
+              ],
+            ),
           );
         },
       ),

@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/repository/local_storage/onboarding/onboarding_repository.dart';
 import 'package:chessever2/screens/authentication/auth_screen_state.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -16,6 +17,7 @@ import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'auth_screen_provider.dart';
 
 class AuthScreen extends ConsumerStatefulWidget {
@@ -38,17 +40,28 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(authScreenProvider);
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (state.showCountrySelection && state.user != null) {
-        _showCountrySelectionModal();
-      } else if (state.errorMessage != null) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+
+      if (state.errorMessage != null) {
         _showErrorDialog(state.errorMessage!);
-      } else if (ref.read(countryDropdownProvider).value != null &&
-          state.user != null) {
-        if (ref.read(countryDropdownProvider).value?.countryCode != null) {
-          Navigator.pushReplacementNamed(context, '/home_screen');
-        }
+        return;
       }
+
+      final user = state.user;
+      if (user == null) return;
+
+      final onboardingRepo = ref.read(onboardingRepositoryProvider);
+      final hasCompleted = await onboardingRepo.isCompleted(user.id);
+      if (!mounted) return;
+
+      if (!hasCompleted) {
+        ref.read(authScreenProvider.notifier).hideCountrySelection();
+        Navigator.pushReplacementNamed(context, '/onboarding');
+        return;
+      }
+
+      Navigator.pushReplacementNamed(context, '/home_screen');
     });
 
     return ScreenWrapper(
@@ -89,16 +102,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           ],
         ),
       ),
-    );
-  }
-
-  void _showCountrySelectionModal() {
-    showAlertModal(
-      context: context,
-      barrierDismissible: false,
-      horizontalPadding: 0,
-      verticalPadding: 0,
-      child: CountryPickerWidget(),
     );
   }
 
@@ -225,6 +228,20 @@ class _AuthButtonWidget extends ConsumerWidget {
             onPressed: () async {
               await ref.read(authScreenProvider.notifier).signInWithGoogle();
             },
+          ),
+          SizedBox(height: 12.h),
+          TextButton(
+            onPressed: () async {
+              await ref.read(authScreenProvider.notifier).signInAsGuest();
+            },
+            child: Text(
+              'Continue as Guest',
+              style: AppTypography.textSmMedium.copyWith(
+                color: kWhiteColor.withOpacity(0.7),
+                decoration: TextDecoration.underline,
+                decorationColor: kWhiteColor.withOpacity(0.7),
+              ),
+            ),
           ),
         ],
       ),
@@ -435,9 +452,21 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
                                       notifier.hideCountrySelection();
                                       Navigator.of(context).pop();
                                       if (!widget.isHamburgerMode) {
+                                        final onboardingRepo =
+                                            ref.read(onboardingRepositoryProvider);
+                                        final userId = Supabase
+                                            .instance.client.auth.currentUser?.id;
+                                        final hasCompleted =
+                                            await onboardingRepo.isCompleted(userId);
+                                        if (!mounted) return;
+                                        final targetRoute =
+                                            hasCompleted
+                                                ? '/home_screen'
+                                                : '/onboarding';
+
                                         Navigator.pushReplacementNamed(
                                           context,
-                                          '/home_screen',
+                                          targetRoute,
                                         );
                                       }
                                     }

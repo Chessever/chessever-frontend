@@ -5,11 +5,13 @@ import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart'
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/event_card/event_image_provider.dart';
 import 'package:chessever2/widgets/heroine/no_padding_fade_shuttle_builder.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
+import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:heroine/heroine.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -44,7 +46,7 @@ class EventCard extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             // Event Image on the left
-            _EventImage(groupBroadcastId: tourEventCardModel.id),
+            _EventImage(event: tourEventCardModel),
             SizedBox(width: 12.w),
 
             // Content in the middle
@@ -213,16 +215,27 @@ class EventCard extends ConsumerWidget {
   }
 }
 
-// Event Image Widget with cached network image
+// Event Image Widget with cached network image or country flag for community events
 class _EventImage extends ConsumerWidget {
-  final String groupBroadcastId;
+  final GroupEventCardModel event;
 
-  const _EventImage({required this.groupBroadcastId});
+  const _EventImage({required this.event});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final imageAsync = ref.watch(eventImageProvider(groupBroadcastId));
-    final heroTag = 'event-image-$groupBroadcastId';
+    final heroTag = 'event-image-${event.id}';
+    final isCommunity = event.eventSource == EventSource.communityEvent;
+
+    if (isCommunity) {
+      final countryCode = _extractCountryCode(ref, event.location);
+      return Heroine(
+        tag: heroTag,
+        flightShuttleBuilder: const NoPaddingFadeShuttleBuilder(),
+        child: _FlagEventImage(countryCode: countryCode),
+      );
+    }
+
+    final imageAsync = ref.watch(eventImageProvider(event.id));
 
     return Heroine(
       tag: heroTag,
@@ -295,6 +308,90 @@ class _EventImage extends ConsumerWidget {
                     ),
                   ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String? _extractCountryCode(WidgetRef ref, String? location) {
+    if (location == null || location.trim().isEmpty) return null;
+    final locationService = ref.read(locationServiceProvider);
+
+    // Try direct matches first
+    final direct = locationService.getValidCountryCode(location.trim());
+    if (direct.isNotEmpty) return direct.toUpperCase();
+
+    // Try breaking down the location parts
+    for (final part in location.split(RegExp(r'[,|/]'))) {
+      final trimmed = part.trim();
+      if (trimmed.isEmpty) continue;
+
+      final fromCode = locationService.getValidCountryCode(trimmed);
+      if (fromCode.isNotEmpty) return fromCode.toUpperCase();
+
+      final fromName = locationService.getValidCountryCodeFromName(trimmed);
+      if (fromName.isNotEmpty) return fromName.toUpperCase();
+    }
+
+    return null;
+  }
+}
+
+class _FlagEventImage extends StatelessWidget {
+  const _FlagEventImage({required this.countryCode});
+
+  final String? countryCode;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 90.w, // Give width constraint for AspectRatio to work in Row
+      child: AspectRatio(
+        aspectRatio: 3 / 2,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(6.br),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFF1F1C2C), Color(0xFF2C5364)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+              ),
+              if (countryCode != null)
+                CountryFlag.fromCountryCode(
+                  countryCode!,
+                  height: double.infinity,
+                  width: double.infinity,
+                ),
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.black.withValues(alpha: 0.35),
+                        Colors.black.withValues(alpha: 0.6),
+                      ],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                  ),
+                ),
+              ),
+              if (countryCode == null)
+                Center(
+                  child: Icon(
+                    Icons.flag_outlined,
+                    color: kWhiteColor.withValues(alpha: 0.3),
+                    size: 24.sp,
+                  ),
+                ),
+            ],
           ),
         ),
       ),

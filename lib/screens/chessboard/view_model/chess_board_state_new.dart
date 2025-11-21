@@ -341,6 +341,9 @@ class ChessBoardStateNew {
   /// User-supplied annotations for variations keyed by variation id
   final Map<String, String> variationComments;
 
+  /// Whether threats mode is enabled (shows opponent's threats with red arrows)
+  final bool isThreatsMode;
+
   /// Navigator position where PVs start
   final ChessMovePointer? variantBaseMovePointer;
 
@@ -422,6 +425,7 @@ class ChessBoardStateNew {
     this.lockedPvMergedPositions,
     this.lockedPvBaseMoveCount,
     this.variationComments = const <String, String>{},
+    this.isThreatsMode = false,
   });
 
   static const _noChange = Object();
@@ -470,6 +474,7 @@ class ChessBoardStateNew {
     Object? lockedPvMergedPositions = _noChange,
     Object? lockedPvBaseMoveCount = _noChange,
     Map<String, String>? variationComments,
+    bool? isThreatsMode,
   }) {
     final newAnalysisState = analysisState ?? this.analysisState;
 
@@ -569,6 +574,7 @@ class ChessBoardStateNew {
               : lockedPvBaseMoveCount as int?,
       variationComments: variationComments ?? this.variationComments,
       analysisState: newAnalysisState,
+      isThreatsMode: isThreatsMode ?? this.isThreatsMode,
     );
   }
 
@@ -669,7 +675,8 @@ class ChessBoardStateNew {
         _intListEquality.equals(
           other.variantMovePointer,
           variantMovePointer,
-        );
+        ) &&
+        other.isThreatsMode == isThreatsMode;
   }
 
   @override
@@ -723,6 +730,7 @@ class ChessBoardStateNew {
           ),
       lockedPvBaseMoveCount,
       _stringMapEquality.hash(variationComments),
+      isThreatsMode,
     ]);
   }
 }

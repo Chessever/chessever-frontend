@@ -278,11 +278,12 @@ class LibraryRepository extends BaseRepository {
 
     final response = await supabase
         .from('user_saved_analyses')
-        .select('id', const FetchOptions(count: CountOption.exact))
+        .select()
         .eq('user_id', userId)
-        .eq('folder_id', folderId);
+        .eq('folder_id', folderId)
+        .count();
 
-    return (response as PostgrestList).count ?? 0;
+    return response.count;
   });
 
   // ============ STREAM SUBSCRIPTIONS ============
@@ -312,20 +313,20 @@ class LibraryRepository extends BaseRepository {
       return Stream.error(Exception('User not authenticated'));
     }
 
-    var stream = supabase
+    final streamBuilder = supabase
         .from('user_saved_analyses')
         .stream(primaryKey: ['id'])
         .eq('user_id', userId);
 
-    if (folderId != null) {
-      stream = stream.eq('folder_id', folderId);
-    }
+    // Filter in memory since stream doesn't support conditional eq()
+    return streamBuilder.order('created_at', ascending: false).map((data) {
+      final analyses =
+          data.map((json) => SavedAnalysis.fromSupabase(json)).toList();
 
-    return stream
-        .order('created_at', ascending: false)
-        .map(
-          (data) =>
-              data.map((json) => SavedAnalysis.fromSupabase(json)).toList(),
-        );
+      if (folderId != null) {
+        return analyses.where((a) => a.folderId == folderId).toList();
+      }
+      return analyses;
+    });
   }
 }

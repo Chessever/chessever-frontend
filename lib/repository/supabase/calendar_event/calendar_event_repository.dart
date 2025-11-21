@@ -37,11 +37,18 @@ class CalendarEventRepository extends BaseRepository {
       final startDateStr = startOfMonth.toIso8601String().split('T')[0];
       final endDateStr = endOfMonth.toIso8601String().split('T')[0];
 
+      // Handle missing start/end dates by including:
+      // - Events with both dates that overlap the month
+      // - Events with only a start_date inside the month
+      // - Events with only an end_date inside the month
       PostgrestTransformBuilder<PostgrestList> query = supabaseClient
           .from('calendar_events')
           .select()
-          .lte('start_date', endDateStr)
-          .gte('end_date', startDateStr)
+          .or(
+            'and(start_date.lte.$endDateStr,end_date.gte.$startDateStr),'
+            'and(end_date.is.null,start_date.gte.$startDateStr,start_date.lte.$endDateStr),'
+            'and(start_date.is.null,end_date.gte.$startDateStr,end_date.lte.$endDateStr)',
+          )
           .order(orderBy, ascending: ascending)
           .limit(limit);
 
@@ -92,8 +99,11 @@ class CalendarEventRepository extends BaseRepository {
       final response = await supabase
           .from('calendar_events')
           .select()
-          .lte('start_date', endDateStr)
-          .gte('end_date', startDateStr)
+          .or(
+            'and(start_date.lte.$endDateStr,end_date.gte.$startDateStr),'
+            'and(end_date.is.null,start_date.gte.$startDateStr,start_date.lte.$endDateStr),'
+            'and(start_date.is.null,end_date.gte.$startDateStr,end_date.lte.$endDateStr)',
+          )
           .order(orderBy, ascending: ascending)
           .limit(limit);
 

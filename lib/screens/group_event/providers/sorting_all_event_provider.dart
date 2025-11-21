@@ -43,6 +43,31 @@ class TournamentSortingService {
     );
   }
 
+  List<GroupEventCardModel> sortCalendarEvents(
+    List<GroupEventCardModel> tours, {
+    Map<String, EventFavoritePlayers>? eventFavoritePlayersMap,
+  }) {
+    final filteredList = tours.toList();
+
+    filteredList.sort((a, b) {
+      final dateA = a.startDate ?? a.endDate;
+      final dateB = b.startDate ?? b.endDate;
+
+      if (dateA != null && dateB != null) {
+        return dateA.compareTo(dateB);
+      }
+      if (dateA != null) return -1;
+      if (dateB != null) return 1;
+      return 0;
+    });
+
+    // Apply favorite sorting (favorited events on top)
+    return _applyFavoriteSorting(
+      filteredList,
+      eventFavoritePlayersMap: eventFavoritePlayersMap,
+    );
+  }
+
   List<GroupEventCardModel> sortUpcomingTours(
     List<GroupEventCardModel> tours, {
     Map<String, EventFavoritePlayers>? eventFavoritePlayersMap,

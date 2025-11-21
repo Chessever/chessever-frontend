@@ -1,6 +1,6 @@
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
-import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
+import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
@@ -10,7 +10,6 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:smooth_sheets/smooth_sheets.dart';
 
 /// Configuration for save analysis sheet
 class SaveAnalysisSheetConfig {
@@ -165,7 +164,7 @@ class _SaveAnalysisSheetState extends ConsumerState<_SaveAnalysisSheet> {
         folderId: targetFolderId,
         title: title,
         sourceGameId: state.game.gameId,
-        sourceTournamentId: state.game.tournamentId,
+        sourceTournamentId: state.game.tourId,
         chessGame: analysisGame,
         analysisState: analysisStateJson,
         variationComments: state.variationComments,
@@ -180,7 +179,7 @@ class _SaveAnalysisSheetState extends ConsumerState<_SaveAnalysisSheet> {
       // Save to database
       await repository.createSavedAnalysis(savedAnalysis);
 
-      if (mounted) {
+      if (mounted && context.mounted) {
         HapticFeedback.mediumImpact();
 
         // Show success feedback
@@ -233,14 +232,12 @@ class _SaveAnalysisSheetState extends ConsumerState<_SaveAnalysisSheet> {
       _foldersProvider,
     );
 
-    return SheetMediaQuery(
-      child: ScrollableSheet(
-        scrollSpec: const ScrollSpec(
-          physics: BouncingScrollPhysics(),
-        ),
-        child: Container(
-          decoration: ChessSheetDecoration.dark().buildDecoration(context),
-          child: SafeArea(
+    return Container(
+      decoration: BoxDecoration(
+        color: ChessSheetDecoration.dark().color,
+        borderRadius: ChessSheetDecoration.dark().borderRadius,
+      ),
+      child: SafeArea(
             top: false,
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -537,8 +534,6 @@ class _SaveAnalysisSheetState extends ConsumerState<_SaveAnalysisSheet> {
               ],
             ),
           ),
-        ),
-      ),
     );
   }
 
@@ -663,21 +658,16 @@ class _SaveAnalysisSheetState extends ConsumerState<_SaveAnalysisSheet> {
 
   Widget _buildFolderSelector(List<LibraryFolder> folders) {
     return Container(
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 4.h),
       decoration: BoxDecoration(
         color: kWhiteColor.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(8.br),
       ),
-      child: DropdownButtonFormField<LibraryFolder?>(
+      child: DropdownButton<LibraryFolder?>(
         value: _selectedFolder,
         isExpanded: true,
         dropdownColor: kBlack2Color,
-        decoration: InputDecoration(
-          border: InputBorder.none,
-          contentPadding: EdgeInsets.symmetric(
-            horizontal: 16.w,
-            vertical: 12.h,
-          ),
-        ),
+        underline: const SizedBox.shrink(),
         icon: Icon(
           Icons.keyboard_arrow_down,
           color: kWhiteColor.withValues(alpha: 0.7),
@@ -728,7 +718,7 @@ class _SaveAnalysisSheetState extends ConsumerState<_SaveAnalysisSheet> {
                 ],
               ),
             );
-          }).toList(),
+          }),
         ],
         onChanged: _isSaving
             ? null
