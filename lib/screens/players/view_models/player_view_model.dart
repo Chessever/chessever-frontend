@@ -10,19 +10,21 @@ class PlayerViewModel {
   bool _isInitialized = false;
 
   int _offset = 0;
-  final int _pageSize = 50;
+  final int _pageSize = 20;
   bool _hasMore = true;
-  String _search = '';
-  String? _countryCode;
+  bool _isOnboarding = false;
+  bool _onboardingInitialFetched = false;
 
   Set<String> _favoritePlayerIds = {};
 
-  Future<void> initialize({bool clear = false}) async {
+  Future<void> initialize({bool clear = false, bool isOnboarding = false}) async {
     if (clear) {
       _players.clear();
       _offset = 0;
       _hasMore = true;
+      _onboardingInitialFetched = false;
     }
+    _isOnboarding = isOnboarding;
     if (_isInitialized && !clear) return;
     _isInitialized = true;
     await _loadFavoritePlayerIds();
@@ -42,43 +44,96 @@ class PlayerViewModel {
     String search = '',
     String? countryCode,
   }) async {
-    if (!_hasMore) return [];
-
-    _search = search;
-    _countryCode = countryCode;
-
-    final page = await _repo.fetchPlayersPage(
-      offset: _offset,
-      pageSize: _pageSize,
-      search: _search,
-      countryCode: _countryCode,
-    );
-
-    final List<Map<String, dynamic>> newPlayers = [];
-
-    for (final player in page) {
-      final key = '${player['name']}_${player['fide_id'] ?? player['fideId'] ?? ''}';
-      if (_players.any((p) => '${p['name']}_${p['fideId']}' == key)) continue;
-
-      final fideId = player['fide_id'] ?? player['fideId'];
-      final playerData = {
-        'fideId': fideId?.toString(),
-        'name': player['name'],
-        'rating': player['rating'] ?? 0,
-        'title': player['title'] ?? '',
-        'fed': player['fed'] ?? player['country_code'],
-        'isFavorite': _favoritePlayerIds.contains(
-          fideId?.toString() ?? '',
-        ),
-      };
-      _players.add(playerData);
-      newPlayers.add(playerData);
+    // For onboarding with no search: use optimized fetch
+    if (_isOnboarding && search.isEmpty && !_onboardingInitialFetched) {
+      _onboardingInitialFetched = true;
+      return _fetchOnboardingPlayers(countryCode ?? 'US');
     }
 
+    // For search: use search-specific method
+    if (search.isNotEmpty) {
+      return _fetchSearchResults(search);
+    }
+
+    // Regular paginated fetch
+    if (!_hasMore) return [];
+    return _fetchPaginatedPlayers(countryCode);
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchOnboardingPlayers(String countryCode) async {
+    final players = await _repo.fetchOnboardingPlayers(
+      countryCode: countryCode,
+      countryLimit: 8,
+      globalLimit: 7,
+    );
+
+    final enriched = _enrichWithFavorites(players);
+    _players.addAll(enriched);
+    _hasMore = false; // Onboarding shows fixed list, no pagination needed
+    return enriched;
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchSearchResults(String query) async {
+    // Reset for new search
+    if (_offset == 0) {
+      _players.clear();
+    }
+
+    final players = await _repo.searchPlayers(
+      query: query,
+      offset: _offset,
+      pageSize: _pageSize,
+    );
+
+    final enriched = _enrichWithFavorites(players);
     _offset += _pageSize;
-    _hasMore = page.length == _pageSize;
+    _hasMore = players.length == _pageSize;
+
+    // Deduplicate
+    final newPlayers = <Map<String, dynamic>>[];
+    for (final player in enriched) {
+      final key = player['fideId'];
+      if (!_players.any((p) => p['fideId'] == key)) {
+        _players.add(player);
+        newPlayers.add(player);
+      }
+    }
 
     return newPlayers;
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchPaginatedPlayers(String? countryCode) async {
+    final players = await _repo.fetchPlayersPage(
+      offset: _offset,
+      pageSize: _pageSize,
+      countryCode: countryCode,
+    );
+
+    final enriched = _enrichWithFavorites(players);
+    _offset += _pageSize;
+    _hasMore = players.length == _pageSize;
+
+    // Deduplicate
+    final newPlayers = <Map<String, dynamic>>[];
+    for (final player in enriched) {
+      final key = player['fideId'];
+      if (!_players.any((p) => p['fideId'] == key)) {
+        _players.add(player);
+        newPlayers.add(player);
+      }
+    }
+
+    return newPlayers;
+  }
+
+  List<Map<String, dynamic>> _enrichWithFavorites(List<Map<String, dynamic>> players) {
+    return players.map((player) {
+      final fideId = player['fideId']?.toString() ?? '';
+      return {
+        ...player,
+        'isFavorite': _favoritePlayerIds.contains(fideId),
+      };
+    }).toList();
   }
 
   Future<void> toggleFavorite(String fideId) async {
@@ -109,5 +164,11 @@ class PlayerViewModel {
     } catch (e) {
       print('Error saving favorite player IDs: $e');
     }
+  }
+
+  void resetSearch() {
+    _offset = 0;
+    _hasMore = true;
+    _onboardingInitialFetched = false;
   }
 }

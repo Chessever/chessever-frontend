@@ -20,7 +20,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-final Curve _onboardingSpring = Motion.smoothSpring().toCurve;
+final Curve _springCurve = Motion.smoothSpring().toCurve;
+final Curve _snappyCurve = Motion.snappySpring().toCurve;
 
 class PlayerSelectionScreen extends HookConsumerWidget {
   const PlayerSelectionScreen({super.key});
@@ -71,7 +72,7 @@ class PlayerSelectionContent extends HookConsumerWidget {
     final searchQuery = useState('');
     final selectedIds = useState<Set<String>>({});
 
-  final playerState = ref.watch(playerPaginationProvider);
+  final playerState = ref.watch(onboardingPlayerProvider);
   final favorites = ref.watch(favoritePlayersProvider);
   final countryState = ref.watch(countryDropdownProvider);
 
@@ -84,7 +85,7 @@ class PlayerSelectionContent extends HookConsumerWidget {
         final text = searchController.text;
         searchQuery.value = text;
         ref.read(playerSearchQueryProvider.notifier).state = text;
-        ref.read(playerPaginationProvider.notifier).setSearchQuery(text);
+        ref.read(onboardingPlayerProvider.notifier).setSearchQuery(text);
       }
 
       searchController.addListener(listener);
@@ -93,14 +94,14 @@ class PlayerSelectionContent extends HookConsumerWidget {
 
     useEffect(() {
       if (countryCode.isNotEmpty) {
-        ref.read(playerPaginationProvider.notifier).setCountry(countryCode);
+        ref.read(onboardingPlayerProvider.notifier).setCountry(countryCode);
       }
       return null;
     }, [countryCode]);
 
     useEffect(() {
       Future.microtask(() async {
-        await ref.read(playerPaginationProvider.notifier).initFirstPage();
+        await ref.read(onboardingPlayerProvider.notifier).initFirstPage();
       });
       return null;
     }, []);
@@ -118,7 +119,7 @@ class PlayerSelectionContent extends HookConsumerWidget {
         final current = listController.position.pixels;
 
         if (maxScroll - current <= 200) {
-          ref.read(playerPaginationProvider.notifier).fetchNextPage();
+          ref.read(onboardingPlayerProvider.notifier).fetchNextPage();
         }
       }
 
@@ -143,7 +144,7 @@ class PlayerSelectionContent extends HookConsumerWidget {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.white.withOpacity(0.03),
+                    Colors.white.withValues(alpha: 0.03),
                     Colors.transparent,
                   ],
                 ),
@@ -181,14 +182,14 @@ class PlayerSelectionContent extends HookConsumerWidget {
                     style: AppTypography.textLgBold.copyWith(
                       color: kWhiteColor,
                     ),
-                  ).animate().fadeIn(duration: 300.ms, curve: _onboardingSpring),
+                  ).animate().fadeIn(duration: 300.ms, curve: _springCurve),
                   SizedBox(height: 6.h),
                   Text(
                     subtitle.replaceFirst('{country}', countryName),
                     style: AppTypography.textSmRegular.copyWith(
                       color: kWhiteColor.withValues(alpha: 0.7),
                     ),
-                  ).animate().fadeIn(duration: 320.ms, curve: _onboardingSpring).move(begin: const Offset(0, 6)),
+                  ).animate().fadeIn(duration: 320.ms, curve: _springCurve).move(begin: const Offset(0, 6)),
                   SizedBox(height: 16.h),
                   Container(
                     decoration: BoxDecoration(
@@ -215,7 +216,7 @@ class PlayerSelectionContent extends HookConsumerWidget {
                       hintText: 'Find any player...',
                       onFilterTap: () {},
                       onProfileTap: () {},
-                    ).animate().fadeIn(duration: 360.ms, curve: _onboardingSpring).move(begin: const Offset(0, 8)),
+                    ).animate().fadeIn(duration: 360.ms, curve: _springCurve).move(begin: const Offset(0, 8)),
                   ),
                   SizedBox(height: 12.h),
                   Row(
@@ -231,7 +232,7 @@ class PlayerSelectionContent extends HookConsumerWidget {
                         ),
                       ),
                     ],
-                  ).animate().fadeIn(duration: 340.ms, curve: _onboardingSpring),
+                  ).animate().fadeIn(duration: 340.ms, curve: _springCurve),
                 ],
               ),
             ),
@@ -267,8 +268,9 @@ class PlayerSelectionContent extends HookConsumerWidget {
                               player,
                             ),
                             isSearching: isSearching,
+                            isLoading: isLoading,
                             hasMore: ref
-                                .read(playerPaginationProvider.notifier)
+                                .read(onboardingPlayerProvider.notifier)
                                 .hasMore,
                             flagCode:
                                 isSearching
@@ -450,13 +452,22 @@ Widget _buildPlayerList(
   required Set<String> selectedIds,
   required ValueChanged<Map<String, dynamic>> onToggle,
   required bool isSearching,
+  required bool isLoading,
   required bool hasMore,
   String? flagCode,
 }) {
+  if (isLoading) {
+    return const Center(
+      child: CircularProgressIndicator(
+        color: kWhiteColor,
+      ),
+    );
+  }
+
   if (players.isEmpty) {
     return Center(
       child: Text(
-        isSearching ? 'No players found' : 'Fetching players...',
+        isSearching ? 'No players found' : 'No players available yet.',
         style: AppTypography.textSmRegular.copyWith(
           color: kWhiteColor.withValues(alpha: 0.6),
         ),
@@ -490,9 +501,7 @@ Widget _buildPlayerList(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     _buildFlag(
-                      (flagCode ?? players.first['fed']?.toString() ?? 'US')
-                          .toString()
-                          .toUpperCase(),
+                      flagCode.toUpperCase(),
                       height: 14.h,
                       width: 20.w,
                     ),
@@ -537,8 +546,8 @@ Widget _buildPlayerList(
               onTap: () => onToggle(player),
             )
                 .animate(delay: delay)
-                .fadeIn(duration: 300.ms, curve: _onboardingSpring)
-                .move(begin: const Offset(0, 8), curve: _onboardingSpring);
+                .fadeIn(duration: 300.ms, curve: _springCurve)
+                .move(begin: const Offset(0, 8), curve: _springCurve);
           },
         ),
       ),
@@ -554,7 +563,7 @@ Future<void> _toggleFavorite(
   final fideId = player['fideId']?.toString();
   if (fideId == null || fideId.isEmpty) return;
 
-  await ref.read(playerPaginationProvider.notifier).toggleFavorite(fideId);
+  await ref.read(onboardingPlayerProvider.notifier).toggleFavorite(fideId);
 
   final updated = Set<String>.from(selectedIds.value);
   if (updated.contains(fideId)) {
@@ -607,7 +616,7 @@ Widget _buildFlag(
   );
 }
 
-class _PlayerTile extends StatelessWidget {
+class _PlayerTile extends HookWidget {
   const _PlayerTile({
     required this.player,
     required this.isSelected,
@@ -626,98 +635,130 @@ class _PlayerTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isPressed = useState(false);
     final rating = player['rating'] ?? 0;
     final countryCode = player['fed']?.toString() ?? '';
 
-    return Container(
-      margin: EdgeInsets.only(bottom: 10.sp),
-      decoration: BoxDecoration(
-        color: kBlack2Color.withValues(alpha: 0.85),
-        borderRadius: BorderRadius.circular(14.br),
-        border: Border.all(
-          color: isSelected
-              ? kGreenColor.withValues(alpha: 0.7)
-              : kWhiteColor.withValues(alpha: 0.05),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color:
-                isSelected
-                    ? kGreenColor.withValues(alpha: 0.15)
-                    : Colors.black.withValues(alpha: 0.25),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
+    return GestureDetector(
+      onTapDown: (_) => isPressed.value = true,
+      onTapUp: (_) {
+        isPressed.value = false;
+        onTap();
+      },
+      onTapCancel: () => isPressed.value = false,
+      child: AnimatedScale(
+        scale: isPressed.value ? 0.97 : 1.0,
+        duration: const Duration(milliseconds: 100),
+        curve: _snappyCurve,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          curve: _springCurve,
+          margin: EdgeInsets.only(bottom: 10.sp),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? kGreenColor.withValues(alpha: 0.08)
+                : kBlack2Color.withValues(alpha: 0.8),
+            borderRadius: BorderRadius.circular(16.br),
+            border: Border.all(
+              color: isSelected
+                  ? kGreenColor.withValues(alpha: 0.5)
+                  : kWhiteColor.withValues(alpha: 0.04),
+              width: isSelected ? 1.5 : 1,
+            ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: kGreenColor.withValues(alpha: 0.12),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                : null,
           ),
-        ],
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14.br),
-        onTap: onTap,
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 12.sp),
-          child: Row(
-            children: [
-              Container(
-                padding: EdgeInsets.all(10.sp),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: kWhiteColor.withValues(alpha: 0.06),
-                ),
-                child: _buildFlag(
-                  countryCode.isEmpty ? 'US' : countryCode,
-                  height: 16.h,
-                  width: 22.w,
-                ),
-              ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _playerName,
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: kWhiteColor,
-                      ),
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 12.sp),
+            child: Row(
+              children: [
+                // Flag avatar
+                Container(
+                  width: 44.w,
+                  height: 44.h,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: kWhiteColor.withValues(alpha: 0.05),
+                    border: Border.all(
+                      color: kWhiteColor.withValues(alpha: 0.08),
                     ),
-                    SizedBox(height: 4.h),
-                    Text(
-                      'Rating $rating',
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.6),
-                      ),
+                  ),
+                  child: Center(
+                    child: _buildFlag(
+                      countryCode.isEmpty ? 'US' : countryCode,
+                      height: 18.h,
+                      width: 26.w,
                     ),
-                  ],
-                ),
-              ),
-              SizedBox(width: 12.w),
-              Text(
-                rating.toString(),
-                style: AppTypography.textSmBold.copyWith(
-                  color: kWhiteColor,
-                ),
-              ),
-              SizedBox(width: 14.w),
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                width: 44.w,
-                height: 44.h,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: isSelected
-                      ? kGreenColor.withValues(alpha: 0.2)
-                      : kWhiteColor.withValues(alpha: 0.05),
-                  border: Border.all(
-                    color: isSelected ? kGreenColor : kWhiteColor.withValues(alpha: 0.2),
                   ),
                 ),
-                child: Icon(
-                  isSelected ? Icons.favorite : Icons.favorite_border,
-                  color: isSelected ? kGreenColor : kWhiteColor.withValues(alpha: 0.7),
-                  size: 22.ic,
+                SizedBox(width: 12.w),
+                // Player info
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _playerName,
+                        style: AppTypography.textSmMedium.copyWith(
+                          color: kWhiteColor,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      SizedBox(height: 2.h),
+                      Text(
+                        '$rating ELO',
+                        style: AppTypography.textXsRegular.copyWith(
+                          color: kWhiteColor.withValues(alpha: 0.5),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                // Select indicator
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  curve: _snappyCurve,
+                  width: 38.w,
+                  height: 38.h,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isSelected
+                        ? kGreenColor
+                        : kWhiteColor.withValues(alpha: 0.05),
+                    border: Border.all(
+                      color: isSelected
+                          ? kGreenColor
+                          : kWhiteColor.withValues(alpha: 0.15),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 150),
+                    child: isSelected
+                        ? Icon(
+                            Icons.check,
+                            key: const ValueKey('check'),
+                            size: 18.ic,
+                            color: kWhiteColor,
+                          )
+                        : Icon(
+                            Icons.add,
+                            key: const ValueKey('add'),
+                            size: 18.ic,
+                            color: kWhiteColor.withValues(alpha: 0.5),
+                          ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
