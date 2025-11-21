@@ -13,7 +13,7 @@ class FavoritesMigration {
   static const String _oldPlayersKey = 'favorite_players';
   static const List<String> _oldEventKeys = [
     'current', // GroupEventCategory.current.name
-    'upcoming', // GroupEventCategory.upcoming.name
+    'upcoming', // GroupEventCategory.forYou.name
     'past', // GroupEventCategory.past.name
   ];
 

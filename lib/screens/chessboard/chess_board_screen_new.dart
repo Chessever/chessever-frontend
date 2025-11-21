@@ -23,6 +23,7 @@ import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart
 import 'package:chessever2/screens/chessboard/widgets/share_game_card_overlay.dart';
 import 'package:chessever2/screens/chessboard/chess_board_settings_page.dart';
 import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
+import 'package:chessever2/screens/chessboard/widgets/save_analysis_sheet.dart';
 import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
@@ -1347,50 +1348,28 @@ class _AppBar extends ConsumerStatefulWidget implements PreferredSizeWidget {
 class _AppBarState extends ConsumerState<_AppBar> {
   bool _showThreatsEnabled = false;
 
-  void _showSaveAnalysisDialog() {
-    showDialog<bool>(
+  Future<void> _showSaveAnalysisDialog() async {
+    final params = ChessBoardProviderParams(
+      game: widget.game,
+      index: widget.currentGameIndex,
+    );
+    final boardState = ref.read(chessBoardScreenProviderNew(params));
+
+    if (!boardState.hasValue || boardState.value == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Please wait for the game to load'),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    await showSaveAnalysisSheet(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: kBlack2Color,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12.br),
-          ),
-          title: Text(
-            'Save Analysis?',
-            style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
-          ),
-          content: Text(
-            'This will save your analysis including all comments, annotations, and variations.',
-            style: AppTypography.textSmRegular.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.7),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: Text(
-                'Cancel',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.7),
-                ),
-              ),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop(true);
-                // TODO: Implement save logic
-              },
-              child: Text(
-                'Save',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: kPrimaryColor,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
+      state: boardState.value!,
+      params: params,
     );
   }
 

@@ -96,7 +96,7 @@ class _GroupEventScreenController
 
         // Re-sort with updated favorites and heart data
         final sortingService = ref.read(tournamentSortingServiceProvider);
-        final sortedTours = tourEventCategory == GroupEventCategory.upcoming
+        final sortedTours = tourEventCategory == GroupEventCategory.forYou
             ? sortingService.sortUpcomingTours(
                 currentModels,
                 eventFavoritePlayersMap: eventFavoritePlayersMap,
@@ -186,7 +186,7 @@ class _GroupEventScreenController
               .toList();
 
       final sortedTours =
-          tourEventCategory == GroupEventCategory.upcoming
+          tourEventCategory == GroupEventCategory.forYou
               ? sortingService.sortUpcomingTours(tourEventCardModel)
               : tourEventCategory == GroupEventCategory.past
               ? sortingService.sortPastTours(tourEventCardModel)
@@ -269,7 +269,7 @@ class _GroupEventScreenController
       final sortingService = ref.read(tournamentSortingServiceProvider);
 
       final sortedTours =
-          tourEventCategory == GroupEventCategory.upcoming
+          tourEventCategory == GroupEventCategory.forYou
               ? sortingService.sortUpcomingTours(tourEventCardModel)
               : tourEventCategory == GroupEventCategory.past
               ? sortingService.sortPastTours(tourEventCardModel)
@@ -388,7 +388,7 @@ class _GroupEventScreenController
               .where((tour) {
                 if (tourEventCategory == GroupEventCategory.current) {
                   return true;
-                } else if (tourEventCategory == GroupEventCategory.upcoming) {
+                } else if (tourEventCategory == GroupEventCategory.forYou) {
                   return tour.tourEventCategory == TourEventCategory.upcoming;
                 } else {
                   return true;

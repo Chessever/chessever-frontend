@@ -22,7 +22,8 @@ class GroupBroadcastLocalStorage {
 
   String get localStorageName {
     switch (category) {
-      case GroupEventCategory.upcoming:
+      case GroupEventCategory.forYou:
+        // ForYou shows games, not events, so use upcoming storage key for backwards compatibility
         return _LocalGroupBroadcastStorage.upcoming.name;
       case GroupEventCategory.current:
         return _LocalGroupBroadcastStorage.current.name;
@@ -33,7 +34,8 @@ class GroupBroadcastLocalStorage {
 
   String get localStorageTimeName {
     switch (category) {
-      case GroupEventCategory.upcoming:
+      case GroupEventCategory.forYou:
+        // ForYou shows games, not events, so use upcoming storage key for backwards compatibility
         return '${_LocalGroupBroadcastStorage.upcoming.name}_time';
       case GroupEventCategory.current:
         return '${_LocalGroupBroadcastStorage.current.name}_time';
@@ -46,11 +48,9 @@ class GroupBroadcastLocalStorage {
     try {
       List<GroupBroadcast> broadcasts = [];
       switch (category) {
-        case GroupEventCategory.upcoming:
-          broadcasts =
-              await ref
-                  .read(groupBroadcastRepositoryProvider)
-                  .getUpcomingGroupBroadcasts();
+        case GroupEventCategory.forYou:
+          // ForYou shows games, not events, so return empty list
+          broadcasts = [];
           break;
         case GroupEventCategory.current:
           broadcasts =

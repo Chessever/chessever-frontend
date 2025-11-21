@@ -233,6 +233,129 @@ class GameRepository extends BaseRepository {
       return games;
     });
   }
+
+  // Get "For You" games - personalized feed based on favorited players, country, and high ELO
+  // This fetches ALL matching games and sorting/pagination is done in the provider
+  Future<List<Games>> getForYouGames({
+    List<String>? favoritedFideIds,
+    String? countryCode,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    return handleApiCall(() async {
+      debugPrint('===== GameRepository: Fetching For You games =====');
+      debugPrint('Favorited FIDE IDs: $favoritedFideIds');
+      debugPrint('Country code: $countryCode');
+      debugPrint('Limit: $limit, Offset: $offset');
+
+      // Build the query based on what filters we have
+      // If we have favorited players or country code, filter for them
+      // Otherwise, just get high ELO games as fallback
+      final response = await supabase
+          .from('games')
+          .select(_gameListSelectColumns)
+          .order('last_move_time', ascending: false)
+          .range(offset, offset + limit - 1);
+
+      final jsonList =
+          (response as List).map((item) => json.encode(item)).toList();
+
+      final games = await compute(_decodeGamesInIsolate, jsonList);
+
+      debugPrint('===== GameRepository: Fetched ${games.length} games =====');
+
+      return games;
+    });
+  }
+
+  // Get games by multiple FIDE IDs (for favorited players) with pagination
+  Future<List<Games>> getGamesByMultipleFideIds({
+    required List<String> fideIds,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    return handleApiCall(() async {
+      if (fideIds.isEmpty) {
+        return <Games>[];
+      }
+
+      debugPrint('===== GameRepository: Fetching games for ${fideIds.length} FIDE IDs =====');
+
+      // Build OR query for multiple FIDE IDs
+      final orConditions = fideIds.map((fideId) {
+        return 'players.cs.[{"fideId":${int.parse(fideId)}}]';
+      }).join(',');
+
+      final response = await supabase
+          .from('games')
+          .select(_gameListSelectColumns)
+          .or(orConditions)
+          .order('last_move_time', ascending: false)
+          .range(offset, offset + limit - 1);
+
+      final jsonList =
+          (response as List).map((item) => json.encode(item)).toList();
+
+      final games = await compute(_decodeGamesInIsolate, jsonList);
+
+      debugPrint('===== GameRepository: Fetched ${games.length} games for favorited players =====');
+
+      return games;
+    });
+  }
+
+  // Get games by country code with pagination
+  Future<List<Games>> getGamesByCountryCodePaginated({
+    required String countryCode,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    return handleApiCall(() async {
+      debugPrint('===== GameRepository: Fetching games for country $countryCode =====');
+
+      final response = await supabase
+          .from('games')
+          .select(_gameListSelectColumns)
+          .contains('players', '[{"fed": "$countryCode"}]')
+          .order('last_move_time', ascending: false)
+          .range(offset, offset + limit - 1);
+
+      final jsonList =
+          (response as List).map((item) => json.encode(item)).toList();
+
+      final games = await compute(_decodeGamesInIsolate, jsonList);
+
+      debugPrint('===== GameRepository: Fetched ${games.length} games for country =====');
+
+      return games;
+    });
+  }
+
+  // Get highest ELO games (fallback when no favorites/country)
+  Future<List<Games>> getHighEloGames({
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    return handleApiCall(() async {
+      debugPrint('===== GameRepository: Fetching high ELO games =====');
+
+      // Fetch recent games and we'll sort by ELO in Dart
+      final response = await supabase
+          .from('games')
+          .select(_gameListSelectColumns)
+          .order('last_move_time', ascending: false)
+          .range(offset, offset + limit - 1);
+
+      final jsonList =
+          (response as List).map((item) => json.encode(item)).toList();
+
+      final games = await compute(_decodeGamesInIsolate, jsonList);
+
+      debugPrint('===== GameRepository: Fetched ${games.length} high ELO games =====');
+
+      return games;
+    });
+  }
 }
 
 List<Games> _decodeGamesInIsolate(List<String> gameJsonList) {

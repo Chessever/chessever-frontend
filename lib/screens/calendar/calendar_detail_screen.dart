@@ -208,7 +208,7 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
                 );
 
                 final liveFav = ref.watch(
-                  starredProvider(GroupEventCategory.upcoming.name),
+                  starredProvider(GroupEventCategory.forYou.name),
                 );
 
                 final starredFavorites = [

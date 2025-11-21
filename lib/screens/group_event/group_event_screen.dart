@@ -1,9 +1,11 @@
 import 'dart:math';
 import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
+import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/group_event/widget/all_events_tab_widget.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/group_event_filter_provider.dart';
+import 'package:chessever2/screens/group_event/widget/for_you_games_widget.dart';
 import 'package:chessever2/screens/home/home_screen.dart';
 import 'package:chessever2/screens/home/home_screen_provider.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
@@ -21,12 +23,12 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 
-enum GroupEventCategory { past, current, upcoming }
+enum GroupEventCategory { past, current, forYou }
 
 final _mappedName = {
   GroupEventCategory.past: 'Past',
   GroupEventCategory.current: 'Current',
-  GroupEventCategory.upcoming: 'Upcoming',
+  GroupEventCategory.forYou: 'For You',
 };
 
 final selectedGroupCategoryProvider = StateProvider<GroupEventCategory>(
@@ -44,6 +46,7 @@ class GroupEventScreen extends HookConsumerWidget {
       initialPage: GroupEventCategory.values.indexOf(selectedTourEvent),
     );
     final pastScrollController = useScrollController();
+    final forYouScrollController = useScrollController();
     final isAnimating = useRef(false);
     final isSearching = useState(false);
     final focusNode = useFocusNode();
@@ -97,10 +100,27 @@ class GroupEventScreen extends HookConsumerWidget {
       }
     }
 
+    void onForYouScroll() {
+      if (!context.mounted || selectedTourEvent != GroupEventCategory.forYou) {
+        return;
+      } else {
+        final max = forYouScrollController.position.maxScrollExtent;
+        final current = forYouScrollController.position.pixels;
+        if (max - current <= 200) {
+          ref.read(forYouGamesProvider.notifier).loadMore();
+        }
+      }
+    }
+
     useEffect(() {
       pastScrollController.addListener(onScroll);
       return () => pastScrollController.removeListener(onScroll);
     }, [pastScrollController, selectedTourEvent]);
+
+    useEffect(() {
+      forYouScrollController.addListener(onForYouScroll);
+      return () => forYouScrollController.removeListener(onForYouScroll);
+    }, [forYouScrollController, selectedTourEvent]);
 
     return Material(
       color: kBackgroundColor,
@@ -212,11 +232,19 @@ class GroupEventScreen extends HookConsumerWidget {
               itemBuilder: (context, index) {
                 final currentCategory = GroupEventCategory.values[index];
                 final isPast = currentCategory == GroupEventCategory.past;
-                final scrollController = isPast ? pastScrollController : null;
+                final isForYou = currentCategory == GroupEventCategory.forYou;
+                final scrollController = isPast ? pastScrollController : (isForYou ? forYouScrollController : null);
 
                 // Only load data for the currently selected tab
                 if (currentCategory != selectedTourEvent) {
                   return const SizedBox.shrink();
+                }
+
+                // Special handling for "For You" tab - show games instead of events
+                if (isForYou) {
+                  return ForYouGamesWidget(
+                    scrollController: forYouScrollController,
+                  );
                 }
 
                 return ref
