@@ -10,6 +10,8 @@ import 'package:chessever2/screens/countryman_games_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/players/player_screen.dart';
 import 'package:chessever2/screens/players/providers/player_providers.dart';
+import 'package:chessever2/screens/onboarding/onboarding_flow_screen.dart';
+import 'package:chessever2/screens/onboarding/player_selection_screen.dart';
 import 'package:chessever2/screens/splash/splash_screen.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen.dart';
@@ -357,6 +359,8 @@ class MyApp extends HookConsumerWidget {
           '/standings': (context) => const PlayerTourScreen(),
           '/calendar_detail_screen': (context) => CalendarDetailsScreen(),
           '/Board_sheet': (context) => BoardColorDialog(),
+          '/onboarding': (context) => const OnboardingFlowScreen(),
+          '/player_selection_screen': (context) => const PlayerSelectionScreen(),
         },
       ),
     );

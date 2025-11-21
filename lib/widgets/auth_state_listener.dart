@@ -1,11 +1,12 @@
 import 'dart:async';
 
-import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
+import 'package:chessever2/screens/authentication/auth_screen_provider.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/repository/authentication/model/auth_state.dart';
+import 'package:chessever2/repository/local_storage/onboarding/onboarding_repository.dart';
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
 import 'package:chessever2/utils/favorites_migration.dart';
 import 'package:flutter/foundation.dart';
@@ -88,9 +89,15 @@ class AuthStateListener extends ConsumerWidget {
               }),
             );
 
+            final hasCompletedOnboarding = await ref
+                .read(onboardingRepositoryProvider)
+                .isCompleted(authState.user?.id);
+            final targetRoute =
+                hasCompletedOnboarding ? '/home_screen' : '/onboarding';
+
             if (currentRoute == '/auth_screen') {
               navigator.pushNamedAndRemoveUntil(
-                '/home_screen',
+                targetRoute,
                 (route) => false,
               );
             }

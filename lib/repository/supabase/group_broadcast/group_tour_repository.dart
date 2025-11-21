@@ -174,4 +174,33 @@ class GroupBroadcastRepository extends BaseRepository {
       return (res as List).map((e) => GroupBroadcast.fromJson(e)).toList();
     });
   }
+
+  Future<List<GroupBroadcast>> getGroupBroadcastsForYear({
+    required int year,
+    int limit = 500,
+    String orderBy = 'date_start',
+    bool ascending = true,
+  }) async {
+    return handleApiCall(() async {
+      final startOfYear = DateTime(year, 1, 1);
+      final endOfYear = DateTime(year, 12, 31, 23, 59, 59);
+
+      final startDateStr = startOfYear.toIso8601String();
+      final endDateStr = endOfYear.toIso8601String();
+
+      final response = await supabase
+          .from('group_broadcasts')
+          .select()
+          .or(
+            'and(date_start.gte.$startDateStr,date_start.lte.$endDateStr),'
+            'and(date_end.gte.$startDateStr,date_end.lte.$endDateStr)',
+          )
+          .order(orderBy, ascending: ascending)
+          .limit(limit);
+
+      return (response as List)
+          .map((json) => GroupBroadcast.fromJson(json))
+          .toList();
+    });
+  }
 }
