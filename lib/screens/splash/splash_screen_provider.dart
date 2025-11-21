@@ -27,13 +27,13 @@ class _SplashScreenProvider {
             .read(groupBroadcastLocalStorage(GroupEventCategory.current))
             .fetchAndSaveGroupBroadcasts(),
         ref
-            .read(groupBroadcastLocalStorage(GroupEventCategory.upcoming))
+            .read(groupBroadcastLocalStorage(GroupEventCategory.forYou))
             .fetchAndSaveGroupBroadcasts(),
         ref
             .read(starredProvider(GroupEventCategory.current.name).notifier)
             .init(),
         ref
-            .read(starredProvider(GroupEventCategory.upcoming.name).notifier)
+            .read(starredProvider(GroupEventCategory.forYou.name).notifier)
             .init(),
       ]).timeout(const Duration(seconds: 5));
     } catch (e) {
