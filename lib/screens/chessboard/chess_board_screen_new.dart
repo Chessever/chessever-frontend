@@ -1320,7 +1320,7 @@ class _LoadingScreen extends StatelessWidget {
   }
 }
 
-class _AppBar extends ConsumerWidget implements PreferredSizeWidget {
+class _AppBar extends ConsumerStatefulWidget implements PreferredSizeWidget {
   final GamesTourModel game;
   final List<GamesTourModel> games;
   final int currentGameIndex;
@@ -1336,11 +1336,69 @@ class _AppBar extends ConsumerWidget implements PreferredSizeWidget {
     this.isLoading = false,
     this.lastViewedIndex,
   });
-  copyPgnBtnClicked(WidgetRef ref) async {
+
+  @override
+  ConsumerState<_AppBar> createState() => _AppBarState();
+
+  @override
+  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+}
+
+class _AppBarState extends ConsumerState<_AppBar> {
+  bool _showThreatsEnabled = false;
+
+  void _showSaveAnalysisDialog() {
+    showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: kBlack2Color,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12.br),
+          ),
+          title: Text(
+            'Save Analysis?',
+            style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
+          ),
+          content: Text(
+            'This will save your analysis including all comments, annotations, and variations.',
+            style: AppTypography.textSmRegular.copyWith(
+              color: kWhiteColor.withValues(alpha: 0.7),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(
+                'Cancel',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: kWhiteColor.withValues(alpha: 0.7),
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(true);
+                // TODO: Implement save logic
+              },
+              child: Text(
+                'Save',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: kPrimaryColor,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void copyPgnBtnClicked() async {
     String? pgn;
     final params = ChessBoardProviderParams(
-      game: game,
-      index: currentGameIndex,
+      game: widget.game,
+      index: widget.currentGameIndex,
     );
     final boardState = ref.read(chessBoardScreenProviderNew(params));
     final analysisGame = boardState.valueOrNull?.analysisState.game;
@@ -1348,16 +1406,16 @@ class _AppBar extends ConsumerWidget implements PreferredSizeWidget {
       pgn = exportGameToPgn(analysisGame);
     }
     pgn ??=
-        (await ref.read(gameRepositoryProvider).getGameById(game.gameId)).pgn ??
+        (await ref.read(gameRepositoryProvider).getGameById(widget.game.gameId)).pgn ??
         '';
     Clipboard.setData(ClipboardData(text: pgn));
   }
 
-  void shareGameBtnClicked(BuildContext context, WidgetRef ref) async {
+  void shareGameBtnClicked() async {
     // Get the board provider to access the current state
     final params = ChessBoardProviderParams(
-      game: game,
-      index: currentGameIndex,
+      game: widget.game,
+      index: widget.currentGameIndex,
     );
     final boardState = ref.read(chessBoardScreenProviderNew(params));
 
@@ -1375,7 +1433,7 @@ class _AppBar extends ConsumerWidget implements PreferredSizeWidget {
     final state = boardState.value!;
     final gameWithPgn = await ref
         .read(gameRepositoryProvider)
-        .getGameById(game.gameId);
+        .getGameById(widget.game.gameId);
     final pgn = gameWithPgn.pgn ?? "";
 
     // Show share overlay - we'll navigate to a full screen overlay
@@ -1387,7 +1445,7 @@ class _AppBar extends ConsumerWidget implements PreferredSizeWidget {
           barrierColor: Colors.transparent,
           pageBuilder:
               (context, animation, secondaryAnimation) =>
-                  _ShareGameScreen(game: game, state: state, pgn: pgn),
+                  _ShareGameScreen(game: widget.game, state: state, pgn: pgn),
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             return FadeTransition(opacity: animation, child: child);
           },
@@ -1397,26 +1455,60 @@ class _AppBar extends ConsumerWidget implements PreferredSizeWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     return AppBar(
       elevation: 0,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back_ios_new, color: kWhiteColor),
-        onPressed: () => Navigator.pop(context, lastViewedIndex),
+        onPressed: () => Navigator.pop(context, widget.lastViewedIndex),
       ),
       title: _GameSelectionDropdown(
-        games: games,
-        currentGameIndex: currentGameIndex,
-        onGameChanged: onGameChanged,
-        isLoading: isLoading,
+        games: widget.games,
+        currentGameIndex: widget.currentGameIndex,
+        onGameChanged: widget.onGameChanged,
+        isLoading: widget.isLoading,
       ),
       actions: [
+        // Show Threats toggle button
+        IconButton(
+          icon: Icon(
+            Icons.gps_fixed,
+            color: _showThreatsEnabled
+                ? kPrimaryColor
+                : kWhiteColor.withValues(alpha: 0.5),
+            size: 22.sp,
+          ),
+          padding: EdgeInsets.all(8.sp),
+          tooltip: 'Show threats',
+          onPressed: widget.isLoading
+              ? null
+              : () {
+                setState(() {
+                  _showThreatsEnabled = !_showThreatsEnabled;
+                });
+                // TODO: Implement show threats logic
+              },
+        ),
+        SizedBox(width: 4.w),
+        // Save Analysis button
+        IconButton(
+          icon: Icon(
+            Icons.save_outlined,
+            color: kWhiteColor,
+            size: 22.sp,
+          ),
+          padding: EdgeInsets.all(8.sp),
+          tooltip: 'Save analysis',
+          onPressed: widget.isLoading ? null : _showSaveAnalysisDialog,
+        ),
+        SizedBox(width: 4.w),
+        // Existing 3-dot menu
         PopupMenuButton<String>(
           icon: const Icon(Icons.more_vert, color: kWhiteColor),
-          enabled: !isLoading,
+          enabled: !widget.isLoading,
           onSelected: (value) {
             if (value == 'share') {
-              shareGameBtnClicked(context, ref);
+              shareGameBtnClicked();
             } else if (value == 'board_settings') {
               Navigator.of(context).push(ChessBoardSettingsPage.route());
             }
@@ -1445,7 +1537,7 @@ class _AppBar extends ConsumerWidget implements PreferredSizeWidget {
                 ),
                 PopupMenuItem(
                   onTap: () {
-                    copyPgnBtnClicked(ref);
+                    copyPgnBtnClicked();
                   },
                   value: 'copy_pgn',
                   child: Row(
@@ -1461,9 +1553,6 @@ class _AppBar extends ConsumerWidget implements PreferredSizeWidget {
       ],
     );
   }
-
-  @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
 }
 
 class _GameSelectionDropdown extends StatelessWidget {
@@ -1520,7 +1609,7 @@ class _GameSelectionDropdown extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 32.h,
-      constraints: BoxConstraints(maxWidth: 300.w),
+      constraints: BoxConstraints(maxWidth: 240.w),
       child: DropdownButton<int>(
         value: currentGameIndex,
         underline: Container(),
@@ -1532,6 +1621,7 @@ class _GameSelectionDropdown extends StatelessWidget {
         dropdownColor: kBlack2Color,
         borderRadius: BorderRadius.circular(20.sp),
         isExpanded: true,
+        isDense: true,
         style: AppTypography.textMdBold,
         onChanged:
             isLoading
@@ -1546,7 +1636,7 @@ class _GameSelectionDropdown extends StatelessWidget {
             final game = entry.value;
 
             return Container(
-              padding: EdgeInsets.symmetric(horizontal: 12.sp),
+              padding: EdgeInsets.only(left: 8.sp, right: 4.sp),
               alignment: Alignment.center,
               child: Text(
                 '${_formatName(game.whitePlayer.displayName, maxWidth: 120)} vs ${_formatName(game.blackPlayer.displayName, maxWidth: 120)}',
