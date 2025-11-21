@@ -32,6 +32,15 @@ final playerPaginationProvider = StateNotifierProvider<
   return PlayerPaginationNotifier(viewModel, ref);
 });
 
+/// Provider specifically for onboarding - uses optimized fetch
+final onboardingPlayerProvider = StateNotifierProvider<
+  PlayerPaginationNotifier,
+  AsyncValue<List<Map<String, dynamic>>>
+>((ref) {
+  final viewModel = ref.read(playerViewModelProvider);
+  return PlayerPaginationNotifier(viewModel, ref, isOnboarding: true);
+});
+
 final filteredPlayersProvider = Provider<List<Map<String, dynamic>>>((ref) {
   return ref.watch(playerPaginationProvider).valueOrNull ?? [];
 });
@@ -40,20 +49,22 @@ class PlayerPaginationNotifier
     extends StateNotifier<AsyncValue<List<Map<String, dynamic>>>> {
   final PlayerViewModel _viewModel;
   final Ref _ref;
+  final bool _isOnboarding;
   bool _isFetching = false;
   bool hasMore = true;
   String _search = '';
   String? _countryCode;
 
-  PlayerPaginationNotifier(this._viewModel, this._ref)
-      : super(const AsyncValue.loading());
+  PlayerPaginationNotifier(this._viewModel, this._ref, {bool isOnboarding = false})
+      : _isOnboarding = isOnboarding,
+        super(const AsyncValue.loading());
 
   Future<void> initFirstPage() async {
     if (_isFetching) return;
     _isFetching = true;
     state = const AsyncValue.loading();
     try {
-      await _viewModel.initialize(clear: true);
+      await _viewModel.initialize(clear: true, isOnboarding: _isOnboarding);
       final country = _search.isEmpty ? _countryCode : null;
       final firstBatch = await _viewModel.fetchNextPage(
         search: _search,
