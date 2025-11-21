@@ -131,21 +131,35 @@ class ChessSvgBottomNavbarWithLongPress extends StatelessWidget {
           clipBehavior: Clip.none,
           alignment: Alignment.center,
           children: [
-            // Center the icon vertically and horizontally
+            // Icon + badge grouped together so badge hugs the icon, not the full button
             Center(
-              child: SvgWidget(
-                svgPath,
-                height: 24.h,
-                width: 24.w,
-                colorFilter: ColorFilter.mode(
-                  onPressed != null ? kWhiteColor : kWhiteColor70,
-                  BlendMode.srcIn,
+              child: SizedBox(
+                width: 32.w,
+                height: 32.h,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Center(
+                      child: SvgWidget(
+                        svgPath,
+                        height: 24.h,
+                        width: 24.w,
+                        colorFilter: ColorFilter.mode(
+                          onPressed != null ? kWhiteColor : kWhiteColor70,
+                          BlendMode.srcIn,
+                        ),
+                      ),
+                    ),
+                    if (showBadge && onPressed != null)
+                      Positioned(
+                        top: -2.h,
+                        right: -2.w,
+                        child: _UnseenMovesBadge(),
+                      ),
+                  ],
                 ),
               ),
             ),
-            // Show red dot badge on top-right corner if showBadge is true
-            if (showBadge && onPressed != null)
-              Positioned(top: -4.h, right: 4.w, child: _UnseenMovesBadge()),
           ],
         ),
       ),

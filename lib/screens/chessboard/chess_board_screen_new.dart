@@ -22,6 +22,7 @@ import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart
 // import 'package:chessever2/screens/chessboard/widgets/move_annotation_overlay.dart';
 import 'package:chessever2/screens/chessboard/widgets/share_game_card_overlay.dart';
 import 'package:chessever2/screens/chessboard/chess_board_settings_page.dart';
+import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
 import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
@@ -2913,9 +2914,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             _editNotationComment(token, params, fullText);
           },
           onLongPress: () {
-            if (!isLong) return;
             HapticFeedback.mediumImpact();
-            _toggleCommentExpansion(id, isExpanded);
+            _editNotationComment(token, params, fullText);
           },
           borderRadius: BorderRadius.circular(8.sp),
           splashColor: accentColor.withValues(alpha: 0.15),
@@ -3044,12 +3044,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       },
     );
 
-    final route = ModalSheetRoute<void>(
-      barrierDismissible: true,
-      swipeDismissible: true,
-      barrierColor: Colors.black.withValues(alpha: 0.65),
-      barrierLabel: 'Close comment editor',
-      viewportPadding: MediaQuery.viewPaddingOf(context),
+    final route = ChessSheetRoutes.commentEditor(
+      context: context,
       builder:
           (_) => _DirectCommentSheet(
             config: commentConfig,
@@ -3493,6 +3489,128 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     return head == null ? null : List<Number>.of(head);
   }
 
+  Duration? _parseClockLabel(String raw) {
+    final cleaned = raw.trim();
+    if (cleaned.isEmpty || cleaned.contains('-')) return null;
+
+    final parts = cleaned.split(':');
+    if (parts.length == 2) {
+      final minutes = int.tryParse(parts[0]);
+      final seconds = int.tryParse(parts[1]);
+      if (minutes == null || seconds == null) return null;
+      return Duration(minutes: minutes, seconds: seconds);
+    }
+    if (parts.length == 3) {
+      final hours = int.tryParse(parts[0]);
+      final minutes = int.tryParse(parts[1]);
+      final seconds = int.tryParse(parts[2]);
+      if (hours == null || minutes == null || seconds == null) return null;
+      return Duration(hours: hours, minutes: minutes, seconds: seconds);
+    }
+    return null;
+  }
+
+  Duration? _parseDurationFromTcToken(String token) {
+    final trimmed = token.trim();
+    if (trimmed.isEmpty || trimmed == '-') return null;
+    final parts = trimmed.split(':');
+    if (parts.length == 1) {
+      final seconds = int.tryParse(parts[0]);
+      return seconds != null ? Duration(seconds: seconds) : null;
+    }
+    if (parts.length == 2) {
+      final minutes = int.tryParse(parts[0]);
+      final seconds = int.tryParse(parts[1]);
+      if (minutes == null || seconds == null) return null;
+      return Duration(minutes: minutes, seconds: seconds);
+    }
+    if (parts.length == 3) {
+      final hours = int.tryParse(parts[0]);
+      final minutes = int.tryParse(parts[1]);
+      final seconds = int.tryParse(parts[2]);
+      if (hours == null || minutes == null || seconds == null) return null;
+      return Duration(hours: hours, minutes: minutes, seconds: seconds);
+    }
+    return null;
+  }
+
+  _TimeControlSnapshot _parseTimeControlSnapshot() {
+    final pgn = widget.state.pgnData ?? widget.game.pgn;
+    Duration? base;
+    Duration increment = Duration.zero;
+
+    if (pgn != null && pgn.isNotEmpty) {
+      final tcMatch = RegExp(
+        r'\[TimeControl "([^"]+)"\]',
+        multiLine: true,
+      ).firstMatch(pgn);
+      final raw = tcMatch?.group(1);
+      if (raw != null && raw.isNotEmpty && raw != '-') {
+        // Only examine the primary phase (before any commas)
+        final primaryPhase = raw.split(',').first.trim();
+
+        // Extract increment (after '+') if present
+        String baseToken = primaryPhase;
+        final plusIndex = primaryPhase.lastIndexOf('+');
+        if (plusIndex != -1 && plusIndex < primaryPhase.length - 1) {
+          final incToken = primaryPhase.substring(plusIndex + 1);
+          increment = _parseDurationFromTcToken(incToken) ?? Duration.zero;
+          baseToken = primaryPhase.substring(0, plusIndex);
+        }
+
+        // Remove move-count prefix (e.g., "40/7200") to isolate time value
+        if (baseToken.contains('/')) {
+          final segments = baseToken.split('/');
+          baseToken = segments.isNotEmpty ? segments.last : baseToken;
+        }
+
+        base = _parseDurationFromTcToken(baseToken);
+      }
+    }
+
+    return _TimeControlSnapshot(base: base, increment: increment);
+  }
+
+  String _formatDurationLabel(Duration duration) {
+    String twoDigits(int value) => value.toString().padLeft(2, '0');
+    if (duration.inHours > 0) {
+      return '${duration.inHours}:${twoDigits(duration.inMinutes.remainder(60))}:${twoDigits(duration.inSeconds.remainder(60))}';
+    }
+    return '${duration.inMinutes}:${twoDigits(duration.inSeconds.remainder(60))}';
+  }
+
+  String? _buildTimeSpentLabel(
+    ChessMovePointer pointer,
+    bool isMainlineMove,
+  ) {
+    if (!isMainlineMove || pointer.isEmpty) return null;
+
+    final moveIndex = pointer.first.toInt();
+    if (moveIndex < 0 || moveIndex >= widget.state.moveTimes.length) {
+      return null;
+    }
+
+    final currentClock = _parseClockLabel(widget.state.moveTimes[moveIndex]);
+    if (currentClock == null) return null;
+
+    Duration? previousClock;
+    for (int i = moveIndex - 2; i >= 0; i -= 2) {
+      previousClock = _parseClockLabel(widget.state.moveTimes[i]);
+      if (previousClock != null) break;
+    }
+
+    final timeControl = _parseTimeControlSnapshot();
+    final startingClock = previousClock ?? timeControl.base;
+    if (startingClock == null) return null;
+
+    final spentSeconds =
+        startingClock.inSeconds + timeControl.increment.inSeconds -
+            currentClock.inSeconds;
+    final safeSeconds = spentSeconds < 0 ? 0 : spentSeconds;
+
+    return _formatDurationLabel(Duration(seconds: safeSeconds));
+  }
+
   Future<void> _showMoveActions(
     ChessBoardProviderParams params,
     ChessMovePointer pointer,
@@ -3508,14 +3626,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     final canModifyVariant = variantHeadPointer != null && !isMainlineMove;
     final pointerId = NotationPointer.encode(pointer);
     final currentComment = widget.state.variationComments[pointerId] ?? '';
-    String? moveTimeLabel;
-    if (isMainlineMove && pointer.isNotEmpty) {
-      final moveIndex = pointer.first.toInt();
-      if (moveIndex >= 0 && moveIndex < widget.state.moveTimes.length) {
-        final raw = widget.state.moveTimes[moveIndex].trim();
-        moveTimeLabel = raw.isNotEmpty ? raw : null;
-      }
-    }
+    final timeSpentLabel = _buildTimeSpentLabel(pointer, isMainlineMove);
     
     final commentConfig = _VariationCommentSheetConfig(
       initialValue: currentComment,
@@ -3614,13 +3725,18 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         ),
     ];
 
+    final hasExpandedOptions = actions.length > 3;
+    final initialSheetFraction =
+        hasExpandedOptions ? _variantActionSheetInitialFraction : _mainlineActionSheetInitialFraction;
+
     await _showNotationActionSheet(
       context: hostContext,
       title: isNullMove ? 'Null move' : moveText,
       subtitle: 'Move options',
       actions: actions,
       commentConfig: commentConfig,
-      moveTimeLabel: moveTimeLabel,
+      timeSpentLabel: timeSpentLabel,
+      initialSheetFraction: initialSheetFraction,
     );
   }
 
@@ -3682,12 +3798,17 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       ),
     ];
 
+    final hasExpandedOptions = actions.length > 3;
+    final initialSheetFraction =
+        hasExpandedOptions ? _variantActionSheetInitialFraction : _mainlineActionSheetInitialFraction;
+
     await _showNotationActionSheet(
       context: hostContext,
       title: 'Variation',
       subtitle: 'Variation options',
       actions: actions,
       commentConfig: commentConfig,
+      initialSheetFraction: initialSheetFraction,
     );
   }
 
@@ -3899,20 +4020,13 @@ class _DirectCommentSheet extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final sheetColor = kBlack2Color.withValues(alpha: 0.96);
     final navigator = Navigator(
       onGenerateInitialRoutes: (_, __) => [
-        PagedSheetRoute(
+        SpringPagedSheetRoute(
           scrollConfiguration: const SheetScrollConfiguration(),
-          dragConfiguration: const SheetDragConfiguration(),
+          dragConfiguration: ChessSheetConfigs.commentEditor,
           initialOffset: const SheetOffset.proportionalToViewport(0.8),
-          snapGrid: SheetSnapGrid(
-            snaps: const [
-              SheetOffset.proportionalToViewport(0.8),
-              SheetOffset.proportionalToViewport(0.95),
-            ],
-            minFlingSpeed: 100,
-          ),
+          snapGrid: ChessSheetConfigs.commentEditorSnaps(minFlingSpeed: 650.0),
           builder:
               (context) => _NotationCommentPage(
                 config: config,
@@ -3926,11 +4040,9 @@ class _DirectCommentSheet extends ConsumerWidget {
       dismissBehavior:
           const DragDownSheetKeyboardDismissBehavior(isContentScrollAware: true),
       child: PagedSheet(
-        decoration: MaterialSheetDecoration(
-          size: SheetSize.stretch,
-          color: sheetColor,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28.sp)),
-          clipBehavior: Clip.antiAlias,
+        decoration: ChessSheetDecoration.dark(
+          alpha: 0.97,
+          borderRadius: 28.sp,
         ),
         shrinkChildToAvoidDynamicOverlap: true,
         navigator: navigator,
@@ -3991,12 +4103,8 @@ class _AnalysisActionButtons extends ConsumerWidget {
               },
             );
 
-            final route = ModalSheetRoute<void>(
-              barrierDismissible: true,
-              swipeDismissible: true,
-              barrierColor: Colors.black.withValues(alpha: 0.65),
-              barrierLabel: 'Close comment editor',
-              viewportPadding: MediaQuery.viewPaddingOf(context),
+            final route = ChessSheetRoutes.commentEditor(
+              context: context,
               builder:
                   (_) => _DirectCommentSheet(
                     config: commentConfig,
@@ -5670,6 +5778,19 @@ class _ShareGameScreen extends ConsumerWidget {
   }
 }
 
+const double _mainlineActionSheetInitialFraction = 0.45;
+const double _variantActionSheetInitialFraction = 0.55;
+
+class _TimeControlSnapshot {
+  final Duration? base;
+  final Duration increment;
+
+  const _TimeControlSnapshot({
+    required this.base,
+    required this.increment,
+  });
+}
+
 class _NotationActionItem {
   final IconData icon;
   final String label;
@@ -5692,15 +5813,12 @@ Future<void> _showNotationActionSheet({
   String? subtitle,
   required List<_NotationActionItem> actions,
   _VariationCommentSheetConfig? commentConfig,
-  String? moveTimeLabel,
+  String? timeSpentLabel,
+  double initialSheetFraction = _mainlineActionSheetInitialFraction,
 }) async {
   final hostContext = context;
-  final route = ModalSheetRoute<void>(
-    barrierDismissible: true,
-    swipeDismissible: true,
-    barrierColor: Colors.black.withValues(alpha: 0.65),
-    barrierLabel: 'Close notation actions',
-    viewportPadding: MediaQuery.viewPaddingOf(context),
+  final route = ChessSheetRoutes.actionMenu(
+    context: context,
     builder:
         (_) => _NotationActionSheet(
           title: title,
@@ -5708,7 +5826,8 @@ Future<void> _showNotationActionSheet({
           actions: actions,
           hostContext: hostContext,
           commentConfig: commentConfig,
-          moveTimeLabel: moveTimeLabel,
+          timeSpentLabel: timeSpentLabel,
+          initialSheetFraction: initialSheetFraction,
         ),
   );
 
@@ -5732,7 +5851,8 @@ class _NotationActionSheet extends ConsumerWidget {
   final List<_NotationActionItem> actions;
   final BuildContext hostContext;
   final _VariationCommentSheetConfig? commentConfig;
-  final String? moveTimeLabel;
+  final String? timeSpentLabel;
+  final double initialSheetFraction;
 
   const _NotationActionSheet({
     required this.title,
@@ -5740,25 +5860,30 @@ class _NotationActionSheet extends ConsumerWidget {
     required this.actions,
     required this.hostContext,
     this.commentConfig,
-    this.moveTimeLabel,
+    this.timeSpentLabel,
+    required this.initialSheetFraction,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final sheetColor = kBlack2Color.withValues(alpha: 0.96);
+    final clampedInitial =
+        initialSheetFraction.clamp(0.25, 0.9).toDouble();
+    final snapFractions = <double>{0.35, 0.75, clampedInitial}.toList()
+      ..sort();
+    final snapGrid = SheetSnapGrid(
+      snaps: snapFractions
+          .map((value) => SheetOffset.proportionalToViewport(value))
+          .toList(),
+      minFlingSpeed: 850.0,
+    );
+
     final navigator = Navigator(
       onGenerateInitialRoutes: (_, __) => [
-        PagedSheetRoute(
+        SpringPagedSheetRoute(
           scrollConfiguration: const SheetScrollConfiguration(),
-          dragConfiguration: const SheetDragConfiguration(),
-          initialOffset: const SheetOffset.proportionalToViewport(0.35),
-          snapGrid: SheetSnapGrid(
-            snaps: const [
-              SheetOffset.proportionalToViewport(0.35),
-              SheetOffset.proportionalToViewport(0.75),
-            ],
-            minFlingSpeed: 900,
-          ),
+          dragConfiguration: ChessSheetConfigs.actionMenu,
+          initialOffset: SheetOffset.proportionalToViewport(clampedInitial),
+          snapGrid: snapGrid,
           builder:
               (context) => _NotationActionListPage(
                 title: title,
@@ -5766,7 +5891,7 @@ class _NotationActionSheet extends ConsumerWidget {
                 actions: actions,
                 commentConfig: commentConfig,
                 hostContext: hostContext,
-                moveTimeLabel: moveTimeLabel,
+                timeSpentLabel: timeSpentLabel,
               ),
         ),
       ],
@@ -5776,11 +5901,9 @@ class _NotationActionSheet extends ConsumerWidget {
       dismissBehavior:
           const DragDownSheetKeyboardDismissBehavior(isContentScrollAware: true),
       child: PagedSheet(
-        decoration: MaterialSheetDecoration(
-          size: SheetSize.stretch, // keep full height so page transitions stay anchored
-          color: sheetColor,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28.sp)),
-          clipBehavior: Clip.antiAlias,
+        decoration: ChessSheetDecoration.dark(
+          alpha: 0.97,
+          borderRadius: 28.sp,
         ),
         shrinkChildToAvoidDynamicOverlap: true,
         navigator: navigator,
@@ -5795,7 +5918,7 @@ class _NotationActionListPage extends ConsumerWidget {
   final List<_NotationActionItem> actions;
   final _VariationCommentSheetConfig? commentConfig;
   final BuildContext hostContext;
-  final String? moveTimeLabel;
+  final String? timeSpentLabel;
 
   const _NotationActionListPage({
     required this.title,
@@ -5803,7 +5926,7 @@ class _NotationActionListPage extends ConsumerWidget {
     required this.hostContext,
     this.subtitle,
     this.commentConfig,
-    this.moveTimeLabel,
+    this.timeSpentLabel,
   });
 
   Future<void> _handleActionTap(
@@ -5814,17 +5937,11 @@ class _NotationActionListPage extends ConsumerWidget {
 
     if (action.triggersCommentEditor && commentConfig != null) {
       await Navigator.of(context).push(
-        PagedSheetRoute(
+        SpringPagedSheetRoute(
           scrollConfiguration: const SheetScrollConfiguration(),
-          dragConfiguration: const SheetDragConfiguration(),
+          dragConfiguration: ChessSheetConfigs.commentEditor,
           initialOffset: const SheetOffset.proportionalToViewport(0.8),
-          snapGrid: SheetSnapGrid(
-            snaps: const [
-              SheetOffset.proportionalToViewport(0.8),
-              SheetOffset.proportionalToViewport(0.95),
-            ],
-            minFlingSpeed: 100,
-          ),
+          snapGrid: ChessSheetConfigs.commentEditorSnaps(minFlingSpeed: 650.0),
           builder:
               (context) => _NotationCommentPage(
                 config: commentConfig!,
@@ -5897,7 +6014,7 @@ class _NotationActionListPage extends ConsumerWidget {
                   ],
                 ),
               ),
-              if (moveTimeLabel != null) ...[
+              if (timeSpentLabel != null) ...[
                 SizedBox(width: 12.w),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -5912,7 +6029,7 @@ class _NotationActionListPage extends ConsumerWidget {
                     ),
                     SizedBox(height: 4.h),
                     Text(
-                      moveTimeLabel!,
+                      timeSpentLabel!,
                       style: AppTypography.textSmMedium.copyWith(
                         color: kWhiteColor,
                         letterSpacing: 0.2,
@@ -5939,56 +6056,131 @@ class _NotationActionListPage extends ConsumerWidget {
   }
 }
 
-class _NotationActionTile extends StatelessWidget {
+class _NotationActionTile extends StatefulWidget {
   final _NotationActionItem action;
   final VoidCallback onTap;
 
   const _NotationActionTile({required this.action, required this.onTap});
 
   @override
+  State<_NotationActionTile> createState() => _NotationActionTileState();
+}
+
+class _NotationActionTileState extends State<_NotationActionTile>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _scaleAnimation;
+  late final Animation<double> _glowAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 150),
+      vsync: this,
+    );
+
+    // Use spring curve for natural bouncy feel
+    _scaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 0.96,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: ChessSheetCurves.bouncy,
+    ));
+
+    _glowAnimation = Tween<double>(
+      begin: 0.02,
+      end: 0.08,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOut,
+    ));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onTapDown(TapDownDetails details) {
+    _controller.forward();
+  }
+
+  void _onTapUp(TapUpDetails details) {
+    _controller.reverse();
+  }
+
+  void _onTapCancel() {
+    _controller.reverse();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14.sp),
-        onTap: onTap,
-        child: Container(
-          padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 14.sp),
-          decoration: BoxDecoration(
-            color: kWhiteColor.withValues(alpha: 0.02),
-            borderRadius: BorderRadius.circular(14.sp),
-            border: Border.all(color: kWhiteColor.withValues(alpha: 0.05)),
-          ),
-          child: Row(
-            children: [
-              Container(
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Transform.scale(
+          scale: _scaleAnimation.value,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(14.sp),
+              onTapDown: _onTapDown,
+              onTapUp: _onTapUp,
+              onTapCancel: _onTapCancel,
+              onTap: widget.onTap,
+              splashColor: widget.action.color.withValues(alpha: 0.1),
+              highlightColor: widget.action.color.withValues(alpha: 0.05),
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 14.sp),
                 decoration: BoxDecoration(
-                  color: action.color.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(10.sp),
-                ),
-                padding: EdgeInsets.all(8.sp),
-                child: Icon(action.icon, color: action.color, size: 18.ic),
-              ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: Text(
-                  action.label,
-                  style: AppTypography.textMdMedium.copyWith(
-                    color: kWhiteColor,
+                  color: kWhiteColor.withValues(alpha: _glowAnimation.value),
+                  borderRadius: BorderRadius.circular(14.sp),
+                  border: Border.all(
+                    color: kWhiteColor.withValues(alpha: 0.05 + (_controller.value * 0.05)),
                   ),
                 ),
+                child: Row(
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        color: widget.action.color.withValues(
+                          alpha: 0.15 + (_controller.value * 0.05),
+                        ),
+                        borderRadius: BorderRadius.circular(10.sp),
+                      ),
+                      padding: EdgeInsets.all(8.sp),
+                      child: Icon(
+                        widget.action.icon,
+                        color: widget.action.color,
+                        size: 18.ic,
+                      ),
+                    ),
+                    SizedBox(width: 12.w),
+                    Expanded(
+                      child: Text(
+                        widget.action.label,
+                        style: AppTypography.textMdMedium.copyWith(
+                          color: kWhiteColor,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      widget.action.triggersCommentEditor
+                          ? Icons.drive_file_rename_outline
+                          : Icons.arrow_forward_ios_rounded,
+                      color: kWhiteColor.withValues(alpha: 0.35),
+                      size: 14.ic,
+                    ),
+                  ],
+                ),
               ),
-              Icon(
-                action.triggersCommentEditor
-                    ? Icons.drive_file_rename_outline
-                    : Icons.arrow_forward_ios_rounded,
-                color: kWhiteColor.withValues(alpha: 0.35),
-                size: 14.ic,
-              ),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -6178,6 +6370,7 @@ class _NotationCommentPageState
           // Action buttons
           Row(
             children: [
+              // Clear button - clears the text field
               TextButton(
                 onPressed:
                     _controller.text.isEmpty
@@ -6189,6 +6382,47 @@ class _NotationCommentPageState
                 child: const Text('Clear'),
               ),
               const Spacer(),
+              // Delete button - directly removes the comment (only shown if there's an existing comment)
+              if (widget.config.initialValue != null &&
+                  widget.config.initialValue!.trim().isNotEmpty) ...[
+                IconButton(
+                  onPressed:
+                      _isSaving
+                          ? null
+                          : () async {
+                            HapticFeedback.mediumImpact();
+                            setState(() => _isSaving = true);
+                            try {
+                              // Submit empty string to remove the comment
+                              await Future.sync(
+                                () => widget.config.onSubmit(
+                                  widget.hostContext,
+                                  '',
+                                ),
+                              );
+                              if (!mounted) return;
+                              Navigator.of(context, rootNavigator: true).pop();
+                            } catch (error, stackTrace) {
+                              setState(() => _isSaving = false);
+                              FlutterError.reportError(
+                                FlutterErrorDetails(
+                                  exception: error,
+                                  stack: stackTrace,
+                                  context: ErrorDescription(
+                                    'Removing notation comment',
+                                  ),
+                                ),
+                              );
+                            }
+                          },
+                  icon: Icon(
+                    Icons.delete_outline,
+                    color: kRedColor.withValues(alpha: 0.8),
+                  ),
+                  tooltip: 'Remove comment',
+                ),
+                SizedBox(width: 8.w),
+              ],
               FilledButton(
                 onPressed: _isSaving || !_hasEdited ? null : _handleSave,
                 style: FilledButton.styleFrom(
