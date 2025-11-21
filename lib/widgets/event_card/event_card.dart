@@ -20,8 +20,15 @@ import 'package:skeletonizer/skeletonizer.dart';
 class EventCard extends ConsumerWidget {
   final GroupEventCardModel tourEventCardModel;
   final VoidCallback? onTap;
+  /// Optional suffix to make hero tag unique when same event appears in multiple lists
+  final String? heroTagSuffix;
 
-  const EventCard({required this.tourEventCardModel, this.onTap, super.key});
+  const EventCard({
+    required this.tourEventCardModel,
+    this.onTap,
+    this.heroTagSuffix,
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -46,7 +53,7 @@ class EventCard extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             // Event Image on the left
-            _EventImage(event: tourEventCardModel),
+            _EventImage(event: tourEventCardModel, heroTagSuffix: heroTagSuffix),
             SizedBox(width: 12.w),
 
             // Content in the middle
@@ -218,12 +225,15 @@ class EventCard extends ConsumerWidget {
 // Event Image Widget with cached network image or country flag for community events
 class _EventImage extends ConsumerWidget {
   final GroupEventCardModel event;
+  final String? heroTagSuffix;
 
-  const _EventImage({required this.event});
+  const _EventImage({required this.event, this.heroTagSuffix});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final heroTag = 'event-image-${event.id}';
+    // Include suffix to prevent duplicate hero tags when same event appears in multiple lists
+    final suffix = heroTagSuffix != null ? '-$heroTagSuffix' : '';
+    final heroTag = 'event-image-${event.id}$suffix';
     final isCommunity = event.eventSource == EventSource.communityEvent;
 
     if (isCommunity) {

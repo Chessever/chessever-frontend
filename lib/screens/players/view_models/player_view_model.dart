@@ -69,7 +69,9 @@ class PlayerViewModel {
 
     final enriched = _enrichWithFavorites(players);
     _players.addAll(enriched);
-    _hasMore = false; // Onboarding shows fixed list, no pagination needed
+    // Enable pagination for more players after initial batch
+    _hasMore = true;
+    _offset = enriched.length; // Start pagination from where we left off
     return enriched;
   }
 

@@ -272,6 +272,9 @@ class PlayerSelectionContent extends HookConsumerWidget {
                             hasMore: ref
                                 .read(onboardingPlayerProvider.notifier)
                                 .hasMore,
+                            isFetchingMore: ref
+                                .read(onboardingPlayerProvider.notifier)
+                                .isFetching,
                             flagCode:
                                 isSearching
                                     ? null
@@ -438,7 +441,7 @@ RecommendedPlayersResult _recommendedPlayers(
       : others;
 
   return RecommendedPlayersResult(
-    players: combined.take(12).toList(),
+    players: combined, // No limit - allow infinite scroll
     hasCountryMatches: hasCountryMatches,
   );
 }
@@ -454,6 +457,7 @@ Widget _buildPlayerList(
   required bool isSearching,
   required bool isLoading,
   required bool hasMore,
+  required bool isFetchingMore,
   String? flagCode,
 }) {
   if (isLoading) {
@@ -479,7 +483,7 @@ Widget _buildPlayerList(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       Padding(
-        padding: EdgeInsets.symmetric(vertical: 12.sp),
+        padding: EdgeInsets.only(bottom: 8.sp),
         child: Wrap(
           spacing: 8.w,
           runSpacing: 6.h,
@@ -521,15 +525,26 @@ Widget _buildPlayerList(
       Expanded(
         child: ListView.builder(
           controller: controller,
+          padding: EdgeInsets.zero,
           physics: const BouncingScrollPhysics(),
-          itemCount: players.length + (isSearching && hasMore ? 1 : 0),
+          itemCount: players.length + (hasMore ? 1 : 0),
           itemBuilder: (context, index) {
+            // Loading indicator at bottom
             if (index >= players.length) {
-              return Padding(
-                padding: EdgeInsets.symmetric(vertical: 16.sp),
-                child: const Center(
-                  child: CircularProgressIndicator(
-                    color: kWhiteColor,
+              return AnimatedOpacity(
+                opacity: isFetchingMore ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 200),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20.sp),
+                  child: Center(
+                    child: SizedBox(
+                      width: 24.w,
+                      height: 24.h,
+                      child: CircularProgressIndicator(
+                        color: kWhiteColor.withValues(alpha: 0.6),
+                        strokeWidth: 2.5,
+                      ),
+                    ),
                   ),
                 ),
               );
@@ -538,16 +553,22 @@ Widget _buildPlayerList(
             final player = players[index];
             final fideId = player['fideId']?.toString() ?? '';
             final isSelected = selectedIds.contains(fideId);
-            final delay = (index * 18).ms;
+            // Only animate first batch, skip animation for loaded items
+            final shouldAnimate = index < 15;
+            final delay = shouldAnimate ? (index * 18).ms : Duration.zero;
 
-            return _PlayerTile(
+            final tile = _PlayerTile(
               player: player,
               isSelected: isSelected,
               onTap: () => onToggle(player),
-            )
-                .animate(delay: delay)
-                .fadeIn(duration: 300.ms, curve: _springCurve)
-                .move(begin: const Offset(0, 8), curve: _springCurve);
+            );
+
+            return shouldAnimate
+                ? tile
+                    .animate(delay: delay)
+                    .fadeIn(duration: 300.ms, curve: _springCurve)
+                    .move(begin: const Offset(0, 8), curve: _springCurve)
+                : tile;
           },
         ),
       ),
