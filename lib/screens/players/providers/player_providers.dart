@@ -90,7 +90,9 @@ class PlayerPaginationNotifier
     try {
       final newBatch = await _viewModel.fetchNextPage(
         search: _search,
-        countryCode: _search.isEmpty ? _countryCode : null,
+        // For onboarding: fetch global players (more heterogeneous mix)
+        // For regular: filter by country if set
+        countryCode: _isOnboarding ? null : (_search.isEmpty ? _countryCode : null),
       );
       final filtered = _filterRealPlayers(newBatch);
       final enriched = _mergeWithFavorites(filtered);
