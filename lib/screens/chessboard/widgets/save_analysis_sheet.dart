@@ -1010,10 +1010,13 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
   }
 
   Widget _buildActionButtons() {
-    // Save is only enabled if:
-    // - Not currently saving AND
-    // - (Creating a new folder OR has selected an existing folder)
-    final canSave = !_isSaving && (_isCreatingNewFolder || _selectedFolder != null);
+    // Save is enabled only when:
+    // - Not currently saving, AND
+    // - A folder is selected, OR new folder mode is on with a non-empty name
+    final trimmedNewFolderName = _newFolderNameController.text.trim();
+    final hasExistingFolder = _selectedFolder != null;
+    final hasValidNewFolderName = _isCreatingNewFolder && trimmedNewFolderName.isNotEmpty;
+    final canSave = !_isSaving && (hasValidNewFolderName || hasExistingFolder);
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 24.w),
@@ -1111,7 +1114,11 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                                   ),
                                   SizedBox(width: 8.w),
                                   Text(
-                                    canSave ? 'Save Analysis' : 'Select a Folder',
+                                    canSave
+                                        ? 'Save Analysis'
+                                        : _isCreatingNewFolder
+                                            ? 'Name your folder'
+                                            : 'Select a Folder',
                                     style: AppTypography.textSmBold.copyWith(
                                       color: canSave
                                           ? kWhiteColor
