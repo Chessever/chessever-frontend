@@ -396,6 +396,9 @@ class _QuickFilterButtons extends ConsumerWidget {
     final filterMode = ref.watch(calendarFilterModeProvider);
     final calendarData = ref.watch(calendarScreenProvider);
     final favoriteEvents = ref.watch(favoriteEventsProvider);
+    final selectedYear = ref.watch(selectedYearProvider);
+    final currentYear = DateTime.now().year;
+    final isUpcomingDisabled = selectedYear > currentYear;
 
     // Calculate upcoming count (events starting today or in future)
     final upcomingCount = calendarData.maybeWhen(
@@ -429,7 +432,9 @@ class _QuickFilterButtons extends ConsumerWidget {
             label: 'Upcoming',
             count: upcomingCount,
             isSelected: filterMode == CalendarFilterMode.upcoming,
+            isDisabled: isUpcomingDisabled,
             onTap: () {
+              if (isUpcomingDisabled) return;
               final current = ref.read(calendarFilterModeProvider);
               ref.read(calendarFilterModeProvider.notifier).state =
                   current == CalendarFilterMode.upcoming
@@ -464,31 +469,57 @@ class _FilterButton extends StatelessWidget {
     required this.count,
     required this.isSelected,
     required this.onTap,
+    this.isDisabled = false,
   });
 
   final String label;
   final int count;
   final bool isSelected;
   final VoidCallback onTap;
+  final bool isDisabled;
 
   @override
   Widget build(BuildContext context) {
+    final textColor = isDisabled
+        ? kDarkGreyColor
+        : isSelected
+            ? kPrimaryColor
+            : kWhiteColor;
+    final badgeColor = isDisabled
+        ? Colors.white.withValues(alpha: 0.05)
+        : isSelected
+            ? kPrimaryColor.withValues(alpha: 0.2)
+            : Colors.white.withValues(alpha: 0.1);
+    final badgeTextColor = isDisabled
+        ? kDarkGreyColor
+        : isSelected
+            ? kPrimaryColor
+            : kWhiteColor70;
+    final borderColor = isDisabled
+        ? Colors.white.withValues(alpha: 0.05)
+        : isSelected
+            ? kPrimaryColor.withValues(alpha: 0.5)
+            : Colors.white.withValues(alpha: 0.1);
+    final backgroundColor = isDisabled
+        ? kBlack2Color.withValues(alpha: 0.6)
+        : isSelected
+            ? kPrimaryColor.withValues(alpha: 0.15)
+            : kBlack2Color;
+
     return Material(
       color: Colors.transparent,
       borderRadius: BorderRadius.circular(8.br),
       child: InkWell(
         borderRadius: BorderRadius.circular(8.br),
-        onTap: onTap,
+        onTap: isDisabled ? null : onTap,
         child: Container(
           height: 48.h,
           padding: EdgeInsets.symmetric(horizontal: 16.w),
           decoration: BoxDecoration(
-            color: isSelected ? kPrimaryColor.withValues(alpha: 0.15) : kBlack2Color,
+            color: backgroundColor,
             borderRadius: BorderRadius.circular(8.br),
             border: Border.all(
-              color: isSelected
-                  ? kPrimaryColor.withValues(alpha: 0.5)
-                  : Colors.white.withValues(alpha: 0.1),
+              color: borderColor,
               width: 1.w,
             ),
           ),
@@ -498,7 +529,7 @@ class _FilterButton extends StatelessWidget {
               Text(
                 label,
                 style: AppTypography.textMdMedium.copyWith(
-                  color: isSelected ? kPrimaryColor : kWhiteColor,
+                  color: textColor,
                 ),
               ),
               if (count > 0) ...[
@@ -506,15 +537,13 @@ class _FilterButton extends StatelessWidget {
                 Container(
                   padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 4.sp),
                   decoration: BoxDecoration(
-                    color: isSelected
-                        ? kPrimaryColor.withValues(alpha: 0.2)
-                        : Colors.white.withValues(alpha: 0.1),
+                    color: badgeColor,
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
                     count.toString(),
                     style: AppTypography.textXsBold.copyWith(
-                      color: isSelected ? kPrimaryColor : kWhiteColor70,
+                      color: badgeTextColor,
                     ),
                   ),
                 ),

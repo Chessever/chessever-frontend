@@ -58,7 +58,7 @@ class GroupEventCardModel extends Equatable {
         endDate: utcEnd,
         liveGroupIds: liveGroupIds,
       ),
-      timeControl: groupBroadcast.timeControl ?? '',
+      timeControl: _formatTimeControl(groupBroadcast.timeControl),
       endDate: utcEnd,
       startDate: utcStart,
       searchTerms: groupBroadcast.search,
@@ -92,7 +92,7 @@ class GroupEventCardModel extends Equatable {
         endDate: utcEnd,
         liveGroupIds: [], // Calendar events are never "live"
       ),
-      timeControl: calendarEvent.timeControl ?? 'Standard',
+      timeControl: _formatTimeControl(calendarEvent.timeControl),
       endDate: utcEnd,
       startDate: utcStart,
       location: calendarEvent.location,
@@ -166,4 +166,19 @@ class GroupEventCardModel extends Equatable {
     searchTerms,
     eventSource,
   ];
+
+  static String _formatTimeControl(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return 'Standard';
+
+    final lower = raw.toLowerCase();
+    if (lower.contains('bullet')) return 'Bullet';
+    if (lower.contains('blitz')) return 'Blitz';
+    if (lower.contains('rapid')) return 'Rapid';
+    if (lower.contains('classic') || lower.contains('standard')) {
+      return 'Standard';
+    }
+
+    final trimmed = raw.trim();
+    return '${trimmed[0].toUpperCase()}${trimmed.substring(1)}';
+  }
 }
