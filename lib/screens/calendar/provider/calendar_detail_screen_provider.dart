@@ -5,6 +5,7 @@ import 'package:chessever2/repository/supabase/calendar_event/calendar_event_rep
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
+import 'package:chessever2/screens/calendar/calendar_event_detail_screen.dart';
 import 'package:chessever2/screens/calendar/provider/calendar_screen_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
@@ -80,6 +81,18 @@ class _CalendarDetailScreenController
     final timeControl = ref.read(calendarTimeControlProvider);
     final filterMode = ref.read(calendarFilterModeProvider);
     final liveIds = ref.read(liveBroadcastIdsProvider);
+
+    // If searching, rely on parent list which is already filtered server-side.
+    if (searchQuery.isNotEmpty) {
+      final filtered = [
+        ...groupBroadcast.map((t) => GroupEventCardModel.fromGroupBroadcast(t, liveIds)),
+        ...calendarEvents.map(GroupEventCardModel.fromCalendarEvent),
+      ];
+      state = AsyncValue.data(
+        ref.read(tournamentSortingServiceProvider).sortCalendarEvents(filtered),
+      );
+      return;
+    }
 
     // Get favorite event IDs if filtering by favorites
     final favoriteEventIds = <String>{};
@@ -262,12 +275,9 @@ class _CalendarDetailScreenController
         );
 
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                '${event.name}\n${event.location ?? 'Location TBA'}',
-              ),
-              duration: const Duration(seconds: 3),
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => CalendarEventDetailScreen(event: event),
             ),
           );
         }

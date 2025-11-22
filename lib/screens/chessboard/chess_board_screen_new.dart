@@ -956,44 +956,44 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
             // Priority order matters: checkmate > check > special moves > capture > regular
             if (moveSan.contains('#')) {
               // Checkmate notation
-              audioService.player.play(audioService.pieceCheckmateSfx);
+              audioService.playSound(audioService.pieceCheckmateSfx);
             } else if (moveSan.contains('+')) {
               // Check notation (but not checkmate)
-              audioService.player.play(audioService.pieceCheckSfx);
+              audioService.playSound(audioService.pieceCheckSfx);
             } else if (moveSan == 'O-O' || moveSan == 'O-O-O') {
               // Castling (kingside or queenside) - exact match
-              audioService.player.play(audioService.pieceCastlingSfx);
+              audioService.playSound(audioService.pieceCastlingSfx);
             } else if (moveSan.contains('=')) {
               // Pawn promotion (e.g., e8=Q)
-              audioService.player.play(audioService.piecePromotionSfx);
+              audioService.playSound(audioService.piecePromotionSfx);
             } else if (moveSan.contains('x')) {
               // Capture notation
-              audioService.player.play(audioService.pieceTakeoverSfx);
+              audioService.playSound(audioService.pieceTakeoverSfx);
             } else {
               // Regular move (no special notation)
-              audioService.player.play(audioService.pieceMoveSfx);
+              audioService.playSound(audioService.pieceMoveSfx);
             }
           } else if (currentIndex == -1 && prevIndex >= 0) {
             // Moving back to the starting position (before first move)
             // Play a regular move sound for the "undo" action
-            audioService.player.play(audioService.pieceMoveSfx);
+            audioService.playSound(audioService.pieceMoveSfx);
           } else if (currentIndex == movesSan.length && movesSan.isNotEmpty) {
             // We're at the end of the game, check for game-ending conditions
             final lastMoveSan = movesSan.last;
 
             if (lastMoveSan.contains('#')) {
               // Game ended with checkmate
-              audioService.player.play(audioService.pieceCheckmateSfx);
+              audioService.playSound(audioService.pieceCheckmateSfx);
             } else if (state.game.gameStatus == GameStatus.draw) {
               // Game ended in a draw
-              audioService.player.play(audioService.pieceDrawSfx);
+              audioService.playSound(audioService.pieceDrawSfx);
             } else {
               // Other game endings (resignation, time out, etc.)
-              audioService.player.play(audioService.pieceMoveSfx);
+              audioService.playSound(audioService.pieceMoveSfx);
             }
           } else {
             // Fallback for edge cases (shouldn't normally happen)
-            audioService.player.play(audioService.pieceMoveSfx);
+            audioService.playSound(audioService.pieceMoveSfx);
           }
         }
       },
@@ -1506,11 +1506,46 @@ class _AppBarState extends ConsumerState<_AppBar> {
         PopupMenuButton<String>(
           icon: const Icon(Icons.more_vert, color: kWhiteColor),
           enabled: !widget.isLoading,
-          onSelected: (value) {
+          onSelected: (value) async {
             if (value == 'share') {
               shareGameBtnClicked();
             } else if (value == 'board_settings') {
               Navigator.of(context).push(ChessBoardSettingsPage.route());
+            } else if (value == 'clear_analysis') {
+              final params = ChessBoardProviderParams(
+                game: widget.game,
+                index: widget.currentGameIndex,
+              );
+              final boardState = ref.read(chessBoardScreenProviderNew(params));
+              final analysisGame = boardState.valueOrNull?.analysisState.game;
+              final hasCustomAnalysis = _gameHasCustomVariations(analysisGame);
+
+              if (!hasCustomAnalysis) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('No custom analysis to clear'),
+                    backgroundColor: Colors.orange,
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+                return;
+              }
+
+              HapticFeedback.selectionClick();
+              final confirmed =
+                  await _showAnalysisConfirmationDialog(
+                    context: context,
+                    title: 'Clear analysis?',
+                    message:
+                        'This will remove every custom branch, including nested subvariants. This action cannot be undone.',
+                    confirmLabel: 'Clear',
+                    confirmColor: kRedColor,
+                  ) ??
+                  false;
+              if (!confirmed) return;
+              HapticFeedback.heavyImpact();
+              final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+              await notifier.clearUserAnalysis();
             }
           },
           itemBuilder:
@@ -1545,6 +1580,17 @@ class _AppBarState extends ConsumerState<_AppBar> {
                       Icon(Icons.copy, color: kWhiteColor),
                       SizedBox(width: 8.w),
                       const Text('Copy PGN'),
+                    ],
+                  ),
+                ),
+                const PopupMenuDivider(),
+                PopupMenuItem(
+                  value: 'clear_analysis',
+                  child: Row(
+                    children: [
+                      Icon(Icons.auto_delete_outlined, color: kRedColor),
+                      SizedBox(width: 8.w),
+                      const Text('Clear Analysis', style: TextStyle(color: kRedColor)),
                     ],
                   ),
                 ),
@@ -4150,7 +4196,6 @@ class _AnalysisActionButtons extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(chessBoardScreenProviderNew(params)).valueOrNull;
     final analysisGame = state?.analysisState.game;
-    final hasCustomAnalysis = _gameHasCustomVariations(analysisGame);
     final canInsertNullMove = analysisGame != null;
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
 
@@ -4204,32 +4249,6 @@ class _AnalysisActionButtons extends ConsumerWidget {
 
             await Navigator.of(context).push(route);
           },
-        ),
-        SizedBox(height: 12.sp),
-        _RibbonAnalysisButton(
-          icon: Icons.auto_delete_outlined,
-          color: kRedColor,
-          enabled: hasCustomAnalysis,
-          iconAlpha: 0.7,
-          onPressed:
-              !hasCustomAnalysis
-                  ? null
-                  : () async {
-                    HapticFeedback.selectionClick();
-                    final confirmed =
-                        await _showAnalysisConfirmationDialog(
-                          context: context,
-                          title: 'Clear analysis?',
-                          message:
-                              'This will remove every custom branch, including nested subvariants. This action cannot be undone.',
-                          confirmLabel: 'Clear',
-                          confirmColor: kRedColor,
-                        ) ??
-                        false;
-                    if (!confirmed) return;
-                    HapticFeedback.heavyImpact();
-                    await notifier.clearUserAnalysis();
-                  },
         ),
         SizedBox(height: 12.sp),
         _RibbonAnalysisButton(

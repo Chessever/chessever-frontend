@@ -318,6 +318,7 @@ class StockfishSingleton {
       int finalDepth = 0;
       bool evaluationComplete = false;
       int lastPvUpdateDepthReported = 0;
+      DateTime? lastInfoReceived; // Track when we last received info from engine
 
       final isDynamicSearch = searchDuration != null;
       debugPrint(
@@ -328,6 +329,10 @@ class StockfishSingleton {
         // Check if this is still the current job
         if (_currentJob != job || completer.isCompleted) return;
         line = line.trim();
+
+        // Track that we received data from engine
+        lastInfoReceived = DateTime.now();
+
         // TEMPO-01-COMMENT
         // debugPrint('🟢 STOCKFISH STDOUT: $line');
         // Parse info lines for analysis data
@@ -461,7 +466,7 @@ class StockfishSingleton {
           );
           if (!completer.isCompleted) {
             completer.complete(result);
-            unawaited(_currentSubscription?.cancel());
+            _currentSubscription?.cancel();
             _currentSubscription = null;
           }
         }
@@ -508,11 +513,83 @@ class StockfishSingleton {
         return;
       }
 
-      // No extra timeout: rely exclusively on UCI go command to stop search
+      // Add a safety timeout to prevent indefinite hanging
+      // Calculate timeout based on search parameters
+      Duration safetyTimeout;
+      if (isDynamicSearch) {
+        // For dynamic search, add 2 seconds buffer to the search duration
+        safetyTimeout = searchDuration + const Duration(seconds: 2);
+      } else {
+        // For fixed depth search, use a reasonable timeout based on depth
+        // Deeper searches need more time, but keep it aggressive
+        final timeoutSeconds = depth < 10 ? 5 : (depth < 20 ? 10 : 15);
+        safetyTimeout = Duration(seconds: timeoutSeconds);
+      }
 
-      // CRITICAL FIX: Wait for the completer to complete before returning
-      // This ensures the queue processor doesn't move to the next job until this one is done
-      await completer.future;
+      // Also add a stall detection mechanism
+      Timer? stallDetector;
+
+      stallDetector = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (lastInfoReceived != null) {
+          final timeSinceLastInfo = DateTime.now().difference(lastInfoReceived!);
+          // If we haven't received any info for 3 seconds, consider it stalled
+          if (timeSinceLastInfo > const Duration(seconds: 3)) {
+            debugPrint('⚠️ STOCKFISH STALL DETECTED: No response for ${timeSinceLastInfo.inSeconds}s');
+            stallDetector?.cancel();
+
+            // Force completion with current best results
+            if (!completer.isCompleted) {
+              final filteredPvs = pvs.where((pv) => pv.moves.isNotEmpty).toList(growable: false);
+              final result = EnhancedCloudEval(
+                fen: fen,
+                knodes: knodes,
+                depth: finalDepth > 0 ? finalDepth : 1,
+                pvs: filteredPvs.isEmpty ? [Pv(moves: '', cp: 0)] : filteredPvs,
+                isCancelled: false,
+                requestedMultiPv: job.multiPV,
+              );
+              completer.complete(result);
+              debugPrint('⚠️ STOCKFISH: Forced completion due to stall');
+
+              // Try to reset the engine
+              try {
+                _engine?.stdin = 'stop';
+              } catch (_) {}
+            }
+          }
+        }
+      });
+
+      // Wait for the completer with timeout
+      try {
+        await completer.future.timeout(
+          safetyTimeout,
+          onTimeout: () {
+            debugPrint('⚠️ STOCKFISH TIMEOUT: Evaluation took too long (${safetyTimeout.inSeconds}s)');
+            stallDetector?.cancel();
+
+            // Complete with whatever we have so far
+            final filteredPvs = pvs.where((pv) => pv.moves.isNotEmpty).toList(growable: false);
+            final result = EnhancedCloudEval(
+              fen: fen,
+              knodes: knodes,
+              depth: finalDepth > 0 ? finalDepth : 1,
+              pvs: filteredPvs.isEmpty ? [Pv(moves: '', cp: 0)] : filteredPvs,
+              isCancelled: false,
+              requestedMultiPv: job.multiPV,
+            );
+
+            // Try to stop the engine
+            try {
+              _engine?.stdin = 'stop';
+            } catch (_) {}
+
+            return result;
+          },
+        );
+      } finally {
+        stallDetector.cancel();
+      }
     } catch (e, st) {
       debugPrint('❌ STOCKFISH: Failed to process job for $fen: $e');
       debugPrint('$st');
@@ -564,7 +641,7 @@ class StockfishSingleton {
   }
 
   Future<void> _waitUntilReady({
-    Duration timeout = const Duration(seconds: 2),
+    Duration timeout = const Duration(seconds: 2), // Keep it fast, fail quick if engine not responding
   }) async {
     if (_engine == null) {
       throw StateError('Stockfish engine is not initialized');
@@ -614,10 +691,15 @@ class StockfishSingleton {
     while (true) {
       attempt++;
       try {
-        if (_engine == null || _engine!.state.value == StockfishState.error) {
+        // Force reset if engine is in error state or if we've been waiting too long
+        if (_engine == null ||
+            _engine!.state.value == StockfishState.error ||
+            _engine!.state.value == StockfishState.disposed) {
+          debugPrint('🔄 STOCKFISH: Reinitializing engine (state: ${_engine?.state.value})');
           try {
             _engine?.dispose();
           } catch (_) {}
+          await Future.delayed(const Duration(milliseconds: 100)); // Small delay before reinit
           _engine = Stockfish();
         }
         await _waitUntilReady();
@@ -628,7 +710,9 @@ class StockfishSingleton {
         );
         debugPrint('$st');
         await _resetEngineAfterFailure();
-        if (attempt >= 2) rethrow;
+        // Allow more retries for initial load
+        if (attempt >= 3) rethrow;
+        await Future.delayed(Duration(milliseconds: 200 * attempt)); // Exponential backoff
       }
     }
   }

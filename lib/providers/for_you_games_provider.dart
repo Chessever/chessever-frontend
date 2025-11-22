@@ -99,7 +99,9 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   bool _hasMore = true;
   bool _isFetchingMore = false;
   DateTime? _lastFetchAt;
-  static const int _pageSize = 20;
+  static const int _pageSize = 30; // Increased for better pagination
+  static const int _livePageSize = 200; // grab enough live games up front to avoid late resorting
+  int _emptyFetchCount = 0; // Track consecutive empty fetches
 
   Future<void> _initialize() async {
     await loadGames();
@@ -111,6 +113,7 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       state = const AsyncValue.loading();
       _allGames.clear();
       _hasMore = true;
+      _emptyFetchCount = 0; // Reset empty fetch counter
 
       await _fetchGames(offset: 0);
 
@@ -166,6 +169,17 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
 
     final newGames = <Games>[];
 
+    // === LIVE GAMES (absolute priority) ===
+    if (offset == 0) {
+      try {
+        final liveTop = await repository.getTopLiveGames(limit: _livePageSize);
+        newGames.addAll(liveTop);
+        debugPrint('[ForYouGames] Fetched ${liveTop.length} top live games (global)');
+      } catch (e) {
+        debugPrint('[ForYouGames] Error fetching top live games: $e');
+      }
+    }
+
     // === PRIORITY 1: Favorited players' games ===
     // Fetch games for all favorited players
     // (Live games within this category are prioritized in sorting)
@@ -181,7 +195,7 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
         try {
           final favPlayerGames = await repository.getGamesByMultipleFideIds(
             fideIds: fideIds,
-            limit: _pageSize,
+            limit: _pageSize * 2, // Fetch more to compensate for filtering
             offset: offset,
           );
           newGames.addAll(favPlayerGames);
@@ -252,7 +266,7 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
         final countryGames = await repository.getCountrymanGamesWithMinElo(
           countryCode: selectedCountry.countryCode,
           minElo: 2300, // Only show countryman games with ELO > 2300
-          limit: _pageSize ~/ 2,
+          limit: _pageSize, // Increased from _pageSize ~/ 2
           offset: offset,
         );
         newGames.addAll(countryGames);
@@ -268,7 +282,7 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     try {
       final highEloGames = await repository.getHighEloGames(
         minElo: 2500, // Only show games with 2500+ ELO players
-        limit: _pageSize ~/ 2, // Smaller batch since this is lower priority
+        limit: _pageSize, // Increased from _pageSize ~/ 2 for better coverage
         offset: offset,
       );
       newGames.addAll(highEloGames);
@@ -277,12 +291,20 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       debugPrint('[ForYouGames] Error fetching high ELO games: $e');
     }
 
+    // For subsequent pages, we still include finished games but skip live games
+    // to prevent late reordering. However, we're more lenient with filtering.
+    final filteredNewGames = offset == 0
+        ? newGames
+        : newGames.where((g) => g.status != '*').toList();
+
     // Remove duplicates by game ID
     final gameIds = _allGames.map((g) => g.id).toSet();
-    final uniqueNewGames = newGames.where((g) => !gameIds.contains(g.id)).toList();
+    final uniqueNewGames =
+        filteredNewGames.where((g) => !gameIds.contains(g.id)).toList();
 
     if (uniqueNewGames.isNotEmpty) {
       _allGames.addAll(uniqueNewGames);
+      _emptyFetchCount = 0; // Reset empty fetch counter
 
       // Sort games with heterogeneous distribution
       final favoriteEventIds = favoriteEvents
@@ -291,11 +313,15 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
           .toSet();
 
       _sortGames(favorites, selectedCountry?.countryCode, favoriteEventIds);
+    } else {
+      _emptyFetchCount++;
+      debugPrint('[ForYouGames] Empty fetch #$_emptyFetchCount');
     }
 
-    // Check if we have more
-    _hasMore = uniqueNewGames.isNotEmpty;
-    debugPrint('[ForYouGames] Has more: $_hasMore, Total games: ${_allGames.length}');
+    // Check if we have more - allow up to 3 empty fetches before giving up
+    // This handles cases where live games dominate the results
+    _hasMore = _emptyFetchCount < 3;
+    debugPrint('[ForYouGames] Has more: $_hasMore, Total games: ${_allGames.length}, Empty fetches: $_emptyFetchCount');
 
     // Track last successful fetch to detect stale data when revisiting the tab
     _lastFetchAt = DateTime.now();
@@ -378,15 +404,28 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       ));
     }
 
-    // Sort by score
-    scoredGames.sort((a, b) {
-      final scoreDiff = b.score.compareTo(a.score);
-      if (scoreDiff != 0) return scoreDiff;
-      return _compareByLastMoveTime(a.game, b.game);
-    });
+    // Sort live and non-live separately to keep all live games at the very top.
+    final liveGames = scoredGames.where((sg) => sg.isLive).toList();
+    final nonLiveGames = scoredGames.where((sg) => !sg.isLive).toList();
 
-    // Apply heterogeneous distribution
-    final distributed = _applyHeterogeneousDistribution(scoredGames);
+    _sortScoredGames(liveGames, prioritizeElo: true);
+    _sortScoredGames(nonLiveGames);
+
+    // Pin the highest-ELO non-live game(s) just after live games
+    final int? topEloInt =
+        nonLiveGames.isEmpty ? null : nonLiveGames.map((g) => g.maxElo).reduce((a, b) => a > b ? a : b);
+    final double topElo = (topEloInt ?? 0).toDouble();
+    final pinnedHighElo = <_ScoredGame>[];
+    if (topElo > 0) {
+      pinnedHighElo.addAll(nonLiveGames.where((g) => g.maxElo == topElo));
+      nonLiveGames.removeWhere((g) => g.maxElo == topElo);
+    }
+
+    // Apply heterogeneous distribution only to non-live games (keeps existing logic)
+    final distributedNonLive = _applyHeterogeneousDistribution(nonLiveGames);
+
+    // Final ordering: all live games first (sorted), then highest-ELO game(s), then the distributed non-live list
+    final distributed = [...liveGames, ...pinnedHighElo, ...distributedNonLive];
 
     // Update games list
     _allGames.clear();
@@ -400,6 +439,20 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       }
       debugPrint('[ForYouGames] Top 20 games distribution: $categoryCounts');
     }
+  }
+
+  /// Sort helper: by score, then recency
+  void _sortScoredGames(List<_ScoredGame> games, {bool prioritizeElo = false}) {
+    games.sort((a, b) {
+      if (prioritizeElo) {
+        final eloDiff = b.maxElo.compareTo(a.maxElo);
+        if (eloDiff != 0) return eloDiff;
+      }
+
+      final scoreDiff = b.score.compareTo(a.score);
+      if (scoreDiff != 0) return scoreDiff;
+      return _compareByLastMoveTime(a.game, b.game);
+    });
   }
 
   /// Apply heterogeneous distribution for variety while respecting priority

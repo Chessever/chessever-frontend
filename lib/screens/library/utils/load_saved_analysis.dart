@@ -1,8 +1,12 @@
+import 'dart:async';
+
+import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:flutter/material.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Navigates to chess board screen with a loaded saved analysis
 ///
@@ -12,7 +16,21 @@ import 'package:flutter/material.dart';
 /// - variationComments restoration
 /// - movePointer navigation position (via lastViewedPosition)
 /// - isBoardFlipped preference (from analysisState)
-void loadSavedAnalysis(BuildContext context, SavedAnalysis analysis) {
+Future<void> loadSavedAnalysis(
+  BuildContext context,
+  SavedAnalysis analysis,
+) async {
+  // Update last opened timestamp but don't block navigation on errors
+  try {
+    final container = ProviderScope.containerOf(context, listen: false);
+    final repository = container.read(libraryRepositoryProvider);
+    await repository.updateLastOpened(analysis.id);
+  } catch (_) {
+    // Best-effort update; proceed even if we cannot write
+  }
+
+  if (!context.mounted) return;
+
   // Convert SavedAnalysis to GamesTourModel format
   final game = _convertToGamesTourModel(analysis);
 

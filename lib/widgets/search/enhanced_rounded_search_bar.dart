@@ -1,11 +1,10 @@
-import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/search/search_overlay_widget.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart';
+import 'package:chessever2/widgets/user_avatar.dart';
 import 'package:easy_debounce/easy_debounce.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -275,37 +274,9 @@ class _EnhancedRoundedSearchBarState
   }
 
   Widget _buildProfileAvatar() {
-    final sessionManager = ref.read(sessionManagerProvider);
-    return FutureBuilder<String?>(
-      future: sessionManager.getUserInitials(),
-      builder: (context, snapshot) {
-        final initials = snapshot.data ?? '';
-        return GestureDetector(
-          onTap: widget.onProfileTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            width: 44.w,
-            height: 44.h,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: kProfileInitialsGradient,
-              boxShadow: [
-                BoxShadow(
-                  color: kPrimaryColor.withAlpha(7),
-                  blurRadius: 4.br,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Center(
-              child: Text(
-                initials.toUpperCase(),
-                style: AppTypography.textMdBold,
-              ),
-            ),
-          ),
-        );
-      },
+    return UserAvatar(
+      size: 44,
+      onTap: widget.onProfileTap,
     );
   }
 }

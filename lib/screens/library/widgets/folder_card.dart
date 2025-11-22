@@ -44,11 +44,13 @@ class FolderCard extends ConsumerWidget {
     final analysesCountAsync = ref.watch(_folderAnalysesCountProvider(folder.id));
     final folderColor = _parseColorString(folder.color);
 
-    if (isExpanded) {
-      return _buildExpandedCard(context, analysesCountAsync, folderColor);
-    } else {
-      return _buildCompactCard(context, analysesCountAsync, folderColor);
-    }
+    // Wrap with Material to prevent yellow underline bug in modals/overlays
+    return Material(
+      type: MaterialType.transparency,
+      child: isExpanded
+          ? _buildExpandedCard(context, analysesCountAsync, folderColor)
+          : _buildCompactCard(context, analysesCountAsync, folderColor),
+    );
   }
 
   Widget _buildCompactCard(

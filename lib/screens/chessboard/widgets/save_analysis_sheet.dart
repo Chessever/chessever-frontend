@@ -9,7 +9,10 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:motor/motor.dart';
+import 'package:smooth_sheets/smooth_sheets.dart';
 
 /// Configuration for save analysis sheet
 class SaveAnalysisSheetConfig {
@@ -44,25 +47,85 @@ Future<void> showSaveAnalysisSheet({
   await Navigator.of(context).push(route);
 }
 
-class _SaveAnalysisSheet extends ConsumerStatefulWidget {
+/// Preset folder colors for new folder creation
+const List<Color> _folderColorPresets = [
+  Color(0xFF0FB4E5), // Cyan (primary)
+  Color(0xFF10B981), // Emerald
+  Color(0xFFF59E0B), // Amber
+  Color(0xFFEF4444), // Red
+  Color(0xFF8B5CF6), // Purple
+  Color(0xFFEC4899), // Pink
+  Color(0xFF06B6D4), // Teal
+  Color(0xFFF97316), // Orange
+];
+
+/// Outer shell widget that sets up the smooth_sheets structure
+class _SaveAnalysisSheet extends ConsumerWidget {
   final SaveAnalysisSheetConfig config;
 
   const _SaveAnalysisSheet({required this.config});
 
   @override
-  ConsumerState<_SaveAnalysisSheet> createState() => _SaveAnalysisSheetState();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final navigator = Navigator(
+      onGenerateInitialRoutes: (_, __) => [
+        SpringPagedSheetRoute(
+          scrollConfiguration: const SheetScrollConfiguration(),
+          dragConfiguration: ChessSheetConfigs.commentEditor,
+          initialOffset: const SheetOffset.proportionalToViewport(0.75),
+          snapGrid: SheetSnapGrid(
+            snaps: const [
+              SheetOffset.proportionalToViewport(0.55),
+              SheetOffset.proportionalToViewport(0.75),
+              SheetOffset.proportionalToViewport(0.92),
+            ],
+            minFlingSpeed: 600.0,
+          ),
+          builder: (context) => _SaveAnalysisPage(
+            config: config,
+          ),
+        ),
+      ],
+    );
+
+    return SheetKeyboardDismissible(
+      dismissBehavior: const DragDownSheetKeyboardDismissBehavior(
+        isContentScrollAware: true,
+      ),
+      child: PagedSheet(
+        decoration: ChessSheetDecoration.dark(
+          alpha: 0.97,
+          borderRadius: 28.sp,
+        ),
+        shrinkChildToAvoidDynamicOverlap: true,
+        navigator: navigator,
+      ),
+    );
+  }
 }
 
-class _SaveAnalysisSheetState extends ConsumerState<_SaveAnalysisSheet> {
+/// Inner page widget with actual content
+class _SaveAnalysisPage extends ConsumerStatefulWidget {
+  final SaveAnalysisSheetConfig config;
+
+  const _SaveAnalysisPage({required this.config});
+
+  @override
+  ConsumerState<_SaveAnalysisPage> createState() => _SaveAnalysisPageState();
+}
+
+class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
+    with SingleTickerProviderStateMixin {
   late TextEditingController _titleController;
   late TextEditingController _newFolderNameController;
   late FocusNode _titleFocusNode;
   late FocusNode _newFolderNameFocusNode;
+
   LibraryFolder? _selectedFolder;
   bool _isSaving = false;
-  bool _isCreatingNewFolder = false;
   String? _errorMessage;
-  String? _folderErrorMessage;
+  bool _isCreatingNewFolder = false;
+  Color _selectedFolderColor = _folderColorPresets.first;
 
   @override
   void initState() {
@@ -76,7 +139,7 @@ class _SaveAnalysisSheetState extends ConsumerState<_SaveAnalysisSheet> {
 
     // Auto-focus the title field after sheet animates in
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future.delayed(const Duration(milliseconds: 350), () {
+      Future.delayed(const Duration(milliseconds: 400), () {
         if (mounted) {
           _titleFocusNode.requestFocus();
         }
@@ -112,12 +175,12 @@ class _SaveAnalysisSheetState extends ConsumerState<_SaveAnalysisSheet> {
       return;
     }
 
-    // Validate folder creation if needed
+    // Validate new folder name if creating one
     if (_isCreatingNewFolder) {
-      final folderName = _newFolderNameController.text.trim();
-      if (folderName.isEmpty) {
+      final newFolderName = _newFolderNameController.text.trim();
+      if (newFolderName.isEmpty) {
         setState(() {
-          _folderErrorMessage = 'Please enter a folder name';
+          _errorMessage = 'Please enter a folder name';
         });
         HapticFeedback.lightImpact();
         return;
@@ -127,7 +190,6 @@ class _SaveAnalysisSheetState extends ConsumerState<_SaveAnalysisSheet> {
     setState(() {
       _isSaving = true;
       _errorMessage = null;
-      _folderErrorMessage = null;
     });
 
     try {
@@ -141,7 +203,10 @@ class _SaveAnalysisSheetState extends ConsumerState<_SaveAnalysisSheet> {
       String? targetFolderId = _selectedFolder?.id;
       if (_isCreatingNewFolder) {
         final newFolderName = _newFolderNameController.text.trim();
-        final newFolder = await repository.createFolder(name: newFolderName);
+        final newFolder = await repository.createFolder(
+          name: newFolderName,
+          color: '#${_selectedFolderColor.toARGB32().toRadixString(16).substring(2)}',
+        );
         targetFolderId = newFolder.id;
       }
 
@@ -187,16 +252,23 @@ class _SaveAnalysisSheetState extends ConsumerState<_SaveAnalysisSheet> {
           SnackBar(
             duration: const Duration(seconds: 2),
             behavior: SnackBarBehavior.floating,
-            backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+            backgroundColor: const Color(0xFF1A1A1C).withValues(alpha: 0.95),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8.br),
+              borderRadius: BorderRadius.circular(12.br),
             ),
             content: Row(
               children: [
-                Icon(
-                  Icons.check_circle_outline,
-                  color: kPrimaryColor,
-                  size: 20.sp,
+                Container(
+                  padding: EdgeInsets.all(6.sp),
+                  decoration: BoxDecoration(
+                    color: kPrimaryColor.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(8.br),
+                  ),
+                  child: Icon(
+                    Icons.check_rounded,
+                    color: kPrimaryColor,
+                    size: 16.sp,
+                  ),
                 ),
                 SizedBox(width: 12.w),
                 Expanded(
@@ -212,8 +284,8 @@ class _SaveAnalysisSheetState extends ConsumerState<_SaveAnalysisSheet> {
           ),
         );
 
-        // Close the sheet
-        Navigator.of(context).pop();
+        // Close the sheet - pop twice to exit both Navigator and route
+        Navigator.of(widget.config.hostContext).pop();
       }
     } catch (e) {
       if (mounted) {
@@ -226,347 +298,84 @@ class _SaveAnalysisSheetState extends ConsumerState<_SaveAnalysisSheet> {
     }
   }
 
+  void _toggleCreateNewFolder() {
+    setState(() {
+      _isCreatingNewFolder = !_isCreatingNewFolder;
+      if (_isCreatingNewFolder) {
+        _selectedFolder = null;
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted) {
+            _newFolderNameFocusNode.requestFocus();
+          }
+        });
+      }
+    });
+    HapticFeedback.selectionClick();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final foldersAsync = ref.watch(
-      _foldersProvider,
-    );
+    final foldersAsync = ref.watch(_foldersProvider);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: ChessSheetDecoration.dark().color,
-        borderRadius: ChessSheetDecoration.dark().borderRadius,
-      ),
+    // CRITICAL: Wrap with Material to prevent yellow underline bug
+    return Material(
+      type: MaterialType.transparency,
       child: SafeArea(
-            top: false,
+        top: false,
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Drag handle
-                Center(
-                  child: Container(
-                    margin: EdgeInsets.symmetric(vertical: 12.h),
-                    width: 36.w,
-                    height: 4.h,
-                    decoration: BoxDecoration(
-                      color: kWhiteColor.withValues(alpha: 0.3),
-                      borderRadius: BorderRadius.circular(2.br),
-                    ),
-                  ),
-                ),
+                _buildDragHandle(),
 
                 // Header
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20.w),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Save Analysis',
-                        style: AppTypography.textLgBold.copyWith(
-                          color: kWhiteColor,
-                        ),
-                      ),
-                      SizedBox(height: 4.h),
-                      Text(
-                        'Save your analysis with all comments and variations',
-                        style: AppTypography.textSmRegular.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.7),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                _buildHeader()
+                    .animate()
+                    .fadeIn(duration: 300.ms, delay: 50.ms)
+                    .slideY(begin: 0.1, end: 0, duration: 350.ms, curve: Curves.easeOutCubic),
 
                 SizedBox(height: 24.h),
 
-                // Title input
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20.w),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Title',
-                        style: AppTypography.textSmMedium.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.9),
-                        ),
-                      ),
-                      SizedBox(height: 8.h),
-                      TextField(
-                        controller: _titleController,
-                        focusNode: _titleFocusNode,
-                        enabled: !_isSaving,
-                        maxLength: 100,
-                        style: AppTypography.textMdRegular.copyWith(
-                          color: kWhiteColor,
-                        ),
-                        decoration: InputDecoration(
-                          hintText: 'Enter analysis title',
-                          hintStyle: AppTypography.textMdRegular.copyWith(
-                            color: kWhiteColor.withValues(alpha: 0.4),
-                          ),
-                          filled: true,
-                          fillColor: kWhiteColor.withValues(alpha: 0.06),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8.br),
-                            borderSide: BorderSide.none,
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8.br),
-                            borderSide: BorderSide(
-                              color: kPrimaryColor,
-                              width: 1.5,
-                            ),
-                          ),
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 16.w,
-                            vertical: 12.h,
-                          ),
-                          counterStyle: AppTypography.textXsRegular.copyWith(
-                            color: kWhiteColor.withValues(alpha: 0.5),
-                          ),
-                          suffixIcon: _titleController.text.isNotEmpty
-                              ? IconButton(
-                                  icon: Icon(
-                                    Icons.clear,
-                                    color: kWhiteColor.withValues(alpha: 0.6),
-                                    size: 20.sp,
-                                  ),
-                                  onPressed: _isSaving
-                                      ? null
-                                      : () {
-                                          setState(() {
-                                            _titleController.clear();
-                                          });
-                                          HapticFeedback.lightImpact();
-                                        },
-                                )
-                              : null,
-                        ),
-                        onChanged: (value) {
-                          setState(() {}); // Rebuild to show/hide clear button
-                        },
-                      ),
-                    ],
-                  ),
-                ),
+                // Title input section
+                _buildTitleSection()
+                    .animate()
+                    .fadeIn(duration: 300.ms, delay: 100.ms)
+                    .slideY(begin: 0.1, end: 0, duration: 350.ms, curve: Curves.easeOutCubic),
 
-                SizedBox(height: 20.h),
+                SizedBox(height: 24.h),
 
-                // Folder selection toggle
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20.w),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Folder (Optional)',
-                        style: AppTypography.textSmMedium.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.9),
-                        ),
-                      ),
-                      SizedBox(height: 12.h),
-                      // Toggle between existing and new folder
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildToggleOption(
-                              label: 'Select Existing',
-                              isSelected: !_isCreatingNewFolder,
-                              onTap: () {
-                                setState(() {
-                                  _isCreatingNewFolder = false;
-                                  _folderErrorMessage = null;
-                                });
-                                HapticFeedback.selectionClick();
-                              },
-                            ),
-                          ),
-                          SizedBox(width: 12.w),
-                          Expanded(
-                            child: _buildToggleOption(
-                              label: 'Create New',
-                              isSelected: _isCreatingNewFolder,
-                              onTap: () {
-                                setState(() {
-                                  _isCreatingNewFolder = true;
-                                  _selectedFolder = null;
-                                  _folderErrorMessage = null;
-                                });
-                                HapticFeedback.selectionClick();
-                                // Focus new folder name field
-                                Future.delayed(const Duration(milliseconds: 100), () {
-                                  if (mounted) {
-                                    _newFolderNameFocusNode.requestFocus();
-                                  }
-                                });
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                      SizedBox(height: 12.h),
-                      // Show appropriate UI based on selection
-                      if (!_isCreatingNewFolder)
-                        foldersAsync.when(
-                          data: (folders) => _buildFolderSelector(folders),
-                          loading: () => _buildFolderSelectorLoading(),
-                          error: (e, _) => _buildFolderSelectorError(e),
-                        )
-                      else
-                        _buildNewFolderInput(),
-                    ],
-                  ),
-                ),
+                // Folder section
+                _buildFolderSection(foldersAsync)
+                    .animate()
+                    .fadeIn(duration: 300.ms, delay: 150.ms)
+                    .slideY(begin: 0.1, end: 0, duration: 350.ms, curve: Curves.easeOutCubic),
 
                 // Error messages
-                if (_errorMessage != null || _folderErrorMessage != null) ...[
+                if (_errorMessage != null) ...[
                   SizedBox(height: 16.h),
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20.w),
-                    child: Container(
-                      padding: EdgeInsets.all(12.sp),
-                      decoration: BoxDecoration(
-                        color: kRedColor.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8.br),
-                        border: Border.all(
-                          color: kRedColor.withValues(alpha: 0.3),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.error_outline,
-                            color: kRedColor,
-                            size: 18.sp,
-                          ),
-                          SizedBox(width: 8.w),
-                          Expanded(
-                            child: Text(
-                              _errorMessage ?? _folderErrorMessage ?? '',
-                              style: AppTypography.textSmRegular.copyWith(
-                                color: kRedColor,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                  _buildErrorMessage()
+                      .animate()
+                      .fadeIn(duration: 200.ms)
+                      .shake(hz: 2, curve: Curves.easeInOut),
                 ],
 
-                SizedBox(height: 24.h),
+                SizedBox(height: 28.h),
 
                 // Action buttons
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20.w),
-                  child: Row(
-                    children: [
-                      // Cancel button
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: _isSaving
-                              ? null
-                              : () {
-                                HapticFeedback.lightImpact();
-                                Navigator.of(context).pop();
-                              },
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: kWhiteColor,
-                            side: BorderSide(
-                              color: kWhiteColor.withValues(alpha: 0.2),
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8.br),
-                            ),
-                            padding: EdgeInsets.symmetric(vertical: 14.h),
-                          ),
-                          child: Text(
-                            'Cancel',
-                            style: AppTypography.textSmMedium,
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: 12.w),
-                      // Save button
-                      Expanded(
-                        flex: 2,
-                        child: ElevatedButton(
-                          onPressed: _isSaving ? null : _handleSave,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: kPrimaryColor,
-                            foregroundColor: kWhiteColor,
-                            disabledBackgroundColor:
-                                kPrimaryColor.withValues(alpha: 0.5),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8.br),
-                            ),
-                            padding: EdgeInsets.symmetric(vertical: 14.h),
-                            elevation: 0,
-                          ),
-                          child: _isSaving
-                              ? SizedBox(
-                                width: 20.w,
-                                height: 20.h,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    kWhiteColor,
-                                  ),
-                                ),
-                              )
-                              : Text(
-                                'Save Analysis',
-                                style: AppTypography.textSmBold,
-                              ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                _buildActionButtons()
+                    .animate()
+                    .fadeIn(duration: 300.ms, delay: 200.ms)
+                    .slideY(begin: 0.1, end: 0, duration: 350.ms, curve: Curves.easeOutCubic),
 
-                SizedBox(height: 20.h),
-
-                // Bottom padding for safe area
-                SizedBox(height: MediaQuery.of(context).viewInsets.bottom),
+                SizedBox(height: 16.h),
               ],
-            ),
-          ),
-    );
-  }
-
-  Widget _buildToggleOption({
-    required String label,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: _isSaving ? null : onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeInOut,
-        padding: EdgeInsets.symmetric(vertical: 10.h),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? kPrimaryColor.withValues(alpha: 0.15)
-              : kWhiteColor.withValues(alpha: 0.04),
-          borderRadius: BorderRadius.circular(8.br),
-          border: Border.all(
-            color: isSelected
-                ? kPrimaryColor.withValues(alpha: 0.6)
-                : Colors.transparent,
-            width: 1.5,
-          ),
-        ),
-        child: Center(
-          child: Text(
-            label,
-            style: AppTypography.textSmMedium.copyWith(
-              color: isSelected
-                  ? kPrimaryColor
-                  : kWhiteColor.withValues(alpha: 0.7),
             ),
           ),
         ),
@@ -574,180 +383,537 @@ class _SaveAnalysisSheetState extends ConsumerState<_SaveAnalysisSheet> {
     );
   }
 
-  Widget _buildNewFolderInput() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        TextField(
-          controller: _newFolderNameController,
-          focusNode: _newFolderNameFocusNode,
-          enabled: !_isSaving,
-          maxLength: 50,
-          style: AppTypography.textMdRegular.copyWith(
-            color: kWhiteColor,
+  Widget _buildDragHandle() {
+    return Center(
+      child: Container(
+        margin: EdgeInsets.symmetric(vertical: 12.h),
+        width: 40.w,
+        height: 4.h,
+        decoration: BoxDecoration(
+          color: kWhiteColor.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(2.br),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 24.w),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              // Icon with gradient background
+              Container(
+                padding: EdgeInsets.all(10.sp),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      kPrimaryColor.withValues(alpha: 0.2),
+                      kPrimaryColor.withValues(alpha: 0.05),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(12.br),
+                  border: Border.all(
+                    color: kPrimaryColor.withValues(alpha: 0.3),
+                    width: 1,
+                  ),
+                ),
+                child: Icon(
+                  Icons.bookmark_add_rounded,
+                  color: kPrimaryColor,
+                  size: 22.sp,
+                ),
+              ),
+              SizedBox(width: 14.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Save Analysis',
+                      style: AppTypography.textLgBold.copyWith(
+                        color: kWhiteColor,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    SizedBox(height: 2.h),
+                    Text(
+                      'Keep your variations & comments',
+                      style: AppTypography.textSmRegular.copyWith(
+                        color: kWhiteColor.withValues(alpha: 0.5),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          decoration: InputDecoration(
-            hintText: 'Enter folder name',
-            hintStyle: AppTypography.textMdRegular.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.4),
-            ),
-            filled: true,
-            fillColor: kWhiteColor.withValues(alpha: 0.06),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8.br),
-              borderSide: BorderSide.none,
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8.br),
-              borderSide: BorderSide(
-                color: kPrimaryColor,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTitleSection() {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 24.w),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                'Title',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: kWhiteColor.withValues(alpha: 0.8),
+                  letterSpacing: 0.3,
+                ),
+              ),
+              SizedBox(width: 6.w),
+              Text(
+                '*',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: kPrimaryColor,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 10.h),
+          Container(
+            decoration: BoxDecoration(
+              color: kWhiteColor.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(14.br),
+              border: Border.all(
+                color: _titleFocusNode.hasFocus
+                    ? kPrimaryColor.withValues(alpha: 0.5)
+                    : kWhiteColor.withValues(alpha: 0.08),
                 width: 1.5,
               ),
             ),
-            contentPadding: EdgeInsets.symmetric(
-              horizontal: 16.w,
-              vertical: 12.h,
+            child: TextField(
+              controller: _titleController,
+              focusNode: _titleFocusNode,
+              enabled: !_isSaving,
+              maxLength: 100,
+              style: AppTypography.textMdRegular.copyWith(
+                color: kWhiteColor,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Enter a memorable title...',
+                hintStyle: AppTypography.textMdRegular.copyWith(
+                  color: kWhiteColor.withValues(alpha: 0.3),
+                ),
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 16.w,
+                  vertical: 14.h,
+                ),
+                counterText: '',
+                suffixIcon: _titleController.text.isNotEmpty
+                    ? IconButton(
+                        icon: Icon(
+                          Icons.close_rounded,
+                          color: kWhiteColor.withValues(alpha: 0.4),
+                          size: 18.sp,
+                        ),
+                        onPressed: _isSaving
+                            ? null
+                            : () {
+                                setState(() {
+                                  _titleController.clear();
+                                });
+                                HapticFeedback.lightImpact();
+                              },
+                      )
+                    : null,
+              ),
+              onChanged: (value) {
+                setState(() {}); // Rebuild to show/hide clear button
+              },
             ),
-            counterStyle: AppTypography.textXsRegular.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.5),
-            ),
-            suffixIcon: _newFolderNameController.text.isNotEmpty
-                ? IconButton(
-                    icon: Icon(
-                      Icons.clear,
-                      color: kWhiteColor.withValues(alpha: 0.6),
-                      size: 20.sp,
-                    ),
-                    onPressed: _isSaving
-                        ? null
-                        : () {
-                            setState(() {
-                              _newFolderNameController.clear();
-                            });
-                            HapticFeedback.lightImpact();
-                          },
-                  )
-                : null,
           ),
-          onChanged: (value) {
-            setState(() {}); // Rebuild to show/hide clear button
-          },
-        ),
-        SizedBox(height: 8.h),
-        Row(
-          children: [
-            Icon(
-              Icons.info_outline,
-              size: 14.sp,
-              color: kWhiteColor.withValues(alpha: 0.5),
-            ),
-            SizedBox(width: 6.w),
-            Expanded(
-              child: Text(
-                'A new folder will be created with this name',
-                style: AppTypography.textXsRegular.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.5),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFolderSection(AsyncValue<List<LibraryFolder>> foldersAsync) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 24.w),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Section header with toggle
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Save to Folder',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: kWhiteColor.withValues(alpha: 0.8),
+                  letterSpacing: 0.3,
                 ),
               ),
+              // Create new folder toggle
+              GestureDetector(
+                onTap: _isSaving ? null : _toggleCreateNewFolder,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
+                  decoration: BoxDecoration(
+                    color: _isCreatingNewFolder
+                        ? kPrimaryColor.withValues(alpha: 0.15)
+                        : kWhiteColor.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(20.br),
+                    border: Border.all(
+                      color: _isCreatingNewFolder
+                          ? kPrimaryColor.withValues(alpha: 0.4)
+                          : kWhiteColor.withValues(alpha: 0.1),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _isCreatingNewFolder
+                            ? Icons.folder_outlined
+                            : Icons.create_new_folder_outlined,
+                        size: 14.sp,
+                        color: _isCreatingNewFolder
+                            ? kPrimaryColor
+                            : kWhiteColor.withValues(alpha: 0.6),
+                      ),
+                      SizedBox(width: 6.w),
+                      Text(
+                        _isCreatingNewFolder ? 'Choose Existing' : 'New Folder',
+                        style: AppTypography.textXsMedium.copyWith(
+                          color: _isCreatingNewFolder
+                              ? kPrimaryColor
+                              : kWhiteColor.withValues(alpha: 0.6),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 14.h),
+
+          // Content based on mode
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) {
+              return FadeTransition(
+                opacity: animation,
+                child: SizeTransition(
+                  sizeFactor: animation,
+                  child: child,
+                ),
+              );
+            },
+            child: _isCreatingNewFolder
+                ? _buildNewFolderInput(key: const ValueKey('new_folder'))
+                : _buildFolderList(foldersAsync, key: const ValueKey('folder_list')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNewFolderInput({Key? key}) {
+    return Column(
+      key: key,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Folder name input
+        Container(
+          decoration: BoxDecoration(
+            color: kWhiteColor.withValues(alpha: 0.04),
+            borderRadius: BorderRadius.circular(14.br),
+            border: Border.all(
+              color: _newFolderNameFocusNode.hasFocus
+                  ? kPrimaryColor.withValues(alpha: 0.5)
+                  : kWhiteColor.withValues(alpha: 0.08),
+              width: 1.5,
             ),
-          ],
+          ),
+          child: TextField(
+            controller: _newFolderNameController,
+            focusNode: _newFolderNameFocusNode,
+            enabled: !_isSaving,
+            maxLength: 50,
+            style: AppTypography.textMdRegular.copyWith(
+              color: kWhiteColor,
+            ),
+            decoration: InputDecoration(
+              hintText: 'Folder name',
+              hintStyle: AppTypography.textMdRegular.copyWith(
+                color: kWhiteColor.withValues(alpha: 0.3),
+              ),
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 16.w,
+                vertical: 14.h,
+              ),
+              counterText: '',
+              prefixIcon: Padding(
+                padding: EdgeInsets.only(left: 14.w, right: 10.w),
+                child: Container(
+                  padding: EdgeInsets.all(6.sp),
+                  decoration: BoxDecoration(
+                    color: _selectedFolderColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8.br),
+                  ),
+                  child: Icon(
+                    Icons.folder_rounded,
+                    color: _selectedFolderColor,
+                    size: 18.sp,
+                  ),
+                ),
+              ),
+              prefixIconConstraints: BoxConstraints(
+                minWidth: 50.w,
+                minHeight: 36.h,
+              ),
+            ),
+            onChanged: (value) {
+              setState(() {});
+            },
+          ),
+        ),
+
+        SizedBox(height: 14.h),
+
+        // Color picker
+        Text(
+          'Folder Color',
+          style: AppTypography.textXsRegular.copyWith(
+            color: kWhiteColor.withValues(alpha: 0.5),
+          ),
+        ),
+        SizedBox(height: 10.h),
+        SizedBox(
+          height: 36.h,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: _folderColorPresets.length,
+            separatorBuilder: (_, __) => SizedBox(width: 10.w),
+            itemBuilder: (context, index) {
+              final color = _folderColorPresets[index];
+              final isSelected = _selectedFolderColor == color;
+
+              return GestureDetector(
+                onTap: _isSaving
+                    ? null
+                    : () {
+                        setState(() {
+                          _selectedFolderColor = color;
+                        });
+                        HapticFeedback.selectionClick();
+                      },
+                child: SingleMotionBuilder(
+                  motion: const CupertinoMotion.smooth(),
+                  value: isSelected ? 1.0 : 0.0,
+                  builder: (context, value, child) {
+                    final animValue = value.clamp(0.0, 1.0).toDouble();
+                    return Transform.scale(
+                      scale: 1.0 + (animValue * 0.15),
+                      child: Container(
+                        width: 36.w,
+                        height: 36.h,
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.2 + (animValue * 0.3)),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: color.withValues(alpha: 0.5 + (animValue * 0.5)),
+                            width: 2 + animValue,
+                          ),
+                          boxShadow: isSelected
+                              ? [
+                                  BoxShadow(
+                                    color: color.withValues(alpha: 0.4),
+                                    blurRadius: 12,
+                                    spreadRadius: 1,
+                                  ),
+                                ]
+                              : null,
+                        ),
+                        child: isSelected
+                            ? Icon(
+                                Icons.check_rounded,
+                                color: color,
+                                size: 18.sp,
+                              )
+                            : null,
+                      ),
+                    );
+                  },
+                ),
+              );
+            },
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildFolderSelector(List<LibraryFolder> folders) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 4.h),
-      decoration: BoxDecoration(
-        color: kWhiteColor.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(8.br),
-      ),
-      child: DropdownButton<LibraryFolder?>(
-        value: _selectedFolder,
-        isExpanded: true,
-        dropdownColor: kBlack2Color,
-        underline: const SizedBox.shrink(),
-        icon: Icon(
-          Icons.keyboard_arrow_down,
-          color: kWhiteColor.withValues(alpha: 0.7),
-          size: 20.sp,
+  Widget _buildFolderList(AsyncValue<List<LibraryFolder>> foldersAsync, {Key? key}) {
+    return foldersAsync.when(
+      data: (folders) => _buildFolderListContent(folders, key: key),
+      loading: () => _buildFolderListLoading(key: key),
+      error: (e, _) => _buildFolderListError(e, key: key),
+    );
+  }
+
+  Widget _buildFolderListContent(List<LibraryFolder> folders, {Key? key}) {
+    // If no folders exist, prompt user to create one
+    if (folders.isEmpty) {
+      return Container(
+        key: key,
+        padding: EdgeInsets.all(20.sp),
+        decoration: BoxDecoration(
+          color: kWhiteColor.withValues(alpha: 0.03),
+          borderRadius: BorderRadius.circular(16.br),
+          border: Border.all(color: kWhiteColor.withValues(alpha: 0.06)),
         ),
-        hint: Text(
-          'No folder (save to root)',
-          style: AppTypography.textSmRegular.copyWith(
-            color: kWhiteColor.withValues(alpha: 0.7),
-          ),
-        ),
-        style: AppTypography.textSmRegular.copyWith(
-          color: kWhiteColor,
-        ),
-        items: [
-          DropdownMenuItem<LibraryFolder?>(
-            value: null,
-            child: Text(
-              'No folder',
-              style: AppTypography.textSmRegular.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.7),
+        child: Column(
+          children: [
+            Container(
+              padding: EdgeInsets.all(12.sp),
+              decoration: BoxDecoration(
+                color: kPrimaryColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12.br),
+              ),
+              child: Icon(
+                Icons.create_new_folder_outlined,
+                color: kPrimaryColor,
+                size: 28.sp,
               ),
             ),
-          ),
-          ...folders.map((folder) {
-            return DropdownMenuItem<LibraryFolder?>(
-              value: folder,
-              child: Row(
-                children: [
-                  Container(
-                    width: 8.w,
-                    height: 8.h,
-                    decoration: BoxDecoration(
-                      color: _parseColorString(folder.color),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  SizedBox(width: 12.w),
-                  Expanded(
-                    child: Text(
-                      folder.name,
-                      style: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
+            SizedBox(height: 14.h),
+            Text(
+              'No folders yet',
+              style: AppTypography.textSmMedium.copyWith(
+                color: kWhiteColor.withValues(alpha: 0.9),
               ),
+            ),
+            SizedBox(height: 6.h),
+            Text(
+              'Create a folder to organize your analyses',
+              style: AppTypography.textXsRegular.copyWith(
+                color: kWhiteColor.withValues(alpha: 0.5),
+              ),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 16.h),
+            GestureDetector(
+              onTap: _isSaving ? null : _toggleCreateNewFolder,
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
+                decoration: BoxDecoration(
+                  color: kPrimaryColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(20.br),
+                  border: Border.all(
+                    color: kPrimaryColor.withValues(alpha: 0.4),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.add_rounded,
+                      size: 16.sp,
+                      color: kPrimaryColor,
+                    ),
+                    SizedBox(width: 6.w),
+                    Text(
+                      'Create Folder',
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: kPrimaryColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Show folders list (without "No folder" option)
+    return Container(
+      key: key,
+      decoration: BoxDecoration(
+        color: kWhiteColor.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(16.br),
+        border: Border.all(color: kWhiteColor.withValues(alpha: 0.06)),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16.br),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: folders.asMap().entries.map((entry) {
+            final index = entry.key;
+            final folder = entry.value;
+            final isSelected = _selectedFolder?.id == folder.id;
+            final isLast = index == folders.length - 1;
+
+            return Column(
+              children: [
+                _FolderListItem(
+                  folder: folder,
+                  isSelected: isSelected,
+                  isDisabled: _isSaving,
+                  onTap: () {
+                    setState(() {
+                      _selectedFolder = folder;
+                    });
+                    HapticFeedback.selectionClick();
+                  },
+                ),
+                if (!isLast)
+                  Container(
+                    height: 1,
+                    margin: EdgeInsets.only(left: 56.w),
+                    color: kWhiteColor.withValues(alpha: 0.05),
+                  ),
+              ],
             );
-          }),
-        ],
-        onChanged: _isSaving
-            ? null
-            : (LibraryFolder? folder) {
-              setState(() {
-                _selectedFolder = folder;
-              });
-              HapticFeedback.selectionClick();
-            },
+          }).toList(),
+        ),
       ),
     );
   }
 
-  Widget _buildFolderSelectorLoading() {
+  Widget _buildFolderListLoading({Key? key}) {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+      key: key,
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 20.h),
       decoration: BoxDecoration(
-        color: kWhiteColor.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(8.br),
+        color: kWhiteColor.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(16.br),
+        border: Border.all(color: kWhiteColor.withValues(alpha: 0.06)),
       ),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           SizedBox(
-            width: 16.w,
-            height: 16.h,
+            width: 18.w,
+            height: 18.h,
             child: CircularProgressIndicator(
               strokeWidth: 2,
               valueColor: AlwaysStoppedAnimation<Color>(
-                kWhiteColor.withValues(alpha: 0.5),
+                kPrimaryColor.withValues(alpha: 0.6),
               ),
             ),
           ),
@@ -763,29 +929,37 @@ class _SaveAnalysisSheetState extends ConsumerState<_SaveAnalysisSheet> {
     );
   }
 
-  Widget _buildFolderSelectorError(Object error) {
+  Widget _buildFolderListError(Object error, {Key? key}) {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+      key: key,
+      padding: EdgeInsets.all(16.sp),
       decoration: BoxDecoration(
-        color: kRedColor.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8.br),
+        color: kRedColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16.br),
         border: Border.all(
-          color: kRedColor.withValues(alpha: 0.3),
+          color: kRedColor.withValues(alpha: 0.2),
         ),
       ),
       child: Row(
         children: [
-          Icon(
-            Icons.error_outline,
-            color: kRedColor,
-            size: 16.sp,
+          Container(
+            padding: EdgeInsets.all(8.sp),
+            decoration: BoxDecoration(
+              color: kRedColor.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(10.br),
+            ),
+            child: Icon(
+              Icons.error_outline_rounded,
+              color: kRedColor,
+              size: 18.sp,
+            ),
           ),
-          SizedBox(width: 8.w),
+          SizedBox(width: 12.w),
           Expanded(
             child: Text(
               'Failed to load folders',
               style: AppTypography.textSmRegular.copyWith(
-                color: kRedColor,
+                color: kRedColor.withValues(alpha: 0.9),
               ),
             ),
           ),
@@ -794,16 +968,279 @@ class _SaveAnalysisSheetState extends ConsumerState<_SaveAnalysisSheet> {
     );
   }
 
+  Widget _buildErrorMessage() {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 24.w),
+      child: Container(
+        padding: EdgeInsets.all(14.sp),
+        decoration: BoxDecoration(
+          color: kRedColor.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(14.br),
+          border: Border.all(
+            color: kRedColor.withValues(alpha: 0.2),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: EdgeInsets.all(6.sp),
+              decoration: BoxDecoration(
+                color: kRedColor.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8.br),
+              ),
+              child: Icon(
+                Icons.warning_amber_rounded,
+                color: kRedColor,
+                size: 16.sp,
+              ),
+            ),
+            SizedBox(width: 12.w),
+            Expanded(
+              child: Text(
+                _errorMessage ?? '',
+                style: AppTypography.textSmRegular.copyWith(
+                  color: kRedColor.withValues(alpha: 0.9),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionButtons() {
+    // Save is only enabled if:
+    // - Not currently saving AND
+    // - (Creating a new folder OR has selected an existing folder)
+    final canSave = !_isSaving && (_isCreatingNewFolder || _selectedFolder != null);
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 24.w),
+      child: Row(
+        children: [
+          // Cancel button
+          Expanded(
+            child: GestureDetector(
+              onTap: _isSaving
+                  ? null
+                  : () {
+                      HapticFeedback.lightImpact();
+                      Navigator.of(context).pop();
+                    },
+              child: Container(
+                padding: EdgeInsets.symmetric(vertical: 16.h),
+                decoration: BoxDecoration(
+                  color: kWhiteColor.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(14.br),
+                  border: Border.all(
+                    color: kWhiteColor.withValues(alpha: 0.1),
+                  ),
+                ),
+                child: Center(
+                  child: Text(
+                    'Cancel',
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: kWhiteColor.withValues(alpha: 0.7),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          SizedBox(width: 12.w),
+          // Save button
+          Expanded(
+            flex: 2,
+            child: GestureDetector(
+              onTap: canSave ? _handleSave : null,
+              child: SingleMotionBuilder(
+                motion: const CupertinoMotion.smooth(),
+                value: _isSaving ? 0.95 : 1.0,
+                builder: (context, value, child) {
+                  final scale = value.clamp(0.0, 1.0).toDouble();
+                  return Transform.scale(
+                    scale: scale,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: EdgeInsets.symmetric(vertical: 16.h),
+                      decoration: BoxDecoration(
+                        gradient: canSave
+                            ? LinearGradient(
+                                colors: [
+                                  kPrimaryColor,
+                                  kPrimaryColor.withValues(alpha: 0.8),
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              )
+                            : null,
+                        color: canSave ? null : kWhiteColor.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(14.br),
+                        boxShadow: canSave
+                            ? [
+                                BoxShadow(
+                                  color: kPrimaryColor.withValues(alpha: 0.3),
+                                  blurRadius: 20,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ]
+                            : null,
+                      ),
+                      child: Center(
+                        child: _isSaving
+                            ? SizedBox(
+                                width: 20.w,
+                                height: 20.h,
+                                child: const CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    kWhiteColor,
+                                  ),
+                                ),
+                              )
+                            : Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.bookmark_add_rounded,
+                                    color: canSave
+                                        ? kWhiteColor
+                                        : kWhiteColor.withValues(alpha: 0.3),
+                                    size: 18.sp,
+                                  ),
+                                  SizedBox(width: 8.w),
+                                  Text(
+                                    canSave ? 'Save Analysis' : 'Select a Folder',
+                                    style: AppTypography.textSmBold.copyWith(
+                                      color: canSave
+                                          ? kWhiteColor
+                                          : kWhiteColor.withValues(alpha: 0.3),
+                                      letterSpacing: 0.3,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FolderListItem extends StatelessWidget {
+  final LibraryFolder folder;
+  final bool isSelected;
+  final bool isDisabled;
+  final VoidCallback onTap;
+
+  const _FolderListItem({
+    required this.folder,
+    required this.isSelected,
+    required this.isDisabled,
+    required this.onTap,
+  });
+
   Color _parseColorString(String colorString) {
     try {
-      // Remove # if present
       final hex = colorString.replaceAll('#', '');
-      // Add FF for alpha if not present
       final colorValue = hex.length == 6 ? 'FF$hex' : hex;
       return Color(int.parse(colorValue, radix: 16));
     } catch (e) {
-      return kPrimaryColor; // Fallback color
+      return kPrimaryColor;
     }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final folderColor = _parseColorString(folder.color);
+
+    return GestureDetector(
+      onTap: isDisabled ? null : onTap,
+      child: SingleMotionBuilder(
+        motion: const CupertinoMotion.smooth(),
+        value: isSelected ? 1.0 : 0.0,
+        builder: (context, value, child) {
+          final animValue = value.clamp(0.0, 1.0).toDouble();
+          return Container(
+            padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
+            decoration: BoxDecoration(
+              color: Color.lerp(
+                Colors.transparent,
+                kPrimaryColor.withValues(alpha: 0.08),
+                animValue,
+              ),
+            ),
+            child: Row(
+              children: [
+                // Folder icon
+                Container(
+                  padding: EdgeInsets.all(8.sp),
+                  decoration: BoxDecoration(
+                    color: folderColor.withValues(alpha: 0.12 + (animValue * 0.08)),
+                    borderRadius: BorderRadius.circular(10.br),
+                    border: Border.all(
+                      color: folderColor.withValues(alpha: 0.2 + (animValue * 0.2)),
+                      width: 1,
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.folder_rounded,
+                    size: 18.sp,
+                    color: folderColor,
+                  ),
+                ),
+                SizedBox(width: 14.w),
+
+                // Folder name
+                Expanded(
+                  child: Text(
+                    folder.name,
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: kWhiteColor.withValues(alpha: 0.9),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+
+                // Selection indicator
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                  width: 22.w,
+                  height: 22.h,
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? kPrimaryColor
+                        : kWhiteColor.withValues(alpha: 0.05),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isSelected
+                          ? kPrimaryColor
+                          : kWhiteColor.withValues(alpha: 0.15),
+                      width: 2,
+                    ),
+                  ),
+                  child: isSelected
+                      ? Icon(
+                          Icons.check_rounded,
+                          size: 14.sp,
+                          color: kWhiteColor,
+                        )
+                      : null,
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
   }
 }
 
