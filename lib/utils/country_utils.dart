@@ -90,6 +90,110 @@ class CountryUtils {
     return iso2ToFide[upper] ?? upper;
   }
 
+  /// Converts FIDE 3-letter federation code to ISO 2-letter country code.
+  /// Used for displaying flags (CountryFlag expects ISO 2-letter codes).
+  static String toIso2Code(String fideCode) {
+    const fideToIso2 = {
+      'USA': 'US',
+      'ENG': 'GB',
+      'SCO': 'GB', // Scotland
+      'WLS': 'GB', // Wales
+      'RUS': 'RU',
+      'CHN': 'CN',
+      'IND': 'IN',
+      'GER': 'DE',
+      'FRA': 'FR',
+      'ESP': 'ES',
+      'ITA': 'IT',
+      'NED': 'NL',
+      'POL': 'PL',
+      'CZE': 'CZ',
+      'HUN': 'HU',
+      'ROU': 'RO',
+      'UKR': 'UA',
+      'AZE': 'AZ',
+      'ARM': 'AM',
+      'GEO': 'GE',
+      'TUR': 'TR',
+      'ISR': 'IL',
+      'ARG': 'AR',
+      'BRA': 'BR',
+      'PER': 'PE',
+      'CUB': 'CU',
+      'VIE': 'VN',
+      'PHI': 'PH',
+      'INA': 'ID',
+      'IRI': 'IR',
+      'NOR': 'NO',
+      'SWE': 'SE',
+      'DEN': 'DK',
+      'FIN': 'FI',
+      'AUT': 'AT',
+      'SUI': 'CH',
+      'BEL': 'BE',
+      'POR': 'PT',
+      'GRE': 'GR',
+      'SRB': 'RS',
+      'CRO': 'HR',
+      'SLO': 'SI',
+      'SVK': 'SK',
+      'BUL': 'BG',
+      'MKD': 'MK',
+      'BIH': 'BA',
+      'EST': 'EE',
+      'LAT': 'LV',
+      'LTU': 'LT',
+      'AUS': 'AU',
+      'NZL': 'NZ',
+      'RSA': 'ZA',
+      'EGY': 'EG',
+      'NGR': 'NG',
+      'KEN': 'KE',
+      'UZB': 'UZ',
+      'KAZ': 'KZ',
+      'MGL': 'MN',
+      'KOR': 'KR',
+      'JPN': 'JP',
+      'SGP': 'SG',
+      'MAS': 'MY',
+      'THA': 'TH',
+      'PAK': 'PK',
+      'BAN': 'BD',
+      'SRI': 'LK',
+      'NEP': 'NP',
+      'KSA': 'SA',
+      'UAE': 'AE',
+      'QAT': 'QA',
+      'CAN': 'CA',
+      'MEX': 'MX',
+      'COL': 'CO',
+      'CHI': 'CL',
+      'VEN': 'VE',
+      'ECU': 'EC',
+      'URU': 'UY',
+      'PAR': 'PY',
+      'BOL': 'BO',
+      'IRL': 'IE',
+      'ISL': 'IS',
+      'BLR': 'BY', // Belarus
+      'MDA': 'MD', // Moldova
+      'ALB': 'AL', // Albania
+      'MNE': 'ME', // Montenegro
+      'CYP': 'CY', // Cyprus
+      'MLT': 'MT', // Malta
+      'LUX': 'LU', // Luxembourg
+      'AND': 'AD', // Andorra
+      'MON': 'MC', // Monaco
+      'LIE': 'LI', // Liechtenstein
+      'SMR': 'SM', // San Marino
+      'FAI': 'FO', // Faroe Islands
+      'FID': 'FI', // FIDE (fallback to something)
+    };
+
+    final upper = fideCode.toUpperCase();
+    return fideToIso2[upper] ?? upper;
+  }
+
   static String? getCountryCode(String? location) {
     if (location == null || location.isEmpty) return null;
 

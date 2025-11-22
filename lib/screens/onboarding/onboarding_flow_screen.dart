@@ -144,103 +144,122 @@ class _AuthStep extends HookWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.fromLTRB(24.w, topPadding + 60.h, 24.w, bottomPadding + 16.h),
-      child: Column(
-        children: [
-          const Spacer(flex: 1),
+      padding: EdgeInsets.fromLTRB(24.w, topPadding + 60.h, 24.w, 16.h),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Top content
+                  Column(
+                    children: [
+                      SizedBox(height: 24.h),
 
-          // Lock icon with glow
-          _UnlockVisual()
-              .animate()
-              .fadeIn(duration: 600.ms, curve: _gentleSpring)
-              .scale(
-                begin: const Offset(0.8, 0.8),
-                end: const Offset(1, 1),
-                duration: 700.ms,
-                curve: _smoothSpring,
+                      // Lock icon with glow
+                      _UnlockVisual()
+                          .animate()
+                          .fadeIn(duration: 600.ms, curve: _gentleSpring)
+                          .scale(
+                            begin: const Offset(0.8, 0.8),
+                            end: const Offset(1, 1),
+                            duration: 700.ms,
+                            curve: _smoothSpring,
+                          ),
+
+                      SizedBox(height: 24.h),
+
+                      // Title
+                      Text(
+                        'Unlock the full\nexperience',
+                        textAlign: TextAlign.center,
+                        style: AppTypography.displayXsBold.copyWith(
+                          color: kWhiteColor,
+                          height: 1.2,
+                        ),
+                      )
+                          .animate(delay: 200.ms)
+                          .fadeIn(duration: 500.ms, curve: _smoothSpring)
+                          .move(begin: const Offset(0, 16), curve: _smoothSpring),
+
+                      SizedBox(height: 8.h),
+
+                      Text(
+                        'Create an account to access all features',
+                        textAlign: TextAlign.center,
+                        style: AppTypography.textSmRegular.copyWith(
+                          color: kWhiteColor.withValues(alpha: 0.6),
+                        ),
+                      )
+                          .animate(delay: 300.ms)
+                          .fadeIn(duration: 500.ms, curve: _smoothSpring),
+
+                      SizedBox(height: 24.h),
+
+                      // FOMO feature list
+                      _FeaturesList()
+                          .animate(delay: 400.ms)
+                          .fadeIn(duration: 500.ms, curve: _smoothSpring)
+                          .move(begin: const Offset(0, 20), curve: _smoothSpring),
+                    ],
+                  ),
+
+                  // Bottom buttons
+                  Column(
+                    children: [
+                      SizedBox(height: 24.h),
+
+                      // Sign in button (primary)
+                      _PrimaryButton(
+                        label: 'Create free account',
+                        onTap: onSignIn,
+                      )
+                          .animate(delay: 600.ms)
+                          .fadeIn(duration: 400.ms, curve: _smoothSpring)
+                          .move(begin: const Offset(0, 30), curve: _smoothSpring),
+
+                      SizedBox(height: 12.h),
+
+                      // Continue as guest (secondary)
+                      _SecondaryButton(
+                        label: 'Continue without account',
+                        onTap: onContinueAsGuest,
+                      )
+                          .animate(delay: 700.ms)
+                          .fadeIn(duration: 400.ms, curve: _smoothSpring),
+
+                      SizedBox(height: 12.h),
+
+                      // Warning note
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            size: 14.ic,
+                            color: const Color(0xFFFFAA00).withValues(alpha: 0.7),
+                          ),
+                          SizedBox(width: 6.w),
+                          Text(
+                            'Guest data can\'t be recovered if lost',
+                            style: AppTypography.textXsRegular.copyWith(
+                              color: kWhiteColor.withValues(alpha: 0.5),
+                            ),
+                          ),
+                        ],
+                      )
+                          .animate(delay: 800.ms)
+                          .fadeIn(duration: 400.ms, curve: _smoothSpring),
+                    ],
+                  ),
+                ],
               ),
-
-          SizedBox(height: 32.h),
-
-          // Title
-          Text(
-            'Unlock the full\nexperience',
-            textAlign: TextAlign.center,
-            style: AppTypography.displayXsBold.copyWith(
-              color: kWhiteColor,
-              height: 1.2,
             ),
-          )
-              .animate(delay: 200.ms)
-              .fadeIn(duration: 500.ms, curve: _smoothSpring)
-              .move(begin: const Offset(0, 16), curve: _smoothSpring),
-
-          SizedBox(height: 12.h),
-
-          Text(
-            'Create an account to access all features',
-            textAlign: TextAlign.center,
-            style: AppTypography.textSmRegular.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.6),
-            ),
-          )
-              .animate(delay: 300.ms)
-              .fadeIn(duration: 500.ms, curve: _smoothSpring),
-
-          SizedBox(height: 32.h),
-
-          // FOMO feature list
-          _FeaturesList()
-              .animate(delay: 400.ms)
-              .fadeIn(duration: 500.ms, curve: _smoothSpring)
-              .move(begin: const Offset(0, 20), curve: _smoothSpring),
-
-          const Spacer(flex: 2),
-
-          // Sign in button (primary)
-          _PrimaryButton(
-            label: 'Create free account',
-            onTap: onSignIn,
-          )
-              .animate(delay: 600.ms)
-              .fadeIn(duration: 400.ms, curve: _smoothSpring)
-              .move(begin: const Offset(0, 30), curve: _smoothSpring),
-
-          SizedBox(height: 12.h),
-
-          // Continue as guest (secondary)
-          _SecondaryButton(
-            label: 'Continue without account',
-            onTap: onContinueAsGuest,
-          )
-              .animate(delay: 700.ms)
-              .fadeIn(duration: 400.ms, curve: _smoothSpring),
-
-          SizedBox(height: 16.h),
-
-          // Warning note
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.warning_amber_rounded,
-                size: 14.ic,
-                color: const Color(0xFFFFAA00).withValues(alpha: 0.7),
-              ),
-              SizedBox(width: 6.w),
-              Text(
-                'Guest data can\'t be recovered if lost',
-                style: AppTypography.textXsRegular.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.5),
-                ),
-              ),
-            ],
-          )
-              .animate(delay: 800.ms)
-              .fadeIn(duration: 400.ms, curve: _smoothSpring),
-
-          SizedBox(height: 8.h),
-        ],
+          );
+        },
       ),
     );
   }

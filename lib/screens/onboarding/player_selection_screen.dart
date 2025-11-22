@@ -6,6 +6,7 @@ import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/blur_background.dart';
@@ -621,17 +622,29 @@ Widget _buildFlag(
 }) {
   final normalized = countryCode.toUpperCase();
 
-  if (normalized == 'FID') {
+  // Countries that show white/blank flags due to sanctions or restrictions
+  // Use FIDE logo as fallback for these
+  const restrictedCountries = {'RUS', 'BLR', 'FID'};
+
+  if (normalized.isEmpty || restrictedCountries.contains(normalized)) {
     return Image.asset(
       PngAsset.fideLogo,
       height: height,
       width: width,
-      fit: BoxFit.cover,
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) => Icon(
+        Icons.flag_rounded,
+        size: height,
+        color: kWhiteColor.withValues(alpha: 0.5),
+      ),
     );
   }
 
+  // Convert FIDE 3-letter code to ISO 2-letter code for CountryFlag widget
+  final iso2Code = CountryUtils.toIso2Code(normalized);
+
   return CountryFlag.fromCountryCode(
-    normalized.isEmpty ? 'US' : normalized,
+    iso2Code,
     height: height,
     width: width,
   );
