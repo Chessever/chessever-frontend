@@ -35,32 +35,35 @@ class FolderContentsScreen extends ConsumerWidget {
     final analysesAsync = ref.watch(_folderAnalysesProvider(folder.id));
     final folderColor = _parseColorString(folder.color);
 
-    return ScreenWrapper(
-      child: Column(
-        children: [
-          // Header
-          _buildHeader(context, folderColor),
+    return Scaffold(
+      backgroundColor: kBackgroundColor,
+      body: ScreenWrapper(
+        child: Column(
+          children: [
+            // Header
+            _buildHeader(context, folderColor),
 
-          // Content
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: () async {
-                ref.invalidate(_folderAnalysesProvider(folder.id));
-              },
-              color: kPrimaryColor,
-              backgroundColor: kBlack2Color,
-              child: analysesAsync.when(
-                data: (analyses) => analyses.isEmpty
-                    ? _buildEmptyState()
-                    : _buildAnalysesList(analyses),
-                loading: () => const Center(
-                  child: CircularProgressIndicator(color: kPrimaryColor),
+            // Content
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: () async {
+                  ref.invalidate(_folderAnalysesProvider(folder.id));
+                },
+                color: kPrimaryColor,
+                backgroundColor: kBlack2Color,
+                child: analysesAsync.when(
+                  data: (analyses) => analyses.isEmpty
+                      ? _buildEmptyState()
+                      : _buildAnalysesList(analyses),
+                  loading: () => const Center(
+                    child: CircularProgressIndicator(color: kPrimaryColor),
+                  ),
+                  error: (error, _) => _buildErrorState(error.toString()),
                 ),
-                error: (error, _) => _buildErrorState(error.toString()),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

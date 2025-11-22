@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/library/utils/create_empty_game.dart';
 import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
@@ -37,19 +38,20 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     super.dispose();
   }
 
-  void _onFilterPressed() {
-    HapticFeedback.selectionClick();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: kBlack2Color.withValues(alpha: 0.95),
-        content: Text(
-          'Sorting and filters coming soon',
-          style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
-        ),
-      ),
-    );
-  }
+  // Filter method - commented out as filter button is not ready yet
+  // void _onFilterPressed() {
+  //   HapticFeedback.selectionClick();
+  //   ScaffoldMessenger.of(context).showSnackBar(
+  //     SnackBar(
+  //       behavior: SnackBarBehavior.floating,
+  //       backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+  //       content: Text(
+  //         'Sorting and filters coming soon',
+  //         style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+  //       ),
+  //     ),
+  //   );
+  // }
 
   void _handleSearchInput(String query) {
     _debounceTimer?.cancel();
@@ -66,6 +68,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
   void _navigateToEmptyBoard() {
     HapticFeedback.mediumImpact();
+    ref.read(chessboardViewFromProviderNew.notifier).state = ChessboardView.tour;
     final emptyGame = createEmptyGame();
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -123,12 +126,16 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       // Force refresh folders provider to ensure immediate UI update
       // (Supabase streams may have slight delay)
       ref.invalidate(_foldersStreamProvider);
+      await ref.read(_foldersStreamProvider.future);
 
       if (mounted) {
         HapticFeedback.mediumImpact();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Folder "$name" created'),
+            content: Text(
+              'Folder "$name" created',
+              style: TextStyle(color: kWhiteColor),
+            ),
             backgroundColor: kBlack2Color.withValues(alpha: 0.95),
             behavior: SnackBarBehavior.floating,
           ),
@@ -139,7 +146,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         HapticFeedback.lightImpact();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to create folder: $e'),
+            content: Text(
+              'Failed to create folder: $e',
+              style: TextStyle(color: kWhiteColor),
+            ),
             backgroundColor: kRedColor,
             behavior: SnackBarBehavior.floating,
           ),
@@ -169,11 +179,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         children: [
           Expanded(child: _buildSearchField()),
           SizedBox(width: 10.w),
-          _SquareIconButton(
-            icon: Icons.tune,
-            onTap: _onFilterPressed,
-          ),
-          SizedBox(width: 8.w),
+          // Filter button - commented out as it's not ready yet
+          // _SquareIconButton(
+          //   icon: Icons.tune,
+          //   onTap: _onFilterPressed,
+          // ),
+          // SizedBox(width: 8.w),
           _SquareIconButton(
             icon: Icons.grid_3x3,
             onTap: _navigateToEmptyBoard,

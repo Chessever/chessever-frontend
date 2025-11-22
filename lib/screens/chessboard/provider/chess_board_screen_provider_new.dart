@@ -506,6 +506,38 @@ class ChessBoardScreenNotifierNew
     }
   }
 
+  static const String _defaultStartFen =
+      'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+  String? _buildPgnFromSavedAnalysis() {
+    final savedGame = savedAnalysisData?.chessGame;
+    if (savedGame == null) return null;
+
+    var pgn = exportGameToPgn(savedGame);
+    final hasFenHeader = savedGame.metadata.keys.any(
+      (key) => key.toLowerCase() == 'fen',
+    );
+    final needsFenHeader =
+        savedGame.startingFen.isNotEmpty &&
+        savedGame.startingFen != _defaultStartFen &&
+        !hasFenHeader;
+
+    if (needsFenHeader) {
+      final sections = pgn.split('\n\n');
+      if (sections.length >= 2) {
+        final headers = sections.first;
+        final body = sections.sublist(1).join('\n\n');
+        pgn =
+            '$headers\n[FEN "${savedGame.startingFen}"]\n[SetUp "1"]\n\n$body';
+      } else {
+        pgn =
+            '[FEN "${savedGame.startingFen}"]\n[SetUp "1"]\n\n${pgn.trim()}';
+      }
+    }
+
+    return pgn;
+  }
+
   GameStatus _parseGameStatus(String status) {
     switch (status) {
       case '1-0':
@@ -532,6 +564,11 @@ class ChessBoardScreenNotifierNew
 
     try {
       String? pgn = pgnOverride ?? game.pgn;
+
+      // Prefer locally saved analysis data to avoid remote lookups for archived games
+      if ((pgn == null || pgn.isEmpty) && savedAnalysisData != null) {
+        pgn = _buildPgnFromSavedAnalysis();
+      }
 
       if (pgn == null || pgn.isEmpty) {
         pgn = await ref.read(gameRepositoryProvider).getGamePgn(game.gameId);
@@ -2547,14 +2584,18 @@ class ChessBoardScreenNotifierNew
           false, // Don't fire immediately - we'll sync manually after replaceState
     );
 
-    // Initialize navigator with determined move pointer
-    navigator.replaceState(
-      ChessGameNavigatorState(game: _analysisGame!, movePointer: movePointer),
-    );
+    // Initialize navigator with determined move pointer.
+    // Defer to microtask to avoid mutating another provider during build.
+    Future.microtask(() {
+      if (!mounted) return;
+      navigator.replaceState(
+        ChessGameNavigatorState(game: _analysisGame!, movePointer: movePointer),
+      );
 
-    // Manually sync the initial state after replaceState
-    final initialState = ref.read(chessGameNavigatorProvider(_analysisGame!));
-    _syncAnalysisFromNavigator(initialState);
+      // Manually sync the initial state after replaceState
+      final initialState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+      _syncAnalysisFromNavigator(initialState);
+    });
   }
 
   Future<void> _persistAnalysisState() async {
