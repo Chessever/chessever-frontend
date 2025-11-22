@@ -1,3 +1,4 @@
+import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/supabase/calendar_event/calendar_event_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
@@ -48,6 +49,7 @@ class _CalendarScreenNotifier
       // Listen to filter changes
       ref.listen(calendarSearchQueryProvider, (_, __) => _applyFilters());
       ref.listen(calendarTimeControlProvider, (_, __) => _applyFilters());
+      ref.listen(calendarFilterModeProvider, (_, __) => _applyFilters());
       ref.listen(selectedYearProvider, (_, __) => _fetchYearEvents());
 
       await _fetchYearEvents();
@@ -96,7 +98,19 @@ class _CalendarScreenNotifier
       final selectedYear = ref.read(selectedYearProvider);
       final searchQuery = ref.read(calendarSearchQueryProvider).toLowerCase();
       final timeControl = ref.read(calendarTimeControlProvider);
+      final filterMode = ref.read(calendarFilterModeProvider);
       final monthConverter = ref.read(monthProvider);
+
+      // Get favorite event IDs if filtering by favorites
+      final favoriteEventIds = <String>{};
+      if (filterMode == CalendarFilterMode.favorites) {
+        final favoritesAsync = ref.read(favoriteEventsProvider);
+        final favorites = favoritesAsync.valueOrNull ?? [];
+        favoriteEventIds.addAll(favorites.map((e) => e.eventId));
+      }
+
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
 
       final List<MonthEventsSummary> summaries = [];
       final Map<int, List<GroupEventCardModel>> monthEvents = {};
@@ -109,6 +123,18 @@ class _CalendarScreenNotifier
       for (final event in _yearEvents) {
         if (!_matchesFilters(event, searchQuery, timeControl)) {
           continue;
+        }
+
+        // Apply filter mode
+        if (filterMode == CalendarFilterMode.upcoming) {
+          final startDate = event.startDate ?? event.endDate;
+          if (startDate == null || startDate.isBefore(today)) {
+            continue;
+          }
+        } else if (filterMode == CalendarFilterMode.favorites) {
+          if (!favoriteEventIds.contains(event.id)) {
+            continue;
+          }
         }
 
         final range = resolveCalendarDateRange(event.startDate, event.endDate);
