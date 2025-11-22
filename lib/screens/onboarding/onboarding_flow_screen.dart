@@ -35,8 +35,8 @@ class OnboardingFlowScreen extends HookConsumerWidget {
     final user = Supabase.instance.client.auth.currentUser;
     final isAuthenticated = user != null && user.isAnonymous != true;
 
-    // Total pages: 3 if authenticated, 4 if not (add auth step)
-    final totalPages = isAuthenticated ? 3 : 4;
+    // Always 4 pages - final page content differs based on auth status
+    const totalPages = 4;
 
     useEffect(() {
       ref.read(countryDropdownProvider);
@@ -97,15 +97,20 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                     child: PlayerSelectionContent(
                       title: 'Pick your favorites',
                       subtitle: 'Follow 3+ players to personalize your feed',
-                      actionLabel: isAuthenticated ? 'Let\'s go' : 'Continue',
+                      actionLabel: 'Continue',
                       badgeLabel: null,
-                      onComplete: isAuthenticated
-                          ? () => markOnboardingComplete(context, ref)
-                          : () => goToPage(3),
+                      onComplete: () => goToPage(3),
                     ),
                   ),
-                  // 4th page: Auth step (only for unauthenticated users)
-                  if (!isAuthenticated)
+                  // 4th page: Different content based on auth status
+                  if (isAuthenticated)
+                    _AuthenticatedUserStep(
+                      user: user,
+                      topPadding: topPadding,
+                      bottomPadding: bottomPadding,
+                      onContinue: () => markOnboardingComplete(context, ref),
+                    )
+                  else
                     _AuthStep(
                       topPadding: topPadding,
                       bottomPadding: bottomPadding,
@@ -502,6 +507,353 @@ class _SecondaryButton extends HookWidget {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// AUTHENTICATED USER STEP - Welcome back for existing users
+// ════════════════════════════════════════════════════════════════════════════
+
+class _AuthenticatedUserStep extends HookWidget {
+  const _AuthenticatedUserStep({
+    required this.user,
+    required this.topPadding,
+    required this.bottomPadding,
+    required this.onContinue,
+  });
+
+  final User user;
+  final double topPadding;
+  final double bottomPadding;
+  final VoidCallback onContinue;
+
+  String get _displayName {
+    // Try to get display name from user metadata
+    final metadata = user.userMetadata;
+    if (metadata != null) {
+      final name = metadata['full_name'] ?? metadata['name'];
+      if (name != null && name.toString().isNotEmpty) {
+        return name.toString();
+      }
+    }
+    // Fallback to email prefix
+    final email = user.email;
+    if (email != null && email.contains('@')) {
+      return email.split('@').first;
+    }
+    return 'Chess Player';
+  }
+
+  String? get _avatarUrl {
+    final metadata = user.userMetadata;
+    if (metadata != null) {
+      return metadata['avatar_url']?.toString();
+    }
+    return null;
+  }
+
+  String get _initials {
+    final name = _displayName;
+    final parts = name.split(' ');
+    if (parts.length >= 2) {
+      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    }
+    return name.substring(0, name.length >= 2 ? 2 : 1).toUpperCase();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(24.w, topPadding + 60.h, 24.w, 16.h),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Top content
+                  Column(
+                    children: [
+                      SizedBox(height: 32.h),
+
+                      // User avatar with glow
+                      _UserAvatarVisual(
+                        avatarUrl: _avatarUrl,
+                        initials: _initials,
+                      )
+                          .animate()
+                          .fadeIn(duration: 600.ms, curve: _gentleSpring)
+                          .scale(
+                            begin: const Offset(0.8, 0.8),
+                            end: const Offset(1, 1),
+                            duration: 700.ms,
+                            curve: _smoothSpring,
+                          ),
+
+                      SizedBox(height: 32.h),
+
+                      // Welcome message
+                      Text(
+                        'Welcome back,',
+                        textAlign: TextAlign.center,
+                        style: AppTypography.textMdRegular.copyWith(
+                          color: kWhiteColor.withValues(alpha: 0.6),
+                        ),
+                      )
+                          .animate(delay: 200.ms)
+                          .fadeIn(duration: 500.ms, curve: _smoothSpring),
+
+                      SizedBox(height: 4.h),
+
+                      Text(
+                        _displayName,
+                        textAlign: TextAlign.center,
+                        style: AppTypography.displayXsBold.copyWith(
+                          color: kWhiteColor,
+                          height: 1.2,
+                        ),
+                      )
+                          .animate(delay: 300.ms)
+                          .fadeIn(duration: 500.ms, curve: _smoothSpring)
+                          .move(begin: const Offset(0, 16), curve: _smoothSpring),
+
+                      SizedBox(height: 24.h),
+
+                      // Confirmation text
+                      Container(
+                        padding: EdgeInsets.symmetric(horizontal: 20.sp, vertical: 16.sp),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16.br),
+                          color: kGreenColor.withValues(alpha: 0.08),
+                          border: Border.all(
+                            color: kGreenColor.withValues(alpha: 0.2),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 32.w,
+                              height: 32.h,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: kGreenColor.withValues(alpha: 0.15),
+                              ),
+                              child: Icon(
+                                Icons.check_rounded,
+                                size: 18.ic,
+                                color: kGreenColor,
+                              ),
+                            ),
+                            SizedBox(width: 12.w),
+                            Flexible(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Your preferences are saved',
+                                    style: AppTypography.textSmMedium.copyWith(
+                                      color: kWhiteColor,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Synced across all your devices',
+                                    style: AppTypography.textXsRegular.copyWith(
+                                      color: kWhiteColor.withValues(alpha: 0.5),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                          .animate(delay: 450.ms)
+                          .fadeIn(duration: 500.ms, curve: _smoothSpring)
+                          .move(begin: const Offset(0, 20), curve: _smoothSpring),
+                    ],
+                  ),
+
+                  // Bottom button
+                  Column(
+                    children: [
+                      SizedBox(height: 24.h),
+
+                      // Continue button
+                      _PrimaryButton(
+                        label: 'Continue to Chessever',
+                        onTap: onContinue,
+                      )
+                          .animate(delay: 600.ms)
+                          .fadeIn(duration: 400.ms, curve: _smoothSpring)
+                          .move(begin: const Offset(0, 30), curve: _smoothSpring),
+
+                      SizedBox(height: 16.h),
+
+                      // Subtle app branding
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Image.asset(
+                            PngAsset.newAppLogoCircle,
+                            height: 20.h,
+                            width: 20.w,
+                          ),
+                          SizedBox(width: 8.w),
+                          Text(
+                            'Your chess journey continues',
+                            style: AppTypography.textXsRegular.copyWith(
+                              color: kWhiteColor.withValues(alpha: 0.4),
+                            ),
+                          ),
+                        ],
+                      )
+                          .animate(delay: 750.ms)
+                          .fadeIn(duration: 400.ms, curve: _smoothSpring),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _UserAvatarVisual extends HookWidget {
+  const _UserAvatarVisual({
+    required this.avatarUrl,
+    required this.initials,
+  });
+
+  final String? avatarUrl;
+  final String initials;
+
+  @override
+  Widget build(BuildContext context) {
+    final pulseController = useAnimationController(
+      duration: const Duration(milliseconds: 2500),
+    )..repeat(reverse: true);
+
+    final pulseAnimation = useAnimation(
+      CurvedAnimation(parent: pulseController, curve: Curves.easeInOut),
+    );
+
+    return SizedBox(
+      height: 160.h,
+      width: 160.w,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Outer glow ring
+          Transform.scale(
+            scale: 1.0 + pulseAnimation * 0.06,
+            child: Container(
+              width: 150.w,
+              height: 150.h,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    kGreenColor.withValues(alpha: 0.18),
+                    kGreenColor.withValues(alpha: 0.0),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // Middle ring
+          Container(
+            width: 130.w,
+            height: 130.h,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: kGreenColor.withValues(alpha: 0.15),
+                width: 1,
+              ),
+            ),
+          ),
+
+          // Avatar container
+          Container(
+            width: 110.w,
+            height: 110.h,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: kBlack2Color.withValues(alpha: 0.9),
+              border: Border.all(
+                color: kGreenColor.withValues(alpha: 0.4),
+                width: 2.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: kGreenColor.withValues(alpha: 0.2),
+                  blurRadius: 30,
+                  spreadRadius: 5,
+                ),
+              ],
+            ),
+            child: ClipOval(
+              child: avatarUrl != null
+                  ? Image.network(
+                      avatarUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _buildInitials(),
+                    )
+                  : _buildInitials(),
+            ),
+          ),
+
+          // Verified badge
+          Positioned(
+            bottom: 20.h,
+            right: 20.w,
+            child: Container(
+              width: 32.w,
+              height: 32.h,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: kGreenColor,
+                border: Border.all(
+                  color: kBackgroundColor,
+                  width: 3,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: kGreenColor.withValues(alpha: 0.4),
+                    blurRadius: 8,
+                  ),
+                ],
+              ),
+              child: Icon(
+                Icons.check_rounded,
+                size: 18.ic,
+                color: kWhiteColor,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInitials() {
+    return Center(
+      child: Text(
+        initials,
+        style: AppTypography.displaySmBold.copyWith(
+          color: kWhiteColor,
+          letterSpacing: 2,
         ),
       ),
     );
