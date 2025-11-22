@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/screens/calendar/provider/calendar_screen_provider.dart';
+import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
@@ -38,11 +41,13 @@ class CalendarScreen extends ConsumerStatefulWidget {
 class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   final TextEditingController searchController = TextEditingController();
   final focusNode = FocusNode();
+  Timer? _searchAnalyticsTimer;
 
   @override
   void dispose() {
     searchController.dispose();
     focusNode.dispose();
+    _searchAnalyticsTimer?.cancel();
     super.dispose();
   }
 
@@ -115,6 +120,21 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                                 ref
                                     .read(calendarSearchQueryProvider.notifier)
                                     .state = val;
+                                _searchAnalyticsTimer?.cancel();
+                                final query = val.trim();
+                                if (query.isEmpty) return;
+                                _searchAnalyticsTimer = Timer(
+                                  const Duration(milliseconds: 350),
+                                  () {
+                                    AnalyticsService.instance.trackEventDetached(
+                                      'Calendar Search',
+                                      properties: {
+                                        'query': query,
+                                        'query_length': query.length,
+                                      },
+                                    );
+                                  },
+                                );
                               },
                               onOpenFilter: null,
                             ),
@@ -143,6 +163,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                               ref
                                   .read(selectedYearProvider.notifier)
                                   .state = newValue;
+                              AnalyticsService.instance.trackEventDetached(
+                                'Calendar Year Changed',
+                                properties: {'year': newValue},
+                              );
                             }
                           },
                           icon: Icon(
@@ -206,6 +230,12 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                               ref
                                   .read(calendarTimeControlProvider.notifier)
                                   .state = newValue;
+                              AnalyticsService.instance.trackEventDetached(
+                                'Calendar Time Control Selected',
+                                properties: {
+                                  'time_control': newValue ?? 'All',
+                                },
+                              );
                             },
                             icon: Icon(
                               Icons.keyboard_arrow_down_outlined,
@@ -293,6 +323,15 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                             onTap: () {
                               ref.read(selectedMonthProvider.notifier).state =
                                   summary.monthNumber;
+                              AnalyticsService.instance.trackEventDetached(
+                                'Calendar Month Opened',
+                                properties: {
+                                  'month': summary.monthNumber,
+                                  'month_name': summary.monthName,
+                                  'event_count': summary.eventCount,
+                                  'year': ref.read(selectedYearProvider),
+                                },
+                              );
                               Navigator.pushNamed(
                                 context,
                                 '/calendar_detail_screen',
@@ -542,10 +581,18 @@ class _QuickFilterButtons extends ConsumerWidget {
             onTap: () {
               if (isUpcomingDisabled) return;
               final current = ref.read(calendarFilterModeProvider);
-              ref.read(calendarFilterModeProvider.notifier).state =
+              final next =
                   current == CalendarFilterMode.upcoming
                       ? CalendarFilterMode.all
                       : CalendarFilterMode.upcoming;
+              ref.read(calendarFilterModeProvider.notifier).state = next;
+              AnalyticsService.instance.trackEventDetached(
+                'Calendar Filter Changed',
+                properties: {
+                  'previous_filter': current.name,
+                  'filter': next.name,
+                },
+              );
             },
           ),
         ),
@@ -558,10 +605,18 @@ class _QuickFilterButtons extends ConsumerWidget {
             isSelected: filterMode == CalendarFilterMode.favorites,
             onTap: () {
               final current = ref.read(calendarFilterModeProvider);
-              ref.read(calendarFilterModeProvider.notifier).state =
+              final next =
                   current == CalendarFilterMode.favorites
                       ? CalendarFilterMode.all
                       : CalendarFilterMode.favorites;
+              ref.read(calendarFilterModeProvider.notifier).state = next;
+              AnalyticsService.instance.trackEventDetached(
+                'Calendar Filter Changed',
+                properties: {
+                  'previous_filter': current.name,
+                  'filter': next.name,
+                },
+              );
             },
           ),
         ),

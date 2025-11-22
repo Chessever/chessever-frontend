@@ -36,9 +36,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:worker_manager/worker_manager.dart';
 import 'package:clarity_flutter/clarity_flutter.dart';
-import 'package:amplitude_flutter/amplitude.dart';
 import 'package:heroine/heroine.dart';
 import 'package:upgrader/upgrader.dart';
+import 'services/analytics/analytics_service.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_provider.dart';
 
@@ -102,6 +102,14 @@ const Map<String, String> _releaseEnvValues = {
   ),
 };
 
+String _resolveAmplitudeApiKey() {
+  try {
+    final envApiKey = _getEnv('AMPLITUDE');
+    if (envApiKey.isNotEmpty) return envApiKey;
+  } catch (_) {}
+  return AnalyticsService.fallbackApiKey;
+}
+
 Future<void> main() async {
   await runZonedGuarded(
     () async {
@@ -149,14 +157,9 @@ Future<void> main() async {
         // Reset favorites for Supabase migration (one-time for beta users)
         _resetFavoritesForMigration(),
         // Initialize Amplitude (with error handling)
-        Future(() async {
-          try {
-            final amplitude = Amplitude.getInstance();
-            await amplitude.init(_getEnv('AMPLITUDE'));
-          } catch (e, _) {
-            // Silently fail for amplitude
-          }
-        }),
+        AnalyticsService.instance.initialize(
+          apiKey: _resolveAmplitudeApiKey(),
+        ),
       ]);
 
       // Non-critical: Load audio assets in background (don't block app startup)
@@ -334,7 +337,11 @@ class MyApp extends HookConsumerWidget {
         darkTheme: AppTheme.darkTheme,
         themeMode: themeMode,
         navigatorKey: navigatorKey,
-        navigatorObservers: [routeObserver, HeroineController()],
+        navigatorObservers: [
+          routeObserver,
+          HeroineController(),
+          AnalyticsService.instance.routeObserver,
+        ],
         initialRoute: '/',
         builder:
             (context, child) => CustomUpgradeAlert(

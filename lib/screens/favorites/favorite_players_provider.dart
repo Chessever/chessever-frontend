@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
+import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -61,6 +63,12 @@ class FavoritePlayersNotifier
     try {
       // STEP 2: Sync to Supabase in background
       await _favoritesService.toggleFavorite(player);
+      _trackFavoritePlayerToggle(
+        player: player,
+        isFavorited: false,
+        totalCount: updatedPlayers.length,
+        source: 'favorites_screen',
+      );
     } catch (e, stack) {
       debugPrint('Error: $e');
       debugPrint('Stack: $stack');
@@ -111,6 +119,12 @@ class FavoritePlayersNotifier
     try {
       // STEP 2: Sync to Supabase in background
       await _favoritesService.toggleFavorite(player);
+      _trackFavoritePlayerToggle(
+        player: player,
+        isFavorited: true,
+        totalCount: updatedPlayers.length,
+        source: 'favorites_screen',
+      );
     } catch (e, stack) {
       debugPrint('Error: $e');
       debugPrint('Stack: $stack');
@@ -143,6 +157,35 @@ class FavoritePlayersNotifier
   Future<void> refreshFavorites() async {
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() => _loadFavorites());
+  }
+
+  void _trackFavoritePlayerToggle({
+    required PlayerStandingModel player,
+    required bool isFavorited,
+    required int totalCount,
+    required String source,
+  }) {
+    unawaited(
+      AnalyticsService.instance.trackEvent(
+        'Player Favorite Toggled',
+        properties: {
+          'player_name': player.name,
+          'fide_id': player.fideId,
+          'country_code': player.countryCode,
+          'rating': player.score,
+          'title': player.title,
+          'is_favorited': isFavorited,
+          'source': source,
+          'new_favorites_total': totalCount,
+        },
+      ),
+    );
+
+    unawaited(
+      AnalyticsService.instance.setUserProperties({
+        'favorite_player_count': totalCount,
+      }),
+    );
   }
 }
 

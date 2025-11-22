@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:chessever2/screens/home/widget/bottom_nav_bar_widget.dart';
+import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
@@ -51,8 +54,21 @@ class BottomNavBar extends ConsumerWidget {
                 BottomNavBarItem.values.length,
             isSelected: selectedItem == BottomNavBarItem.values[index],
             onTap: () {
-              ref.read(selectedBottomNavBarItemProvider.notifier).state =
-                  BottomNavBarItem.values[index];
+              final previous = ref.read(selectedBottomNavBarItemProvider);
+              final next = BottomNavBarItem.values[index];
+              if (previous == next) return;
+
+              ref.read(selectedBottomNavBarItemProvider.notifier).state = next;
+
+              unawaited(
+                AnalyticsService.instance.trackEvent(
+                  'Bottom Nav Changed',
+                  properties: {
+                    'previous_tab': previous.name,
+                    'tab': next.name,
+                  },
+                ),
+              );
             },
             svgIcon: bottomNavBarIcons[BottomNavBarItem.values[index]]!,
             title: namesBottomNavBarIcons[BottomNavBarItem.values[index]]!,

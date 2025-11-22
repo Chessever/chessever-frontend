@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:chessever2/repository/local_storage/group_broadcast/group_broadcast_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
@@ -12,6 +14,7 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provi
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/event_favorite_players_provider.dart';
+import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
@@ -308,6 +311,20 @@ class _GroupEventScreenController
         // Navigate to games tab instead of about tab
         ref.read(selectedTourModeProvider.notifier).state =
             TournamentDetailScreenMode.games;
+
+        unawaited(
+          AnalyticsService.instance.trackEvent(
+            'Tournament Opened',
+            properties: {
+              'tournament_id': id,
+              'tournament_name': selectedBroadcast?.name,
+              'category': tourEventCategory.name,
+              'is_live':
+                  ref.read(liveBroadcastIdsProvider).contains(id),
+              'time_control': selectedBroadcast?.timeControl,
+            },
+          ),
+        );
         Navigator.pushNamed(context, '/tournament_detail_screen');
       }
     } catch (e, st) {
@@ -365,6 +382,17 @@ class _GroupEventScreenController
               .toList();
 
       state = AsyncValue.data(tourEventCardModel);
+      unawaited(
+        AnalyticsService.instance.trackEvent(
+          'Tournament Search',
+          properties: {
+            'query': query,
+            'query_length': query.length,
+            'result_count': tourEventCardModel.length,
+            'category': tourEventCategory.name,
+          },
+        ),
+      );
     } catch (error, stackTrace) {
       state = AsyncValue.error(error, stackTrace);
     }

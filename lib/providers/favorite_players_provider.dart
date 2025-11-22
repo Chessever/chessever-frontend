@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
+import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -87,6 +89,7 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
 
       // Refresh state
       await refresh();
+      _syncFavoritePlayerCountAnalytics(state.valueOrNull?.length ?? 0);
     } catch (e, st) {
       debugPrint('[FavoritePlayers] Error adding player: $e');
       debugPrint('[FavoritePlayers] Stack: $st');
@@ -113,6 +116,7 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
 
       // Refresh state
       await refresh();
+      _syncFavoritePlayerCountAnalytics(state.valueOrNull?.length ?? 0);
     } catch (e, st) {
       debugPrint('[FavoritePlayers] Error removing player: $e');
       debugPrint('[FavoritePlayers] Stack: $st');
@@ -206,6 +210,14 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
     } catch (e) {
       debugPrint('[FavoritePlayers] Error clearing cache: $e');
     }
+  }
+
+  void _syncFavoritePlayerCountAnalytics(int count) {
+    unawaited(
+      AnalyticsService.instance.setUserProperties({
+        'favorite_player_count': count,
+      }),
+    );
   }
 }
 

@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
+import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -107,6 +109,7 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
       // STEP 3: Fetch fresh data from Supabase (without loading state)
       final freshEvents = await _loadFavorites();
       state = AsyncValue.data(freshEvents);
+      _syncFavoriteCountAnalytics(freshEvents.length);
     } catch (e, st) {
       debugPrint('[FavoriteEvents] Error adding event: $e');
       debugPrint('[FavoriteEvents] Stack: $st');
@@ -146,6 +149,7 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
       // STEP 3: Fetch fresh data from Supabase (without loading state)
       final freshEvents = await _loadFavorites();
       state = AsyncValue.data(freshEvents);
+      _syncFavoriteCountAnalytics(freshEvents.length);
     } catch (e, st) {
       debugPrint('[FavoriteEvents] Error removing event: $e');
       debugPrint('[FavoriteEvents] Stack: $st');
@@ -243,6 +247,14 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
     } catch (e) {
       debugPrint('[FavoriteEvents] Error clearing cache: $e');
     }
+  }
+
+  void _syncFavoriteCountAnalytics(int count) {
+    unawaited(
+      AnalyticsService.instance.setUserProperties({
+        'favorite_event_count': count,
+      }),
+    );
   }
 }
 

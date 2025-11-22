@@ -9,6 +9,7 @@ import 'package:chessever2/repository/authentication/model/auth_state.dart';
 import 'package:chessever2/repository/authentication/model/exceptions.dart';
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
 import 'package:chessever2/repository/migration/settings_migration_service.dart';
+import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -115,6 +116,12 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
 
   Future<AppUser> signInWithGoogle() async {
     state = const AsyncValue.data(AppAuthState.loading());
+    unawaited(
+      AnalyticsService.instance.trackAuthEvent(
+        action: 'google_sign_in_started',
+        method: 'google',
+      ),
+    );
     await _ensureGoogleInitialized();
 
     try {
@@ -187,9 +194,25 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
       }
 
       state = AsyncValue.data(AppAuthState.authenticated(appUser));
+      unawaited(
+        AnalyticsService.instance.trackAuthEvent(
+          action: 'google_sign_in',
+          method: 'google',
+          success: true,
+          user: appUser,
+        ),
+      );
       return appUser;
     } on GoogleSignInException catch (e, st) {
       await ref.read(errorLoggerProvider).logError(e, st);
+      unawaited(
+        AnalyticsService.instance.trackAuthEvent(
+          action: 'google_sign_in',
+          method: 'google',
+          success: false,
+          reason: e.code.name,
+        ),
+      );
 
       if (kDebugMode) {
         debugPrint('❌ [GOOGLE AUTH] GoogleSignInException: ${e.code} - ${e.description}');
@@ -219,12 +242,26 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
     } catch (e, st) {
       await ref.read(errorLoggerProvider).logError(e, st);
       debugPrint('❌ [GOOGLE AUTH] Exception occurred: $e. Falling back to anonymous sign-in');
+      unawaited(
+        AnalyticsService.instance.trackAuthEvent(
+          action: 'google_sign_in',
+          method: 'google',
+          success: false,
+          reason: e.toString(),
+        ),
+      );
       return await _fallbackToAnonymousSignIn();
     }
   }
 
   Future<AppUser> signInWithApple() async {
     state = const AsyncValue.data(AppAuthState.loading());
+    unawaited(
+      AnalyticsService.instance.trackAuthEvent(
+        action: 'apple_sign_in_started',
+        method: 'apple',
+      ),
+    );
 
     if (!Platform.isIOS) {
       final message = 'Apple Sign-In is only available on iOS devices.';
@@ -281,9 +318,25 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
 
       final appUser = AppUser.fromSupabaseUser(user);
       state = AsyncValue.data(AppAuthState.authenticated(appUser));
+      unawaited(
+        AnalyticsService.instance.trackAuthEvent(
+          action: 'apple_sign_in',
+          method: 'apple',
+          success: true,
+          user: appUser,
+        ),
+      );
       return appUser;
     } on SignInWithAppleAuthorizationException catch (e, st) {
       await ref.read(errorLoggerProvider).logError(e, st);
+      unawaited(
+        AnalyticsService.instance.trackAuthEvent(
+          action: 'apple_sign_in',
+          method: 'apple',
+          success: false,
+          reason: e.code.name,
+        ),
+      );
       switch (e.code) {
         case AuthorizationErrorCode.canceled:
           state = const AsyncValue.data(AppAuthState.unauthenticated());
@@ -299,12 +352,26 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
     } catch (e, st) {
       await ref.read(errorLoggerProvider).logError(e, st);
       debugPrint('❌ [APPLE AUTH] Exception occurred, falling back to anonymous sign-in');
+      unawaited(
+        AnalyticsService.instance.trackAuthEvent(
+          action: 'apple_sign_in',
+          method: 'apple',
+          success: false,
+          reason: e.toString(),
+        ),
+      );
       return await _fallbackToAnonymousSignIn();
     }
   }
 
   Future<AppUser> signInAnonymously() async {
     state = const AsyncValue.data(AppAuthState.loading());
+    unawaited(
+      AnalyticsService.instance.trackAuthEvent(
+        action: 'anonymous_sign_in_started',
+        method: 'anonymous',
+      ),
+    );
 
     try {
       final response = await _supabase.auth.signInAnonymously();
@@ -319,10 +386,26 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
 
       final appUser = AppUser.fromSupabaseUser(user);
       state = AsyncValue.data(AppAuthState.authenticated(appUser));
+      unawaited(
+        AnalyticsService.instance.trackAuthEvent(
+          action: 'anonymous_sign_in',
+          method: 'anonymous',
+          success: true,
+          user: appUser,
+        ),
+      );
       return appUser;
     } catch (e, st) {
       await ref.read(errorLoggerProvider).logError(e, st);
       state = AsyncValue.data(AppAuthState.error(_exceptionMessage(e)));
+      unawaited(
+        AnalyticsService.instance.trackAuthEvent(
+          action: 'anonymous_sign_in',
+          method: 'anonymous',
+          success: false,
+          reason: e.toString(),
+        ),
+      );
       rethrow;
     }
   }
@@ -343,11 +426,27 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
 
       final appUser = AppUser.fromSupabaseUser(user);
       state = AsyncValue.data(AppAuthState.authenticated(appUser));
+      unawaited(
+        AnalyticsService.instance.trackAuthEvent(
+          action: 'anonymous_sign_in',
+          method: 'fallback',
+          success: true,
+          user: appUser,
+        ),
+      );
       debugPrint('✅ [FALLBACK] Anonymous sign-in successful');
       return appUser;
     } catch (e, st) {
       debugPrint('❌ [FALLBACK] Anonymous sign-in failed: $e');
       await ref.read(errorLoggerProvider).logError(e, st);
+      unawaited(
+        AnalyticsService.instance.trackAuthEvent(
+          action: 'anonymous_sign_in',
+          method: 'fallback',
+          success: false,
+          reason: e.toString(),
+        ),
+      );
       state = AsyncValue.data(AppAuthState.error(_exceptionMessage(e)));
       rethrow;
     }
@@ -367,6 +466,13 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
       await _supabase.auth.signOut();
       await _sessionManager.clearLocalStorage();
       state = const AsyncValue.data(AppAuthState.unauthenticated());
+      unawaited(
+        AnalyticsService.instance.trackAuthEvent(
+          action: 'sign_out',
+          method: 'manual',
+          success: true,
+        ),
+      );
     } catch (e, st) {
       await ref.read(errorLoggerProvider).logError(e, st);
       final rawMessage = _exceptionMessage(e);
@@ -374,6 +480,14 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
           ? 'Failed to sign out. Please try again.'
           : rawMessage;
       state = AsyncValue.data(AppAuthState.error(message));
+      unawaited(
+        AnalyticsService.instance.trackAuthEvent(
+          action: 'sign_out',
+          method: 'manual',
+          success: false,
+          reason: e.toString(),
+        ),
+      );
       rethrow;
     }
   }
@@ -385,11 +499,24 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
       // Call RPC to delete user account (common pattern for Supabase)
       // This assumes a 'delete_user_account' function exists in Postgres
       await _supabase.rpc('delete_user_account');
+      unawaited(
+        AnalyticsService.instance.trackAuthEvent(
+          action: 'delete_account',
+          success: true,
+        ),
+      );
       
       // Sign out after deletion
       await signOut();
     } catch (e, st) {
       await ref.read(errorLoggerProvider).logError(e, st);
+      unawaited(
+        AnalyticsService.instance.trackAuthEvent(
+          action: 'delete_account',
+          success: false,
+          reason: e.toString(),
+        ),
+      );
       
       // If RPC fails, try to at least sign out and clear local data
       // But rethrow so UI can show error
