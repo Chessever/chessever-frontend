@@ -810,7 +810,19 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         break;
     }
 
-    if (!gamesAsync.hasValue || gamesAsync.value?.gamesTourModels == null) {
+    // Fallback for contexts (e.g., For You tab) where gamesTourScreenProvider
+    // isn't hydrated yet. We still want to open the board with the passed games.
+    GamesScreenModel? gamesModel = gamesAsync.valueOrNull;
+    if (gamesModel == null || gamesModel.gamesTourModels.isEmpty) {
+      if (widget.games.isNotEmpty) {
+        gamesModel = GamesScreenModel(
+          gamesTourModels: widget.games,
+          pinnedGamedIs: const [],
+        );
+      }
+    }
+
+    if (gamesModel == null || gamesModel.gamesTourModels.isEmpty) {
       return _LoadingScreen(
         games: widget.games.isNotEmpty ? widget.games : [widget.games.first],
         currentGameIndex: _currentPageIndex.clamp(0, widget.games.length - 1),
@@ -820,7 +832,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
 
     final liveGamesMap = Map.fromEntries(
-      gamesAsync.value!.gamesTourModels.map((g) => MapEntry(g.gameId, g)),
+      gamesModel.gamesTourModels.map((g) => MapEntry(g.gameId, g)),
     );
     final liveGames =
         widget.games

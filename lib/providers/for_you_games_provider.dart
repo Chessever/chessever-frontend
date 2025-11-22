@@ -12,13 +12,25 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 // ============================================================================
 
 /// Main provider for For You games - fetches and sorts personalized games
+///
+/// NOTE: Using keepAlive to prevent data loss when switching tabs.
+/// This ensures consistent data and scroll position preservation.
 final forYouGamesProvider = StateNotifierProvider.autoDispose<
     ForYouGamesNotifier, AsyncValue<List<Games>>>(
-  (ref) => ForYouGamesNotifier(ref),
+  (ref) {
+    // CRITICAL: Keep provider alive during session to prevent:
+    // 1. Data discrepancy when switching tabs
+    // 2. Scroll position loss
+    // 3. Re-animations
+    ref.keepAlive();
+
+    return ForYouGamesNotifier(ref);
+  },
 );
 
 /// Provider for grouped games (by tournament) for UI display
 final groupedForYouGamesProvider = Provider.autoDispose<List<GroupedTournamentGames>>((ref) {
+  ref.keepAlive(); // Keep alive to match main provider
   final games = ref.watch(forYouGamesProvider).valueOrNull ?? [];
 
   final grouped = <String, GroupedTournamentGames>{};
@@ -53,10 +65,15 @@ final groupedForYouGamesProvider = Provider.autoDispose<List<GroupedTournamentGa
 
 /// Provider for converted games (Games to GamesTourModel)
 final convertedForYouGamesProvider = Provider.autoDispose<List<GamesTourModel>>((ref) {
+  ref.keepAlive(); // Keep alive to match main provider
   final games = ref.watch(forYouGamesProvider).valueOrNull ?? [];
 
   return games.map((game) => GamesTourModel.fromGame(game)).toList();
 });
+
+/// Global set to track which game IDs have been animated
+/// This prevents re-animation when widgets rebuild or tab switches
+final forYouAnimatedGameIds = <String>{};
 
 // ============================================================================
 // STATE NOTIFIER
@@ -81,6 +98,7 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   final List<Games> _allGames = [];
   bool _hasMore = true;
   bool _isFetchingMore = false;
+  DateTime? _lastFetchAt;
   static const int _pageSize = 20;
 
   Future<void> _initialize() async {
@@ -278,6 +296,9 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     // Check if we have more
     _hasMore = uniqueNewGames.isNotEmpty;
     debugPrint('[ForYouGames] Has more: $_hasMore, Total games: ${_allGames.length}');
+
+    // Track last successful fetch to detect stale data when revisiting the tab
+    _lastFetchAt = DateTime.now();
   }
 
   /// Sort games with heterogeneous distribution while respecting priority
@@ -478,6 +499,17 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     await loadGames();
   }
 
+  /// Refresh only when data is considered stale (e.g., when re-opening the tab)
+  Future<void> refreshIfStale({Duration maxAge = const Duration(seconds: 60)}) async {
+    if (state.isLoading || _isFetchingMore) return;
+    if (_lastFetchAt != null &&
+        DateTime.now().difference(_lastFetchAt!) <= maxAge) {
+      return;
+    }
+
+    await refresh();
+  }
+
   bool get isFetchingMore => _isFetchingMore;
   bool get hasMore => _hasMore;
 }
@@ -517,4 +549,3 @@ class _ScoredGame {
   final bool isLive;
   final int maxElo;
 }
-

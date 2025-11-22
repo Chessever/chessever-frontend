@@ -1,10 +1,12 @@
 import 'package:chessever2/providers/favorite_events_provider.dart';
+import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/repository/supabase/calendar_event/calendar_event_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
+import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/month_provider.dart';
@@ -41,6 +43,7 @@ class _CalendarScreenNotifier
   }
 
   final Ref ref;
+  final Set<String> _primingFavoritePlayers = {};
 
   List<GroupEventCardModel> _yearEvents = [];
 
@@ -51,6 +54,9 @@ class _CalendarScreenNotifier
       ref.listen(calendarTimeControlProvider, (_, __) => _applyFilters());
       ref.listen(calendarFilterModeProvider, (_, __) => _applyFilters());
       ref.listen(selectedYearProvider, (_, __) => _fetchYearEvents());
+      ref.listen(favoriteEventsProvider, (_, __) => _applyFilters());
+      ref.listen(favoritePlayersNotifierProvider, (_, __) => _applyFilters());
+      ref.listen(eventFavoritePlayersCacheProvider, (_, __) => _applyFilters());
 
       await _fetchYearEvents();
     } catch (e, st) {
@@ -96,7 +102,8 @@ class _CalendarScreenNotifier
       }
 
       final selectedYear = ref.read(selectedYearProvider);
-      final searchQuery = ref.read(calendarSearchQueryProvider).toLowerCase();
+      final searchQuery =
+          ref.read(calendarSearchQueryProvider).trim().toLowerCase();
       final timeControl = ref.read(calendarTimeControlProvider);
       final filterMode = ref.read(calendarFilterModeProvider);
       final monthConverter = ref.read(monthProvider);
@@ -108,6 +115,7 @@ class _CalendarScreenNotifier
         final favorites = favoritesAsync.valueOrNull ?? [];
         favoriteEventIds.addAll(favorites.map((e) => e.eventId));
       }
+      final favoritePlayersCache = ref.read(eventFavoritePlayersCacheProvider);
 
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
@@ -132,7 +140,11 @@ class _CalendarScreenNotifier
             continue;
           }
         } else if (filterMode == CalendarFilterMode.favorites) {
-          if (!favoriteEventIds.contains(event.id)) {
+          final hasFavoritePlayers =
+              favoritePlayersCache[event.id]?.hasFavorites ?? false;
+          final isStarred = favoriteEventIds.contains(event.id);
+          if (!isStarred && !hasFavoritePlayers) {
+            _primeFavoritePlayers(event.id);
             continue;
           }
         }
@@ -197,7 +209,22 @@ class _CalendarScreenNotifier
       title: event.title,
       location: event.location,
       searchQuery: searchQuery,
+      extraTokens: event.searchTerms,
     );
+  }
+
+  void _primeFavoritePlayers(String eventId) {
+    if (_primingFavoritePlayers.contains(eventId)) return;
+    _primingFavoritePlayers.add(eventId);
+
+    ref
+        .read(eventFavoritePlayersProvider(eventId).future)
+        .then(
+          (result) => ref
+              .read(eventFavoritePlayersCacheProvider.notifier)
+              .updateCache(eventId, result),
+        )
+        .whenComplete(() => _primingFavoritePlayers.remove(eventId));
   }
 
   void _setEmptyMonths() {
@@ -259,29 +286,52 @@ class CalendarSearchHelper {
     required String title,
     required String searchQuery,
     String? location,
+    List<String>? extraTokens,
   }) {
-    if (searchQuery.isEmpty) return true;
+    final normalizedQuery = searchQuery.trim().toLowerCase();
+    if (normalizedQuery.isEmpty) return true;
 
-    final tokens = _buildSearchTokens(title: title, location: location);
-    return tokens.any((token) => token.contains(searchQuery));
+    final tokens = _buildSearchTokens(
+      title: title,
+      location: location,
+      extraTokens: extraTokens,
+    );
+    return tokens.any((token) => token.contains(normalizedQuery));
   }
 
   static List<String> _buildSearchTokens({
     required String title,
     String? location,
+    List<String>? extraTokens,
   }) {
-    final tokens = <String>{title.toLowerCase()};
+    final tokens = <String>{};
 
-    if (location != null && location.isNotEmpty) {
-      tokens.add(location.toLowerCase());
+    void addTokenWithCountryData(String value) {
+      final normalized = value.trim().toLowerCase();
+      if (normalized.isEmpty) return;
 
-      final countryCode = _getCountryCode(location);
+      tokens.add(normalized);
+
+      final countryCode = _getCountryCode(value);
       if (countryCode != null) {
         tokens.add(countryCode.toLowerCase());
         final countryName = CountryService().findByCode(countryCode)?.name;
         if (countryName != null && countryName.isNotEmpty) {
           tokens.add(countryName.toLowerCase());
         }
+      }
+    }
+
+    addTokenWithCountryData(title);
+
+    if (location != null && location.isNotEmpty) {
+      addTokenWithCountryData(location);
+    }
+
+    if (extraTokens != null) {
+      for (final token in extraTokens) {
+        if (token.trim().isEmpty) continue;
+        addTokenWithCountryData(token);
       }
     }
 

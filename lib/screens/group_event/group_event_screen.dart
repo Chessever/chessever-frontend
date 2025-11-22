@@ -46,6 +46,7 @@ class GroupEventScreen extends HookConsumerWidget {
       initialPage: GroupEventCategory.values.indexOf(selectedTourEvent),
     );
     final pastScrollController = useScrollController();
+    final currentScrollController = useScrollController();
     final forYouScrollController = useScrollController();
     final isAnimating = useRef(false);
     final isSearching = useState(false);
@@ -211,6 +212,29 @@ class GroupEventScreen extends HookConsumerWidget {
             selectedTourEvent: selectedTourEvent,
             onSelectedChanged: (index) {
               final newCategory = GroupEventCategory.values[index];
+              final currentCategory = selectedTourEvent;
+
+              // If tapping the same tab, scroll to top
+              if (newCategory == currentCategory) {
+                ScrollController? controller;
+                if (newCategory == GroupEventCategory.forYou) {
+                  controller = forYouScrollController;
+                } else if (newCategory == GroupEventCategory.past) {
+                  controller = pastScrollController;
+                } else if (newCategory == GroupEventCategory.current) {
+                  controller = currentScrollController;
+                }
+
+                if (controller != null && controller.hasClients) {
+                  controller.animateTo(
+                    0,
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOutCubic,
+                  );
+                }
+                return; // Don't change category
+              }
+
               ref.invalidate(filterPopupProvider);
               ref.read(selectedGroupCategoryProvider.notifier).state =
                   newCategory;
@@ -232,8 +256,15 @@ class GroupEventScreen extends HookConsumerWidget {
               itemBuilder: (context, index) {
                 final currentCategory = GroupEventCategory.values[index];
                 final isPast = currentCategory == GroupEventCategory.past;
+                final isCurrent = currentCategory == GroupEventCategory.current;
                 final isForYou = currentCategory == GroupEventCategory.forYou;
-                final scrollController = isPast ? pastScrollController : (isForYou ? forYouScrollController : null);
+                final scrollController = isPast
+                    ? pastScrollController
+                    : isCurrent
+                        ? currentScrollController
+                        : isForYou
+                            ? forYouScrollController
+                            : null;
 
                 // Only load data for the currently selected tab
                 if (currentCategory != selectedTourEvent) {

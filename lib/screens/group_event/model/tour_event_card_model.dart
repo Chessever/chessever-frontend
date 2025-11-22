@@ -22,6 +22,7 @@ class GroupEventCardModel extends Equatable {
     required this.endDate,
     required this.startDate,
     this.location,
+    this.searchTerms = const [],
     this.eventSource = EventSource.lichessBroadcast,
   });
 
@@ -35,6 +36,7 @@ class GroupEventCardModel extends Equatable {
   final DateTime? endDate;
   final DateTime? startDate;
   final String? location;
+  final List<String> searchTerms;
   final EventSource eventSource;
 
   factory GroupEventCardModel.fromGroupBroadcast(
@@ -59,6 +61,7 @@ class GroupEventCardModel extends Equatable {
       timeControl: groupBroadcast.timeControl ?? '',
       endDate: utcEnd,
       startDate: utcStart,
+      searchTerms: groupBroadcast.search,
       eventSource: EventSource.lichessBroadcast,
     );
   }
@@ -93,6 +96,7 @@ class GroupEventCardModel extends Equatable {
       endDate: utcEnd,
       startDate: utcStart,
       location: calendarEvent.location,
+      searchTerms: const [],
       eventSource: EventSource.communityEvent,
     );
   }
@@ -159,6 +163,7 @@ class GroupEventCardModel extends Equatable {
     timeControl,
     endDate,
     location,
+    searchTerms,
     eventSource,
   ];
 }

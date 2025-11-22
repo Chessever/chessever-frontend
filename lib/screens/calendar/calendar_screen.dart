@@ -291,6 +291,11 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                   loading: () {
                     final isTablet = ResponsiveHelper.isTablet;
                     final crossAxisCount = isTablet ? 3 : 2;
+                    final months = [
+                      'January', 'February', 'March', 'April',
+                      'May', 'June', 'July', 'August',
+                      'September', 'October', 'November', 'December',
+                    ];
 
                     return SkeletonWidget(
                       child: GridView.builder(
@@ -303,11 +308,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                         ),
                         itemCount: 12,
                         itemBuilder: (context, index) {
-                          return Container(
-                            decoration: BoxDecoration(
-                              color: kBlack2Color,
-                              borderRadius: BorderRadius.circular(8.br),
-                            ),
+                          return _MonthButton(
+                            monthName: months[index],
+                            eventCount: (index % 3 == 0) ? index + 1 : 0,
+                            onTap: () {},
                           );
                         },
                       ),

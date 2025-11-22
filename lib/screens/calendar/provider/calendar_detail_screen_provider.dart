@@ -1,4 +1,5 @@
 import 'package:chessever2/providers/favorite_events_provider.dart';
+import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/repository/supabase/calendar_event/calendar_event.dart';
 import 'package:chessever2/repository/supabase/calendar_event/calendar_event_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
@@ -12,6 +13,7 @@ import 'package:chessever2/screens/group_event/providers/sorting_all_event_provi
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 
 final calendarDetailScreenProvider = AutoDisposeStateNotifierProvider.family<
   _CalendarDetailScreenController,
@@ -31,6 +33,7 @@ class _CalendarDetailScreenController
 
   final Ref ref;
   final CalendarFilterArgs filterArgs;
+  final Set<String> _primingFavoritePlayers = {};
 
   List<GroupBroadcast> groupBroadcast = [];
   List<CalendarEvent> calendarEvents = [];
@@ -40,6 +43,9 @@ class _CalendarDetailScreenController
     ref.listen(calendarTimeControlProvider, (_, __) => _applyFilters());
     ref.listen(calendarFilterModeProvider, (_, __) => _applyFilters());
     ref.listen(liveGroupBroadcastIdsProvider, (_, __) => _applyFilters());
+    ref.listen(favoriteEventsProvider, (_, __) => _applyFilters());
+    ref.listen(favoritePlayersNotifierProvider, (_, __) => _applyFilters());
+    ref.listen(eventFavoritePlayersCacheProvider, (_, __) => _applyFilters());
   }
 
   Future<void> _init() async {
@@ -69,7 +75,8 @@ class _CalendarDetailScreenController
   }
 
   void _applyFilters() {
-    final searchQuery = ref.read(calendarSearchQueryProvider).toLowerCase();
+    final searchQuery =
+        ref.read(calendarSearchQueryProvider).trim().toLowerCase();
     final timeControl = ref.read(calendarTimeControlProvider);
     final filterMode = ref.read(calendarFilterModeProvider);
     final liveIds = ref.read(liveBroadcastIdsProvider);
@@ -81,6 +88,7 @@ class _CalendarDetailScreenController
       final favorites = favoritesAsync.valueOrNull ?? [];
       favoriteEventIds.addAll(favorites.map((e) => e.eventId));
     }
+    final favoritePlayersCache = ref.read(eventFavoritePlayersCacheProvider);
 
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -101,6 +109,7 @@ class _CalendarDetailScreenController
         t.timeControl,
         searchQuery,
         timeControl,
+        extraTokens: t.search,
       )) return false;
 
       // Apply filter mode
@@ -110,7 +119,11 @@ class _CalendarDetailScreenController
           return false;
         }
       } else if (filterMode == CalendarFilterMode.favorites) {
-        if (!favoriteEventIds.contains(t.id)) {
+        final hasFavoritePlayers =
+            favoritePlayersCache[t.id]?.hasFavorites ?? false;
+        final isStarred = favoriteEventIds.contains(t.id);
+        if (!isStarred && !hasFavoritePlayers) {
+          _primeFavoritePlayers(t.id);
           return false;
         }
       }
@@ -131,6 +144,10 @@ class _CalendarDetailScreenController
         e.timeControl,
         searchQuery,
         timeControl,
+        extraTokens: [
+          if (e.location != null) e.location!,
+          if (e.timeControl != null) e.timeControl!,
+        ],
       )) return false;
 
       // Apply filter mode
@@ -142,7 +159,11 @@ class _CalendarDetailScreenController
       } else if (filterMode == CalendarFilterMode.favorites) {
         // Calendar events use generated ID format
         final eventId = 'cal_event_${e.name.replaceAll(' ', '_').replaceAll(RegExp(r'[^\w\-]'), '').toLowerCase()}';
-        if (!favoriteEventIds.contains(eventId)) {
+        final hasFavoritePlayers =
+            favoritePlayersCache[eventId]?.hasFavorites ?? false;
+        final isStarred = favoriteEventIds.contains(eventId);
+        if (!isStarred && !hasFavoritePlayers) {
+          _primeFavoritePlayers(eventId);
           return false;
         }
       }
@@ -174,13 +195,28 @@ class _CalendarDetailScreenController
     state = AsyncValue.data(sortedEvents);
   }
 
+  void _primeFavoritePlayers(String eventId) {
+    if (_primingFavoritePlayers.contains(eventId)) return;
+    _primingFavoritePlayers.add(eventId);
+
+    ref
+        .read(eventFavoritePlayersProvider(eventId).future)
+        .then(
+          (result) => ref
+              .read(eventFavoritePlayersCacheProvider.notifier)
+              .updateCache(eventId, result),
+        )
+        .whenComplete(() => _primingFavoritePlayers.remove(eventId));
+  }
+
   bool _matchesFilters(
     String name,
     String? location,
     String? timeControl,
     String searchQuery,
-    String? filterTimeControl,
-  ) {
+    String? filterTimeControl, {
+    List<String>? extraTokens,
+  }) {
     final normalizedFilter = normalizeTimeControl(filterTimeControl);
     if (normalizedFilter != null) {
       final eventTime = normalizeTimeControl(timeControl);
@@ -193,6 +229,7 @@ class _CalendarDetailScreenController
       title: name,
       location: location,
       searchQuery: searchQuery,
+      extraTokens: extraTokens,
     );
   }
 

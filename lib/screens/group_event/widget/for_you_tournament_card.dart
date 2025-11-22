@@ -41,7 +41,7 @@ class ForYouTournamentCard extends ConsumerWidget {
 
   Widget _buildCard(BuildContext context, WidgetRef ref, GroupBroadcast tournament) {
     return GestureDetector(
-      onTap: () => _navigateToTournament(context, ref, tournament),
+      onTap: () => _onTournamentTap(context, ref),
       child: Container(
         margin: EdgeInsets.only(
           top: isFirst ? 0 : 16.sp,
@@ -189,7 +189,7 @@ class ForYouTournamentCard extends ConsumerWidget {
   Widget _buildFallbackCard(BuildContext context, WidgetRef ref) {
     // If we can't fetch tournament data, show a simpler card with fallback name
     return GestureDetector(
-      onTap: () => _navigateToTournamentById(context, ref, tourId),
+      onTap: () => _onTournamentTap(context, ref),
       child: Container(
         margin: EdgeInsets.only(
           top: isFirst ? 0 : 16.sp,
@@ -310,26 +310,12 @@ class ForYouTournamentCard extends ConsumerWidget {
         .trim();
   }
 
-  void _navigateToTournament(BuildContext context, WidgetRef ref, GroupBroadcast tournament) {
-    HapticFeedbackService.cardTap();
-
-    // Set the selected tournament
-    ref.read(selectedBroadcastModelProvider.notifier).state = tournament;
-
-    // Navigate to tournament detail
-    if (context.mounted) {
-      Navigator.pushNamed(context, '/tournament_detail_screen');
-    }
-  }
-
-  void _navigateToTournamentById(BuildContext context, WidgetRef ref, String tourId) async {
+  Future<void> _onTournamentTap(BuildContext context, WidgetRef ref) async {
     HapticFeedbackService.cardTap();
 
     try {
-      // Fetch the tournament by ID
-      final tournament = await ref
-          .read(groupBroadcastRepositoryProvider)
-          .getGroupBroadcastById(tourId);
+      // Always resolve via repository so we correctly map tour IDs -> group_broadcast_ids
+      final tournament = await ref.read(_tournamentProvider(tourId).future);
 
       // Set the selected tournament
       ref.read(selectedBroadcastModelProvider.notifier).state = tournament;
@@ -339,7 +325,46 @@ class ForYouTournamentCard extends ConsumerWidget {
         Navigator.pushNamed(context, '/tournament_detail_screen');
       }
     } catch (e) {
-      debugPrint('[ForYouTournamentCard] Error navigating to tournament: $e');
+      debugPrint('[ForYouTournamentCard] Error navigating to tournament $tourId: $e');
+
+      // Tournament couldn't be resolved; fall back to a minimal tournament so
+      // the detail screen still opens with available games.
+      if (context.mounted) {
+        try {
+          // Create a minimal tournament object with just the ID and name
+          final fallbackTournament = GroupBroadcast(
+            id: tourId,
+            name: _formatTournamentName(tourName),
+            createdAt: DateTime.now(),
+            search: [tourId, tourName], // Search terms for the tournament
+            dateStart: hasLiveGames ? DateTime.now() : null,
+            maxAvgElo: null,
+            dateEnd: null,
+            timeControl: null,
+          );
+
+          // Set the fallback tournament
+          ref.read(selectedBroadcastModelProvider.notifier).state = fallbackTournament;
+
+          // Navigate to tournament detail screen which will show the games
+          if (context.mounted) {
+            Navigator.pushNamed(context, '/tournament_detail_screen');
+          }
+        } catch (fallbackError) {
+          debugPrint('[ForYouTournamentCard] Failed to navigate with fallback: $fallbackError');
+
+          // As a last resort, show a snackbar to the user
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Unable to open tournament details'),
+                backgroundColor: Colors.orange,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        }
+      }
     }
   }
 }

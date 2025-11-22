@@ -1,8 +1,11 @@
 import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/group_event/widget/for_you_tournament_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
@@ -33,6 +36,15 @@ class ForYouGamesWidget extends HookConsumerWidget {
     final gamesAsync = ref.watch(forYouGamesProvider);
     final groupedGames = ref.watch(groupedForYouGamesProvider);
     final convertedGames = ref.watch(convertedForYouGamesProvider);
+
+    // Auto-refresh when the tab is reopened after sitting idle, so live games float to the top
+    useEffect(() {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        // Defer to post-frame to avoid mutating providers during build
+        ref.read(forYouGamesProvider.notifier).refreshIfStale();
+      });
+      return null;
+    }, const []);
 
     // Track if we're loading more for UI feedback
     final isLoadingMore = useState(false);
@@ -153,32 +165,200 @@ class ForYouGamesWidget extends HookConsumerWidget {
   }
 
   Widget _buildLoadingState() {
-    return ListView.builder(
+    return const _ForYouSkeletonLoader();
+  }
+}
+
+/// Skeleton loader that mimics the For You feed structure
+/// Shows tournament headers followed by game cards
+class _ForYouSkeletonLoader extends StatelessWidget {
+  const _ForYouSkeletonLoader();
+
+  @override
+  Widget build(BuildContext context) {
+    // Create mock player data for skeleton
+    final mockPlayer = PlayerCard(
+      name: 'Player Name Here',
+      federation: 'Federation',
+      title: 'GM',
+      rating: 2700,
+      countryCode: 'USA',
+      team: 'Team Name',
+    );
+
+    final mockGame = GamesTourModel(
+      roundId: 'roundId',
+      tourId: 'tourId',
+      gameId: 'gameId',
+      whitePlayer: mockPlayer,
+      blackPlayer: mockPlayer,
+      whiteTimeDisplay: '1:30:00',
+      blackTimeDisplay: '1:30:00',
+      whiteClockCentiseconds: 540000,
+      blackClockCentiseconds: 540000,
+      gameStatus: GameStatus.ongoing,
+    );
+
+    return ListView(
       padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 16.sp),
-      itemCount: 10,
-      itemBuilder: (context, index) {
-        return Padding(
-          padding: EdgeInsets.only(bottom: 12.sp),
-          child: SkeletonWidget(
-            child: Container(
-              height: 100.sp,
-              decoration: BoxDecoration(
-                color: kDarkGreyColor,
-                borderRadius: BorderRadius.circular(12.sp),
-              ),
-            ),
+      physics: const NeverScrollableScrollPhysics(),
+      children: [
+        // First tournament group
+        _SkeletonTournamentHeader(isFirst: true),
+        ...List.generate(
+          3,
+          (index) => _SkeletonGameCard(mockGame: mockGame, index: index),
+        ),
+
+        // Second tournament group
+        _SkeletonTournamentHeader(isFirst: false),
+        ...List.generate(
+          2,
+          (index) => _SkeletonGameCard(mockGame: mockGame, index: index + 3),
+        ),
+
+        // Third tournament group
+        _SkeletonTournamentHeader(isFirst: false),
+        ...List.generate(
+          3,
+          (index) => _SkeletonGameCard(mockGame: mockGame, index: index + 5),
+        ),
+      ],
+    );
+  }
+}
+
+/// Skeleton tournament header card
+class _SkeletonTournamentHeader extends StatelessWidget {
+  const _SkeletonTournamentHeader({required this.isFirst});
+
+  final bool isFirst;
+
+  @override
+  Widget build(BuildContext context) {
+    return SkeletonWidget(
+      child: Container(
+        margin: EdgeInsets.only(
+          top: isFirst ? 0 : 16.sp,
+          bottom: 12.sp,
+        ),
+        decoration: BoxDecoration(
+          color: kBlack2Color,
+          borderRadius: BorderRadius.circular(8.br),
+          border: Border.all(
+            color: kDarkGreyColor.withValues(alpha: 0.3),
           ),
-        )
-            .animate()
-            .fadeIn(
-              duration: 200.ms,
-              delay: Duration(milliseconds: index * 50),
-            )
-            .shimmer(
-              duration: 1200.ms,
-              color: kWhiteColor.withValues(alpha: 0.05),
-            );
-      },
+        ),
+        padding: EdgeInsets.all(12.sp),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Tournament name row
+            Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    height: 16.sp,
+                    decoration: BoxDecoration(
+                      color: kDarkGreyColor,
+                      borderRadius: BorderRadius.circular(4.br),
+                    ),
+                  ),
+                ),
+                SizedBox(width: 12.sp),
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 3.sp),
+                  decoration: BoxDecoration(
+                    color: kDarkGreyColor.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(4.br),
+                  ),
+                  child: Text(
+                    '3 games',
+                    style: TextStyle(
+                      fontSize: 11.sp,
+                      fontWeight: FontWeight.w500,
+                      color: kWhiteColor70,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 6.sp),
+            // Details row
+            Row(
+              children: [
+                Container(
+                  width: 80.sp,
+                  height: 12.sp,
+                  decoration: BoxDecoration(
+                    color: kDarkGreyColor.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(4.br),
+                  ),
+                ),
+                SizedBox(width: 12.sp),
+                Container(
+                  width: 50.sp,
+                  height: 12.sp,
+                  decoration: BoxDecoration(
+                    color: kDarkGreyColor.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(4.br),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 6.sp),
+            // Tap hint row
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Text(
+                  'Tap to view tournament',
+                  style: AppTypography.textXsRegular.copyWith(
+                    color: kWhiteColor.withValues(alpha: 0.4),
+                    fontSize: 10.sp,
+                  ),
+                ),
+                SizedBox(width: 4.sp),
+                Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  size: 10.sp,
+                  color: kWhiteColor.withValues(alpha: 0.4),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Skeleton game card using actual GameCard structure
+class _SkeletonGameCard extends StatelessWidget {
+  const _SkeletonGameCard({
+    required this.mockGame,
+    required this.index,
+  });
+
+  final GamesTourModel mockGame;
+  final int index;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 12.sp),
+      child: SkeletonWidget(
+        ignoreContainers: true,
+        child: GameCard(
+          onTap: () {},
+          matchComparison: MatchWithComparison(
+            game: mockGame,
+            comparison: MatchComparison.sameOrder,
+          ),
+          onPinToggle: (_) {},
+          pinnedIds: const [],
+        ),
+      ),
     );
   }
 }
@@ -202,6 +382,8 @@ class _ForYouListView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView.builder(
+      // CRITICAL: PageStorageKey preserves scroll position across tab switches
+      key: const PageStorageKey<String>('for_you_games_list'),
       controller: scrollController,
       padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 16.sp),
       itemCount: items.length + (isLoadingMore ? 1 : 0),
@@ -238,6 +420,7 @@ class _ForYouListView extends StatelessWidget {
           gamesData: gamesData,
           gameIndex: item.gameIndex!,
           listIndex: index,
+          allGames: allGames, // Pass all games for navigation
         );
       },
     );
@@ -282,12 +465,14 @@ class _KeepAliveGameCard extends StatefulWidget {
     required this.gamesData,
     required this.gameIndex,
     required this.listIndex,
+    required this.allGames,
   });
 
   final GamesTourModel game;
   final GamesScreenModel gamesData;
   final int gameIndex;
   final int listIndex;
+  final List<GamesTourModel> allGames;
 
   @override
   State<_KeepAliveGameCard> createState() => _KeepAliveGameCardState();
@@ -295,9 +480,6 @@ class _KeepAliveGameCard extends StatefulWidget {
 
 class _KeepAliveGameCardState extends State<_KeepAliveGameCard>
     with AutomaticKeepAliveClientMixin {
-  // Track if animation has played to avoid replaying on rebuild
-  bool _hasAnimated = false;
-
   @override
   bool get wantKeepAlive => true; // CRITICAL: Keep this widget alive
 
@@ -305,6 +487,7 @@ class _KeepAliveGameCardState extends State<_KeepAliveGameCard>
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
 
+    final gameId = widget.game.gameId;
     final card = Padding(
       padding: EdgeInsets.only(bottom: 12.sp),
       child: GameCardWrapperWidget(
@@ -312,12 +495,17 @@ class _KeepAliveGameCardState extends State<_KeepAliveGameCard>
         gamesData: widget.gamesData,
         gameIndex: widget.gameIndex,
         isChessBoardVisible: false,
+        // Enable navigation for game cards in For You tab
+        onReturnFromChessboard: (returnedIndex) {
+          // Handle returning from chess board if needed
+          // For now, we don't need to do anything special
+        },
       ),
     );
 
-    // Only animate on first appearance
-    if (!_hasAnimated) {
-      _hasAnimated = true;
+    // Use global set to track animations - survives tab switches and rebuilds
+    if (!forYouAnimatedGameIds.contains(gameId)) {
+      forYouAnimatedGameIds.add(gameId);
       return card
           .animate()
           .fadeIn(
