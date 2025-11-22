@@ -356,6 +356,134 @@ class GameRepository extends BaseRepository {
       return games;
     });
   }
+
+  /// Get LIVE games (status = '*') - highest priority in For You
+  /// These are ongoing games with recent activity
+  Future<List<Games>> getLiveGames({
+    int limit = 30,
+    int offset = 0,
+  }) async {
+    return handleApiCall(() async {
+      debugPrint('===== GameRepository: Fetching LIVE games =====');
+
+      final response = await supabase
+          .from('games')
+          .select(_gameListSelectColumns)
+          .eq('status', '*')
+          .order('last_move_time', ascending: false)
+          .range(offset, offset + limit - 1);
+
+      final jsonList =
+          (response as List).map((item) => json.encode(item)).toList();
+
+      final games = await compute(_decodeGamesInIsolate, jsonList);
+
+      debugPrint('===== GameRepository: Fetched ${games.length} LIVE games =====');
+
+      return games;
+    });
+  }
+
+  /// Get countryman games with minimum ELO filter
+  /// Only shows games where at least one player from the country has rating > minElo
+  Future<List<Games>> getCountrymanGamesWithMinElo({
+    required String countryCode,
+    int minElo = 2300,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    return handleApiCall(() async {
+      debugPrint('===== GameRepository: Fetching countryman games (ELO > $minElo) for $countryCode =====');
+
+      // First fetch all country games, then filter by ELO in Dart
+      // (JSONB filtering by nested rating is complex in Supabase)
+      final response = await supabase
+          .from('games')
+          .select(_gameListSelectColumns)
+          .contains('players', '[{"fed": "$countryCode"}]')
+          .order('last_move_time', ascending: false)
+          .range(offset, offset + limit * 2 - 1); // Fetch extra to compensate for ELO filter
+
+      final jsonList =
+          (response as List).map((item) => json.encode(item)).toList();
+
+      var games = await compute(_decodeGamesInIsolate, jsonList);
+
+      // Filter games where at least one player from the country has rating > minElo
+      games = games.where((game) {
+        if (game.players == null) return false;
+        return game.players!.any((player) =>
+            player.fed.toUpperCase() == countryCode.toUpperCase() &&
+            player.rating >= minElo);
+      }).take(limit).toList();
+
+      debugPrint('===== GameRepository: Fetched ${games.length} countryman games (ELO > $minElo) =====');
+
+      return games;
+    });
+  }
+
+  /// Get live games for specific players (favorited players who are currently playing)
+  Future<List<Games>> getLiveGamesForPlayers({
+    required List<String> fideIds,
+    int limit = 20,
+  }) async {
+    return handleApiCall(() async {
+      if (fideIds.isEmpty) return <Games>[];
+
+      debugPrint('===== GameRepository: Fetching LIVE games for ${fideIds.length} players =====');
+
+      final orConditions = fideIds.map((fideId) {
+        return 'players.cs.[{"fideId":${int.parse(fideId)}}]';
+      }).join(',');
+
+      final response = await supabase
+          .from('games')
+          .select(_gameListSelectColumns)
+          .eq('status', '*')
+          .or(orConditions)
+          .order('last_move_time', ascending: false)
+          .limit(limit);
+
+      final jsonList =
+          (response as List).map((item) => json.encode(item)).toList();
+
+      final games = await compute(_decodeGamesInIsolate, jsonList);
+
+      debugPrint('===== GameRepository: Fetched ${games.length} LIVE games for players =====');
+
+      return games;
+    });
+  }
+
+  /// Get live games for favorited events
+  Future<List<Games>> getLiveGamesForEvents({
+    required List<String> eventIds,
+    int limit = 20,
+  }) async {
+    return handleApiCall(() async {
+      if (eventIds.isEmpty) return <Games>[];
+
+      debugPrint('===== GameRepository: Fetching LIVE games for ${eventIds.length} events =====');
+
+      final response = await supabase
+          .from('games')
+          .select(_gameListSelectColumns)
+          .eq('status', '*')
+          .inFilter('tour_id', eventIds)
+          .order('last_move_time', ascending: false)
+          .limit(limit);
+
+      final jsonList =
+          (response as List).map((item) => json.encode(item)).toList();
+
+      final games = await compute(_decodeGamesInIsolate, jsonList);
+
+      debugPrint('===== GameRepository: Fetched ${games.length} LIVE games for events =====');
+
+      return games;
+    });
+  }
 }
 
 List<Games> _decodeGamesInIsolate(List<String> gameJsonList) {
