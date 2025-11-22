@@ -136,14 +136,39 @@ class GroupBroadcastRepository extends BaseRepository {
   /// Fetch a single group broadcast by its [id]
   Future<GroupBroadcast> getGroupBroadcastById(String id) async {
     return handleApiCall(() async {
-      final response =
-          await supabase
-              .from('group_broadcasts')
-              .select()
-              .eq('id', id)
-              .single();
+      // 1) Direct match on group_broadcasts (existing behaviour)
+      final directMatch = await _getGroupBroadcastByIdOrNull(id);
+      if (directMatch != null) return directMatch;
 
-      return GroupBroadcast.fromJson(response);
+      // 2) The incoming ID might actually be a tour_id (common for For You tab)
+      final tourRow = await _getTourRowById(id);
+      if (tourRow != null) {
+        // If the tour knows its group_broadcast_id, prefer the canonical record
+        final groupBroadcastId = tourRow['group_broadcast_id'] as String?;
+        if (groupBroadcastId != null && groupBroadcastId.isNotEmpty) {
+          final fromGroupId = await _getGroupBroadcastByIdOrNull(groupBroadcastId);
+          if (fromGroupId != null) return fromGroupId;
+        }
+
+        // Fall back to a synthesized GroupBroadcast from the tour row
+        return _mapTourRowToGroupBroadcast(tourRow);
+      }
+
+      // 3) The provided ID might already be the group_broadcast_id stored on tours
+      final tourByGroupId = await _getTourRowByGroupId(id);
+      if (tourByGroupId != null) {
+        return _mapTourRowToGroupBroadcast(
+          tourByGroupId,
+          overrideGroupBroadcastId: id,
+        );
+      }
+
+      throw PostgrestException(
+        message: 'No rows found',
+        code: 'PGRST116',
+        details: null,
+        hint: null,
+      );
     });
   }
 
@@ -202,5 +227,81 @@ class GroupBroadcastRepository extends BaseRepository {
           .map((json) => GroupBroadcast.fromJson(json))
           .toList();
     });
+  }
+
+  Future<GroupBroadcast?> _getGroupBroadcastByIdOrNull(String id) async {
+    final response =
+        await supabase
+            .from('group_broadcasts')
+            .select()
+            .eq('id', id)
+            .maybeSingle();
+
+    if (response == null) return null;
+    return GroupBroadcast.fromJson(response);
+  }
+
+  Future<Map<String, dynamic>?> _getTourRowById(String id) async {
+    return supabase.from('tours').select().eq('id', id).maybeSingle();
+  }
+
+  Future<Map<String, dynamic>?> _getTourRowByGroupId(String id) async {
+    return supabase
+        .from('tours')
+        .select()
+        .eq('group_broadcast_id', id)
+        .maybeSingle();
+  }
+
+  GroupBroadcast _mapTourRowToGroupBroadcast(
+    Map<String, dynamic> tourRow, {
+    String? overrideGroupBroadcastId,
+  }) {
+    final dates = (tourRow['dates'] as List?)
+            ?.whereType<String>()
+            .map((d) => DateTime.tryParse(d))
+            .whereType<DateTime>()
+            .toList() ??
+        <DateTime>[];
+
+    final info = tourRow['info'] as Map<String, dynamic>?;
+    final timeControl = info?['fideTc'] as String? ?? info?['tc'] as String?;
+
+    final search = (tourRow['search'] as List?)
+            ?.map((e) => e.toString())
+            .where((e) => e.isNotEmpty)
+            .toList() ??
+        <String>[];
+
+    final fallbackSearch = <String?>[
+      tourRow['slug'] as String?,
+      tourRow['name'] as String?,
+      tourRow['id'] as String?,
+    ].whereType<String>().where((e) => e.isNotEmpty).toList();
+
+    return GroupBroadcast(
+      id: overrideGroupBroadcastId ??
+          (tourRow['group_broadcast_id'] as String?) ??
+          tourRow['id'] as String,
+      createdAt:
+          tourRow['created_at'] != null
+              ? DateTime.tryParse(tourRow['created_at'] as String) ??
+                  DateTime.now()
+              : DateTime.now(),
+      name:
+          (tourRow['name'] as String?) ??
+          (tourRow['slug'] as String?) ??
+          'Tournament',
+      search: {...search, ...fallbackSearch}.toList(),
+      maxAvgElo: tourRow['avg_elo'] as int?,
+      dateStart: dates.isNotEmpty ? dates.first : null,
+      dateEnd:
+          dates.length > 1
+              ? dates.last
+              : dates.isNotEmpty
+                  ? dates.first
+                  : null,
+      timeControl: timeControl,
+    );
   }
 }

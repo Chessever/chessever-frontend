@@ -62,7 +62,7 @@ class EventCard extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Event name with live indicator and community badge
+                  // Event name with live indicator
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
@@ -81,33 +81,6 @@ class EventCard extends ConsumerWidget {
                       _StatusIndicator(
                         tourEventCardModel: tourEventCardModel,
                       ),
-                      // Community event badge
-                      if (tourEventCardModel.eventSource ==
-                          EventSource.communityEvent) ...[
-                        SizedBox(width: 6.w),
-                        Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 6.w,
-                            vertical: 2.h,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF6366F1).withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(4.br),
-                            border: Border.all(
-                              color: const Color(0xFF6366F1).withOpacity(0.3),
-                              width: 1,
-                            ),
-                          ),
-                          child: Text(
-                            'COMMUNITY',
-                            style: AppTypography.textXsMedium.copyWith(
-                              color: const Color(0xFF818CF8),
-                              fontSize: 9.sp,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                        ),
-                      ],
                     ],
                   ),
 
