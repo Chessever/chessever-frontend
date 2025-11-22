@@ -364,7 +364,7 @@ class _SkeletonGameCard extends StatelessWidget {
 }
 
 /// Optimized ListView that keeps items alive when scrolled off-screen
-class _ForYouListView extends StatelessWidget {
+class _ForYouListView extends ConsumerWidget {
   const _ForYouListView({
     required this.scrollController,
     required this.items,
@@ -380,19 +380,32 @@ class _ForYouListView extends StatelessWidget {
   final bool isLoadingMore;
 
   @override
-  Widget build(BuildContext context) {
-    return ListView.builder(
-      // CRITICAL: PageStorageKey preserves scroll position across tab switches
-      key: const PageStorageKey<String>('for_you_games_list'),
-      controller: scrollController,
-      padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 16.sp),
-      itemCount: items.length + (isLoadingMore ? 1 : 0),
-      // CRITICAL: Keep items alive when scrolled off-screen
-      addAutomaticKeepAlives: true,
-      addRepaintBoundaries: true,
-      // OPTIMIZATION: Large cache extent keeps more items rendered
-      cacheExtent: 2000,
-      itemBuilder: (context, index) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    return RefreshIndicator(
+      onRefresh: () async {
+        // Trigger refresh of the For You games
+        await ref.read(forYouGamesProvider.notifier).refresh();
+      },
+      color: kPrimaryColor,
+      backgroundColor: kBlack2Color,
+      displacement: 60.h,
+      strokeWidth: 3.w,
+      child: ListView.builder(
+        // CRITICAL: PageStorageKey preserves scroll position across tab switches
+        key: const PageStorageKey<String>('for_you_games_list'),
+        controller: scrollController,
+        padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 16.sp),
+        itemCount: items.length + (isLoadingMore ? 1 : 0),
+        // CRITICAL: Keep items alive when scrolled off-screen
+        addAutomaticKeepAlives: true,
+        addRepaintBoundaries: true,
+        // OPTIMIZATION: Large cache extent keeps more items rendered
+        cacheExtent: 2000,
+        // Ensure the list is always scrollable for pull-to-refresh
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        itemBuilder: (context, index) {
         // Loading indicator at the end
         if (index == items.length) {
           return _buildLoadingIndicator();
@@ -423,6 +436,7 @@ class _ForYouListView extends StatelessWidget {
           allGames: allGames, // Pass all games for navigation
         );
       },
+      ),
     );
   }
 

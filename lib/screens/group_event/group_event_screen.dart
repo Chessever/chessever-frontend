@@ -31,6 +31,12 @@ final _mappedName = {
   GroupEventCategory.forYou: 'For You',
 };
 
+/// Indicates whether there is at least one live game in the For You feed.
+final hasLiveForYouProvider = Provider.autoDispose<bool>((ref) {
+  final games = ref.watch(forYouGamesProvider).valueOrNull ?? [];
+  return games.any((g) => g.status == '*');
+});
+
 final selectedGroupCategoryProvider = StateProvider<GroupEventCategory>(
   (ref) => GroupEventCategory.current,
 );
@@ -397,15 +403,36 @@ class _SegmentedSwitcher extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(searchQueryProvider);  // Watch to trigger rebuilds
     final realQuery = searchController.text.trim();
+    final hasLiveForYou = ref.watch(hasLiveForYouProvider);
 
     final options =
         GroupEventCategory.values.map((category) {
           if (realQuery.isNotEmpty && category == selectedTourEvent) {
             return realQuery;
-          } else {
-            return _mappedName[category]!;
           }
+          return _mappedName[category]!;
         }).toList();
+
+    final optionLabels = GroupEventCategory.values.map((category) {
+      final baseLabel = (realQuery.isNotEmpty && category == selectedTourEvent)
+          ? realQuery
+          : _mappedName[category]!;
+
+      final showLiveDot = category == GroupEventCategory.forYou && hasLiveForYou;
+      if (!showLiveDot) {
+        return Text(baseLabel);
+      }
+
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(baseLabel),
+          SizedBox(width: 6.w),
+          const _LiveTabDot(),
+        ],
+      );
+    }).toList();
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 20.sp),
@@ -413,8 +440,32 @@ class _SegmentedSwitcher extends ConsumerWidget {
         backgroundColor: kBlackColor,
         selectedBackgroundColor: kBlackColor,
         options: options,
+        optionLabels: optionLabels,
         currentSelection: GroupEventCategory.values.indexOf(selectedTourEvent),
         onSelectionChanged: onSelectedChanged,
+      ),
+    );
+  }
+}
+
+class _LiveTabDot extends StatelessWidget {
+  const _LiveTabDot();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 8.w,
+      height: 8.h,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: kPrimaryColor,
+        boxShadow: [
+          BoxShadow(
+            color: kPrimaryColor.withValues(alpha: 0.4),
+            blurRadius: 4,
+            spreadRadius: 1,
+          ),
+        ],
       ),
     );
   }

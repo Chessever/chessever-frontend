@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
@@ -594,8 +596,6 @@ Future<void> _toggleFavorite(
   final fideId = player['fideId']?.toString();
   if (fideId == null || fideId.isEmpty) return;
 
-  await ref.read(onboardingPlayerProvider.notifier).toggleFavorite(fideId);
-
   final updated = Set<String>.from(selectedIds.value);
   if (updated.contains(fideId)) {
     updated.remove(fideId);
@@ -604,24 +604,29 @@ Future<void> _toggleFavorite(
   }
   selectedIds.value = updated;
 
-  try {
-    final playerModel = PlayerStandingModel(
-      name: '${player['title'] ?? ''} ${player['name']}'.trim(),
-      countryCode: player['fed']?.toString() ?? '',
-      score: player['rating'] ?? 0,
-      scoreChange: 0,
-      matchScore: null,
-      fideId: int.tryParse(fideId),
-      title: player['title']?.toString(),
-    );
+  // Fire off remote/local toggles without blocking the tap animation
+  unawaited(ref.read(onboardingPlayerProvider.notifier).toggleFavorite(fideId));
 
-    await ref.read(favoriteStandingsPlayerService).toggleFavorite(playerModel);
-    ref.read(favoritesVersionProvider.notifier).state++;
-  } catch (e) {
-    if (kDebugMode) {
-      debugPrint('Failed to sync favorite: $e');
+  unawaited(() async {
+    try {
+      final playerModel = PlayerStandingModel(
+        name: '${player['title'] ?? ''} ${player['name']}'.trim(),
+        countryCode: player['fed']?.toString() ?? '',
+        score: player['rating'] ?? 0,
+        scoreChange: 0,
+        matchScore: null,
+        fideId: int.tryParse(fideId),
+        title: player['title']?.toString(),
+      );
+
+      await ref.read(favoriteStandingsPlayerService).toggleFavorite(playerModel);
+      ref.read(favoritesVersionProvider.notifier).state++;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Failed to sync favorite: $e');
+      }
     }
-  }
+  }());
 }
 
 Widget _buildFlag(

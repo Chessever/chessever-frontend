@@ -127,8 +127,10 @@ class ForYouTournamentCard extends ConsumerWidget {
       // Set the selected tournament
       ref.read(selectedBroadcastModelProvider.notifier).state = tournament;
 
-      // Navigate to tournament detail
+      // Navigate to tournament detail (games tab)
       if (context.mounted) {
+        ref.read(selectedTourModeProvider.notifier).state =
+            TournamentDetailScreenMode.games;
         Navigator.pushNamed(context, '/tournament_detail_screen');
       }
     } catch (e) {
@@ -153,8 +155,10 @@ class ForYouTournamentCard extends ConsumerWidget {
           // Set the fallback tournament
           ref.read(selectedBroadcastModelProvider.notifier).state = fallbackTournament;
 
-          // Navigate to tournament detail screen which will show the games
+          // Navigate to tournament detail screen (games tab)
           if (context.mounted) {
+            ref.read(selectedTourModeProvider.notifier).state =
+                TournamentDetailScreenMode.games;
             Navigator.pushNamed(context, '/tournament_detail_screen');
           }
         } catch (fallbackError) {

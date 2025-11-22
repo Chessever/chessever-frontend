@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/repository/supabase/calendar_event/calendar_event_repository.dart';
@@ -44,6 +46,7 @@ class _CalendarScreenNotifier
 
   final Ref ref;
   final Set<String> _primingFavoritePlayers = {};
+  Timer? _debounceTimer;
 
   List<GroupEventCardModel> _yearEvents = [];
 
@@ -52,7 +55,7 @@ class _CalendarScreenNotifier
       // Listen to filter changes
       ref.listen(calendarSearchQueryProvider, (_, __) => _applyFilters());
       ref.listen(calendarTimeControlProvider, (_, __) => _applyFilters());
-      ref.listen(calendarFilterModeProvider, (_, __) => _applyFilters());
+      ref.listen(calendarFilterModeProvider, (prev, next) => _applyFilters(showLoading: prev != next));
       ref.listen(selectedYearProvider, (_, __) => _fetchYearEvents());
       ref.listen(favoriteEventsProvider, (_, __) => _applyFilters());
       ref.listen(favoritePlayersNotifierProvider, (_, __) => _applyFilters());
@@ -88,13 +91,26 @@ class _CalendarScreenNotifier
         ...yearCalendarEvents.map(GroupEventCardModel.fromCalendarEvent),
       ];
 
-      await _applyFilters();
+      // Run filters immediately after fetch (no debounce for initial load)
+      _runFilters();
     } catch (e, st) {
       state = AsyncValue.error(e, st);
     }
   }
 
-  Future<void> _applyFilters() async {
+  /// Debounced filter application for user-triggered filter changes
+  void _applyFilters({bool showLoading = false}) {
+    _debounceTimer?.cancel();
+
+    // Show shimmer/loading state when filter mode changes
+    if (showLoading) {
+      state = const AsyncValue.loading();
+    }
+
+    _debounceTimer = Timer(const Duration(milliseconds: 200), _runFilters);
+  }
+
+  Future<void> _runFilters() async {
     try {
       if (_yearEvents.isEmpty) {
         _setEmptyMonths();
@@ -108,7 +124,7 @@ class _CalendarScreenNotifier
       final filterMode = ref.read(calendarFilterModeProvider);
       final monthConverter = ref.read(monthProvider);
 
-      // Get favorite event IDs if filtering by favorites
+      // All filtering is done in-memory since _yearEvents is already loaded
       final favoriteEventIds = <String>{};
       if (filterMode == CalendarFilterMode.favorites) {
         final favoritesAsync = ref.read(favoriteEventsProvider);
@@ -123,7 +139,6 @@ class _CalendarScreenNotifier
       final List<MonthEventsSummary> summaries = [];
       final Map<int, List<GroupEventCardModel>> monthEvents = {};
 
-      // Seed months
       for (int i = 1; i <= 12; i++) {
         monthEvents[i] = [];
       }
@@ -133,7 +148,6 @@ class _CalendarScreenNotifier
           continue;
         }
 
-        // Apply filter mode
         if (filterMode == CalendarFilterMode.upcoming) {
           final startDate = event.startDate ?? event.endDate;
           if (startDate == null || startDate.isBefore(today)) {

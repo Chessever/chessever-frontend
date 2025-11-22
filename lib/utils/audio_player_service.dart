@@ -1,8 +1,8 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 
-class AudioPlayerService {
+class AudioPlayerService with WidgetsBindingObserver {
   static final AudioPlayerService _instance = AudioPlayerService._internal();
 
   late final AudioSource pieceMoveSfx;
@@ -14,21 +14,71 @@ class AudioPlayerService {
   late final AudioSource pieceTakeoverSfx;
 
   factory AudioPlayerService() => _instance;
-  AudioPlayerService._internal();
+  AudioPlayerService._internal() {
+    WidgetsBinding.instance.addObserver(this);
+  }
   static AudioPlayerService get instance => _instance;
 
   SoLoud get player => SoLoud.instance;
 
   bool _initialized = false;
+  bool _assetsLoaded = false;
+  Future<void>? _initializing;
 
-  Future<void> initializeAndLoadAllAssets() async {
-    if (_initialized) return;
-    _initialized = true;
+  Future<void> initializeAndLoadAllAssets({bool force = false}) {
+    // Always reuse the in-flight initialization to avoid racing init/deinit.
+    if (_initializing != null) return _initializing!;
 
+    // If we are already initialized and the native engine is alive, skip work.
+    if (_initialized && !force && player.isInitialized) {
+      return Future.value();
+    }
+
+    _initializing = _initializeInternal(force: force).whenComplete(() {
+      _initializing = null;
+    });
+
+    return _initializing!;
+  }
+
+  /// Play a sound while self-healing the engine if it was torn down by the OS.
+  void playSound(AudioSource source) {
+    unawaited(_playWithRecovery(source));
+  }
+
+  Future<void> _playWithRecovery(AudioSource source) async {
     try {
-      await SoLoud.instance.init();
+      await initializeAndLoadAllAssets();
+      player.play(source);
+    } catch (e, s) {
+      debugPrint('⚠️ Audio playback failed, recovering SoLoud: $e\n$s');
+      _teardownPlayer();
+      try {
+        await initializeAndLoadAllAssets(force: true);
+        player.play(source);
+      } catch (err, st) {
+        debugPrint('⚠️ Audio playback failed after recovery: $err\n$st');
+      }
+    }
+  }
 
-      final List<String> _paths = [
+  Future<void> _initializeInternal({required bool force}) async {
+    if (force && player.isInitialized) {
+      _teardownPlayer();
+    }
+
+    // If the native engine was killed while the Dart flag stayed true, reset.
+    if (_initialized && !player.isInitialized) {
+      _initialized = false;
+      _assetsLoaded = false;
+    }
+
+    if (!player.isInitialized) {
+      await SoLoud.instance.init();
+    }
+
+    if (!_assetsLoaded) {
+      final List<String> paths = [
         "assets/sfx/piece_move.wav",
         "assets/sfx/piece_castling.wav",
         "assets/sfx/piece_check.wav",
@@ -40,7 +90,7 @@ class AudioPlayerService {
 
       final results = <AudioSource>[];
 
-      for (final path in _paths) {
+      for (final path in paths) {
         final source = await _loadWithFrameDelay(path);
         results.add(source);
       }
@@ -54,10 +104,11 @@ class AudioPlayerService {
       piecePromotionSfx = results[5];
       pieceTakeoverSfx = results[6];
 
-      debugPrint('🎧 AudioPlayerService initialized successfully');
-    } catch (e, s) {
-      debugPrint('⚠️ AudioPlayerService failed: $e\n$s');
+      _assetsLoaded = true;
     }
+
+    _initialized = true;
+    debugPrint('🎧 AudioPlayerService initialized successfully');
   }
 
   Future<AudioSource> _loadWithFrameDelay(String path) async {
@@ -77,5 +128,31 @@ class AudioPlayerService {
     await Future.delayed(const Duration(milliseconds: 200));
 
     return completer.future;
+  }
+
+  /// Dispose the native engine to avoid stale handles when the app goes
+  /// background or is torn down by the OS.
+  void _teardownPlayer() {
+    try {
+      if (player.isInitialized) {
+        player.deinit();
+      }
+    } catch (e, s) {
+      debugPrint('⚠️ Audio teardown failed: $e\n$s');
+    } finally {
+      _initialized = false;
+      _assetsLoaded = false;
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _teardownPlayer();
+    } else if (state == AppLifecycleState.resumed) {
+      // Refresh assets and the engine after returning to foreground.
+      unawaited(initializeAndLoadAllAssets(force: !_initialized));
+    }
   }
 }

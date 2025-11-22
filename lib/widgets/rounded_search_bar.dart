@@ -1,4 +1,5 @@
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/widgets/user_avatar.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
@@ -7,7 +8,6 @@ import 'package:flutter/material.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart'; // Import for gradient and colors
 
 class RoundedSearchBar extends ConsumerStatefulWidget {
   final TextEditingController controller;
@@ -42,38 +42,13 @@ class _RoundedSearchBarState extends ConsumerState<RoundedSearchBar> {
   Widget build(BuildContext context) {
     final allCountries =
         ref.read(countryDropdownProvider.notifier).getAllCountries();
-    final sessionManager = ref.read(sessionManagerProvider);
 
     return Row(
       children: [
         if (widget.showProfile)
-          FutureBuilder<String?>(
-            future: sessionManager.getUserInitials(),
-            builder: (context, snapshot) {
-              final data = snapshot.data ?? '';
-
-              return GestureDetector(
-                onTap: widget.onProfileTap,
-                child: Container(
-                  width: 32.w,
-                  height: 32.h,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: kProfileInitialsGradient,
-                  ),
-                  child: Center(
-                    child: Text(
-                      data.toUpperCase(),
-                      style: TextStyle(
-                        color: kBlack2Color,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12.f,
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
+          UserAvatar(
+            size: 32,
+            onTap: widget.onProfileTap,
           ),
 
         if (widget.showProfile) SizedBox(width: 20.w),

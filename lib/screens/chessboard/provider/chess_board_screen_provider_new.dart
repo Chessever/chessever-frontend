@@ -334,18 +334,40 @@ class ChessBoardScreenNotifierNew
     final bool hasActiveEval =
         _activeEvalRequestId != null && _activeEvalKey == targetKey;
 
-    if (hasActiveEval) {
+    // Check how long the evaluation has been running
+    final evalDuration = _activeEvalStartTime != null
+        ? DateTime.now().difference(_activeEvalStartTime!)
+        : Duration.zero;
+
+    if (hasActiveEval && evalDuration < const Duration(seconds: 5)) {
+      // Give it a bit more time if it hasn't been too long
       _scheduleEvalWatchdog(targetFen);
       return;
     }
 
     _releaseLog(
-      '⚠️ EVAL WATCHDOG: Stalled evaluation for $targetFen, forcing restart',
+      '⚠️ EVAL WATCHDOG: Stalled evaluation for $targetFen (duration: ${evalDuration.inSeconds}s), forcing restart',
     );
     _pendingEvalFen = null;
     _cancelEvalWatchdog();
     _cancelEvaluation = false;
-    _evaluatePosition(force: true);
+    _clearActiveEvalState();
+
+    // Cancel any stuck Stockfish evaluations
+    unawaited(StockfishSingleton().cancelAllEvaluations());
+
+    // Clear the evaluating flag to prevent UI from being stuck
+    final currentState = state.value;
+    if (currentState != null && currentState.isEvaluating) {
+      state = AsyncValue.data(currentState.copyWith(isEvaluating: false));
+    }
+
+    // Schedule a new evaluation after a small delay
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        _evaluatePosition(force: true);
+      }
+    });
   }
 
   void _resolvePendingEvaluation(String fen) {
@@ -3441,17 +3463,17 @@ class ChessBoardScreenNotifierNew
   void _playSoundForSan(String san) {
     final audio = AudioPlayerService.instance;
     if (san.contains('#')) {
-      audio.player.play(audio.pieceCheckmateSfx);
+      audio.playSound(audio.pieceCheckmateSfx);
     } else if (san.contains('+')) {
-      audio.player.play(audio.pieceCheckSfx);
+      audio.playSound(audio.pieceCheckSfx);
     } else if (san == 'O-O' || san == 'O-O-O') {
-      audio.player.play(audio.pieceCastlingSfx);
+      audio.playSound(audio.pieceCastlingSfx);
     } else if (san.contains('=')) {
-      audio.player.play(audio.piecePromotionSfx);
+      audio.playSound(audio.piecePromotionSfx);
     } else if (san.contains('x')) {
-      audio.player.play(audio.pieceTakeoverSfx);
+      audio.playSound(audio.pieceTakeoverSfx);
     } else {
-      audio.player.play(audio.pieceMoveSfx);
+      audio.playSound(audio.pieceMoveSfx);
     }
   }
 

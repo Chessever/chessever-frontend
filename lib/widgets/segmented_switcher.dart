@@ -15,6 +15,7 @@ class SegmentedSwitcher extends StatefulWidget {
   final double? borderRadius;
   final TextStyle? textStyle;
   final TextStyle? selectedTextStyle;
+  final List<Widget>? optionLabels;
 
   const SegmentedSwitcher({
     super.key,
@@ -29,9 +30,14 @@ class SegmentedSwitcher extends StatefulWidget {
     this.borderRadius,
     this.textStyle,
     this.selectedTextStyle,
+    this.optionLabels,
   }) : assert(
          initialSelection >= 0 && initialSelection < options.length,
          'initialSelection must be within options range',
+       ),
+       assert(
+         optionLabels == null || optionLabels.length == options.length,
+         'optionLabels length must match options length',
        );
 
   @override
@@ -125,6 +131,12 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
             children: List.generate(widget.options.length, (index) {
               final isSelected = index == _selectedIndex;
               final textOpacity = isSelected ? 1.0 : 0.7;
+              final style =
+                  (isSelected ? defaultSelectedTextStyle : defaultTextStyle)
+                      .copyWith(
+                        color: (isSelected ? selectedTextColor : textColor)
+                            .withOpacity(textOpacity),
+                      );
 
               return Expanded(
                 child: GestureDetector(
@@ -133,18 +145,18 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
                   child: Container(
                     alignment: Alignment.center,
                     padding: EdgeInsets.symmetric(vertical: 8.h),
-                    child: Text(
-                      widget.options[index],
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: (isSelected
-                              ? defaultSelectedTextStyle
-                              : defaultTextStyle)
-                          .copyWith(
-                            color: (isSelected ? selectedTextColor : textColor)
-                                .withOpacity(textOpacity),
-                          ),
-                    ),
+                    child:
+                        widget.optionLabels != null
+                            ? DefaultTextStyle.merge(
+                              style: style,
+                              child: widget.optionLabels![index],
+                            )
+                            : Text(
+                              widget.options[index],
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: style,
+                            ),
                   ),
                 ),
               );

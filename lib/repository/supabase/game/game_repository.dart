@@ -493,6 +493,24 @@ class GameRepository extends BaseRepository {
       return games;
     });
   }
+
+  /// Get top live games globally, ordered by recency.
+  Future<List<Games>> getTopLiveGames({int limit = 200}) async {
+    return handleApiCall(() async {
+      final response = await supabase
+          .from('games')
+          .select(_gameListSelectColumns)
+          .eq('status', '*')
+          .order('last_move_time', ascending: false)
+          .limit(limit);
+
+      final jsonList =
+          (response as List).map((item) => json.encode(item)).toList();
+
+      final games = await compute(_decodeGamesInIsolate, jsonList);
+      return games;
+    });
+  }
 }
 
 List<Games> _decodeGamesInIsolate(List<String> gameJsonList) {

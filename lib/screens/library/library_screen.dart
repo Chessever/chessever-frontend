@@ -1,13 +1,13 @@
 import 'dart:async';
+
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
+import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
+import 'package:chessever2/screens/library/utils/create_empty_game.dart';
+import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
 import 'package:chessever2/screens/library/widgets/folder_card.dart';
 import 'package:chessever2/screens/library/widgets/saved_analysis_card.dart';
-import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
-import 'package:chessever2/screens/library/utils/library_search_bar.dart';
-import 'package:chessever2/screens/library/utils/create_empty_game.dart';
-import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -23,68 +23,45 @@ class LibraryScreen extends ConsumerStatefulWidget {
   ConsumerState<LibraryScreen> createState() => _LibraryScreenState();
 }
 
-class _LibraryScreenState extends ConsumerState<LibraryScreen>
-    with TickerProviderStateMixin {
-  late TabController _tabController;
-  late AnimationController _animationController;
-  bool isSearching = false;
+class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   final TextEditingController _searchController = TextEditingController();
-  final FocusNode _focusNode = FocusNode();
+  final FocusNode _searchFocusNode = FocusNode();
   Timer? _debounceTimer;
   String _searchQuery = '';
 
   @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
-    );
-  }
-
-  @override
   void dispose() {
-    _tabController.dispose();
-    _animationController.dispose();
     _searchController.dispose();
-    _focusNode.dispose();
+    _searchFocusNode.dispose();
     _debounceTimer?.cancel();
     super.dispose();
   }
 
-  void _startSearch() {
-    HapticFeedback.lightImpact();
-    setState(() {
-      isSearching = true;
-    });
-    _searchController.clear();
-    _searchQuery = '';
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _focusNode.requestFocus();
-    });
-    _animationController.forward();
-  }
-
-  Future<void> _closeSearch() async {
-    HapticFeedback.lightImpact();
-    setState(() {
-      isSearching = false;
-      _searchQuery = '';
-    });
-    _searchController.clear();
-    _debounceTimer?.cancel();
-    _focusNode.unfocus();
-    _animationController.reverse();
+  void _onFilterPressed() {
+    HapticFeedback.selectionClick();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+        content: Text(
+          'Sorting and filters coming soon',
+          style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+        ),
+      ),
+    );
   }
 
   void _handleSearchInput(String query) {
     _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 300), () {
-      setState(() {
-        _searchQuery = query.trim().toLowerCase();
-      });
+    _debounceTimer = Timer(const Duration(milliseconds: 220), () {
+      setState(() => _searchQuery = query.trim().toLowerCase());
     });
+  }
+
+  void _clearSearch() {
+    _searchController.clear();
+    _handleSearchInput('');
+    _searchFocusNode.unfocus();
   }
 
   void _navigateToEmptyBoard() {
@@ -100,18 +77,25 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
     );
   }
 
+  List<LibraryFolder> _filterFolders(List<LibraryFolder> folders) {
+    if (_searchQuery.isEmpty) return folders;
+    return folders
+        .where(
+          (folder) => folder.name.toLowerCase().contains(_searchQuery),
+        )
+        .toList();
+  }
+
   List<SavedAnalysis> _filterAnalyses(List<SavedAnalysis> analyses) {
     if (_searchQuery.isEmpty) {
       return analyses;
     }
 
     return analyses.where((analysis) {
-      // Search in title
       if (analysis.title.toLowerCase().contains(_searchQuery)) {
         return true;
       }
 
-      // Search in player names from chess game metadata
       final whiteName = analysis.chessGame.metadata['White'] as String? ?? '';
       final blackName = analysis.chessGame.metadata['Black'] as String? ?? '';
       if (whiteName.toLowerCase().contains(_searchQuery) ||
@@ -119,7 +103,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
         return true;
       }
 
-      // Search in tags
       if (analysis.tags.any((tag) => tag.toLowerCase().contains(_searchQuery))) {
         return true;
       }
@@ -130,32 +113,37 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
 
   Future<void> _handleCreateFolder() async {
     HapticFeedback.mediumImpact();
-    final folderName = await showCreateFolderDialog(context);
-    if (folderName != null && folderName.isNotEmpty) {
-      try {
-        final repository = ref.read(libraryRepositoryProvider);
-        await repository.createFolder(name: folderName);
-        if (mounted) {
-          HapticFeedback.mediumImpact();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Folder "$folderName" created'),
-              backgroundColor: kBlack2Color.withValues(alpha: 0.95),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          HapticFeedback.lightImpact();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to create folder: $e'),
-              backgroundColor: kRedColor,
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
+    final name = await showCreateFolderDialog(context);
+    if (name == null || name.isEmpty) return;
+
+    try {
+      final repository = ref.read(libraryRepositoryProvider);
+      await repository.createFolder(name: name);
+
+      // Force refresh folders provider to ensure immediate UI update
+      // (Supabase streams may have slight delay)
+      ref.invalidate(_foldersStreamProvider);
+
+      if (mounted) {
+        HapticFeedback.mediumImpact();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Folder "$name" created'),
+            backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        HapticFeedback.lightImpact();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to create folder: $e'),
+            backgroundColor: kRedColor,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     }
   }
@@ -165,180 +153,96 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
     return ScreenWrapper(
       child: Column(
         children: [
-          // Header
-          _buildHeader(),
+          _buildTopBar(),
+          Expanded(child: _buildContent()),
+        ],
+      ),
+    );
+  }
 
-          // Tabs
-          _buildTabs(),
+  Widget _buildTopBar() {
+    final topPadding = MediaQuery.of(context).viewPadding.top;
 
-          // Content
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildAllTab(),
-                _buildFoldersTab(),
-                _buildRecentTab(),
-              ],
-            ),
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16.w, topPadding + 10.h, 16.w, 8.h),
+      child: Row(
+        children: [
+          Expanded(child: _buildSearchField()),
+          SizedBox(width: 10.w),
+          _SquareIconButton(
+            icon: Icons.tune,
+            onTap: _onFilterPressed,
+          ),
+          SizedBox(width: 8.w),
+          _SquareIconButton(
+            icon: Icons.grid_3x3,
+            onTap: _navigateToEmptyBoard,
+          ),
+          SizedBox(width: 8.w),
+          _SquareIconButton(
+            icon: Icons.add,
+            onTap: _handleCreateFolder,
+            backgroundColor: kPrimaryColor.withValues(alpha: 0.12),
+            borderColor: kPrimaryColor.withValues(alpha: 0.5),
+            iconColor: kPrimaryColor,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildSearchField() {
     return Container(
-      padding: EdgeInsets.only(
-        top: MediaQuery.of(context).viewPadding.top + 16.h,
-        left: 20.w,
-        right: 20.w,
-        bottom: 16.h,
-      ),
-      child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onTap: () {
-          if (isSearching) _closeSearch();
-        },
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 300),
-          transitionBuilder: (child, animation) {
-            return FadeTransition(
-              opacity: animation,
-              child: SizeTransition(
-                sizeFactor: animation,
-                axis: Axis.horizontal,
-                child: child,
-              ),
-            );
-          },
-          child: isSearching
-              ? Row(
-                  key: const ValueKey('search_mode'),
-                  children: [
-                    Expanded(
-                      child: LibrarySearchBar(
-                        controller: _searchController,
-                        hintText: "Search analyses...",
-                        onChanged: _handleSearchInput,
-                        onClose: _closeSearch,
-                        autofocus: true,
-                      ),
-                    ),
-                  ],
-                )
-              : Row(
-                  key: const ValueKey('header_mode'),
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Library',
-                            style: AppTypography.textXlBold.copyWith(
-                              color: kWhiteColor,
-                            ),
-                          ),
-                          SizedBox(height: 4.h),
-                          Text(
-                            'Your saved chess analyses',
-                            style: AppTypography.textSmRegular.copyWith(
-                              color: kWhiteColor.withValues(alpha: 0.6),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    // Search button
-                    IconButton(
-                      onPressed: _startSearch,
-                      icon: Container(
-                        padding: EdgeInsets.all(8.sp),
-                        decoration: BoxDecoration(
-                          color: kWhiteColor.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(8.br),
-                        ),
-                        child: Icon(
-                          Icons.search,
-                          color: kWhiteColor,
-                          size: 20.sp,
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 8.w),
-                    // Empty board button
-                    IconButton(
-                      onPressed: _navigateToEmptyBoard,
-                      icon: Container(
-                        padding: EdgeInsets.all(8.sp),
-                        decoration: BoxDecoration(
-                          color: kWhiteColor.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(8.br),
-                        ),
-                        child: Icon(
-                          Icons.grid_3x3,
-                          color: kWhiteColor,
-                          size: 20.sp,
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 8.w),
-                    // Create folder button
-                    IconButton(
-                      onPressed: _handleCreateFolder,
-                      icon: Container(
-                        padding: EdgeInsets.all(8.sp),
-                        decoration: BoxDecoration(
-                          color: kPrimaryColor.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(8.br),
-                          border: Border.all(
-                            color: kPrimaryColor.withValues(alpha: 0.3),
-                            width: 1,
-                          ),
-                        ),
-                        child: Icon(
-                          Icons.create_new_folder_outlined,
-                          color: kPrimaryColor,
-                          size: 20.sp,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTabs() {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 20.w),
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
       decoration: BoxDecoration(
         color: kBlack2Color,
-        borderRadius: BorderRadius.circular(8.br),
-      ),
-      child: TabBar(
-        controller: _tabController,
-        indicator: BoxDecoration(
-          color: kPrimaryColor.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(6.br),
+        borderRadius: BorderRadius.circular(12.br),
+        border: Border.all(
+          color: kWhiteColor.withValues(alpha: 0.08),
         ),
-        indicatorPadding: EdgeInsets.all(4.sp),
-        labelColor: kPrimaryColor,
-        unselectedLabelColor: kWhiteColor.withValues(alpha: 0.6),
-        labelStyle: AppTypography.textSmBold,
-        unselectedLabelStyle: AppTypography.textSmMedium,
-        tabs: const [
-          Tab(text: 'All'),
-          Tab(text: 'Folders'),
-          Tab(text: 'Recent'),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.search, color: kWhiteColor.withValues(alpha: 0.7)),
+          SizedBox(width: 10.w),
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              focusNode: _searchFocusNode,
+              style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
+              onChanged: _handleSearchInput,
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'Search library',
+                hintStyle: AppTypography.textSmRegular.copyWith(
+                  color: kWhiteColor.withValues(alpha: 0.5),
+                ),
+                border: InputBorder.none,
+              ),
+            ),
+          ),
+          if (_searchController.text.isNotEmpty)
+            GestureDetector(
+              onTap: _clearSearch,
+              child: Container(
+                padding: EdgeInsets.all(6.sp),
+                decoration: BoxDecoration(
+                  color: kWhiteColor.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.close,
+                  size: 14.sp,
+                  color: kWhiteColor.withValues(alpha: 0.7),
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 
-  Widget _buildAllTab() {
+  Widget _buildContent() {
     final foldersAsync = ref.watch(_foldersStreamProvider);
     final analysesAsync = ref.watch(_allAnalysesStreamProvider);
 
@@ -350,138 +254,105 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
       color: kPrimaryColor,
       backgroundColor: kBlack2Color,
       child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
         slivers: [
-          SliverToBoxAdapter(child: SizedBox(height: 16.h)),
-
-          // Folders section (hide when searching)
-          if (!isSearching)
-            foldersAsync.when(
-              data: (folders) => folders.isEmpty
-                  ? const SliverToBoxAdapter(child: SizedBox.shrink())
-                  : SliverToBoxAdapter(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 20.w),
-                            child: Text(
-                              'Folders',
-                              style: AppTypography.textMdBold.copyWith(
-                                color: kWhiteColor,
-                              ),
-                            ),
-                          ),
-                          SizedBox(height: 12.h),
-                          SizedBox(
-                            height: 100.h,
-                            child: ListView.separated(
-                              padding: EdgeInsets.symmetric(horizontal: 20.w),
-                              scrollDirection: Axis.horizontal,
-                              itemCount: folders.length,
-                              separatorBuilder: (_, __) => SizedBox(width: 12.w),
-                              itemBuilder: (context, index) {
-                                return FolderCard(folder: folders[index]);
-                              },
-                            ),
-                          ),
-                          SizedBox(height: 24.h),
-                        ],
-                      ),
-                    ),
-              loading: () => const SliverToBoxAdapter(child: SizedBox.shrink()),
-              error: (_, __) => const SliverToBoxAdapter(child: SizedBox.shrink()),
-            ),
-
-          // All analyses section (filtered when searching)
-          analysesAsync.when(
-            data: (analyses) {
-              final filtered = _filterAnalyses(analyses);
-              return filtered.isEmpty
-                  ? _buildEmptyState()
-                  : _buildAnalysesList(filtered);
-            },
-            loading: () => _buildLoadingState(),
-            error: (error, _) => _buildErrorState(error.toString()),
+          SliverToBoxAdapter(child: SizedBox(height: 4.h)),
+          foldersAsync.when(
+            data: (folders) => _buildFoldersSliver(folders),
+            loading: () => _buildLoadingSliver(),
+            error: (error, _) => _buildErrorSliver(error.toString()),
           ),
-
-          SliverToBoxAdapter(child: SizedBox(height: 20.h)),
+          _buildAnalysesSearchSliver(analysesAsync),
+          SliverToBoxAdapter(child: SizedBox(height: 24.h)),
         ],
       ),
     );
   }
 
-  Widget _buildFoldersTab() {
-    final foldersAsync = ref.watch(_foldersStreamProvider);
+  Widget _buildFoldersSliver(List<LibraryFolder> folders) {
+    final filteredFolders = _filterFolders(folders);
 
-    return RefreshIndicator(
-      onRefresh: () async {
-        ref.invalidate(_foldersStreamProvider);
-      },
-      color: kPrimaryColor,
-      backgroundColor: kBlack2Color,
-      child: foldersAsync.when(
-        data: (folders) {
-          if (folders.isEmpty) {
-            return _buildEmptyFoldersState();
-          }
-          return ListView.separated(
-            padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 16.h),
-            itemCount: folders.length,
-            separatorBuilder: (_, __) => SizedBox(height: 12.h),
-            itemBuilder: (context, index) {
-              return FolderCard(
-                folder: folders[index],
-                isExpanded: true,
-              );
-            },
-          );
-        },
-        loading: () => _buildLoadingState(),
-        error: (error, _) => _buildErrorState(error.toString()),
-      ),
-    );
-  }
+    if (folders.isEmpty && _searchQuery.isEmpty) {
+      return _buildLibraryEmptyState();
+    }
 
-  Widget _buildRecentTab() {
-    final recentAsync = ref.watch(_recentAnalysesStreamProvider);
+    if (filteredFolders.isEmpty) {
+      return _buildSearchEmptyState('No folders match your search');
+    }
 
-    return RefreshIndicator(
-      onRefresh: () async {
-        ref.invalidate(_recentAnalysesStreamProvider);
-      },
-      color: kPrimaryColor,
-      backgroundColor: kBlack2Color,
-      child: recentAsync.when(
-        data: (analyses) {
-          final filtered = _filterAnalyses(analyses);
-          return filtered.isEmpty
-              ? _buildEmptyState()
-              : _buildAnalysesList(filtered);
-        },
-        loading: () => _buildLoadingState(),
-        error: (error, _) => _buildErrorState(error.toString()),
-      ),
-    );
-  }
-
-  Widget _buildAnalysesList(List<SavedAnalysis> analyses) {
     return SliverPadding(
-      padding: EdgeInsets.symmetric(horizontal: 20.w),
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
       sliver: SliverList(
         delegate: SliverChildBuilderDelegate(
-          (context, index) {
-            return Padding(
-              padding: EdgeInsets.only(bottom: 12.h),
-              child: SavedAnalysisCard(analysis: analyses[index]),
-            );
-          },
-          childCount: analyses.length,
+          (context, index) => Padding(
+            padding: EdgeInsets.only(bottom: 12.h),
+            child: FolderCard(
+              folder: filteredFolders[index],
+              isExpanded: true,
+            ),
+          ),
+          childCount: filteredFolders.length,
         ),
       ),
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildAnalysesSearchSliver(
+    AsyncValue<List<SavedAnalysis>> analysesAsync,
+  ) {
+    if (_searchQuery.isEmpty) {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
+
+    return analysesAsync.when(
+      data: (analyses) {
+        final filtered = _filterAnalyses(analyses);
+        if (filtered.isEmpty) {
+          return const SliverToBoxAdapter(child: SizedBox.shrink());
+        }
+
+        return SliverPadding(
+          padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 0),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
+                if (index == 0) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: EdgeInsets.only(bottom: 12.h),
+                        child: Text(
+                          'Games',
+                          style: AppTypography.textSmMedium.copyWith(
+                            color: kWhiteColor.withValues(alpha: 0.7),
+                          ),
+                        ),
+                      ),
+                      SavedAnalysisCard(analysis: filtered[index]),
+                      SizedBox(height: 12.h),
+                    ],
+                  );
+                }
+
+                return Padding(
+                  padding: EdgeInsets.only(bottom: 12.h),
+                  child: SavedAnalysisCard(analysis: filtered[index]),
+                );
+              },
+              childCount: filtered.length,
+            ),
+          ),
+        );
+      },
+      loading: () => _buildInlineLoading(),
+      error: (error, _) => _buildInlineError(error.toString()),
+    );
+  }
+
+  Widget _buildLibraryEmptyState() {
     return SliverFillRemaining(
       hasScrollBody: false,
       child: Center(
@@ -489,24 +360,25 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              Icons.library_books_outlined,
-              size: 64.sp,
-              color: kWhiteColor.withValues(alpha: 0.3),
+              Icons.menu_book_outlined,
+              size: 80.sp,
+              color: kWhiteColor.withValues(alpha: 0.35),
             ),
-            SizedBox(height: 16.h),
+            SizedBox(height: 18.h),
             Text(
-              'No saved analyses yet',
-              style: AppTypography.textLgMedium.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.7),
-              ),
+              'Nothing saved yet',
+              style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
             ),
             SizedBox(height: 8.h),
-            Text(
-              'Save your chess analyses to view them here',
-              style: AppTypography.textSmRegular.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.5),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 36.w),
+              child: Text(
+                'Save a board position or create your first folder to get started.',
+                style: AppTypography.textSmRegular.copyWith(
+                  color: kWhiteColor.withValues(alpha: 0.6),
+                ),
+                textAlign: TextAlign.center,
               ),
-              textAlign: TextAlign.center,
             ),
           ],
         ),
@@ -514,57 +386,32 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
     );
   }
 
-  Widget _buildEmptyFoldersState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.folder_outlined,
-            size: 64.sp,
-            color: kWhiteColor.withValues(alpha: 0.3),
-          ),
-          SizedBox(height: 16.h),
-          Text(
-            'No folders yet',
-            style: AppTypography.textLgMedium.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.7),
+  Widget _buildSearchEmptyState(String message) {
+    return SliverFillRemaining(
+      hasScrollBody: false,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.search_off_outlined,
+              size: 56.sp,
+              color: kWhiteColor.withValues(alpha: 0.4),
             ),
-          ),
-          SizedBox(height: 8.h),
-          Text(
-            'Create folders to organize your analyses',
-            style: AppTypography.textSmRegular.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.5),
-            ),
-            textAlign: TextAlign.center,
-          ),
-          SizedBox(height: 24.h),
-          ElevatedButton.icon(
-            onPressed: _handleCreateFolder,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: kPrimaryColor,
-              foregroundColor: kWhiteColor,
-              padding: EdgeInsets.symmetric(
-                horizontal: 24.w,
-                vertical: 12.h,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8.br),
+            SizedBox(height: 12.h),
+            Text(
+              message,
+              style: AppTypography.textMdMedium.copyWith(
+                color: kWhiteColor.withValues(alpha: 0.7),
               ),
             ),
-            icon: const Icon(Icons.create_new_folder_outlined),
-            label: Text(
-              'Create Folder',
-              style: AppTypography.textSmBold,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildLoadingState() {
+  Widget _buildLoadingSliver() {
     return const SliverFillRemaining(
       hasScrollBody: false,
       child: Center(
@@ -573,7 +420,52 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
     );
   }
 
-  Widget _buildErrorState(String error) {
+  Widget _buildInlineLoading() {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: EdgeInsets.symmetric(vertical: 16.h),
+        child: Center(
+          child: SizedBox(
+            width: 24.w,
+            height: 24.h,
+            child: const CircularProgressIndicator(color: kPrimaryColor),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInlineError(String error) {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+        child: Container(
+          padding: EdgeInsets.all(12.sp),
+          decoration: BoxDecoration(
+            color: kRedColor.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(10.br),
+            border: Border.all(color: kRedColor.withValues(alpha: 0.3)),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.error_outline, color: kRedColor, size: 18.sp),
+              SizedBox(width: 10.w),
+              Expanded(
+                child: Text(
+                  error,
+                  style: AppTypography.textSmRegular.copyWith(
+                    color: kRedColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorSliver(String error) {
     return SliverFillRemaining(
       hasScrollBody: false,
       child: Center(
@@ -610,26 +502,52 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
   }
 }
 
-// Stream providers
-final _foldersStreamProvider = StreamProvider.autoDispose<List<LibraryFolder>>((ref) {
+class _SquareIconButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final Color? backgroundColor;
+  final Color? iconColor;
+  final Color? borderColor;
+
+  const _SquareIconButton({
+    required this.icon,
+    required this.onTap,
+    this.backgroundColor,
+    this.iconColor,
+    this.borderColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.all(10.sp),
+        decoration: BoxDecoration(
+          color: backgroundColor ?? kBlack2Color,
+          borderRadius: BorderRadius.circular(10.br),
+          border: Border.all(
+            color: borderColor ?? kWhiteColor.withValues(alpha: 0.08),
+          ),
+        ),
+        child: Icon(
+          icon,
+          size: 18.sp,
+          color: iconColor ?? kWhiteColor,
+        ),
+      ),
+    );
+  }
+}
+
+final _foldersStreamProvider =
+    StreamProvider.autoDispose<List<LibraryFolder>>((ref) {
   final repository = ref.watch(libraryRepositoryProvider);
   return repository.subscribeFolders();
 });
 
-final _allAnalysesStreamProvider = StreamProvider.autoDispose<List<SavedAnalysis>>((ref) {
+final _allAnalysesStreamProvider =
+    StreamProvider.autoDispose<List<SavedAnalysis>>((ref) {
   final repository = ref.watch(libraryRepositoryProvider);
   return repository.subscribeAnalyses();
-});
-
-final _recentAnalysesStreamProvider = StreamProvider.autoDispose<List<SavedAnalysis>>((ref) {
-  final repository = ref.watch(libraryRepositoryProvider);
-  return repository.subscribeAnalyses().map((analyses) {
-    // Sort by last opened or created date, take top 20
-    final sorted = [...analyses]..sort((a, b) {
-      final aDate = a.lastOpenedAt ?? a.createdAt;
-      final bDate = b.lastOpenedAt ?? b.createdAt;
-      return bDate.compareTo(aDate);
-    });
-    return sorted.take(20).toList();
-  });
 });

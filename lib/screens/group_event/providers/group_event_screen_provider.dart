@@ -305,6 +305,9 @@ class _GroupEventScreenController
           selectedBroadcast;
 
       if (context.mounted && ref.read(selectedBroadcastModelProvider) != null) {
+        // Navigate to games tab instead of about tab
+        ref.read(selectedTourModeProvider.notifier).state =
+            TournamentDetailScreenMode.games;
         Navigator.pushNamed(context, '/tournament_detail_screen');
       }
     } catch (e, st) {

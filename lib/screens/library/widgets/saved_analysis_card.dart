@@ -30,9 +30,9 @@ class SavedAnalysisCard extends StatelessWidget {
     }
   }
 
-  void _handleTap(BuildContext context) {
+  Future<void> _handleTap(BuildContext context) async {
     HapticFeedback.mediumImpact();
-    loadSavedAnalysis(context, analysis);
+    await loadSavedAnalysis(context, analysis);
   }
 
   @override
