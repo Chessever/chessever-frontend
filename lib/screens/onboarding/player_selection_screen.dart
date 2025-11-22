@@ -1,4 +1,5 @@
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
 import 'package:chessever2/repository/local_storage/onboarding/onboarding_repository.dart';
 import 'package:chessever2/screens/players/providers/player_providers.dart';
@@ -74,10 +75,16 @@ class PlayerSelectionContent extends HookConsumerWidget {
     final selectedIds = useState<Set<String>>({});
 
   final playerState = ref.watch(onboardingPlayerProvider);
-  final favorites = ref.watch(favoritePlayersProvider);
+  final existingFavorites = ref.watch(favoritePlayersProviderNew);
   final countryState = ref.watch(countryDropdownProvider);
 
   final players = playerState.valueOrNull ?? [];
+
+  // Get existing favorite fideIds from Supabase (for existing users)
+  final existingFavoriteIds = existingFavorites.maybeWhen(
+    data: (favs) => favs.map((f) => f.fideId ?? '').where((id) => id.isNotEmpty).toSet(),
+    orElse: () => <String>{},
+  );
     final countryCode = countryState.value?.countryCode ?? 'US';
     final countryName = countryState.value?.name ?? 'your region';
 
@@ -107,11 +114,13 @@ class PlayerSelectionContent extends HookConsumerWidget {
       return null;
     }, []);
 
+    // Initialize selectedIds from existing Supabase favorites (for existing users)
     useEffect(() {
-      selectedIds.value =
-          favorites.map((player) => player['fideId'].toString()).toSet();
+      if (existingFavoriteIds.isNotEmpty) {
+        selectedIds.value = Set<String>.from(existingFavoriteIds);
+      }
       return null;
-    }, [favorites]);
+    }, [existingFavoriteIds]);
 
     useEffect(() {
       void onScroll() {
