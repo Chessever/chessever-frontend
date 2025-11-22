@@ -331,27 +331,36 @@ class GameRepository extends BaseRepository {
     });
   }
 
-  // Get highest ELO games (fallback when no favorites/country)
+  /// Get highest ELO games (fallback when no favorites/country)
+  /// Only returns games where at least one player has ELO >= minElo (default 2500)
   Future<List<Games>> getHighEloGames({
+    int minElo = 2500,
     int limit = 50,
     int offset = 0,
   }) async {
     return handleApiCall(() async {
-      debugPrint('===== GameRepository: Fetching high ELO games =====');
+      debugPrint('===== GameRepository: Fetching high ELO games (>= $minElo) =====');
 
-      // Fetch recent games and we'll sort by ELO in Dart
+      // Fetch more games than needed since we filter by ELO in Dart
+      // (JSONB nested field filtering is complex in Supabase)
       final response = await supabase
           .from('games')
           .select(_gameListSelectColumns)
           .order('last_move_time', ascending: false)
-          .range(offset, offset + limit - 1);
+          .range(offset, offset + limit * 3 - 1); // Fetch 3x to compensate for ELO filter
 
       final jsonList =
           (response as List).map((item) => json.encode(item)).toList();
 
-      final games = await compute(_decodeGamesInIsolate, jsonList);
+      var games = await compute(_decodeGamesInIsolate, jsonList);
 
-      debugPrint('===== GameRepository: Fetched ${games.length} high ELO games =====');
+      // Filter games where at least one player has ELO >= minElo
+      games = games.where((game) {
+        if (game.players == null || game.players!.isEmpty) return false;
+        return game.players!.any((player) => player.rating >= minElo);
+      }).take(limit).toList();
+
+      debugPrint('===== GameRepository: Fetched ${games.length} high ELO games (>= $minElo) =====');
 
       return games;
     });

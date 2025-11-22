@@ -409,9 +409,13 @@ class ChessBoardScreenNew extends ConsumerStatefulWidget {
   final int currentIndex;
   final List<GamesTourModel> games;
 
+  /// Optional saved analysis data to restore full state (variations, comments, position)
+  final SavedAnalysisData? savedAnalysisData;
+
   const ChessBoardScreenNew({
     required this.currentIndex,
     required this.games,
+    this.savedAnalysisData,
     super.key,
   });
 
@@ -456,6 +460,25 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
 
     return fallbackGame;
+  }
+
+  /// Returns saved analysis data only for the initial page (currentIndex)
+  /// This ensures variations and comments are only restored for the saved analysis game
+  SavedAnalysisData? _getSavedAnalysisDataForIndex(int index) {
+    // Only apply saved analysis data to the initial page
+    if (index == widget.currentIndex) {
+      return widget.savedAnalysisData;
+    }
+    return null;
+  }
+
+  /// Creates ChessBoardProviderParams with optional saved analysis data
+  ChessBoardProviderParams _createParams(GamesTourModel game, int index) {
+    return ChessBoardProviderParams(
+      game: game,
+      index: index,
+      savedAnalysisData: _getSavedAnalysisDataForIndex(index),
+    );
   }
 
   void _ensureLatestMoveSelected({
@@ -506,10 +529,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   void _keepBoardProviderAlive(int pageIndex) {
     if (widget.games.isEmpty) return;
 
-    final params = ChessBoardProviderParams(
-      game: _resolveGameForIndex(pageIndex),
-      index: pageIndex,
-    );
+    final params = _createParams(_resolveGameForIndex(pageIndex), pageIndex);
 
     if (_keepAliveParams == params) return;
 
@@ -556,10 +576,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         // No need to toggle it here
         try {
           final initialGame = _resolveGameForIndex(_currentPageIndex);
-          final params = ChessBoardProviderParams(
-            game: initialGame,
-            index: _currentPageIndex,
-          );
+          final params = _createParams(initialGame, _currentPageIndex);
           final notifier = ref.read(
             chessBoardScreenProviderNew(params).notifier,
           );
@@ -586,7 +603,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
 
     final game = _resolveGameForIndex(pageIndex);
-    final params = ChessBoardProviderParams(game: game, index: pageIndex);
+    final params = _createParams(game, pageIndex);
     final state = ref.read(chessBoardScreenProviderNew(params)).valueOrNull;
     final analysisGame = state?.analysisState.game;
 
@@ -649,10 +666,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     // Cancel active evaluations on the board that just went off-screen
     try {
       final prevGame = _resolveGameForIndex(previousIndex);
-      final prevParams = ChessBoardProviderParams(
-        game: prevGame,
-        index: previousIndex,
-      );
+      final prevParams = _createParams(prevGame, previousIndex);
       final prevNotifier = ref.read(
         chessBoardScreenProviderNew(prevParams).notifier,
       );
@@ -671,7 +685,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         ref
             .read(
               chessBoardScreenProviderNew(
-                ChessBoardProviderParams(game: prevGame, index: previousIndex),
+                _createParams(prevGame, previousIndex),
               ).notifier,
             )
             .pauseGame();
@@ -684,10 +698,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       if (mounted) {
         try {
           final newGame = _resolveGameForIndex(newIndex);
-          final params = ChessBoardProviderParams(
-            game: newGame,
-            index: newIndex,
-          );
+          final params = _createParams(newGame, newIndex);
           final notifier = ref.read(
             chessBoardScreenProviderNew(params).notifier,
           );
@@ -707,10 +718,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     if (!mounted || widget.games.isEmpty) return;
     final safeIndex = _currentPageIndex.clamp(0, widget.games.length - 1);
     final currentGame = _resolveGameForIndex(safeIndex);
-    final params = ChessBoardProviderParams(
-      game: currentGame,
-      index: safeIndex,
-    );
+    final params = _createParams(currentGame, safeIndex);
     try {
       final notifier = ref.read(
         chessBoardScreenProviderNew(params).notifier,
@@ -725,10 +733,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     if (!mounted || widget.games.isEmpty) return;
     final safeIndex = _currentPageIndex.clamp(0, widget.games.length - 1);
     final currentGame = _resolveGameForIndex(safeIndex);
-    final params = ChessBoardProviderParams(
-      game: currentGame,
-      index: safeIndex,
-    );
+    final params = _createParams(currentGame, safeIndex);
     try {
       final notifier = ref.read(
         chessBoardScreenProviderNew(params).notifier,
@@ -769,10 +774,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       ref
           .read(
             chessBoardScreenProviderNew(
-              ChessBoardProviderParams(
-                game: currentGame,
-                index: _currentPageIndex,
-              ),
+              _createParams(currentGame, _currentPageIndex),
             ).notifier,
           )
           .pauseGame();
@@ -851,7 +853,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       // Single source of truth: provider's state.game
 
       final game = syncedGames[i];
-      final params = ChessBoardProviderParams(game: game, index: i);
+      final params = _createParams(game, i);
       visibleStates[i] = ref.watch(chessBoardScreenProviderNew(params));
 
       // Use state.game as source of truth - provider keeps it updated via streaming
@@ -865,7 +867,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
     ref.listen(
       chessBoardScreenProviderNew(
-        ChessBoardProviderParams(game: currentGame, index: _currentPageIndex),
+        _createParams(currentGame, _currentPageIndex),
       ),
       (prev, next) {
         final prevState = prev?.valueOrNull;
@@ -1014,10 +1016,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                 index == _currentPageIndex + 1) {
               try {
                 final game = syncedGames[index];
-                final params = ChessBoardProviderParams(
-                  game: game,
-                  index: index,
-                );
+                final params = _createParams(game, index);
                 final stateAsync =
                     visibleStates[index] ??
                     ref.watch(chessBoardScreenProviderNew(params));
@@ -1346,8 +1345,6 @@ class _AppBar extends ConsumerStatefulWidget implements PreferredSizeWidget {
 }
 
 class _AppBarState extends ConsumerState<_AppBar> {
-  bool _showThreatsEnabled = false;
-
   Future<void> _showSaveAnalysisDialog() async {
     final params = ChessBoardProviderParams(
       game: widget.game,
@@ -1448,31 +1445,37 @@ class _AppBarState extends ConsumerState<_AppBar> {
         isLoading: widget.isLoading,
       ),
       actions: [
-        // Show Threats toggle button
-        IconButton(
-          icon: Icon(
-            Icons.gps_fixed,
-            color: _showThreatsEnabled
-                ? kPrimaryColor
-                : kWhiteColor.withValues(alpha: 0.5),
-            size: 22.sp,
-          ),
-          padding: EdgeInsets.all(8.sp),
-          tooltip: 'Show threats',
-          onPressed: widget.isLoading
-              ? null
-              : () {
-                setState(() {
-                  _showThreatsEnabled = !_showThreatsEnabled;
-                });
-                final params = ChessBoardProviderParams(
-                  game: widget.game,
-                  index: widget.currentGameIndex,
-                );
-                ref
-                    .read(chessBoardScreenProviderNew(params).notifier)
-                    .toggleThreatsMode();
-              },
+        // Show Threats toggle button - reads state from provider
+        Builder(
+          builder: (context) {
+            final params = ChessBoardProviderParams(
+              game: widget.game,
+              index: widget.currentGameIndex,
+            );
+            final isThreatsMode = ref.watch(
+              chessBoardScreenProviderNew(params).select(
+                (state) => state.value?.isThreatsMode ?? false,
+              ),
+            );
+            return IconButton(
+              icon: Icon(
+                Icons.gps_fixed,
+                color: isThreatsMode
+                    ? Colors.red
+                    : kWhiteColor.withValues(alpha: 0.5),
+                size: 22.sp,
+              ),
+              padding: EdgeInsets.all(8.sp),
+              tooltip: isThreatsMode ? 'Hide threats' : 'Show threats',
+              onPressed: widget.isLoading
+                  ? null
+                  : () {
+                      ref
+                          .read(chessBoardScreenProviderNew(params).notifier)
+                          .toggleThreatsMode();
+                    },
+            );
+          },
         ),
         SizedBox(width: 4.w),
         // Save Analysis button

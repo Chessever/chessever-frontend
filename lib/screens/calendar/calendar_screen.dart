@@ -1,15 +1,15 @@
+import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/screens/calendar/provider/calendar_screen_provider.dart';
-import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/utils/time_utils.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
-import 'package:country_flags/country_flags.dart';
-import 'package:country_picker/country_picker.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:chessever2/utils/app_typography.dart';
+
+/// Filter mode for the calendar view
+enum CalendarFilterMode { all, upcoming, favorites }
 
 final availableYearsProvider = AutoDisposeProvider<List<int>>((ref) {
   final currentYear = DateTime.now().year;
@@ -22,6 +22,10 @@ final selectedYearProvider = StateProvider<int>((ref) {
 
 final selectedMonthProvider = StateProvider<int>((ref) {
   return DateTime.now().month;
+});
+
+final calendarFilterModeProvider = StateProvider<CalendarFilterMode>((ref) {
+  return CalendarFilterMode.all;
 });
 
 class CalendarScreen extends ConsumerStatefulWidget {
@@ -99,7 +103,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                             child: SimpleSearchBar(
                               controller: searchController,
                               focusNode: focusNode,
-                              hintText: 'Search Country (e.g. Aze)',
+                              hintText: 'Search Events or Players',
                               onCloseTap: () {
                                 searchController.clear();
                                 focusNode.unfocus();
@@ -118,57 +122,54 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                         ),
                       ),
                     ),
+                    SizedBox(width: 12.w),
+                    /// Year dropdown
+                    Container(
+                      height: 48.h,
+                      padding: EdgeInsets.symmetric(horizontal: 12.w),
+                      decoration: BoxDecoration(
+                        color: kBlack2Color,
+                        borderRadius: BorderRadius.circular(8.br),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.1),
+                          width: 1.w,
+                        ),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<int>(
+                          value: ref.watch(selectedYearProvider),
+                          onChanged: (int? newValue) {
+                            if (newValue != null) {
+                              ref
+                                  .read(selectedYearProvider.notifier)
+                                  .state = newValue;
+                            }
+                          },
+                          icon: Icon(
+                            Icons.keyboard_arrow_down_outlined,
+                            color: kWhiteColor,
+                            size: 20.ic,
+                          ),
+                          style: AppTypography.textMdBold.copyWith(
+                            color: kWhiteColor,
+                          ),
+                          dropdownColor: kBlack2Color,
+                          borderRadius: BorderRadius.circular(8.br),
+                          items:
+                              yearList.map((value) {
+                                return DropdownMenuItem<int>(
+                                  value: value,
+                                  child: Text(value.toString()),
+                                );
+                              }).toList(),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
                 SizedBox(height: 12.h),
                 Row(
                   children: [
-                    /// Year dropdown
-                    Expanded(
-                      child: Container(
-                        height: 40.h,
-                        padding: EdgeInsets.symmetric(horizontal: 12.w),
-                        decoration: BoxDecoration(
-                          color: kBlack2Color,
-                          borderRadius: BorderRadius.circular(8.br),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.1),
-                            width: 1.w,
-                          ),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<int>(
-                            value: ref.watch(selectedYearProvider),
-                            onChanged: (int? newValue) {
-                              if (newValue != null) {
-                                ref
-                                    .read(selectedYearProvider.notifier)
-                                    .state = newValue;
-                              }
-                            },
-                            icon: Icon(
-                              Icons.keyboard_arrow_down_outlined,
-                              color: kWhiteColor,
-                              size: 20.ic,
-                            ),
-                            style: AppTypography.textMdBold.copyWith(
-                              color: kWhiteColor,
-                            ),
-                            dropdownColor: kBlack2Color,
-                            borderRadius: BorderRadius.circular(8.br),
-                            isExpanded: true,
-                            items:
-                                yearList.map((value) {
-                                  return DropdownMenuItem<int>(
-                                    value: value,
-                                    child: Text(value.toString()),
-                                  );
-                                }).toList(),
-                          ),
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 12.w),
                     /// Time Control dropdown
                     Expanded(
                       child: Container(
@@ -225,6 +226,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                     ),
                   ],
                 ),
+                SizedBox(height: 12.h),
+
+                /// Quick Filter Buttons (Upcoming / Favorites)
+                _QuickFilterButtons(),
               ],
             ),
           ),
@@ -237,50 +242,34 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 .watch(calendarScreenProvider)
                 .when(
                   data: (data) {
-                      if (data.isNotEmpty) {
-                      final isTablet = ResponsiveHelper.isTablet;
-                      final crossAxisCount = isTablet ? 3 : 2;
-                      final tileHeight = isTablet ? 350.h : 290.h;
-                      final maxPreviewEvents = isTablet ? 3 : 2;
+                    final isTablet = ResponsiveHelper.isTablet;
+                    final crossAxisCount = isTablet ? 3 : 2;
 
-                      return GridView.builder(
-                        padding: EdgeInsets.symmetric(horizontal: 16.sp),
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: crossAxisCount,
-                          mainAxisSpacing: 14.sp,
-                          crossAxisSpacing: 14.sp,
-                          mainAxisExtent: tileHeight,
-                        ),
-                        itemCount: data.length,
-                        itemBuilder: (context, index) {
-                          final summary = data[index];
-                          void openMonth() {
+                    return GridView.builder(
+                      padding: EdgeInsets.symmetric(horizontal: 16.sp),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: crossAxisCount,
+                        mainAxisSpacing: 12.sp,
+                        crossAxisSpacing: 12.sp,
+                        childAspectRatio: 2.2,
+                      ),
+                      itemCount: data.length,
+                      itemBuilder: (context, index) {
+                        final summary = data[index];
+                        return _MonthButton(
+                          monthName: summary.monthName,
+                          eventCount: summary.eventCount,
+                          onTap: () {
                             ref.read(selectedMonthProvider.notifier).state =
                                 summary.monthNumber;
-
                             Navigator.pushNamed(
                               context,
                               '/calendar_detail_screen',
                             );
-                          }
-
-                          return _MonthCard(
-                            summary: summary,
-                            maxPreviewEvents: maxPreviewEvents,
-                            onOpenMonth: openMonth,
-                          );
-                        },
-                      );
-                    } else {
-                      return Center(
-                        child: Text(
-                          'No Events Found',
-                          style: AppTypography.textLgRegular.copyWith(
-                            color: kWhiteColor,
-                          ),
-                        ),
-                      );
-                    }
+                          },
+                        );
+                      },
+                    );
                   },
                   error: (e, _) {
                     return Center(
@@ -289,10 +278,11 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           Text(
-                            'Failed To Load Months! \nPlease Try Again Later',
+                            'Failed To Load Months!\nPlease Try Again Later',
                             style: AppTypography.textLgRegular.copyWith(
                               color: kWhiteColor,
                             ),
+                            textAlign: TextAlign.center,
                           ),
                         ],
                       ),
@@ -301,22 +291,22 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                   loading: () {
                     final isTablet = ResponsiveHelper.isTablet;
                     final crossAxisCount = isTablet ? 3 : 2;
-                    final tileHeight = isTablet ? 350.h : 290.h;
+
                     return SkeletonWidget(
                       child: GridView.builder(
                         padding: EdgeInsets.symmetric(horizontal: 16.sp),
                         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: crossAxisCount,
-                          mainAxisSpacing: 14.sp,
-                          crossAxisSpacing: 14.sp,
-                          mainAxisExtent: tileHeight,
+                          mainAxisSpacing: 12.sp,
+                          crossAxisSpacing: 12.sp,
+                          childAspectRatio: 2.2,
                         ),
                         itemCount: 12,
                         itemBuilder: (context, index) {
                           return Container(
                             decoration: BoxDecoration(
                               color: kBlack2Color,
-                              borderRadius: BorderRadius.circular(12.br),
+                              borderRadius: BorderRadius.circular(8.br),
                             ),
                           );
                         },
@@ -331,101 +321,60 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   }
 }
 
-class _MonthCard extends StatelessWidget {
-  const _MonthCard({
-    required this.summary,
-    required this.maxPreviewEvents,
-    required this.onOpenMonth,
+/// Simple month button - just name and count
+class _MonthButton extends StatelessWidget {
+  const _MonthButton({
+    required this.monthName,
+    required this.eventCount,
+    required this.onTap,
   });
 
-  final MonthEventsSummary summary;
-  final int maxPreviewEvents;
-  final VoidCallback onOpenMonth;
+  final String monthName;
+  final int eventCount;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final eventsToShow = summary.events.take(maxPreviewEvents).toList();
-
     return Material(
       color: Colors.transparent,
-      borderRadius: BorderRadius.circular(12.br),
+      borderRadius: BorderRadius.circular(8.br),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12.br),
-        onTap: onOpenMonth,
+        borderRadius: BorderRadius.circular(8.br),
+        onTap: onTap,
         child: Container(
           decoration: BoxDecoration(
             color: kBlack2Color,
-            borderRadius: BorderRadius.circular(12.br),
-            border: Border.all(color: kWhiteColor.withValues(alpha: 0.06), width: 1),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.35),
-                blurRadius: 14,
-                offset: const Offset(0, 8),
-              ),
-            ],
+            borderRadius: BorderRadius.circular(8.br),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.1),
+              width: 1,
+            ),
           ),
-          padding: EdgeInsets.all(12.sp),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Text(
-                      summary.monthName,
-                      style: AppTypography.textMdBold.copyWith(
-                        color: Colors.white,
-                        letterSpacing: -0.2,
-                      ),
-                    ),
-                  ),
-                  _EventCountBadge(count: summary.eventCount),
-                ],
+              Text(
+                monthName,
+                style: AppTypography.textMdMedium.copyWith(
+                  color: kWhiteColor,
+                ),
               ),
-              SizedBox(height: 12.h),
-              if (eventsToShow.isEmpty)
-                const _MonthEmptyState()
-              else ...[
-                for (var i = 0; i < eventsToShow.length; i++)
-                  Padding(
-                    padding: EdgeInsets.only(
-                      bottom:
-                          i == eventsToShow.length - 1 &&
-                                  summary.eventCount <= eventsToShow.length
-                              ? 0
-                              : 8.sp,
-                    ),
-                    child: _CalendarEventTile(
-                      event: eventsToShow[i],
-                      gradientIndex: i,
+              if (eventCount > 0) ...[
+                SizedBox(width: 8.w),
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 4.sp),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    eventCount.toString(),
+                    style: AppTypography.textXsBold.copyWith(
+                      color: kWhiteColor70,
                     ),
                   ),
-                if (summary.eventCount > eventsToShow.length)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton.icon(
-                      onPressed: onOpenMonth,
-                      style: TextButton.styleFrom(
-                        padding: EdgeInsets.symmetric(horizontal: 6.sp),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        foregroundColor: kActiveCalendarColor,
-                      ),
-                      icon: Icon(
-                        Icons.arrow_forward_ios_rounded,
-                        size: 14.ic,
-                        color: kActiveCalendarColor,
-                      ),
-                      label: Text(
-                        'View all ${summary.eventCount}',
-                        style: AppTypography.textSmMedium.copyWith(
-                          color: kActiveCalendarColor,
-                        ),
-                      ),
-                    ),
-                  ),
+                ),
               ],
             ],
           ),
@@ -435,352 +384,140 @@ class _MonthCard extends StatelessWidget {
   }
 }
 
-class _EventCountBadge extends StatelessWidget {
-  const _EventCountBadge({required this.count});
-
-  final int count;
-
-  @override
-  Widget build(BuildContext context) {
-    if (count <= 0) return const SizedBox.shrink();
-
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 4.sp),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
-      ),
-      constraints: BoxConstraints(minWidth: 28.w),
-      alignment: Alignment.center,
-      child: Text(
-        count.toString(),
-        style: AppTypography.textXsBold.copyWith(
-          color: Colors.white,
-          letterSpacing: -0.1,
-        ),
-      ),
-    );
-  }
-}
-
-class _MonthEmptyState extends StatelessWidget {
-  const _MonthEmptyState();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 16.sp),
-      decoration: BoxDecoration(
-        color: kBlackColor.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(10.br),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.04)),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.search_off_rounded,
-            color: kWhiteColor.withValues(alpha: 0.6),
-            size: 18.ic,
-          ),
-          SizedBox(width: 10.w),
-          Expanded(
-            child: Text(
-              'No events match your filters',
-              style: AppTypography.textSmMedium.copyWith(
-                color: kWhiteColor70,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CalendarEventTile extends StatelessWidget {
-  const _CalendarEventTile({
-    required this.event,
-    required this.gradientIndex,
-  });
-
-  final GroupEventCardModel event;
-  final int gradientIndex;
-
-  @override
-  Widget build(BuildContext context) {
-    final countryCode = CalendarSearchHelper.getCountryCodeForLocation(
-      event.location,
-    );
-    final countryName = _deriveCountryName(event.location, countryCode);
-    final cityName = _deriveCity(event.location);
-    final dateLabel = _formatDateLabel(event);
-
-    final palette = _cardGradients[gradientIndex % _cardGradients.length];
-    final locationLabel = [
-      if (cityName != null && cityName.isNotEmpty) cityName,
-      if (countryName != null && countryName.isNotEmpty) countryName,
-    ].join(', ');
-
-    return Container(
-      padding: EdgeInsets.all(10.sp),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.04),
-        borderRadius: BorderRadius.circular(10.br),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
-      ),
-      child: Row(
-        children: [
-          _FlagTile(countryCode: countryCode, palette: palette),
-          SizedBox(width: 12.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  event.title,
-                  style: AppTypography.textSmBold.copyWith(
-                    color: Colors.white,
-                    height: 1.2,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                SizedBox(height: 6.h),
-                Wrap(
-                  spacing: 6.w,
-                  runSpacing: 4.h,
-                  children: [
-                    _InfoChip(
-                      icon: Icons.event_outlined,
-                      label: dateLabel,
-                    ),
-                    _InfoChip(
-                      icon: Icons.timer_outlined,
-                      label: _formatTimeControlLabel(event.timeControl),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 8.h),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.location_on_outlined,
-                      size: 14.ic,
-                      color: Colors.white70,
-                    ),
-                    SizedBox(width: 6.w),
-                    Expanded(
-                      child: Text(
-                        locationLabel.isNotEmpty
-                            ? locationLabel
-                            : 'Location TBA',
-                        style: AppTypography.textXsMedium.copyWith(
-                          color: Colors.white.withValues(alpha: 0.9),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String? _deriveCity(String? location) {
-    if (location == null || location.isEmpty) return null;
-    final segments = location.split(',');
-    if (segments.length > 1) {
-      return segments.first.trim().isNotEmpty ? segments.first.trim() : null;
-    }
-    return location.trim().isNotEmpty ? location.trim() : null;
-  }
-
-  String? _deriveCountryName(String? location, String? countryCode) {
-    if (countryCode != null) {
-      final country = CountryService().findByCode(countryCode);
-      if (country != null) return country.name;
-    }
-    if (location == null || location.isEmpty) return null;
-    final segments = location.split(',');
-    if (segments.length > 1 && segments.last.trim().isNotEmpty) {
-      return segments.last.trim();
-    }
-    return location.trim().isNotEmpty ? location.trim() : null;
-  }
-
-  String _formatTimeControlLabel(String? timeControl) {
-    final normalized = normalizeTimeControl(timeControl);
-    switch (normalized) {
-      case 'rapid':
-        return 'Rapid';
-      case 'blitz':
-        return 'Blitz';
-      case 'bullet':
-        return 'Bullet';
-      case 'standard':
-        return 'Classical';
-      default:
-        return timeControl?.isNotEmpty == true ? timeControl! : 'Format TBA';
-    }
-  }
-
-  String _formatDateLabel(GroupEventCardModel event) {
-    final start = event.startDate;
-    final end = event.endDate;
-    if (start == null && end == null) return 'Dates TBA';
-    final range = TimeUtils.formatDateRange(start, end);
-    return range.isNotEmpty ? range : 'Dates TBA';
-  }
-}
-
-class _FlagTile extends StatelessWidget {
-  const _FlagTile({
-    required this.countryCode,
-    required this.palette,
-  });
-
-  final String? countryCode;
-  final List<Color> palette;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 62.w,
-      height: 62.h,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10.br),
-        gradient: LinearGradient(
-          colors: palette,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(9.br),
-        child:
-            countryCode != null && countryCode!.isNotEmpty
-                ? CountryFlag.fromCountryCode(
-                  countryCode!,
-                  height: double.infinity,
-                  width: double.infinity,
-                )
-                : Container(
-                  color: Colors.black.withValues(alpha: 0.2),
-                  alignment: Alignment.center,
-                  child: Icon(
-                    Icons.flag_outlined,
-                    size: 18.ic,
-                    color: Colors.white70,
-                  ),
-                ),
-      ),
-    );
-  }
-}
-
-class _InfoChip extends StatelessWidget {
-  const _InfoChip({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 5.sp),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8.br),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            size: 12.ic,
-            color: Colors.white,
-          ),
-          SizedBox(width: 4.w),
-          Text(
-            label,
-            style: AppTypography.textXsMedium.copyWith(
-              color: Colors.white,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-const List<List<Color>> _cardGradients = [
-  [Color(0xFF1F1C2C), Color(0xFF928DAB)],
-  [Color(0xFF0F2027), Color(0xFF2C5364)],
-  [Color(0xFF1D976C), Color(0xFF93F9B9)],
-  [Color(0xFF41295A), Color(0xFF2F0743)],
-];
-
-class YearSelectorList extends ConsumerWidget {
-  const YearSelectorList({super.key});
+class _QuickFilterButtons extends ConsumerWidget {
+  const _QuickFilterButtons();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final yearList = ref.read(availableYearsProvider);
-    final selectedYear = ref.watch(selectedYearProvider);
+    final filterMode = ref.watch(calendarFilterModeProvider);
+    final calendarData = ref.watch(calendarScreenProvider);
+    final favoriteEvents = ref.watch(favoriteEventsProvider);
 
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-      decoration: BoxDecoration(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(8.br),
-        border: Border.all(
-          color: kWhiteColor.withValues(alpha: 0.1),
-          width: 1.w,
-        ),
-      ),
-      constraints: BoxConstraints(maxHeight: 200.h),
-      child: ListView.separated(
-        itemCount: yearList.length,
-        shrinkWrap: true,
-        itemBuilder: (context, index) {
-          final year = yearList[index];
-          final isSelected = year == selectedYear;
+    // Calculate upcoming count (events starting today or in future)
+    final upcomingCount = calendarData.maybeWhen(
+      data: (summaries) {
+        final now = DateTime.now();
+        final today = DateTime(now.year, now.month, now.day);
+        int count = 0;
+        for (final summary in summaries) {
+          for (final event in summary.events) {
+            final startDate = event.startDate ?? event.endDate;
+            if (startDate != null && !startDate.isBefore(today)) {
+              count++;
+            }
+          }
+        }
+        return count;
+      },
+      orElse: () => 0,
+    );
 
-          return InkWell(
+    // Calculate favorites count
+    final favoritesCount = favoriteEvents.maybeWhen(
+      data: (events) => events.length,
+      orElse: () => 0,
+    );
+
+    return Row(
+      children: [
+        Expanded(
+          child: _FilterButton(
+            label: 'Upcoming',
+            count: upcomingCount,
+            isSelected: filterMode == CalendarFilterMode.upcoming,
             onTap: () {
-              ref.read(selectedYearProvider.notifier).state = year;
+              final current = ref.read(calendarFilterModeProvider);
+              ref.read(calendarFilterModeProvider.notifier).state =
+                  current == CalendarFilterMode.upcoming
+                      ? CalendarFilterMode.all
+                      : CalendarFilterMode.upcoming;
             },
-            child: Padding(
-              padding: EdgeInsets.symmetric(vertical: 8.h),
-              child: Text(
-                year.toString(),
-                style:
-                    isSelected
-                        ? AppTypography.textLgBold.copyWith(
-                          color: kPrimaryColor,
-                        )
-                        : AppTypography.textLgRegular.copyWith(
-                          color: kWhiteColor,
-                        ),
+          ),
+        ),
+        SizedBox(width: 12.w),
+        Expanded(
+          child: _FilterButton(
+            label: 'Favorites',
+            count: favoritesCount,
+            isSelected: filterMode == CalendarFilterMode.favorites,
+            onTap: () {
+              final current = ref.read(calendarFilterModeProvider);
+              ref.read(calendarFilterModeProvider.notifier).state =
+                  current == CalendarFilterMode.favorites
+                      ? CalendarFilterMode.all
+                      : CalendarFilterMode.favorites;
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FilterButton extends StatelessWidget {
+  const _FilterButton({
+    required this.label,
+    required this.count,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final String label;
+  final int count;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(8.br),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8.br),
+        onTap: onTap,
+        child: Container(
+          height: 48.h,
+          padding: EdgeInsets.symmetric(horizontal: 16.w),
+          decoration: BoxDecoration(
+            color: isSelected ? kPrimaryColor.withValues(alpha: 0.15) : kBlack2Color,
+            borderRadius: BorderRadius.circular(8.br),
+            border: Border.all(
+              color: isSelected
+                  ? kPrimaryColor.withValues(alpha: 0.5)
+                  : Colors.white.withValues(alpha: 0.1),
+              width: 1.w,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                label,
+                style: AppTypography.textMdMedium.copyWith(
+                  color: isSelected ? kPrimaryColor : kWhiteColor,
+                ),
               ),
-            ),
-          );
-        },
-        separatorBuilder:
-            (context, index) => Divider(
-              color: kWhiteColor.withValues(alpha: 0.2),
-              height: 1,
-              thickness: 0.5,
-            ),
+              if (count > 0) ...[
+                SizedBox(width: 8.w),
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 4.sp),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? kPrimaryColor.withValues(alpha: 0.2)
+                        : Colors.white.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    count.toString(),
+                    style: AppTypography.textXsBold.copyWith(
+                      color: isSelected ? kPrimaryColor : kWhiteColor70,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

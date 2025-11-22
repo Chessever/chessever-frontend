@@ -1,7 +1,9 @@
+import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/supabase/calendar_event/calendar_event.dart';
 import 'package:chessever2/repository/supabase/calendar_event/calendar_event_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
+import 'package:chessever2/screens/calendar/calendar_screen.dart';
 import 'package:chessever2/screens/calendar/provider/calendar_screen_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
@@ -36,6 +38,7 @@ class _CalendarDetailScreenController
   void _listenToFilters() {
     ref.listen(calendarSearchQueryProvider, (_, __) => _applyFilters());
     ref.listen(calendarTimeControlProvider, (_, __) => _applyFilters());
+    ref.listen(calendarFilterModeProvider, (_, __) => _applyFilters());
     ref.listen(liveGroupBroadcastIdsProvider, (_, __) => _applyFilters());
   }
 
@@ -68,7 +71,19 @@ class _CalendarDetailScreenController
   void _applyFilters() {
     final searchQuery = ref.read(calendarSearchQueryProvider).toLowerCase();
     final timeControl = ref.read(calendarTimeControlProvider);
+    final filterMode = ref.read(calendarFilterModeProvider);
     final liveIds = ref.read(liveBroadcastIdsProvider);
+
+    // Get favorite event IDs if filtering by favorites
+    final favoriteEventIds = <String>{};
+    if (filterMode == CalendarFilterMode.favorites) {
+      final favoritesAsync = ref.read(favoriteEventsProvider);
+      final favorites = favoritesAsync.valueOrNull ?? [];
+      favoriteEventIds.addAll(favorites.map((e) => e.eventId));
+    }
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
 
     final monthStart = DateTime(filterArgs.year, filterArgs.month, 1);
     final monthEnd = DateTime(filterArgs.year, filterArgs.month + 1, 0, 23, 59, 59);
@@ -80,13 +95,27 @@ class _CalendarDetailScreenController
 
       if (!_overlapsMonth(range, monthStart, monthEnd)) return false;
 
-      return _matchesFilters(
+      if (!_matchesFilters(
         t.name,
         null,
         t.timeControl,
         searchQuery,
         timeControl,
-      );
+      )) return false;
+
+      // Apply filter mode
+      if (filterMode == CalendarFilterMode.upcoming) {
+        final startDate = t.dateStart ?? t.dateEnd;
+        if (startDate == null || startDate.isBefore(today)) {
+          return false;
+        }
+      } else if (filterMode == CalendarFilterMode.favorites) {
+        if (!favoriteEventIds.contains(t.id)) {
+          return false;
+        }
+      }
+
+      return true;
     }).toList();
 
     // Filter calendar events
@@ -96,13 +125,29 @@ class _CalendarDetailScreenController
 
       if (!_overlapsMonth(range, monthStart, monthEnd)) return false;
 
-      return _matchesFilters(
+      if (!_matchesFilters(
         e.name,
         e.location,
         e.timeControl,
         searchQuery,
         timeControl,
-      );
+      )) return false;
+
+      // Apply filter mode
+      if (filterMode == CalendarFilterMode.upcoming) {
+        final startDate = e.startDate ?? e.endDate;
+        if (startDate == null || startDate.isBefore(today)) {
+          return false;
+        }
+      } else if (filterMode == CalendarFilterMode.favorites) {
+        // Calendar events use generated ID format
+        final eventId = 'cal_event_${e.name.replaceAll(' ', '_').replaceAll(RegExp(r'[^\w\-]'), '').toLowerCase()}';
+        if (!favoriteEventIds.contains(eventId)) {
+          return false;
+        }
+      }
+
+      return true;
     }).toList();
 
     // Convert to card models

@@ -88,6 +88,7 @@ class ChessBoardScreenNotifierNew
     this.ref, {
     required this.game,
     required this.index,
+    this.savedAnalysisData,
   }) : super(const AsyncValue.loading()) {
     _initializeState();
     _setupPgnStreamListener();
@@ -96,6 +97,9 @@ class ChessBoardScreenNotifierNew
   final Ref ref;
   GamesTourModel game;
   final int index;
+
+  /// Optional saved analysis data to restore full state
+  final SavedAnalysisData? savedAnalysisData;
   Timer? _longPressTimer;
   bool _hasParsedMoves = false;
   bool _isProcessingMove = false;
@@ -130,9 +134,22 @@ class ChessBoardScreenNotifierNew
     final engineSettings = engineSettingsAsync.valueOrNull;
     final showEngineAnalysis = engineSettings?.showEngineAnalysis ?? true;
 
+    // Check if we're restoring from saved analysis
+    final isBoardFlipped = savedAnalysisData?.isBoardFlipped ?? false;
+    final variationComments = savedAnalysisData?.variationComments ?? const {};
+
     debugPrint(
       '🎯 ChessBoard[$index]: Initializing with showEngineAnalysis=$showEngineAnalysis (from settings: ${engineSettings?.showEngineAnalysis})',
     );
+
+    if (savedAnalysisData != null) {
+      debugPrint(
+        '🎯 ChessBoard[$index]: Restoring from saved analysis ${savedAnalysisData!.analysisId}',
+      );
+      debugPrint(
+        '🎯 ChessBoard[$index]: Board flipped=$isBoardFlipped, comments=${variationComments.length}',
+      );
+    }
 
     state = AsyncValue.data(
       ChessBoardStateNew(
@@ -144,6 +161,8 @@ class ChessBoardScreenNotifierNew
         isEvaluating: false,
         isAnalysisMode: true,
         showEngineAnalysis: showEngineAnalysis, // Load from settings
+        isBoardFlipped: isBoardFlipped, // Restore from saved analysis
+        variationComments: Map<String, String>.from(variationComments), // Restore comments
       ),
     );
     parseMoves();
@@ -2438,18 +2457,27 @@ class ChessBoardScreenNotifierNew
     final currentState = state.value;
     if (currentState == null) return;
 
-    // Ensure PGN is available
-    if (currentState.pgnData == null) {
-      await parseMoves();
-    }
+    // Check if we're restoring from saved analysis
+    if (savedAnalysisData != null) {
+      // Use the pre-built ChessGame with all variations directly
+      _analysisGame = savedAnalysisData!.chessGame;
+      debugPrint(
+        '🎯 ChessBoard[$index]: Using saved ChessGame with ${_analysisGame!.mainline.length} moves',
+      );
+    } else {
+      // Ensure PGN is available
+      if (currentState.pgnData == null) {
+        await parseMoves();
+      }
 
-    final updatedState = state.value;
-    if (updatedState == null || updatedState.pgnData == null) {
-      return;
-    }
+      final updatedState = state.value;
+      if (updatedState == null || updatedState.pgnData == null) {
+        return;
+      }
 
-    final pgn = updatedState.pgnData!;
-    _analysisGame = _createChessGameFromPgn(pgn);
+      final pgn = updatedState.pgnData!;
+      _analysisGame = _createChessGameFromPgn(pgn);
+    }
 
     final storage = ref.read(sharedPreferencesRepository);
     _analysisStateManager = ChessGameNavigatorStateManager(storage: storage);
@@ -2458,15 +2486,29 @@ class ChessBoardScreenNotifierNew
       chessGameNavigatorProvider(_analysisGame!).notifier,
     );
 
-    // Preserve the current move position when entering analysis mode
-    // Move pointer is a single-element array with the current move index
-    // For example: if at move 15, pointer should be [15], not [0,1,2,...,15]
-    final currentMoveIndex = updatedState.currentMoveIndex;
-    final movePointer =
-        currentMoveIndex < 0 ? const <int>[] : [currentMoveIndex];
+    // Determine the initial move position
+    // Priority: savedAnalysisData.movePointer > savedAnalysisData.lastViewedPosition > currentState.currentMoveIndex
+    List<int> movePointer;
+    if (savedAnalysisData != null && savedAnalysisData!.movePointer != null && savedAnalysisData!.movePointer!.isNotEmpty) {
+      // Use saved move pointer to restore exact position in variation tree
+      movePointer = savedAnalysisData!.movePointer!;
+      debugPrint(
+        '🎯 ChessBoard[$index]: Restoring saved movePointer: $movePointer',
+      );
+    } else if (savedAnalysisData != null && savedAnalysisData!.lastViewedPosition >= 0) {
+      // Use saved last viewed position
+      movePointer = [savedAnalysisData!.lastViewedPosition];
+      debugPrint(
+        '🎯 ChessBoard[$index]: Restoring lastViewedPosition: ${savedAnalysisData!.lastViewedPosition}',
+      );
+    } else {
+      // Use current state's move index
+      final currentMoveIndex = currentState.currentMoveIndex;
+      movePointer = currentMoveIndex < 0 ? const <int>[] : [currentMoveIndex];
+    }
 
     _releaseLog(
-      '===== ANALYSIS MODE: Initializing at move index $currentMoveIndex, pointer: $movePointer =====',
+      '===== ANALYSIS MODE: Initializing with movePointer: $movePointer =====',
     );
 
     // Set up listener BEFORE replaceState to capture the state change
@@ -2483,7 +2525,7 @@ class ChessBoardScreenNotifierNew
           false, // Don't fire immediately - we'll sync manually after replaceState
     );
 
-    // Always initialize at current position, ignore saved state
+    // Initialize navigator with determined move pointer
     navigator.replaceState(
       ChessGameNavigatorState(game: _analysisGame!, movePointer: movePointer),
     );
@@ -5424,7 +5466,14 @@ class ChessBoardProviderParams {
   final GamesTourModel game;
   final int index;
 
-  const ChessBoardProviderParams({required this.game, required this.index});
+  /// Optional saved analysis for restoring full state (variations, comments, position)
+  final SavedAnalysisData? savedAnalysisData;
+
+  const ChessBoardProviderParams({
+    required this.game,
+    required this.index,
+    this.savedAnalysisData,
+  });
 
   @override
   bool operator ==(Object other) =>
@@ -5434,8 +5483,42 @@ class ChessBoardProviderParams {
           game.gameId == other.game.gameId &&
           index == other.index;
 
+  // Note: savedAnalysisData is intentionally excluded from equality/hashCode
+  // It's initialization data, not provider identity. The provider is uniquely
+  // identified by (gameId, index). For saved analyses, use a unique gameId.
+
   @override
   int get hashCode => game.gameId.hashCode ^ index.hashCode;
+}
+
+/// Data needed to restore a saved analysis state
+class SavedAnalysisData {
+  /// Unique ID of the saved analysis (for tracking)
+  final String analysisId;
+
+  /// Pre-built ChessGame with all variations
+  final ChessGame chessGame;
+
+  /// Comments keyed by variation pointer ID
+  final Map<String, String> variationComments;
+
+  /// Saved move pointer to restore navigation position
+  final List<int>? movePointer;
+
+  /// Board orientation preference
+  final bool isBoardFlipped;
+
+  /// Last viewed position (move index)
+  final int lastViewedPosition;
+
+  const SavedAnalysisData({
+    required this.analysisId,
+    required this.chessGame,
+    required this.variationComments,
+    this.movePointer,
+    required this.isBoardFlipped,
+    required this.lastViewedPosition,
+  });
 }
 
 final chessBoardScreenProviderNew = AutoDisposeStateNotifierProvider.family<
@@ -5449,6 +5532,7 @@ final chessBoardScreenProviderNew = AutoDisposeStateNotifierProvider.family<
     ref,
     game: params.game,
     index: params.index,
+    savedAnalysisData: params.savedAnalysisData,
   );
 });
 

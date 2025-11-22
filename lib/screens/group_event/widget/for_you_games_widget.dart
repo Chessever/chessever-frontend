@@ -1,4 +1,5 @@
 import 'package:chessever2/providers/for_you_games_provider.dart';
+import 'package:chessever2/screens/group_event/widget/for_you_tournament_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -11,12 +12,14 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Widget for displaying the "For You" personalized games feed
-/// Optimized with:
-/// - Infinite scroll with on-demand loading (like onboarding player selection)
-/// - Tournament grouping with headers
-/// - Subtle animations using flutter_animate
-/// - AutoDispose providers (disposed when tab changes)
-/// - Cached game conversions (O(n) instead of O(n²))
+///
+/// OPTIMIZATIONS:
+/// - useMemoized for cached items list (avoids O(n) rebuild on each frame)
+/// - addAutomaticKeepAlives: true keeps items in memory when scrolled
+/// - Large cacheExtent (2000px) keeps more items rendered off-screen
+/// - AutomaticKeepAlive wrapper prevents game cards from being disposed
+/// - Animations only play once (not on rebuild) via AnimatedSwitcher pattern
+/// - AutoDispose providers clean up when tab changes
 class ForYouGamesWidget extends HookConsumerWidget {
   const ForYouGamesWidget({
     super.key,
@@ -53,25 +56,51 @@ class ForYouGamesWidget extends HookConsumerWidget {
       return () => scrollController.removeListener(onScroll);
     }, [scrollController]);
 
+    // OPTIMIZATION: Cache the flattened items list using useMemoized
+    // This prevents O(n) rebuild on every frame
+    final items = useMemoized(() {
+      final result = <_ListItem>[];
+      for (final group in groupedGames) {
+        result.add(_ListItem.header(
+          tourId: group.tourId,
+          tourName: group.tourName,
+          hasLiveGames: group.hasLiveGames,
+          gameCount: group.games.length,
+        ));
+        for (final game in group.games) {
+          final gameIndex = convertedGames.indexWhere((g) => g.gameId == game.id);
+          if (gameIndex != -1) {
+            result.add(_ListItem.game(
+              gameIndex: gameIndex,
+              isLive: game.status == '*',
+            ));
+          }
+        }
+      }
+      return result;
+    }, [groupedGames, convertedGames]);
+
+    // OPTIMIZATION: Cache GamesScreenModel
+    final gamesData = useMemoized(
+      () => GamesScreenModel(
+        gamesTourModels: convertedGames,
+        pinnedGamedIs: const [],
+      ),
+      [convertedGames],
+    );
+
     return gamesAsync.when(
       data: (games) {
         if (games.isEmpty) {
           return _buildEmptyState(context);
         }
 
-        // Create GamesScreenModel once, not per item!
-        final gamesData = GamesScreenModel(
-          gamesTourModels: convertedGames,
-          pinnedGamedIs: const [],
-        );
-
-        return _buildGroupedList(
-          context,
-          ref,
-          groupedGames,
-          gamesData,
-          convertedGames,
-          isLoadingMore.value,
+        return _ForYouListView(
+          scrollController: scrollController,
+          items: items,
+          gamesData: gamesData,
+          allGames: convertedGames,
+          isLoadingMore: isLoadingMore.value,
         );
       },
       loading: () => _buildLoadingState(),
@@ -81,187 +110,6 @@ class ForYouGamesWidget extends HookConsumerWidget {
         return const GenericErrorWidget();
       },
     );
-  }
-
-  Widget _buildGroupedList(
-    BuildContext context,
-    WidgetRef ref,
-    List<ForYouGameGroup> groups,
-    GamesScreenModel gamesData,
-    List<GamesTourModel> allGames,
-    bool isLoadingMore,
-  ) {
-    // Flatten groups into a list of items (headers + games)
-    final items = <_ListItem>[];
-
-    for (final group in groups) {
-      // Add tournament header
-      items.add(_ListItem.header(
-        tourId: group.tourId,
-        tourName: group.tourName,
-        hasLiveGames: group.hasLiveGames,
-        gameCount: group.games.length,
-      ));
-
-      // Add games for this group
-      for (final game in group.games) {
-        final gameIndex = allGames.indexWhere((g) => g.gameId == game.id);
-        if (gameIndex != -1) {
-          items.add(_ListItem.game(
-            gameIndex: gameIndex,
-            isLive: game.status == '*',
-          ));
-        }
-      }
-    }
-
-    return ListView.builder(
-      controller: scrollController,
-      padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 16.sp),
-      itemCount: items.length + (isLoadingMore ? 1 : 0),
-      itemBuilder: (context, index) {
-        // Loading indicator at the end
-        if (index == items.length) {
-          return _buildLoadingIndicator();
-        }
-
-        final item = items[index];
-
-        if (item.isHeader) {
-          return _buildTournamentHeader(
-            item.tourName!,
-            item.hasLiveGames!,
-            item.gameCount!,
-            index,
-          );
-        }
-
-        // Game card
-        final gamesTourModel = allGames[item.gameIndex!];
-
-        return Padding(
-          padding: EdgeInsets.only(bottom: 12.sp),
-          child: GameCardWrapperWidget(
-            key: ValueKey('game_${gamesTourModel.gameId}'),
-            game: gamesTourModel,
-            gamesData: gamesData,
-            gameIndex: item.gameIndex!,
-            isChessBoardVisible: false,
-          ),
-        )
-            .animate()
-            .fadeIn(
-              duration: 200.ms,
-              delay: Duration(milliseconds: (index % 10) * 30),
-            )
-            .slideY(
-              begin: 0.05,
-              end: 0,
-              duration: 200.ms,
-              curve: Curves.easeOut,
-            );
-      },
-    );
-  }
-
-  Widget _buildTournamentHeader(
-    String tourName,
-    bool hasLiveGames,
-    int gameCount,
-    int index,
-  ) {
-    return Container(
-      margin: EdgeInsets.only(
-        top: index == 0 ? 0 : 16.sp,
-        bottom: 8.sp,
-      ),
-      child: Row(
-        children: [
-          if (hasLiveGames) ...[
-            Container(
-              width: 8.sp,
-              height: 8.sp,
-              decoration: BoxDecoration(
-                color: kRedColor,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: kRedColor.withValues(alpha: 0.5),
-                    blurRadius: 4,
-                    spreadRadius: 1,
-                  ),
-                ],
-              ),
-            )
-                .animate(
-                  onPlay: (controller) => controller.repeat(reverse: true),
-                )
-                .scale(
-                  begin: const Offset(1.0, 1.0),
-                  end: const Offset(1.2, 1.2),
-                  duration: 800.ms,
-                ),
-            SizedBox(width: 8.sp),
-          ],
-          Expanded(
-            child: Text(
-              tourName,
-              style: TextStyle(
-                fontSize: 13.sp,
-                fontWeight: FontWeight.w600,
-                color: hasLiveGames ? kWhiteColor : kWhiteColor70,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 2.sp),
-            decoration: BoxDecoration(
-              color: kDarkGreyColor.withValues(alpha: 0.5),
-              borderRadius: BorderRadius.circular(4.sp),
-            ),
-            child: Text(
-              '$gameCount',
-              style: TextStyle(
-                fontSize: 11.sp,
-                fontWeight: FontWeight.w500,
-                color: kWhiteColor70,
-              ),
-            ),
-          ),
-        ],
-      ),
-    ).animate().fadeIn(duration: 150.ms);
-  }
-
-  Widget _buildLoadingIndicator() {
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: 20.sp),
-      child: Center(
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SizedBox(
-              width: 16.sp,
-              height: 16.sp,
-              child: CircularProgressIndicator(
-                color: kWhiteColor70,
-                strokeWidth: 2.sp,
-              ),
-            ),
-            SizedBox(width: 12.sp),
-            Text(
-              'Loading more games...',
-              style: TextStyle(
-                fontSize: 12.sp,
-                color: kWhiteColor.withValues(alpha: 0.5),
-              ),
-            ),
-          ],
-        ),
-      ),
-    ).animate().fadeIn(duration: 150.ms);
   }
 
   Widget _buildEmptyState(BuildContext context) {
@@ -334,6 +182,160 @@ class ForYouGamesWidget extends HookConsumerWidget {
     );
   }
 }
+
+/// Optimized ListView that keeps items alive when scrolled off-screen
+class _ForYouListView extends StatelessWidget {
+  const _ForYouListView({
+    required this.scrollController,
+    required this.items,
+    required this.gamesData,
+    required this.allGames,
+    required this.isLoadingMore,
+  });
+
+  final ScrollController scrollController;
+  final List<_ListItem> items;
+  final GamesScreenModel gamesData;
+  final List<GamesTourModel> allGames;
+  final bool isLoadingMore;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.builder(
+      controller: scrollController,
+      padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 16.sp),
+      itemCount: items.length + (isLoadingMore ? 1 : 0),
+      // CRITICAL: Keep items alive when scrolled off-screen
+      addAutomaticKeepAlives: true,
+      addRepaintBoundaries: true,
+      // OPTIMIZATION: Large cache extent keeps more items rendered
+      cacheExtent: 2000,
+      itemBuilder: (context, index) {
+        // Loading indicator at the end
+        if (index == items.length) {
+          return _buildLoadingIndicator();
+        }
+
+        final item = items[index];
+
+        if (item.isHeader) {
+          return ForYouTournamentCard(
+            key: ValueKey('header_${item.tourId}'),
+            tourId: item.tourId!,
+            tourName: item.tourName!,
+            hasLiveGames: item.hasLiveGames!,
+            gameCount: item.gameCount!,
+            isFirst: index == 0,
+          );
+        }
+
+        // Game card with KeepAlive wrapper
+        final gamesTourModel = allGames[item.gameIndex!];
+
+        return _KeepAliveGameCard(
+          key: ValueKey('game_${gamesTourModel.gameId}'),
+          game: gamesTourModel,
+          gamesData: gamesData,
+          gameIndex: item.gameIndex!,
+          listIndex: index,
+        );
+      },
+    );
+  }
+
+  Widget _buildLoadingIndicator() {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 20.sp),
+      child: Center(
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 16.sp,
+              height: 16.sp,
+              child: CircularProgressIndicator(
+                color: kWhiteColor70,
+                strokeWidth: 2.sp,
+              ),
+            ),
+            SizedBox(width: 12.sp),
+            Text(
+              'Loading more games...',
+              style: TextStyle(
+                fontSize: 12.sp,
+                color: kWhiteColor.withValues(alpha: 0.5),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ).animate().fadeIn(duration: 150.ms);
+  }
+}
+
+/// StatefulWidget that uses AutomaticKeepAliveClientMixin to keep game cards alive
+/// This prevents the card from being disposed when scrolled off-screen
+class _KeepAliveGameCard extends StatefulWidget {
+  const _KeepAliveGameCard({
+    super.key,
+    required this.game,
+    required this.gamesData,
+    required this.gameIndex,
+    required this.listIndex,
+  });
+
+  final GamesTourModel game;
+  final GamesScreenModel gamesData;
+  final int gameIndex;
+  final int listIndex;
+
+  @override
+  State<_KeepAliveGameCard> createState() => _KeepAliveGameCardState();
+}
+
+class _KeepAliveGameCardState extends State<_KeepAliveGameCard>
+    with AutomaticKeepAliveClientMixin {
+  // Track if animation has played to avoid replaying on rebuild
+  bool _hasAnimated = false;
+
+  @override
+  bool get wantKeepAlive => true; // CRITICAL: Keep this widget alive
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
+
+    final card = Padding(
+      padding: EdgeInsets.only(bottom: 12.sp),
+      child: GameCardWrapperWidget(
+        game: widget.game,
+        gamesData: widget.gamesData,
+        gameIndex: widget.gameIndex,
+        isChessBoardVisible: false,
+      ),
+    );
+
+    // Only animate on first appearance
+    if (!_hasAnimated) {
+      _hasAnimated = true;
+      return card
+          .animate()
+          .fadeIn(
+            duration: 200.ms,
+            delay: Duration(milliseconds: (widget.listIndex % 10) * 30),
+          )
+          .slideY(
+            begin: 0.05,
+            end: 0,
+            duration: 200.ms,
+            curve: Curves.easeOut,
+          );
+    }
+
+    return card;
+  }
+}
+
 
 /// Helper class for list items (either header or game)
 class _ListItem {

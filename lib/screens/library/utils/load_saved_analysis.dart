@@ -1,37 +1,63 @@
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:flutter/material.dart';
 
 /// Navigates to chess board screen with a loaded saved analysis
 ///
-/// This converts the SavedAnalysis into a GamesTourModel and navigates
-/// to the chess board. The analysis game with all variations will be loaded.
-///
-/// TODO: Full state restoration including:
+/// This creates a SavedAnalysisData from the SavedAnalysis and passes it
+/// to ChessBoardScreenNew for full state restoration including:
+/// - All variations from the ChessGame tree
 /// - variationComments restoration
-/// - movePointer navigation position
-/// - isBoardFlipped preference
-/// - lastViewedPosition
+/// - movePointer navigation position (via lastViewedPosition)
+/// - isBoardFlipped preference (from analysisState)
 void loadSavedAnalysis(BuildContext context, SavedAnalysis analysis) {
   // Convert SavedAnalysis to GamesTourModel format
   final game = _convertToGamesTourModel(analysis);
 
-  // Navigate to chess board
+  // Create SavedAnalysisData for full state restoration
+  final savedAnalysisData = _createSavedAnalysisData(analysis);
+
+  // Navigate to chess board with saved analysis data
   Navigator.of(context).push(
     MaterialPageRoute(
       builder: (_) => ChessBoardScreenNew(
         currentIndex: 0,
         games: [game],
+        savedAnalysisData: savedAnalysisData,
       ),
     ),
+  );
+}
+
+/// Creates SavedAnalysisData from SavedAnalysis for state restoration
+SavedAnalysisData _createSavedAnalysisData(SavedAnalysis analysis) {
+  // Extract board flip preference from analysisState (snake_case from DB)
+  final isBoardFlipped =
+      analysis.analysisState['is_board_flipped'] as bool? ?? false;
+
+  // Extract movePointer from analysisState if saved (snake_case from DB)
+  List<int>? movePointer;
+  final savedPointer = analysis.analysisState['move_pointer'];
+  if (savedPointer is List) {
+    movePointer = savedPointer.cast<int>();
+  }
+
+  return SavedAnalysisData(
+    analysisId: analysis.id,
+    chessGame: analysis.chessGame,
+    variationComments: analysis.variationComments,
+    movePointer: movePointer,
+    isBoardFlipped: isBoardFlipped,
+    lastViewedPosition: analysis.lastViewedPosition,
   );
 }
 
 /// Converts a SavedAnalysis to GamesTourModel format
 ///
 /// This creates a minimal GamesTourModel that the chess board can display.
-/// The saved ChessGame contains all the analysis with variations.
+/// Uses analysis.id as gameId to avoid conflicts with live games.
 GamesTourModel _convertToGamesTourModel(SavedAnalysis analysis) {
   final chessGame = analysis.chessGame;
 
@@ -61,8 +87,10 @@ GamesTourModel _convertToGamesTourModel(SavedAnalysis analysis) {
     fideId: null,
   );
 
+  // Use analysis.id as gameId to avoid conflicts with live games
+  // The original source game ID is preserved in analysis.sourceGameId
   return GamesTourModel(
-    gameId: analysis.sourceGameId ?? analysis.id,
+    gameId: 'saved_analysis_${analysis.id}',
     whitePlayer: whitePlayer,
     blackPlayer: blackPlayer,
     whiteTimeDisplay: '--:--',
@@ -72,42 +100,7 @@ GamesTourModel _convertToGamesTourModel(SavedAnalysis analysis) {
     gameStatus: GameStatus.fromString(result),
     roundId: 'saved_analysis',
     tourId: 'library',
-    pgn: _generatePgnFromChessGame(chessGame, whiteName, blackName, result),
+    // PGN is not used when savedAnalysisData is provided - the ChessGame is used directly
+    pgn: '',
   );
-}
-
-/// Generates a basic PGN from ChessGame
-///
-/// This creates a PGN string from the ChessGame mainline.
-/// The ChessGame object itself contains the full variation tree,
-/// which will be used by the chess board provider.
-String _generatePgnFromChessGame(
-  chessGame,
-  String whiteName,
-  String blackName,
-  String result,
-) {
-  final buffer = StringBuffer();
-
-  // Add headers
-  buffer.writeln('[Event "Saved Analysis"]');
-  buffer.writeln('[Site "ChessEver"]');
-  buffer.writeln('[White "$whiteName"]');
-  buffer.writeln('[Black "$blackName"]');
-  buffer.writeln('[Result "$result"]');
-  buffer.writeln();
-
-  // Add moves from mainline
-  for (var i = 0; i < chessGame.mainline.length; i++) {
-    final move = chessGame.mainline[i];
-    if (i % 2 == 0) {
-      buffer.write('${(i ~/ 2) + 1}. ');
-    }
-    buffer.write('${move.san} ');
-  }
-
-  // Add result
-  buffer.write(result);
-
-  return buffer.toString();
 }
