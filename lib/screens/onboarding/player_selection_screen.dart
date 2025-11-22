@@ -7,6 +7,7 @@ import 'package:chessever2/repository/local_storage/onboarding/onboarding_reposi
 import 'package:chessever2/screens/players/providers/player_providers.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
+import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/country_utils.dart';
@@ -400,6 +401,18 @@ Future<void> markOnboardingComplete(BuildContext context, WidgetRef ref) async {
   final userId = Supabase.instance.client.auth.currentUser?.id;
   try {
     await ref.read(onboardingRepositoryProvider).markCompleted(userId);
+    final favoritePlayers = ref.read(favoritePlayersProviderNew);
+    final favoriteCount = favoritePlayers.valueOrNull?.length;
+    final isAuthenticated =
+        Supabase.instance.client.auth.currentUser?.isAnonymous == false;
+
+    AnalyticsService.instance.trackEventDetached(
+      'Onboarding Completed',
+      properties: {
+        'favorite_player_count': favoriteCount,
+        'is_authenticated': isAuthenticated,
+      },
+    );
   } catch (e) {
     if (kDebugMode) {
       debugPrint('Failed to mark onboarding complete: $e');
@@ -603,6 +616,18 @@ Future<void> _toggleFavorite(
     updated.add(fideId);
   }
   selectedIds.value = updated;
+  final isSelected = updated.contains(fideId);
+
+  AnalyticsService.instance.trackEventDetached(
+    'Onboarding Player Toggled',
+    properties: {
+      'fide_id': fideId,
+      'player_name': '${player['title'] ?? ''} ${player['name']}'.trim(),
+      'country_code': player['fed']?.toString(),
+      'rating': player['rating'],
+      'is_selected': isSelected,
+    },
+  );
 
   // Fire off remote/local toggles without blocking the tap animation
   unawaited(ref.read(onboardingPlayerProvider.notifier).toggleFavorite(fideId));

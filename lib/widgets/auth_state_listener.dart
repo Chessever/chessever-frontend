@@ -9,6 +9,7 @@ import 'package:chessever2/repository/authentication/model/auth_state.dart';
 import 'package:chessever2/repository/local_storage/onboarding/onboarding_repository.dart';
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
 import 'package:chessever2/utils/favorites_migration.dart';
+import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -56,6 +57,9 @@ class AuthStateListener extends ConsumerWidget {
           }
 
           if (authState.status == AppAuthStatus.authenticated) {
+            unawaited(
+              AnalyticsService.instance.syncUser(authState.user),
+            );
             // User just authenticated - migrate old favorites and sync from Supabase
             unawaited(
               Future(() async {
@@ -102,6 +106,7 @@ class AuthStateListener extends ConsumerWidget {
               );
             }
           } else if (authState.status == AppAuthStatus.unauthenticated) {
+            unawaited(AnalyticsService.instance.clearUser());
             if (currentRoute != '/auth_screen') {
               await ref.read(sessionManagerProvider).clearLocalStorage();
               navigator.pushNamedAndRemoveUntil(

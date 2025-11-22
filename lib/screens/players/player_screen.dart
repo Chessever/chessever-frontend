@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -7,6 +8,7 @@ import 'package:chessever2/widgets/rounded_search_bar.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
+import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'widgets/player_card.dart';
 import 'providers/player_providers.dart';
 
@@ -21,6 +23,7 @@ class _PlayerScreenState extends ConsumerState<PlayerListScreen> {
   late final TextEditingController _searchController;
   final ScrollController _scrollController = ScrollController();
   final double _scrollThreshold = 200.0;
+  Timer? _searchAnalyticsTimer;
 
   @override
   void initState() {
@@ -36,11 +39,27 @@ class _PlayerScreenState extends ConsumerState<PlayerListScreen> {
     _searchController.dispose();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
+    _searchAnalyticsTimer?.cancel();
     super.dispose();
   }
 
   void _onSearchChanged() {
-    ref.read(playerSearchQueryProvider.notifier).state = _searchController.text;
+    final query = _searchController.text;
+    ref.read(playerSearchQueryProvider.notifier).state = query;
+
+    _searchAnalyticsTimer?.cancel();
+    final normalized = query.trim();
+    if (normalized.isEmpty) return;
+
+    _searchAnalyticsTimer = Timer(const Duration(milliseconds: 350), () {
+      AnalyticsService.instance.trackEventDetached(
+        'Player Search',
+        properties: {
+          'query': normalized,
+          'query_length': normalized.length,
+        },
+      );
+    });
   }
 
   void _onScroll() {
@@ -270,6 +289,7 @@ class _PlayerList extends ConsumerWidget {
       );
 
       if (player.isNotEmpty) {
+        final wasFavorite = player['isFavorite'] == true;
         final playerModel = PlayerStandingModel(
           name: '${player['title'] ?? ''} ${player['name']}'.trim(),
           countryCode: player['fed']?.toString() ?? '',
@@ -287,6 +307,19 @@ class _PlayerList extends ConsumerWidget {
         // This will cause the games list to re-sort immediately
         ref.read(favoritesVersionProvider.notifier).state++;
         debugPrint('[PlayerScreen] Incremented favorites version to trigger games resort');
+
+        AnalyticsService.instance.trackEventDetached(
+          'Player Favorite Toggled',
+          properties: {
+            'player_id': playerId,
+            'player_name': playerModel.name,
+            'country_code': playerModel.countryCode,
+            'rating': playerModel.score,
+            'title': playerModel.title,
+            'is_favorited': !wasFavorite,
+            'source': 'player_list',
+          },
+        );
       }
     } catch (e) {
       debugPrint('Error updating Supabase favorites: $e');
