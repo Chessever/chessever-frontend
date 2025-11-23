@@ -52,7 +52,6 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
     _supabase = Supabase.instance.client;
     _sessionManager = ref.read(sessionManagerProvider);
 
-    await _ensureGoogleInitialized();
     _startAuthListener();
 
     final currentUser = _supabase.auth.currentUser;
@@ -122,7 +121,21 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
         method: 'google',
       ),
     );
-    await _ensureGoogleInitialized();
+
+    try {
+      await _ensureGoogleInitialized();
+    } catch (e, st) {
+      await ref.read(errorLoggerProvider).logError(e, st);
+      final message = _exceptionMessage(e);
+      state = AsyncValue.data(
+        AppAuthState.error(
+          message.isEmpty
+              ? 'Google Sign-In is unavailable. Check Google Play Services or configuration.'
+              : message,
+        ),
+      );
+      rethrow;
+    }
 
     try {
       if (kDebugMode) {
@@ -138,7 +151,8 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
         debugPrint('🔵 [GOOGLE AUTH] Step 2: Getting ID token...');
       }
 
-      final idToken = account.authentication.idToken;
+      final tokenData = account.authentication;
+      final idToken = tokenData.idToken;
 
       if (idToken == null || idToken.isEmpty) {
         throw Exception('Failed to obtain Google ID token.');
@@ -168,6 +182,9 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
       }
 
       final accessToken = authorization.accessToken;
+      if (accessToken.isEmpty) {
+        throw Exception('Failed to obtain Google access token. Please try again.');
+      }
 
       if (kDebugMode) {
         debugPrint('✅ [GOOGLE AUTH] Step 3 complete: Got access token');
@@ -218,30 +235,17 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
         debugPrint('❌ [GOOGLE AUTH] GoogleSignInException: ${e.code} - ${e.description}');
       }
 
-      // Only treat as cancellation if it's truly a user action
-      // But per migration guide, "canceled" can also mean config error on Android!
       if (e.code == GoogleSignInExceptionCode.canceled) {
-        if (Platform.isAndroid) {
-          // On Android, "canceled" often means configuration error
-          debugPrint('❌ [GOOGLE AUTH] Canceled on Android - likely config error (SHA-1/client ID). Falling back to anonymous.');
-          return await _fallbackToAnonymousSignIn();
-        } else {
-          // On iOS, canceled is more reliable
-          state = const AsyncValue.data(AppAuthState.unauthenticated());
-          throw const CancelledSignInException();
-        }
+        state = const AsyncValue.data(AppAuthState.unauthenticated());
+        throw const CancelledSignInException();
       }
 
       final mapped = _mapGoogleSignInException(e);
       final message = _exceptionMessage(mapped);
       state = AsyncValue.data(AppAuthState.error(message));
-
-      // Fallback to anonymous sign-in on any Google auth failure
-      debugPrint('❌ [GOOGLE AUTH] Google sign-in failed: $message. Falling back to anonymous sign-in');
-      return await _fallbackToAnonymousSignIn();
+      throw mapped;
     } catch (e, st) {
       await ref.read(errorLoggerProvider).logError(e, st);
-      debugPrint('❌ [GOOGLE AUTH] Exception occurred: $e. Falling back to anonymous sign-in');
       unawaited(
         AnalyticsService.instance.trackAuthEvent(
           action: 'google_sign_in',
@@ -250,7 +254,9 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
           reason: e.toString(),
         ),
       );
-      return await _fallbackToAnonymousSignIn();
+      final message = _exceptionMessage(e);
+      state = AsyncValue.data(AppAuthState.error(message));
+      rethrow;
     }
   }
 
@@ -266,15 +272,17 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
     if (!Platform.isIOS) {
       final message = 'Apple Sign-In is only available on iOS devices.';
       state = AsyncValue.data(AppAuthState.error(message));
-      debugPrint('❌ [APPLE AUTH] Not iOS, falling back to anonymous sign-in');
-      return await _fallbackToAnonymousSignIn();
+      debugPrint('❌ [APPLE AUTH] Not iOS, aborting');
+      throw Exception(message);
     }
 
     try {
       final available = await SignInWithApple.isAvailable();
       if (!available) {
-        debugPrint('❌ [APPLE AUTH] Not available, falling back to anonymous sign-in');
-        return await _fallbackToAnonymousSignIn();
+        const message = 'Apple Sign-In is not available on this device.';
+        debugPrint('❌ [APPLE AUTH] Not available');
+        state = const AsyncValue.data(AppAuthState.error(message));
+        throw Exception(message);
       }
 
       final rawNonce = _generateNonce();
@@ -346,12 +354,13 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
         case AuthorizationErrorCode.invalidResponse:
         case AuthorizationErrorCode.unknown:
         default:
-          debugPrint('❌ [APPLE AUTH] Authorization failed, falling back to anonymous sign-in');
-          return await _fallbackToAnonymousSignIn();
+          const message = 'Apple sign in failed. Please try again.';
+          state = const AsyncValue.data(AppAuthState.error(message));
+          debugPrint('❌ [APPLE AUTH] Authorization failed');
+          throw Exception(message);
       }
     } catch (e, st) {
       await ref.read(errorLoggerProvider).logError(e, st);
-      debugPrint('❌ [APPLE AUTH] Exception occurred, falling back to anonymous sign-in');
       unawaited(
         AnalyticsService.instance.trackAuthEvent(
           action: 'apple_sign_in',
@@ -360,7 +369,9 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
           reason: e.toString(),
         ),
       );
-      return await _fallbackToAnonymousSignIn();
+      final message = _exceptionMessage(e);
+      state = AsyncValue.data(AppAuthState.error(message));
+      rethrow;
     }
   }
 
@@ -410,57 +421,17 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
     }
   }
 
-  /// Internal fallback method to sign in anonymously when OAuth fails
-  Future<AppUser> _fallbackToAnonymousSignIn() async {
-    try {
-      debugPrint('🔄 [FALLBACK] Attempting anonymous sign-in...');
-      final response = await _supabase.auth.signInAnonymously();
-
-      final user = response.user;
-      final session = response.session;
-      if (user == null || session == null) {
-        throw Exception('Failed to sign in anonymously.');
-      }
-
-      await _sessionManager.saveSession(session, user);
-
-      final appUser = AppUser.fromSupabaseUser(user);
-      state = AsyncValue.data(AppAuthState.authenticated(appUser));
-      unawaited(
-        AnalyticsService.instance.trackAuthEvent(
-          action: 'anonymous_sign_in',
-          method: 'fallback',
-          success: true,
-          user: appUser,
-        ),
-      );
-      debugPrint('✅ [FALLBACK] Anonymous sign-in successful');
-      return appUser;
-    } catch (e, st) {
-      debugPrint('❌ [FALLBACK] Anonymous sign-in failed: $e');
-      await ref.read(errorLoggerProvider).logError(e, st);
-      unawaited(
-        AnalyticsService.instance.trackAuthEvent(
-          action: 'anonymous_sign_in',
-          method: 'fallback',
-          success: false,
-          reason: e.toString(),
-        ),
-      );
-      state = AsyncValue.data(AppAuthState.error(_exceptionMessage(e)));
-      rethrow;
-    }
-  }
-
   Future<void> signOut() async {
     state = const AsyncValue.data(AppAuthState.loading());
-    await _ensureGoogleInitialized();
 
     try {
-      try {
-        await _googleSignIn.disconnect();
-      } catch (_) {
-        // Ignore if already disconnected.
+      if (_googleInitCompleter != null) {
+        try {
+          await _ensureGoogleInitialized();
+          await _googleSignIn.disconnect();
+        } catch (_) {
+          // Ignore if already disconnected or not initialized.
+        }
       }
 
       await _supabase.auth.signOut();

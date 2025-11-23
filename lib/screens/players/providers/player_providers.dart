@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:chessever2/providers/favorite_players_provider.dart';
+import 'package:chessever2/providers/pending_favorite_players_provider.dart';
 import 'package:chessever2/screens/players/view_models/player_view_model.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 
 
@@ -127,6 +129,24 @@ class PlayerPaginationNotifier
     // Keep local cache consistent
     unawaited(_viewModel.updateFavoriteFlag(fideId, toggled));
 
+    final supabaseUser = Supabase.instance.client.auth.currentUser;
+    final isAuthenticated =
+        supabaseUser != null && supabaseUser.isAnonymous != true;
+
+    if (!isAuthenticated) {
+      _ref.read(pendingFavoriteSelectionsProvider.notifier).setSelection(
+            PendingFavoritePlayer(
+              fideId: fideId,
+              playerName: player['name']?.toString() ?? '',
+              countryCode: player['fed']?.toString(),
+              rating: player['rating'] as int?,
+              title: player['title']?.toString(),
+              isSelected: toggled,
+            ),
+          );
+      return;
+    }
+
     // Fire Supabase toggle in background
     unawaited(
       _ref.read(favoritePlayersProviderNew.notifier).toggleFavorite(
@@ -175,16 +195,23 @@ class PlayerPaginationNotifier
     List<Map<String, dynamic>> players,
   ) {
     final favorites = _ref.read(favoritePlayersProviderNew).valueOrNull ?? [];
+    final pendingFavorites = _ref.read(pendingFavoriteSelectionsProvider);
     final favoriteNames =
         favorites.map((f) => f.playerName.toLowerCase()).toSet();
     final favoriteFideIds =
         favorites.map((f) => f.fideId?.toLowerCase() ?? '').toSet();
+    final pendingFideIds = pendingFavorites.values
+        .where((p) => p.isSelected)
+        .map((p) => p.fideId.toLowerCase())
+        .toSet();
 
     return players.map((player) {
       final name = (player['name'] ?? '').toString().toLowerCase();
       final fideId = player['fideId']?.toString().toLowerCase() ?? '';
       final isFav = favoriteNames.contains(name) ||
-          (fideId.isNotEmpty && favoriteFideIds.contains(fideId));
+          (fideId.isNotEmpty &&
+              (favoriteFideIds.contains(fideId) ||
+                  pendingFideIds.contains(fideId)));
       return {
         ...player,
         'isFavorite': isFav,

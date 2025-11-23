@@ -58,43 +58,19 @@ class AuthScreenNotifier extends StateNotifier<AuthScreenState> {
       debugPrint('⚠️ [AUTH] User cancelled sign-in');
       state = state.copyWith(isLoading: false);
     } catch (e) {
-      // OAuth failed - fall back to anonymous sign-in
       debugPrint('❌ [AUTH] OAuth sign-in FAILED!');
       debugPrint('   Error: $e');
       debugPrint('   Error type: ${e.runtimeType}');
-      debugPrint('🔄 [AUTH] Attempting fallback to anonymous sign-in...');
-
-      try {
-        final anonymousUser =
-            await ref.read(authStateProvider.notifier).signInAnonymously();
-        debugPrint('✅ [AUTH] Anonymous fallback succeeded!');
-        debugPrint('   User ID: ${anonymousUser.id}');
-        if (!mounted) {
-          debugPrint('⚪ [AUTH] Notifier disposed before completing anonymous fallback handling');
-          return;
-        }
-        state = state.copyWith(
-          isLoading: false,
-          user: anonymousUser,
-          showCountrySelection: true,
-        );
-        debugPrint('🟢 [AUTH] State updated with anonymous user (fallback)');
-      } catch (anonymousError, anonymousSt) {
-        // Both OAuth and anonymous sign-in failed
-        debugPrint('❌ [AUTH] Anonymous fallback ALSO FAILED!');
-        debugPrint('   Error: $anonymousError');
-        debugPrint('   Stack trace: $anonymousSt');
-        final errorMessage = _getErrorMessage(e.toString());
-        if (!mounted) {
-          debugPrint('⚪ [AUTH] Notifier disposed before propagating fallback error');
-          return;
-        }
-        state = state.copyWith(
-          isLoading: false,
-          errorMessage: errorMessage,
-        );
-        debugPrint('🔴 [AUTH] Showing error to user: $errorMessage');
+      final errorMessage = _getErrorMessage(e.toString());
+      if (!mounted) {
+        debugPrint('⚪ [AUTH] Notifier disposed before propagating error');
+        return;
       }
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: errorMessage,
+      );
+      debugPrint('🔴 [AUTH] Showing error to user: $errorMessage');
     }
   }
 
@@ -111,11 +87,15 @@ class AuthScreenNotifier extends StateNotifier<AuthScreenState> {
   }
 
   String _getErrorMessage(String error) {
-    if (error.contains('cancelled')) {
+    final lower = error.toLowerCase();
+
+    if (lower.contains('cancelled')) {
       return 'Sign in was cancelled';
-    } else if (error.contains('network')) {
+    } else if (lower.contains('play services') || lower.contains('configuration')) {
+      return 'Google Sign-In is unavailable on this device. Please check Google Play Services or try again later.';
+    } else if (lower.contains('network')) {
       return 'Network error. Please check your connection';
-    } else if (error.contains('tokens')) {
+    } else if (lower.contains('tokens')) {
       return 'Authentication failed. Please try again';
     } else {
       return 'Sign in failed. Please try again';
