@@ -269,6 +269,15 @@ class _VersionFooter extends ConsumerWidget {
     }
   }
 
+  static Future<void> _launchPrivacyPolicy() async {
+    final Uri privacyPolicyUri = Uri.parse(
+      'https://sites.google.com/view/chessever-privacy-policy',
+    );
+    if (await canLaunchUrl(privacyPolicyUri)) {
+      await launchUrl(privacyPolicyUri, mode: LaunchMode.externalApplication);
+    }
+  }
+
   void _showAboutDialog(BuildContext context, String version) {
     showDialog(
       context: context,
@@ -358,6 +367,90 @@ class _VersionFooter extends ConsumerWidget {
             )
                 .animate()
                 .fadeIn(delay: 200.ms, duration: 400.ms)
+                .slideX(begin: -0.2, end: 0),
+
+            // Privacy Policy Button
+            InkWell(
+              onTap: () {
+                HapticFeedbackService.buttonPress();
+                _launchPrivacyPolicy();
+              },
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
+                height: 40.h,
+                child: Row(
+                  children: [
+                    Container(
+                      width: 20.w,
+                      height: 20.h,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            kGreenColor.withOpacity(0.6),
+                            kGreenColor.withOpacity(0.4),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Icon(
+                        Icons.privacy_tip_outlined,
+                        size: 14.ic,
+                        color: kWhiteColor,
+                      ),
+                    ),
+                    SizedBox(width: 8.w),
+                    Text(
+                      'Privacy Policy',
+                      style: AppTypography.textSmRegular.copyWith(
+                        color: kWhiteColor.withOpacity(0.7),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    Spacer(),
+                    Icon(
+                      Icons.open_in_new,
+                      size: 14.ic,
+                      color: kWhiteColor.withOpacity(0.4),
+                    ),
+                  ],
+                ),
+              ),
+            )
+                .animate()
+                .fadeIn(delay: 300.ms, duration: 400.ms)
+                .slideX(begin: -0.2, end: 0),
+
+            // Delete Account Button
+            InkWell(
+              onTap: () {
+                HapticFeedbackService.buttonPress();
+                showDeleteAccountDialog(context);
+              },
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
+                height: 40.h,
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.person_remove_outlined,
+                      size: 18.ic,
+                      color: Colors.red.withOpacity(0.6),
+                    ),
+                    SizedBox(width: 8.w),
+                    Text(
+                      'Delete Account',
+                      style: AppTypography.textSmRegular.copyWith(
+                        color: Colors.red.withOpacity(0.6),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+                .animate()
+                .fadeIn(delay: 400.ms, duration: 400.ms)
                 .slideX(begin: -0.2, end: 0),
 
             SizedBox(height: 8.h),
