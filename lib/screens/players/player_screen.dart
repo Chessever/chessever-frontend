@@ -9,6 +9,7 @@ import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
+import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'widgets/player_card.dart';
 import 'providers/player_providers.dart';
 
@@ -155,6 +156,7 @@ class _PlayerList extends ConsumerWidget {
   });
 
   Future<void> _handleRefresh(WidgetRef ref) async {
+    HapticFeedbackService.medium();
     searchController.clear(); // Clear search on refresh
     final notifier = ref.read(playerPaginationProvider.notifier);
     await notifier.initFirstPage();

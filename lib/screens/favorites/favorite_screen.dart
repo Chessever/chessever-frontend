@@ -2,6 +2,7 @@ import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search_widget.dart';
 import 'package:chessever2/widgets/standing_score_card.dart';
 import 'package:flutter/material.dart';
@@ -122,6 +123,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
       padding: EdgeInsets.symmetric(horizontal: 20.sp),
       child: RefreshIndicator(
         onRefresh: () async {
+          HapticFeedbackService.medium();
           await ref
               .read(favoritePlayersNotifierProvider.notifier)
               .refreshFavorites();

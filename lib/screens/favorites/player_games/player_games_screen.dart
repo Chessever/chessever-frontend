@@ -5,6 +5,7 @@ import 'package:chessever2/screens/favorites/player_games/widgets/tournament_gro
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:flutter/material.dart';
@@ -214,6 +215,7 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
     // Has data
     return RefreshIndicator(
       onRefresh: () async {
+        HapticFeedbackService.medium();
         await ref
             .read(playerGamesProvider(_playerIdentifier).notifier)
             .refreshGames();

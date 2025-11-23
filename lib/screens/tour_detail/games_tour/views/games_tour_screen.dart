@@ -9,6 +9,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_ga
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/widgets/search/gameSearch/game_search_overlay.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
@@ -108,6 +109,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
   }
 
   Future<void> _handleRefresh() async {
+    HapticFeedbackService.medium();
     try {
       FocusScope.of(context).unfocus();
       final futures = <Future>[];
