@@ -78,6 +78,9 @@
         // Latest stable Kotlin version compatible with Flutter 2025
         implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.2.0")
 
+        // Ensure okhttp is present for Amplitude's Android core (R8 was missing HttpUrl)
+        implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
         // Core library desugaring dependency
         coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
