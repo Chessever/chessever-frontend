@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:chessever2/providers/country_dropdown_provider.dart';
-import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/repository/local_storage/group_broadcast/group_broadcast_local_storage.dart';
 import 'package:chessever2/repository/local_storage/onboarding/onboarding_repository.dart';
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
@@ -69,22 +68,7 @@ class _SplashScreenProvider {
     // Check authentication state - session manager will recover session if exists
     // This also triggers Supabase auth state change which the listener will pick up
     final sessionManager = ref.read(sessionManagerProvider);
-    var isLoggedIn = await sessionManager.isLoggedIn();
-
-    if (!isLoggedIn) {
-      try {
-        await ref.read(authStateProvider.notifier).signInAnonymously();
-        isLoggedIn = true;
-        if (kDebugMode) {
-          print('✅ Anonymous session created for guest access');
-        }
-      } catch (e, st) {
-        if (kDebugMode) {
-          print('❌ Failed to start anonymous session: $e');
-          debugPrintStack(stackTrace: st);
-        }
-      }
-    }
+    final isLoggedIn = await sessionManager.isLoggedIn();
 
     // Check if context is still valid before navigation
     if (!context.mounted) return;

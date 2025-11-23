@@ -608,6 +608,9 @@ Future<void> _toggleFavorite(
 ) async {
   final fideId = player['fideId']?.toString();
   if (fideId == null || fideId.isEmpty) return;
+  final supabaseUser = Supabase.instance.client.auth.currentUser;
+  final isAuthenticated =
+      supabaseUser != null && supabaseUser.isAnonymous != true;
 
   final updated = Set<String>.from(selectedIds.value);
   if (updated.contains(fideId)) {
@@ -644,8 +647,12 @@ Future<void> _toggleFavorite(
         title: player['title']?.toString(),
       );
 
-      await ref.read(favoriteStandingsPlayerService).toggleFavorite(playerModel);
-      ref.read(favoritesVersionProvider.notifier).state++;
+      if (isAuthenticated) {
+        await ref
+            .read(favoriteStandingsPlayerService)
+            .toggleFavorite(playerModel);
+        ref.read(favoritesVersionProvider.notifier).state++;
+      }
     } catch (e) {
       if (kDebugMode) {
         debugPrint('Failed to sync favorite: $e');
