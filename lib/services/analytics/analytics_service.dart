@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:amplitude_flutter/amplitude.dart';
 import 'package:amplitude_flutter/configuration.dart';
+import 'package:amplitude_flutter/constants.dart' show LogLevel;
 import 'package:amplitude_flutter/default_tracking.dart';
 import 'package:amplitude_flutter/events/base_event.dart';
 import 'package:amplitude_flutter/events/identify.dart';
