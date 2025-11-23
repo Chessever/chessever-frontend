@@ -10,6 +10,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/haptic_feedback_service.dart';
 
 /// Filter mode for the calendar view
 enum CalendarFilterMode { all, upcoming, favorites }
@@ -296,6 +297,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
 
                     return RefreshIndicator(
                       onRefresh: () async {
+                        HapticFeedbackService.medium();
                         // Invalidate the calendar provider to refresh data
                         ref.invalidate(calendarScreenProvider);
                       },

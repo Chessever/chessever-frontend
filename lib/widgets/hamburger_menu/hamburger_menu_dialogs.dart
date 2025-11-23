@@ -83,7 +83,10 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
       backgroundColor: Colors.transparent,
       elevation: 0,
       child: Container(
-        constraints: BoxConstraints(maxWidth: 380.w),
+        constraints: BoxConstraints(
+          maxWidth: 380.w,
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
@@ -124,11 +127,12 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
               ),
 
               // Main content
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Header with fallen king icon
-                  Container(
+              SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Header with fallen king icon
+                    Container(
                     padding: EdgeInsets.all(28.sp),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -620,7 +624,8 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
                       .animate()
                       .fadeIn(delay: 800.ms, duration: 400.ms)
                       .slideY(begin: 0.2, end: 0),
-                ],
+                  ],
+                ),
               ),
             ],
           ),

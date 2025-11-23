@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
+import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -13,6 +14,7 @@ class _HomeScreenController {
   final Ref ref;
 
   Future<void> onPullRefresh() async {
+    HapticFeedbackService.medium();
     final currentItem = ref.read(selectedBottomNavBarItemProvider);
 
     // Handle refresh based on current screen
