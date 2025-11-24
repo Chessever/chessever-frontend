@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 
 class FavoriteScreen extends ConsumerStatefulWidget {
   const FavoriteScreen({super.key});
@@ -296,6 +297,9 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
   }
 
   Future<void> _removeFavoritePlayer(PlayerStandingModel player) async {
+    final allowed = await requireFullAuthGuard(context);
+    if (!allowed) return;
+
     await ref
         .read(favoritePlayersNotifierProvider.notifier)
         .removeFavorite(player);

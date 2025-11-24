@@ -24,6 +24,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 
 final Curve _springCurve = Motion.smoothSpring().toCurve;
 final Curve _snappyCurve = Motion.snappySpring().toCurve;
@@ -276,6 +277,7 @@ class PlayerSelectionContent extends HookConsumerWidget {
                                 isSearching ? players : recommendedResult.players,
                             selectedIds: selectedIds.value,
                             onToggle: (player) => _toggleFavorite(
+                              context,
                               ref,
                               selectedIds,
                               player,
@@ -602,10 +604,14 @@ Widget _buildPlayerList(
 }
 
 Future<void> _toggleFavorite(
+  BuildContext context,
   WidgetRef ref,
   ValueNotifier<Set<String>> selectedIds,
   Map<String, dynamic> player,
 ) async {
+  final allowed = await requireFullAuthGuard(context);
+  if (!allowed) return;
+
   final fideId = player['fideId']?.toString();
   if (fideId == null || fideId.isEmpty) return;
   final supabaseUser = Supabase.instance.client.auth.currentUser;

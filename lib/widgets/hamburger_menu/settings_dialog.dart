@@ -7,6 +7,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/settings_menu.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
+import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 
 class SettingsDialog extends ConsumerWidget {
   const SettingsDialog({super.key});
@@ -24,9 +25,13 @@ class SettingsDialog extends ConsumerWidget {
           width: 20.w,
           SvgAsset.boardSettings,
         ),
-        onBoardSettingsPressed: () {
+        onBoardSettingsPressed: () async {
+          final allowed = await requireFullAuthGuard(context);
+          if (!allowed || !context.mounted) return;
+
           // Close the current bottom sheet first
           Navigator.of(context).pop();
+          if (!context.mounted) return;
 
           // Navigate to the full ChessBoardSettingsPage
           Navigator.of(context).push(

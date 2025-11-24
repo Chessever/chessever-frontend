@@ -136,15 +136,6 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
     _newFolderNameController = TextEditingController();
     _titleFocusNode = FocusNode();
     _newFolderNameFocusNode = FocusNode();
-
-    // Auto-focus the title field after sheet animates in
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future.delayed(const Duration(milliseconds: 400), () {
-        if (mounted) {
-          _titleFocusNode.requestFocus();
-        }
-      });
-    });
   }
 
   @override

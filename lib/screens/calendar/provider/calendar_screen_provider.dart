@@ -5,14 +5,15 @@ import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/repository/supabase/calendar_event/calendar_event_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
+import 'package:chessever2/screens/calendar/provider/calendar_search_isolate.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
-import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/month_provider.dart';
 import 'package:country_picker/country_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -47,8 +48,10 @@ class _CalendarScreenNotifier
   final Ref ref;
   final Set<String> _primingFavoritePlayers = {};
   Timer? _debounceTimer;
+  int _filterVersion = 0; // For cancellation of stale queries
 
   List<GroupEventCardModel> _yearEvents = [];
+  List<CalendarEventData> _yearEventsData = []; // Cached isolate-safe data
 
   Future<void> _init() async {
     try {
@@ -100,11 +103,31 @@ class _CalendarScreenNotifier
         ...yearCalendarEvents.map(GroupEventCardModel.fromCalendarEvent),
       ];
 
+      // Pre-build isolate-safe data for faster filtering
+      _yearEventsData = _yearEvents.map(_toEventData).toList();
+
       // Run filters immediately after fetch (no debounce for initial load)
       _runFilters();
     } catch (e, st) {
       state = AsyncValue.error(e, st);
     }
+  }
+
+  CalendarEventData _toEventData(GroupEventCardModel event) {
+    return CalendarEventData(
+      id: event.id,
+      title: event.title,
+      location: event.location,
+      timeControl: event.timeControl,
+      startDate: event.startDate,
+      endDate: event.endDate,
+      searchTerms: event.searchTerms,
+      dates: event.dates,
+      maxAvgElo: event.maxAvgElo,
+      timeUntilStart: event.timeUntilStart,
+      tourEventCategory: event.tourEventCategory.name,
+      eventSource: event.eventSource.name,
+    );
   }
 
   /// Debounced filter application for user-triggered filter changes
@@ -116,126 +139,122 @@ class _CalendarScreenNotifier
       state = const AsyncValue.loading();
     }
 
-    _debounceTimer = Timer(const Duration(milliseconds: 200), _runFilters);
+    // Increase debounce time for search queries to avoid hanging
+    final searchQuery = ref.read(calendarSearchQueryProvider);
+    final debounceTime = searchQuery.isNotEmpty
+        ? const Duration(milliseconds: 500) // Longer debounce for search
+        : const Duration(milliseconds: 200); // Normal debounce for other filters
+
+    _debounceTimer = Timer(debounceTime, _runFilters);
   }
 
   Future<void> _runFilters() async {
     try {
-      if (_yearEvents.isEmpty) {
+      if (_yearEventsData.isEmpty) {
         _setEmptyMonths();
         return;
       }
 
+      // Increment version to cancel any in-flight filter operations
+      final currentVersion = ++_filterVersion;
+
       final selectedYear = ref.read(selectedYearProvider);
-      final searchQuery =
-          ref.read(calendarSearchQueryProvider).trim().toLowerCase();
+      final searchQuery = ref.read(calendarSearchQueryProvider).trim();
       final timeControl = ref.read(calendarTimeControlProvider);
       final filterMode = ref.read(calendarFilterModeProvider);
       final monthConverter = ref.read(monthProvider);
 
-      // All filtering is done in-memory since _yearEvents is already loaded
+      // Build favorite data for isolate
       final favoriteEventIds = <String>{};
       if (filterMode == CalendarFilterMode.favorites) {
         final favoritesAsync = ref.read(favoriteEventsProvider);
         final favorites = favoritesAsync.valueOrNull ?? [];
         favoriteEventIds.addAll(favorites.map((e) => e.eventId));
       }
+
       final favoritePlayersCache = ref.read(eventFavoritePlayersCacheProvider);
+      final favoritePlayersMap = <String, bool>{};
+      for (final entry in favoritePlayersCache.entries) {
+        favoritePlayersMap[entry.key] = entry.value.hasFavorites;
+      }
 
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
 
-      final List<MonthEventsSummary> summaries = [];
-      final Map<int, List<GroupEventCardModel>> monthEvents = {};
+      // Build month names list
+      final monthNames = List.generate(
+        12,
+        (i) => monthConverter.monthNumberToName(i + 1),
+      );
 
-      for (int i = 1; i <= 12; i++) {
-        monthEvents[i] = [];
+      // Prepare params for isolate
+      final params = CalendarSearchParams(
+        events: _yearEventsData,
+        searchQuery: searchQuery,
+        timeControl: timeControl,
+        selectedYear: selectedYear,
+        today: today,
+        filterMode: filterMode.name,
+        favoriteEventIds: favoriteEventIds,
+        favoritePlayersMap: favoritePlayersMap,
+        monthNames: monthNames,
+      );
+
+      // Run filtering in background isolate
+      final result = await compute(filterCalendarEventsIsolate, params);
+
+      // Check if this result is still current (cancellation check)
+      if (!mounted || _filterVersion != currentVersion) return;
+
+      // Prime favorite players for events that need it
+      for (final eventId in result.eventsToPrime) {
+        _primeFavoritePlayers(eventId);
       }
 
-      for (final event in _yearEvents) {
-        if (!_matchesFilters(event, searchQuery, timeControl)) {
-          continue;
-        }
+      // Convert back to GroupEventCardModel for UI
+      final summaries = result.summaries.map((monthData) {
+        final events = monthData.events.map((data) {
+          return _yearEvents.firstWhere(
+            (e) => e.id == data.id,
+            orElse: () => _fromEventData(data),
+          );
+        }).toList();
 
-        if (filterMode == CalendarFilterMode.upcoming) {
-          final startDate = event.startDate ?? event.endDate;
-          if (startDate == null || startDate.isBefore(today)) {
-            continue;
-          }
-        } else if (filterMode == CalendarFilterMode.favorites) {
-          final hasFavoritePlayers =
-              favoritePlayersCache[event.id]?.hasFavorites ?? false;
-          final isStarred = favoriteEventIds.contains(event.id);
-          if (!isStarred && !hasFavoritePlayers) {
-            _primeFavoritePlayers(event.id);
-            continue;
-          }
-        }
-
-        final range = resolveCalendarDateRange(event.startDate, event.endDate);
-        if (range == null) continue;
-        final firstDate = range.start;
-        final lastDate = range.end;
-
-        if (firstDate.year > selectedYear || lastDate.year < selectedYear) {
-          continue;
-        }
-
-        DateTime current = DateTime(firstDate.year, firstDate.month);
-        final endMonth = DateTime(lastDate.year, lastDate.month);
-
-        while (!current.isAfter(endMonth)) {
-          if (current.year == selectedYear) {
-            monthEvents[current.month]!.add(event);
-          }
-          current = DateTime(current.year, current.month + 1);
-        }
-      }
-
-      for (int i = 1; i <= 12; i++) {
-        final sortedEvents = ref
-            .read(tournamentSortingServiceProvider)
-            .sortCalendarEvents(monthEvents[i]!, prioritizeFavorites: false);
-
-        summaries.add(
-          MonthEventsSummary(
-            monthName: monthConverter.monthNumberToName(i),
-            monthNumber: i,
-            events: sortedEvents,
-          ),
+        return MonthEventsSummary(
+          monthName: monthData.monthName,
+          monthNumber: monthData.monthNumber,
+          events: events,
         );
-      }
+      }).toList();
 
       if (!mounted) return;
       state = AsyncValue.data(summaries);
     } catch (e, st) {
+      if (!mounted) return;
       state = AsyncValue.error(e, st);
     }
   }
 
-  bool _matchesFilters(
-    GroupEventCardModel event,
-    String searchQuery,
-    String? timeControl,
-  ) {
-    final normalizedFilterTimeControl = normalizeTimeControl(timeControl);
-
-    if (normalizedFilterTimeControl != null) {
-      final eventTime = normalizeTimeControl(event.timeControl);
-      if (eventTime != normalizedFilterTimeControl) {
-        return false;
-      }
-    }
-
-    if (searchQuery.isEmpty) return true;
-
-    return CalendarSearchHelper.matches(
-      title: event.title,
-      location: event.location,
-      searchQuery: searchQuery,
-      extraTokens: event.searchTerms,
-      startDate: event.startDate,
-      endDate: event.endDate,
+  GroupEventCardModel _fromEventData(CalendarEventData data) {
+    return GroupEventCardModel(
+      id: data.id,
+      title: data.title,
+      dates: data.dates,
+      maxAvgElo: data.maxAvgElo,
+      timeUntilStart: data.timeUntilStart,
+      tourEventCategory: TourEventCategory.values.firstWhere(
+        (e) => e.name == data.tourEventCategory,
+        orElse: () => TourEventCategory.completed,
+      ),
+      timeControl: data.timeControl ?? 'Standard',
+      endDate: data.endDate,
+      startDate: data.startDate,
+      location: data.location,
+      searchTerms: data.searchTerms,
+      eventSource: EventSource.values.firstWhere(
+        (e) => e.name == data.eventSource,
+        orElse: () => EventSource.lichessBroadcast,
+      ),
     );
   }
 
@@ -308,6 +327,7 @@ class CalendarSearchHelper {
 
   static final Map<String, String?> _countryCodeCache = {};
   static final LocationService _locationService = LocationService();
+  static final Map<String, List<String>> _tokenCache = {};
   static const List<String> _months = [
     'january',
     'february',
@@ -344,18 +364,38 @@ class CalendarSearchHelper {
     List<String>? extraTokens,
     DateTime? startDate,
     DateTime? endDate,
+    String? cacheKey,
   }) {
     try {
       final normalizedQuery = searchQuery.trim().toLowerCase();
       if (normalizedQuery.isEmpty) return true;
 
-      final tokens = _buildSearchTokens(
-        title: title,
-        location: location,
-        extraTokens: extraTokens,
-        startDate: startDate,
-        endDate: endDate,
-      );
+      // For short queries (< 3 chars), only check title and location directly
+      // to avoid expensive token building
+      if (normalizedQuery.length < 3) {
+        final titleLower = title.toLowerCase();
+        final locationLower = location?.toLowerCase() ?? '';
+        return titleLower.contains(normalizedQuery) ||
+               locationLower.contains(normalizedQuery);
+      }
+
+      final tokens =
+          cacheKey != null && _tokenCache.containsKey(cacheKey)
+              ? _tokenCache[cacheKey]!
+              : _buildSearchTokens(
+                title: title,
+                location: location,
+                extraTokens: extraTokens,
+                startDate: startDate,
+                endDate: endDate,
+                // Skip country parsing during search for performance
+                skipCountryParsing: normalizedQuery.length < 5,
+              );
+
+      if (cacheKey != null && !_tokenCache.containsKey(cacheKey)) {
+        _tokenCache[cacheKey] = tokens;
+      }
+
       return tokens.any((token) => token.contains(normalizedQuery));
     } catch (_) {
       // In case of unexpected parsing issues, avoid crashing the search flow
@@ -369,14 +409,18 @@ class CalendarSearchHelper {
     List<String>? extraTokens,
     DateTime? startDate,
     DateTime? endDate,
+    bool skipCountryParsing = false,
   }) {
     final tokens = <String>{};
 
-    void addTokenWithCountryData(String value) {
+    void addToken(String value, {bool includeCountryData = true}) {
       final normalized = value.trim().toLowerCase();
       if (normalized.isEmpty) return;
 
       tokens.add(normalized);
+
+      // Skip expensive country parsing when doing quick searches
+      if (!includeCountryData || skipCountryParsing) return;
 
       final countryCode = _getCountryCode(value);
       if (countryCode != null) {
@@ -388,7 +432,8 @@ class CalendarSearchHelper {
       }
     }
 
-    addTokenWithCountryData(title);
+    // Titles rarely match country names, so skip costly country parsing here
+    addToken(title, includeCountryData: false);
 
     void addDateTokens(DateTime date) {
       final index = date.month - 1;
@@ -407,13 +452,13 @@ class CalendarSearchHelper {
     }
 
     if (location != null && location.isNotEmpty) {
-      addTokenWithCountryData(location);
+      addToken(location);
     }
 
     if (extraTokens != null) {
       for (final token in extraTokens) {
         if (token.trim().isEmpty) continue;
-        addTokenWithCountryData(token);
+        addToken(token);
       }
     }
 

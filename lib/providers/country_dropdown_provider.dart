@@ -93,6 +93,56 @@ class SelectedCountryNotifier extends StateNotifier<AsyncValue<Country>> {
     );
   }
 
+  /// Clear local state only (for logout) without touching Supabase.
+  /// User's preference persists in Supabase for next login.
+  void clearLocalOnly() {
+    state = AsyncValue.data(CountryService().getAll().first);
+    unawaited(
+      ref.read(countryManRepository).clearLocalCacheOnly(),
+    );
+  }
+
+  /// Reload country selection from Supabase (source of truth)
+  /// Call this after user authentication to fetch their saved selection
+  Future<void> syncFromSupabase() async {
+    try {
+      final savedValue =
+          await ref.read(countryManRepository).getSavedCountryMan();
+
+      if (savedValue != null && savedValue.isNotEmpty) {
+        Country? matchedCountry;
+
+        // Check if it's a legacy name format (starts with 'LEGACY:')
+        if (savedValue.startsWith('LEGACY:')) {
+          final legacyName = savedValue.substring(7);
+          matchedCountry = CountryService().getAll().firstWhere(
+                (c) => c.name.toLowerCase() == legacyName.toLowerCase(),
+                orElse: () => CountryService().getAll().first,
+              );
+          // Migrate to new format
+          await ref
+              .read(countryManRepository)
+              .saveCountryMan(matchedCountry.countryCode);
+        } else {
+          matchedCountry = CountryService().findByCode(savedValue);
+        }
+
+        if (matchedCountry != null) {
+          state = AsyncValue.data(matchedCountry);
+          return;
+        }
+      }
+
+      // No saved country found in Supabase - use location-based detection
+      final countryCode =
+          await ref.read(locationRepositoryProvider).getCountryCode();
+      final country = CountryService().findByCode(countryCode);
+      state = AsyncValue.data(country ?? CountryService().getAll().first);
+    } catch (e) {
+      // Keep existing state on error
+    }
+  }
+
   String getCountryName(String countryCode) {
     final country = CountryService().findByCode(countryCode);
     return country?.name ?? CountryService().getAll().first.name;

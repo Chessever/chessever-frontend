@@ -10,6 +10,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/standing_score_card.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 
 class PlayerTourScreen extends ConsumerWidget {
   const PlayerTourScreen({super.key});
@@ -138,6 +139,9 @@ class PlayerTourScreen extends ConsumerWidget {
                                         ).pushNamed('/scorecard_screen');
                                       },
                                       onToggleFavorite: () async {
+                                        final allowed = await requireFullAuthGuard(context);
+                                        if (!allowed) return;
+
                                         ref
                                             .read(
                                               favoritePlayersNotifierProvider
