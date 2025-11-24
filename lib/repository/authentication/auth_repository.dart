@@ -122,6 +122,44 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
       ),
     );
 
+    final currentUser = _supabase.auth.currentUser;
+    final isAnonymous = currentUser?.isAnonymous == true;
+    if (isAnonymous) {
+      try {
+        unawaited(
+          AnalyticsService.instance.trackAuthEvent(
+            action: 'anonymous_upgrade_google_started',
+            method: 'google',
+          ),
+        );
+        final appUser = await _linkProviderForAnonymous(
+          OAuthProvider.google,
+          scopes: _scopes.join(' '),
+        );
+        unawaited(
+          AnalyticsService.instance.trackAuthEvent(
+            action: 'anonymous_upgrade_google',
+            method: 'google',
+            success: true,
+            user: appUser,
+          ),
+        );
+        return appUser;
+      } catch (e, st) {
+        await ref.read(errorLoggerProvider).logError(e, st);
+        state = AsyncValue.data(AppAuthState.error(_exceptionMessage(e)));
+        unawaited(
+          AnalyticsService.instance.trackAuthEvent(
+            action: 'anonymous_upgrade_google',
+            method: 'google',
+            success: false,
+            reason: e.toString(),
+          ),
+        );
+        rethrow;
+      }
+    }
+
     try {
       await _ensureGoogleInitialized();
     } catch (e, st) {
@@ -277,6 +315,30 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
     }
 
     try {
+      final currentUser = _supabase.auth.currentUser;
+      final isAnonymous = currentUser?.isAnonymous == true;
+      if (isAnonymous) {
+        unawaited(
+          AnalyticsService.instance.trackAuthEvent(
+            action: 'anonymous_upgrade_apple_started',
+            method: 'apple',
+          ),
+        );
+        final appUser = await _linkProviderForAnonymous(
+          OAuthProvider.apple,
+          scopes: 'name email',
+        );
+        unawaited(
+          AnalyticsService.instance.trackAuthEvent(
+            action: 'anonymous_upgrade_apple',
+            method: 'apple',
+            success: true,
+            user: appUser,
+          ),
+        );
+        return appUser;
+      }
+
       final available = await SignInWithApple.isAvailable();
       if (!available) {
         const message = 'Apple Sign-In is not available on this device.';
@@ -424,41 +486,111 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
   Future<void> signOut() async {
     state = const AsyncValue.data(AppAuthState.loading());
 
+    bool remoteSignOutSucceeded = false;
+    String? signOutErrorReason;
+
     try {
-      if (_googleInitCompleter != null) {
-        try {
-          await _ensureGoogleInitialized();
-          await _googleSignIn.disconnect();
-        } catch (_) {
-          // Ignore if already disconnected or not initialized.
-        }
-      }
+      await _signOutGoogle();
 
       await _supabase.auth.signOut();
+      remoteSignOutSucceeded = true;
+    } catch (e, st) {
+      signOutErrorReason = e.toString();
+      await ref.read(errorLoggerProvider).logError(e, st);
+      final rawMessage = _exceptionMessage(e);
+      final message = rawMessage.isEmpty
+          ? 'Failed to sign out. Please try again.'
+          : rawMessage;
+      // Log the error but continue with local sign-out to avoid sticky sessions.
+      state = AsyncValue.data(AppAuthState.error(message));
+    } finally {
+      // Always clear local session to prevent silent re-auth on next launch
+      try {
+        await _supabase.auth.signOut(scope: SignOutScope.local);
+      } catch (_) {
+        // Best-effort: ignore local sign-out failures
+      }
       await _sessionManager.clearLocalStorage();
       state = const AsyncValue.data(AppAuthState.unauthenticated());
       unawaited(
         AnalyticsService.instance.trackAuthEvent(
           action: 'sign_out',
           method: 'manual',
-          success: true,
+          success: remoteSignOutSucceeded,
+          reason: remoteSignOutSucceeded ? null : signOutErrorReason,
         ),
       );
+    }
+  }
+
+  /// Best-effort Google sign out to clear cached accounts and refresh tokens.
+  /// This runs even if the current session is anonymous to avoid sticky Google auth.
+  Future<void> _signOutGoogle() async {
+    try {
+      await _ensureGoogleInitialized();
+      await _googleSignIn.signOut();
+      await _googleSignIn.disconnect();
     } catch (e, st) {
-      await ref.read(errorLoggerProvider).logError(e, st);
-      final rawMessage = _exceptionMessage(e);
-      final message = rawMessage.isEmpty
-          ? 'Failed to sign out. Please try again.'
-          : rawMessage;
-      state = AsyncValue.data(AppAuthState.error(message));
-      unawaited(
-        AnalyticsService.instance.trackAuthEvent(
-          action: 'sign_out',
-          method: 'manual',
-          success: false,
-          reason: e.toString(),
-        ),
+      // Log but don't block overall sign-out flow.
+      await ref.read(errorLoggerProvider).logError(
+        'Google sign out failed: $e',
+        st,
       );
+    }
+  }
+
+  Future<AppUser> _linkProviderForAnonymous(
+    OAuthProvider provider, {
+    String? scopes,
+  }) async {
+    final currentUser = _supabase.auth.currentUser;
+    if (currentUser == null || currentUser.isAnonymous != true) {
+      throw Exception('No anonymous session to upgrade.');
+    }
+
+    final completer = Completer<AppUser>();
+    late final StreamSubscription<AuthState> sub;
+
+    sub = _supabase.auth.onAuthStateChange.listen((data) async {
+      final user = data.session?.user;
+      final session = data.session;
+      if (user != null && user.isAnonymous != true && session != null) {
+        await _sessionManager.saveSession(session, user);
+        final appUser = AppUser.fromSupabaseUser(user);
+        if (!completer.isCompleted) {
+          completer.complete(appUser);
+        }
+        await sub.cancel();
+      }
+    });
+
+    final launched = await _supabase.auth.linkIdentity(
+      provider,
+      scopes: scopes,
+    );
+
+    if (!launched) {
+      await sub.cancel();
+      state = const AsyncValue.data(
+        AppAuthState.error('Unable to start sign-in. Please try again.'),
+      );
+      throw Exception('Failed to launch ${provider.name} link flow.');
+    }
+
+    try {
+      final user = await completer.future.timeout(
+        const Duration(seconds: 90),
+      );
+      state = AsyncValue.data(AppAuthState.authenticated(user));
+      return user;
+    } on TimeoutException {
+      await sub.cancel();
+      state = const AsyncValue.data(
+        AppAuthState.error('Sign in timed out. Please try again.'),
+      );
+      throw Exception('Linking timed out. Please try again.');
+    } catch (e) {
+      await sub.cancel();
       rethrow;
     }
   }

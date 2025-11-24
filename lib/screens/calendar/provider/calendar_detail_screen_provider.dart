@@ -82,18 +82,6 @@ class _CalendarDetailScreenController
     final filterMode = ref.read(calendarFilterModeProvider);
     final liveIds = ref.read(liveBroadcastIdsProvider);
 
-    // If searching, rely on parent list which is already filtered server-side.
-    if (searchQuery.isNotEmpty) {
-      final filtered = [
-        ...groupBroadcast.map((t) => GroupEventCardModel.fromGroupBroadcast(t, liveIds)),
-        ...calendarEvents.map(GroupEventCardModel.fromCalendarEvent),
-      ];
-      state = AsyncValue.data(
-        ref.read(tournamentSortingServiceProvider).sortCalendarEvents(filtered),
-      );
-      return;
-    }
-
     // Get favorite event IDs if filtering by favorites
     final favoriteEventIds = <String>{};
     if (filterMode == CalendarFilterMode.favorites) {
@@ -107,91 +95,109 @@ class _CalendarDetailScreenController
     final today = DateTime(now.year, now.month, now.day);
 
     final monthStart = DateTime(filterArgs.year, filterArgs.month, 1);
-    final monthEnd = DateTime(filterArgs.year, filterArgs.month + 1, 0, 23, 59, 59);
+    final monthEnd = DateTime(
+      filterArgs.year,
+      filterArgs.month + 1,
+      0,
+      23,
+      59,
+      59,
+    );
 
     // Filter group broadcasts
-    final filteredBroadcasts = groupBroadcast.where((t) {
-      final range = resolveCalendarDateRange(t.dateStart, t.dateEnd);
-      if (range == null) return false;
+    final filteredBroadcasts =
+        groupBroadcast.where((t) {
+          final range = resolveCalendarDateRange(t.dateStart, t.dateEnd);
+          if (range == null) return false;
 
-      if (!_overlapsMonth(range, monthStart, monthEnd)) return false;
+          if (!_overlapsMonth(range, monthStart, monthEnd)) return false;
 
-      if (!_matchesFilters(
-        t.name,
-        null,
-        t.timeControl,
-        searchQuery,
-        timeControl,
-        extraTokens: t.search,
-      )) return false;
+          if (!_matchesFilters(
+            t.name,
+            null,
+            t.timeControl,
+            searchQuery,
+            timeControl,
+            startDate: t.dateStart,
+            endDate: t.dateEnd,
+            extraTokens: t.search,
+          ))
+            return false;
 
-      // Apply filter mode
-      if (filterMode == CalendarFilterMode.upcoming) {
-        final startDate = t.dateStart ?? t.dateEnd;
-        if (startDate == null || startDate.isBefore(today)) {
-          return false;
-        }
-      } else if (filterMode == CalendarFilterMode.favorites) {
-        final hasFavoritePlayers =
-            favoritePlayersCache[t.id]?.hasFavorites ?? false;
-        final isStarred = favoriteEventIds.contains(t.id);
-        if (!isStarred && !hasFavoritePlayers) {
-          _primeFavoritePlayers(t.id);
-          return false;
-        }
-      }
+          // Apply filter mode
+          if (filterMode == CalendarFilterMode.upcoming) {
+            final startDate = t.dateStart ?? t.dateEnd;
+            if (startDate == null || startDate.isBefore(today)) {
+              return false;
+            }
+          } else if (filterMode == CalendarFilterMode.favorites) {
+            final hasFavoritePlayers =
+                favoritePlayersCache[t.id]?.hasFavorites ?? false;
+            final isStarred = favoriteEventIds.contains(t.id);
+            if (!isStarred && !hasFavoritePlayers) {
+              _primeFavoritePlayers(t.id);
+              return false;
+            }
+          }
 
-      return true;
-    }).toList();
+          return true;
+        }).toList();
 
     // Filter calendar events
-    final filteredCalEvents = calendarEvents.where((e) {
-      final range = resolveCalendarDateRange(e.startDate, e.endDate);
-      if (range == null) return false;
+    final filteredCalEvents =
+        calendarEvents.where((e) {
+          final range = resolveCalendarDateRange(e.startDate, e.endDate);
+          if (range == null) return false;
 
-      if (!_overlapsMonth(range, monthStart, monthEnd)) return false;
+          if (!_overlapsMonth(range, monthStart, monthEnd)) return false;
 
-      if (!_matchesFilters(
-        e.name,
-        e.location,
-        e.timeControl,
-        searchQuery,
-        timeControl,
-        extraTokens: [
-          if (e.location != null) e.location!,
-          if (e.timeControl != null) e.timeControl!,
-        ],
-      )) return false;
+          if (!_matchesFilters(
+            e.name,
+            e.location,
+            e.timeControl,
+            searchQuery,
+            timeControl,
+            startDate: e.startDate,
+            endDate: e.endDate,
+            extraTokens: [
+              if (e.location != null) e.location!,
+              if (e.timeControl != null) e.timeControl!,
+            ],
+          ))
+            return false;
 
-      // Apply filter mode
-      if (filterMode == CalendarFilterMode.upcoming) {
-        final startDate = e.startDate ?? e.endDate;
-        if (startDate == null || startDate.isBefore(today)) {
-          return false;
-        }
-      } else if (filterMode == CalendarFilterMode.favorites) {
-        // Calendar events use generated ID format
-        final eventId = 'cal_event_${e.name.replaceAll(' ', '_').replaceAll(RegExp(r'[^\w\-]'), '').toLowerCase()}';
-        final hasFavoritePlayers =
-            favoritePlayersCache[eventId]?.hasFavorites ?? false;
-        final isStarred = favoriteEventIds.contains(eventId);
-        if (!isStarred && !hasFavoritePlayers) {
-          _primeFavoritePlayers(eventId);
-          return false;
-        }
-      }
+          // Apply filter mode
+          if (filterMode == CalendarFilterMode.upcoming) {
+            final startDate = e.startDate ?? e.endDate;
+            if (startDate == null || startDate.isBefore(today)) {
+              return false;
+            }
+          } else if (filterMode == CalendarFilterMode.favorites) {
+            // Calendar events use generated ID format
+            final eventId =
+                'cal_event_${e.name.replaceAll(' ', '_').replaceAll(RegExp(r'[^\w\-]'), '').toLowerCase()}';
+            final hasFavoritePlayers =
+                favoritePlayersCache[eventId]?.hasFavorites ?? false;
+            final isStarred = favoriteEventIds.contains(eventId);
+            if (!isStarred && !hasFavoritePlayers) {
+              _primeFavoritePlayers(eventId);
+              return false;
+            }
+          }
 
-      return true;
-    }).toList();
+          return true;
+        }).toList();
 
     // Convert to card models
-    final broadcastCards = filteredBroadcasts
-        .map((t) => GroupEventCardModel.fromGroupBroadcast(t, liveIds))
-        .toList();
+    final broadcastCards =
+        filteredBroadcasts
+            .map((t) => GroupEventCardModel.fromGroupBroadcast(t, liveIds))
+            .toList();
 
-    final calendarCards = filteredCalEvents
-        .map((e) => GroupEventCardModel.fromCalendarEvent(e))
-        .toList();
+    final calendarCards =
+        filteredCalEvents
+            .map((e) => GroupEventCardModel.fromCalendarEvent(e))
+            .toList();
 
     // Combine both lists
     final allCards = [...broadcastCards, ...calendarCards];
@@ -203,7 +209,7 @@ class _CalendarDetailScreenController
 
     final sortedEvents = ref
         .read(tournamentSortingServiceProvider)
-        .sortCalendarEvents(allCards);
+        .sortCalendarEvents(allCards, prioritizeFavorites: false);
 
     state = AsyncValue.data(sortedEvents);
   }
@@ -229,6 +235,8 @@ class _CalendarDetailScreenController
     String searchQuery,
     String? filterTimeControl, {
     List<String>? extraTokens,
+    DateTime? startDate,
+    DateTime? endDate,
   }) {
     final normalizedFilter = normalizeTimeControl(filterTimeControl);
     if (normalizedFilter != null) {
@@ -243,6 +251,8 @@ class _CalendarDetailScreenController
       location: location,
       searchQuery: searchQuery,
       extraTokens: extraTokens,
+      startDate: startDate,
+      endDate: endDate,
     );
   }
 
@@ -263,16 +273,14 @@ class _CalendarDetailScreenController
       if (id.startsWith('cal_event_')) {
         final sanitizedName = id.replaceFirst('cal_event_', '');
 
-        final event = calendarEvents.firstWhere(
-          (e) {
-            final eventSanitized = e.name
-                .replaceAll(' ', '_')
-                .replaceAll(RegExp(r'[^\w\-]'), '')
-                .toLowerCase();
-            return eventSanitized == sanitizedName;
-          },
-          orElse: () => throw Exception('Event not found'),
-        );
+        final event = calendarEvents.firstWhere((e) {
+          final eventSanitized =
+              e.name
+                  .replaceAll(' ', '_')
+                  .replaceAll(RegExp(r'[^\w\-]'), '')
+                  .toLowerCase();
+          return eventSanitized == sanitizedName;
+        }, orElse: () => throw Exception('Event not found'));
 
         if (context.mounted) {
           Navigator.of(context).push(

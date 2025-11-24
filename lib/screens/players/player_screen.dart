@@ -10,6 +10,7 @@ import 'package:chessever2/repository/local_storage/favorite/favourate_standings
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'widgets/player_card.dart';
 import 'providers/player_providers.dart';
 
@@ -265,6 +266,7 @@ class _PlayerList extends ConsumerWidget {
                 elo: player['rating'],
                 age: 0,
                 isFavorite: player['isFavorite'] ?? false,
+                onBeforeToggle: () => requireFullAuthGuard(context),
                 onFavoriteToggle:
                     () => _toggleFavorite(ref, player['fideId'].toString()),
                 index: index,

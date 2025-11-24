@@ -49,7 +49,11 @@ class GameRepository extends BaseRepository {
   }
 
   // Fetch games by tour ID
-  Future<List<Games>> getGamesByTourId(String tourId, {int? limit}) async {
+  Future<List<Games>> getGamesByTourId(
+    String tourId, {
+    int? limit,
+    int offset = 0,
+  }) async {
     return handleApiCall(() async {
       var query = supabase
           .from('games')
@@ -58,7 +62,7 @@ class GameRepository extends BaseRepository {
           .order('id', ascending: true);
 
       if (limit != null) {
-        query = query.limit(limit);
+        query = query.range(offset, offset + limit - 1);
       }
 
       final response = await query;
@@ -153,6 +157,7 @@ class GameRepository extends BaseRepository {
   Future<List<Games>> getGamesByPlayerName(
     String playerName, {
     int? limit,
+    int offset = 0,
   }) async {
     return handleApiCall(() async {
       debugPrint(
@@ -168,7 +173,7 @@ class GameRepository extends BaseRepository {
           .order('time_start', ascending: false);
 
       if (limit != null) {
-        query = query.limit(limit);
+        query = query.range(offset, offset + limit - 1);
       }
 
       debugPrint(
@@ -337,17 +342,27 @@ class GameRepository extends BaseRepository {
     int minElo = 2500,
     int limit = 50,
     int offset = 0,
+    bool onlyLive = false,
   }) async {
     return handleApiCall(() async {
       debugPrint('===== GameRepository: Fetching high ELO games (>= $minElo) =====');
 
       // Fetch more games than needed since we filter by ELO in Dart
       // (JSONB nested field filtering is complex in Supabase)
-      final response = await supabase
-          .from('games')
-          .select(_gameListSelectColumns)
+      dynamic query = supabase.from('games').select(_gameListSelectColumns);
+
+      if (onlyLive) {
+        query = query.eq('status', '*');
+      }
+
+      query = query
           .order('last_move_time', ascending: false)
-          .range(offset, offset + limit * 3 - 1); // Fetch 3x to compensate for ELO filter
+          .range(
+            offset,
+            offset + limit * (onlyLive ? 2 : 3) - 1, // Fetch extra to compensate for ELO filter
+          );
+
+      final response = await query;
 
       final jsonList =
           (response as List).map((item) => json.encode(item)).toList();

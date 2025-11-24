@@ -9,6 +9,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/event_card/event_image_provider.dart';
 import 'package:chessever2/widgets/heroine/no_padding_fade_shuttle_builder.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
@@ -541,7 +542,10 @@ class _StarWidget extends ConsumerWidget {
 
     // Star icon is tappable - user can favorite/unfavorite
     return InkWell(
-      onTap: () {
+      onTap: () async {
+        final allowed = await requireFullAuthGuard(context);
+        if (!allowed) return;
+
         HapticFeedbackService.pin();
 
         ref

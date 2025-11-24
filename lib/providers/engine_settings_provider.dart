@@ -352,6 +352,27 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
     return await _loadSettings();
   }
 
+  /// Ensure we have the latest settings before mutating them so we don't
+  /// overwrite other preferences when this notifier hasn't loaded yet.
+  Future<EngineSettings> _ensureSettingsLoaded() async {
+    final cached = state.valueOrNull;
+    if (cached != null) {
+      return cached;
+    }
+
+    try {
+      final loaded = await _loadSettings();
+      state = AsyncValue.data(loaded);
+      return loaded;
+    } catch (e, st) {
+      debugPrint('[EngineSettings] Error ensuring settings loaded: $e');
+      debugPrint('[EngineSettings] Stack: $st');
+      const fallback = EngineSettings();
+      state = const AsyncValue.data(fallback);
+      return fallback;
+    }
+  }
+
   Future<EngineSettings> _loadSettings() async {
     try {
       final userId = _supabase.auth.currentUser?.id;
@@ -434,7 +455,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
 
   /// Toggle engine analysis visibility (PV cards & arrows from computer icon)
   Future<void> toggleEngineAnalysis(bool value) async {
-    final currentState = state.valueOrNull ?? const EngineSettings();
+    final currentState = await _ensureSettingsLoaded();
     final newSettings = currentState.copyWith(showEngineAnalysis: value);
     debugPrint('🎯 EngineSettings: Engine analysis visibility set to $value');
     state = AsyncValue.data(newSettings);

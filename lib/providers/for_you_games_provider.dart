@@ -36,8 +36,8 @@ final groupedForYouGamesProvider = Provider.autoDispose<List<GroupedTournamentGa
   final grouped = <String, GroupedTournamentGames>{};
 
   for (final game in games) {
-    final tourId = game.tourId ?? 'unknown';
-    final tourName = game.tourSlug ?? 'Unknown Tournament';
+    final tourId = game.tourId;
+    final tourName = game.tourSlug;
 
     if (!grouped.containsKey(tourId)) {
       grouped[tourId] = GroupedTournamentGames(
@@ -100,22 +100,39 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   bool _isFetchingMore = false;
   DateTime? _lastFetchAt;
   static const int _pageSize = 30; // Increased for better pagination
-  static const int _livePageSize = 200; // grab enough live games up front to avoid late resorting
   int _emptyFetchCount = 0; // Track consecutive empty fetches
+  int _favoritePlayersOffset = 0;
+  final Map<String, int> _favoriteNameOffsets = {};
+  final Map<String, int> _favoriteEventOffsets = {};
+  int _countryOffset = 0;
+  int _highEloOffset = 0;
+  int _highEloLiveOffset = 0;
 
   Future<void> _initialize() async {
     await loadGames();
+  }
+
+  void _resetPaginationState() {
+    _allGames.clear();
+    _hasMore = true;
+    _isFetchingMore = false;
+    _emptyFetchCount = 0;
+    _favoritePlayersOffset = 0;
+    _favoriteNameOffsets.clear();
+    _favoriteEventOffsets.clear();
+    _countryOffset = 0;
+    _highEloOffset = 0;
+    _highEloLiveOffset = 0;
+    _lastFetchAt = null;
   }
 
   /// Load initial games
   Future<void> loadGames() async {
     try {
       state = const AsyncValue.loading();
-      _allGames.clear();
-      _hasMore = true;
-      _emptyFetchCount = 0; // Reset empty fetch counter
+      _resetPaginationState();
 
-      await _fetchGames(offset: 0);
+      await _fetchGames(isInitialLoad: true);
 
       state = AsyncValue.data(List<Games>.from(_allGames));
     } catch (e, stack) {
@@ -130,9 +147,7 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
 
     try {
       _isFetchingMore = true;
-      final currentLength = _allGames.length;
-
-      await _fetchGames(offset: currentLength);
+      await _fetchGames(isInitialLoad: false);
 
       state = AsyncValue.data(List<Games>.from(_allGames));
     } catch (e) {
@@ -149,7 +164,7 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   /// 2. Favorited events' games
   /// 3. Countryman games (with ELO filter)
   /// 4. High ELO games as fallback
-  Future<void> _fetchGames({required int offset}) async {
+  Future<void> _fetchGames({required bool isInitialLoad}) async {
     final repository = _ref.read(gameRepositoryProvider);
 
     // Get user preferences
@@ -162,21 +177,74 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     final countryState = _ref.read(countryDropdownProvider);
     final selectedCountry = countryState.value;
 
-    debugPrint('[ForYouGames] === Fetching games (offset: $offset) ===');
+    debugPrint('[ForYouGames] === Fetching games (page: ${_allGames.length}) ===');
     debugPrint('[ForYouGames] Favorites: ${favorites.length}');
     debugPrint('[ForYouGames] Favorite events: ${favoriteEvents.length}');
     debugPrint('[ForYouGames] Country: ${selectedCountry?.countryCode}');
 
     final newGames = <Games>[];
+    final seenGameIds = _allGames.map((g) => g.id).toSet();
 
-    // === LIVE GAMES (absolute priority) ===
-    if (offset == 0) {
+    // Helper to filter live games on loadMore and deduplicate within this fetch.
+    void addUniqueGames(List<Games> games) {
+      final filteredGames =
+          isInitialLoad ? games : games.where((g) => g.status != '*');
+
+      for (final game in filteredGames) {
+        if (seenGameIds.add(game.id)) {
+          newGames.add(game);
+        }
+      }
+    }
+
+    // === LIVE GAMES (absolute priority, but only relevant sources) ===
+    if (isInitialLoad) {
+      // Live games for favorited players
+      final fideIds = favorites
+          .where((f) => f.fideId != null && f.fideId!.isNotEmpty)
+          .map((f) => f.fideId!)
+          .toList();
+      if (fideIds.isNotEmpty) {
+        try {
+          final liveFavPlayers = await repository.getLiveGamesForPlayers(
+            fideIds: fideIds,
+            limit: _pageSize,
+          );
+          addUniqueGames(liveFavPlayers);
+          debugPrint('[ForYouGames] Fetched ${liveFavPlayers.length} LIVE games for favorited players');
+        } catch (e) {
+          debugPrint('[ForYouGames] Error fetching live games for favorites: $e');
+        }
+      }
+
+      // Live games from favorited events
+      if (favoriteEvents.isNotEmpty) {
+        try {
+          final liveEventGames = await repository.getLiveGamesForEvents(
+            eventIds: favoriteEvents.map((e) => e.eventId).toList(),
+            limit: _pageSize,
+          );
+          addUniqueGames(liveEventGames);
+          debugPrint('[ForYouGames] Fetched ${liveEventGames.length} LIVE games from favorited events');
+        } catch (e) {
+          debugPrint('[ForYouGames] Error fetching live event games: $e');
+        }
+      }
+
+      // Live high-ELO games (fallback, least priority but still relevant)
       try {
-        final liveTop = await repository.getTopLiveGames(limit: _livePageSize);
-        newGames.addAll(liveTop);
-        debugPrint('[ForYouGames] Fetched ${liveTop.length} top live games (global)');
+        final liveHighElo = await repository.getHighEloGames(
+          minElo: 2500,
+          limit: _pageSize,
+          offset: _highEloLiveOffset,
+          onlyLive: true,
+        );
+        // keep offset in sync with multiplier inside repo when live-only
+        _highEloLiveOffset += _pageSize * 2;
+        addUniqueGames(liveHighElo);
+        debugPrint('[ForYouGames] Fetched ${liveHighElo.length} LIVE high ELO games');
       } catch (e) {
-        debugPrint('[ForYouGames] Error fetching top live games: $e');
+        debugPrint('[ForYouGames] Error fetching live high ELO games: $e');
       }
     }
 
@@ -193,12 +261,14 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
 
       if (fideIds.isNotEmpty) {
         try {
+          final favPlayerLimit = _pageSize * 2;
           final favPlayerGames = await repository.getGamesByMultipleFideIds(
             fideIds: fideIds,
-            limit: _pageSize * 2, // Fetch more to compensate for filtering
-            offset: offset,
+            limit: favPlayerLimit, // Fetch more to compensate for filtering
+            offset: _favoritePlayersOffset,
           );
-          newGames.addAll(favPlayerGames);
+          _favoritePlayersOffset += favPlayerLimit;
+          addUniqueGames(favPlayerGames);
           debugPrint('[ForYouGames] Fetched ${favPlayerGames.length} favorited player games');
         } catch (e) {
           debugPrint('[ForYouGames] Error fetching favorited player games: $e');
@@ -213,11 +283,16 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
 
       for (final name in playerNames) {
         try {
+          final perNameLimit = (_pageSize ~/ playerNames.length.clamp(1, 5));
+          final limit = perNameLimit > 0 ? perNameLimit : 1;
+          final offsetForName = _favoriteNameOffsets[name] ?? 0;
           final nameGames = await repository.getGamesByPlayerName(
             name,
-            limit: _pageSize ~/ playerNames.length.clamp(1, 10),
+            limit: limit,
+            offset: offsetForName,
           );
-          newGames.addAll(nameGames);
+          _favoriteNameOffsets[name] = offsetForName + limit;
+          addUniqueGames(nameGames);
         } catch (e) {
           debugPrint('[ForYouGames] Error fetching games for player $name: $e');
         }
@@ -232,26 +307,19 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
 
       debugPrint('[ForYouGames] Fetching games for ${eventIds.length} favorited events');
 
-      // First try to get live games from favorited events
-      try {
-        final liveEventGames = await repository.getLiveGamesForEvents(
-          eventIds: eventIds,
-          limit: _pageSize ~/ 2,
-        );
-        newGames.addAll(liveEventGames);
-        debugPrint('[ForYouGames] Fetched ${liveEventGames.length} live games from favorited events');
-      } catch (e) {
-        debugPrint('[ForYouGames] Error fetching live event games: $e');
-      }
-
       // Then get regular games from favorited events
       for (final eventId in eventIds.take(3)) { // Limit to avoid too many queries
         try {
+          final perEventLimit = (_pageSize ~/ eventIds.length.clamp(1, 5));
+          final limit = perEventLimit > 0 ? perEventLimit : _pageSize;
+          final offsetForEvent = _favoriteEventOffsets[eventId] ?? 0;
           final eventGames = await repository.getGamesByTourId(
             eventId,
-            limit: _pageSize ~/ eventIds.length.clamp(1, 5),
+            limit: limit,
+            offset: offsetForEvent,
           );
-          newGames.addAll(eventGames);
+          _favoriteEventOffsets[eventId] = offsetForEvent + limit;
+          addUniqueGames(eventGames);
         } catch (e) {
           debugPrint('[ForYouGames] Error fetching games for event $eventId: $e');
         }
@@ -263,13 +331,15 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     // (Live games within this category are prioritized in sorting)
     if (selectedCountry != null && selectedCountry.countryCode.isNotEmpty) {
       try {
+        final countryLimit = _pageSize;
         final countryGames = await repository.getCountrymanGamesWithMinElo(
           countryCode: selectedCountry.countryCode,
           minElo: 2300, // Only show countryman games with ELO > 2300
-          limit: _pageSize, // Increased from _pageSize ~/ 2
-          offset: offset,
+          limit: countryLimit, // Increased from _pageSize ~/ 2
+          offset: _countryOffset,
         );
-        newGames.addAll(countryGames);
+        _countryOffset += countryLimit * 2; // Matches the multiplier used in the query
+        addUniqueGames(countryGames);
         debugPrint('[ForYouGames] Fetched ${countryGames.length} countryman games (ELO > 2300)');
       } catch (e) {
         debugPrint('[ForYouGames] Error fetching countryman games: $e');
@@ -280,30 +350,22 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     // Only games where at least one player has ELO >= 2500
     // (Live games within this category are prioritized in sorting)
     try {
+      final highEloLimit = _pageSize;
       final highEloGames = await repository.getHighEloGames(
         minElo: 2500, // Only show games with 2500+ ELO players
-        limit: _pageSize, // Increased from _pageSize ~/ 2 for better coverage
-        offset: offset,
+        limit: highEloLimit, // Increased from _pageSize ~/ 2 for better coverage
+        offset: _highEloOffset,
       );
-      newGames.addAll(highEloGames);
+      // Keep offset in sync with the multiplier inside getHighEloGames (3x)
+      _highEloOffset += highEloLimit * 3;
+      addUniqueGames(highEloGames);
       debugPrint('[ForYouGames] Fetched ${highEloGames.length} high ELO (2500+) games');
     } catch (e) {
       debugPrint('[ForYouGames] Error fetching high ELO games: $e');
     }
 
-    // For subsequent pages, we still include finished games but skip live games
-    // to prevent late reordering. However, we're more lenient with filtering.
-    final filteredNewGames = offset == 0
-        ? newGames
-        : newGames.where((g) => g.status != '*').toList();
-
-    // Remove duplicates by game ID
-    final gameIds = _allGames.map((g) => g.id).toSet();
-    final uniqueNewGames =
-        filteredNewGames.where((g) => !gameIds.contains(g.id)).toList();
-
-    if (uniqueNewGames.isNotEmpty) {
-      _allGames.addAll(uniqueNewGames);
+    if (newGames.isNotEmpty) {
+      _allGames.addAll(newGames);
       _emptyFetchCount = 0; // Reset empty fetch counter
 
       // Sort games with heterogeneous distribution

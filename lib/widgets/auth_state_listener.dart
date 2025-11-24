@@ -4,9 +4,9 @@ import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/providers/pending_favorite_players_provider.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
-import 'package:chessever2/screens/authentication/auth_screen_provider.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/repository/authentication/model/auth_state.dart';
+import 'package:chessever2/repository/local_storage/country_man/country_man_repository.dart';
 import 'package:chessever2/repository/local_storage/onboarding/onboarding_repository.dart';
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
 import 'package:chessever2/utils/favorites_migration.dart';
@@ -71,6 +71,9 @@ class AuthStateListener extends ConsumerWidget {
 
                   // Step 1: Migrate old SharedPreferences favorites (runs only once)
                   await FavoritesMigration.migrateIfNeeded();
+
+                  // Step 1b: Push locally selected country to Supabase if it was chosen while unauthenticated.
+                  await ref.read(countryManRepository).syncLocalSelectionToSupabase();
 
                   // Step 2: Flush any pending (pre-auth) favorite toggles
                   await ref
