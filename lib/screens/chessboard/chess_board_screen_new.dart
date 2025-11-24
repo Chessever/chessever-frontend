@@ -45,6 +45,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/divider_widget.dart';
 // import 'package:chessever2/widgets/smooth_dialog.dart'; // UNUSED: Removed with old dialog
 import 'package:flutter_svg/svg.dart';
@@ -1358,6 +1359,9 @@ class _AppBar extends ConsumerStatefulWidget implements PreferredSizeWidget {
 
 class _AppBarState extends ConsumerState<_AppBar> {
   Future<void> _showSaveAnalysisDialog() async {
+    final allowed = await requireFullAuthGuard(context);
+    if (!allowed) return;
+
     final params = ChessBoardProviderParams(
       game: widget.game,
       index: widget.currentGameIndex,

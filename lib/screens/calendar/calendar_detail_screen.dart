@@ -99,7 +99,9 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
                                     border: Border.all(
                                       color:
                                           focusNode.hasFocus
-                                              ? kPrimaryColor.withValues(alpha: 0.5)
+                                              ? kPrimaryColor.withValues(
+                                                alpha: 0.5,
+                                              )
                                               : Colors.transparent,
                                       width: 2.0,
                                     ),
@@ -107,8 +109,9 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
                                         focusNode.hasFocus
                                             ? [
                                               BoxShadow(
-                                                color: kPrimaryColor
-                                                    .withValues(alpha: 0.15),
+                                                color: kPrimaryColor.withValues(
+                                                  alpha: 0.15,
+                                                ),
                                                 blurRadius: 12,
                                                 offset: const Offset(0, 4),
                                               ),
@@ -117,21 +120,26 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
                                   ),
                                   child: SimpleSearchBar(
                                     controller: searchController,
-                                    hintText: 'Search events or country',
+                                    hintText: 'Search events',
                                     focusNode: focusNode,
                                     onCloseTap: () {
                                       searchController.clear();
                                       focusNode.unfocus();
                                       ref
-                                          .read(calendarSearchQueryProvider.notifier)
+                                          .read(
+                                            calendarSearchQueryProvider
+                                                .notifier,
+                                          )
                                           .state = '';
                                     },
                                     onChanged:
-                                        (query) => ref
-                                            .read(
-                                              calendarSearchQueryProvider.notifier,
-                                            )
-                                            .state = query,
+                                        (query) =>
+                                            ref
+                                                .read(
+                                                  calendarSearchQueryProvider
+                                                      .notifier,
+                                                )
+                                                .state = query,
                                     onOpenFilter: null,
                                   ),
                                 ),

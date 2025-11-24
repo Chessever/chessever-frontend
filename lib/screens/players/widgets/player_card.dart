@@ -18,6 +18,7 @@ class PlayerCard extends StatefulWidget {
     required this.age,
     this.isFavorite = false,
     this.onFavoriteToggle,
+    this.onBeforeToggle,
 
     required this.index,
     required this.isFirst,
@@ -32,6 +33,7 @@ class PlayerCard extends StatefulWidget {
   final int age;
   final bool isFavorite;
   final VoidCallback? onFavoriteToggle;
+  final Future<bool> Function()? onBeforeToggle;
   final int index;
   final bool isFirst;
   final bool isLast;
@@ -78,21 +80,26 @@ class _PlayerCardState extends State<PlayerCard>
     super.dispose();
   }
 
-  void _toggleFavorite() {
-    if (widget.onFavoriteToggle != null) {
-      setState(() {
-        _isFavorite = !_isFavorite;
-      });
-
-      // Animate heart icon
-      if (_isFavorite) {
-        _animationController.forward().then((_) {
-          _animationController.reverse();
-        });
-      }
-
-      widget.onFavoriteToggle!();
+  Future<void> _toggleFavorite() async {
+    if (widget.onBeforeToggle != null) {
+      final allowed = await widget.onBeforeToggle!();
+      if (!allowed) return;
     }
+
+    if (widget.onFavoriteToggle == null) return;
+
+    setState(() {
+      _isFavorite = !_isFavorite;
+    });
+
+    // Animate heart icon
+    if (_isFavorite) {
+      _animationController.forward().then((_) {
+        _animationController.reverse();
+      });
+    }
+
+    widget.onFavoriteToggle!();
   }
 
   @override
@@ -193,7 +200,9 @@ class _PlayerCardState extends State<PlayerCard>
 
             // Favorite icon with animated scale effect
             GestureDetector(
-              onTap: _toggleFavorite,
+              onTap: () {
+                _toggleFavorite();
+              },
               behavior: HitTestBehavior.opaque,
               child: SizedBox(
                 width: 32.w,

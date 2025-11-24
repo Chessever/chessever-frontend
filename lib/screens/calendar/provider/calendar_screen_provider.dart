@@ -55,7 +55,10 @@ class _CalendarScreenNotifier
       // Listen to filter changes
       ref.listen(calendarSearchQueryProvider, (_, __) => _applyFilters());
       ref.listen(calendarTimeControlProvider, (_, __) => _applyFilters());
-      ref.listen(calendarFilterModeProvider, (prev, next) => _applyFilters(showLoading: prev != next));
+      ref.listen(
+        calendarFilterModeProvider,
+        (prev, next) => _applyFilters(showLoading: prev != next),
+      );
       ref.listen(selectedYearProvider, (_, __) => _fetchYearEvents());
       ref.listen(favoriteEventsProvider, (_, __) => _applyFilters());
       ref.listen(favoritePlayersNotifierProvider, (_, __) => _applyFilters());
@@ -65,6 +68,12 @@ class _CalendarScreenNotifier
     } catch (e, st) {
       state = AsyncValue.error(e, st);
     }
+  }
+
+  @override
+  void dispose() {
+    _debounceTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _fetchYearEvents() async {
@@ -186,7 +195,7 @@ class _CalendarScreenNotifier
       for (int i = 1; i <= 12; i++) {
         final sortedEvents = ref
             .read(tournamentSortingServiceProvider)
-            .sortCalendarEvents(monthEvents[i]!);
+            .sortCalendarEvents(monthEvents[i]!, prioritizeFavorites: false);
 
         summaries.add(
           MonthEventsSummary(
@@ -197,6 +206,7 @@ class _CalendarScreenNotifier
         );
       }
 
+      if (!mounted) return;
       state = AsyncValue.data(summaries);
     } catch (e, st) {
       state = AsyncValue.error(e, st);
@@ -224,6 +234,8 @@ class _CalendarScreenNotifier
       location: event.location,
       searchQuery: searchQuery,
       extraTokens: event.searchTerms,
+      startDate: event.startDate,
+      endDate: event.endDate,
     );
   }
 
@@ -252,6 +264,7 @@ class _CalendarScreenNotifier
       ),
     );
 
+    if (!mounted) return;
     state = AsyncValue.data(summaries);
   }
 
@@ -295,28 +308,67 @@ class CalendarSearchHelper {
 
   static final Map<String, String?> _countryCodeCache = {};
   static final LocationService _locationService = LocationService();
+  static const List<String> _months = [
+    'january',
+    'february',
+    'march',
+    'april',
+    'may',
+    'june',
+    'july',
+    'august',
+    'september',
+    'october',
+    'november',
+    'december',
+  ];
+  static const List<String> _monthShort = [
+    'jan',
+    'feb',
+    'mar',
+    'apr',
+    'may',
+    'jun',
+    'jul',
+    'aug',
+    'sep',
+    'oct',
+    'nov',
+    'dec',
+  ];
 
   static bool matches({
     required String title,
     required String searchQuery,
     String? location,
     List<String>? extraTokens,
+    DateTime? startDate,
+    DateTime? endDate,
   }) {
-    final normalizedQuery = searchQuery.trim().toLowerCase();
-    if (normalizedQuery.isEmpty) return true;
+    try {
+      final normalizedQuery = searchQuery.trim().toLowerCase();
+      if (normalizedQuery.isEmpty) return true;
 
-    final tokens = _buildSearchTokens(
-      title: title,
-      location: location,
-      extraTokens: extraTokens,
-    );
-    return tokens.any((token) => token.contains(normalizedQuery));
+      final tokens = _buildSearchTokens(
+        title: title,
+        location: location,
+        extraTokens: extraTokens,
+        startDate: startDate,
+        endDate: endDate,
+      );
+      return tokens.any((token) => token.contains(normalizedQuery));
+    } catch (_) {
+      // In case of unexpected parsing issues, avoid crashing the search flow
+      return false;
+    }
   }
 
   static List<String> _buildSearchTokens({
     required String title,
     String? location,
     List<String>? extraTokens,
+    DateTime? startDate,
+    DateTime? endDate,
   }) {
     final tokens = <String>{};
 
@@ -337,6 +389,22 @@ class CalendarSearchHelper {
     }
 
     addTokenWithCountryData(title);
+
+    void addDateTokens(DateTime date) {
+      final index = date.month - 1;
+      if (index >= 0 && index < _months.length) {
+        tokens.add(_months[index]);
+        tokens.add(_monthShort[index]);
+      }
+      tokens.add(date.year.toString());
+    }
+
+    if (startDate != null) {
+      addDateTokens(startDate);
+    }
+    if (endDate != null) {
+      addDateTokens(endDate);
+    }
 
     if (location != null && location.isNotEmpty) {
       addTokenWithCountryData(location);
@@ -377,7 +445,9 @@ class CalendarSearchHelper {
             break;
           }
 
-          final fromName = _locationService.getValidCountryCodeFromName(trimmed);
+          final fromName = _locationService.getValidCountryCodeFromName(
+            trimmed,
+          );
           if (fromName.isNotEmpty) {
             code = fromName;
             break;

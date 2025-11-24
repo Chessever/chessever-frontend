@@ -46,6 +46,7 @@ class TournamentSortingService {
   List<GroupEventCardModel> sortCalendarEvents(
     List<GroupEventCardModel> tours, {
     Map<String, EventFavoritePlayers>? eventFavoritePlayersMap,
+    bool prioritizeFavorites = true,
   }) {
     final filteredList = tours.toList();
 
@@ -60,6 +61,10 @@ class TournamentSortingService {
       if (dateB != null) return 1;
       return 0;
     });
+
+    if (!prioritizeFavorites) {
+      return filteredList;
+    }
 
     // Apply favorite sorting (favorited events on top)
     return _applyFavoriteSorting(
@@ -289,7 +294,8 @@ class TournamentSortingService {
 
     // If favorites are loading or failed, still check for hearted events
     final favorites = favoritesAsync.valueOrNull;
-    final favoriteIds = favorites
+    final favoriteIds =
+        favorites
             ?.map((e) => e.eventId)
             .where((id) => id.isNotEmpty)
             .toList() ??

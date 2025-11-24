@@ -7,12 +7,14 @@ import 'package:flutter/material.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 
 class CountryDropdown extends ConsumerStatefulWidget {
   final String selectedCountryCode;
   final ValueChanged<Country> onChanged;
   final String? hintText;
   final bool isLoading;
+  final bool requireAuthToChange;
 
   const CountryDropdown({
     super.key,
@@ -20,6 +22,7 @@ class CountryDropdown extends ConsumerStatefulWidget {
     required this.onChanged,
     this.hintText,
     this.isLoading = false,
+    this.requireAuthToChange = true,
   });
 
   @override
@@ -149,8 +152,13 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
             onChanged:
                 widget.isLoading
                     ? null
-                    : (value) {
+                    : (value) async {
                       if (value != null) {
+                        if (widget.requireAuthToChange) {
+                          final allowed = await requireFullAuthGuard(context);
+                          if (!allowed) return;
+                        }
+
                         final country = allCountries.firstWhere(
                           (c) => c.countryCode == value,
                         );

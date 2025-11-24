@@ -1,4 +1,3 @@
-import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/screens/authentication/auth_screen.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
@@ -15,18 +14,17 @@ import 'widget/bottom_nav_bar.dart';
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
-  static final GlobalKey<ScaffoldState> scaffoldKey =
-      GlobalKey<ScaffoldState>();
-
   @override
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      key: HomeScreen.scaffoldKey,
+      key: _scaffoldKey,
       drawer: HamburgerMenu(
         callbacks: HamburgerMenuCallbacks(
           onPlayersPressed: () {
@@ -73,20 +71,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           },
 
           onLogoutPressed: () async {
-            final currentUser = ref.read(currentUserProvider);
-
-            // If user is anonymous, just navigate to login page (don't sign out)
-            if (currentUser?.isAnonymous == true) {
-              Navigator.of(context).pop(); // Close drawer
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(
-                  builder: (context) => const AuthScreen(),
-                ),
-              );
-              return;
-            }
-
-            // For authenticated users, show confirmation dialog
             await showDialog<void>(
               context: context,
               builder:

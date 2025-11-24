@@ -202,8 +202,7 @@ class GroupEventScreen extends HookConsumerWidget {
                               },
                             ),
                       ),
-                  onProfileTap:
-                      () => HomeScreen.scaffoldKey.currentState?.openDrawer(),
+                  onProfileTap: () => Scaffold.maybeOf(context)?.openDrawer(),
                   onClearSearchField: () {
                     ref.refresh(groupEventScreenProvider);
                   },

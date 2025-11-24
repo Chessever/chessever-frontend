@@ -1576,6 +1576,7 @@ class _CountryCard extends StatelessWidget {
                 .read(countryDropdownProvider.notifier)
                 .selectCountry(newCountry.countryCode);
           },
+          requireAuthToChange: false,
         ),
       ),
     );
@@ -1652,4 +1653,3 @@ class _PrimaryButton extends HookWidget {
     );
   }
 }
-

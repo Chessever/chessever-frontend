@@ -357,6 +357,7 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
                                         onChanged: (_) {},
                                         hintText: 'Loading country...',
                                         isLoading: true,
+                                        requireAuthToChange: false,
                                       ),
                                   error:
                                       (err, _) => AppButton(
@@ -382,6 +383,7 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
                                               newCountry.countryCode,
                                             );
                                       },
+                                      requireAuthToChange: false,
                                     );
                                   },
                                 ),
