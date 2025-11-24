@@ -161,6 +161,7 @@ class ChessBoardScreenNotifierNew
         isEvaluating: false,
         isAnalysisMode: true,
         showEngineAnalysis: showEngineAnalysis, // Load from settings
+        showPrincipalVariations: showEngineAnalysis, // Keep PV visibility in sync with engine toggle
         isBoardFlipped: isBoardFlipped, // Restore from saved analysis
         variationComments: Map<String, String>.from(variationComments), // Restore comments
       ),
@@ -717,6 +718,21 @@ class ChessBoardScreenNotifierNew
                 evaluation: null,
                 isEvaluating: true,
                 isAnalysisMode: true,
+                // Preserve engine visibility when building fresh state
+                showEngineAnalysis:
+                    currentState?.showEngineAnalysis ??
+                    ref
+                        .read(engineSettingsProviderNew)
+                        .valueOrNull
+                        ?.showEngineAnalysis ??
+                    true,
+                showPrincipalVariations:
+                    currentState?.showPrincipalVariations ??
+                    ref
+                        .read(engineSettingsProviderNew)
+                        .valueOrNull
+                        ?.showEngineAnalysis ??
+                    true,
                 analysisState: AnalysisBoardState(
                   startingPosition: startingPos,
                   currentMoveIndex: newMoveIndex,

@@ -2036,7 +2036,7 @@ class _AnalysisGameBody extends ConsumerWidget {
         final useCompactLayout = availableHeight < compactThreshold;
 
         final pvSection = <Widget>[];
-        if (state.isAnalysisMode && state.showPrincipalVariations) {
+        if (state.isAnalysisMode && state.showEngineAnalysis && state.showPrincipalVariations) {
           pvSection.add(SizedBox(height: 2.h));
           final pvList = _PrincipalVariationList(
             index: index,
@@ -2377,11 +2377,12 @@ class _AnalysisBoard extends ConsumerWidget {
       orientation: isFlipped ? Side.black : Side.white,
       fen: chessBoardState.analysisState.position.fen,
       lastMove: chessBoardState.analysisState.lastMove,
-      // Only show shapes (arrows) when BOTH conditions are met:
-      // 1. Principal variations are enabled in board state
-      // 2. PV arrows are enabled in engine settings
+      // Only show shapes (arrows) when ALL conditions are met:
+      // 1. Engine analysis is enabled (master toggle)
+      // 2. Principal variations are enabled in board state
+      // 3. PV arrows are enabled in engine settings
       shapes:
-          (chessBoardState.showPrincipalVariations && showPvArrows)
+          (chessBoardState.showEngineAnalysis && chessBoardState.showPrincipalVariations && showPvArrows)
               ? chessBoardState.shapes
               : const ISet.empty(),
       game: GameData(

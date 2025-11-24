@@ -621,15 +621,17 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
           1, // keep minimal; extra penalty applied below to make it rarer
     };
 
-    // Helper to compute small, comparable bonuses (keeps the algorithm predictable)
-    double _recencyBonus(DateTime? lastMoveTime) {
-      if (lastMoveTime == null) return 0;
+    // Helper to compute a strong freshness boost; live games get an extra layer
+    double _recencyBonus(DateTime? lastMoveTime, {required bool isLive}) {
+      if (lastMoveTime == null) return isLive ? 120.0 : 0.0;
       final minutesAgo = DateTime.now().difference(lastMoveTime).inMinutes;
-      if (minutesAgo <= 10) return 30; // Very fresh
-      if (minutesAgo <= 30) return 18;
-      if (minutesAgo <= 90) return 8;
-      if (minutesAgo <= 180) return 4;
-      return 0;
+
+      if (minutesAgo <= 3) return isLive ? 550.0 : 420.0;
+      if (minutesAgo <= 15) return isLive ? 420.0 : 320.0;
+      if (minutesAgo <= 60) return isLive ? 260.0 : 200.0;
+      if (minutesAgo <= 240) return isLive ? 170.0 : 140.0;
+      if (minutesAgo <= 720) return isLive ? 90.0 : 70.0;
+      return isLive ? 40.0 : 20.0;
     }
 
     double _eloBonus(int maxElo) {
@@ -677,14 +679,11 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       // Build a compact score: category weight dominates, live gives an extra bump,
       // recency/ELO provide tie-breakers without causing random spikes.
       final baseWeight = (categoryPriority[category] ?? 0) * 100.0;
-      final liveBonus =
-          isLive
-              ? 60.0
-              : 0.0; // Enough to surface live games without breaking category order
+      final liveBonus = isLive ? 250.0 : 0.0; // Strong push for live games
       final score =
           baseWeight +
           liveBonus +
-          _recencyBonus(game.lastMoveTime) +
+          _recencyBonus(game.lastMoveTime, isLive: isLive) +
           _eloBonus(maxElo);
 
       final scored = _ScoredGame(

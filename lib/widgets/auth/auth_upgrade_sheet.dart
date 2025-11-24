@@ -29,6 +29,17 @@ Future<bool> showAuthUpgradeSheet({
 
 /// Thin guard used by protected actions to block guests.
 Future<bool> requireFullAuthGuard(BuildContext context) async {
+  // Never block onboarding/auth flows - those screens already present the choice.
+  final routeName = ModalRoute.of(context)?.settings.name ?? '';
+  const onboardingRoutes = {
+    '/onboarding',
+    '/player_selection_screen',
+    '/auth_screen',
+  };
+  if (onboardingRoutes.contains(routeName)) {
+    return true;
+  }
+
   final user = Supabase.instance.client.auth.currentUser;
   final isAuthenticated = user != null && user.isAnonymous != true;
   if (isAuthenticated) return true;
