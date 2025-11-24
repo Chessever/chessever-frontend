@@ -56,6 +56,7 @@ class PlayerPaginationNotifier
   bool hasMore = true;
   String _search = '';
   String? _countryCode;
+  int _searchVersion = 0;
 
   /// Expose fetching state for UI loading indicators
   bool get isFetching => _isFetching;
@@ -65,23 +66,36 @@ class PlayerPaginationNotifier
         super(const AsyncValue.loading());
 
   Future<void> initFirstPage() async {
-    if (_isFetching) return;
+    final currentVersion = ++_searchVersion;
     _isFetching = true;
     state = const AsyncValue.loading();
     try {
       await _viewModel.initialize(clear: true, isOnboarding: _isOnboarding);
+
+      // Check if a newer search was started while we were initializing
+      if (currentVersion != _searchVersion) return;
+
       final country = _search.isEmpty ? _countryCode : null;
       final firstBatch = await _viewModel.fetchNextPage(
         search: _search,
         countryCode: country,
       );
+
+      // Check again if a newer search was started
+      if (currentVersion != _searchVersion) return;
+
       final enriched = _mergeWithFavorites(_filterRealPlayers(firstBatch));
       state = AsyncValue.data(enriched);
       hasMore = enriched.isNotEmpty;
     } catch (e) {
-      state = AsyncValue.error(e, StackTrace.current);
+      // Only set error if this is still the current search
+      if (currentVersion == _searchVersion) {
+        state = AsyncValue.error(e, StackTrace.current);
+      }
     } finally {
-      _isFetching = false;
+      if (currentVersion == _searchVersion) {
+        _isFetching = false;
+      }
     }
   }
 
@@ -175,7 +189,6 @@ class PlayerPaginationNotifier
 
   Future<void> _resetAndFetch() async {
     hasMore = true;
-    _isFetching = false;
     await initFirstPage();
   }
 
