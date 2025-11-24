@@ -205,6 +205,9 @@ String _lineToPgn({
     }
 
     buffer.write('${move.san} ');
+    if (move.clockTime != null && move.clockTime!.isNotEmpty) {
+      buffer.write('{ [%clk ${move.clockTime}] } ');
+    }
 
     final variations = move.variations ?? const <ChessLine>[];
     for (final variation in variations) {

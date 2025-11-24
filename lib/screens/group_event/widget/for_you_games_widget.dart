@@ -24,10 +24,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// - Animations only play once (not on rebuild) via AnimatedSwitcher pattern
 /// - AutoDispose providers clean up when tab changes
 class ForYouGamesWidget extends HookConsumerWidget {
-  const ForYouGamesWidget({
-    super.key,
-    required this.scrollController,
-  });
+  const ForYouGamesWidget({super.key, required this.scrollController});
 
   final ScrollController scrollController;
 
@@ -36,6 +33,7 @@ class ForYouGamesWidget extends HookConsumerWidget {
     final gamesAsync = ref.watch(forYouGamesProvider);
     final groupedGames = ref.watch(groupedForYouGamesProvider);
     final convertedGames = ref.watch(convertedForYouGamesProvider);
+    final hasLoadedOnce = useRef(false);
 
     // Auto-refresh when the tab is reopened after sitting idle, so live games float to the top
     useEffect(() {
@@ -45,6 +43,21 @@ class ForYouGamesWidget extends HookConsumerWidget {
       });
       return null;
     }, const []);
+
+    // When a refresh kicks in (triggered by preference changes), snap to top.
+    useEffect(() {
+      if (gamesAsync.isLoading && hasLoadedOnce.value) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (scrollController.hasClients) {
+            scrollController.jumpTo(0);
+          }
+        });
+      }
+      if (gamesAsync.hasValue) {
+        hasLoadedOnce.value = true;
+      }
+      return null;
+    }, [gamesAsync, scrollController]);
 
     // Track if we're loading more for UI feedback
     final isLoadingMore = useState(false);
@@ -73,19 +86,23 @@ class ForYouGamesWidget extends HookConsumerWidget {
     final items = useMemoized(() {
       final result = <_ListItem>[];
       for (final group in groupedGames) {
-        result.add(_ListItem.header(
-          tourId: group.tourId,
-          tourName: group.tourName,
-          hasLiveGames: group.hasLiveGames,
-          gameCount: group.games.length,
-        ));
+        result.add(
+          _ListItem.header(
+            groupKey: group.groupKey,
+            tourId: group.tourId,
+            tourName: group.tourName,
+            hasLiveGames: group.hasLiveGames,
+            gameCount: group.games.length,
+          ),
+        );
         for (final game in group.games) {
-          final gameIndex = convertedGames.indexWhere((g) => g.gameId == game.id);
+          final gameIndex = convertedGames.indexWhere(
+            (g) => g.gameId == game.id,
+          );
           if (gameIndex != -1) {
-            result.add(_ListItem.game(
-              gameIndex: gameIndex,
-              isLive: game.status == '*',
-            ));
+            result.add(
+              _ListItem.game(gameIndex: gameIndex, isLive: game.status == '*'),
+            );
           }
         }
       }
@@ -126,38 +143,34 @@ class ForYouGamesWidget extends HookConsumerWidget {
 
   Widget _buildEmptyState(BuildContext context) {
     return Center(
-      child: Padding(
-        padding: EdgeInsets.all(32.sp),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.favorite_border,
-              size: 64.sp,
-              color: kDarkGreyColor,
+          child: Padding(
+            padding: EdgeInsets.all(32.sp),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.favorite_border, size: 64.sp, color: kDarkGreyColor),
+                SizedBox(height: 16.sp),
+                Text(
+                  'No games to show',
+                  style: TextStyle(
+                    fontSize: 18.sp,
+                    fontWeight: FontWeight.w600,
+                    color: kWhiteColor70,
+                  ),
+                ),
+                SizedBox(height: 8.sp),
+                Text(
+                  'Add favorite players or select your country\nto see personalized games',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 14.sp, color: kDarkGreyColor),
+                ),
+              ],
             ),
-            SizedBox(height: 16.sp),
-            Text(
-              'No games to show',
-              style: TextStyle(
-                fontSize: 18.sp,
-                fontWeight: FontWeight.w600,
-                color: kWhiteColor70,
-              ),
-            ),
-            SizedBox(height: 8.sp),
-            Text(
-              'Add favorite players or select your country\nto see personalized games',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14.sp,
-                color: kDarkGreyColor,
-              ),
-            ),
-          ],
-        ),
-      ),
-    ).animate().fadeIn(duration: 300.ms).scale(
+          ),
+        )
+        .animate()
+        .fadeIn(duration: 300.ms)
+        .scale(
           begin: const Offset(0.95, 0.95),
           end: const Offset(1.0, 1.0),
           duration: 300.ms,
@@ -238,16 +251,11 @@ class _SkeletonTournamentHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return SkeletonWidget(
       child: Container(
-        margin: EdgeInsets.only(
-          top: isFirst ? 0 : 16.sp,
-          bottom: 12.sp,
-        ),
+        margin: EdgeInsets.only(top: isFirst ? 0 : 16.sp, bottom: 12.sp),
         decoration: BoxDecoration(
           color: kBlack2Color,
           borderRadius: BorderRadius.circular(8.br),
-          border: Border.all(
-            color: kDarkGreyColor.withValues(alpha: 0.3),
-          ),
+          border: Border.all(color: kDarkGreyColor.withValues(alpha: 0.3)),
         ),
         padding: EdgeInsets.all(12.sp),
         child: Column(
@@ -267,7 +275,10 @@ class _SkeletonTournamentHeader extends StatelessWidget {
                 ),
                 SizedBox(width: 12.sp),
                 Container(
-                  padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 3.sp),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 8.sp,
+                    vertical: 3.sp,
+                  ),
                   decoration: BoxDecoration(
                     color: kDarkGreyColor.withValues(alpha: 0.5),
                     borderRadius: BorderRadius.circular(4.br),
@@ -335,10 +346,7 @@ class _SkeletonTournamentHeader extends StatelessWidget {
 
 /// Skeleton game card using actual GameCard structure
 class _SkeletonGameCard extends StatelessWidget {
-  const _SkeletonGameCard({
-    required this.mockGame,
-    required this.index,
-  });
+  const _SkeletonGameCard({required this.mockGame, required this.index});
 
   final GamesTourModel mockGame;
   final int index;
@@ -406,36 +414,36 @@ class _ForYouListView extends ConsumerWidget {
           parent: BouncingScrollPhysics(),
         ),
         itemBuilder: (context, index) {
-        // Loading indicator at the end
-        if (index == items.length) {
-          return _buildLoadingIndicator();
-        }
+          // Loading indicator at the end
+          if (index == items.length) {
+            return _buildLoadingIndicator();
+          }
 
-        final item = items[index];
+          final item = items[index];
 
-        if (item.isHeader) {
-          return ForYouTournamentCard(
-            key: ValueKey('header_${item.tourId}'),
-            tourId: item.tourId!,
-            tourName: item.tourName!,
-            hasLiveGames: item.hasLiveGames!,
-            gameCount: item.gameCount!,
-            isFirst: index == 0,
+          if (item.isHeader) {
+            return ForYouTournamentCard(
+              key: ValueKey('header_${item.groupKey ?? item.tourId}'),
+              tourId: item.tourId!,
+              tourName: item.tourName!,
+              hasLiveGames: item.hasLiveGames!,
+              gameCount: item.gameCount!,
+              isFirst: index == 0,
+            );
+          }
+
+          // Game card with KeepAlive wrapper
+          final gamesTourModel = allGames[item.gameIndex!];
+
+          return _KeepAliveGameCard(
+            key: ValueKey('game_${gamesTourModel.gameId}'),
+            game: gamesTourModel,
+            gamesData: gamesData,
+            gameIndex: item.gameIndex!,
+            listIndex: index,
+            allGames: allGames, // Pass all games for navigation
           );
-        }
-
-        // Game card with KeepAlive wrapper
-        final gamesTourModel = allGames[item.gameIndex!];
-
-        return _KeepAliveGameCard(
-          key: ValueKey('game_${gamesTourModel.gameId}'),
-          game: gamesTourModel,
-          gamesData: gamesData,
-          gameIndex: item.gameIndex!,
-          listIndex: index,
-          allGames: allGames, // Pass all games for navigation
-        );
-      },
+        },
       ),
     );
   }
@@ -526,22 +534,17 @@ class _KeepAliveGameCardState extends State<_KeepAliveGameCard>
             duration: 200.ms,
             delay: Duration(milliseconds: (widget.listIndex % 10) * 30),
           )
-          .slideY(
-            begin: 0.05,
-            end: 0,
-            duration: 200.ms,
-            curve: Curves.easeOut,
-          );
+          .slideY(begin: 0.05, end: 0, duration: 200.ms, curve: Curves.easeOut);
     }
 
     return card;
   }
 }
 
-
 /// Helper class for list items (either header or game)
 class _ListItem {
   final bool isHeader;
+  final String? groupKey;
   final String? tourId;
   final String? tourName;
   final bool? hasLiveGames;
@@ -551,6 +554,7 @@ class _ListItem {
 
   const _ListItem._({
     required this.isHeader,
+    this.groupKey,
     this.tourId,
     this.tourName,
     this.hasLiveGames,
@@ -560,6 +564,7 @@ class _ListItem {
   });
 
   factory _ListItem.header({
+    required String groupKey,
     required String tourId,
     required String tourName,
     required bool hasLiveGames,
@@ -567,6 +572,7 @@ class _ListItem {
   }) {
     return _ListItem._(
       isHeader: true,
+      groupKey: groupKey,
       tourId: tourId,
       tourName: tourName,
       hasLiveGames: hasLiveGames,
@@ -574,14 +580,7 @@ class _ListItem {
     );
   }
 
-  factory _ListItem.game({
-    required int gameIndex,
-    required bool isLive,
-  }) {
-    return _ListItem._(
-      isHeader: false,
-      gameIndex: gameIndex,
-      isLive: isLive,
-    );
+  factory _ListItem.game({required int gameIndex, required bool isLive}) {
+    return _ListItem._(isHeader: false, gameIndex: gameIndex, isLive: isLive);
   }
 }

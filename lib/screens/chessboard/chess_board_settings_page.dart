@@ -147,6 +147,51 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
+                      'Engine Analysis',
+                      style: AppTypography.textMdMedium.copyWith(
+                        color: kWhiteColor,
+                        fontSize: 13.f,
+                      ),
+                    ),
+                    SizedBox(height: 4.h),
+                    Text(
+                      'Show engine lines and PV arrows on the board. Same as the computer icon button.',
+                      style: AppTypography.textSmRegular.copyWith(
+                        color: kWhiteColor70,
+                        fontSize: 11.f,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Switch.adaptive(
+                value: settings.showEngineAnalysis,
+                thumbColor: WidgetStateProperty.resolveWith(
+                  (states) => states.contains(WidgetState.selected)
+                      ? kPrimaryColor
+                      : kWhiteColor.withValues(alpha: 0.6),
+                ),
+                trackColor: WidgetStateProperty.resolveWith(
+                  (states) => states.contains(WidgetState.selected)
+                      ? kPrimaryColor.withValues(alpha: 0.35)
+                      : kDividerColor.withValues(alpha: 0.5),
+                ),
+                onChanged: (value) {
+                  _trackPersist(notifier.toggleEngineAnalysis(value));
+                },
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: 18.h),
+        _SettingCard(
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
                       'Computer Depth Badge',
                       style: AppTypography.textMdMedium.copyWith(
                         color: kWhiteColor,
