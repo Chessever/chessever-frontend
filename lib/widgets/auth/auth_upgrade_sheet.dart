@@ -48,11 +48,11 @@ class _AuthUpgradeSheet extends HookWidget {
         SpringPagedSheetRoute(
           scrollConfiguration: const SheetScrollConfiguration(),
           dragConfiguration: ChessSheetConfigs.commentEditor,
-          initialOffset: const SheetOffset.proportionalToViewport(0.78),
+          initialOffset: const SheetOffset.proportionalToViewport(0.9),
           snapGrid: SheetSnapGrid(
             snaps: const [
-              SheetOffset.proportionalToViewport(0.55),
-              SheetOffset.proportionalToViewport(0.85),
+              SheetOffset.proportionalToViewport(0.7),
+              SheetOffset.proportionalToViewport(0.95),
             ],
             minFlingSpeed: 600.0,
           ),
@@ -81,10 +81,9 @@ class _AuthUpgradePage extends HookWidget {
   @override
   Widget build(BuildContext context) {
     final topPadding = MediaQuery.of(context).padding.top;
-    final bottomPadding = MediaQuery.of(context).padding.bottom;
 
     Future<void> startAuthFlow() async {
-      Navigator.of(context).pop(); // Close sheet first
+      Navigator.of(hostContext).pop(); // Close sheet first
       // Use host context so navigation happens on app navigator
       Navigator.of(hostContext).pushNamed('/auth_screen');
     }
@@ -93,72 +92,76 @@ class _AuthUpgradePage extends HookWidget {
       children: [
         const Positioned.fill(child: _AmbientGlow()),
         const Positioned.fill(child: _FloatingParticles()),
-        Padding(
-          padding: EdgeInsets.fromLTRB(24.w, topPadding + 28.h, 24.w, bottomPadding + 20.h),
-          child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            child: Column(
-              children: [
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: IconButton(
-                    icon: Icon(Icons.close_rounded, color: kWhiteColor.withValues(alpha: 0.7)),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                ),
-                _UnlockVisual()
-                    .animate()
-                    .fadeIn(duration: 600.ms, curve: Motion.smoothSpring().toCurve)
-                    .scale(begin: const Offset(0.85, 0.85), end: const Offset(1, 1)),
-                SizedBox(height: 24.h),
-                Text(
-                  'Unlock the full\nexperience',
-                  textAlign: TextAlign.center,
-                  style: AppTypography.displayXsBold.copyWith(
-                    color: kWhiteColor,
-                    height: 1.2,
-                  ),
-                ),
-                SizedBox(height: 8.h),
-                Text(
-                  'Create an account to access all features',
-                  textAlign: TextAlign.center,
-                  style: AppTypography.textSmRegular.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.6),
-                  ),
-                ),
-                SizedBox(height: 24.h),
-                _FeaturesList(),
-                SizedBox(height: 28.h),
-                _PrimaryButton(
-                  label: 'Create free account',
-                  onTap: startAuthFlow,
-                ),
-                SizedBox(height: 12.h),
-                _SecondaryButton(
-                  label: 'Continue without account',
-                  onTap: () => Navigator.of(context).pop(),
-                ),
-                SizedBox(height: 14.h),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.warning_amber_rounded,
-                      size: 14.ic,
-                      color: const Color(0xFFFFAA00).withValues(alpha: 0.7),
+        MediaQuery.removePadding(
+          context: context,
+          removeBottom: true, // Let the sheet paint into the unsafe area
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(24.w, topPadding + 28.h, 24.w, 20.h),
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Column(
+                children: [
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: IconButton(
+                      icon: Icon(Icons.close_rounded, color: kWhiteColor.withValues(alpha: 0.7)),
+                      onPressed: () => Navigator.of(hostContext).pop(),
                     ),
-                    SizedBox(width: 6.w),
-                    Text(
-                      'Guest data can\'t be recovered if lost',
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.5),
+                  ),
+                  _UnlockVisual()
+                      .animate()
+                      .fadeIn(duration: 600.ms, curve: Motion.smoothSpring().toCurve)
+                      .scale(begin: const Offset(0.85, 0.85), end: const Offset(1, 1)),
+                  SizedBox(height: 24.h),
+                  Text(
+                    'Unlock the full\nexperience',
+                    textAlign: TextAlign.center,
+                    style: AppTypography.displayXsBold.copyWith(
+                      color: kWhiteColor,
+                      height: 1.2,
+                    ),
+                  ),
+                  SizedBox(height: 8.h),
+                  Text(
+                    'Create an account to access all features',
+                    textAlign: TextAlign.center,
+                    style: AppTypography.textSmRegular.copyWith(
+                      color: kWhiteColor.withValues(alpha: 0.6),
+                    ),
+                  ),
+                  SizedBox(height: 24.h),
+                  _FeaturesList(),
+                  SizedBox(height: 28.h),
+                  _PrimaryButton(
+                    label: 'Create free account',
+                    onTap: startAuthFlow,
+                  ),
+                  SizedBox(height: 12.h),
+                  _SecondaryButton(
+                    label: 'Continue without account',
+                    onTap: () => Navigator.of(hostContext).pop(),
+                  ),
+                  SizedBox(height: 14.h),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.warning_amber_rounded,
+                        size: 14.ic,
+                        color: const Color(0xFFFFAA00).withValues(alpha: 0.7),
                       ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 8.h),
-              ],
+                      SizedBox(width: 6.w),
+                      Text(
+                        'Guest data can\'t be recovered if lost',
+                        style: AppTypography.textXsRegular.copyWith(
+                          color: kWhiteColor.withValues(alpha: 0.5),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 8.h),
+                ],
+              ),
             ),
           ),
         ),

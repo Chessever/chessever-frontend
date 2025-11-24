@@ -249,12 +249,15 @@ class ChessSheetRoutes {
     required WidgetBuilder builder,
     BuildContext? context,
   }) {
+    final padding = context != null ? MediaQuery.viewPaddingOf(context) : EdgeInsets.zero;
     return SpringModalSheetRoute<void>(
       builder: builder,
       springCurve: ChessSheetCurves.bouncy,
-      barrierColor: Colors.black.withValues(alpha: 0.75),
+      // Keep background visible while dimming slightly behind the sheet
+      barrierColor: Colors.black.withValues(alpha: 0.55),
       barrierLabel: 'Close preview',
-      viewportPadding: context != null ? MediaQuery.viewPaddingOf(context) : EdgeInsets.zero,
+      // Only respect top padding; allow the sheet to cover the bottom safe area
+      viewportPadding: EdgeInsets.only(top: padding.top),
     );
   }
 }

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/providers/favorite_events_provider.dart';
+import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/repository/supabase/calendar_event/calendar_event.dart';
 import 'package:chessever2/repository/supabase/calendar_event/calendar_event_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
@@ -711,8 +712,19 @@ class _QuickFilterButtons extends ConsumerWidget {
     final isUpcomingDisabled = selectedYear > currentYear;
 
     // Calculate upcoming count (events starting today or in future)
+    // This should show the count of upcoming events that match the current search
     final upcomingCount = calendarData.maybeWhen(
       data: (summaries) {
+        // If we're already in upcoming filter mode, show the actual filtered count
+        if (filterMode == CalendarFilterMode.upcoming) {
+          int count = 0;
+          for (final summary in summaries) {
+            count += summary.events.length;
+          }
+          return count;
+        }
+
+        // Otherwise, calculate potential upcoming events from current filtered data
         final now = DateTime.now();
         final today = DateTime(now.year, now.month, now.day);
         int count = 0;
@@ -729,9 +741,39 @@ class _QuickFilterButtons extends ConsumerWidget {
       orElse: () => 0,
     );
 
-    // Calculate favorites count
-    final favoritesCount = favoriteEvents.maybeWhen(
-      data: (events) => events.length,
+    // Calculate favorites count from the filtered data, not all favorites
+    final favoritesCount = calendarData.maybeWhen(
+      data: (summaries) {
+        // If we're already in favorites filter mode, show the actual filtered count
+        if (filterMode == CalendarFilterMode.favorites) {
+          int count = 0;
+          for (final summary in summaries) {
+            count += summary.events.length;
+          }
+          return count;
+        }
+
+        // Otherwise, calculate potential favorite events from current filtered data
+        final favoriteEventIds = <String>{};
+        favoriteEvents.whenData((events) {
+          favoriteEventIds.addAll(events.map((e) => e.eventId));
+        });
+
+        // Also check for events with favorite players
+        final favoritePlayersCache = ref.read(eventFavoritePlayersCacheProvider);
+
+        int count = 0;
+        for (final summary in summaries) {
+          for (final event in summary.events) {
+            final isStarred = favoriteEventIds.contains(event.id);
+            final hasFavoritePlayers = favoritePlayersCache[event.id]?.hasFavorites ?? false;
+            if (isStarred || hasFavoritePlayers) {
+              count++;
+            }
+          }
+        }
+        return count;
+      },
       orElse: () => 0,
     );
 

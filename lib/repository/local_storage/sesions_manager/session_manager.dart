@@ -36,7 +36,8 @@ class SessionManager {
     await prefs.remove(_keyPersistUser);
     // Keep the auth notifier alive but reset its state when clearing storage
     ref.read(authScreenProvider.notifier).reset();
-    ref.read(countryDropdownProvider.notifier).clearSelection();
+    // Clear local country cache only - Supabase data persists for next login
+    ref.read(countryDropdownProvider.notifier).clearLocalOnly();
   }
 
   /// Check current login state and recover session if valid

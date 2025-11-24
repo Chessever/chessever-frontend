@@ -1514,6 +1514,9 @@ class _AppBarState extends ConsumerState<_AppBar> {
             if (value == 'share') {
               shareGameBtnClicked();
             } else if (value == 'board_settings') {
+              final allowed = await requireFullAuthGuard(context);
+              if (!allowed) return;
+              if (!context.mounted) return;
               Navigator.of(context).push(ChessBoardSettingsPage.route());
             } else if (value == 'clear_analysis') {
               final params = ChessBoardProviderParams(
@@ -1943,7 +1946,11 @@ class _BottomNavBar extends ConsumerWidget {
       onFlip: () => notifier.flipBoard(),
       toggleEngineVisibility: () => notifier.toggleEngineVisibility(),
       onEngineSettingsLongPress: () {
-        Navigator.of(context).push(ChessBoardSettingsPage.route());
+        requireFullAuthGuard(context).then((allowed) {
+          if (!allowed) return;
+          if (!context.mounted) return;
+          Navigator.of(context).push(ChessBoardSettingsPage.route());
+        });
       },
       onRightMove:
           effectiveCanMoveForward

@@ -196,4 +196,12 @@ class _CountryManRepository {
     await ref.read(sharedPreferencesRepository).removeData(_baseCountryCodeKey);
     await ref.read(sharedPreferencesRepository).removeData(_baseCountryNameKey);
   }
+
+  /// Clear only local cache (SharedPreferences) without touching Supabase.
+  /// Use this on logout so user's preference persists in Supabase for next login.
+  Future<void> clearLocalCacheOnly() async {
+    final userId = _supabase.auth.currentUser?.id;
+    await _removeLocalCountry(userId);
+    debugPrint('[CountryMan] ✅ Cleared local cache only (Supabase untouched)');
+  }
 }

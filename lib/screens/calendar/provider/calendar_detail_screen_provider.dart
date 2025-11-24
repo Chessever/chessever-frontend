@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/repository/supabase/calendar_event/calendar_event.dart';
@@ -7,11 +9,12 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_tour_reposi
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
 import 'package:chessever2/screens/calendar/calendar_event_detail_screen.dart';
 import 'package:chessever2/screens/calendar/provider/calendar_screen_provider.dart';
+import 'package:chessever2/screens/calendar/provider/calendar_search_isolate.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
-import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
@@ -38,15 +41,35 @@ class _CalendarDetailScreenController
 
   List<GroupBroadcast> groupBroadcast = [];
   List<CalendarEvent> calendarEvents = [];
+  List<CalendarEventData> _eventsData = []; // Cached isolate-safe data
+
+  Timer? _debounceTimer;
+  int _filterVersion = 0; // For cancellation of stale queries
 
   void _listenToFilters() {
-    ref.listen(calendarSearchQueryProvider, (_, __) => _applyFilters());
-    ref.listen(calendarTimeControlProvider, (_, __) => _applyFilters());
-    ref.listen(calendarFilterModeProvider, (_, __) => _applyFilters());
-    ref.listen(liveGroupBroadcastIdsProvider, (_, __) => _applyFilters());
-    ref.listen(favoriteEventsProvider, (_, __) => _applyFilters());
-    ref.listen(favoritePlayersNotifierProvider, (_, __) => _applyFilters());
-    ref.listen(eventFavoritePlayersCacheProvider, (_, __) => _applyFilters());
+    ref.listen(calendarSearchQueryProvider, (_, __) => _applyFiltersDebounced());
+    ref.listen(calendarTimeControlProvider, (_, __) => _applyFiltersDebounced());
+    ref.listen(calendarFilterModeProvider, (_, __) => _applyFiltersDebounced());
+    ref.listen(liveGroupBroadcastIdsProvider, (_, __) => _applyFiltersDebounced());
+    ref.listen(favoriteEventsProvider, (_, __) => _applyFiltersDebounced());
+    ref.listen(favoritePlayersNotifierProvider, (_, __) => _applyFiltersDebounced());
+    ref.listen(eventFavoritePlayersCacheProvider, (_, __) => _applyFiltersDebounced());
+  }
+
+  void _applyFiltersDebounced() {
+    _debounceTimer?.cancel();
+    final searchQuery = ref.read(calendarSearchQueryProvider);
+    // Use longer debounce when search is active to avoid hanging
+    final debounceTime = searchQuery.isNotEmpty
+        ? const Duration(milliseconds: 500)
+        : const Duration(milliseconds: 150);
+    _debounceTimer = Timer(debounceTime, _applyFilters);
+  }
+
+  @override
+  void dispose() {
+    _debounceTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _init() async {
@@ -69,149 +92,158 @@ class _CalendarDetailScreenController
       groupBroadcast = current;
       calendarEvents = calEvents;
 
+      // Pre-build isolate-safe data
+      final liveIds = ref.read(liveBroadcastIdsProvider);
+      _eventsData = [
+        ...current.map((b) => _broadcastToEventData(b, liveIds)),
+        ...calEvents.map(_calendarEventToEventData),
+      ];
+
       _applyFilters();
     } catch (e, st) {
       state = AsyncValue.error(e, st);
     }
   }
 
-  void _applyFilters() {
-    final searchQuery =
-        ref.read(calendarSearchQueryProvider).trim().toLowerCase();
-    final timeControl = ref.read(calendarTimeControlProvider);
-    final filterMode = ref.read(calendarFilterModeProvider);
-    final liveIds = ref.read(liveBroadcastIdsProvider);
-
-    // Get favorite event IDs if filtering by favorites
-    final favoriteEventIds = <String>{};
-    if (filterMode == CalendarFilterMode.favorites) {
-      final favoritesAsync = ref.read(favoriteEventsProvider);
-      final favorites = favoritesAsync.valueOrNull ?? [];
-      favoriteEventIds.addAll(favorites.map((e) => e.eventId));
-    }
-    final favoritePlayersCache = ref.read(eventFavoritePlayersCacheProvider);
-
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-
-    final monthStart = DateTime(filterArgs.year, filterArgs.month, 1);
-    final monthEnd = DateTime(
-      filterArgs.year,
-      filterArgs.month + 1,
-      0,
-      23,
-      59,
-      59,
+  CalendarEventData _broadcastToEventData(GroupBroadcast b, List<String> liveIds) {
+    final model = GroupEventCardModel.fromGroupBroadcast(b, liveIds);
+    return CalendarEventData(
+      id: model.id,
+      title: model.title,
+      location: model.location,
+      timeControl: model.timeControl,
+      startDate: model.startDate,
+      endDate: model.endDate,
+      searchTerms: model.searchTerms,
+      dates: model.dates,
+      maxAvgElo: model.maxAvgElo,
+      timeUntilStart: model.timeUntilStart,
+      tourEventCategory: model.tourEventCategory.name,
+      eventSource: model.eventSource.name,
     );
+  }
 
-    // Filter group broadcasts
-    final filteredBroadcasts =
-        groupBroadcast.where((t) {
-          final range = resolveCalendarDateRange(t.dateStart, t.dateEnd);
-          if (range == null) return false;
+  CalendarEventData _calendarEventToEventData(CalendarEvent e) {
+    final model = GroupEventCardModel.fromCalendarEvent(e);
+    return CalendarEventData(
+      id: model.id,
+      title: model.title,
+      location: model.location,
+      timeControl: model.timeControl,
+      startDate: model.startDate,
+      endDate: model.endDate,
+      searchTerms: model.searchTerms,
+      dates: model.dates,
+      maxAvgElo: model.maxAvgElo,
+      timeUntilStart: model.timeUntilStart,
+      tourEventCategory: model.tourEventCategory.name,
+      eventSource: model.eventSource.name,
+    );
+  }
 
-          if (!_overlapsMonth(range, monthStart, monthEnd)) return false;
+  Future<void> _applyFilters() async {
+    try {
+      if (_eventsData.isEmpty) {
+        state = const AsyncValue.data([]);
+        return;
+      }
 
-          if (!_matchesFilters(
-            t.name,
-            null,
-            t.timeControl,
-            searchQuery,
-            timeControl,
-            startDate: t.dateStart,
-            endDate: t.dateEnd,
-            extraTokens: t.search,
-          ))
-            return false;
+      // Increment version to cancel any in-flight filter operations
+      final currentVersion = ++_filterVersion;
 
-          // Apply filter mode
-          if (filterMode == CalendarFilterMode.upcoming) {
-            final startDate = t.dateStart ?? t.dateEnd;
-            if (startDate == null || startDate.isBefore(today)) {
-              return false;
-            }
-          } else if (filterMode == CalendarFilterMode.favorites) {
-            final hasFavoritePlayers =
-                favoritePlayersCache[t.id]?.hasFavorites ?? false;
-            final isStarred = favoriteEventIds.contains(t.id);
-            if (!isStarred && !hasFavoritePlayers) {
-              _primeFavoritePlayers(t.id);
-              return false;
-            }
+      final searchQuery = ref.read(calendarSearchQueryProvider).trim();
+      final timeControl = ref.read(calendarTimeControlProvider);
+      final filterMode = ref.read(calendarFilterModeProvider);
+
+      // Build favorite data for isolate
+      final favoriteEventIds = <String>{};
+      if (filterMode == CalendarFilterMode.favorites) {
+        final favoritesAsync = ref.read(favoriteEventsProvider);
+        final favorites = favoritesAsync.valueOrNull ?? [];
+        favoriteEventIds.addAll(favorites.map((e) => e.eventId));
+      }
+
+      final favoritePlayersCache = ref.read(eventFavoritePlayersCacheProvider);
+      final favoritePlayersMap = <String, bool>{};
+      for (final entry in favoritePlayersCache.entries) {
+        favoritePlayersMap[entry.key] = entry.value.hasFavorites;
+      }
+
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+
+      // Prepare params for isolate
+      final params = DetailSearchParams(
+        events: _eventsData,
+        searchQuery: searchQuery,
+        timeControl: timeControl,
+        month: filterArgs.month,
+        year: filterArgs.year,
+        today: today,
+        filterMode: filterMode.name,
+        favoriteEventIds: favoriteEventIds,
+        favoritePlayersMap: favoritePlayersMap,
+      );
+
+      // Run filtering in background isolate
+      final result = await compute(filterDetailEventsIsolate, params);
+
+      // Check if this result is still current (cancellation check)
+      if (!mounted || _filterVersion != currentVersion) return;
+
+      // Prime favorite players for events that need it
+      for (final eventId in result.eventsToPrime) {
+        _primeFavoritePlayers(eventId);
+      }
+
+      // Convert back to GroupEventCardModel for UI
+      final liveIds = ref.read(liveBroadcastIdsProvider);
+      final events = result.events.map((data) {
+        // Try to find the original model for efficiency
+        for (final broadcast in groupBroadcast) {
+          if (broadcast.id == data.id) {
+            return GroupEventCardModel.fromGroupBroadcast(broadcast, liveIds);
           }
-
-          return true;
-        }).toList();
-
-    // Filter calendar events
-    final filteredCalEvents =
-        calendarEvents.where((e) {
-          final range = resolveCalendarDateRange(e.startDate, e.endDate);
-          if (range == null) return false;
-
-          if (!_overlapsMonth(range, monthStart, monthEnd)) return false;
-
-          if (!_matchesFilters(
-            e.name,
-            e.location,
-            e.timeControl,
-            searchQuery,
-            timeControl,
-            startDate: e.startDate,
-            endDate: e.endDate,
-            extraTokens: [
-              if (e.location != null) e.location!,
-              if (e.timeControl != null) e.timeControl!,
-            ],
-          ))
-            return false;
-
-          // Apply filter mode
-          if (filterMode == CalendarFilterMode.upcoming) {
-            final startDate = e.startDate ?? e.endDate;
-            if (startDate == null || startDate.isBefore(today)) {
-              return false;
-            }
-          } else if (filterMode == CalendarFilterMode.favorites) {
-            // Calendar events use generated ID format
-            final eventId =
-                'cal_event_${e.name.replaceAll(' ', '_').replaceAll(RegExp(r'[^\w\-]'), '').toLowerCase()}';
-            final hasFavoritePlayers =
-                favoritePlayersCache[eventId]?.hasFavorites ?? false;
-            final isStarred = favoriteEventIds.contains(eventId);
-            if (!isStarred && !hasFavoritePlayers) {
-              _primeFavoritePlayers(eventId);
-              return false;
-            }
+        }
+        for (final calEvent in calendarEvents) {
+          final model = GroupEventCardModel.fromCalendarEvent(calEvent);
+          if (model.id == data.id) {
+            return model;
           }
+        }
+        // Fallback to reconstructing from data
+        return _fromEventData(data);
+      }).toList();
 
-          return true;
-        }).toList();
-
-    // Convert to card models
-    final broadcastCards =
-        filteredBroadcasts
-            .map((t) => GroupEventCardModel.fromGroupBroadcast(t, liveIds))
-            .toList();
-
-    final calendarCards =
-        filteredCalEvents
-            .map((e) => GroupEventCardModel.fromCalendarEvent(e))
-            .toList();
-
-    // Combine both lists
-    final allCards = [...broadcastCards, ...calendarCards];
-
-    if (allCards.isEmpty) {
-      state = const AsyncValue.data([]);
-      return;
+      if (!mounted) return;
+      state = AsyncValue.data(events);
+    } catch (e, st) {
+      if (!mounted) return;
+      state = AsyncValue.error(e, st);
     }
+  }
 
-    final sortedEvents = ref
-        .read(tournamentSortingServiceProvider)
-        .sortCalendarEvents(allCards, prioritizeFavorites: false);
-
-    state = AsyncValue.data(sortedEvents);
+  GroupEventCardModel _fromEventData(CalendarEventData data) {
+    return GroupEventCardModel(
+      id: data.id,
+      title: data.title,
+      dates: data.dates,
+      maxAvgElo: data.maxAvgElo,
+      timeUntilStart: data.timeUntilStart,
+      tourEventCategory: TourEventCategory.values.firstWhere(
+        (e) => e.name == data.tourEventCategory,
+        orElse: () => TourEventCategory.completed,
+      ),
+      timeControl: data.timeControl ?? 'Standard',
+      endDate: data.endDate,
+      startDate: data.startDate,
+      location: data.location,
+      searchTerms: data.searchTerms,
+      eventSource: EventSource.values.firstWhere(
+        (e) => e.name == data.eventSource,
+        orElse: () => EventSource.lichessBroadcast,
+      ),
+    );
   }
 
   void _primeFavoritePlayers(String eventId) {
@@ -226,42 +258,6 @@ class _CalendarDetailScreenController
               .updateCache(eventId, result),
         )
         .whenComplete(() => _primingFavoritePlayers.remove(eventId));
-  }
-
-  bool _matchesFilters(
-    String name,
-    String? location,
-    String? timeControl,
-    String searchQuery,
-    String? filterTimeControl, {
-    List<String>? extraTokens,
-    DateTime? startDate,
-    DateTime? endDate,
-  }) {
-    final normalizedFilter = normalizeTimeControl(filterTimeControl);
-    if (normalizedFilter != null) {
-      final eventTime = normalizeTimeControl(timeControl);
-      if (eventTime != normalizedFilter) {
-        return false;
-      }
-    }
-
-    return CalendarSearchHelper.matches(
-      title: name,
-      location: location,
-      searchQuery: searchQuery,
-      extraTokens: extraTokens,
-      startDate: startDate,
-      endDate: endDate,
-    );
-  }
-
-  bool _overlapsMonth(
-    DateTimeRange range,
-    DateTime monthStart,
-    DateTime monthEnd,
-  ) {
-    return !range.start.isAfter(monthEnd) && !range.end.isBefore(monthStart);
   }
 
   void onSelectTournament({

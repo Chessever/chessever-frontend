@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:country_picker/country_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -32,10 +35,26 @@ final forYouGamesProvider = StateNotifierProvider.autoDispose<
 final groupedForYouGamesProvider = Provider.autoDispose<List<GroupedTournamentGames>>((ref) {
   ref.keepAlive(); // Keep alive to match main provider
   final games = ref.watch(forYouGamesProvider).valueOrNull ?? [];
+  final initialGameIds = ref.read(forYouGamesProvider.notifier).initialGameIds;
 
-  final grouped = <String, GroupedTournamentGames>{};
+  // CRITICAL: Separate initial games from pagination games to prevent scroll jumping
+  // Initial games are grouped normally, pagination games are appended at the end
+  final initialGames = <Games>[];
+  final paginationGames = <Games>[];
 
   for (final game in games) {
+    if (initialGameIds.contains(game.id)) {
+      initialGames.add(game);
+    } else {
+      paginationGames.add(game);
+    }
+  }
+
+  // Group only initial games (maintains scroll position stability)
+  final grouped = <String, GroupedTournamentGames>{};
+  final groupOrder = <String>[]; // Track insertion order
+
+  for (final game in initialGames) {
     final tourId = game.tourId;
     final tourName = game.tourSlug;
 
@@ -46,6 +65,7 @@ final groupedForYouGamesProvider = Provider.autoDispose<List<GroupedTournamentGa
         games: [],
         hasLiveGames: false,
       );
+      groupOrder.add(tourId); // Remember order of first appearance
     }
 
     grouped[tourId]!.games.add(game);
@@ -54,13 +74,43 @@ final groupedForYouGamesProvider = Provider.autoDispose<List<GroupedTournamentGa
     }
   }
 
-  return grouped.values.toList()
-    ..sort((a, b) {
-      // Sort groups: live games first, then by size
-      if (a.hasLiveGames && !b.hasLiveGames) return -1;
-      if (!a.hasLiveGames && b.hasLiveGames) return 1;
-      return b.games.length.compareTo(a.games.length);
-    });
+  // Convert to list in order of first appearance
+  final result = groupOrder.map((tourId) => grouped[tourId]!).toList();
+
+  // Group pagination games separately and append at the end
+  // This ensures new items are always added at the END, never in the middle
+  if (paginationGames.isNotEmpty) {
+    final paginationGrouped = <String, GroupedTournamentGames>{};
+    final paginationOrder = <String>[];
+
+    for (final game in paginationGames) {
+      final tourId = game.tourId;
+      final tourName = game.tourSlug;
+
+      // Use a unique key for pagination groups to avoid key conflicts
+      final paginationTourKey = '${tourId}_more';
+
+      if (!paginationGrouped.containsKey(paginationTourKey)) {
+        paginationGrouped[paginationTourKey] = GroupedTournamentGames(
+          tourId: paginationTourKey, // Unique ID for pagination group
+          tourName: tourName,
+          games: [],
+          hasLiveGames: false,
+        );
+        paginationOrder.add(paginationTourKey);
+      }
+
+      paginationGrouped[paginationTourKey]!.games.add(game);
+      if (game.status == '*') {
+        paginationGrouped[paginationTourKey]!.hasLiveGames = true;
+      }
+    }
+
+    // Append pagination groups at the end
+    result.addAll(paginationOrder.map((tourId) => paginationGrouped[tourId]!));
+  }
+
+  return result;
 });
 
 /// Provider for converted games (Games to GamesTourModel)
@@ -98,6 +148,7 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   final List<Games> _allGames = [];
   bool _hasMore = true;
   bool _isFetchingMore = false;
+  bool _isRefreshing = false;
   DateTime? _lastFetchAt;
   static const int _pageSize = 30; // Increased for better pagination
   int _emptyFetchCount = 0; // Track consecutive empty fetches
@@ -108,12 +159,63 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   int _highEloOffset = 0;
   int _highEloLiveOffset = 0;
 
+  /// Track whether initial load had preferences available
+  /// This helps determine if we need to refresh when user visits the tab
+  bool _initialLoadHadPreferences = false;
+
+  /// Track game IDs from initial load to prevent scroll jumping on pagination
+  /// Games added during pagination won't be inserted into existing groups
+  final Set<String> _initialGameIds = {};
+
   Future<void> _initialize() async {
+    await _waitForInitialPreferences();
     await loadGames();
+  }
+
+  Future<void> _waitForInitialPreferences() async {
+    // Wait for favorites/events/country to resolve so first paint is personalized.
+    final futures = <Future<void>>[
+      _waitForFuture(() => _ref.read(favoritePlayersProviderNew.future)),
+      _waitForFuture(() => _ref.read(favoriteEventsProvider.future)),
+      _waitForCountrySelection(),
+    ];
+
+    await Future.wait(futures);
+  }
+
+  Future<void> _waitForFuture<T>(Future<T> Function() futureBuilder) async {
+    try {
+      await futureBuilder().timeout(const Duration(seconds: 3));
+    } catch (_) {
+      // Ignore and continue with whatever data is available.
+    }
+  }
+
+  Future<void> _waitForCountrySelection() async {
+    final current = _ref.read(countryDropdownProvider);
+    if (!current.isLoading) return;
+
+    final completer = Completer<void>();
+    final sub = _ref.listen<AsyncValue<Country>>(
+      countryDropdownProvider,
+      (_, next) {
+        if (!next.isLoading && !completer.isCompleted) {
+          completer.complete();
+        }
+      },
+      fireImmediately: true,
+    );
+
+    try {
+      await completer.future.timeout(const Duration(seconds: 3), onTimeout: () {});
+    } finally {
+      sub.close();
+    }
   }
 
   void _resetPaginationState() {
     _allGames.clear();
+    _initialGameIds.clear();
     _hasMore = true;
     _isFetchingMore = false;
     _emptyFetchCount = 0;
@@ -127,9 +229,14 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   }
 
   /// Load initial games
-  Future<void> loadGames() async {
+  Future<void> loadGames({bool showLoading = true}) async {
+    if (_isRefreshing) return;
+    _isRefreshing = true;
+
     try {
-      state = const AsyncValue.loading();
+      if (showLoading) {
+        state = const AsyncValue.loading();
+      }
       _resetPaginationState();
 
       await _fetchGames(isInitialLoad: true);
@@ -138,12 +245,14 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     } catch (e, stack) {
       debugPrint('[ForYouGames] Error loading games: $e');
       state = AsyncValue.error(e, stack);
+    } finally {
+      _isRefreshing = false;
     }
   }
 
   /// Load more games for infinite scroll
   Future<void> loadMore() async {
-    if (_isFetchingMore || !_hasMore) return;
+    if (_isFetchingMore || !_hasMore || _isRefreshing) return;
 
     try {
       _isFetchingMore = true;
@@ -176,6 +285,13 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
 
     final countryState = _ref.read(countryDropdownProvider);
     final selectedCountry = countryState.value;
+
+    // Track if initial load has any preferences available
+    if (isInitialLoad) {
+      _initialLoadHadPreferences = favorites.isNotEmpty ||
+          favoriteEvents.isNotEmpty ||
+          (selectedCountry != null && selectedCountry.countryCode.isNotEmpty);
+    }
 
     debugPrint('[ForYouGames] === Fetching games (page: ${_allGames.length}) ===');
     debugPrint('[ForYouGames] Favorites: ${favorites.length}');
@@ -368,13 +484,20 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       _allGames.addAll(newGames);
       _emptyFetchCount = 0; // Reset empty fetch counter
 
-      // Sort games with heterogeneous distribution
-      final favoriteEventIds = favoriteEvents
-          .map((e) => e.eventId)
-          .where((id) => id.isNotEmpty)
-          .toSet();
+      // CRITICAL: Only sort on initial load to prevent scroll position jumping
+      // On pagination (loadMore), new items are already appended at the end
+      if (isInitialLoad) {
+        // Sort games with heterogeneous distribution
+        final favoriteEventIds = favoriteEvents
+            .map((e) => e.eventId)
+            .where((id) => id.isNotEmpty)
+            .toSet();
 
-      _sortGames(favorites, selectedCountry?.countryCode, favoriteEventIds);
+        _sortGames(favorites, selectedCountry?.countryCode, favoriteEventIds);
+
+        // Track initial game IDs AFTER sorting to preserve grouping order
+        _initialGameIds.addAll(_allGames.map((g) => g.id));
+      }
     } else {
       _emptyFetchCount++;
       debugPrint('[ForYouGames] Empty fetch #$_emptyFetchCount');
@@ -611,12 +734,36 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
 
   /// Refresh the feed
   Future<void> refresh() async {
-    await loadGames();
+    await loadGames(showLoading: false);
   }
 
   /// Refresh only when data is considered stale (e.g., when re-opening the tab)
+  /// Also refreshes if initial load didn't have preferences but they're available now
   Future<void> refreshIfStale({Duration maxAge = const Duration(seconds: 60)}) async {
-    if (state.isLoading || _isFetchingMore) return;
+    if (state.isLoading || _isFetchingMore || _isRefreshing) return;
+
+    // Check if preferences are now available but weren't during initial load
+    if (!_initialLoadHadPreferences) {
+      final favoritesAsync = _ref.read(favoritePlayersProviderNew);
+      final favorites = favoritesAsync.valueOrNull ?? [];
+
+      final favoriteEventsAsync = _ref.read(favoriteEventsProvider);
+      final favoriteEvents = favoriteEventsAsync.valueOrNull ?? [];
+
+      final countryState = _ref.read(countryDropdownProvider);
+      final selectedCountry = countryState.value;
+
+      final hasPreferencesNow = favorites.isNotEmpty ||
+          favoriteEvents.isNotEmpty ||
+          (selectedCountry != null && selectedCountry.countryCode.isNotEmpty);
+
+      if (hasPreferencesNow) {
+        debugPrint('[ForYouGames] Preferences now available, refreshing...');
+        await refresh();
+        return;
+      }
+    }
+
     if (_lastFetchAt != null &&
         DateTime.now().difference(_lastFetchAt!) <= maxAge) {
       return;
@@ -627,6 +774,9 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
 
   bool get isFetchingMore => _isFetchingMore;
   bool get hasMore => _hasMore;
+
+  /// Get the set of game IDs from initial load (for scroll position stability)
+  Set<String> get initialGameIds => _initialGameIds;
 }
 
 // ============================================================================

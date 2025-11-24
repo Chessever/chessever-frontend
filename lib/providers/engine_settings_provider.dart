@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:chessever2/repository/engine_settings/models/engine_settings_model.dart';
 import 'package:flutter/foundation.dart';
@@ -352,27 +353,6 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
     return await _loadSettings();
   }
 
-  /// Ensure we have the latest settings before mutating them so we don't
-  /// overwrite other preferences when this notifier hasn't loaded yet.
-  Future<EngineSettings> _ensureSettingsLoaded() async {
-    final cached = state.valueOrNull;
-    if (cached != null) {
-      return cached;
-    }
-
-    try {
-      final loaded = await _loadSettings();
-      state = AsyncValue.data(loaded);
-      return loaded;
-    } catch (e, st) {
-      debugPrint('[EngineSettings] Error ensuring settings loaded: $e');
-      debugPrint('[EngineSettings] Stack: $st');
-      const fallback = EngineSettings();
-      state = const AsyncValue.data(fallback);
-      return fallback;
-    }
-  }
-
   Future<EngineSettings> _loadSettings() async {
     try {
       final userId = _supabase.auth.currentUser?.id;
@@ -455,11 +435,28 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
 
   /// Toggle engine analysis visibility (PV cards & arrows from computer icon)
   Future<void> toggleEngineAnalysis(bool value) async {
-    final currentState = await _ensureSettingsLoaded();
-    final newSettings = currentState.copyWith(showEngineAnalysis: value);
+    // Optimistic local update so UI reacts instantly
+    final optimistic =
+        (state.valueOrNull ?? const EngineSettings())
+            .copyWith(showEngineAnalysis: value);
     debugPrint('🎯 EngineSettings: Engine analysis visibility set to $value');
-    state = AsyncValue.data(newSettings);
-    await _persist(newSettings);
+    state = AsyncValue.data(optimistic);
+
+    // Fire-and-forget persistence to avoid blocking UI or navigation
+    unawaited(() async {
+      try {
+        // Reload latest settings to avoid clobbering other fields, then persist
+        final latest = await _loadSettings();
+        final merged = latest.copyWith(showEngineAnalysis: value);
+        state = AsyncValue.data(merged);
+        await _persist(merged);
+      } catch (e, st) {
+        debugPrint(
+          '[EngineSettings] Error persisting engine analysis toggle: $e',
+        );
+        debugPrint('[EngineSettings] Stack: $st');
+      }
+    }());
   }
 
   /// Set search time index

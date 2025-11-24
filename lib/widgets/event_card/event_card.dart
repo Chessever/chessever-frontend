@@ -210,92 +210,99 @@ class _EventImage extends ConsumerWidget {
     final suffix = heroTagSuffix != null ? '-$heroTagSuffix' : '';
     final heroTag = 'event-image-${event.id}$suffix';
     final isCommunity = event.eventSource == EventSource.communityEvent;
+    final shouldUseHero = heroTagSuffix == null;
 
     if (isCommunity) {
       final countryCode = _extractCountryCode(ref, event.location);
+      final flag = _FlagEventImage(countryCode: countryCode);
+      if (!shouldUseHero) return flag;
       return Heroine(
         tag: heroTag,
         flightShuttleBuilder: const NoPaddingFadeShuttleBuilder(),
-        child: _FlagEventImage(countryCode: countryCode),
+        child: flag,
       );
     }
 
     final imageAsync = ref.watch(eventImageProvider(event.id));
 
-    return Heroine(
-      tag: heroTag,
-      flightShuttleBuilder: const NoPaddingFadeShuttleBuilder(),
-      child: SizedBox(
-        width: 90.w, // Give width constraint for AspectRatio to work in Row
-        child: AspectRatio(
-          aspectRatio: 3 / 2, // AspectRatio calculates height from width
-          child: Container(
-            decoration: BoxDecoration(
-              color: kLightBlack,
-              borderRadius: BorderRadius.circular(6.br),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: imageAsync.when(
-              data: (imageUrl) {
-                if (imageUrl != null && imageUrl.isNotEmpty) {
-                  return CachedNetworkImage(
-                    imageUrl: imageUrl,
-                    fit: BoxFit.cover,
-                    fadeInDuration: const Duration(milliseconds: 300),
-                    fadeOutDuration: const Duration(milliseconds: 200),
-                    placeholder:
-                        (context, url) => Skeletonizer(
-                          enabled: true,
-                          ignoreContainers: true,
-                          effect: const ShimmerEffect(
-                            baseColor: Color(0xFF2A2A2A),
-                            highlightColor: Color(0xFF3A3A3A),
-                            duration: Duration(seconds: 1),
-                          ),
-                          child: Container(color: kLightBlack),
+    final image = SizedBox(
+      width: 90.w, // Give width constraint for AspectRatio to work in Row
+      child: AspectRatio(
+        aspectRatio: 3 / 2, // AspectRatio calculates height from width
+        child: Container(
+          decoration: BoxDecoration(
+            color: kLightBlack,
+            borderRadius: BorderRadius.circular(6.br),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: imageAsync.when(
+            data: (imageUrl) {
+              if (imageUrl != null && imageUrl.isNotEmpty) {
+                return CachedNetworkImage(
+                  imageUrl: imageUrl,
+                  fit: BoxFit.cover,
+                  fadeInDuration: const Duration(milliseconds: 300),
+                  fadeOutDuration: const Duration(milliseconds: 200),
+                  placeholder:
+                      (context, url) => Skeletonizer(
+                        enabled: true,
+                        ignoreContainers: true,
+                        effect: const ShimmerEffect(
+                          baseColor: Color(0xFF2A2A2A),
+                          highlightColor: Color(0xFF3A3A3A),
+                          duration: Duration(seconds: 1),
                         ),
-                    errorWidget:
-                        (context, url, error) => Center(
-                          child: Icon(
-                            Icons.image_not_supported_outlined,
-                            color: kWhiteColor.withValues(alpha: 0.3),
-                            size: 24.sp,
-                          ),
+                        child: Container(color: kLightBlack),
+                      ),
+                  errorWidget:
+                      (context, url, error) => Center(
+                        child: Icon(
+                          Icons.image_not_supported_outlined,
+                          color: kWhiteColor.withValues(alpha: 0.3),
+                          size: 24.sp,
                         ),
-                  );
-                }
-                // No image available
-                return Center(
+                      ),
+                );
+              }
+              // No image available
+              return Center(
+                child: Icon(
+                  Icons.image_outlined,
+                  color: kWhiteColor.withValues(alpha: 0.3),
+                  size: 24.sp,
+                ),
+              );
+            },
+            loading:
+                () => Skeletonizer(
+                  enabled: true,
+                  ignoreContainers: true,
+                  effect: const ShimmerEffect(
+                    baseColor: Color(0xFF2A2A2A),
+                    highlightColor: Color(0xFF3A3A3A),
+                    duration: Duration(seconds: 1),
+                  ),
+                  child: Container(color: kLightBlack),
+                ),
+            error:
+                (_, __) => Center(
                   child: Icon(
-                    Icons.image_outlined,
+                    Icons.image_not_supported_outlined,
                     color: kWhiteColor.withValues(alpha: 0.3),
                     size: 24.sp,
                   ),
-                );
-              },
-              loading:
-                  () => Skeletonizer(
-                    enabled: true,
-                    ignoreContainers: true,
-                    effect: const ShimmerEffect(
-                      baseColor: Color(0xFF2A2A2A),
-                      highlightColor: Color(0xFF3A3A3A),
-                      duration: Duration(seconds: 1),
-                    ),
-                    child: Container(color: kLightBlack),
-                  ),
-              error:
-                  (_, __) => Center(
-                    child: Icon(
-                      Icons.image_not_supported_outlined,
-                      color: kWhiteColor.withValues(alpha: 0.3),
-                      size: 24.sp,
-                    ),
-                  ),
-            ),
+                ),
           ),
         ),
       ),
+    );
+
+    if (!shouldUseHero) return image;
+
+    return Heroine(
+      tag: heroTag,
+      flightShuttleBuilder: const NoPaddingFadeShuttleBuilder(),
+      child: image,
     );
   }
 

@@ -6,6 +6,7 @@ import '../../../theme/app_theme.dart';
 import '../../../utils/responsive_helper.dart';
 import '../../../screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import '../../../repository/supabase/group_broadcast/group_broadcast.dart';
+import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 
 class EventFavoriteCard extends ConsumerWidget {
   final Map<String, dynamic> eventData;
@@ -41,6 +42,9 @@ class EventFavoriteCard extends ConsumerWidget {
         ),
       ),
       confirmDismiss: (direction) async {
+        final allowed = await requireFullAuthGuard(context);
+        if (!allowed) return false;
+
         HapticFeedback.mediumImpact();
         return await _showDeleteConfirmation(context, title);
       },
@@ -150,7 +154,11 @@ class EventFavoriteCard extends ConsumerWidget {
 
           // Remove favorite button
           GestureDetector(
-            onTap: onRemoveFavorite,
+            onTap: () async {
+              final allowed = await requireFullAuthGuard(context);
+              if (!allowed) return;
+              onRemoveFavorite?.call();
+            },
             child: Container(
               padding: EdgeInsets.all(8.sp),
               child: Icon(

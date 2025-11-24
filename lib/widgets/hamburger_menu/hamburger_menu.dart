@@ -8,6 +8,7 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu_dialogs.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
+import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -97,8 +98,12 @@ class HamburgerMenu extends StatelessWidget {
                     SizedBox(height: 12.h),
                     _CountryMan(
                       onCountryManPressed: () {
-                        Navigator.pop(context); // Close drawer first
-                        callbacks.onCountrymanPressed();
+                        requireFullAuthGuard(context).then((allowed) {
+                          if (!allowed) return;
+                          if (!context.mounted) return;
+                          Navigator.pop(context); // Close drawer first
+                          callbacks.onCountrymanPressed();
+                        });
                       },
                     ),
                     SizedBox(height: 12.h),
@@ -424,9 +429,14 @@ class _VersionFooter extends ConsumerWidget {
 
             // Delete Account Button
             InkWell(
-              onTap: () {
+              onTap: () async {
                 HapticFeedbackService.buttonPress();
-                showDeleteAccountDialog(context);
+                final Uri deleteAccountUri = Uri.parse(
+                  'https://sites.google.com/view/chessever-delete',
+                );
+                if (await canLaunchUrl(deleteAccountUri)) {
+                  await launchUrl(deleteAccountUri, mode: LaunchMode.externalApplication);
+                }
               },
               child: Container(
                 padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),

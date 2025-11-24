@@ -82,7 +82,10 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
 
   @override
   void initState() {
-    pageController = PageController(initialPage: 0); // About tab is now default
+    final initialPage = TournamentDetailScreenMode.values.indexOf(
+      ref.read(selectedTourModeProvider),
+    );
+    pageController = PageController(initialPage: initialPage);
     super.initState();
   }
 

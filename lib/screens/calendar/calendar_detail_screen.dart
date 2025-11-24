@@ -184,9 +184,12 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
                 final allFavorites = <String>{...starredFavorites}.toList();
 
                 final isSearching = searchController.text.trim().isNotEmpty;
+                final filterMode = ref.watch(calendarFilterModeProvider);
 
+                // For favorites/upcoming modes, use isolate-sorted results (date-based)
+                // For 'all' mode when not searching, apply favorite sorting
                 final finalEvents =
-                    isSearching
+                    (filterMode != CalendarFilterMode.all || isSearching)
                         ? filteredEvents
                         : ref
                             .read(tournamentSortingServiceProvider)

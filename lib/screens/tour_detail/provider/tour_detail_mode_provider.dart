@@ -7,7 +7,7 @@ final selectedBroadcastModelProvider = StateProvider<GroupBroadcast?>(
 
 final selectedTourModeProvider =
     AutoDisposeStateProvider<TournamentDetailScreenMode>(
-      (ref) => TournamentDetailScreenMode.about,
+      (ref) => TournamentDetailScreenMode.games,
     );
 
 /// For Tabs
