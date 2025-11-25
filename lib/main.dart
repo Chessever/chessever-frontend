@@ -221,7 +221,7 @@ Future<void> _clearEvaluationCache() async {
 /// This is a one-time reset for beta users to ensure clean transition
 Future<void> _resetFavoritesForMigration() async {
   try {
-    const int migrationVersion = 3; // Update this to trigger reset
+    const int migrationVersion = 4; // v4: Clear non-user-specific cache keys
     const String versionKey = 'favorites_reset_version';
 
     final prefs = await SharedPreferences.getInstance();
@@ -239,7 +239,7 @@ Future<void> _resetFavoritesForMigration() async {
         'upcoming', // Old event favorites (upcoming category)
         'past', // Old event favorites (past category)
         'cached_favorite_players_full', // Old cache key
-        'cached_favorite_events', // Old event cache
+        'cached_favorite_events', // Old non-user-specific event cache (now user-specific)
         'cached_favorite_players', // Old player cache
         'favorites_migration_complete_v1', // Old migration flag
       ];

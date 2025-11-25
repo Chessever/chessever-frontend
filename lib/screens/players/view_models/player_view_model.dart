@@ -15,6 +15,11 @@ class PlayerViewModel {
   bool _isOnboarding = false;
   bool _onboardingInitialFetched = false;
 
+  /// Generation counter to prevent stale API responses from corrupting state
+  int _searchGeneration = 0;
+  /// Track the current search query to validate API responses
+  String _currentSearchQuery = '';
+
   Set<String> _favoritePlayerIds = {};
 
   Future<void> initialize({bool clear = false, bool isOnboarding = false}) async {
@@ -23,6 +28,8 @@ class PlayerViewModel {
       _offset = 0;
       _hasMore = true;
       _onboardingInitialFetched = false;
+      _searchGeneration++; // Increment to invalidate any in-flight API calls
+      _currentSearchQuery = '';
     }
     _isOnboarding = isOnboarding;
     if (_isInitialized && !clear) return;
@@ -76,7 +83,11 @@ class PlayerViewModel {
   }
 
   Future<List<Map<String, dynamic>>> _fetchSearchResults(String query) async {
-    // Reset for new search
+    // Track the current search query and generation
+    _currentSearchQuery = query;
+    final generationAtStart = _searchGeneration;
+
+    // Reset for new search (offset is 0 after initialize(clear: true))
     if (_offset == 0) {
       _players.clear();
     }
@@ -86,6 +97,12 @@ class PlayerViewModel {
       offset: _offset,
       pageSize: _pageSize,
     );
+
+    // Check if this search is still current (no newer search started)
+    if (_searchGeneration != generationAtStart || _currentSearchQuery != query) {
+      // A newer search was initiated while this one was in flight - discard results
+      return [];
+    }
 
     final enriched = _enrichWithFavorites(players);
     _offset += _pageSize;

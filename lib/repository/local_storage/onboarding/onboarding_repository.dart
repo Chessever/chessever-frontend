@@ -6,65 +6,36 @@ final onboardingRepositoryProvider = Provider<OnboardingRepository>((ref) {
 });
 
 class OnboardingRepository {
-  /// Device-level key for onboarding completion (survives reinstalls via backup)
-  static const String _deviceOnboardingKey = 'onboarding_completed_v2';
+  /// Simple device-level key - shown once per fresh install
+  /// Using new key (v3) to reset for all users after this fix
+  static const String _hasSeenOnboardingKey = 'has_seen_onboarding_v3';
 
-  /// Legacy user-specific key (for migration)
-  static const String _completedUsersKey = 'player_follow_onboarding_users_v1';
+  /// Check if onboarding has been shown on this device.
+  /// Simple boolean check - no user-specific or legacy logic.
+  Future<bool> hasSeenOnboarding() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_hasSeenOnboardingKey) ?? false;
+  }
 
-  /// Check if onboarding has been completed on this device.
-  /// Uses device-level flag that doesn't depend on user authentication.
+  /// Legacy method for backwards compatibility - delegates to hasSeenOnboarding
   Future<bool> isCompleted(String? userId) async {
-    final prefs = await SharedPreferences.getInstance();
-
-    // First check device-level flag (new approach)
-    final deviceCompleted = prefs.getBool(_deviceOnboardingKey) ?? false;
-    if (deviceCompleted) return true;
-
-    // Fallback: check legacy user-specific completion for migration
-    if (userId != null && userId.isNotEmpty) {
-      final completedUsers = prefs.getStringList(_completedUsersKey) ?? [];
-      if (completedUsers.contains(userId)) {
-        // Migrate to device-level flag
-        await prefs.setBool(_deviceOnboardingKey, true);
-        return true;
-      }
-    }
-
-    return false;
+    return hasSeenOnboarding();
   }
 
-  /// Mark onboarding as completed at device level.
-  /// Also stores userId for legacy compatibility.
+  /// Mark onboarding as seen on this device.
+  Future<void> markAsSeen() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_hasSeenOnboardingKey, true);
+  }
+
+  /// Legacy method for backwards compatibility - delegates to markAsSeen
   Future<void> markCompleted(String? userId) async {
-    final prefs = await SharedPreferences.getInstance();
-
-    // Set device-level flag (primary)
-    await prefs.setBool(_deviceOnboardingKey, true);
-
-    // Also store userId for legacy tracking (optional)
-    if (userId != null && userId.isNotEmpty) {
-      final completedUsers = prefs.getStringList(_completedUsersKey) ?? [];
-      if (!completedUsers.contains(userId)) {
-        completedUsers.add(userId);
-        await prefs.setStringList(_completedUsersKey, completedUsers);
-      }
-    }
+    await markAsSeen();
   }
 
-  /// Reset onboarding for this device (for testing/debugging).
+  /// Reset onboarding (for testing/debugging).
   Future<void> resetOnboarding() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_deviceOnboardingKey);
-  }
-
-  /// Legacy: Reset for a specific user
-  Future<void> resetForUser(String? userId) async {
-    if (userId == null || userId.isEmpty) return;
-
-    final prefs = await SharedPreferences.getInstance();
-    final completedUsers = prefs.getStringList(_completedUsersKey) ?? [];
-    completedUsers.removeWhere((id) => id == userId);
-    await prefs.setStringList(_completedUsersKey, completedUsers);
+    await prefs.remove(_hasSeenOnboardingKey);
   }
 }

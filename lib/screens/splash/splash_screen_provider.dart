@@ -9,7 +9,6 @@ import 'package:chessever2/widgets/event_card/starred_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 final splashScreenProvider = AutoDisposeProvider<_SplashScreenProvider>((ref) {
   return _SplashScreenProvider(ref);
@@ -65,22 +64,16 @@ class _SplashScreenProvider {
       }),
     );
 
-    // Check authentication state - session manager will recover session if exists
-    // This also triggers Supabase auth state change which the listener will pick up
-    final sessionManager = ref.read(sessionManagerProvider);
-    final isLoggedIn = await sessionManager.isLoggedIn();
-
     // Check if context is still valid before navigation
     if (!context.mounted) return;
 
-    // Evaluate onboarding completion based on current user
-    final userId = Supabase.instance.client.auth.currentUser?.id;
+    // PRIORITY 1: Check onboarding FIRST - simple boolean, no user dependency
+    // This ensures ALL new users see onboarding regardless of auth state
     final onboardingRepo = ref.read(onboardingRepositoryProvider);
-    final hasCompletedOnboarding = await onboardingRepo.isCompleted(userId);
+    final hasSeenOnboarding = await onboardingRepo.hasSeenOnboarding();
 
-    // Initial navigation - the AuthStateListener will handle subsequent auth changes
-    if (!hasCompletedOnboarding) {
-      // Initialize country drop-down early for recommendations
+    if (!hasSeenOnboarding) {
+      // New user - show onboarding (handles both signed-in and guest on last page)
       ref.read(countryDropdownProvider);
       Navigator.pushNamedAndRemoveUntil(
         context,
@@ -90,15 +83,18 @@ class _SplashScreenProvider {
       return;
     }
 
+    // PRIORITY 2: User has seen onboarding - check auth state
+    final sessionManager = ref.read(sessionManagerProvider);
+    final isLoggedIn = await sessionManager.isLoggedIn();
+
+    if (!context.mounted) return;
+
     if (isLoggedIn) {
-      // User is logged in - initialize country dropdown and go to home
+      // User is logged in - go to home
       ref.read(countryDropdownProvider);
-
-      // Note: Favorites migration and sync happens in AuthStateListener
-
       Navigator.pushNamedAndRemoveUntil(context, '/home_screen', (_) => false);
     } else {
-      // User is not logged in and anonymous sign-in failed - go to auth screen
+      // User is not logged in - go to auth screen
       Navigator.pushNamedAndRemoveUntil(context, '/auth_screen', (_) => false);
     }
   }

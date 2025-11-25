@@ -567,6 +567,7 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
     final launched = await _supabase.auth.linkIdentity(
       provider,
       scopes: scopes,
+      redirectTo: 'com.chessever.app://login-callback',
     );
 
     if (!launched) {

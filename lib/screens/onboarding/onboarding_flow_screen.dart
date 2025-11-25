@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/repository/local_storage/onboarding/onboarding_repository.dart';
 import 'package:chessever2/screens/onboarding/player_selection_screen.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -8,6 +9,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/country_dropdown.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:country_picker/country_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -114,8 +116,26 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                     _AuthStep(
                       topPadding: topPadding,
                       bottomPadding: bottomPadding,
-                      onSignIn: () {
-                        Navigator.pushReplacementNamed(context, '/auth_screen');
+                      onSignIn: () async {
+                        // Mark onboarding as seen BEFORE navigating to auth
+                        // This ensures user won't see onboarding again after signing in
+                        // The pending favorites will be flushed by auth_state_listener
+                        // when authentication completes
+                        try {
+                          await ref
+                              .read(onboardingRepositoryProvider)
+                              .markAsSeen();
+                          if (kDebugMode) {
+                            debugPrint('[Onboarding] Marked as seen before auth navigation');
+                          }
+                        } catch (e) {
+                          if (kDebugMode) {
+                            debugPrint('[Onboarding] Failed to mark as seen: $e');
+                          }
+                        }
+                        if (context.mounted) {
+                          Navigator.pushReplacementNamed(context, '/auth_screen');
+                        }
                       },
                       onContinueAsGuest: () => markOnboardingComplete(context, ref),
                     ),
