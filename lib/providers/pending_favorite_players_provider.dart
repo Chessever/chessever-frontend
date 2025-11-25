@@ -60,10 +60,12 @@ class PendingFavoriteSelectionsNotifier
     };
   }
 
+  /// Flush pending favorites to Supabase.
+  /// Works for both anonymous and fully authenticated users.
   Future<void> flushToSupabase() async {
     final user = _supabase.auth.currentUser;
-    final isAuthenticated = user != null && user.isAnonymous != true;
-    if (!isAuthenticated) return;
+    // Allow flush for any authenticated user (including anonymous)
+    if (user == null) return;
 
     final toSync = state.values.where((p) => p.isSelected).toList();
     if (toSync.isEmpty) return;
@@ -71,7 +73,7 @@ class PendingFavoriteSelectionsNotifier
     try {
       final payload = toSync
           .map((pending) => {
-                'user_id': user!.id,
+                'user_id': user.id,
                 'fide_id': pending.fideId,
                 'player_name': pending.playerName,
                 'metadata': <String, dynamic>{

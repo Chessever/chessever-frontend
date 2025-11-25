@@ -15,9 +15,16 @@ final favoriteEventsProvider =
 );
 
 class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
-  static const String _cacheKey = 'cached_favorite_events';
+  static const String _cacheKeyPrefix = 'cached_favorite_events_';
 
   SupabaseClient get _supabase => Supabase.instance.client;
+
+  /// Get user-specific cache key to prevent cross-user cache pollution
+  String get _cacheKey {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return '${_cacheKeyPrefix}anonymous';
+    return '$_cacheKeyPrefix$userId';
+  }
 
   @override
   Future<List<FavoriteEvent>> build() async {

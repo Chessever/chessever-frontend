@@ -3,15 +3,12 @@ import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:crypto/crypto.dart';
 
 /// Migrates old SharedPreferences favorites to Supabase
 /// This ensures backwards compatibility for users updating the app
 class FavoritesMigration {
-  // Bump version to force re-run after legacy failure cases
-  static const String _migrationCompleteKey = 'favorites_migration_complete_v2';
-
-  // Old keys used by the previous system
+  // Old keys used by the previous system (GLOBAL - not user-specific)
+  // These are legacy keys from before we had user-specific storage
   static const String _oldPlayersKey = 'favorite_players';
   static const List<String> _oldEventKeys = [
     'current', // GroupEventCategory.current.name
@@ -19,108 +16,65 @@ class FavoritesMigration {
     'past', // GroupEventCategory.past.name
   ];
 
-  /// Run the migration once on app startup
-  /// This is safe to call multiple times - it only runs once
+  /// Returns user-specific migration key to ensure each user only migrates once
+  /// v4: Disabled event migration - old keys stored ALL events, not just favorites
+  static String _migrationKeyForUser(String userId) =>
+      'favorites_migration_complete_v4_$userId';
+
+  /// Run the migration once per user
+  /// This is safe to call multiple times - it only runs once per user
+  /// NOTE: Event migration is DISABLED - the old keys (current, upcoming, past)
+  /// stored ALL fetched events, not just favorites. Only player favorites are migrated.
   static Future<void> migrateIfNeeded() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-
-      // Check if migration already completed
-      final migrationComplete = prefs.getBool(_migrationCompleteKey) ?? false;
-      if (migrationComplete) {
-        debugPrint('[FavoritesMigration] Already migrated, skipping');
-        return;
-      }
-
       final userId = Supabase.instance.client.auth.currentUser?.id;
       if (userId == null) {
         debugPrint('[FavoritesMigration] No user logged in, skipping migration');
         return;
       }
 
-      debugPrint('[FavoritesMigration] Starting migration for user: $userId');
+      final prefs = await SharedPreferences.getInstance();
 
-      // Migrate events and players in parallel, and only mark complete if both succeed
-      final results = await Future.wait<bool>([
-        _migrateEvents(prefs, userId),
-        _migratePlayers(prefs, userId),
-      ]);
+      // User-specific migration flag - v4 to force re-run after disabling event migration
+      final userMigrationKey = _migrationKeyForUser(userId);
+      final migrationComplete = prefs.getBool(userMigrationKey) ?? false;
+      if (migrationComplete) {
+        debugPrint('[FavoritesMigration] Already migrated for user $userId, skipping');
+        return;
+      }
 
-      final allSucceeded = results.every((r) => r);
-      if (allSucceeded) {
-        await prefs.setBool(_migrationCompleteKey, true);
-        debugPrint('[FavoritesMigration] ✅ Migration complete!');
+      // Always clear legacy event keys - they contain ALL events, not favorites
+      // This prevents any future incorrect migrations
+      await _clearLegacyKeys(prefs);
+
+      // Check if there's player data to migrate
+      final hasPlayerData = prefs.containsKey(_oldPlayersKey) &&
+          (prefs.getString(_oldPlayersKey)?.isNotEmpty ?? false);
+
+      if (!hasPlayerData) {
+        debugPrint('[FavoritesMigration] No player data to migrate, marking complete');
+        await prefs.setBool(userMigrationKey, true);
+        return;
+      }
+
+      debugPrint('[FavoritesMigration] Starting player migration for user: $userId');
+
+      // Only migrate players - NOT events
+      // The old event keys (current, upcoming, past) stored ALL fetched events, not favorites
+      final success = await _migratePlayers(prefs, userId);
+
+      if (success) {
+        await prefs.setBool(userMigrationKey, true);
+        debugPrint('[FavoritesMigration] ✅ Player migration complete!');
       } else {
         debugPrint(
-          '[FavoritesMigration] ⚠️ Migration did not fully complete. Will retry on next launch.',
+          '[FavoritesMigration] ⚠️ Migration did not complete. Will retry on next launch.',
         );
       }
     } catch (e, st) {
       debugPrint('[FavoritesMigration] ❌ Error during migration: $e');
       debugPrint('[FavoritesMigration] Stack: $st');
       // Don't rethrow - migration errors shouldn't block app startup
-    }
-  }
-
-  /// Migrate event favorites from old starred system
-  static Future<bool> _migrateEvents(
-    SharedPreferences prefs,
-    String userId,
-  ) async {
-    try {
-      final supabase = Supabase.instance.client;
-      final eventsToMigrate = <Map<String, dynamic>>[];
-      final seenEventIds = <String>{};
-
-      // Collect all starred events from different categories
-      for (final categoryKey in _oldEventKeys) {
-        final starredList = prefs.getStringList(categoryKey) ?? [];
-        debugPrint(
-          '[FavoritesMigration] Found ${starredList.length} events in category: $categoryKey',
-        );
-
-        for (final rawEvent in starredList) {
-          final normalized = _normalizeLegacyEvent(rawEvent);
-          if (normalized == null) {
-            continue;
-          }
-
-          final eventId = normalized.eventId;
-          if (seenEventIds.contains(eventId)) {
-            continue;
-          }
-          seenEventIds.add(eventId);
-
-          eventsToMigrate.add({
-            'user_id': userId,
-            'event_id': eventId,
-            'event_name': normalized.eventName,
-            'metadata': normalized.metadata,
-          });
-        }
-      }
-
-      if (eventsToMigrate.isEmpty) {
-        debugPrint('[FavoritesMigration] No events to migrate');
-        return true;
-      }
-
-      debugPrint(
-        '[FavoritesMigration] Migrating ${eventsToMigrate.length} events to Supabase...',
-      );
-
-      // Insert to Supabase (use upsert to avoid duplicates)
-      await supabase.from('user_favorite_events').upsert(eventsToMigrate);
-
-      debugPrint(
-        '[FavoritesMigration] ✅ Successfully migrated ${eventsToMigrate.length} events',
-      );
-      return true;
-    } catch (e, st) {
-      debugPrint('[FavoritesMigration] Error migrating events: $e');
-      debugPrint('[FavoritesMigration] Stack: $st');
-      // Don't rethrow - continue with other migrations
-      return false;
     }
   }
 
@@ -171,8 +125,12 @@ class FavoritesMigration {
         '[FavoritesMigration] Migrating ${playersToMigrate.length} players to Supabase...',
       );
 
-      // Insert to Supabase (use upsert to avoid duplicates)
-      await supabase.from('user_favorite_players').upsert(playersToMigrate);
+      // Insert to Supabase (use upsert with onConflict to handle duplicates)
+      await supabase.from('user_favorite_players').upsert(
+        playersToMigrate,
+        onConflict: 'user_id,player_name',
+        ignoreDuplicates: true,
+      );
 
       debugPrint(
         '[FavoritesMigration] ✅ Successfully migrated ${playersToMigrate.length} players',
@@ -186,106 +144,93 @@ class FavoritesMigration {
     }
   }
 
-  /// Reset migration flag (useful for testing)
-  static Future<void> resetMigration() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_migrationCompleteKey);
-    debugPrint('[FavoritesMigration] Migration flag reset');
-  }
+  /// Clear legacy keys after successful migration
+  /// This prevents the same data from being migrated to multiple users
+  static Future<void> _clearLegacyKeys(SharedPreferences prefs) async {
+    debugPrint('[FavoritesMigration] Clearing legacy keys...');
 
-  /// Normalize legacy event data to a safe, indexable payload.
-  /// Returns null if the entry cannot be parsed into a usable identifier.
-  static _NormalizedEvent? _normalizeLegacyEvent(String rawEvent) {
-    Map<String, dynamic>? decodedMap;
-    String? eventId;
-    String? eventName;
+    // Clear old players key
+    if (prefs.containsKey(_oldPlayersKey)) {
+      await prefs.remove(_oldPlayersKey);
+    }
 
-    try {
-      final decoded = jsonDecode(rawEvent);
-      if (decoded is Map<String, dynamic>) {
-        decodedMap = decoded;
-        eventId =
-            decodedMap['id']?.toString() ??
-            decodedMap['event_id']?.toString() ??
-            decodedMap['slug']?.toString() ??
-            decodedMap['uuid']?.toString();
-        eventName =
-            decodedMap['name']?.toString() ??
-            decodedMap['title']?.toString() ??
-            decodedMap['event_name']?.toString();
+    // Clear old event keys
+    for (final key in _oldEventKeys) {
+      if (prefs.containsKey(key)) {
+        await prefs.remove(key);
       }
-    } catch (_) {
-      // Not JSON; fall through to using raw string
     }
 
-    final resolvedId = _safeEventId(eventId ?? rawEvent);
-    if (resolvedId.isEmpty) {
-      debugPrint(
-        '[FavoritesMigration] Skipping legacy event with empty id. Raw: $rawEvent',
-      );
-      return null;
-    }
+    // Also clear old migration flags
+    await prefs.remove('favorites_migration_complete_v1');
+    await prefs.remove('favorites_migration_complete_v2');
 
-    final resolvedName = _safeEventName(eventName, resolvedId);
-    final metadata = <String, dynamic>{
-      'legacy_raw': _truncate(rawEvent, 800),
-      'legacy_source': 'favorites_migration_v1',
-    };
-
-    if (decodedMap != null) {
-      metadata['legacy_payload'] = _truncate(jsonEncode(decodedMap), 800);
-    }
-    if (eventId != null && eventId != resolvedId) {
-      metadata['original_event_id'] = _truncate(eventId, 200);
-    }
-    if (eventName != null && eventName != resolvedName) {
-      metadata['original_event_name'] = _truncate(eventName, 200);
-    }
-
-    return _NormalizedEvent(
-      eventId: resolvedId,
-      eventName: resolvedName,
-      metadata: metadata,
-    );
+    debugPrint('[FavoritesMigration] Legacy keys cleared');
   }
 
-  static String _safeEventId(String rawId) {
-    final trimmed = rawId.trim();
-    if (trimmed.isEmpty) return '';
-
-    // If identifier is too large for the index, use a stable hash
-    final byteLength = utf8.encode(trimmed).length;
-    const int maxIndexedBytes = 180; // conservative buffer under the ~2704b cap
-    if (byteLength > maxIndexedBytes) {
-      final hashed = md5.convert(utf8.encode(trimmed)).toString();
-      debugPrint(
-        '[FavoritesMigration] Hashing oversized event id (bytes=$byteLength) -> $hashed',
-      );
-      return 'legacy_$hashed';
+  /// Reset migration flag for a specific user (useful for testing)
+  static Future<void> resetMigration() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) {
+      debugPrint('[FavoritesMigration] No user logged in, cannot reset');
+      return;
     }
-    return trimmed;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_migrationKeyForUser(userId));
+    debugPrint('[FavoritesMigration] Migration flag reset for user $userId');
   }
 
-  static String _safeEventName(String? rawName, String fallbackId) {
-    final base = (rawName ?? '').trim();
-    final chosen = base.isNotEmpty ? base : fallbackId;
-    return _truncate(chosen, 120);
+  /// One-time cleanup for users affected by the bad v1/v2 migration
+  /// This deletes all favorite events from Supabase that were incorrectly migrated
+  /// Safe to call multiple times - only runs once per user
+  static Future<void> cleanupBadMigrationDataIfNeeded() async {
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) {
+        debugPrint('[FavoritesMigration] No user logged in, skipping cleanup');
+        return;
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      final cleanupKey = 'favorites_cleanup_v1_$userId';
+      final cleanupDone = prefs.getBool(cleanupKey) ?? false;
+
+      if (cleanupDone) {
+        debugPrint('[FavoritesMigration] Cleanup already done for user $userId');
+        return;
+      }
+
+      debugPrint('[FavoritesMigration] 🧹 Starting bad migration cleanup for user: $userId');
+
+      // Delete all favorite events from Supabase for this user
+      // These were incorrectly migrated from non-user-specific SharedPreferences
+      final supabase = Supabase.instance.client;
+
+      // Count before delete for logging
+      final countResponse = await supabase
+          .from('user_favorite_events')
+          .select('id')
+          .eq('user_id', userId);
+      final eventCount = (countResponse as List).length;
+
+      if (eventCount > 0) {
+        await supabase
+            .from('user_favorite_events')
+            .delete()
+            .eq('user_id', userId);
+        debugPrint('[FavoritesMigration] ✅ Deleted $eventCount incorrectly migrated events');
+      } else {
+        debugPrint('[FavoritesMigration] No events to clean up');
+      }
+
+      // Mark cleanup as done for this user
+      await prefs.setBool(cleanupKey, true);
+      debugPrint('[FavoritesMigration] ✅ Cleanup complete for user $userId');
+    } catch (e, st) {
+      debugPrint('[FavoritesMigration] ❌ Error during cleanup: $e');
+      debugPrint('[FavoritesMigration] Stack: $st');
+      // Don't rethrow - cleanup errors shouldn't block app
+    }
   }
 
-  static String _truncate(String value, int maxLength) {
-    if (value.length <= maxLength) return value;
-    return value.substring(0, maxLength);
-  }
-}
-
-class _NormalizedEvent {
-  final String eventId;
-  final String eventName;
-  final Map<String, dynamic> metadata;
-
-  const _NormalizedEvent({
-    required this.eventId,
-    required this.eventName,
-    required this.metadata,
-  });
 }

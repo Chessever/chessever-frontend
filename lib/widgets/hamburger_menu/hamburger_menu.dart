@@ -276,7 +276,7 @@ class _VersionFooter extends ConsumerWidget {
 
   static Future<void> _launchPrivacyPolicy() async {
     final Uri privacyPolicyUri = Uri.parse(
-      'https://sites.google.com/view/chessever-privacy-policy',
+      'https://chessever.com/gtc',
     );
     if (await canLaunchUrl(privacyPolicyUri)) {
       await launchUrl(privacyPolicyUri, mode: LaunchMode.externalApplication);
@@ -674,7 +674,7 @@ class _AboutDialog extends StatelessWidget {
                     onTap: () {
                       HapticFeedbackService.buttonPress();
                       _launchUrl(
-                        'https://sites.google.com/view/chessever-privacy-policy',
+                        'https://chessever.com/gtc',
                       );
                     },
                     delay: 500,

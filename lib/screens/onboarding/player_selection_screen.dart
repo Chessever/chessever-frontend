@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
+import 'package:chessever2/providers/pending_favorite_players_provider.dart';
+import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
 import 'package:chessever2/repository/local_storage/onboarding/onboarding_repository.dart';
 import 'package:chessever2/screens/players/providers/player_providers.dart';
@@ -92,16 +94,29 @@ class PlayerSelectionContent extends HookConsumerWidget {
     final countryCode = countryState.value?.countryCode ?? 'US';
     final countryName = countryState.value?.name ?? 'your region';
 
+    // Debounced search to avoid race conditions with rapid keystrokes
+    final debounceTimer = useRef<Timer?>(null);
+
     useEffect(() {
       void listener() {
         final text = searchController.text;
         searchQuery.value = text;
         ref.read(playerSearchQueryProvider.notifier).state = text;
-        ref.read(onboardingPlayerProvider.notifier).setSearchQuery(text);
+
+        // Cancel any existing debounce timer
+        debounceTimer.value?.cancel();
+
+        // Debounce the actual search query - wait 300ms after user stops typing
+        debounceTimer.value = Timer(const Duration(milliseconds: 300), () {
+          ref.read(onboardingPlayerProvider.notifier).setSearchQuery(text);
+        });
       }
 
       searchController.addListener(listener);
-      return () => searchController.removeListener(listener);
+      return () {
+        debounceTimer.value?.cancel();
+        searchController.removeListener(listener);
+      };
     }, [searchController]);
 
     useEffect(() {
@@ -281,6 +296,7 @@ class PlayerSelectionContent extends HookConsumerWidget {
                               ref,
                               selectedIds,
                               player,
+                              isOnboarding: true,
                             ),
                             isSearching: isSearching,
                             isLoading: isLoading,
@@ -400,19 +416,53 @@ class PlayerSelectionContent extends HookConsumerWidget {
 }
 
 Future<void> markOnboardingComplete(BuildContext context, WidgetRef ref) async {
-  final userId = Supabase.instance.client.auth.currentUser?.id;
   try {
-    await ref.read(onboardingRepositoryProvider).markCompleted(userId);
+    // If user is not authenticated at all, create an anonymous account
+    // This preserves their onboarding selections (favorites, country, etc.)
+    var user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      if (kDebugMode) {
+        debugPrint('[Onboarding] No user - creating anonymous account...');
+      }
+      try {
+        await ref.read(authStateProvider.notifier).signInAnonymously();
+        user = Supabase.instance.client.auth.currentUser;
+        if (kDebugMode) {
+          debugPrint('[Onboarding] Anonymous account created: ${user?.id}');
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[Onboarding] Failed to create anonymous account: $e');
+        }
+      }
+    }
+
+    // Now flush any pending favorite selections to Supabase
+    // (works for both anonymous and authenticated users)
+    if (user != null) {
+      try {
+        await ref.read(pendingFavoriteSelectionsProvider.notifier).flushToSupabase();
+        if (kDebugMode) {
+          debugPrint('[Onboarding] Flushed pending favorites to Supabase');
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[Onboarding] Failed to flush pending favorites: $e');
+        }
+      }
+    }
+
+    await ref.read(onboardingRepositoryProvider).markCompleted(user?.id);
     final favoritePlayers = ref.read(favoritePlayersProviderNew);
     final favoriteCount = favoritePlayers.valueOrNull?.length;
-    final isAuthenticated =
-        Supabase.instance.client.auth.currentUser?.isAnonymous == false;
+    final isAuthenticated = user?.isAnonymous == false;
 
     AnalyticsService.instance.trackEventDetached(
       'Onboarding Completed',
       properties: {
         'favorite_player_count': favoriteCount,
         'is_authenticated': isAuthenticated,
+        'is_anonymous': user?.isAnonymous == true,
       },
     );
   } catch (e) {
@@ -607,16 +657,22 @@ Future<void> _toggleFavorite(
   BuildContext context,
   WidgetRef ref,
   ValueNotifier<Set<String>> selectedIds,
-  Map<String, dynamic> player,
-) async {
-  final allowed = await requireFullAuthGuard(context);
-  if (!allowed) return;
-
+  Map<String, dynamic> player, {
+  bool isOnboarding = false,
+}) async {
   final fideId = player['fideId']?.toString();
   if (fideId == null || fideId.isEmpty) return;
+
   final supabaseUser = Supabase.instance.client.auth.currentUser;
-  final isAuthenticated =
+  final isFullyAuthenticated =
       supabaseUser != null && supabaseUser.isAnonymous != true;
+
+  // During onboarding, we allow favorites without auth check
+  // Favorites will be stored in pending provider and flushed after account creation
+  if (!isOnboarding) {
+    final allowed = await requireFullAuthGuard(context);
+    if (!allowed) return;
+  }
 
   final updated = Set<String>.from(selectedIds.value);
   if (updated.contains(fideId)) {
@@ -641,30 +697,49 @@ Future<void> _toggleFavorite(
   // Fire off remote/local toggles without blocking the tap animation
   unawaited(ref.read(onboardingPlayerProvider.notifier).toggleFavorite(fideId));
 
-  unawaited(() async {
-    try {
-      final playerModel = PlayerStandingModel(
-        name: '${player['title'] ?? ''} ${player['name']}'.trim(),
-        countryCode: player['fed']?.toString() ?? '',
-        score: player['rating'] ?? 0,
-        scoreChange: 0,
-        matchScore: null,
-        fideId: int.tryParse(fideId),
-        title: player['title']?.toString(),
-      );
+  // Store in pending favorites provider (for sync after account creation)
+  // This works for both onboarding (no user yet) and normal flow
+  ref.read(pendingFavoriteSelectionsProvider.notifier).setSelection(
+    PendingFavoritePlayer(
+      fideId: fideId,
+      playerName: '${player['title'] ?? ''} ${player['name']}'.trim(),
+      countryCode: player['fed']?.toString(),
+      rating: player['rating'] as int?,
+      title: player['title']?.toString(),
+      isSelected: isSelected,
+    ),
+  );
 
-      if (isAuthenticated) {
+  // If user is already fully authenticated, also sync directly to Supabase
+  if (isFullyAuthenticated) {
+    unawaited(() async {
+      try {
+        final playerModel = PlayerStandingModel(
+          name: '${player['title'] ?? ''} ${player['name']}'.trim(),
+          countryCode: player['fed']?.toString() ?? '',
+          score: player['rating'] ?? 0,
+          scoreChange: 0,
+          matchScore: null,
+          fideId: int.tryParse(fideId),
+          title: player['title']?.toString(),
+        );
+
         await ref
             .read(favoriteStandingsPlayerService)
             .toggleFavorite(playerModel);
         ref.read(favoritesVersionProvider.notifier).state++;
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('Failed to sync favorite: $e');
+        }
       }
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('Failed to sync favorite: $e');
-      }
-    }
-  }());
+    }());
+  } else if (supabaseUser != null) {
+    // User is anonymous - flush pending favorites immediately
+    unawaited(
+      ref.read(pendingFavoriteSelectionsProvider.notifier).flushToSupabase(),
+    );
+  }
 }
 
 Widget _buildFlag(
