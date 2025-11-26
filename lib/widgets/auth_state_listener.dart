@@ -79,12 +79,29 @@ class AuthStateListener extends ConsumerWidget {
             if (shouldRunSync && currentUserId != null) {
               _lastSyncedUserId = currentUserId;
 
+              // Clear cached favorites when switching accounts to avoid cross-user bleed
+              if (userChanged) {
+                await ref.read(favoriteEventsProvider.notifier).clearCache();
+                await ref.read(favoritePlayersProviderNew.notifier).clearCache();
+                ref.invalidate(favoriteEventsProvider);
+                ref.invalidate(favoritePlayersProviderNew);
+              }
+
               // User just authenticated - migrate old favorites and sync from Supabase
               unawaited(
                 Future(() async {
                   try {
                     if (kDebugMode) {
                       print('🔄 [Auth] User authenticated, starting favorites migration & sync...');
+                    }
+
+                    // If onboarding hasn't been completed yet (fresh session),
+                    // clear any legacy favorite event data that could pollute a new account.
+                    final hasSeenOnboarding = await ref
+                        .read(onboardingRepositoryProvider)
+                        .hasSeenOnboarding(userId: currentUserId);
+                    if (!hasSeenOnboarding) {
+                      await FavoritesMigration.cleanupBadMigrationDataIfNeeded();
                     }
 
                     // Step 1: Migrate old SharedPreferences favorites (runs only once per user)
@@ -131,11 +148,12 @@ class AuthStateListener extends ConsumerWidget {
             if (currentRoute == '/auth_screen' && !isAnonymous) {
               final hasSeenOnboarding = await ref
                   .read(onboardingRepositoryProvider)
-                  .hasSeenOnboarding();
+                  .hasSeenOnboarding(userId: currentUserId);
 
-              // Fully authenticated user - go to home_screen
+              // Fully authenticated user - go to onboarding if never seen, otherwise home
+              final targetRoute = hasSeenOnboarding ? '/home_screen' : '/onboarding';
               navigator.pushNamedAndRemoveUntil(
-                hasSeenOnboarding ? '/home_screen' : '/home_screen',
+                targetRoute,
                 (route) => false,
               );
             }
@@ -143,6 +161,13 @@ class AuthStateListener extends ConsumerWidget {
             // Clear the sync tracking when user logs out
             _lastSyncedUserId = null;
             unawaited(AnalyticsService.instance.clearUser());
+
+            // Clear favorite caches and state so the next user starts clean
+            await ref.read(favoriteEventsProvider.notifier).clearCache();
+            await ref.read(favoritePlayersProviderNew.notifier).clearCache();
+            ref.invalidate(favoriteEventsProvider);
+            ref.invalidate(favoritePlayersProviderNew);
+            ref.invalidate(pendingFavoriteSelectionsProvider);
 
             // Don't redirect if we're on splash, onboarding, or already on auth screen
             // Let splash screen handle initial navigation including onboarding check
