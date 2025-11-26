@@ -4,6 +4,7 @@ import 'package:chessever2/repository/authentication/model/app_user.dart';
 import 'package:chessever2/repository/authentication/model/exceptions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'auth_screen_state.dart';
 
 // Provider definition
@@ -30,6 +31,27 @@ class AuthScreenNotifier extends StateNotifier<AuthScreenState> {
   }
 
   Future<void> signInAsGuest() async {
+    // If already signed in anonymously, reuse the same session to avoid errors
+    final currentAppUser = ref.read(authStateProvider).valueOrNull?.user;
+    final currentSupabaseUser = Supabase.instance.client.auth.currentUser;
+
+    final isAnonymousSession =
+        (currentAppUser?.isAnonymous == true) ||
+        (currentSupabaseUser?.isAnonymous == true);
+
+    if (isAnonymousSession) {
+      debugPrint('ℹ️ [AUTH] Already in anonymous session, skipping re-sign-in');
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: null,
+        user: currentAppUser ?? (currentSupabaseUser != null
+            ? AppUser.fromSupabaseUser(currentSupabaseUser)
+            : null),
+        showCountrySelection: true,
+      );
+      return;
+    }
+
     await _performSignIn(
       () => ref.read(authStateProvider.notifier).signInAnonymously(),
     );

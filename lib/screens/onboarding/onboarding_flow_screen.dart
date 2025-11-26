@@ -129,7 +129,10 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                         try {
                           await ref
                               .read(onboardingRepositoryProvider)
-                              .markAsSeen();
+                              .markAsSeen(
+                                userId:
+                                    Supabase.instance.client.auth.currentUser?.id,
+                              );
                           if (kDebugMode) {
                             debugPrint('[Onboarding] Marked as seen before auth navigation');
                           }

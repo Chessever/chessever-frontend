@@ -237,7 +237,31 @@ class _AuthButtonWidget extends ConsumerWidget {
           SizedBox(height: 12.h),
           TextButton(
             onPressed: () async {
+              // If we're already in an anonymous session, just proceed to the app
+              final supabaseUser = Supabase.instance.client.auth.currentUser;
+              if (supabaseUser?.isAnonymous == true) {
+                final onboardingRepo = ref.read(onboardingRepositoryProvider);
+                final hasCompleted = await onboardingRepo.isCompleted(supabaseUser!.id);
+                if (!context.mounted) return;
+                Navigator.pushReplacementNamed(
+                  context,
+                  hasCompleted ? '/home_screen' : '/onboarding',
+                );
+                return;
+              }
+
+              // Otherwise, create anonymous session then navigate
               await ref.read(authScreenProvider.notifier).signInAsGuest();
+              final newUser = Supabase.instance.client.auth.currentUser;
+              if (newUser?.isAnonymous == true) {
+                final onboardingRepo = ref.read(onboardingRepositoryProvider);
+                final hasCompleted = await onboardingRepo.isCompleted(newUser!.id);
+                if (!context.mounted) return;
+                Navigator.pushReplacementNamed(
+                  context,
+                  hasCompleted ? '/home_screen' : '/onboarding',
+                );
+              }
             },
             child: Text(
               'Continue as Guest',

@@ -10,6 +10,7 @@ import 'package:chessever2/screens/players/providers/player_providers.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
+import 'package:chessever2/utils/favorites_migration.dart';
 import 'package:chessever2/utils/notification_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -420,6 +421,8 @@ Future<void> markOnboardingComplete(BuildContext context, WidgetRef ref) async {
   // Request notification permission on last page of onboarding (fire and forget)
   unawaited(NotificationService.requestPermissionWithDialog());
 
+  // Ensure we don't lose onboarding selections: do not navigate away if we fail here
+  // (user can retry without losing in-memory providers)
   try {
     // If user is not authenticated at all, create an anonymous account
     // This preserves their onboarding selections (favorites, country, etc.)
@@ -438,21 +441,46 @@ Future<void> markOnboardingComplete(BuildContext context, WidgetRef ref) async {
         if (kDebugMode) {
           debugPrint('[Onboarding] Failed to create anonymous account: $e');
         }
+        // Without an auth session we cannot persist selections safely
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Could not start guest session. Please try again.'),
+            ),
+          );
+        }
+        return;
       }
     }
 
+    // If we still failed to obtain a user, bail out early to avoid losing selections
+    if (user == null) {
+      if (kDebugMode) {
+        debugPrint('[Onboarding] No user session available after attempt');
+      }
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not start session. Please try again.'),
+          ),
+        );
+      }
+      return;
+    }
+
+    // Clean up any legacy favorite event pollution before syncing
+    await FavoritesMigration.cleanupBadMigrationDataIfNeeded();
+
     // Now flush any pending favorite selections to Supabase
     // (works for both anonymous and authenticated users)
-    if (user != null) {
-      try {
-        await ref.read(pendingFavoriteSelectionsProvider.notifier).flushToSupabase();
-        if (kDebugMode) {
-          debugPrint('[Onboarding] Flushed pending favorites to Supabase');
-        }
-      } catch (e) {
-        if (kDebugMode) {
-          debugPrint('[Onboarding] Failed to flush pending favorites: $e');
-        }
+    try {
+      await ref.read(pendingFavoriteSelectionsProvider.notifier).flushToSupabase();
+      if (kDebugMode) {
+        debugPrint('[Onboarding] Flushed pending favorites to Supabase');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[Onboarding] Failed to flush pending favorites: $e');
       }
     }
 

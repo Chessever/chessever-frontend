@@ -52,13 +52,14 @@ class AudioPlayerService with WidgetsBindingObserver {
   Future<void> _playWithRecovery(AudioSource source) async {
     try {
       await initializeAndLoadAllAssets();
-      player.play(source);
+      // Await to surface initialization issues immediately and trigger recovery.
+      await player.play(source);
     } catch (e, s) {
       debugPrint('⚠️ Audio playback failed, recovering SoLoud: $e\n$s');
       _teardownPlayer();
       try {
         await initializeAndLoadAllAssets(force: true);
-        player.play(source);
+        await player.play(source);
       } catch (err, st) {
         debugPrint('⚠️ Audio playback failed after recovery: $err\n$st');
       }
@@ -153,15 +154,24 @@ class AudioPlayerService with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     debugPrint('🎧 AudioPlayerService: lifecycle changed to $state');
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached) {
-      _teardownPlayer();
-    } else if (state == AppLifecycleState.resumed) {
-      // Refresh assets and the engine after returning to foreground.
-      // force=true when not initialized to reload everything fresh
-      final shouldForce = !_initialized;
-      debugPrint('🎧 AudioPlayerService: resuming, will reinitialize (force: $shouldForce)');
-      unawaited(initializeAndLoadAllAssets(force: shouldForce));
+    if (state == AppLifecycleState.resumed) {
+      // Always refresh after coming back to foreground; some platforms tear
+      // down the native engine while keeping the Dart flag alive.
+      debugPrint('🎧 AudioPlayerService: resuming, will reinitialize (force: true)');
+      unawaited(initializeAndLoadAllAssets(force: true));
+      return;
     }
+
+    // Treat every non-resumed state as background to avoid stale native handles.
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden) {
+      _teardownPlayer();
+      return;
+    }
+
+    // Fallback for any future lifecycle states.
+    _teardownPlayer();
   }
 }

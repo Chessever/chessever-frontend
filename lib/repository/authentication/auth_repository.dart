@@ -62,6 +62,65 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
     return const AppAuthState.unauthenticated();
   }
 
+  /// When anonymous upgrade fails because the identity already exists, fall back to
+  /// signing into the existing OAuth account (ignoring the anonymous userId).
+  Future<AppUser?> _maybeFallbackToExistingOauth({
+    required OAuthProvider provider,
+    required bool allowAnonymousUpgrade,
+    required Object error,
+  }) async {
+    // Only handle "identity exists" style errors
+    final message = error.toString().toLowerCase();
+    final identityExists =
+        message.contains('identity') && message.contains('exist') ||
+        message.contains('already linked') ||
+        message.contains('duplicate key') ||
+        message.contains('identities_provider_unique');
+
+    if (!identityExists) return null;
+
+    // Clear the anonymous local session so the next sign-in goes to the real account
+    try {
+      // Full sign out to drop the anonymous session before switching to existing OAuth
+      await _supabase.auth.signOut();
+      await _supabase.auth.signOut(scope: SignOutScope.local);
+      await _sessionManager.clearLocalStorage();
+    } catch (_) {}
+
+    // If the anonymous link flow failed, ensure we clear the in-progress loading state
+    state = const AsyncValue.data(AppAuthState.unauthenticated());
+
+    unawaited(
+      AnalyticsService.instance.trackAuthEvent(
+        action: 'anonymous_upgrade_conflict',
+        method: provider.name,
+        success: false,
+        reason: 'identity_exists',
+      ),
+    );
+
+    // Perform regular sign-in (bypassing the anonymous upgrade branch)
+    return await _fallbackToExistingOauth(provider);
+  }
+
+  /// Clear current session and sign into an existing OAuth account (non-upgrade).
+  Future<AppUser?> _fallbackToExistingOauth(OAuthProvider provider) async {
+    try {
+      await _supabase.auth.signOut();
+      await _supabase.auth.signOut(scope: SignOutScope.local);
+      await _sessionManager.clearLocalStorage();
+    } catch (_) {}
+
+    if (provider == OAuthProvider.google) {
+      return await signInWithGoogle(allowAnonymousUpgrade: false);
+    }
+    if (provider == OAuthProvider.apple) {
+      return await signInWithApple(allowAnonymousUpgrade: false);
+    }
+
+    return null;
+  }
+
   void _startAuthListener() {
     _authSubscription?.cancel();
     _authSubscription = _supabase.auth.onAuthStateChange.listen(
@@ -113,7 +172,7 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
     }
   }
 
-  Future<AppUser> signInWithGoogle() async {
+  Future<AppUser> signInWithGoogle({bool allowAnonymousUpgrade = true}) async {
     state = const AsyncValue.data(AppAuthState.loading());
     unawaited(
       AnalyticsService.instance.trackAuthEvent(
@@ -124,7 +183,7 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
 
     final currentUser = _supabase.auth.currentUser;
     final isAnonymous = currentUser?.isAnonymous == true;
-    if (isAnonymous) {
+    if (isAnonymous && allowAnonymousUpgrade) {
       try {
         unawaited(
           AnalyticsService.instance.trackAuthEvent(
@@ -148,6 +207,11 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
       } catch (e, st) {
         await ref.read(errorLoggerProvider).logError(e, st);
         state = AsyncValue.data(AppAuthState.error(_exceptionMessage(e)));
+
+        // Fall back to signing into the existing OAuth account if linking failed
+        final handled = await _fallbackToExistingOauth(OAuthProvider.google);
+        if (handled != null) return handled;
+
         unawaited(
           AnalyticsService.instance.trackAuthEvent(
             action: 'anonymous_upgrade_google',
@@ -298,7 +362,7 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
     }
   }
 
-  Future<AppUser> signInWithApple() async {
+  Future<AppUser> signInWithApple({bool allowAnonymousUpgrade = true}) async {
     state = const AsyncValue.data(AppAuthState.loading());
     unawaited(
       AnalyticsService.instance.trackAuthEvent(
@@ -317,26 +381,44 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
     try {
       final currentUser = _supabase.auth.currentUser;
       final isAnonymous = currentUser?.isAnonymous == true;
-      if (isAnonymous) {
-        unawaited(
-          AnalyticsService.instance.trackAuthEvent(
-            action: 'anonymous_upgrade_apple_started',
-            method: 'apple',
-          ),
-        );
-        final appUser = await _linkProviderForAnonymous(
-          OAuthProvider.apple,
-          scopes: 'name email',
-        );
-        unawaited(
-          AnalyticsService.instance.trackAuthEvent(
-            action: 'anonymous_upgrade_apple',
-            method: 'apple',
-            success: true,
-            user: appUser,
-          ),
-        );
-        return appUser;
+      if (isAnonymous && allowAnonymousUpgrade) {
+        try {
+          unawaited(
+            AnalyticsService.instance.trackAuthEvent(
+              action: 'anonymous_upgrade_apple_started',
+              method: 'apple',
+            ),
+          );
+          final appUser = await _linkProviderForAnonymous(
+            OAuthProvider.apple,
+            scopes: 'name email',
+          );
+          unawaited(
+            AnalyticsService.instance.trackAuthEvent(
+              action: 'anonymous_upgrade_apple',
+              method: 'apple',
+              success: true,
+              user: appUser,
+            ),
+          );
+          return appUser;
+        } catch (e, st) {
+          await ref.read(errorLoggerProvider).logError(e, st);
+          state = AsyncValue.data(AppAuthState.error(_exceptionMessage(e)));
+
+          final handled = await _fallbackToExistingOauth(OAuthProvider.apple);
+          if (handled != null) return handled;
+
+          unawaited(
+            AnalyticsService.instance.trackAuthEvent(
+              action: 'anonymous_upgrade_apple',
+              method: 'apple',
+              success: false,
+              reason: e.toString(),
+            ),
+          );
+          rethrow;
+        }
       }
 
       final available = await SignInWithApple.isAvailable();
@@ -549,33 +631,43 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
     }
 
     final completer = Completer<AppUser>();
-    late final StreamSubscription<AuthState> sub;
+    StreamSubscription<AuthState>? sub;
 
-    sub = _supabase.auth.onAuthStateChange.listen((data) async {
-      final user = data.session?.user;
-      final session = data.session;
-      if (user != null && user.isAnonymous != true && session != null) {
-        await _sessionManager.saveSession(session, user);
-        final appUser = AppUser.fromSupabaseUser(user);
-        if (!completer.isCompleted) {
-          completer.complete(appUser);
+    try {
+      sub = _supabase.auth.onAuthStateChange.listen((data) async {
+        final user = data.session?.user;
+        final session = data.session;
+        if (user != null && user.isAnonymous != true && session != null) {
+          await _sessionManager.saveSession(session, user);
+          final appUser = AppUser.fromSupabaseUser(user);
+          if (!completer.isCompleted) {
+            completer.complete(appUser);
+          }
+          await sub?.cancel();
         }
-        await sub.cancel();
+      });
+
+      final launched = await _supabase.auth.linkIdentity(
+        provider,
+        scopes: scopes,
+        redirectTo: 'com.chessever.app://login-callback',
+      );
+
+      if (!launched) {
+        throw Exception('Failed to launch ${provider.name} link flow.');
       }
-    });
+    } catch (e, st) {
+      await sub?.cancel();
 
-    final launched = await _supabase.auth.linkIdentity(
-      provider,
-      scopes: scopes,
-      redirectTo: 'com.chessever.app://login-callback',
-    );
+      // Try to fall back to existing OAuth account if linking fails for any reason.
+      final handled = await _fallbackToExistingOauth(provider);
+      if (handled != null) return handled;
 
-    if (!launched) {
-      await sub.cancel();
+      await ref.read(errorLoggerProvider).logError(e, st);
       state = const AsyncValue.data(
         AppAuthState.error('Unable to start sign-in. Please try again.'),
       );
-      throw Exception('Failed to launch ${provider.name} link flow.');
+      rethrow;
     }
 
     try {
@@ -585,13 +677,15 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
       state = AsyncValue.data(AppAuthState.authenticated(user));
       return user;
     } on TimeoutException {
-      await sub.cancel();
+      await sub?.cancel();
       state = const AsyncValue.data(
         AppAuthState.error('Sign in timed out. Please try again.'),
       );
       throw Exception('Linking timed out. Please try again.');
     } catch (e) {
-      await sub.cancel();
+      await sub?.cancel();
+      final handled = await _fallbackToExistingOauth(provider);
+      if (handled != null) return handled;
       rethrow;
     }
   }
