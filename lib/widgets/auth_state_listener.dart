@@ -105,6 +105,11 @@ class AuthStateListener extends ConsumerWidget {
                       await FavoritesMigration.cleanupBadMigrationDataIfNeeded();
                     }
 
+                    // Step 0: Clear stale favorite caches (fixes duplicate UI issue)
+                    // This runs once per user and forces fresh sync from Supabase
+                    // Fire and forget - don't block auth flow
+                    unawaited(FavoritesMigration.cleanupStaleFavoritesCacheIfNeeded());
+
                     // Step 1: Migrate old SharedPreferences favorites (runs only once per user)
                     await FavoritesMigration.migrateIfNeeded();
 

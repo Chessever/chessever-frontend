@@ -136,12 +136,16 @@ class PlayerSelectionContent extends HookConsumerWidget {
     }, []);
 
     // Initialize selectedIds from existing Supabase favorites (for existing users)
+    // We use the sorted string representation as dependency since Set reference
+    // equality doesn't work well with hooks - content changes won't trigger re-run
+    final existingFavoriteIdsKey = existingFavoriteIds.toList()..sort();
     useEffect(() {
       if (existingFavoriteIds.isNotEmpty) {
-        selectedIds.value = Set<String>.from(existingFavoriteIds);
+        // Merge existing favorites with any current selections (don't replace)
+        selectedIds.value = {...selectedIds.value, ...existingFavoriteIds};
       }
       return null;
-    }, [existingFavoriteIds]);
+    }, [existingFavoriteIdsKey.join(',')]);
 
     useEffect(() {
       void onScroll() {
@@ -711,6 +715,7 @@ void _toggleFavorite(
         fideId,
         supabaseUser,
         isFullyAuthenticated,
+        isOnboarding: false,
       );
     });
     return;
@@ -724,6 +729,7 @@ void _toggleFavorite(
     fideId,
     supabaseUser,
     isFullyAuthenticated,
+    isOnboarding: true,
   );
 }
 
@@ -734,8 +740,9 @@ void _performToggle(
   Map<String, dynamic> player,
   String fideId,
   User? supabaseUser,
-  bool isFullyAuthenticated,
-) {
+  bool isFullyAuthenticated, {
+  required bool isOnboarding,
+}) {
   // INSTANT UI UPDATE - this is sync, happens immediately
   final updated = Set<String>.from(selectedIds.value);
   if (updated.contains(fideId)) {
@@ -774,34 +781,49 @@ void _performToggle(
   );
 
   // Background sync to Supabase - fire and forget
-  if (isFullyAuthenticated) {
-    unawaited(Future(() async {
-      try {
-        final playerModel = PlayerStandingModel(
-          name: '${player['title'] ?? ''} ${player['name']}'.trim(),
-          countryCode: player['fed']?.toString() ?? '',
-          score: player['rating'] ?? 0,
-          scoreChange: 0,
-          matchScore: null,
-          fideId: int.tryParse(fideId),
-          title: player['title']?.toString(),
-        );
+  if (isOnboarding) {
+    // ONBOARDING FLOW: Only use pendingFavoriteSelectionsProvider
+    // and let flushToSupabase() handle the actual DB write at the end.
+    // This prevents double-syncing (which causes duplicate UI issues).
+    if (supabaseUser != null && supabaseUser.isAnonymous == true) {
+      // User is anonymous - flush pending favorites in background
+      unawaited(
+        ref.read(pendingFavoriteSelectionsProvider.notifier).flushToSupabase(),
+      );
+    }
+    // For fully authenticated users during onboarding, pending selections
+    // will be flushed in markOnboardingComplete() - don't double-sync here
+  } else {
+    // NON-ONBOARDING FLOW: Sync directly to Supabase for authenticated users
+    if (isFullyAuthenticated) {
+      unawaited(Future(() async {
+        try {
+          final playerModel = PlayerStandingModel(
+            name: '${player['title'] ?? ''} ${player['name']}'.trim(),
+            countryCode: player['fed']?.toString() ?? '',
+            score: player['rating'] ?? 0,
+            scoreChange: 0,
+            matchScore: null,
+            fideId: int.tryParse(fideId),
+            title: player['title']?.toString(),
+          );
 
-        await ref
-            .read(favoriteStandingsPlayerService)
-            .toggleFavorite(playerModel);
-        ref.read(favoritesVersionProvider.notifier).state++;
-      } catch (e) {
-        if (kDebugMode) {
-          debugPrint('Failed to sync favorite: $e');
+          await ref
+              .read(favoriteStandingsPlayerService)
+              .toggleFavorite(playerModel);
+          ref.read(favoritesVersionProvider.notifier).state++;
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('Failed to sync favorite: $e');
+          }
         }
-      }
-    }));
-  } else if (supabaseUser != null) {
-    // User is anonymous - flush pending favorites in background
-    unawaited(
-      ref.read(pendingFavoriteSelectionsProvider.notifier).flushToSupabase(),
-    );
+      }));
+    } else if (supabaseUser != null) {
+      // User is anonymous outside onboarding - flush pending favorites
+      unawaited(
+        ref.read(pendingFavoriteSelectionsProvider.notifier).flushToSupabase(),
+      );
+    }
   }
 }
 
