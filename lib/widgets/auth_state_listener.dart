@@ -1,12 +1,13 @@
 import 'dart:async';
 
+import 'package:chessever2/repository/authentication/auth_repository.dart';
+import 'package:chessever2/repository/authentication/model/auth_state.dart';
+import 'package:chessever2/screens/authentication/auth_screen_provider.dart';
+import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
+import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/providers/pending_favorite_players_provider.dart';
-import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
-import 'package:chessever2/repository/authentication/auth_repository.dart';
-import 'package:chessever2/repository/authentication/model/auth_state.dart';
-import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/repository/local_storage/country_man/country_man_repository.dart';
 import 'package:chessever2/repository/local_storage/onboarding/onboarding_repository.dart';
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
@@ -141,21 +142,30 @@ class AuthStateListener extends ConsumerWidget {
               );
             }
 
-            // Only navigate if coming from auth_screen AND user is NOT anonymous
-            // Anonymous users on auth_screen are upgrading their account - don't redirect them!
-            // When they complete OAuth sign-in, Supabase linkIdentity will merge their data
+            // Auth screen routing:
+            // - Non-anonymous: redirect to onboarding/home.
+            // - Anonymous: redirect only if the auth screen initiated an anon flow (guest).
             final isAnonymous = authState.user?.isAnonymous == true;
-            if (currentRoute == '/auth_screen' && !isAnonymous) {
+            final authScreenState = ref.read(authScreenProvider);
+            final fromGuestFlow = authScreenState.user?.isAnonymous == true;
+
+            if (currentRoute == '/auth_screen') {
               final hasSeenOnboarding = await ref
                   .read(onboardingRepositoryProvider)
                   .hasSeenOnboarding(userId: currentUserId);
 
-              // Fully authenticated user - go to onboarding if never seen, otherwise home
-              final targetRoute = hasSeenOnboarding ? '/home_screen' : '/onboarding';
-              navigator.pushNamedAndRemoveUntil(
-                targetRoute,
-                (route) => false,
-              );
+              final shouldRedirect =
+                  (!isAnonymous) || (isAnonymous && fromGuestFlow);
+
+              if (shouldRedirect) {
+                final targetRoute = hasSeenOnboarding ? '/home_screen' : '/onboarding';
+                navigator.pushNamedAndRemoveUntil(
+                  targetRoute,
+                  (route) => false,
+                );
+                // Reset auth screen state to avoid stale flags on next visit
+                ref.read(authScreenProvider.notifier).reset();
+              }
             }
           } else if (authState.status == AppAuthStatus.unauthenticated) {
             // Clear the sync tracking when user logs out
@@ -186,16 +196,6 @@ class AuthStateListener extends ConsumerWidget {
                 (route) => false,
               );
             }
-          } else if (authState.status == AppAuthStatus.error &&
-              authState.errorMessage != null &&
-              authState.errorMessage!.isNotEmpty &&
-              (previousState?.status != AppAuthStatus.error ||
-                  previousState?.errorMessage != authState.errorMessage)) {
-            ScaffoldMessenger.of(navigatorContext)
-              ..hideCurrentSnackBar()
-              ..showSnackBar(
-                SnackBar(content: Text(authState.errorMessage!)),
-              );
           }
         });
       },

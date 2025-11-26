@@ -87,9 +87,6 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
       await _sessionManager.clearLocalStorage();
     } catch (_) {}
 
-    // If the anonymous link flow failed, ensure we clear the in-progress loading state
-    state = const AsyncValue.data(AppAuthState.unauthenticated());
-
     unawaited(
       AnalyticsService.instance.trackAuthEvent(
         action: 'anonymous_upgrade_conflict',
@@ -106,10 +103,17 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
   /// Clear current session and sign into an existing OAuth account (non-upgrade).
   Future<AppUser?> _fallbackToExistingOauth(OAuthProvider provider) async {
     try {
-      await _supabase.auth.signOut();
+      // Aggressive teardown to close any in-flight OAuth UI (including failed webviews)
+      await _supabase.auth.signOut(scope: SignOutScope.global);
       await _supabase.auth.signOut(scope: SignOutScope.local);
       await _sessionManager.clearLocalStorage();
+      if (provider == OAuthProvider.google) {
+        await _signOutGoogle();
+      }
     } catch (_) {}
+
+    // Clear any stale error state before attempting normal OAuth sign-in
+    state = const AsyncValue.data(AppAuthState.unauthenticated());
 
     if (provider == OAuthProvider.google) {
       return await signInWithGoogle(allowAnonymousUpgrade: false);
@@ -181,6 +185,9 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
       ),
     );
 
+    // Pre-flight cleanup to close any stale Google auth UI/sessions
+    await _signOutGoogle();
+
     final currentUser = _supabase.auth.currentUser;
     final isAnonymous = currentUser?.isAnonymous == true;
     if (isAnonymous && allowAnonymousUpgrade) {
@@ -206,12 +213,12 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
         return appUser;
       } catch (e, st) {
         await ref.read(errorLoggerProvider).logError(e, st);
-        state = AsyncValue.data(AppAuthState.error(_exceptionMessage(e)));
-
-        // Fall back to signing into the existing OAuth account if linking failed
+        // If identity already exists, fall back without surfacing error
         final handled = await _fallbackToExistingOauth(OAuthProvider.google);
         if (handled != null) return handled;
 
+        // Only surface error if fallback also failed
+        state = AsyncValue.data(AppAuthState.error(_exceptionMessage(e)));
         unawaited(
           AnalyticsService.instance.trackAuthEvent(
             action: 'anonymous_upgrade_google',
@@ -324,6 +331,7 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
       return appUser;
     } on GoogleSignInException catch (e, st) {
       await ref.read(errorLoggerProvider).logError(e, st);
+      await _signOutGoogle(); // Ensure any Google auth UI is closed
       unawaited(
         AnalyticsService.instance.trackAuthEvent(
           action: 'google_sign_in',
@@ -343,11 +351,12 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
       }
 
       final mapped = _mapGoogleSignInException(e);
-      final message = _exceptionMessage(mapped);
-      state = AsyncValue.data(AppAuthState.error(message));
+      // Do not surface error state on auth screen; reset to unauthenticated
+      state = const AsyncValue.data(AppAuthState.unauthenticated());
       throw mapped;
     } catch (e, st) {
       await ref.read(errorLoggerProvider).logError(e, st);
+      await _signOutGoogle(); // Ensure any Google auth UI is closed
       unawaited(
         AnalyticsService.instance.trackAuthEvent(
           action: 'google_sign_in',
@@ -356,8 +365,8 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
           reason: e.toString(),
         ),
       );
-      final message = _exceptionMessage(e);
-      state = AsyncValue.data(AppAuthState.error(message));
+      // Do not surface programmatic error on auth; reset to unauthenticated
+      state = const AsyncValue.data(AppAuthState.unauthenticated());
       rethrow;
     }
   }
@@ -404,11 +413,11 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
           return appUser;
         } catch (e, st) {
           await ref.read(errorLoggerProvider).logError(e, st);
-          state = AsyncValue.data(AppAuthState.error(_exceptionMessage(e)));
-
           final handled = await _fallbackToExistingOauth(OAuthProvider.apple);
           if (handled != null) return handled;
 
+          // Only surface error if fallback also failed
+          state = AsyncValue.data(AppAuthState.error(_exceptionMessage(e)));
           unawaited(
             AnalyticsService.instance.trackAuthEvent(
               action: 'anonymous_upgrade_apple',
@@ -634,6 +643,11 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
     StreamSubscription<AuthState>? sub;
 
     try {
+      // Pre-flight cleanup to close any existing auth UI for this provider
+      if (provider == OAuthProvider.google) {
+        await _signOutGoogle();
+      }
+
       sub = _supabase.auth.onAuthStateChange.listen((data) async {
         final user = data.session?.user;
         final session = data.session;
@@ -659,10 +673,21 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
     } catch (e, st) {
       await sub?.cancel();
 
+      // Force-close any Supabase web auth session (disposes failed webview)
+      try {
+        await _supabase.auth.signOut(scope: SignOutScope.global);
+      } catch (_) {}
+
+      // Best-effort: close any pending Google/Apple web auth UI before fallback
+      if (provider == OAuthProvider.google) {
+        await _signOutGoogle();
+      }
+
       // Try to fall back to existing OAuth account if linking fails for any reason.
       final handled = await _fallbackToExistingOauth(provider);
       if (handled != null) return handled;
 
+      // Only set error state if fallback did not succeed
       await ref.read(errorLoggerProvider).logError(e, st);
       state = const AsyncValue.data(
         AppAuthState.error('Unable to start sign-in. Please try again.'),
@@ -684,8 +709,12 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
       throw Exception('Linking timed out. Please try again.');
     } catch (e) {
       await sub?.cancel();
+      if (provider == OAuthProvider.google) {
+        await _signOutGoogle();
+      }
       final handled = await _fallbackToExistingOauth(provider);
       if (handled != null) return handled;
+      // Only set error when fallback fails
       rethrow;
     }
   }
