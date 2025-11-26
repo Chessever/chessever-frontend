@@ -43,8 +43,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
 
+      // Suppress showing programmatic errors to end users on auth screen
       if (state.errorMessage != null) {
-        _showErrorDialog(state.errorMessage!);
+        ref.read(authScreenProvider.notifier).clearError();
         return;
       }
 
@@ -237,29 +238,36 @@ class _AuthButtonWidget extends ConsumerWidget {
           SizedBox(height: 12.h),
           TextButton(
             onPressed: () async {
-              // If we're already in an anonymous session, just proceed to the app
-              final supabaseUser = Supabase.instance.client.auth.currentUser;
-              if (supabaseUser?.isAnonymous == true) {
+              // Fast-path: if already anonymous, go straight home/onboarding
+              final currentUser = Supabase.instance.client.auth.currentUser;
+              if (currentUser?.isAnonymous == true) {
                 final onboardingRepo = ref.read(onboardingRepositoryProvider);
-                final hasCompleted = await onboardingRepo.isCompleted(supabaseUser!.id);
+                final hasCompleted = await onboardingRepo.isCompleted(currentUser!.id);
                 if (!context.mounted) return;
-                Navigator.pushReplacementNamed(
+                Navigator.pushNamedAndRemoveUntil(
                   context,
                   hasCompleted ? '/home_screen' : '/onboarding',
+                  (_) => false,
                 );
                 return;
               }
 
-              // Otherwise, create anonymous session then navigate
               await ref.read(authScreenProvider.notifier).signInAsGuest();
+
+              // Navigate immediately after anon sign-in, bypassing guards
               final newUser = Supabase.instance.client.auth.currentUser;
-              if (newUser?.isAnonymous == true) {
+              final stateUser = ref.read(authScreenProvider).user;
+              final anonId = newUser?.isAnonymous == true
+                  ? newUser!.id
+                  : (stateUser?.isAnonymous == true ? stateUser!.id : null);
+              if (anonId != null) {
                 final onboardingRepo = ref.read(onboardingRepositoryProvider);
-                final hasCompleted = await onboardingRepo.isCompleted(newUser!.id);
+                final hasCompleted = await onboardingRepo.isCompleted(anonId);
                 if (!context.mounted) return;
-                Navigator.pushReplacementNamed(
+                Navigator.pushNamedAndRemoveUntil(
                   context,
                   hasCompleted ? '/home_screen' : '/onboarding',
+                  (_) => false,
                 );
               }
             },
