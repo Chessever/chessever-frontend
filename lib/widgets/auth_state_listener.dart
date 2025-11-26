@@ -142,17 +142,20 @@ class AuthStateListener extends ConsumerWidget {
               );
             }
 
-            // Auth screen routing:
-            // - Non-anonymous: redirect to onboarding/home.
-            // - Anonymous: redirect only if the auth screen initiated an anon flow (guest).
-            final isAnonymous = authState.user?.isAnonymous == true;
-            final authScreenState = ref.read(authScreenProvider);
-            final fromGuestFlow = authScreenState.user?.isAnonymous == true;
+          // Auth screen routing:
+          // - Non-anonymous: redirect to onboarding/home.
+          // - Anonymous: redirect only if the auth screen initiated an anon flow (guest).
+          final isAnonymous = authState.user?.isAnonymous == true;
+          final authScreenState = ref.read(authScreenProvider);
+          final fromGuestFlow =
+              authScreenState.guestFlowStarted || authScreenState.user?.isAnonymous == true;
+          final isOnAuthScreen =
+              currentRoute == '/auth_screen' || (fromGuestFlow && currentRoute.isEmpty);
 
-            if (currentRoute == '/auth_screen') {
-              final hasSeenOnboarding = await ref
-                  .read(onboardingRepositoryProvider)
-                  .hasSeenOnboarding(userId: currentUserId);
+          if (isOnAuthScreen) {
+            final hasSeenOnboarding = await ref
+                .read(onboardingRepositoryProvider)
+                .hasSeenOnboarding(userId: currentUserId);
 
               final shouldRedirect =
                   (!isAnonymous) || (isAnonymous && fromGuestFlow);

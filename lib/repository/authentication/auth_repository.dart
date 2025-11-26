@@ -17,6 +17,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Compile-time environment values injected via `--dart-define`.
 const Map<String, String> _releaseEnvValues = {
@@ -62,68 +63,7 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
     return const AppAuthState.unauthenticated();
   }
 
-  /// When anonymous upgrade fails because the identity already exists, fall back to
-  /// signing into the existing OAuth account (ignoring the anonymous userId).
-  Future<AppUser?> _maybeFallbackToExistingOauth({
-    required OAuthProvider provider,
-    required bool allowAnonymousUpgrade,
-    required Object error,
-  }) async {
-    // Only handle "identity exists" style errors
-    final message = error.toString().toLowerCase();
-    final identityExists =
-        message.contains('identity') && message.contains('exist') ||
-        message.contains('already linked') ||
-        message.contains('duplicate key') ||
-        message.contains('identities_provider_unique');
 
-    if (!identityExists) return null;
-
-    // Clear the anonymous local session so the next sign-in goes to the real account
-    try {
-      // Full sign out to drop the anonymous session before switching to existing OAuth
-      await _supabase.auth.signOut();
-      await _supabase.auth.signOut(scope: SignOutScope.local);
-      await _sessionManager.clearLocalStorage();
-    } catch (_) {}
-
-    unawaited(
-      AnalyticsService.instance.trackAuthEvent(
-        action: 'anonymous_upgrade_conflict',
-        method: provider.name,
-        success: false,
-        reason: 'identity_exists',
-      ),
-    );
-
-    // Perform regular sign-in (bypassing the anonymous upgrade branch)
-    return await _fallbackToExistingOauth(provider);
-  }
-
-  /// Clear current session and sign into an existing OAuth account (non-upgrade).
-  Future<AppUser?> _fallbackToExistingOauth(OAuthProvider provider) async {
-    try {
-      // Aggressive teardown to close any in-flight OAuth UI (including failed webviews)
-      await _supabase.auth.signOut(scope: SignOutScope.global);
-      await _supabase.auth.signOut(scope: SignOutScope.local);
-      await _sessionManager.clearLocalStorage();
-      if (provider == OAuthProvider.google) {
-        await _signOutGoogle();
-      }
-    } catch (_) {}
-
-    // Clear any stale error state before attempting normal OAuth sign-in
-    state = const AsyncValue.data(AppAuthState.unauthenticated());
-
-    if (provider == OAuthProvider.google) {
-      return await signInWithGoogle(allowAnonymousUpgrade: false);
-    }
-    if (provider == OAuthProvider.apple) {
-      return await signInWithApple(allowAnonymousUpgrade: false);
-    }
-
-    return null;
-  }
 
   void _startAuthListener() {
     _authSubscription?.cancel();
@@ -213,11 +153,8 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
         return appUser;
       } catch (e, st) {
         await ref.read(errorLoggerProvider).logError(e, st);
-        // If identity already exists, fall back without surfacing error
-        final handled = await _fallbackToExistingOauth(OAuthProvider.google);
-        if (handled != null) return handled;
-
-        // Only surface error if fallback also failed
+        // _linkProviderForAnonymous for Google now handles the switch internally via signInWithIdToken
+        // If it throws, it means something else failed.
         state = AsyncValue.data(AppAuthState.error(_exceptionMessage(e)));
         unawaited(
           AnalyticsService.instance.trackAuthEvent(
@@ -413,10 +350,9 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
           return appUser;
         } catch (e, st) {
           await ref.read(errorLoggerProvider).logError(e, st);
-          final handled = await _fallbackToExistingOauth(OAuthProvider.apple);
-          if (handled != null) return handled;
-
-          // Only surface error if fallback also failed
+          // Fallback logic for Apple if needed, or just rethrow
+          // Since we removed _fallbackToExistingOauth, we just rethrow here
+          // Apple usually uses native flow so stuck webview is less of an issue
           state = AsyncValue.data(AppAuthState.error(_exceptionMessage(e)));
           unawaited(
             AnalyticsService.instance.trackAuthEvent(
@@ -639,15 +575,57 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
       throw Exception('No anonymous session to upgrade.');
     }
 
+    // For Google, we use the native flow to avoid stuck webviews
+    if (provider == OAuthProvider.google) {
+      try {
+        await _ensureGoogleInitialized();
+        // 1. Get ID Token natively
+        final account = await _googleSignIn.authenticate();
+        final tokenData = await account?.authentication;
+        final idToken = tokenData?.idToken;
+        
+        if (idToken == null) {
+          throw Exception('Failed to get Google ID token.');
+        }
+
+        // 2. Attempt to link/sign-in using the ID token
+        // Note: signInWithIdToken will switch the user if the account exists.
+        // It does NOT link to the current anonymous user automatically in most cases,
+        // but it avoids the browser flow entirely.
+        final response = await _supabase.auth.signInWithIdToken(
+          provider: OAuthProvider.google,
+          idToken: idToken,
+          // accessToken is not strictly required for ID token sign-in and is no longer
+          // directly available in GoogleSignInAuthentication (v7.0.0+)
+        );
+
+        final user = response.user;
+        final session = response.session;
+        if (user == null || session == null) {
+          throw Exception('Failed to authenticate with Supabase.');
+        }
+
+        await _sessionManager.saveSession(session, user);
+        final appUser = AppUser.fromSupabaseUser(user);
+        
+        state = AsyncValue.data(AppAuthState.authenticated(appUser));
+        return appUser;
+
+      } catch (e, st) {
+        await ref.read(errorLoggerProvider).logError(e, st);
+        // Ensure Google is signed out on error
+        await _signOutGoogle();
+        rethrow;
+      }
+    }
+
+    // For other providers (Apple, etc.), keep the existing flow or implement similar native logic
+    // Apple is already handled in signInWithApple via native flow, so this might only be hit for web-based providers
+    
     final completer = Completer<AppUser>();
     StreamSubscription<AuthState>? sub;
 
     try {
-      // Pre-flight cleanup to close any existing auth UI for this provider
-      if (provider == OAuthProvider.google) {
-        await _signOutGoogle();
-      }
-
       sub = _supabase.auth.onAuthStateChange.listen((data) async {
         final user = data.session?.user;
         final session = data.session;
@@ -672,22 +650,11 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
       }
     } catch (e, st) {
       await sub?.cancel();
-
-      // Force-close any Supabase web auth session (disposes failed webview)
+      // Force-close any Supabase web auth session
       try {
         await _supabase.auth.signOut(scope: SignOutScope.global);
       } catch (_) {}
-
-      // Best-effort: close any pending Google/Apple web auth UI before fallback
-      if (provider == OAuthProvider.google) {
-        await _signOutGoogle();
-      }
-
-      // Try to fall back to existing OAuth account if linking fails for any reason.
-      final handled = await _fallbackToExistingOauth(provider);
-      if (handled != null) return handled;
-
-      // Only set error state if fallback did not succeed
+      
       await ref.read(errorLoggerProvider).logError(e, st);
       state = const AsyncValue.data(
         AppAuthState.error('Unable to start sign-in. Please try again.'),
@@ -709,12 +676,6 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
       throw Exception('Linking timed out. Please try again.');
     } catch (e) {
       await sub?.cancel();
-      if (provider == OAuthProvider.google) {
-        await _signOutGoogle();
-      }
-      final handled = await _fallbackToExistingOauth(provider);
-      if (handled != null) return handled;
-      // Only set error when fallback fails
       rethrow;
     }
   }
