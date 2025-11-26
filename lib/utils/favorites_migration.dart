@@ -233,4 +233,55 @@ class FavoritesMigration {
     }
   }
 
+  /// Cleanup stale favorite player caches that may cause UI duplicates
+  /// This forces a fresh sync from Supabase on next load
+  /// Safe to call multiple times - only runs once per user per version
+  static Future<void> cleanupStaleFavoritesCacheIfNeeded() async {
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) {
+        debugPrint('[FavoritesMigration] No user logged in, skipping cache cleanup');
+        return;
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      // v1: Initial cleanup for double-sync duplicate issue
+      final cleanupKey = 'favorites_cache_cleanup_v1_$userId';
+      final cleanupDone = prefs.getBool(cleanupKey) ?? false;
+
+      if (cleanupDone) {
+        debugPrint('[FavoritesMigration] Cache cleanup already done for user $userId');
+        return;
+      }
+
+      debugPrint('[FavoritesMigration] 🧹 Clearing stale favorite caches for user: $userId');
+
+      // Clear all user-specific favorite player caches
+      // These use different key patterns across providers
+      final keysToRemove = <String>[
+        'cached_favorite_players_$userId',
+        'cached_favorite_players_full_$userId',
+        'cached_favorite_players_anonymous',
+        'cached_favorite_players_full_anonymous',
+        // Also clear the old global cache key that may have cross-user pollution
+        'cached_favorite_players_full',
+      ];
+
+      for (final key in keysToRemove) {
+        if (prefs.containsKey(key)) {
+          await prefs.remove(key);
+          debugPrint('[FavoritesMigration] Removed cache key: $key');
+        }
+      }
+
+      // Mark cleanup as done
+      await prefs.setBool(cleanupKey, true);
+      debugPrint('[FavoritesMigration] ✅ Cache cleanup complete for user $userId');
+    } catch (e, st) {
+      debugPrint('[FavoritesMigration] ❌ Error during cache cleanup: $e');
+      debugPrint('[FavoritesMigration] Stack: $st');
+      // Don't rethrow - cleanup errors shouldn't block app
+    }
+  }
+
 }
