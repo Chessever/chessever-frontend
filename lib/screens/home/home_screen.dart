@@ -1,5 +1,6 @@
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/screens/authentication/auth_screen.dart';
+import 'package:chessever2/screens/authentication/auth_screen_provider.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/premium/premium_screen.dart'; // Import premium screen
@@ -8,6 +9,7 @@ import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../group_event/group_event_screen.dart';
 import 'widget/bottom_nav_bar.dart';
 
@@ -71,6 +73,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           },
 
           onLogoutPressed: () async {
+            final user = Supabase.instance.client.auth.currentUser;
+            final isAnonymous = user?.isAnonymous == true;
+
+            // Anonymous users: navigate to auth screen WITHOUT signing out
+            // This preserves their data (favorites, countryman) and allows
+            // OAuth linking via linkIdentity when they sign in
+            if (isAnonymous) {
+              Navigator.of(context).pop(); // Close drawer
+              // Reset auth screen state to prevent stale user data from triggering redirect
+              ref.read(authScreenProvider.notifier).reset();
+              Navigator.of(context).pushNamed('/auth_screen');
+              return;
+            }
+
+            // Fully authenticated users: show logout confirmation
             await showDialog<void>(
               context: context,
               builder:

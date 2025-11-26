@@ -10,6 +10,7 @@ import 'package:chessever2/screens/players/providers/player_providers.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
+import 'package:chessever2/utils/notification_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/country_utils.dart';
@@ -416,6 +417,9 @@ class PlayerSelectionContent extends HookConsumerWidget {
 }
 
 Future<void> markOnboardingComplete(BuildContext context, WidgetRef ref) async {
+  // Request notification permission on last page of onboarding (fire and forget)
+  unawaited(NotificationService.requestPermissionWithDialog());
+
   try {
     // If user is not authenticated at all, create an anonymous account
     // This preserves their onboarding selections (favorites, country, etc.)
@@ -653,13 +657,14 @@ Widget _buildPlayerList(
   );
 }
 
-Future<void> _toggleFavorite(
+/// Toggle favorite - MUST be instant for UI, async ops fire in background
+void _toggleFavorite(
   BuildContext context,
   WidgetRef ref,
   ValueNotifier<Set<String>> selectedIds,
   Map<String, dynamic> player, {
   bool isOnboarding = false,
-}) async {
+}) {
   final fideId = player['fideId']?.toString();
   if (fideId == null || fideId.isEmpty) return;
 
@@ -667,13 +672,43 @@ Future<void> _toggleFavorite(
   final isFullyAuthenticated =
       supabaseUser != null && supabaseUser.isAnonymous != true;
 
-  // During onboarding, we allow favorites without auth check
-  // Favorites will be stored in pending provider and flushed after account creation
+  // Non-onboarding flow: check auth first, then toggle
   if (!isOnboarding) {
-    final allowed = await requireFullAuthGuard(context);
-    if (!allowed) return;
+    requireFullAuthGuard(context).then((allowed) {
+      if (!allowed) return;
+      _performToggle(
+        ref,
+        selectedIds,
+        player,
+        fideId,
+        supabaseUser,
+        isFullyAuthenticated,
+      );
+    });
+    return;
   }
 
+  // Onboarding flow: INSTANT toggle, no auth check needed
+  _performToggle(
+    ref,
+    selectedIds,
+    player,
+    fideId,
+    supabaseUser,
+    isFullyAuthenticated,
+  );
+}
+
+/// Performs the actual toggle - all sync, async ops fire in background
+void _performToggle(
+  WidgetRef ref,
+  ValueNotifier<Set<String>> selectedIds,
+  Map<String, dynamic> player,
+  String fideId,
+  User? supabaseUser,
+  bool isFullyAuthenticated,
+) {
+  // INSTANT UI UPDATE - this is sync, happens immediately
   final updated = Set<String>.from(selectedIds.value);
   if (updated.contains(fideId)) {
     updated.remove(fideId);
@@ -683,6 +718,7 @@ Future<void> _toggleFavorite(
   selectedIds.value = updated;
   final isSelected = updated.contains(fideId);
 
+  // Analytics - fire and forget
   AnalyticsService.instance.trackEventDetached(
     'Onboarding Player Toggled',
     properties: {
@@ -694,11 +730,10 @@ Future<void> _toggleFavorite(
     },
   );
 
-  // Fire off remote/local toggles without blocking the tap animation
+  // Fire off remote/local toggles without blocking
   unawaited(ref.read(onboardingPlayerProvider.notifier).toggleFavorite(fideId));
 
-  // Store in pending favorites provider (for sync after account creation)
-  // This works for both onboarding (no user yet) and normal flow
+  // Store in pending favorites provider (sync operation)
   ref.read(pendingFavoriteSelectionsProvider.notifier).setSelection(
     PendingFavoritePlayer(
       fideId: fideId,
@@ -710,9 +745,9 @@ Future<void> _toggleFavorite(
     ),
   );
 
-  // If user is already fully authenticated, also sync directly to Supabase
+  // Background sync to Supabase - fire and forget
   if (isFullyAuthenticated) {
-    unawaited(() async {
+    unawaited(Future(() async {
       try {
         final playerModel = PlayerStandingModel(
           name: '${player['title'] ?? ''} ${player['name']}'.trim(),
@@ -733,9 +768,9 @@ Future<void> _toggleFavorite(
           debugPrint('Failed to sync favorite: $e');
         }
       }
-    }());
+    }));
   } else if (supabaseUser != null) {
-    // User is anonymous - flush pending favorites immediately
+    // User is anonymous - flush pending favorites in background
     unawaited(
       ref.read(pendingFavoriteSelectionsProvider.notifier).flushToSupabase(),
     );

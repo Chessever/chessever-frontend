@@ -51,6 +51,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       final user = state.user;
       if (user == null) return;
 
+      // Don't redirect if the Supabase user is anonymous
+      // Anonymous users visiting auth_screen want to upgrade their account via OAuth
+      final supabaseUser = Supabase.instance.client.auth.currentUser;
+      if (supabaseUser?.isAnonymous == true) return;
+
       final onboardingRepo = ref.read(onboardingRepositoryProvider);
       final hasCompleted = await onboardingRepo.isCompleted(user.id);
       if (!mounted) return;

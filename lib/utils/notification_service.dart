@@ -6,12 +6,11 @@ class NotificationService {
   static final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
+  /// Initialize the notification service.
+  /// Does NOT request permission - call [requestPermission] separately
+  /// (e.g., from onboarding last page) to request permission at the right time.
   static Future<void> initialize() async {
     try {
-      // Request notification permission during initialization
-      print('Requesting notification permissions...');
-      await _requestNotificationPermission();
-
       const AndroidInitializationSettings initializationSettingsAndroid =
           AndroidInitializationSettings('@mipmap/launcher_icon');
 
@@ -53,63 +52,6 @@ class NotificationService {
       print('Error initializing notifications: $e');
       // Don't rethrow - let the app continue without notifications
     }
-  }
-
-  /// Request notification permission for both Android and iOS
-  static Future<bool> _requestNotificationPermission() async {
-    if (Platform.isAndroid) {
-      if (await Permission.notification.isGranted) {
-        print('Android notification permission already granted');
-        return true;
-      }
-
-      print('Requesting Android notification permission...');
-      final status = await Permission.notification.request();
-      final granted = status == PermissionStatus.granted;
-
-      if (granted) {
-        print('Android notification permission granted');
-      } else {
-        print('Android notification permission denied: $status');
-      }
-
-      return granted;
-    } else if (Platform.isIOS) {
-      // Check if already granted
-      final currentPermissions =
-          await _notificationsPlugin
-              .resolvePlatformSpecificImplementation<
-                IOSFlutterLocalNotificationsPlugin
-              >()
-              ?.checkPermissions();
-
-      if (currentPermissions?.isAlertEnabled == true ||
-          currentPermissions?.isBadgeEnabled == true ||
-          currentPermissions?.isSoundEnabled == true) {
-        print('iOS notification permissions already granted');
-        return true;
-      }
-
-      print('Requesting iOS notification permissions...');
-      // For iOS, use the flutter_local_notifications plugin method
-      final bool? result = await _notificationsPlugin
-          .resolvePlatformSpecificImplementation<
-            IOSFlutterLocalNotificationsPlugin
-          >()
-          ?.requestPermissions(alert: true, badge: true, sound: true);
-
-      final granted = result ?? false;
-      if (granted) {
-        print('iOS notification permissions granted');
-      } else {
-        print('iOS notification permissions denied');
-      }
-
-      return granted;
-    }
-
-    print('Unknown platform for notification permissions');
-    return false;
   }
 
   /// Create notification channel for Android
