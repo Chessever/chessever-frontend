@@ -619,9 +619,73 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
       }
     }
 
-    // For other providers (Apple, etc.), keep the existing flow or implement similar native logic
-    // Apple is already handled in signInWithApple via native flow, so this might only be hit for web-based providers
-    
+    // For Apple, use native flow with signInWithIdToken (same as Google)
+    // This handles both new accounts AND existing accounts properly
+    if (provider == OAuthProvider.apple) {
+      try {
+        final available = await SignInWithApple.isAvailable();
+        if (!available) {
+          throw Exception('Apple Sign-In is not available on this device.');
+        }
+
+        final rawNonce = _generateNonce();
+        final hashedNonce = _sha256ofString(rawNonce);
+
+        final credential = await SignInWithApple.getAppleIDCredential(
+          scopes: [
+            AppleIDAuthorizationScopes.email,
+            AppleIDAuthorizationScopes.fullName,
+          ],
+          nonce: hashedNonce,
+        );
+
+        final idToken = credential.identityToken;
+        if (idToken == null) {
+          throw Exception('Failed to get Apple ID token.');
+        }
+
+        // Use signInWithIdToken - this will sign into existing Apple account
+        // or create a new one (switching from anonymous)
+        final response = await _supabase.auth.signInWithIdToken(
+          provider: OAuthProvider.apple,
+          idToken: idToken,
+          nonce: rawNonce,
+        );
+
+        final user = response.user;
+        final session = response.session;
+        if (user == null || session == null) {
+          throw Exception('Failed to authenticate with Supabase.');
+        }
+
+        await _sessionManager.saveSession(session, user);
+
+        // Update user metadata with Apple credential info if available
+        final fullName =
+            '${credential.givenName ?? ''} ${credential.familyName ?? ''}'.trim();
+        final data = <String, dynamic>{};
+        if (fullName.isNotEmpty) data['full_name'] = fullName;
+        if (credential.email != null) data['email'] = credential.email;
+        if (data.isNotEmpty) {
+          await _supabase.auth.updateUser(UserAttributes(data: data));
+        }
+
+        final appUser = AppUser.fromSupabaseUser(user);
+        state = AsyncValue.data(AppAuthState.authenticated(appUser));
+        return appUser;
+      } on SignInWithAppleAuthorizationException catch (e) {
+        if (e.code == AuthorizationErrorCode.canceled) {
+          state = const AsyncValue.data(AppAuthState.unauthenticated());
+          throw const CancelledSignInException();
+        }
+        rethrow;
+      } catch (e, st) {
+        await ref.read(errorLoggerProvider).logError(e, st);
+        rethrow;
+      }
+    }
+
+    // For other providers, use the web-based linkIdentity flow
     final completer = Completer<AppUser>();
     StreamSubscription<AuthState>? sub;
 
@@ -654,7 +718,7 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
       try {
         await _supabase.auth.signOut(scope: SignOutScope.global);
       } catch (_) {}
-      
+
       await ref.read(errorLoggerProvider).logError(e, st);
       state = const AsyncValue.data(
         AppAuthState.error('Unable to start sign-in. Please try again.'),
