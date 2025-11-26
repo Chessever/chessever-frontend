@@ -14,15 +14,40 @@ final favoriteStandingsPlayerService = Provider<FavoriteStandingsPlayerService>(
 });
 
 class FavoriteStandingsPlayerService {
-  static const String _cacheKey = 'cached_favorite_players_full';
+  static const String _cacheKeyPrefix = 'cached_favorite_players_full_';
+  // Old global cache key that may contain cross-user data pollution
+  static const String _oldGlobalCacheKey = 'cached_favorite_players_full';
   final Ref ref;
 
   FavoriteStandingsPlayerService(this.ref);
 
   SupabaseClient get _supabase => Supabase.instance.client;
 
+  /// Get user-specific cache key to prevent cross-user cache pollution
+  String get _cacheKey {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return '${_cacheKeyPrefix}anonymous';
+    return '$_cacheKeyPrefix$userId';
+  }
+
+  /// Clean up old global cache that may have cross-user data
+  Future<void> _cleanupOldGlobalCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.containsKey(_oldGlobalCacheKey)) {
+        await prefs.remove(_oldGlobalCacheKey);
+        debugPrint('[FavoriteStandings] Cleaned up old global cache key');
+      }
+    } catch (e) {
+      debugPrint('[FavoriteStandings] Error cleaning up old cache: $e');
+    }
+  }
+
   /// Get favorite players from Supabase (source of truth), fallback to cache
   Future<List<PlayerStandingModel>> getFavoritePlayers() async {
+    // Clean up old global cache on first call
+    await _cleanupOldGlobalCache();
+
     try {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) {
@@ -88,12 +113,16 @@ class FavoriteStandingsPlayerService {
         // Add to Supabase - store full PlayerStandingModel data in metadata
         final metadata = player.toJson();
 
-        await _supabase.from('user_favorite_players').upsert({
-          'user_id': userId,
-          'fide_id': player.fideId?.toString(),
-          'player_name': player.name,
-          'metadata': metadata,
-        });
+        await _supabase.from('user_favorite_players').upsert(
+          {
+            'user_id': userId,
+            'fide_id': player.fideId?.toString(),
+            'player_name': player.name,
+            'metadata': metadata,
+          },
+          onConflict: 'user_id,player_name',
+          ignoreDuplicates: true,
+        );
 
         debugPrint('[FavoriteStandings] Added player ${player.name} to Supabase');
       }

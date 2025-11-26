@@ -5,13 +5,16 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 class AudioPlayerService with WidgetsBindingObserver {
   static final AudioPlayerService _instance = AudioPlayerService._internal();
 
-  late final AudioSource pieceMoveSfx;
-  late final AudioSource pieceCastlingSfx;
-  late final AudioSource pieceCheckSfx;
-  late final AudioSource pieceCheckmateSfx;
-  late final AudioSource pieceDrawSfx;
-  late final AudioSource piecePromotionSfx;
-  late final AudioSource pieceTakeoverSfx;
+  // Note: These MUST NOT be `final` - they need to be reassignable
+  // after the native SoLoud engine is torn down and reinitialized
+  // (e.g., when app returns from background)
+  late AudioSource pieceMoveSfx;
+  late AudioSource pieceCastlingSfx;
+  late AudioSource pieceCheckSfx;
+  late AudioSource pieceCheckmateSfx;
+  late AudioSource pieceDrawSfx;
+  late AudioSource piecePromotionSfx;
+  late AudioSource pieceTakeoverSfx;
 
   factory AudioPlayerService() => _instance;
   AudioPlayerService._internal() {
@@ -133,9 +136,11 @@ class AudioPlayerService with WidgetsBindingObserver {
   /// Dispose the native engine to avoid stale handles when the app goes
   /// background or is torn down by the OS.
   void _teardownPlayer() {
+    debugPrint('🎧 AudioPlayerService: tearing down player (wasInitialized: $_initialized, assetsLoaded: $_assetsLoaded)');
     try {
       if (player.isInitialized) {
         player.deinit();
+        debugPrint('🎧 AudioPlayerService: SoLoud deinit completed');
       }
     } catch (e, s) {
       debugPrint('⚠️ Audio teardown failed: $e\n$s');
@@ -147,12 +152,16 @@ class AudioPlayerService with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    debugPrint('🎧 AudioPlayerService: lifecycle changed to $state');
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       _teardownPlayer();
     } else if (state == AppLifecycleState.resumed) {
       // Refresh assets and the engine after returning to foreground.
-      unawaited(initializeAndLoadAllAssets(force: !_initialized));
+      // force=true when not initialized to reload everything fresh
+      final shouldForce = !_initialized;
+      debugPrint('🎧 AudioPlayerService: resuming, will reinitialize (force: $shouldForce)');
+      unawaited(initializeAndLoadAllAssets(force: shouldForce));
     }
   }
 }

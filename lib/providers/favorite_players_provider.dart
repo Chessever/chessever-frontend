@@ -84,13 +84,17 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
         if (title != null) 'title': title,
       };
 
-      // Insert to Supabase
-      await _supabase.from('user_favorite_players').upsert({
-        'user_id': userId,
-        'fide_id': fideId,
-        'player_name': playerName,
-        'metadata': metadata,
-      });
+      // Insert to Supabase (upsert prevents duplicates)
+      await _supabase.from('user_favorite_players').upsert(
+        {
+          'user_id': userId,
+          'fide_id': fideId,
+          'player_name': playerName,
+          'metadata': metadata,
+        },
+        onConflict: 'user_id,player_name',
+        ignoreDuplicates: true,
+      );
 
       debugPrint('[FavoritePlayers] Added player $playerName to Supabase');
 

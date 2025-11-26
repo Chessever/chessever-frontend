@@ -103,13 +103,17 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
     await _cacheEvents(updatedEvents);
 
     try {
-      // STEP 2: Sync to Supabase in background
-      await _supabase.from('user_favorite_events').upsert({
-        'user_id': userId,
-        'event_id': eventId,
-        'event_name': eventName,
-        'metadata': metadata,
-      });
+      // STEP 2: Sync to Supabase in background (upsert prevents duplicates)
+      await _supabase.from('user_favorite_events').upsert(
+        {
+          'user_id': userId,
+          'event_id': eventId,
+          'event_name': eventName,
+          'metadata': metadata,
+        },
+        onConflict: 'user_id,event_id',
+        ignoreDuplicates: true,
+      );
 
       debugPrint('[FavoriteEvents] Added event $eventId to Supabase');
 

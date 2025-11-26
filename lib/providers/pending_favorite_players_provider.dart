@@ -85,7 +85,11 @@ class PendingFavoriteSelectionsNotifier
               })
           .toList();
 
-      await _supabase.from('user_favorite_players').upsert(payload);
+      await _supabase.from('user_favorite_players').upsert(
+        payload,
+        onConflict: 'user_id,player_name',
+        ignoreDuplicates: true,
+      );
 
       state = {};
       await _ref.read(favoritePlayersProviderNew.notifier).syncFromSupabase();

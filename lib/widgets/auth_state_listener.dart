@@ -124,15 +124,16 @@ class AuthStateListener extends ConsumerWidget {
               );
             }
 
-            // Only navigate if coming from auth_screen
-            if (currentRoute == '/auth_screen') {
+            // Only navigate if coming from auth_screen AND user is NOT anonymous
+            // Anonymous users on auth_screen are upgrading their account - don't redirect them!
+            // When they complete OAuth sign-in, Supabase linkIdentity will merge their data
+            final isAnonymous = authState.user?.isAnonymous == true;
+            if (currentRoute == '/auth_screen' && !isAnonymous) {
               final hasSeenOnboarding = await ref
                   .read(onboardingRepositoryProvider)
                   .hasSeenOnboarding();
 
-              // Always go to home_screen after successful auth from auth_screen
-              // If onboarding wasn't completed, they can see it next time they open app
-              // This prevents the loop of auth_screen → onboarding → auth_screen
+              // Fully authenticated user - go to home_screen
               navigator.pushNamedAndRemoveUntil(
                 hasSeenOnboarding ? '/home_screen' : '/home_screen',
                 (route) => false,
