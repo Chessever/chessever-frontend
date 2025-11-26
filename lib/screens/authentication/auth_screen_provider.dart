@@ -18,46 +18,42 @@ class AuthScreenNotifier extends StateNotifier<AuthScreenState> {
 
   final Ref ref;
 
-  Future<void> signInWithGoogle() async {
-    await _performSignIn(
+  Future<AppUser?> signInWithGoogle() async {
+    return _performSignIn(
       () => ref.read(authStateProvider.notifier).signInWithGoogle(),
     );
   }
 
-  Future<void> signInWithApple() async {
-    await _performSignIn(
+  Future<AppUser?> signInWithApple() async {
+    return _performSignIn(
       () => ref.read(authStateProvider.notifier).signInWithApple(),
     );
   }
 
-  Future<void> signInAsGuest() async {
-    // If already signed in anonymously, reuse the same session to avoid errors
-    final currentAppUser = ref.read(authStateProvider).valueOrNull?.user;
+  Future<AppUser?> signInAsGuest() async {
+    // Mark that this flow started from the auth screen so listeners can redirect anon users.
+    state = state.copyWith(guestFlowStarted: true);
+
+    // Check Supabase client directly as the source of truth
     final currentSupabaseUser = Supabase.instance.client.auth.currentUser;
 
-    final isAnonymousSession =
-        (currentAppUser?.isAnonymous == true) ||
-        (currentSupabaseUser?.isAnonymous == true);
-
-    if (isAnonymousSession) {
-      debugPrint('ℹ️ [AUTH] Already in anonymous session, skipping re-sign-in');
+    if (currentSupabaseUser?.isAnonymous == true) {
+      debugPrint('ℹ️ [AUTH] Already in anonymous session (Supabase), skipping re-sign-in');
+      // Ensure state reflects this user
       state = state.copyWith(
         isLoading: false,
         errorMessage: null,
-        user: currentAppUser ?? (currentSupabaseUser != null
-            ? AppUser.fromSupabaseUser(currentSupabaseUser)
-            : null),
-        showCountrySelection: true,
+        user: AppUser.fromSupabaseUser(currentSupabaseUser!),
       );
-      return;
+      return state.user;
     }
 
-    await _performSignIn(
+    return _performSignIn(
       () => ref.read(authStateProvider.notifier).signInAnonymously(),
     );
   }
 
-  Future<void> _performSignIn(Future<AppUser> Function() signInMethod) async {
+  Future<AppUser?> _performSignIn(Future<AppUser> Function() signInMethod) async {
     debugPrint('🔵 [AUTH] Starting sign-in flow...');
     state = state.copyWith(isLoading: true, errorMessage: null);
 
@@ -68,17 +64,19 @@ class AuthScreenNotifier extends StateNotifier<AuthScreenState> {
       debugPrint('   User ID: ${user.id}');
       if (!mounted) {
         debugPrint('⚪ [AUTH] Notifier disposed before completing OAuth success handling');
-        return;
+        return null;
       }
       state = state.copyWith(
         isLoading: false,
         user: user,
         showCountrySelection: true,
       );
+      return user;
     } on CancelledSignInException {
       // User cancelled - don't fall back to anonymous
       debugPrint('⚠️ [AUTH] User cancelled sign-in');
       state = state.copyWith(isLoading: false);
+      return null;
     } catch (e) {
       debugPrint('❌ [AUTH] OAuth sign-in FAILED!');
       debugPrint('   Error: $e');
@@ -86,13 +84,14 @@ class AuthScreenNotifier extends StateNotifier<AuthScreenState> {
       final errorMessage = _getErrorMessage(e.toString());
       if (!mounted) {
         debugPrint('⚪ [AUTH] Notifier disposed before propagating error');
-        return;
+        return null;
       }
       state = state.copyWith(
         isLoading: false,
         errorMessage: errorMessage,
       );
       debugPrint('🔴 [AUTH] Showing error to user: $errorMessage');
+      return null;
     }
   }
 

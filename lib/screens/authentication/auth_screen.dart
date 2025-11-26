@@ -7,7 +7,6 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
-import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/app_button.dart';
 import 'package:chessever2/widgets/auth_button.dart';
 import 'package:chessever2/widgets/blur_background.dart';
@@ -52,8 +51,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       final user = state.user;
       if (user == null) return;
 
-      // Don't redirect if the Supabase user is anonymous
-      // Anonymous users visiting auth_screen want to upgrade their account via OAuth
+      // Only navigate for non-anonymous users (OAuth users)
+      // Anonymous users are handled by the "Continue as Guest" button directly
       final supabaseUser = Supabase.instance.client.auth.currentUser;
       if (supabaseUser?.isAnonymous == true) return;
 
@@ -111,92 +110,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     );
   }
 
-  void _showErrorDialog(String errorMessage) {
-    showAlertModal<void>(
-      context: context,
-      horizontalPadding: 40.sp,
-      verticalPadding: 0,
-      barrierDismissible: true,
-      child: Center(
-        child: Container(
-          constraints: BoxConstraints(maxWidth: 340.w),
-          decoration: BoxDecoration(
-            color: kPopUpColor,
-            borderRadius: BorderRadius.circular(20.br),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.3),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          padding: EdgeInsets.all(24.sp),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Error Icon
-              Container(
-                width: 56.w,
-                height: 56.h,
-                decoration: BoxDecoration(
-                  color: kRedColor.withOpacity(0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.error_outline_rounded,
-                  color: kRedColor,
-                  size: 32.sp,
-                ),
-              ),
-              SizedBox(height: 16.h),
 
-              // Title
-              Text(
-                'Sign In Failed',
-                style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
-                textAlign: TextAlign.center,
-              ),
-              SizedBox(height: 8.h),
-
-              // Error Message
-              Text(
-                errorMessage,
-                style: AppTypography.textSmRegular.copyWith(
-                  color: kWhiteColor.withOpacity(0.7),
-                ),
-                textAlign: TextAlign.center,
-              ),
-              SizedBox(height: 24.h),
-
-              // Try Again Button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: kWhiteColor,
-                    foregroundColor: kBlackColor,
-                    padding: EdgeInsets.symmetric(vertical: 14.h),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12.br),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: Text('Try Again', style: AppTypography.textSmBold),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ).whenComplete(() {
-      if (!mounted) return;
-      ref.read(authScreenProvider.notifier).clearError();
-    });
-  }
 }
 
 class _AuthButtonWidget extends ConsumerWidget {
@@ -238,38 +152,20 @@ class _AuthButtonWidget extends ConsumerWidget {
           SizedBox(height: 12.h),
           TextButton(
             onPressed: () async {
-              // Fast-path: if already anonymous, go straight home/onboarding
-              final currentUser = Supabase.instance.client.auth.currentUser;
-              if (currentUser?.isAnonymous == true) {
-                final onboardingRepo = ref.read(onboardingRepositoryProvider);
-                final hasCompleted = await onboardingRepo.isCompleted(currentUser!.id);
-                if (!context.mounted) return;
-                Navigator.pushNamedAndRemoveUntil(
-                  context,
-                  hasCompleted ? '/home_screen' : '/onboarding',
-                  (_) => false,
-                );
-                return;
-              }
+              final appUser = await ref.read(authScreenProvider.notifier).signInAsGuest();
 
-              await ref.read(authScreenProvider.notifier).signInAsGuest();
+              if (!context.mounted || appUser == null || !appUser.isAnonymous) return;
 
-              // Navigate immediately after anon sign-in, bypassing guards
-              final newUser = Supabase.instance.client.auth.currentUser;
-              final stateUser = ref.read(authScreenProvider).user;
-              final anonId = newUser?.isAnonymous == true
-                  ? newUser!.id
-                  : (stateUser?.isAnonymous == true ? stateUser!.id : null);
-              if (anonId != null) {
-                final onboardingRepo = ref.read(onboardingRepositoryProvider);
-                final hasCompleted = await onboardingRepo.isCompleted(anonId);
-                if (!context.mounted) return;
-                Navigator.pushNamedAndRemoveUntil(
-                  context,
-                  hasCompleted ? '/home_screen' : '/onboarding',
-                  (_) => false,
-                );
-              }
+              final onboardingRepo = ref.read(onboardingRepositoryProvider);
+              final hasCompleted = await onboardingRepo.isCompleted(appUser.id);
+              
+              if (!context.mounted) return;
+              Navigator.pushNamedAndRemoveUntil(
+                context,
+                hasCompleted ? '/home_screen' : '/onboarding',
+                (_) => false,
+              );
+              ref.read(authScreenProvider.notifier).reset();
             },
             child: Text(
               'Continue as Guest',

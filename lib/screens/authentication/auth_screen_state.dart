@@ -6,12 +6,14 @@ class AuthScreenState extends Equatable {
   final String? errorMessage;
   final AppUser? user;
   final bool showCountrySelection;
+  final bool guestFlowStarted;
 
   const AuthScreenState({
     this.isLoading = false,
     this.errorMessage,
     this.user,
     this.showCountrySelection = false,
+    this.guestFlowStarted = false,
   });
 
   @override
@@ -20,6 +22,7 @@ class AuthScreenState extends Equatable {
     errorMessage,
     user,
     showCountrySelection,
+    guestFlowStarted,
   ];
 
   AuthScreenState copyWith({
@@ -27,12 +30,14 @@ class AuthScreenState extends Equatable {
     String? errorMessage,
     AppUser? user,
     bool? showCountrySelection,
+    bool? guestFlowStarted,
   }) {
     return AuthScreenState(
       isLoading: isLoading ?? this.isLoading,
       errorMessage: errorMessage ?? this.errorMessage,
       user: user ?? this.user,
       showCountrySelection: showCountrySelection ?? this.showCountrySelection,
+      guestFlowStarted: guestFlowStarted ?? this.guestFlowStarted,
     );
   }
 }
