@@ -1,5 +1,6 @@
+import 'dart:ui' as ui;
+
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:http/http.dart' as http;
 
 final locationRepositoryProvider = AutoDisposeProvider<LocationRepository>((
   ref,
@@ -10,11 +11,15 @@ final locationRepositoryProvider = AutoDisposeProvider<LocationRepository>((
 // Location Repository
 class LocationRepository {
   Future<String> getCountryCode() async {
-  try {
-    final response = await http.get(Uri.parse('https://ipapi.co/country/'));
-    return response.body.trim();
-  } catch (e) {
+    // Use device locale for instant country detection (no network call)
+    final locale = ui.PlatformDispatcher.instance.locale;
+    final countryCode = locale.countryCode;
+
+    if (countryCode != null && countryCode.isNotEmpty) {
+      return countryCode;
+    }
+
+    // Fallback to US if locale has no country
     return 'US';
-  }
   }
 }

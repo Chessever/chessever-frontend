@@ -23,6 +23,7 @@ import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -388,6 +389,7 @@ class PlayerSelectionContent extends HookConsumerWidget {
                       onPressed:
                           selectedCount >= 3
                               ? () async {
+                                HapticFeedback.mediumImpact();
                                 await onComplete();
                               }
                               : null,
@@ -889,6 +891,7 @@ class _PlayerTile extends HookWidget {
       onTapDown: (_) => isPressed.value = true,
       onTapUp: (_) {
         isPressed.value = false;
+        HapticFeedback.selectionClick();
         onTap();
       },
       onTapCancel: () => isPressed.value = false,

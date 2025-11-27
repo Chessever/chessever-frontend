@@ -444,6 +444,32 @@ class _LastMoveNotation extends StatelessWidget {
   final String? lastMove;
   final String? fen;
 
+  /// Extracts move number and side from FEN
+  /// Returns (moveNumber, wasWhiteMove) or null if parsing fails
+  (int, bool)? _getMoveInfo() {
+    if (fen == null || fen!.isEmpty) return null;
+
+    try {
+      final parts = fen!.split(' ');
+      if (parts.length < 6) return null;
+
+      final sideToMove = parts[1]; // 'w' or 'b'
+      final fullmoveNumber = int.tryParse(parts[5]);
+
+      if (fullmoveNumber == null) return null;
+
+      // If it's black's turn, white just moved (use fullmove number)
+      // If it's white's turn, black just moved (use fullmove - 1)
+      if (sideToMove == 'b') {
+        return (fullmoveNumber, true); // White just moved
+      } else {
+        return (fullmoveNumber - 1, false); // Black just moved
+      }
+    } catch (e) {
+      return null;
+    }
+  }
+
   /// Converts UCI move (like "b8e8") to SAN notation (like "Re8", "Nf3", etc.)
   String? _convertUciToSan() {
     if (lastMove == null || lastMove!.isEmpty) {
@@ -550,6 +576,21 @@ class _LastMoveNotation extends StatelessWidget {
     }
   }
 
+  /// Formats the move with move number (e.g., "49.Ba3" or "49...Ba3")
+  String _formatMoveWithNumber(String move) {
+    final moveInfo = _getMoveInfo();
+    if (moveInfo == null) return move;
+
+    final (moveNumber, wasWhiteMove) = moveInfo;
+    if (moveNumber <= 0) return move;
+
+    if (wasWhiteMove) {
+      return '$moveNumber.$move';
+    } else {
+      return '$moveNumber...$move';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // Try to convert UCI to SAN
@@ -558,16 +599,14 @@ class _LastMoveNotation extends StatelessWidget {
     // Display the converted SAN move if successful
     // If conversion fails but we have lastMove, show the raw lastMove as fallback
     // This ensures we always show something if a move exists
-    final displayText = sanMove ?? lastMove;
+    final moveNotation = sanMove ?? lastMove;
 
-    if (displayText == null || displayText.isEmpty) {
+    if (moveNotation == null || moveNotation.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    // Debug output to see what's happening
-    if (lastMove != null && lastMove!.contains('b8e8')) {
-      debugPrint('🎯 GAME CARD MOVE: lastMove=$lastMove, fen exists=${fen != null}, sanMove=$sanMove');
-    }
+    // Format with move number
+    final displayText = _formatMoveWithNumber(moveNotation);
 
     return Center(
       child: Text(

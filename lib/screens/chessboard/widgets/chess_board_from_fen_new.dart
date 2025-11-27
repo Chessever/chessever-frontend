@@ -1,5 +1,7 @@
 import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
 import 'package:chessever2/screens/chessboard/widgets/context_pop_up_menu.dart';
+import 'package:chessever2/providers/board_settings_provider_new.dart';
+import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -10,9 +12,14 @@ import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:chessever2/providers/board_settings_provider_new.dart';
 
-class ChessBoardFromFENNew extends StatelessWidget {
+bool _shouldShowEvalBar(WidgetRef ref) {
+  final settings = ref.watch(engineSettingsProviderNew).valueOrNull;
+  return (settings?.showEngineAnalysis ?? true) &&
+      (settings?.showEngineGauge ?? true);
+}
+
+class ChessBoardFromFENNew extends ConsumerWidget {
   const ChessBoardFromFENNew({
     super.key,
     required this.gamesTourModel,
@@ -102,8 +109,9 @@ class ChessBoardFromFENNew extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final sideBarWidth = 20.w;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final showEvalBar = _shouldShowEvalBar(ref);
+    final sideBarWidth = showEvalBar ? 20.w : 0.w;
 
     return Padding(
       padding: EdgeInsets.only(left: 24.sp, right: 24.sp, bottom: 8.sp),
@@ -129,6 +137,7 @@ class ChessBoardFromFENNew extends StatelessWidget {
               sideBarWidth: sideBarWidth,
               boardSize: boardSize,
               isPinned: isPinned,
+              showEvalBar: showEvalBar,
             ),
           );
         },
@@ -137,7 +146,7 @@ class ChessBoardFromFENNew extends StatelessWidget {
   }
 }
 
-class GridChessBoardFromFENNew extends StatelessWidget {
+class GridChessBoardFromFENNew extends ConsumerWidget {
   const GridChessBoardFromFENNew({
     super.key,
     required this.gamesTourModel,
@@ -158,6 +167,7 @@ class GridChessBoardFromFENNew extends StatelessWidget {
     required double size,
     required double screenWidth,
     required double sideBarWidth,
+    required bool showEvalBar,
     required LongPressStartDetails details,
   }) {
     final boardRenderBox = context.findRenderObject() as RenderBox;
@@ -228,6 +238,7 @@ class GridChessBoardFromFENNew extends StatelessWidget {
                           sideBarWidth: sideBarWidth,
                           boardSize: size,
                           playerView: PlayerView.gridView,
+                          showEvalBar: showEvalBar,
                         ),
                       ),
                       SizedBox(height: 4.h),
@@ -271,8 +282,9 @@ class GridChessBoardFromFENNew extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final sideBarWidth = 10.w;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final showEvalBar = _shouldShowEvalBar(ref);
+    final sideBarWidth = showEvalBar ? 10.w : 0.w;
     final screenWidth = (MediaQuery.of(context).size.width / 2) - 24.sp;
     final boardSize = screenWidth - sideBarWidth;
     return GestureDetector(
@@ -287,6 +299,7 @@ class GridChessBoardFromFENNew extends StatelessWidget {
           size: boardSize,
           screenWidth: screenWidth,
           sideBarWidth: sideBarWidth,
+          showEvalBar: showEvalBar,
           details: details,
         );
       },
@@ -309,6 +322,7 @@ class GridChessBoardFromFENNew extends StatelessWidget {
               sideBarWidth: sideBarWidth,
               boardSize: boardSize,
               playerView: PlayerView.gridView,
+              showEvalBar: showEvalBar,
             ),
             SizedBox(height: 4.h),
             _PlayerRow(
@@ -344,6 +358,7 @@ class _ChessBoardLayout extends ConsumerWidget {
     required this.sideBarWidth,
     required this.boardSize,
     required this.isPinned,
+    required this.showEvalBar,
   });
 
   final GamesTourModel gamesTourModel;
@@ -351,6 +366,7 @@ class _ChessBoardLayout extends ConsumerWidget {
   final double sideBarWidth;
   final double boardSize;
   final bool isPinned;
+  final bool showEvalBar;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -370,6 +386,7 @@ class _ChessBoardLayout extends ConsumerWidget {
           sideBarWidth: sideBarWidth,
           boardSize: boardSize,
           playerView: PlayerView.listView,
+          showEvalBar: showEvalBar,
         ),
         SizedBox(height: 4.h),
         _PlayerRow(
@@ -399,7 +416,8 @@ class _ChessBoardContent extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final sideBarWidth = 20.w;
+    final showEvalBar = _shouldShowEvalBar(ref);
+    final sideBarWidth = showEvalBar ? 20.w : 0.w;
 
     return SizedBox(
       width: boardSize.width,
@@ -429,6 +447,7 @@ class _ChessBoardContent extends ConsumerWidget {
                   sideBarWidth: sideBarWidth,
                   boardSize: chessBoardSize,
                   playerView: PlayerView.listView,
+                  showEvalBar: showEvalBar,
                 ),
                 SizedBox(height: 4.h),
                 _PlayerRow(
@@ -474,13 +493,14 @@ class _PlayerRow extends StatelessWidget {
   }
 }
 
-class _ChessBoardWithEvaluation extends ConsumerWidget {
+class _ChessBoardWithEvaluation extends StatelessWidget {
   const _ChessBoardWithEvaluation({
     required this.gamesTourModel,
     required this.lastMove,
     required this.sideBarWidth,
     required this.boardSize,
     required this.playerView,
+    required this.showEvalBar,
   });
 
   final GamesTourModel gamesTourModel;
@@ -488,9 +508,18 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
   final double sideBarWidth;
   final double boardSize;
   final PlayerView playerView;
+  final bool showEvalBar;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
+    if (!showEvalBar) {
+      return _ChessBoardWidget(
+        fen: gamesTourModel.fen ?? '',
+        lastMove: lastMove,
+        boardSize: boardSize,
+      );
+    }
+
     return Row(
       children: [
         EvaluationBarWidgetForGames(

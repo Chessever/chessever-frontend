@@ -13,6 +13,7 @@ import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -511,6 +512,7 @@ class _SecondaryButton extends HookWidget {
       onTapDown: (_) => isPressed.value = true,
       onTapUp: (_) {
         isPressed.value = false;
+        HapticFeedback.lightImpact();
         onTap();
       },
       onTapCancel: () => isPressed.value = false,
@@ -1634,7 +1636,10 @@ class _PrimaryButton extends HookWidget {
       onTapDown: (_) => isPressed.value = true,
       onTapUp: (_) {
         isPressed.value = false;
-        onTap?.call();
+        if (onTap != null) {
+          HapticFeedback.mediumImpact();
+          onTap!();
+        }
       },
       onTapCancel: () => isPressed.value = false,
       child: AnimatedScale(
