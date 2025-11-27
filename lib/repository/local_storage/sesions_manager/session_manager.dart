@@ -40,6 +40,20 @@ class SessionManager {
     ref.read(countryDropdownProvider.notifier).clearLocalOnly();
   }
 
+  /// Clear ALL user data from SharedPreferences
+  /// Used when account is deleted - wipes everything for a clean slate
+  Future<void> clearAllUserData() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    // Clear everything - account deletion means complete data wipe
+    // This ensures no data leaks between accounts and fresh start for new users
+    await prefs.clear();
+
+    // Reset provider states
+    ref.read(authScreenProvider.notifier).reset();
+    ref.read(countryDropdownProvider.notifier).clearLocalOnly();
+  }
+
   /// Check current login state and recover session if valid
   /// Note: The auth state stream (authStateProvider) is the primary source of truth
   /// This method is only used for initial checks in splash screen

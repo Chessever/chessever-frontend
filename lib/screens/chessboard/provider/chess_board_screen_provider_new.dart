@@ -340,8 +340,21 @@ class ChessBoardScreenNotifierNew
         ? DateTime.now().difference(_activeEvalStartTime!)
         : Duration.zero;
 
-    if (hasActiveEval && evalDuration < const Duration(seconds: 5)) {
-      // Give it a bit more time if it hasn't been too long
+    final stateSnapshot = state.value;
+    final hasTargetPvProgress =
+        stateSnapshot != null &&
+        stateSnapshot.principalVariationsBaseFen != null &&
+        _normalizeFen(stateSnapshot.principalVariationsBaseFen!) == targetFen &&
+        stateSnapshot.principalVariations.isNotEmpty;
+
+    // If Stockfish is already streaming PVs for this FEN, keep monitoring without forcing a restart.
+    if (hasActiveEval && hasTargetPvProgress) {
+      _scheduleEvalWatchdog(targetFen);
+      return;
+    }
+
+    // Abort stale jobs quickly: one watchdog interval is enough time for the engine to respond.
+    if (hasActiveEval && evalDuration < _evalWatchdogInterval) {
       _scheduleEvalWatchdog(targetFen);
       return;
     }
@@ -358,9 +371,8 @@ class ChessBoardScreenNotifierNew
     unawaited(StockfishSingleton().cancelAllEvaluations());
 
     // Clear the evaluating flag to prevent UI from being stuck
-    final currentState = state.value;
-    if (currentState != null && currentState.isEvaluating) {
-      state = AsyncValue.data(currentState.copyWith(isEvaluating: false));
+    if (stateSnapshot != null && stateSnapshot.isEvaluating) {
+      state = AsyncValue.data(stateSnapshot.copyWith(isEvaluating: false));
     }
 
     // Schedule a new evaluation after a small delay
