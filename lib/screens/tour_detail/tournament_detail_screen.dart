@@ -284,16 +284,47 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
               constraints: BoxConstraints(maxWidth: 340.w),
               child: SizedBox(
                 height: 44.h,
-                child: TextDropDownWidget(
-                  items: _buildDropdownItems(data.tours),
-                  selectedId: selectedTourId,
-                  onChanged: (value) => _handleDropdownChange(ref, value),
+                child: _buildDropdownOrText(
+                  context,
+                  ref,
+                  data.tours,
+                  selectedTourId,
                 ),
               ),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildDropdownOrText(
+    BuildContext context,
+    WidgetRef ref,
+    List<TourModel> tours,
+    String selectedTourId,
+  ) {
+    final dropdownItems = _buildDropdownItems(tours);
+
+    if (dropdownItems.length <= 1) {
+      return Container(
+        padding: EdgeInsets.symmetric(vertical: 4.sp, horizontal: 4.sp),
+        alignment: Alignment.center,
+        child: Text(
+          dropdownItems.firstOrNull?['value'] ?? '',
+          style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+          maxLines: 2,
+          overflow: TextOverflow.visible,
+          softWrap: true,
+          textAlign: TextAlign.center,
+        ),
+      );
+    }
+
+    return TextDropDownWidget(
+      items: dropdownItems,
+      selectedId: selectedTourId,
+      onChanged: (value) => _handleDropdownChange(ref, value),
     );
   }
 

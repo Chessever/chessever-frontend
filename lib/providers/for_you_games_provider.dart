@@ -341,10 +341,13 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     final newGames = <Games>[];
     final seenGameIds = _allGames.map((g) => g.id).toSet();
 
-    // Helper to filter live games on loadMore and deduplicate within this fetch.
+    // Helper to filter live games on loadMore, drop future (not-started) games,
+    // and deduplicate within this fetch.
     void addUniqueGames(List<Games> games) {
-      final filteredGames =
-          isInitialLoad ? games : games.where((g) => g.status != '*');
+      final filteredGames = (isInitialLoad
+              ? games
+              : games.where((g) => g.status != '*'))
+          .where((g) => !_isFutureGame(g));
 
       for (final game in filteredGames) {
         if (seenGameIds.add(game.id)) {
@@ -881,6 +884,17 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
 
   /// Get the set of game IDs from initial load (for scroll position stability)
   Set<String> get initialGameIds => _initialGameIds;
+
+  /// Checks if a game hasn't started yet (future pairing)
+  bool _isFutureGame(Games game) {
+    final status = GameStatus.fromString(game.status);
+    final hasMoves = (game.lastMove?.isNotEmpty ?? false) ||
+        game.lastMoveTime != null ||
+        (game.pgn?.isNotEmpty ?? false);
+
+    // Future game = no moves/logged time, not live, and no result
+    return !_isLiveGame(game) && !status.isFinished && !hasMoves;
+  }
 
   @override
   void dispose() {

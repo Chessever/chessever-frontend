@@ -94,8 +94,8 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
       elevation: 0,
       child: Container(
         constraints: BoxConstraints(
-          maxWidth: 380.w,
-          maxHeight: MediaQuery.of(context).size.height * 0.85,
+          maxWidth: 340.w,
+          // Removed maxHeight constraint to let it size by content, but kept it minimal
         ),
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -106,7 +106,7 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
               Color(0xFF0D0D0D),
             ],
           ),
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: BorderRadius.circular(24),
           border: Border.all(
             color: Colors.red.withOpacity(0.2),
             width: 1.5,
@@ -114,22 +114,22 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
           boxShadow: [
             BoxShadow(
               color: Colors.red.withOpacity(0.1),
-              blurRadius: 40,
-              spreadRadius: -10,
-              offset: Offset(0, 20),
+              blurRadius: 30,
+              spreadRadius: -5,
+              offset: Offset(0, 15),
             ),
             BoxShadow(
               color: Colors.black.withOpacity(0.5),
-              blurRadius: 30,
-              offset: Offset(0, 15),
+              blurRadius: 20,
+              offset: Offset(0, 10),
             ),
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(26),
+          borderRadius: BorderRadius.circular(22),
           child: Stack(
             children: [
-              // Dramatic background pattern - chess board inspired
+              // Background pattern
               Positioned.fill(
                 child: CustomPaint(
                   painter: _ChessPatternPainter(),
@@ -137,347 +137,139 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
               ),
 
               // Main content
-              SingleChildScrollView(
+              Padding(
+                padding: EdgeInsets.all(24.sp),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Header with fallen king icon
+                    // Compact Header
                     Container(
-                    padding: EdgeInsets.all(28.sp),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.red.withOpacity(0.08),
-                          Colors.transparent,
-                        ],
+                      padding: EdgeInsets.all(16.sp),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.red.withOpacity(0.1),
                       ),
-                    ),
-                    child: Column(
-                      children: [
-                        // Animated chess king falling
-                        Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            // Glow effect
-                            Container(
-                              width: 80.w,
-                              height: 80.h,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                gradient: RadialGradient(
-                                  colors: [
-                                    Colors.red.withOpacity(0.3),
-                                    Colors.red.withOpacity(0.05),
-                                    Colors.transparent,
-                                  ],
-                                ),
-                              ),
-                            )
-                                .animate(onPlay: (controller) => controller.repeat())
-                                .scale(
-                                  begin: Offset(0.8, 0.8),
-                                  end: Offset(1.2, 1.2),
-                                  duration: 2000.ms,
-                                  curve: Curves.easeInOut,
-                                ),
+                      child: Icon(
+                        Icons.delete_forever_rounded,
+                        size: 32.ic,
+                        color: Colors.red.shade400,
+                      ),
+                    )
+                        .animate()
+                        .scale(
+                          duration: 400.ms,
+                          curve: Curves.easeOutBack,
+                        )
+                        .fadeIn(duration: 300.ms),
 
-                            // King icon with tilt animation
-                            Transform.rotate(
-                              angle: 0.3,
-                              child: Icon(
-                                Icons.logout_rounded, // Using logout icon as chess piece substitute
-                                size: 40.ic,
-                                color: Colors.red.shade400,
-                              ),
-                            )
-                                .animate()
-                                .rotate(
-                                  begin: 0,
-                                  end: 0.1,
-                                  duration: 600.ms,
-                                  curve: Curves.easeOutBack,
-                                )
-                                .fadeIn(duration: 400.ms)
-                                .scale(
-                                  begin: Offset(0.5, 0.5),
-                                  duration: 600.ms,
-                                  curve: Curves.elasticOut,
-                                ),
-                          ],
+                    SizedBox(height: 16.h),
+
+                    Text(
+                      'Delete Account?',
+                      style: AppTypography.textLgBold.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ).animate().fadeIn(delay: 100.ms).slideY(begin: -0.2, end: 0),
+
+                    SizedBox(height: 8.h),
+
+                    Text(
+                      'This action is permanent and cannot be undone. All your data, history, and preferences will be lost forever.',
+                      textAlign: TextAlign.center,
+                      style: AppTypography.textSmRegular.copyWith(
+                        color: kWhiteColor.withOpacity(0.7),
+                        height: 1.4,
+                      ),
+                    ).animate().fadeIn(delay: 200.ms),
+
+                    SizedBox(height: 24.h),
+
+                    // Warning / Checkbox Section
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 12.sp),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.red.withOpacity(0.15),
+                          width: 1,
                         ),
-
-                        SizedBox(height: 20.h),
-
-                        // Title with dramatic styling
-                        ShaderMask(
-                          shaderCallback: (bounds) => LinearGradient(
-                            colors: [
-                              Colors.red.shade300,
-                              Colors.red.shade600,
-                            ],
-                          ).createShader(bounds),
-                          child: Text(
-                            'Sacrifice Your Account',
-                            style: AppTypography.textXlBold.copyWith(
-                              color: Colors.white,
-                              letterSpacing: 0.8,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        )
-                            .animate()
-                            .fadeIn(delay: 200.ms, duration: 500.ms)
-                            .slideY(begin: -0.3, end: 0),
-
-                        SizedBox(height: 8.h),
-
-                        Text(
-                          'A permanent endgame',
-                          style: AppTypography.textSmRegular.copyWith(
-                            color: Colors.red.withOpacity(0.5),
-                            fontStyle: FontStyle.italic,
-                            letterSpacing: 1.2,
-                          ),
-                        )
-                            .animate()
-                            .fadeIn(delay: 400.ms, duration: 500.ms),
-                      ],
-                    ),
-                  ),
-
-                  // Content section
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 28.sp),
-                    child: Column(
-                      children: [
-                        // Warning card
-                        Container(
-                          padding: EdgeInsets.all(20.sp),
-                          decoration: BoxDecoration(
-                            color: Colors.red.withOpacity(0.05),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: Colors.red.withOpacity(0.15),
-                              width: 1,
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.warning_amber_rounded,
-                                    color: Colors.red.shade400,
-                                    size: 20.ic,
-                                  ),
-                                  SizedBox(width: 8.w),
-                                  Text(
-                                    'This action cannot be undone',
-                                    style: AppTypography.textSmMedium.copyWith(
-                                      color: Colors.red.shade400,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              SizedBox(height: 12.h),
-                              Text(
-                                'Deleting your account will permanently remove:',
-                                style: AppTypography.textSmRegular.copyWith(
-                                  color: kWhiteColor.withOpacity(0.8),
-                                ),
-                              ),
-                              SizedBox(height: 12.h),
-                              _BulletPoint('All your game history and analysis'),
-                              _BulletPoint('Your favorite players and settings'),
-                              _BulletPoint('Your countryman preferences'),
-                              _BulletPoint('All personal data associated with your account'),
-                            ],
-                          ),
-                        )
-                            .animate()
-                            .fadeIn(delay: 500.ms, duration: 500.ms)
-                            .slideX(begin: -0.1, end: 0),
-
-                        SizedBox(height: 20.h),
-
-                        // Process explanation
-                        Container(
-                          padding: EdgeInsets.all(20.sp),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                kWhiteColor.withOpacity(0.03),
-                                kWhiteColor.withOpacity(0.01),
-                              ],
-                            ),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: kWhiteColor.withOpacity(0.08),
-                              width: 1,
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Container(
-                                    width: 32.w,
-                                    height: 32.h,
-                                    decoration: BoxDecoration(
-                                      color: kWhiteColor.withOpacity(0.08),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Icon(
-                                      Icons.delete_forever_outlined,
-                                      size: 18.ic,
-                                      color: kWhiteColor.withOpacity(0.7),
-                                    ),
-                                  ),
-                                  SizedBox(width: 12.w),
-                                  Expanded(
-                                    child: Text(
-                                      'Instant Account Deletion',
-                                      style: AppTypography.textMdMedium.copyWith(
-                                        color: kWhiteColor.withOpacity(0.9),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              SizedBox(height: 16.h),
-                              Text(
-                                'By tapping "Delete Account", your account and all associated data will be permanently deleted immediately. You will be signed out automatically.',
-                                style: AppTypography.textSmRegular.copyWith(
-                                  color: kWhiteColor.withOpacity(0.6),
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                            .animate()
-                            .fadeIn(delay: 600.ms, duration: 500.ms)
-                            .slideX(begin: 0.1, end: 0),
-
-                        SizedBox(height: 20.h),
-
-                        // Checkbox
-                        InkWell(
-                          onTap: () {
-                            HapticFeedbackService.selection();
-                            setState(() {
-                              _hasReadWarning = !_hasReadWarning;
-                            });
-                          },
-                          borderRadius: BorderRadius.circular(8),
-                          child: Padding(
-                            padding: EdgeInsets.symmetric(vertical: 8.sp),
-                            child: Row(
-                              children: [
-                                AnimatedContainer(
-                                  duration: 200.ms,
-                                  width: 22.w,
-                                  height: 22.h,
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(
-                                      color: _hasReadWarning
-                                          ? Colors.red.shade400
-                                          : kWhiteColor.withOpacity(0.3),
-                                      width: 2,
-                                    ),
-                                    color: _hasReadWarning
-                                        ? Colors.red.withOpacity(0.2)
-                                        : Colors.transparent,
-                                  ),
-                                  child: _hasReadWarning
-                                      ? Icon(
-                                          Icons.check,
-                                          size: 14.ic,
-                                          color: Colors.red.shade300,
-                                        )
-                                          .animate()
-                                          .scale(
-                                            begin: Offset(0, 0),
-                                            duration: 200.ms,
-                                            curve: Curves.elasticOut,
-                                          )
-                                      : null,
-                                ),
-                                SizedBox(width: 12.w),
-                                Expanded(
-                                  child: Text(
-                                    'I understand this action is permanent',
-                                    style: AppTypography.textSmRegular.copyWith(
-                                      color: kWhiteColor.withOpacity(0.7),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        )
-                            .animate()
-                            .fadeIn(delay: 700.ms, duration: 400.ms),
-
-                        SizedBox(height: 24.h),
-                      ],
-                    ),
-                  ),
-
-                  // Error message
-                  if (_errorMessage != null)
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 28.sp),
-                      child: Container(
-                        padding: EdgeInsets.all(12.sp),
-                        decoration: BoxDecoration(
-                          color: Colors.red.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: Colors.red.withOpacity(0.3),
-                            width: 1,
-                          ),
-                        ),
+                      ),
+                      child: InkWell(
+                        onTap: () {
+                          HapticFeedbackService.selection();
+                          setState(() {
+                            _hasReadWarning = !_hasReadWarning;
+                          });
+                        },
+                        borderRadius: BorderRadius.circular(8),
                         child: Row(
                           children: [
-                            Icon(
-                              Icons.error_outline,
-                              size: 18.ic,
-                              color: Colors.red.shade300,
+                            AnimatedContainer(
+                              duration: 200.ms,
+                              width: 20.w,
+                              height: 20.h,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: _hasReadWarning
+                                      ? Colors.red.shade400
+                                      : kWhiteColor.withOpacity(0.3),
+                                  width: 2,
+                                ),
+                                color: _hasReadWarning
+                                    ? Colors.red.withOpacity(0.2)
+                                    : Colors.transparent,
+                              ),
+                              child: _hasReadWarning
+                                  ? Icon(
+                                      Icons.check,
+                                      size: 12.ic,
+                                      color: Colors.red.shade300,
+                                    )
+                                      .animate()
+                                      .scale(
+                                        begin: Offset(0, 0),
+                                        duration: 200.ms,
+                                        curve: Curves.elasticOut,
+                                      )
+                                  : null,
                             ),
-                            SizedBox(width: 8.w),
+                            SizedBox(width: 12.w),
                             Expanded(
                               child: Text(
-                                _errorMessage!,
-                                style: AppTypography.textSmRegular.copyWith(
-                                  color: Colors.red.shade300,
+                                'I understand the consequences',
+                                style: AppTypography.textSmMedium.copyWith(
+                                  color: _hasReadWarning
+                                      ? Colors.red.shade300
+                                      : kWhiteColor.withOpacity(0.8),
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
                             ),
                           ],
                         ),
                       ),
-                    ),
+                    ).animate().fadeIn(delay: 300.ms).slideX(begin: -0.1, end: 0),
 
-                  // Action buttons
-                  Container(
-                    padding: EdgeInsets.all(24.sp),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          kWhiteColor.withOpacity(0.02),
-                          Colors.transparent,
-                        ],
-                      ),
-                    ),
-                    child: Row(
+                    // Error message
+                    if (_errorMessage != null)
+                      Padding(
+                        padding: EdgeInsets.only(top: 16.h),
+                        child: Text(
+                          _errorMessage!,
+                          textAlign: TextAlign.center,
+                          style: AppTypography.textXsRegular.copyWith(
+                            color: Colors.red.shade300,
+                          ),
+                        ),
+                      ).animate().fadeIn(),
+
+                    SizedBox(height: 24.h),
+
+                    // Action buttons
+                    Row(
                       children: [
                         // Cancel button
                         Expanded(
@@ -489,23 +281,16 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
                                     Navigator.of(context).pop();
                                   },
                             style: TextButton.styleFrom(
-                              padding: EdgeInsets.symmetric(vertical: 14.h),
+                              padding: EdgeInsets.symmetric(vertical: 12.h),
                               backgroundColor: kWhiteColor.withOpacity(0.05),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                side: BorderSide(
-                                  color: kWhiteColor.withOpacity(0.1),
-                                  width: 1,
-                                ),
                               ),
                             ),
                             child: Text(
-                              'Keep Playing',
+                              'Cancel',
                               style: AppTypography.textSmMedium.copyWith(
-                                color: _isDeleting
-                                    ? kWhiteColor.withOpacity(0.3)
-                                    : kWhiteColor.withOpacity(0.8),
-                                fontWeight: FontWeight.w600,
+                                color: kWhiteColor.withOpacity(0.8),
                               ),
                             ),
                           ),
@@ -516,7 +301,7 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
                         // Delete button
                         Expanded(
                           child: AnimatedOpacity(
-                            opacity: _hasReadWarning ? 1.0 : 0.4,
+                            opacity: _hasReadWarning ? 1.0 : 0.5,
                             duration: 200.ms,
                             child: TextButton(
                               onPressed: (_hasReadWarning && !_isDeleting)
@@ -526,24 +311,20 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
                                     }
                                   : null,
                               style: TextButton.styleFrom(
-                                padding: EdgeInsets.symmetric(vertical: 14.h),
-                                backgroundColor: _hasReadWarning
-                                    ? Colors.red.withOpacity(0.15)
-                                    : Colors.red.withOpacity(0.05),
+                                padding: EdgeInsets.symmetric(vertical: 12.h),
+                                backgroundColor: Colors.red.withOpacity(0.15),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                   side: BorderSide(
-                                    color: _hasReadWarning
-                                        ? Colors.red.withOpacity(0.4)
-                                        : Colors.red.withOpacity(0.1),
+                                    color: Colors.red.withOpacity(0.3),
                                     width: 1,
                                   ),
                                 ),
                               ),
                               child: _isDeleting
                                   ? SizedBox(
-                                      width: 20.w,
-                                      height: 20.h,
+                                      width: 16.w,
+                                      height: 16.h,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 2,
                                         valueColor: AlwaysStoppedAnimation<Color>(
@@ -551,37 +332,18 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
                                         ),
                                       ),
                                     )
-                                  : Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(
-                                          Icons.delete_forever_outlined,
-                                          size: 16.ic,
-                                          color: _hasReadWarning
-                                              ? Colors.red.shade300
-                                              : Colors.red.withOpacity(0.3),
-                                        ),
-                                        SizedBox(width: 8.w),
-                                        Text(
-                                          'Delete Account',
-                                          style: AppTypography.textSmMedium.copyWith(
-                                            color: _hasReadWarning
-                                                ? Colors.red.shade300
-                                                : Colors.red.withOpacity(0.3),
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ],
+                                  : Text(
+                                      'Delete',
+                                      style: AppTypography.textSmMedium.copyWith(
+                                        color: Colors.red.shade300,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
                             ),
                           ),
                         ),
                       ],
-                    ),
-                  )
-                      .animate()
-                      .fadeIn(delay: 800.ms, duration: 400.ms)
-                      .slideY(begin: 0.2, end: 0),
+                    ).animate().fadeIn(delay: 400.ms).slideY(begin: 0.2, end: 0),
                   ],
                 ),
               ),
@@ -591,51 +353,16 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
       )
           .animate()
           .scale(
-            begin: Offset(0.85, 0.85),
-            duration: 400.ms,
+            begin: Offset(0.9, 0.9),
+            duration: 300.ms,
             curve: Curves.easeOutBack,
           )
-          .fadeIn(duration: 250.ms),
+          .fadeIn(duration: 200.ms),
     );
   }
 }
 
-class _BulletPoint extends StatelessWidget {
-  final String text;
 
-  const _BulletPoint(this.text, {Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: 6.h),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            margin: EdgeInsets.only(top: 6.h),
-            width: 4.w,
-            height: 4.h,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.red.withOpacity(0.4),
-            ),
-          ),
-          SizedBox(width: 12.w),
-          Expanded(
-            child: Text(
-              text,
-              style: AppTypography.textSmRegular.copyWith(
-                color: kWhiteColor.withOpacity(0.6),
-                height: 1.4,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 // Custom painter for chess board pattern background
 class _ChessPatternPainter extends CustomPainter {
