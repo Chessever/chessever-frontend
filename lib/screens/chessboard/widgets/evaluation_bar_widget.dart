@@ -44,12 +44,14 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
   int? _lastMate;
   bool _awaitingNewEvaluation = false;
   double _whiteRatioTarget = 0.5;
+  String? _lastPositionKey;
 
   @override
   void initState() {
     super.initState();
     _lastEval = widget.evaluation;
     _lastMate = widget.mate;
+    _lastPositionKey = widget.positionKey;
     _awaitingNewEvaluation = (widget.evaluation == null && widget.mate == null);
     final initialEval = widget.evaluation ?? 0.0;
     final initialMate = widget.mate ?? 0;
@@ -60,35 +62,41 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
   void didUpdateWidget(covariant EvaluationBarWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
     bool changed = false;
+    final positionChanged = widget.positionKey != _lastPositionKey;
+    final hasIncomingData = widget.evaluation != null || widget.mate != null;
+    final mateChanged = widget.mate != _lastMate;
+    final evalChanged =
+        widget.evaluation != null &&
+        (widget.evaluation != _lastEval || positionChanged);
 
-    if (widget.positionKey != oldWidget.positionKey) {
+    if (positionChanged) {
+      _lastPositionKey = widget.positionKey;
       _awaitingNewEvaluation = true;
       changed = true;
     }
 
-    bool hasNewEval = false;
-    double? latestEval;
-    int? latestMate;
-
-    if (widget.evaluation != null && widget.evaluation != _lastEval) {
-      _lastEval = widget.evaluation;
-      latestEval = widget.evaluation;
-      hasNewEval = true;
-    }
-    if (widget.mate != null && widget.mate != _lastMate) {
+    if (mateChanged) {
       _lastMate = widget.mate;
-      latestMate = widget.mate;
-      hasNewEval = true;
+    }
+    if (evalChanged) {
+      _lastEval = widget.evaluation;
+    }
+    if (positionChanged && widget.evaluation != null && !evalChanged) {
+      // Same numeric eval for a new position still represents fresh data
+      _lastEval = widget.evaluation;
     }
 
-    if (hasNewEval) {
+    final shouldUpdateRatio =
+        mateChanged ||
+        evalChanged ||
+        (positionChanged && hasIncomingData) ||
+        (_awaitingNewEvaluation && hasIncomingData);
+
+    if (shouldUpdateRatio) {
       _awaitingNewEvaluation = false;
-      final effectiveEval =
-          (latestMate ?? _lastMate ?? 0) != 0
-              ? ((latestMate ?? _lastMate ?? 0) > 0 ? 10.0 : -10.0)
-              : (latestEval ?? _lastEval ?? 0.0);
+      final effectiveEval = _effectiveEval(_lastEval, _lastMate);
       final newRatio = _whiteRatio(effectiveEval);
-      if ((newRatio - _whiteRatioTarget).abs() > 0.0005) {
+      if ((newRatio - _whiteRatioTarget).abs() > 0.0005 || positionChanged) {
         _whiteRatioTarget = newRatio.clamp(0.0, 1.0).toDouble();
       }
       changed = true;
@@ -100,6 +108,13 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
   }
 
   double _whiteRatio(double eval) => _normalizedEvalToRatio(eval);
+
+  double _effectiveEval(double? eval, int? mate) {
+    if (mate != null && mate != 0) {
+      return mate > 0 ? 10.0 : -10.0;
+    }
+    return eval ?? 0.0;
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -429,14 +429,9 @@ class _VersionFooter extends ConsumerWidget {
 
             // Delete Account Button
             InkWell(
-              onTap: () async {
+              onTap: () {
                 HapticFeedbackService.buttonPress();
-                final Uri deleteAccountUri = Uri.parse(
-                  'https://sites.google.com/view/chessever-delete',
-                );
-                if (await canLaunchUrl(deleteAccountUri)) {
-                  await launchUrl(deleteAccountUri, mode: LaunchMode.externalApplication);
-                }
+                showDeleteAccountDialog(context);
               },
               child: Container(
                 padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),

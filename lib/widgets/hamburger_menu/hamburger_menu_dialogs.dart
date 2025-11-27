@@ -1,13 +1,12 @@
-import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/blur_background.dart';
-import 'package:flutter/material.dart';
+import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
-import 'package:chessever2/widgets/hamburger_menu/settings_dialog.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/hamburger_menu/settings_dialog.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 void showSettingsDialog(BuildContext context) {
   // Close drawer if open
@@ -52,27 +51,38 @@ void showDeleteAccountDialog(BuildContext context) {
   );
 }
 
-class _DeleteAccountDialog extends StatefulWidget {
-  const _DeleteAccountDialog({Key? key}) : super(key: key);
+class _DeleteAccountDialog extends ConsumerStatefulWidget {
+  const _DeleteAccountDialog({super.key});
 
   @override
-  State<_DeleteAccountDialog> createState() => _DeleteAccountDialogState();
+  ConsumerState<_DeleteAccountDialog> createState() => _DeleteAccountDialogState();
 }
 
-class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
+class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
   bool _hasReadWarning = false;
+  bool _isDeleting = false;
+  String? _errorMessage;
 
-  Future<void> _launchEmail() async {
-    final Uri emailUri = Uri(
-      scheme: 'mailto',
-      path: 'info@chessever.com',
-      query: 'subject=Account Deletion Request&body=Hello ChessEver Team,%0A%0AI would like to request the deletion of my account and all associated data.%0A%0AMy username/email: [Please fill in]%0A%0AThank you.',
-    );
+  Future<void> _deleteAccount() async {
+    if (_isDeleting) return;
 
-    if (await canLaunchUrl(emailUri)) {
-      await launchUrl(emailUri);
+    setState(() {
+      _isDeleting = true;
+      _errorMessage = null;
+    });
+
+    try {
+      await ref.read(authStateProvider.notifier).deleteAccount();
       if (mounted) {
         Navigator.of(context).pop();
+        // The auth state change will handle navigation to login screen
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isDeleting = false;
+          _errorMessage = e.toString().replaceFirst('Exception: ', '');
+        });
       }
     }
   }
@@ -323,7 +333,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: Icon(
-                                      Icons.email_outlined,
+                                      Icons.delete_forever_outlined,
                                       size: 18.ic,
                                       color: kWhiteColor.withOpacity(0.7),
                                     ),
@@ -331,7 +341,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
                                   SizedBox(width: 12.w),
                                   Expanded(
                                     child: Text(
-                                      'How to Delete Your Account',
+                                      'Instant Account Deletion',
                                       style: AppTypography.textMdMedium.copyWith(
                                         color: kWhiteColor.withOpacity(0.9),
                                       ),
@@ -341,112 +351,10 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
                               ),
                               SizedBox(height: 16.h),
                               Text(
-                                'To ensure the security of your request, account deletion requires email verification:',
+                                'By tapping "Delete Account", your account and all associated data will be permanently deleted immediately. You will be signed out automatically.',
                                 style: AppTypography.textSmRegular.copyWith(
                                   color: kWhiteColor.withOpacity(0.6),
                                 ),
-                              ),
-                              SizedBox(height: 12.h),
-                              Row(
-                                children: [
-                                  Container(
-                                    width: 24.w,
-                                    height: 24.h,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: kGreenColor.withOpacity(0.5),
-                                        width: 1.5,
-                                      ),
-                                    ),
-                                    child: Center(
-                                      child: Text(
-                                        '1',
-                                        style: AppTypography.textXsRegular.copyWith(
-                                          color: kGreenColor,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(width: 12.w),
-                                  Expanded(
-                                    child: Text(
-                                      'Send an email to info@chessever.com',
-                                      style: AppTypography.textSmRegular.copyWith(
-                                        color: kWhiteColor.withOpacity(0.7),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              SizedBox(height: 8.h),
-                              Row(
-                                children: [
-                                  Container(
-                                    width: 24.w,
-                                    height: 24.h,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: kGreenColor.withOpacity(0.5),
-                                        width: 1.5,
-                                      ),
-                                    ),
-                                    child: Center(
-                                      child: Text(
-                                        '2',
-                                        style: AppTypography.textXsRegular.copyWith(
-                                          color: kGreenColor,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(width: 12.w),
-                                  Expanded(
-                                    child: Text(
-                                      'Include your username or email address',
-                                      style: AppTypography.textSmRegular.copyWith(
-                                        color: kWhiteColor.withOpacity(0.7),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              SizedBox(height: 8.h),
-                              Row(
-                                children: [
-                                  Container(
-                                    width: 24.w,
-                                    height: 24.h,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: kGreenColor.withOpacity(0.5),
-                                        width: 1.5,
-                                      ),
-                                    ),
-                                    child: Center(
-                                      child: Text(
-                                        '3',
-                                        style: AppTypography.textXsRegular.copyWith(
-                                          color: kGreenColor,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(width: 12.w),
-                                  Expanded(
-                                    child: Text(
-                                      'We\'ll securely delete all your data within 30 days',
-                                      style: AppTypography.textSmRegular.copyWith(
-                                        color: kWhiteColor.withOpacity(0.7),
-                                      ),
-                                    ),
-                                  ),
-                                ],
                               ),
                             ],
                           ),
@@ -521,6 +429,41 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
                     ),
                   ),
 
+                  // Error message
+                  if (_errorMessage != null)
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 28.sp),
+                      child: Container(
+                        padding: EdgeInsets.all(12.sp),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.red.withOpacity(0.3),
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.error_outline,
+                              size: 18.ic,
+                              color: Colors.red.shade300,
+                            ),
+                            SizedBox(width: 8.w),
+                            Expanded(
+                              child: Text(
+                                _errorMessage!,
+                                style: AppTypography.textSmRegular.copyWith(
+                                  color: Colors.red.shade300,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
                   // Action buttons
                   Container(
                     padding: EdgeInsets.all(24.sp),
@@ -539,10 +482,12 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
                         // Cancel button
                         Expanded(
                           child: TextButton(
-                            onPressed: () {
-                              HapticFeedbackService.buttonPress();
-                              Navigator.of(context).pop();
-                            },
+                            onPressed: _isDeleting
+                                ? null
+                                : () {
+                                    HapticFeedbackService.buttonPress();
+                                    Navigator.of(context).pop();
+                                  },
                             style: TextButton.styleFrom(
                               padding: EdgeInsets.symmetric(vertical: 14.h),
                               backgroundColor: kWhiteColor.withOpacity(0.05),
@@ -557,7 +502,9 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
                             child: Text(
                               'Keep Playing',
                               style: AppTypography.textSmMedium.copyWith(
-                                color: kWhiteColor.withOpacity(0.8),
+                                color: _isDeleting
+                                    ? kWhiteColor.withOpacity(0.3)
+                                    : kWhiteColor.withOpacity(0.8),
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -572,10 +519,10 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
                             opacity: _hasReadWarning ? 1.0 : 0.4,
                             duration: 200.ms,
                             child: TextButton(
-                              onPressed: _hasReadWarning
+                              onPressed: (_hasReadWarning && !_isDeleting)
                                   ? () {
                                       HapticFeedbackService.heavy();
-                                      _launchEmail();
+                                      _deleteAccount();
                                     }
                                   : null,
                               style: TextButton.styleFrom(
@@ -593,28 +540,39 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
                                   ),
                                 ),
                               ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.email_outlined,
-                                    size: 16.ic,
-                                    color: _hasReadWarning
-                                        ? Colors.red.shade300
-                                        : Colors.red.withOpacity(0.3),
-                                  ),
-                                  SizedBox(width: 8.w),
-                                  Text(
-                                    'Send Email',
-                                    style: AppTypography.textSmMedium.copyWith(
-                                      color: _hasReadWarning
-                                          ? Colors.red.shade300
-                                          : Colors.red.withOpacity(0.3),
-                                      fontWeight: FontWeight.w600,
+                              child: _isDeleting
+                                  ? SizedBox(
+                                      width: 20.w,
+                                      height: 20.h,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation<Color>(
+                                          Colors.red.shade300,
+                                        ),
+                                      ),
+                                    )
+                                  : Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.delete_forever_outlined,
+                                          size: 16.ic,
+                                          color: _hasReadWarning
+                                              ? Colors.red.shade300
+                                              : Colors.red.withOpacity(0.3),
+                                        ),
+                                        SizedBox(width: 8.w),
+                                        Text(
+                                          'Delete Account',
+                                          style: AppTypography.textSmMedium.copyWith(
+                                            color: _hasReadWarning
+                                                ? Colors.red.shade300
+                                                : Colors.red.withOpacity(0.3),
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ),
-                                ],
-                              ),
                             ),
                           ),
                         ),

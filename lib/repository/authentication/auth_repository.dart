@@ -746,20 +746,38 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
 
   Future<void> deleteAccount() async {
     state = const AsyncValue.data(AppAuthState.loading());
-    
+
     try {
-      // Call RPC to delete user account (common pattern for Supabase)
-      // This assumes a 'delete_user_account' function exists in Postgres
+      // Sign out from Google first (best effort)
+      await _signOutGoogle();
+
+      // Call RPC to delete user account from Supabase
+      // This deletes from auth.users which CASCADE deletes:
+      // - user_favorite_events
+      // - user_favorite_players
+      // - user_engine_settings
+      // - user_folders
+      // - user_saved_analyses
       await _supabase.rpc('delete_user_account');
+
       unawaited(
         AnalyticsService.instance.trackAuthEvent(
           action: 'delete_account',
           success: true,
         ),
       );
-      
-      // Sign out after deletion
-      await signOut();
+
+      // Clear ALL local data (SharedPreferences) for complete wipe
+      await _sessionManager.clearAllUserData();
+
+      // Clear local Supabase session
+      try {
+        await _supabase.auth.signOut(scope: SignOutScope.local);
+      } catch (_) {
+        // Best-effort: ignore local sign-out failures (user already deleted)
+      }
+
+      state = const AsyncValue.data(AppAuthState.unauthenticated());
     } catch (e, st) {
       await ref.read(errorLoggerProvider).logError(e, st);
       unawaited(
@@ -769,19 +787,20 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
           reason: e.toString(),
         ),
       );
-      
-      // If RPC fails, try to at least sign out and clear local data
-      // But rethrow so UI can show error
+
+      // If RPC fails, still clear local data to prevent stuck state
       try {
-        await signOut();
+        await _sessionManager.clearAllUserData();
+        await _supabase.auth.signOut(scope: SignOutScope.local);
       } catch (_) {}
-      
+
+      state = const AsyncValue.data(AppAuthState.unauthenticated());
+
       final rawMessage = _exceptionMessage(e);
       final message = rawMessage.isEmpty
           ? 'Failed to delete account. Please contact support.'
           : rawMessage;
-      state = AsyncValue.data(AppAuthState.error(message));
-      rethrow;
+      throw Exception(message);
     }
   }
 
