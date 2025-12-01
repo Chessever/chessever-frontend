@@ -1,3 +1,4 @@
+import 'package:chessever2/providers/board_settings_provider.dart';
 import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
 import 'package:chessever2/screens/chessboard/widgets/context_pop_up_menu.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
@@ -12,6 +13,7 @@ import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:fast_immutable_collections/fast_immutable_collections.dart';
 
 bool _shouldShowEvalBar(WidgetRef ref) {
   final settings = ref.watch(engineSettingsProviderNew).valueOrNull;
@@ -574,6 +576,7 @@ class _ChessBoardWidget extends ConsumerWidget {
           size: boardSize,
           settings: ChessboardSettings(
             colorScheme: _buildColorScheme(boardTheme),
+            
           ),
           orientation: Side.white,
           fen: fen ?? '',

@@ -3,11 +3,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../repository/local_storage/board_settings_repository/board_settings_repository.dart';
 
 enum PieceStyle {
-  standard('Standard'),
-  modern('Modern'),
-  classic('Classic'),
-  pixel('Pixel Art'),
-  fantasy('Fantasy');
+  standard('Standard');
 
   final String display;
   const PieceStyle(this.display);

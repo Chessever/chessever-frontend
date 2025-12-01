@@ -387,52 +387,106 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
               // Visual board color options
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: 10.w),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                child: Column(
                   children: [
-                    _buildBoardColorOption(
-                      context: context,
-                      svgAsset: SvgAsset.boardColorDefault,
-                      label: 'Default',
-                      colorIndex: 0,
-                      isSelected: boardSettings.boardColorIndex == 0,
-                      onTap: () {
-                        debugPrint('🎨 Settings UI: Board color changed to Default');
-                        _trackPersist(boardNotifier.setBoardColorIndex(0));
-                      },
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        _buildBoardColorOption(
+                          context: context,
+                          svgAsset: SvgAsset.boardColorDefault,
+                          label: 'Default',
+                          colorIndex: 0,
+                          isSelected: boardSettings.boardColorIndex == 0,
+                          onTap: () {
+                            debugPrint('🎨 Settings UI: Board color changed to Default');
+                            _trackPersist(boardNotifier.setBoardColorIndex(0));
+                          },
+                        ),
+                        _buildBoardColorOption(
+                          context: context,
+                          svgAsset: SvgAsset.boardColorBrown,
+                          label: 'Brown',
+                          colorIndex: 1,
+                          isSelected: boardSettings.boardColorIndex == 1,
+                          onTap: () {
+                            debugPrint('🎨 Settings UI: Board color changed to Brown');
+                            _trackPersist(boardNotifier.setBoardColorIndex(1));
+                          },
+                        ),
+                        _buildBoardColorOption(
+                          context: context,
+                          svgAsset: SvgAsset.boardColorGrey,
+                          label: 'Grey',
+                          colorIndex: 2,
+                          isSelected: boardSettings.boardColorIndex == 2,
+                          onTap: () {
+                            debugPrint('🎨 Settings UI: Board color changed to Grey');
+                            _trackPersist(boardNotifier.setBoardColorIndex(2));
+                          },
+                        ),
+                        _buildBoardColorOption(
+                          context: context,
+                          svgAsset: SvgAsset.boardColorGreen,
+                          label: 'Green',
+                          colorIndex: 3,
+                          isSelected: boardSettings.boardColorIndex == 3,
+                          onTap: () {
+                            debugPrint('🎨 Settings UI: Board color changed to Green');
+                            _trackPersist(boardNotifier.setBoardColorIndex(3));
+                          },
+                        ),
+                      ],
                     ),
-                    _buildBoardColorOption(
-                      context: context,
-                      svgAsset: SvgAsset.boardColorBrown,
-                      label: 'Brown',
-                      colorIndex: 1,
-                      isSelected: boardSettings.boardColorIndex == 1,
-                      onTap: () {
-                        debugPrint('🎨 Settings UI: Board color changed to Brown');
-                        _trackPersist(boardNotifier.setBoardColorIndex(1));
-                      },
-                    ),
-                    _buildBoardColorOption(
-                      context: context,
-                      svgAsset: SvgAsset.boardColorGrey,
-                      label: 'Grey',
-                      colorIndex: 2,
-                      isSelected: boardSettings.boardColorIndex == 2,
-                      onTap: () {
-                        debugPrint('🎨 Settings UI: Board color changed to Grey');
-                        _trackPersist(boardNotifier.setBoardColorIndex(2));
-                      },
-                    ),
-                    _buildBoardColorOption(
-                      context: context,
-                      svgAsset: SvgAsset.boardColorGreen,
-                      label: 'Green',
-                      colorIndex: 3,
-                      isSelected: boardSettings.boardColorIndex == 3,
-                      onTap: () {
-                        debugPrint('🎨 Settings UI: Board color changed to Green');
-                        _trackPersist(boardNotifier.setBoardColorIndex(3));
-                      },
+                    SizedBox(height: 20.h),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        _buildBoardColorOption(
+                          context: context,
+                          svgAsset: SvgAsset.boardColorOrange,
+                          label: 'Orange',
+                          colorIndex: 4,
+                          isSelected: boardSettings.boardColorIndex == 4,
+                          onTap: () {
+                            debugPrint('🎨 Settings UI: Board color changed to Orange');
+                            _trackPersist(boardNotifier.setBoardColorIndex(4));
+                          },
+                        ),
+                        _buildBoardColorOption(
+                          context: context,
+                          svgAsset: SvgAsset.boardColorPurple,
+                          label: 'Purple',
+                          colorIndex: 5,
+                          isSelected: boardSettings.boardColorIndex == 5,
+                          onTap: () {
+                            debugPrint('🎨 Settings UI: Board color changed to Purple');
+                            _trackPersist(boardNotifier.setBoardColorIndex(5));
+                          },
+                        ),
+                        _buildBoardColorOption(
+                          context: context,
+                          svgAsset: SvgAsset.boardColorBlue,
+                          label: 'Blue',
+                          colorIndex: 6,
+                          isSelected: boardSettings.boardColorIndex == 6,
+                          onTap: () {
+                            debugPrint('🎨 Settings UI: Board color changed to Blue');
+                            _trackPersist(boardNotifier.setBoardColorIndex(6));
+                          },
+                        ),
+                        _buildBoardColorOption(
+                          context: context,
+                          svgAsset: SvgAsset.boardColorPink,
+                          label: 'Pink',
+                          colorIndex: 7,
+                          isSelected: boardSettings.boardColorIndex == 7,
+                          onTap: () {
+                            debugPrint('🎨 Settings UI: Board color changed to Pink');
+                            _trackPersist(boardNotifier.setBoardColorIndex(7));
+                          },
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -440,6 +494,7 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
             ],
           ),
         ),
+
       ],
     );
   }
@@ -528,6 +583,9 @@ class _SettingCard extends StatelessWidget {
     );
   }
 }
+
+
+
 
 class _DiscreteSlider extends StatelessWidget {
   const _DiscreteSlider({
