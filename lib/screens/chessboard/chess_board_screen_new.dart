@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:skeletonizer/skeletonizer.dart';
+import 'package:chessever2/providers/board_settings_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
@@ -44,11 +45,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
-import 'package:chessever2/widgets/divider_widget.dart';
 // import 'package:chessever2/widgets/smooth_dialog.dart'; // UNUSED: Removed with old dialog
-import 'package:flutter_svg/svg.dart';
 import 'package:smooth_sheets/smooth_sheets.dart';
 
 /// Spring-based curve that mimics iOS snappy motion
@@ -1608,7 +1606,9 @@ class _AppBarState extends ConsumerState<_AppBar> {
   }
 }
 
-class _GameSelectionDropdown extends StatelessWidget {
+/// Beautiful stadium-chip style game selection dropdown with glass morphism
+/// and smooth spring animations - matching CategoryDropdown design language
+class _GameSelectionDropdown extends StatefulWidget {
   final List<GamesTourModel> games;
   final int currentGameIndex;
   final void Function(int) onGameChanged;
@@ -1621,6 +1621,50 @@ class _GameSelectionDropdown extends StatelessWidget {
     this.isLoading = false,
   });
 
+  @override
+  State<_GameSelectionDropdown> createState() => _GameSelectionDropdownState();
+}
+
+class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
+    with SingleTickerProviderStateMixin {
+  final LayerLink _layerLink = LayerLink();
+  late AnimationController _animationController;
+  late Animation<double> _animation;
+  bool _isOpen = false;
+  OverlayEntry? _overlayEntry;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
+    _animation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeOutBack,
+      reverseCurve: Curves.easeInQuart,
+    );
+  }
+
+  @override
+  void dispose() {
+    _removeOverlay();
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  void _removeOverlay() {
+    try {
+      if (_overlayEntry?.mounted == true) {
+        _overlayEntry?.remove();
+      }
+    } catch (e) {
+      _overlayEntry?.dispose();
+    }
+    _overlayEntry = null;
+  }
+
   String _formatName(String fullName, {double? maxWidth}) {
     List<String> nameParts =
         fullName.trim().split(' ').where((part) => part.isNotEmpty).toList();
@@ -1628,21 +1672,14 @@ class _GameSelectionDropdown extends StatelessWidget {
 
     String familyName = nameParts.last;
     List<String> otherNames = nameParts.sublist(0, nameParts.length - 1);
-
-    // Try full names first
     String fullVersion = '${otherNames.join(' ')} $familyName';
 
-    // If no width constraint or it fits, return full version
     if (maxWidth == null) return fullVersion;
 
-    // Estimate text width (rough approximation)
-    double estimatedWidth =
-        fullVersion.length * 6.0; // Approximate character width
+    double estimatedWidth = fullVersion.length * 6.0;
     if (estimatedWidth <= maxWidth) return fullVersion;
 
-    // If too long, progressively abbreviate from left to right
     List<String> displayNames = List.from(otherNames);
-
     for (int i = 0; i < displayNames.length; i++) {
       if (displayNames[i].length > 1) {
         displayNames[i] = '${displayNames[i][0]}.';
@@ -1653,99 +1690,575 @@ class _GameSelectionDropdown extends StatelessWidget {
         }
       }
     }
-
-    // Fallback: all abbreviated
     return '${displayNames.join(' ')} $familyName';
+  }
+
+  void _openDropdown() {
+    if (widget.games.length <= 1 || widget.isLoading) return;
+
+    HapticFeedback.selectionClick();
+    setState(() => _isOpen = true);
+    _animationController.forward();
+    _showOverlay();
+  }
+
+  void _closeDropdown() {
+    _animationController.reverse().then((_) {
+      if (mounted) {
+        setState(() => _isOpen = false);
+        _removeOverlay();
+      }
+    });
+  }
+
+  void _showOverlay() {
+    final overlay = Overlay.of(context);
+    final renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+
+    final size = renderBox.size;
+    final offset = renderBox.localToGlobal(Offset.zero);
+    final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final availableHeight = screenHeight - offset.dy - size.height - 32.sp;
+
+    _overlayEntry = OverlayEntry(
+      builder: (context) => _GameDropdownOverlay(
+        layerLink: _layerLink,
+        triggerSize: size,
+        triggerOffset: offset,
+        screenWidth: screenWidth,
+        availableHeight: availableHeight,
+        animation: _animation,
+        games: widget.games,
+        currentGameIndex: widget.currentGameIndex,
+        isLoading: widget.isLoading,
+        onSelect: (index) {
+          HapticFeedback.selectionClick();
+          if (index != widget.currentGameIndex) {
+            widget.onGameChanged(index);
+          }
+          _closeDropdown();
+        },
+        onDismiss: _closeDropdown,
+      ),
+    );
+
+    overlay.insert(_overlayEntry!);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 32.h,
-      constraints: BoxConstraints(maxWidth: 240.w),
-      child: DropdownButton<int>(
-        value: currentGameIndex,
-        underline: Container(),
-        icon: Icon(
-          Icons.keyboard_arrow_down_outlined,
-          color: kWhiteColor,
-          size: 20.sp,
-        ),
-        dropdownColor: kBlack2Color,
-        borderRadius: BorderRadius.circular(20.sp),
-        isExpanded: true,
-        isDense: true,
-        style: AppTypography.textMdBold,
-        onChanged:
-            isLoading
-                ? null
-                : (int? newIndex) {
-                  if (newIndex != null && newIndex != currentGameIndex) {
-                    onGameChanged(newIndex);
-                  }
-                },
-        selectedItemBuilder: (BuildContext context) {
-          return games.asMap().entries.map<Widget>((entry) {
-            final game = entry.value;
+    if (widget.games.isEmpty) return const SizedBox.shrink();
 
-            return Container(
-              padding: EdgeInsets.only(left: 8.sp, right: 4.sp),
-              alignment: Alignment.center,
-              child: Text(
-                '${_formatName(game.whitePlayer.displayName, maxWidth: 120)} vs ${_formatName(game.blackPlayer.displayName, maxWidth: 120)}',
-                style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
-                overflow: TextOverflow.ellipsis,
-              ),
-            );
-          }).toList();
+    final currentGame = widget.games[widget.currentGameIndex];
+    final displayText =
+        '${_formatName(currentGame.whitePlayer.displayName, maxWidth: 85)} vs ${_formatName(currentGame.blackPlayer.displayName, maxWidth: 85)}';
+
+    return CompositedTransformTarget(
+      link: _layerLink,
+      child: _GameChipButton(
+        label: displayText,
+        gameStatus: currentGame.gameStatus,
+        isOpen: _isOpen,
+        isLoading: widget.isLoading,
+        showChevron: widget.games.length > 1,
+        onTap: () {
+          if (_isOpen) {
+            _closeDropdown();
+          } else {
+            _openDropdown();
+          }
         },
-        items:
-            games.asMap().entries.map<DropdownMenuItem<int>>((entry) {
-              final index = entry.key;
-              final game = entry.value;
-              final isLast = index == games.length - 1;
-
-              return DropdownMenuItem<int>(
-                value: index,
-                child: SingleChildScrollView(
-                  physics: const NeverScrollableScrollPhysics(),
-                  child: Column(
-                    children: [
-                      _GameDropdownItem(
-                        game: game,
-                        gameNumber: index + 1,
-                        isSelected: index == currentGameIndex,
-                        isLoading: isLoading && index == currentGameIndex,
-                      ),
-                      if (!isLast)
-                        Padding(
-                          padding: EdgeInsets.symmetric(vertical: 5.h),
-                          child: DividerWidget(),
-                        ),
-                    ],
-                  ),
-                ),
-              );
-            }).toList(),
       ),
     );
   }
 }
 
-class _GameDropdownItem extends StatelessWidget {
-  final GamesTourModel game;
-  final int gameNumber;
-  final bool isSelected;
+/// Stadium-shaped chip button for game selection trigger
+class _GameChipButton extends StatelessWidget {
+  final String label;
+  final GameStatus gameStatus;
+  final bool isOpen;
   final bool isLoading;
+  final bool showChevron;
+  final VoidCallback onTap;
 
-  const _GameDropdownItem({
-    required this.game,
-    required this.gameNumber,
-    required this.isSelected,
-    required this.isLoading,
+  const _GameChipButton({
+    required this.label,
+    required this.gameStatus,
+    required this.isOpen,
+    required this.onTap,
+    this.isLoading = false,
+    this.showChevron = true,
   });
 
-  String _formatName(String fullName, {double? maxWidth}) {
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+        padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 8.sp),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(100.br),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isOpen
+                ? [
+                    kPrimaryColor.withValues(alpha: 0.2),
+                    kPrimaryColor.withValues(alpha: 0.08),
+                  ]
+                : [
+                    kWhiteColor.withValues(alpha: 0.08),
+                    kWhiteColor.withValues(alpha: 0.04),
+                  ],
+          ),
+          border: Border.all(
+            color: isOpen
+                ? kPrimaryColor.withValues(alpha: 0.5)
+                : kWhiteColor.withValues(alpha: 0.15),
+            width: 1.2,
+          ),
+          boxShadow: isOpen
+              ? [
+                  BoxShadow(
+                    color: kPrimaryColor.withValues(alpha: 0.2),
+                    blurRadius: 12.sp,
+                    spreadRadius: 0,
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Status indicator
+            _GameStatusIndicator(status: gameStatus, isLoading: isLoading),
+            SizedBox(width: 8.sp),
+            // Game label
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: 180.w),
+              child: Text(
+                label,
+                style: AppTypography.textXsMedium.copyWith(
+                  color: isOpen ? kPrimaryColor : kWhiteColor,
+                  letterSpacing: 0.2,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            // Chevron
+            if (showChevron) ...[
+              SizedBox(width: 6.sp),
+              AnimatedRotation(
+                turns: isOpen ? 0.5 : 0,
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOutBack,
+                child: Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  color: isOpen
+                      ? kPrimaryColor
+                      : kWhiteColor.withValues(alpha: 0.7),
+                  size: 18.ic,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Game status indicator with live pulsing animation
+class _GameStatusIndicator extends StatelessWidget {
+  final GameStatus status;
+  final bool isLoading;
+
+  const _GameStatusIndicator({
+    required this.status,
+    this.isLoading = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (isLoading) {
+      return SizedBox(
+        width: 10.sp,
+        height: 10.sp,
+        child: CircularProgressIndicator(
+          strokeWidth: 1.5,
+          color: kPrimaryColor,
+        ),
+      );
+    }
+
+    final color = _getStatusColor();
+    final isLive = status == GameStatus.ongoing;
+
+    return Container(
+      width: 8.sp,
+      height: 8.sp,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color,
+        boxShadow: isLive
+            ? [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.6),
+                  blurRadius: 6.sp,
+                  spreadRadius: 1.sp,
+                ),
+              ]
+            : null,
+      ),
+      child: isLive ? _LivePulsingDot(color: color) : null,
+    );
+  }
+
+  Color _getStatusColor() {
+    switch (status) {
+      case GameStatus.ongoing:
+        return kGreenColor2;
+      case GameStatus.whiteWins:
+      case GameStatus.blackWins:
+      case GameStatus.draw:
+        return kWhiteColor70;
+      case GameStatus.unknown:
+        return kPrimaryColor;
+    }
+  }
+}
+
+/// Pulsing animation for live/ongoing games
+class _LivePulsingDot extends StatefulWidget {
+  final Color color;
+
+  const _LivePulsingDot({required this.color});
+
+  @override
+  State<_LivePulsingDot> createState() => _LivePulsingDotState();
+}
+
+class _LivePulsingDotState extends State<_LivePulsingDot>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: widget.color.withValues(alpha: 1 - _controller.value * 0.5),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// The floating dropdown overlay with glass morphism
+class _GameDropdownOverlay extends StatelessWidget {
+  final LayerLink layerLink;
+  final Size triggerSize;
+  final Offset triggerOffset;
+  final double screenWidth;
+  final double availableHeight;
+  final Animation<double> animation;
+  final List<GamesTourModel> games;
+  final int currentGameIndex;
+  final bool isLoading;
+  final ValueChanged<int> onSelect;
+  final VoidCallback onDismiss;
+
+  const _GameDropdownOverlay({
+    required this.layerLink,
+    required this.triggerSize,
+    required this.triggerOffset,
+    required this.screenWidth,
+    required this.availableHeight,
+    required this.animation,
+    required this.games,
+    required this.currentGameIndex,
+    required this.isLoading,
+    required this.onSelect,
+    required this.onDismiss,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Calculate dropdown width - much wider for player names
+    final dropdownWidth = (screenWidth - 32.sp).clamp(320.w, 380.w);
+    // Center the dropdown below the trigger
+    final leftOffset = (screenWidth - dropdownWidth) / 2;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: onDismiss,
+      child: Stack(
+        children: [
+          Positioned.fill(child: Container(color: Colors.transparent)),
+          Positioned(
+            left: leftOffset,
+            top: triggerOffset.dy + triggerSize.height + 12.sp,
+            child: AnimatedBuilder(
+              animation: animation,
+              builder: (context, child) {
+                return Transform.scale(
+                  scale: 0.85 + (animation.value * 0.15),
+                  alignment: Alignment.topCenter,
+                  child: Opacity(
+                    opacity: animation.value.clamp(0.0, 1.0),
+                    child: child,
+                  ),
+                );
+              },
+              child: _GameDropdownContent(
+                dropdownWidth: dropdownWidth,
+                availableHeight: availableHeight,
+                animation: animation,
+                games: games,
+                currentGameIndex: currentGameIndex,
+                isLoading: isLoading,
+                onSelect: onSelect,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Glass morphism dropdown content with game list
+class _GameDropdownContent extends StatelessWidget {
+  final double dropdownWidth;
+  final double availableHeight;
+  final Animation<double> animation;
+  final List<GamesTourModel> games;
+  final int currentGameIndex;
+  final bool isLoading;
+  final ValueChanged<int> onSelect;
+
+  const _GameDropdownContent({
+    required this.dropdownWidth,
+    required this.availableHeight,
+    required this.animation,
+    required this.games,
+    required this.currentGameIndex,
+    required this.isLoading,
+    required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20.br),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+        child: Container(
+          width: dropdownWidth,
+          constraints: BoxConstraints(
+            maxHeight: availableHeight.clamp(200.h, 400.h),
+          ),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                kBlack2Color.withValues(alpha: 0.92),
+                kBlack2Color.withValues(alpha: 0.85),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(20.br),
+            border: Border.all(
+              color: kWhiteColor.withValues(alpha: 0.12),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.5),
+                blurRadius: 32.sp,
+                offset: Offset(0, 12.sp),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 12.sp),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: kWhiteColor.withValues(alpha: 0.08),
+                      width: 1,
+                    ),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.sports_esports_rounded,
+                      color: kPrimaryColor,
+                      size: 16.ic,
+                    ),
+                    SizedBox(width: 8.sp),
+                    Text(
+                      'Select Game',
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: kWhiteColor.withValues(alpha: 0.9),
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 3.sp),
+                      decoration: BoxDecoration(
+                        color: kPrimaryColor.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(100.br),
+                      ),
+                      child: Text(
+                        '${games.length} games',
+                        style: AppTypography.textXxsRegular.copyWith(
+                          color: kPrimaryColor,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Game list
+              Flexible(
+                child: ListView.builder(
+                  padding: EdgeInsets.symmetric(vertical: 8.sp),
+                  shrinkWrap: true,
+                  itemCount: games.length,
+                  itemBuilder: (context, index) {
+                    final game = games[index];
+                    final isSelected = index == currentGameIndex;
+
+                    return _AnimatedGameItem(
+                      index: index,
+                      animation: animation,
+                      game: game,
+                      gameIndex: index,
+                      isSelected: isSelected,
+                      isLoading: isLoading && isSelected,
+                      onTap: () => onSelect(index),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Staggered animated game item wrapper
+class _AnimatedGameItem extends StatelessWidget {
+  final int index;
+  final Animation<double> animation;
+  final GamesTourModel game;
+  final int gameIndex;
+  final bool isSelected;
+  final bool isLoading;
+  final VoidCallback onTap;
+
+  const _AnimatedGameItem({
+    required this.index,
+    required this.animation,
+    required this.game,
+    required this.gameIndex,
+    required this.isSelected,
+    required this.isLoading,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final itemDelay = index * 0.06;
+    final itemAnimation = CurvedAnimation(
+      parent: animation,
+      curve: Interval(
+        itemDelay.clamp(0.0, 0.4),
+        (itemDelay + 0.6).clamp(0.0, 1.0),
+        curve: Curves.easeOutCubic,
+      ),
+    );
+
+    return AnimatedBuilder(
+      animation: itemAnimation,
+      builder: (context, child) {
+        return Transform.translate(
+          offset: Offset(0, 12 * (1 - itemAnimation.value)),
+          child: Opacity(
+            opacity: itemAnimation.value.clamp(0.0, 1.0),
+            child: child,
+          ),
+        );
+      },
+      child: _GameItem(
+        game: game,
+        gameIndex: gameIndex,
+        isSelected: isSelected,
+        isLoading: isLoading,
+        onTap: onTap,
+      ),
+    );
+  }
+}
+
+/// Individual game item with hover/selection effects
+class _GameItem extends StatefulWidget {
+  final GamesTourModel game;
+  final int gameIndex;
+  final bool isSelected;
+  final bool isLoading;
+  final VoidCallback onTap;
+
+  const _GameItem({
+    required this.game,
+    required this.gameIndex,
+    required this.isSelected,
+    required this.isLoading,
+    required this.onTap,
+  });
+
+  @override
+  State<_GameItem> createState() => _GameItemState();
+}
+
+class _GameItemState extends State<_GameItem> {
+  bool _isPressed = false;
+
+  String _formatName(String fullName) {
     List<String> nameParts =
         fullName.trim().split(' ').where((part) => part.isNotEmpty).toList();
     if (nameParts.length <= 1) return fullName;
@@ -1753,147 +2266,283 @@ class _GameDropdownItem extends StatelessWidget {
     String familyName = nameParts.last;
     List<String> otherNames = nameParts.sublist(0, nameParts.length - 1);
 
-    // Try full names first
-    String fullVersion = '${otherNames.join(' ')} $familyName';
-
-    // If no width constraint or it fits, return full version
-    if (maxWidth == null) return fullVersion;
-
-    // Estimate text width (rough approximation)
-    double estimatedWidth =
-        fullVersion.length * 5.0; // Approximate character width
-    if (estimatedWidth <= maxWidth) return fullVersion;
-
-    // If too long, progressively abbreviate from left to right
-    List<String> displayNames = List.from(otherNames);
-
-    for (int i = 0; i < displayNames.length; i++) {
-      if (displayNames[i].length > 1) {
-        displayNames[i] = '${displayNames[i][0]}.';
-        String newVersion = '${displayNames.join(' ')} $familyName';
-        double newEstimatedWidth = newVersion.length * 5.0;
-        if (newEstimatedWidth <= maxWidth) {
-          return newVersion;
-        }
-      }
+    // Keep first name + family name, abbreviate middle names
+    if (otherNames.length > 1) {
+      final firstName = otherNames.first;
+      final abbreviated = otherNames.skip(1).map((n) => '${n[0]}.').join(' ');
+      return '$firstName $abbreviated $familyName';
     }
-
-    // Fallback: all abbreviated
-    return '${displayNames.join(' ')} $familyName';
+    return '${otherNames.join(' ')} $familyName';
   }
 
-  String _getRoundLabel(GamesTourModel game) {
-    final slug = game.roundSlug;
-    if (slug == null || slug.isEmpty) {
-      return 'R:';
-    }
+  String _getRoundLabel() {
+    final slug = widget.game.roundSlug;
+    if (slug == null || slug.isEmpty) return '';
 
-    // Try to extract number from various patterns
-    // Examples: "round-12", "rapid-8", "blitz-8", "13", "game-4", "losers-r3--armageddon"
     final patterns = [
-      RegExp(r'round[-\s]?(\d+)', caseSensitive: false), // round-12, round 12
-      RegExp(r'rapid[-\s]?(\d+)', caseSensitive: false), // rapid-8
-      RegExp(r'blitz[-\s]?(\d+)', caseSensitive: false), // blitz-8
-      RegExp(r'^(\d+)$'), // just a number like "13"
-      RegExp(r'r(\d+)', caseSensitive: false), // r3 in losers-r3
-      RegExp(r'game[-\s]?(\d+)', caseSensitive: false), // game-4
+      RegExp(r'round[-\s]?(\d+)', caseSensitive: false),
+      RegExp(r'rapid[-\s]?(\d+)', caseSensitive: false),
+      RegExp(r'blitz[-\s]?(\d+)', caseSensitive: false),
+      RegExp(r'^(\d+)$'),
+      RegExp(r'r(\d+)', caseSensitive: false),
+      RegExp(r'game[-\s]?(\d+)', caseSensitive: false),
     ];
 
     for (final pattern in patterns) {
       final match = pattern.firstMatch(slug);
       if (match != null) {
-        final roundNumber = match.group(1);
-        return 'R$roundNumber:';
+        return 'Round ${match.group(1)}';
       }
     }
-
-    // If no pattern matches, return a simplified version
-    return 'R:';
+    return '';
   }
 
-  Widget _buildStatusIcon() {
-    if (isLoading) {
-      return SizedBox(
-        width: 16.w,
-        height: 16.h,
-        child: const CircularProgressIndicator(
-          strokeWidth: 1.5,
-          color: kPrimaryColor,
-        ),
-      );
-    }
-
-    switch (game.gameStatus) {
+  String _getResultText() {
+    switch (widget.game.gameStatus) {
       case GameStatus.whiteWins:
-        return Container(
-          width: 16.w,
-          height: 16.h,
-          alignment: Alignment.center,
-          child: Text(
-            '1',
-            style: AppTypography.textXsBold.copyWith(
-              color: kWhiteColor,
-              fontSize: 12.sp,
-            ),
-          ),
-        );
+        return '1-0';
       case GameStatus.blackWins:
-        return Container(
-          width: 16.w,
-          height: 16.h,
-          alignment: Alignment.center,
-          child: Text(
-            '0',
-            style: AppTypography.textXsBold.copyWith(
-              color: kWhiteColor,
-              fontSize: 12.sp,
-            ),
-          ),
-        );
+        return '0-1';
       case GameStatus.draw:
-        return Container(
-          width: 16.w,
-          height: 16.h,
-          alignment: Alignment.center,
-          child: Text(
-            '½',
-            style: AppTypography.textXsBold.copyWith(
-              color: kWhiteColor,
-              fontSize: 12.sp,
-            ),
-          ),
-        );
+        return '½-½';
       case GameStatus.ongoing:
-        return SvgPicture.asset(
-          SvgAsset.selectedSvg,
-          width: 16.w,
-          height: 16.h,
-        );
+        return 'Live';
       case GameStatus.unknown:
-        return SvgPicture.asset(
-          SvgAsset.calendarIcon,
-          width: 16.w,
-          height: 16.h,
-        );
+        return 'TBD';
+    }
+  }
+
+  Color _getResultColor() {
+    switch (widget.game.gameStatus) {
+      case GameStatus.ongoing:
+        return kGreenColor2;
+      case GameStatus.unknown:
+        return kPrimaryColor;
+      default:
+        return kWhiteColor70;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Flexible(
-          child: Text(
-            '${_getRoundLabel(game)} ${_formatName(game.whitePlayer.name, maxWidth: 65)} vs ${_formatName(game.blackPlayer.name, maxWidth: 65)}',
-            style: AppTypography.textXsRegular.copyWith(color: kWhiteColor70),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+    final roundLabel = _getRoundLabel();
+
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _isPressed = true),
+      onTapUp: (_) => setState(() => _isPressed = false),
+      onTapCancel: () => setState(() => _isPressed = false),
+      onTap: widget.onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        margin: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 3.sp),
+        padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 12.sp),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14.br),
+          color: widget.isSelected
+              ? kPrimaryColor.withValues(alpha: 0.15)
+              : _isPressed
+                  ? kWhiteColor.withValues(alpha: 0.05)
+                  : Colors.transparent,
+          border: widget.isSelected
+              ? Border.all(
+                  color: kPrimaryColor.withValues(alpha: 0.3),
+                  width: 1,
+                )
+              : null,
         ),
-        SizedBox(width: 8.w),
-        _buildStatusIcon(),
-      ],
+        child: Row(
+          children: [
+            // Game number badge
+            Container(
+              width: 28.sp,
+              height: 28.sp,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: widget.isSelected
+                    ? kPrimaryColor.withValues(alpha: 0.2)
+                    : kWhiteColor.withValues(alpha: 0.08),
+                border: Border.all(
+                  color: widget.isSelected
+                      ? kPrimaryColor.withValues(alpha: 0.4)
+                      : kWhiteColor.withValues(alpha: 0.1),
+                  width: 1,
+                ),
+              ),
+              child: Center(
+                child: Text(
+                  '${widget.gameIndex + 1}',
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: widget.isSelected ? kPrimaryColor : kWhiteColor70,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(width: 12.sp),
+            // Player names and round
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Player matchup
+                  Row(
+                    children: [
+                      // White player
+                      Expanded(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 8.sp,
+                              height: 8.sp,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: kWhiteColor,
+                                border: Border.all(
+                                  color: kWhiteColor.withValues(alpha: 0.3),
+                                  width: 1,
+                                ),
+                              ),
+                            ),
+                            SizedBox(width: 6.sp),
+                            Flexible(
+                              child: Text(
+                                _formatName(widget.game.whitePlayer.displayName),
+                                style: AppTypography.textSmMedium.copyWith(
+                                  color: widget.isSelected
+                                      ? kPrimaryColor
+                                      : kWhiteColor,
+                                  fontWeight: widget.isSelected
+                                      ? FontWeight.w600
+                                      : FontWeight.w500,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      // VS badge
+                      Container(
+                        margin: EdgeInsets.symmetric(horizontal: 8.sp),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 6.sp,
+                          vertical: 2.sp,
+                        ),
+                        decoration: BoxDecoration(
+                          color: kWhiteColor.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(4.br),
+                        ),
+                        child: Text(
+                          'vs',
+                          style: AppTypography.textXxsRegular.copyWith(
+                            color: kWhiteColor.withValues(alpha: 0.5),
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                      // Black player
+                      Expanded(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 8.sp,
+                              height: 8.sp,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: kBlackColor,
+                                border: Border.all(
+                                  color: kWhiteColor.withValues(alpha: 0.3),
+                                  width: 1,
+                                ),
+                              ),
+                            ),
+                            SizedBox(width: 6.sp),
+                            Flexible(
+                              child: Text(
+                                _formatName(widget.game.blackPlayer.displayName),
+                                style: AppTypography.textSmMedium.copyWith(
+                                  color: widget.isSelected
+                                      ? kPrimaryColor
+                                      : kWhiteColor,
+                                  fontWeight: widget.isSelected
+                                      ? FontWeight.w600
+                                      : FontWeight.w500,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  // Round label if available
+                  if (roundLabel.isNotEmpty) ...[
+                    SizedBox(height: 4.sp),
+                    Text(
+                      roundLabel,
+                      style: AppTypography.textXxsRegular.copyWith(
+                        color: kWhiteColor.withValues(alpha: 0.5),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            SizedBox(width: 12.sp),
+            // Result/status badge
+            if (widget.isLoading)
+              SizedBox(
+                width: 20.sp,
+                height: 20.sp,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: kPrimaryColor,
+                ),
+              )
+            else
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 4.sp),
+                decoration: BoxDecoration(
+                  color: _getResultColor().withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(6.br),
+                  border: Border.all(
+                    color: _getResultColor().withValues(alpha: 0.3),
+                    width: 1,
+                  ),
+                ),
+                child: Text(
+                  _getResultText(),
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: _getResultColor(),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            // Selection checkmark
+            if (widget.isSelected && !widget.isLoading) ...[
+              SizedBox(width: 8.sp),
+              Container(
+                width: 20.sp,
+                height: 20.sp,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: kPrimaryColor,
+                ),
+                child: Icon(
+                  Icons.check_rounded,
+                  color: kWhiteColor,
+                  size: 12.ic,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -2340,7 +2989,7 @@ class _AnalysisBoard extends ConsumerWidget {
       size: size,
       settings: ChessboardSettings(
         enableCoordinates: true,
-
+        
         animationDuration: const Duration(milliseconds: 200),
         dragFeedbackScale: 1,
         dragTargetKind: DragTargetKind.none,

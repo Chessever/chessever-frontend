@@ -5,7 +5,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'dart:convert';
 
 // Add an enum for board colors
-enum BoardColor { defaultColor, brown, grey, green }
+enum BoardColor { defaultColor, brown, grey, green, orange, purple, blue, pink }
 
 // Chess board theme class - ADD THIS CLASS
 class ChessBoardTheme {
@@ -45,6 +45,14 @@ class _BoardSettingsRepository {
         return Colors.grey;
       case BoardColor.green:
         return Colors.green;
+      case BoardColor.orange:
+        return Colors.orange;
+      case BoardColor.purple:
+        return Colors.purple;
+      case BoardColor.blue:
+        return Colors.blue;
+      case BoardColor.pink:
+        return Colors.pink;
     }
   }
 
@@ -58,6 +66,14 @@ class _BoardSettingsRepository {
       return BoardColor.grey;
     } else if (color.value == Colors.green.value) {
       return BoardColor.green;
+    } else if (color.value == Colors.orange.value) {
+      return BoardColor.orange;
+    } else if (color.value == Colors.purple.value) {
+      return BoardColor.purple;
+    } else if (color.value == Colors.blue.value) {
+      return BoardColor.blue;
+    } else if (color.value == Colors.pink.value) {
+      return BoardColor.pink;
     } else {
       // Default fallback
       return BoardColor.brown;
@@ -95,6 +111,34 @@ class _BoardSettingsRepository {
           lightSquareColor: Color(0xFFEEFFEE), // Very light green
           darkSquareColor: Color(0xFF4CAF50), // Material green
           name: 'Green',
+        );
+
+      case BoardColor.orange:
+        return const ChessBoardTheme(
+          lightSquareColor: Color(0xFFFCE6C9), // Soft peach/beige
+          darkSquareColor: Color(0xFFD18B47), // Muted terracotta
+          name: 'Orange',
+        );
+
+      case BoardColor.purple:
+        return const ChessBoardTheme(
+          lightSquareColor: Color(0xFFE8E0F0), // Pale lavender
+          darkSquareColor: Color(0xFF8B6B9E), // Muted grape
+          name: 'Purple',
+        );
+
+      case BoardColor.blue:
+        return const ChessBoardTheme(
+          lightSquareColor: Color(0xFFDEE3E6), // Cool grey-white
+          darkSquareColor: Color(0xFF7D99A8), // Slate blue
+          name: 'Blue',
+        );
+
+      case BoardColor.pink:
+        return const ChessBoardTheme(
+          lightSquareColor: Color(0xFFF0D9E0), // Pale rose
+          darkSquareColor: Color(0xFFB57281), // Dusty rose
+          name: 'Pink',
         );
     }
   }

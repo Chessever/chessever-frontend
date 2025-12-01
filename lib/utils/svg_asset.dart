@@ -19,6 +19,10 @@ class SvgAsset {
   static const boardColorBrown = 'assets/svgs/board_color_brown.svg';
   static const boardColorGreen = 'assets/svgs/board_color_green.svg';
   static const boardColorGrey = 'assets/svgs/board_color_grey.svg';
+  static const boardColorOrange = 'assets/svgs/board_color_orange.svg';
+  static const boardColorPurple = 'assets/svgs/board_color_purple.svg';
+  static const boardColorBlue = 'assets/svgs/board_color_blue.svg';
+  static const boardColorPink = 'assets/svgs/board_color_pink.svg';
   static const bookIcon = 'assets/svgs/book.svg';
   static const addToLibraryIcon = 'assets/svgs/add_to_library.svg';
   static const tournamentPgnIcon = 'assets/svgs/pgn.svg';

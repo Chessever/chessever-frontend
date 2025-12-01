@@ -14,7 +14,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expans
 import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
 import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/widgets/round_drop_down.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/category_dropdown.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -323,7 +323,7 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
                         ),
                         if (hasTours) ...[
                           const Spacer(),
-                          const RoundDropDown(),
+                          const CategoryDropdown(),
                           const Spacer(),
                           Semantics(
                             label: 'Search games',

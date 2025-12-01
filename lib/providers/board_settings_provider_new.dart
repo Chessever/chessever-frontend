@@ -13,7 +13,11 @@ enum BoardColor {
   defaultColor, // index 0
   brown,        // index 1
   grey,         // index 2
-  green         // index 3
+  green,        // index 3
+  orange,       // index 4
+  purple,       // index 5
+  blue,         // index 6
+  pink          // index 7
 }
 
 /// Board settings configuration class
@@ -42,6 +46,14 @@ class BoardSettingsNew {
         return BoardColor.grey;
       case 3:
         return BoardColor.green;
+      case 4:
+        return BoardColor.orange;
+      case 5:
+        return BoardColor.purple;
+      case 6:
+        return BoardColor.blue;
+      case 7:
+        return BoardColor.pink;
       default:
         return BoardColor.defaultColor;
     }
@@ -57,6 +69,14 @@ class BoardSettingsNew {
         return Colors.grey;
       case BoardColor.green:
         return Colors.green;
+      case BoardColor.orange:
+        return Colors.orange;
+      case BoardColor.purple:
+        return Colors.purple;
+      case BoardColor.blue:
+        return Colors.blue;
+      case BoardColor.pink:
+        return Colors.pink;
     }
   }
 
@@ -157,7 +177,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
 
   /// Set board color by index
   Future<void> setBoardColorIndex(int index) async {
-    final clamped = index.clamp(0, 3); // 0-3 for the 4 color options
+    final clamped = index.clamp(0, 7); // 0-7 for the 8 color options
     final currentState = state.valueOrNull ?? const BoardSettingsNew();
     final newSettings = currentState.copyWith(boardColorIndex: clamped);
     debugPrint('🎨 BoardSettings: Color changed to index=$clamped');
@@ -174,6 +194,14 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
       index = 2;
     } else if (color == Colors.green) {
       index = 3;
+    } else if (color == Colors.orange) {
+      index = 4;
+    } else if (color == Colors.purple) {
+      index = 5;
+    } else if (color == Colors.blue) {
+      index = 6;
+    } else if (color == Colors.pink) {
+      index = 7;
     }
     await setBoardColorIndex(index);
   }

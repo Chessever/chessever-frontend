@@ -6,7 +6,7 @@ part 'board_settings_model.mapper.dart';
 class BoardSettingsModel with BoardSettingsModelMappable {
   final String id;
   final String userId;
-  final int boardColorIndex; // 0=default, 1=brown, 2=grey, 3=green
+  final int boardColorIndex; // 0=default, 1=brown, 2=grey, 3=green, 4=orange, 5=purple, 6=blue, 7=pink
   final bool showEvaluationBar;
   final bool soundEnabled;
   final bool chatEnabled;
