@@ -48,6 +48,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 // import 'package:chessever2/widgets/smooth_dialog.dart'; // UNUSED: Removed with old dialog
 import 'package:smooth_sheets/smooth_sheets.dart';
+import 'package:share_plus/share_plus.dart';
 
 /// Spring-based curve that mimics iOS snappy motion
 /// Quick, precise animation with subtle natural settling
@@ -1511,6 +1512,10 @@ class _AppBarState extends ConsumerState<_AppBar> {
           onSelected: (value) async {
             if (value == 'share') {
               shareGameBtnClicked();
+            } else if (value == 'share_link') {
+              final gameId = widget.game.gameId;
+              final url = 'https://chessever.com/games/$gameId';
+              await Share.share(url, subject: 'Check out this chess game on ChessEver!');
             } else if (value == 'board_settings') {
               final allowed = await requireFullAuthGuard(context);
               if (!allowed) return;
@@ -1572,6 +1577,16 @@ class _AppBarState extends ConsumerState<_AppBar> {
                       Icon(Icons.share, color: kWhiteColor),
                       SizedBox(width: 8.w),
                       const Text('Share Game'),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'share_link',
+                  child: Row(
+                    children: [
+                      Icon(Icons.link, color: kWhiteColor),
+                      SizedBox(width: 8.w),
+                      const Text('Share Link'),
                     ],
                   ),
                 ),
@@ -1640,10 +1655,11 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
       vsync: this,
       duration: const Duration(milliseconds: 350),
     );
+    // Smooth deceleration curve - snappy entrance, elegant exit
     _animation = CurvedAnimation(
       parent: _animationController,
-      curve: Curves.easeOutBack,
-      reverseCurve: Curves.easeInQuart,
+      curve: Curves.easeOutQuart,
+      reverseCurve: Curves.easeInCubic,
     );
   }
 
@@ -1839,8 +1855,7 @@ class _GameChipButton extends StatelessWidget {
             _GameStatusIndicator(status: gameStatus, isLoading: isLoading),
             SizedBox(width: 8.sp),
             // Game label
-            ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: 180.w),
+            Flexible(
               child: Text(
                 label,
                 style: AppTypography.textXsMedium.copyWith(
@@ -1857,7 +1872,7 @@ class _GameChipButton extends StatelessWidget {
               AnimatedRotation(
                 turns: isOpen ? 0.5 : 0,
                 duration: const Duration(milliseconds: 250),
-                curve: Curves.easeOutBack,
+                curve: Curves.easeOutCubic,
                 child: Icon(
                   Icons.keyboard_arrow_down_rounded,
                   color: isOpen
@@ -2023,26 +2038,30 @@ class _GameDropdownOverlay extends StatelessWidget {
           Positioned(
             left: leftOffset,
             top: triggerOffset.dy + triggerSize.height + 12.sp,
-            child: AnimatedBuilder(
-              animation: animation,
-              builder: (context, child) {
-                return Transform.scale(
-                  scale: 0.85 + (animation.value * 0.15),
-                  alignment: Alignment.topCenter,
-                  child: Opacity(
-                    opacity: animation.value.clamp(0.0, 1.0),
-                    child: child,
-                  ),
-                );
-              },
-              child: _GameDropdownContent(
-                dropdownWidth: dropdownWidth,
-                availableHeight: availableHeight,
+            child: Material(
+              type: MaterialType.transparency,
+              child: AnimatedBuilder(
                 animation: animation,
-                games: games,
-                currentGameIndex: currentGameIndex,
-                isLoading: isLoading,
-                onSelect: onSelect,
+                builder: (context, child) {
+                  final clampedValue = animation.value.clamp(0.0, 1.0);
+                  return Transform.scale(
+                    scale: 0.85 + (clampedValue * 0.15),
+                    alignment: Alignment.topCenter,
+                    child: Opacity(
+                      opacity: clampedValue,
+                      child: child,
+                    ),
+                  );
+                },
+                child: _GameDropdownContent(
+                  dropdownWidth: dropdownWidth,
+                  availableHeight: availableHeight,
+                  animation: animation,
+                  games: games,
+                  currentGameIndex: currentGameIndex,
+                  isLoading: isLoading,
+                  onSelect: onSelect,
+                ),
               ),
             ),
           ),
@@ -2216,10 +2235,11 @@ class _AnimatedGameItem extends StatelessWidget {
     return AnimatedBuilder(
       animation: itemAnimation,
       builder: (context, child) {
+        final clampedValue = itemAnimation.value.clamp(0.0, 1.0);
         return Transform.translate(
-          offset: Offset(0, 12 * (1 - itemAnimation.value)),
+          offset: Offset(0, 12 * (1 - clampedValue)),
           child: Opacity(
-            opacity: itemAnimation.value.clamp(0.0, 1.0),
+            opacity: clampedValue,
             child: child,
           ),
         );

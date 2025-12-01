@@ -417,7 +417,9 @@ class _SegmentedSwitcher extends ConsumerWidget {
           ? realQuery
           : _mappedName[category]!;
 
-      final showLiveDot = category == GroupEventCategory.forYou && hasLiveForYou;
+      final showLiveDot = category == GroupEventCategory.forYou &&
+          hasLiveForYou &&
+          selectedTourEvent != GroupEventCategory.forYou;
       if (!showLiveDot) {
         return Text(baseLabel);
       }

@@ -187,7 +187,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           // ),
           // SizedBox(width: 8.w),
           _SquareIconButton(
-            icon: Icons.grid_3x3,
+            icon: Icons.grid_on,
             onTap: _navigateToEmptyBoard,
           ),
           SizedBox(width: 8.w),

@@ -39,6 +39,7 @@ import 'package:clarity_flutter/clarity_flutter.dart';
 import 'package:heroine/heroine.dart';
 import 'package:upgrader/upgrader.dart';
 import 'services/analytics/analytics_service.dart';
+import 'services/deep_link_service.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_provider.dart';
 
@@ -319,9 +320,19 @@ class MyApp extends HookConsumerWidget {
             debugPrintStack(stackTrace: st);
           }
         }
+
+        // Initialize deep link handling for game sharing URLs
+        try {
+          await DeepLinkService.instance.initialize(navigatorKey, ref);
+        } catch (e, st) {
+          if (kDebugMode) {
+            debugPrint('Failed to initialize deep link service: $e');
+            debugPrintStack(stackTrace: st);
+          }
+        }
       });
 
-      return null;
+      return () => DeepLinkService.instance.dispose();
     }, const []);
 
     return AuthStateListener(

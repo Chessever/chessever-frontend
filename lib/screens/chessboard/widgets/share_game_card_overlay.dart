@@ -640,9 +640,9 @@ class _ShareCard extends ConsumerWidget {
                       child: EvaluationBarWidget(
                         width: sideBarWidth,
                         height: boardSize,
-                        evaluation: null,
-                        mate: null,
-                        isEvaluating: true,
+                        evaluation: evaluation,
+                        mate: mate != 0 ? mate : null,
+                        isEvaluating: evaluation == null && mate == 0,
                         isFlipped: isFlipped,
                         isWhiteToMove: overlayWhiteToMove,
                         positionKey: positionFen,
