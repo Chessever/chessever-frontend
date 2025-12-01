@@ -1,5 +1,4 @@
 import 'package:chessever2/main.dart';
-import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
@@ -13,8 +12,7 @@ import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_pr
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_app_bar_widget.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
-import 'package:chessever2/screens/tour_detail/widget/text_dropdown_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/category_dropdown.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -258,15 +256,9 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Null safety check for tours
     if (data.tours.isEmpty) {
       return _buildErrorAppBar(context, 'No tournaments available');
     }
-
-    final defaultTourId = data.tours.first.tour.id;
-    final selectedTourId =
-        ref.watch(tourDetailScreenProvider).value?.aboutTourModel.id ??
-        defaultTourId;
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 16.w),
@@ -275,185 +267,19 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
           IconButton(
             iconSize: 24.ic,
             padding: EdgeInsets.zero,
-            onPressed: () => _handleBackPress(context),
+            onPressed: () => Navigator.of(context).pop(),
             icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24.ic),
           ),
-          SizedBox(width: 12.w),
           Expanded(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: 340.w),
-              child: SizedBox(
-                height: 44.h,
-                child: _buildDropdownOrText(
-                  context,
-                  ref,
-                  data.tours,
-                  selectedTourId,
-                ),
-              ),
+            child: Center(
+              child: CategoryDropdown(constrainWidth: false),
             ),
           ),
+          // Placeholder for symmetry with back button
+          SizedBox(width: 48.w),
         ],
       ),
     );
-  }
-
-  Widget _buildDropdownOrText(
-    BuildContext context,
-    WidgetRef ref,
-    List<TourModel> tours,
-    String selectedTourId,
-  ) {
-    final dropdownItems = _buildDropdownItems(tours);
-
-    if (dropdownItems.length <= 1) {
-      return Container(
-        padding: EdgeInsets.symmetric(vertical: 4.sp, horizontal: 4.sp),
-        alignment: Alignment.center,
-        child: Text(
-          dropdownItems.firstOrNull?['value'] ?? '',
-          style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
-          maxLines: 2,
-          overflow: TextOverflow.visible,
-          softWrap: true,
-          textAlign: TextAlign.center,
-        ),
-      );
-    }
-
-    return TextDropDownWidget(
-      items: dropdownItems,
-      selectedId: selectedTourId,
-      onChanged: (value) => _handleDropdownChange(ref, value),
-    );
-  }
-
-  List<Map<String, String>> _buildDropdownItems(List<TourModel> tours) {
-    DateTime _latestDate(TourModel model) {
-      final candidates = <DateTime>[];
-      candidates.addAll(model.tour.dates);
-      candidates.add(model.tour.createdAt);
-
-      if (candidates.isEmpty) {
-        return DateTime.fromMillisecondsSinceEpoch(0);
-      }
-
-      return candidates.reduce(
-        (latest, date) => date.isAfter(latest) ? date : latest,
-      );
-    }
-
-    int? _extractRoundNumber(String value) {
-      final match = RegExp(
-        r'round\s*(\d+)',
-        caseSensitive: false,
-      ).firstMatch(value);
-      if (match == null) return null;
-      return int.tryParse(match.group(1) ?? '');
-    }
-
-    int? _stageSortRank(TourModel model) {
-      final name = _extractTourName(model.tour.name).toLowerCase();
-
-      if (name.contains('final')) return 0;
-      if (name.contains('semi')) return 1;
-      if (name.contains('quarter')) return 2;
-
-      final roundNumber = _extractRoundNumber(name);
-      if (roundNumber != null) {
-        return 100 - roundNumber;
-      }
-
-      return null;
-    }
-
-    int _compareStageRank(int? a, int? b) {
-      if (a == null && b == null) return 0;
-      if (a == null) return 1;
-      if (b == null) return -1;
-      return a.compareTo(b);
-    }
-
-    bool _isKnockoutStage(TourModel model) =>
-        (model.tour.groupBroadcastId ?? '').isNotEmpty;
-
-    // Sort tours so the most recent knockout stages surface first, then fall back
-    final sortedTours = List<TourModel>.from(tours)..sort((a, b) {
-      final aIsStage = _isKnockoutStage(a);
-      final bIsStage = _isKnockoutStage(b);
-      final aDate = _latestDate(a);
-      final bDate = _latestDate(b);
-      final stageRankCompare = _compareStageRank(
-        _stageSortRank(a),
-        _stageSortRank(b),
-      );
-
-      if (aIsStage && bIsStage) {
-        final dateCompare = bDate.compareTo(aDate);
-        if (dateCompare != 0) return dateCompare;
-
-        if (stageRankCompare != 0) return stageRankCompare;
-      }
-
-      if (aIsStage != bIsStage) {
-        final dateCompare = bDate.compareTo(aDate);
-        if (dateCompare != 0) return dateCompare;
-        return aIsStage ? -1 : 1;
-      }
-
-      final dateCompare = bDate.compareTo(aDate);
-      if (dateCompare != 0) return dateCompare;
-
-      if (stageRankCompare != 0) return stageRankCompare;
-
-      const statusPriority = {
-        RoundStatus.live: 0,
-        RoundStatus.ongoing: 1,
-        RoundStatus.upcoming: 2,
-        RoundStatus.completed: 3,
-      };
-
-      final aPriority = statusPriority[a.roundStatus] ?? 4;
-      final bPriority = statusPriority[b.roundStatus] ?? 4;
-      if (aPriority != bPriority) {
-        return aPriority.compareTo(bPriority);
-      }
-
-      return _extractTourName(
-        b.tour.name,
-      ).compareTo(_extractTourName(a.tour.name));
-    });
-
-    return sortedTours
-        .map(
-          (tourModel) => {
-            'key': tourModel.tour.id,
-            'value': _extractTourName(tourModel.tour.name),
-            'status': tourModel.roundStatus.name,
-          },
-        )
-        .toList();
-  }
-
-  String _extractTourName(String fullName) {
-    final parts = fullName.split('|');
-    return parts.isNotEmpty ? parts.last.trim() : fullName;
-  }
-
-  void _handleBackPress(BuildContext context) {
-    try {
-      Navigator.of(context).pop();
-    } catch (e) {
-      print('Error navigating back: $e');
-    }
-  }
-
-  void _handleDropdownChange(WidgetRef ref, String value) {
-    try {
-      ref.read(tourDetailScreenProvider.notifier).updateSelection(value);
-    } catch (e) {
-      print('Error updating tour selection: $e');
-    }
   }
 
   Widget _buildErrorAppBar(BuildContext context, String errorMessage) {

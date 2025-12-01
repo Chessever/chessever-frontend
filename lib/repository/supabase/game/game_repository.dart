@@ -509,6 +509,53 @@ class GameRepository extends BaseRepository {
     });
   }
 
+  /// Get top board games from a specific tournament (highest ELO players)
+  /// Used to fill up the "For You" feed when there aren't enough personalized games
+  Future<List<Games>> getTopBoardGamesByTourId({
+    required String tourId,
+    int limit = 4,
+    Set<String>? excludeGameIds,
+  }) async {
+    return handleApiCall(() async {
+      debugPrint(
+        '===== GameRepository: Fetching top $limit board games for tour $tourId =====',
+      );
+
+      // Fetch more games than needed since we sort by ELO in Dart
+      final response = await supabase
+          .from('games')
+          .select(_gameListSelectColumns)
+          .eq('tour_id', tourId)
+          .order('board_nr', ascending: true) // Lower board number = higher boards
+          .limit(limit * 3); // Fetch extra for filtering
+
+      final jsonList =
+          (response as List).map((item) => json.encode(item)).toList();
+
+      var games = await compute(_decodeGamesInIsolate, jsonList);
+
+      // Exclude games already in the feed
+      if (excludeGameIds != null && excludeGameIds.isNotEmpty) {
+        games = games.where((g) => !excludeGameIds.contains(g.id)).toList();
+      }
+
+      // Sort by max ELO (highest first) - top boards have highest rated players
+      games.sort((a, b) {
+        final maxEloA = a.players?.map((p) => p.rating).fold<int>(0, (max, r) => r > max ? r : max) ?? 0;
+        final maxEloB = b.players?.map((p) => p.rating).fold<int>(0, (max, r) => r > max ? r : max) ?? 0;
+        return maxEloB.compareTo(maxEloA);
+      });
+
+      final result = games.take(limit).toList();
+
+      debugPrint(
+        '===== GameRepository: Fetched ${result.length} top board games for tour $tourId =====',
+      );
+
+      return result;
+    });
+  }
+
   /// Get top live games globally, ordered by recency.
   Future<List<Games>> getTopLiveGames({int limit = 200}) async {
     return handleApiCall(() async {

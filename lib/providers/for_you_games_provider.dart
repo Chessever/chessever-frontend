@@ -145,6 +145,9 @@ final forYouAnimatedGameIds = <String>{};
 ///
 /// Within each priority level, LIVE games always come before finished games.
 /// But a finished game from a higher priority ALWAYS beats a live game from lower priority.
+///
+/// STANDARD: Each tournament displays exactly 4 games. If there aren't enough
+/// personalized games, we fill up with top board games (highest ELO players).
 class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   ForYouGamesNotifier(this._ref) : super(const AsyncValue.loading()) {
     _setupPreferenceListeners();
@@ -158,6 +161,9 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   bool _isRefreshing = false;
   DateTime? _lastFetchAt;
   static const int _pageSize = 30; // Increased for better pagination
+
+  /// Standard number of games to show per tournament in the For You feed
+  static const int _gamesPerTournament = 4;
   int _emptyFetchCount = 0; // Track consecutive empty fetches
   int _favoritePlayersOffset = 0;
   final Map<String, int> _favoriteNameOffsets = {};
@@ -277,6 +283,10 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       _resetPaginationState();
 
       await _fetchGames(isInitialLoad: true);
+
+      // STANDARD: Enforce exactly 4 games per tournament
+      // Fill up tournaments with fewer than 4 games using top board games
+      await _enforceGamesPerTournamentStandard();
 
       state = AsyncValue.data(List<Games>.from(_allGames));
     } catch (e, stack) {
@@ -582,6 +592,94 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
 
     // Track last successful fetch to detect stale data when revisiting the tab
     _lastFetchAt = DateTime.now();
+  }
+
+  /// Enforces the standard of exactly 4 games per tournament
+  ///
+  /// For each tournament in the feed:
+  /// - If it has more than 4 games, trim to 4 (keeping highest priority/ELO)
+  /// - If it has fewer than 4 games, fill up with top board games (highest ELO)
+  Future<void> _enforceGamesPerTournamentStandard() async {
+    if (_allGames.isEmpty) return;
+
+    debugPrint('[ForYouGames] Enforcing $_gamesPerTournament games per tournament standard...');
+
+    final repository = _ref.read(gameRepositoryProvider);
+
+    // Group games by tournament, maintaining order of first appearance
+    final Map<String, List<Games>> gamesByTour = {};
+    final List<String> tourOrder = [];
+
+    for (final game in _allGames) {
+      final tourId = game.tourId;
+      if (!gamesByTour.containsKey(tourId)) {
+        gamesByTour[tourId] = [];
+        tourOrder.add(tourId);
+      }
+      gamesByTour[tourId]!.add(game);
+    }
+
+    debugPrint('[ForYouGames] Found ${tourOrder.length} tournaments in feed');
+
+    // Process each tournament
+    final Set<String> allExistingGameIds = _allGames.map((g) => g.id).toSet();
+    final List<Games> standardizedGames = [];
+
+    for (final tourId in tourOrder) {
+      final tourGames = gamesByTour[tourId]!;
+      final currentCount = tourGames.length;
+
+      if (currentCount >= _gamesPerTournament) {
+        // Take only the first 4 games (already sorted by priority)
+        standardizedGames.addAll(tourGames.take(_gamesPerTournament));
+        debugPrint(
+          '[ForYouGames] Tournament $tourId: trimmed from $currentCount to $_gamesPerTournament games',
+        );
+      } else {
+        // Need to fill up with top board games
+        final neededGames = _gamesPerTournament - currentCount;
+        debugPrint(
+          '[ForYouGames] Tournament $tourId: has $currentCount games, need $neededGames more',
+        );
+
+        // Add existing games first
+        standardizedGames.addAll(tourGames);
+
+        // Fetch top board games to fill up
+        try {
+          final topBoardGames = await repository.getTopBoardGamesByTourId(
+            tourId: tourId,
+            limit: neededGames,
+            excludeGameIds: allExistingGameIds,
+          );
+
+          if (topBoardGames.isNotEmpty) {
+            standardizedGames.addAll(topBoardGames);
+            // Add to tracking set to avoid duplicates in future fills
+            allExistingGameIds.addAll(topBoardGames.map((g) => g.id));
+            debugPrint(
+              '[ForYouGames] Tournament $tourId: filled with ${topBoardGames.length} top board games',
+            );
+          }
+        } catch (e) {
+          debugPrint('[ForYouGames] Error fetching top board games for $tourId: $e');
+        }
+      }
+    }
+
+    // Update the games list with standardized version
+    _allGames
+      ..clear()
+      ..addAll(standardizedGames);
+
+    // Update initial game IDs to include filled games
+    _initialGameIds
+      ..clear()
+      ..addAll(_allGames.map((g) => g.id));
+
+    debugPrint(
+      '[ForYouGames] Standardization complete: ${_allGames.length} games across ${tourOrder.length} tournaments',
+    );
   }
 
   /// Sort games with heterogeneous distribution while respecting priority
