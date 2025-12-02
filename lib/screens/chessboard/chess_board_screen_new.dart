@@ -766,7 +766,17 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   }
 
   void _navigateToGame(int gameIndex) {
-    if (gameIndex == _currentPageIndex) return;
+    debugPrint('🎯 _navigateToGame called with gameIndex: $gameIndex, current: $_currentPageIndex');
+    if (gameIndex == _currentPageIndex) {
+      debugPrint('🎯 Same page, returning early');
+      return;
+    }
+
+    // Validate gameIndex is within bounds
+    if (gameIndex < 0 || gameIndex >= widget.games.length) {
+      debugPrint('🎯 Invalid gameIndex: $gameIndex (games.length: ${widget.games.length})');
+      return;
+    }
 
     // OPTIMIZED: Don't read provider during navigation - just pause the current game
     try {
@@ -782,11 +792,22 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       debugPrint('Error pausing game during navigation: $e');
     }
 
-    _pageController.animateToPage(
-      gameIndex,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    );
+    // Use jumpToPage for jumps > 1 page to avoid animation interference
+    // animateToPage can trigger multiple onPageChanged events during animation
+    final distance = (gameIndex - _currentPageIndex).abs();
+    debugPrint('🎯 Navigating from $_currentPageIndex to $gameIndex (distance: $distance)');
+
+    if (distance > 1) {
+      // For large jumps, use jumpToPage to avoid intermediate page triggers
+      _pageController.jumpToPage(gameIndex);
+    } else {
+      // For adjacent pages, animate smoothly
+      _pageController.animateToPage(
+        gameIndex,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    }
   }
 
   @override
@@ -1780,11 +1801,15 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
         currentGameIndex: widget.currentGameIndex,
         isLoading: widget.isLoading,
         onSelect: (selectedIndex) {
+          debugPrint('🎯 Dropdown onSelect: selectedIndex=$selectedIndex, currentGameIndex=${widget.currentGameIndex}');
           HapticFeedback.selectionClick();
           if (selectedIndex >= 0 &&
               selectedIndex < widget.games.length &&
               selectedIndex != widget.currentGameIndex) {
+            debugPrint('🎯 Calling onGameChanged with index: $selectedIndex');
             widget.onGameChanged(selectedIndex);
+          } else {
+            debugPrint('🎯 Skipping navigation - same game or invalid index');
           }
           _closeDropdown();
         },
@@ -2148,15 +2173,19 @@ class _GameDropdownContent extends StatelessWidget {
       }
 
       final isSelected = i == currentGameIndex;
+      final capturedIndex = i; // Capture index explicitly for closure
       items.add(
         _AnimatedGameItem(
           index: animationIndex,
           animation: animation,
           game: game,
-          gameIndex: i,
+          gameIndex: capturedIndex,
           isSelected: isSelected,
           isLoading: isLoading && isSelected,
-          onTap: () => onSelect(i), // Pass index directly
+          onTap: () {
+            debugPrint('🎯 Game item tapped: capturedIndex=$capturedIndex, game=${game.whitePlayer.displayName} vs ${game.blackPlayer.displayName}');
+            onSelect(capturedIndex);
+          },
         ),
       );
       animationIndex++;

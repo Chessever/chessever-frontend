@@ -25,7 +25,7 @@ class PlayerTourScreen extends ConsumerWidget {
         children: [
           SizedBox(height: 16.h),
           Padding(
-            padding: EdgeInsets.symmetric(horizontal: 8.sp),
+            padding: EdgeInsets.symmetric(horizontal: 4.sp),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -34,8 +34,8 @@ class PlayerTourScreen extends ConsumerWidget {
                   child: Row(
                     children: [
                       SizedBox(
-                        width: 20.w,
-                      ), // Space for flag area (16.w + 4.w spacing)
+                        width: 18.w,
+                      ), // Space for flag area (16.w + 2.w spacing)
                       Flexible(
                         child: Text(
                           'Player',

@@ -2,10 +2,12 @@ import 'dart:math';
 import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
+import 'package:chessever2/providers/search_games_provider.dart';
 import 'package:chessever2/screens/group_event/widget/all_events_tab_widget.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/group_event_filter_provider.dart';
 import 'package:chessever2/screens/group_event/widget/for_you_games_widget.dart';
+import 'package:chessever2/screens/group_event/widget/search_results_widget.dart';
 import 'package:chessever2/screens/home/home_screen.dart';
 import 'package:chessever2/screens/home/home_screen_provider.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
@@ -23,12 +25,13 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 
-enum GroupEventCategory { past, current, forYou }
+enum GroupEventCategory { past, current, forYou, search }
 
 final _mappedName = {
   GroupEventCategory.past: 'Past',
   GroupEventCategory.current: 'Current',
   GroupEventCategory.forYou: 'For You',
+  GroupEventCategory.search: 'Search',
 };
 
 /// Indicates whether there is at least one live game in the For You feed.
@@ -48,12 +51,21 @@ class GroupEventScreen extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final searchController = useTextEditingController();
     final selectedTourEvent = ref.watch(selectedGroupCategoryProvider);
+    final searchQuery = ref.watch(searchTabQueryProvider);
+    final hasActiveSearch = searchQuery.trim().isNotEmpty;
+
+    // Determine which categories to show (search tab only appears when searching)
+    final visibleCategories = hasActiveSearch
+        ? [GroupEventCategory.past, GroupEventCategory.current, GroupEventCategory.forYou, GroupEventCategory.search]
+        : [GroupEventCategory.past, GroupEventCategory.current, GroupEventCategory.forYou];
+
     final pageController = usePageController(
-      initialPage: GroupEventCategory.values.indexOf(selectedTourEvent),
+      initialPage: visibleCategories.indexOf(selectedTourEvent).clamp(0, visibleCategories.length - 1),
     );
     final pastScrollController = useScrollController();
     final currentScrollController = useScrollController();
     final forYouScrollController = useScrollController();
+    final searchScrollController = useScrollController();
     final isAnimating = useRef(false);
     final isSearching = useState(false);
     final focusNode = useFocusNode();
@@ -65,8 +77,8 @@ class GroupEventScreen extends HookConsumerWidget {
     }, [focusNode]);
 
     useEffect(() {
-      final newIndex = GroupEventCategory.values.indexOf(selectedTourEvent);
-      if (pageController.hasClients &&
+      final newIndex = visibleCategories.indexOf(selectedTourEvent);
+      if (newIndex >= 0 && pageController.hasClients &&
           pageController.page?.round() != newIndex) {
         isAnimating.value = true;
         pageController
@@ -78,17 +90,25 @@ class GroupEventScreen extends HookConsumerWidget {
             .then((_) => isAnimating.value = false);
       }
       return null;
-    }, [selectedTourEvent]);
+    }, [selectedTourEvent, visibleCategories]);
 
     ref.listen<GroupEventCategory>(selectedGroupCategoryProvider, (
       previous,
       next,
     ) {
       if (previous == null) return;
+      // Don't clear search when switching TO the search tab
+      // Only clear when switching between non-search tabs
+      if (next == GroupEventCategory.search) return;
+
       SchedulerBinding.instance.addPostFrameCallback((_) {
         if (context.mounted) {
-          ref.read(searchQueryProvider.notifier).state = '';
-          searchController.clear();
+          // Only clear search-related state if we're leaving the search tab
+          if (previous == GroupEventCategory.search) {
+            ref.read(searchQueryProvider.notifier).state = '';
+            ref.read(searchTabQueryProvider.notifier).state = '';
+            searchController.clear();
+          }
           FocusScope.of(context).unfocus();
           ref.refresh(groupEventScreenProvider);
         }
@@ -159,10 +179,18 @@ class GroupEventScreen extends HookConsumerWidget {
                   controller: searchController,
                   hintText: 'Search Events or Players',
                   showProfile: !isSearching.value,
-                  onChanged:
-                      (value) => ref
-                          .read(groupEventScreenProvider.notifier)
-                          .searchForTournament(value, selectedTourEvent),
+                  onChanged: (value) {
+                    ref.read(groupEventScreenProvider.notifier)
+                        .searchForTournament(value, selectedTourEvent);
+                    // Update search tab query and trigger search
+                    final trimmed = value.trim();
+                    ref.read(searchTabQueryProvider.notifier).state = trimmed;
+                    if (trimmed.isNotEmpty) {
+                      ref.read(searchGamesProvider.notifier).loadGamesForSearch(value);
+                      // Switch to search tab immediately when typing
+                      ref.read(selectedGroupCategoryProvider.notifier).state = GroupEventCategory.search;
+                    }
+                  },
                   onTournamentSelected:
                       (t) => ref
                           .read(groupEventScreenProvider.notifier)
@@ -171,8 +199,12 @@ class GroupEventScreen extends HookConsumerWidget {
                     FocusScope.of(context).unfocus();
                     searchController.text = player.name;
                     if (context.mounted) {
-                      ref.read(searchQueryProvider.notifier).state =
-                          player.name;
+                      ref.read(searchQueryProvider.notifier).state = player.name;
+                      // Set search tab query and trigger search - tab appears automatically
+                      ref.read(searchTabQueryProvider.notifier).state = player.name;
+                      ref.read(searchGamesProvider.notifier).loadGamesForSearch(player.name);
+                      // Switch to search tab
+                      ref.read(selectedGroupCategoryProvider.notifier).state = GroupEventCategory.search;
                     }
                   },
                   onFilterTap:
@@ -205,6 +237,12 @@ class GroupEventScreen extends HookConsumerWidget {
                   onProfileTap: () => Scaffold.maybeOf(context)?.openDrawer(),
                   onClearSearchField: () {
                     ref.refresh(groupEventScreenProvider);
+                    // Clear search tab state and switch back if on search tab
+                    ref.read(searchTabQueryProvider.notifier).state = '';
+                    ref.read(searchGamesProvider.notifier).clearSearch();
+                    if (selectedTourEvent == GroupEventCategory.search) {
+                      ref.read(selectedGroupCategoryProvider.notifier).state = GroupEventCategory.current;
+                    }
                   },
                 ),
               ),
@@ -215,8 +253,9 @@ class GroupEventScreen extends HookConsumerWidget {
           _SegmentedSwitcher(
             searchController: searchController,
             selectedTourEvent: selectedTourEvent,
+            visibleCategories: visibleCategories,
             onSelectedChanged: (index) {
-              final newCategory = GroupEventCategory.values[index];
+              final newCategory = visibleCategories[index];
               final currentCategory = selectedTourEvent;
 
               // If tapping the same tab, scroll to top
@@ -228,6 +267,8 @@ class GroupEventScreen extends HookConsumerWidget {
                   controller = pastScrollController;
                 } else if (newCategory == GroupEventCategory.current) {
                   controller = currentScrollController;
+                } else if (newCategory == GroupEventCategory.search) {
+                  controller = searchScrollController;
                 }
 
                 if (controller != null && controller.hasClients) {
@@ -250,30 +291,44 @@ class GroupEventScreen extends HookConsumerWidget {
           Expanded(
             child: PageView.builder(
               controller: pageController,
-              itemCount: GroupEventCategory.values.length,
+              itemCount: visibleCategories.length,
               onPageChanged: (index) {
-                if (!isAnimating.value) {
-                  final newCategory = GroupEventCategory.values[index];
+                if (!isAnimating.value && index < visibleCategories.length) {
+                  final newCategory = visibleCategories[index];
                   ref.read(selectedGroupCategoryProvider.notifier).state =
                       newCategory;
                 }
               },
               itemBuilder: (context, index) {
-                final currentCategory = GroupEventCategory.values[index];
+                if (index >= visibleCategories.length) {
+                  return const SizedBox.shrink();
+                }
+                final currentCategory = visibleCategories[index];
                 final isPast = currentCategory == GroupEventCategory.past;
                 final isCurrent = currentCategory == GroupEventCategory.current;
                 final isForYou = currentCategory == GroupEventCategory.forYou;
+                final isSearch = currentCategory == GroupEventCategory.search;
                 final scrollController = isPast
                     ? pastScrollController
                     : isCurrent
                         ? currentScrollController
                         : isForYou
                             ? forYouScrollController
-                            : null;
+                            : isSearch
+                                ? searchScrollController
+                                : null;
 
                 // Only load data for the currently selected tab
                 if (currentCategory != selectedTourEvent) {
                   return const SizedBox.shrink();
+                }
+
+                // Special handling for "Search" tab - show search results
+                if (isSearch) {
+                  return SearchResultsWidget(
+                    scrollController: searchScrollController,
+                    searchQuery: searchQuery,
+                  );
                 }
 
                 // Special handling for "For You" tab - show games instead of events
@@ -391,31 +446,41 @@ class _SegmentedSwitcher extends ConsumerWidget {
   const _SegmentedSwitcher({
     required this.searchController,
     required this.selectedTourEvent,
+    required this.visibleCategories,
     required this.onSelectedChanged,
   });
 
   final TextEditingController searchController;
   final GroupEventCategory selectedTourEvent;
+  final List<GroupEventCategory> visibleCategories;
   final ValueChanged<int> onSelectedChanged;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(searchQueryProvider);  // Watch to trigger rebuilds
-    final realQuery = searchController.text.trim();
+    final searchTabQuery = ref.watch(searchTabQueryProvider);
     final hasLiveForYou = ref.watch(hasLiveForYouProvider);
 
-    final options =
-        GroupEventCategory.values.map((category) {
-          if (realQuery.isNotEmpty && category == selectedTourEvent) {
-            return realQuery;
-          }
-          return _mappedName[category]!;
-        }).toList();
+    final options = visibleCategories.map((category) {
+      if (category == GroupEventCategory.search && searchTabQuery.isNotEmpty) {
+        // Truncate long search queries for tab display
+        final displayQuery = searchTabQuery.length > 12
+            ? '${searchTabQuery.substring(0, 12)}...'
+            : searchTabQuery;
+        return displayQuery;
+      }
+      return _mappedName[category]!;
+    }).toList();
 
-    final optionLabels = GroupEventCategory.values.map((category) {
-      final baseLabel = (realQuery.isNotEmpty && category == selectedTourEvent)
-          ? realQuery
-          : _mappedName[category]!;
+    final optionLabels = visibleCategories.map((category) {
+      String baseLabel;
+      if (category == GroupEventCategory.search && searchTabQuery.isNotEmpty) {
+        baseLabel = searchTabQuery.length > 12
+            ? '${searchTabQuery.substring(0, 12)}...'
+            : searchTabQuery;
+      } else {
+        baseLabel = _mappedName[category]!;
+      }
 
       final showLiveDot = category == GroupEventCategory.forYou &&
           hasLiveForYou &&
@@ -442,7 +507,7 @@ class _SegmentedSwitcher extends ConsumerWidget {
         selectedBackgroundColor: kBlackColor,
         options: options,
         optionLabels: optionLabels,
-        currentSelection: GroupEventCategory.values.indexOf(selectedTourEvent),
+        currentSelection: visibleCategories.indexOf(selectedTourEvent).clamp(0, visibleCategories.length - 1),
         onSelectionChanged: onSelectedChanged,
       ),
     );

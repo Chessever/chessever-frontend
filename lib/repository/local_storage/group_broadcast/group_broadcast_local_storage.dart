@@ -29,6 +29,9 @@ class GroupBroadcastLocalStorage {
         return _LocalGroupBroadcastStorage.current.name;
       case GroupEventCategory.past:
         return _LocalGroupBroadcastStorage.past.name;
+      case GroupEventCategory.search:
+        // Search shows dynamic results, not stored events
+        return _LocalGroupBroadcastStorage.current.name;
     }
   }
 
@@ -41,6 +44,9 @@ class GroupBroadcastLocalStorage {
         return '${_LocalGroupBroadcastStorage.current.name}_time';
       case GroupEventCategory.past:
         return '${_LocalGroupBroadcastStorage.past.name}_time';
+      case GroupEventCategory.search:
+        // Search shows dynamic results, not stored events
+        return '${_LocalGroupBroadcastStorage.current.name}_time';
     }
   }
 
@@ -50,6 +56,10 @@ class GroupBroadcastLocalStorage {
       switch (category) {
         case GroupEventCategory.forYou:
           // ForYou shows games, not events, so return empty list
+          broadcasts = [];
+          break;
+        case GroupEventCategory.search:
+          // Search shows dynamic results, not stored events
           broadcasts = [];
           break;
         case GroupEventCategory.current:
