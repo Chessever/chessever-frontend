@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
+import 'package:sprung/sprung.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
@@ -225,16 +227,12 @@ class _CategoryDropdownContent extends HookConsumerWidget {
             if (category.tour.id != selectedCategory.tour.id) {
               onCategoryChanged(category);
             }
-            animationController.reverse().then((_) {
-              isOpen.value = false;
-            });
+            // Menu stays open - close via button only
           },
           onRoundSelect: (round) {
             HapticFeedbackService.selection();
             onRoundChanged(round);
-            animationController.reverse().then((_) {
-              isOpen.value = false;
-            });
+            // Menu stays open - close via button only
           },
           onDismiss: () {
             animationController.reverse().then((_) {
@@ -541,6 +539,7 @@ class _DropdownOverlay extends StatelessWidget {
                   selectedRound: selectedRound,
                   onCategorySelect: onCategorySelect,
                   onRoundSelect: onRoundSelect,
+                  onDismiss: onDismiss,
                 ),
               ),
             ),
@@ -552,7 +551,8 @@ class _DropdownOverlay extends StatelessWidget {
 }
 
 /// Glass morphism dropdown content with side-by-side Categories and Rounds
-class _DropdownContent extends StatelessWidget {
+/// Tracks PENDING selections until user clicks Save
+class _DropdownContent extends StatefulWidget {
   final double width;
   final double availableHeight;
   final Animation<double> animation;
@@ -562,6 +562,7 @@ class _DropdownContent extends StatelessWidget {
   final GamesAppBarModel? selectedRound;
   final ValueChanged<TourModel> onCategorySelect;
   final ValueChanged<GamesAppBarModel> onRoundSelect;
+  final VoidCallback onDismiss;
 
   const _DropdownContent({
     required this.width,
@@ -573,21 +574,58 @@ class _DropdownContent extends StatelessWidget {
     required this.selectedRound,
     required this.onCategorySelect,
     required this.onRoundSelect,
+    required this.onDismiss,
   });
 
   @override
+  State<_DropdownContent> createState() => _DropdownContentState();
+}
+
+class _DropdownContentState extends State<_DropdownContent> {
+  // Pending selections - not applied until Save
+  late TourModel _pendingCategory;
+  GamesAppBarModel? _pendingRound;
+
+  @override
+  void initState() {
+    super.initState();
+    _pendingCategory = widget.selectedCategory;
+    _pendingRound = widget.selectedRound;
+  }
+
+  bool get _hasChanges {
+    final categoryChanged = _pendingCategory.tour.id != widget.selectedCategory.tour.id;
+    final roundChanged = _pendingRound?.id != widget.selectedRound?.id;
+    return categoryChanged || roundChanged;
+  }
+
+  void _handleSave() {
+    HapticFeedbackService.medium();
+
+    // Apply pending selections
+    if (_pendingCategory.tour.id != widget.selectedCategory.tour.id) {
+      widget.onCategorySelect(_pendingCategory);
+    }
+    if (_pendingRound != null && _pendingRound?.id != widget.selectedRound?.id) {
+      widget.onRoundSelect(_pendingRound!);
+    }
+
+    widget.onDismiss();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final hasCategories = categories.length > 1;
-    final hasRounds = rounds.isNotEmpty;
+    final hasCategories = widget.categories.length > 1;
+    final hasRounds = widget.rounds.isNotEmpty;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(20.br),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
         child: Container(
-          width: width,
+          width: widget.width,
           constraints: BoxConstraints(
-            maxHeight: availableHeight.clamp(200.h, 380.h),
+            maxHeight: widget.availableHeight.clamp(200.h, 380.h),
           ),
           decoration: BoxDecoration(
             // Glass effect background
@@ -612,36 +650,116 @@ class _DropdownContent extends StatelessWidget {
               ),
             ],
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              // Categories Column
-              if (hasCategories)
-                Expanded(
-                  child: _CategoriesColumn(
-                    animation: animation,
-                    categories: categories,
-                    selectedCategory: selectedCategory,
-                    onSelect: onCategorySelect,
-                  ),
+              // Header with Save button
+              Padding(
+                padding: EdgeInsets.fromLTRB(16.sp, 12.sp, 12.sp, 4.sp),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Title hint
+                    Text(
+                      'Select',
+                      style: AppTypography.textXsMedium.copyWith(
+                        color: kWhiteColor.withValues(alpha: 0.4),
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    // Save button - glowing when changes pending
+                    GestureDetector(
+                      onTap: _handleSave,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 8.sp),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(20.br),
+                          gradient: _hasChanges
+                              ? LinearGradient(
+                                  colors: [
+                                    kPrimaryColor,
+                                    kPrimaryColor.withValues(alpha: 0.8),
+                                  ],
+                                )
+                              : null,
+                          color: _hasChanges ? null : kWhiteColor.withValues(alpha: 0.08),
+                          boxShadow: _hasChanges
+                              ? [
+                                  BoxShadow(
+                                    color: kPrimaryColor.withValues(alpha: 0.4),
+                                    blurRadius: 12,
+                                    spreadRadius: 1,
+                                  ),
+                                ]
+                              : null,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.check_rounded,
+                              size: 16.ic,
+                              color: _hasChanges
+                                  ? kWhiteColor
+                                  : kWhiteColor.withValues(alpha: 0.5),
+                            ),
+                            SizedBox(width: 4.sp),
+                            Text(
+                              'Save',
+                              style: AppTypography.textXsMedium.copyWith(
+                                color: _hasChanges
+                                    ? kWhiteColor
+                                    : kWhiteColor.withValues(alpha: 0.5),
+                                fontWeight: _hasChanges ? FontWeight.w600 : FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              // Divider between columns
-              if (hasCategories && hasRounds)
-                Container(
-                  width: 1,
-                  color: kWhiteColor.withValues(alpha: 0.1),
-                  margin: EdgeInsets.symmetric(vertical: 12.h),
+              ),
+              // Content columns
+              Flexible(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Categories Column
+                    if (hasCategories)
+                      Expanded(
+                        child: _CategoriesColumn(
+                          animation: widget.animation,
+                          categories: widget.categories,
+                          selectedCategory: _pendingCategory, // Use pending
+                          onSelect: (category) {
+                            setState(() => _pendingCategory = category);
+                          },
+                        ),
+                      ),
+                    // Divider between columns
+                    if (hasCategories && hasRounds)
+                      Container(
+                        width: 1,
+                        color: kWhiteColor.withValues(alpha: 0.1),
+                        margin: EdgeInsets.symmetric(vertical: 12.h),
+                      ),
+                    // Rounds Column
+                    if (hasRounds)
+                      Expanded(
+                        child: _RoundsColumn(
+                          animation: widget.animation,
+                          rounds: widget.rounds,
+                          selectedRound: _pendingRound, // Use pending
+                          onSelect: (round) {
+                            setState(() => _pendingRound = round);
+                          },
+                        ),
+                      ),
+                  ],
                 ),
-              // Rounds Column
-              if (hasRounds)
-                Expanded(
-                  child: _RoundsColumn(
-                    animation: animation,
-                    rounds: rounds,
-                    selectedRound: selectedRound,
-                    onSelect: onRoundSelect,
-                  ),
-                ),
+              ),
             ],
           ),
         ),
@@ -650,8 +768,8 @@ class _DropdownContent extends StatelessWidget {
   }
 }
 
-/// Categories column with section header
-class _CategoriesColumn extends StatelessWidget {
+/// Categories column with section header - items are draggable for selection
+class _CategoriesColumn extends StatefulWidget {
   final Animation<double> animation;
   final List<TourModel> categories;
   final TourModel selectedCategory;
@@ -663,6 +781,99 @@ class _CategoriesColumn extends StatelessWidget {
     required this.selectedCategory,
     required this.onSelect,
   });
+
+  @override
+  State<_CategoriesColumn> createState() => _CategoriesColumnState();
+}
+
+class _CategoriesColumnState extends State<_CategoriesColumn> {
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _listKey = GlobalKey();
+
+  bool _isDragging = false;
+  int _dragHoverIndex = -1;
+  Timer? _scrollTimer;
+
+  static const double _itemHeight = 56.0;
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _scrollTimer?.cancel();
+    super.dispose();
+  }
+
+  void _handleLongPressStart(int index, LongPressStartDetails details) {
+    HapticFeedbackService.heavy();
+    setState(() {
+      _isDragging = true;
+      _dragHoverIndex = index;
+    });
+  }
+
+  void _handleLongPressMoveUpdate(LongPressMoveUpdateDetails details) {
+    if (!_isDragging) return;
+
+    final listBox = _listKey.currentContext?.findRenderObject() as RenderBox?;
+    if (listBox == null) return;
+
+    final localPos = listBox.globalToLocal(details.globalPosition);
+    final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+
+    // Calculate which item we're hovering over
+    final adjustedY = localPos.dy + scrollOffset;
+    final newIndex = (adjustedY / _itemHeight).floor().clamp(0, widget.categories.length - 1);
+
+    if (newIndex != _dragHoverIndex) {
+      HapticFeedbackService.selection();
+      setState(() => _dragHoverIndex = newIndex);
+    }
+
+    // Auto-scroll when near edges
+    _handleEdgeScroll(localPos.dy, listBox.size.height);
+  }
+
+  void _handleEdgeScroll(double localY, double listHeight) {
+    _scrollTimer?.cancel();
+
+    if (!_scrollController.hasClients) return;
+
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final edgeThreshold = 50.0;
+
+    // Near top - scroll up
+    if (localY < edgeThreshold && _scrollController.offset > 0) {
+      final speed = ((edgeThreshold - localY) / edgeThreshold) * _itemHeight * 0.4;
+      _scrollTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+        if (!_scrollController.hasClients) return;
+        final newScroll = (_scrollController.offset - speed).clamp(0.0, maxScroll);
+        _scrollController.jumpTo(newScroll);
+      });
+    }
+    // Near bottom - scroll down
+    else if (localY > listHeight - edgeThreshold && _scrollController.offset < maxScroll) {
+      final speed = ((localY - (listHeight - edgeThreshold)) / edgeThreshold) * _itemHeight * 0.4;
+      _scrollTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+        if (!_scrollController.hasClients) return;
+        final newScroll = (_scrollController.offset + speed).clamp(0.0, maxScroll);
+        _scrollController.jumpTo(newScroll);
+      });
+    }
+  }
+
+  void _handleLongPressEnd(LongPressEndDetails details) {
+    _scrollTimer?.cancel();
+
+    if (_isDragging && _dragHoverIndex >= 0 && _dragHoverIndex < widget.categories.length) {
+      HapticFeedbackService.medium();
+      widget.onSelect(widget.categories[_dragHoverIndex]);
+    }
+
+    setState(() {
+      _isDragging = false;
+      _dragHoverIndex = -1;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -680,24 +891,34 @@ class _CategoriesColumn extends StatelessWidget {
             ),
           ),
         ),
-        // Categories list
+        // Categories list - drag on items to select
         Expanded(
-          child: ListView.builder(
-            padding: EdgeInsets.only(bottom: 8.sp),
-            shrinkWrap: true,
-            itemCount: categories.length,
-            itemBuilder: (context, index) {
-              final category = categories[index];
-              final isSelected = category.tour.id == selectedCategory.tour.id;
+          child: ScrollConfiguration(
+            behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+            child: ListView.builder(
+              key: _listKey,
+              controller: _scrollController,
+              padding: EdgeInsets.only(bottom: 8.sp),
+              itemCount: widget.categories.length,
+              itemBuilder: (context, index) {
+                final category = widget.categories[index];
+                final isSelected = category.tour.id == widget.selectedCategory.tour.id;
+                final isHovered = _isDragging && _dragHoverIndex == index;
 
-              return _AnimatedCategoryItem(
-                index: index,
-                animation: animation,
-                category: category,
-                isSelected: isSelected,
-                onTap: () => onSelect(category),
-              );
-            },
+                return _DraggableCategoryItem(
+                  index: index,
+                  animation: widget.animation,
+                  category: category,
+                  isSelected: isSelected,
+                  isHovered: isHovered,
+                  isDragging: _isDragging,
+                  onTap: () => widget.onSelect(category),
+                  onLongPressStart: (details) => _handleLongPressStart(index, details),
+                  onLongPressMoveUpdate: _handleLongPressMoveUpdate,
+                  onLongPressEnd: _handleLongPressEnd,
+                );
+              },
+            ),
           ),
         ),
       ],
@@ -705,8 +926,8 @@ class _CategoriesColumn extends StatelessWidget {
   }
 }
 
-/// Rounds column with section header
-class _RoundsColumn extends StatelessWidget {
+/// Rounds column with section header - items are draggable for selection
+class _RoundsColumn extends StatefulWidget {
   final Animation<double> animation;
   final List<GamesAppBarModel> rounds;
   final GamesAppBarModel? selectedRound;
@@ -718,6 +939,99 @@ class _RoundsColumn extends StatelessWidget {
     required this.selectedRound,
     required this.onSelect,
   });
+
+  @override
+  State<_RoundsColumn> createState() => _RoundsColumnState();
+}
+
+class _RoundsColumnState extends State<_RoundsColumn> {
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _listKey = GlobalKey();
+
+  bool _isDragging = false;
+  int _dragHoverIndex = -1;
+  Timer? _scrollTimer;
+
+  static const double _itemHeight = 52.0;
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _scrollTimer?.cancel();
+    super.dispose();
+  }
+
+  void _handleLongPressStart(int index, LongPressStartDetails details) {
+    HapticFeedbackService.heavy();
+    setState(() {
+      _isDragging = true;
+      _dragHoverIndex = index;
+    });
+  }
+
+  void _handleLongPressMoveUpdate(LongPressMoveUpdateDetails details) {
+    if (!_isDragging) return;
+
+    final listBox = _listKey.currentContext?.findRenderObject() as RenderBox?;
+    if (listBox == null) return;
+
+    final localPos = listBox.globalToLocal(details.globalPosition);
+    final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+
+    // Calculate which item we're hovering over
+    final adjustedY = localPos.dy + scrollOffset;
+    final newIndex = (adjustedY / _itemHeight).floor().clamp(0, widget.rounds.length - 1);
+
+    if (newIndex != _dragHoverIndex) {
+      HapticFeedbackService.selection();
+      setState(() => _dragHoverIndex = newIndex);
+    }
+
+    // Auto-scroll when near edges
+    _handleEdgeScroll(localPos.dy, listBox.size.height);
+  }
+
+  void _handleEdgeScroll(double localY, double listHeight) {
+    _scrollTimer?.cancel();
+
+    if (!_scrollController.hasClients) return;
+
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final edgeThreshold = 50.0;
+
+    // Near top - scroll up
+    if (localY < edgeThreshold && _scrollController.offset > 0) {
+      final speed = ((edgeThreshold - localY) / edgeThreshold) * _itemHeight * 0.4;
+      _scrollTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+        if (!_scrollController.hasClients) return;
+        final newScroll = (_scrollController.offset - speed).clamp(0.0, maxScroll);
+        _scrollController.jumpTo(newScroll);
+      });
+    }
+    // Near bottom - scroll down
+    else if (localY > listHeight - edgeThreshold && _scrollController.offset < maxScroll) {
+      final speed = ((localY - (listHeight - edgeThreshold)) / edgeThreshold) * _itemHeight * 0.4;
+      _scrollTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+        if (!_scrollController.hasClients) return;
+        final newScroll = (_scrollController.offset + speed).clamp(0.0, maxScroll);
+        _scrollController.jumpTo(newScroll);
+      });
+    }
+  }
+
+  void _handleLongPressEnd(LongPressEndDetails details) {
+    _scrollTimer?.cancel();
+
+    if (_isDragging && _dragHoverIndex >= 0 && _dragHoverIndex < widget.rounds.length) {
+      HapticFeedbackService.medium();
+      widget.onSelect(widget.rounds[_dragHoverIndex]);
+    }
+
+    setState(() {
+      _isDragging = false;
+      _dragHoverIndex = -1;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -735,24 +1049,34 @@ class _RoundsColumn extends StatelessWidget {
             ),
           ),
         ),
-        // Rounds list
+        // Rounds list - drag on items to select
         Expanded(
-          child: ListView.builder(
-            padding: EdgeInsets.only(bottom: 8.sp),
-            shrinkWrap: true,
-            itemCount: rounds.length,
-            itemBuilder: (context, index) {
-              final round = rounds[index];
-              final isSelected = selectedRound?.id == round.id;
+          child: ScrollConfiguration(
+            behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+            child: ListView.builder(
+              key: _listKey,
+              controller: _scrollController,
+              padding: EdgeInsets.only(bottom: 8.sp),
+              itemCount: widget.rounds.length,
+              itemBuilder: (context, index) {
+                final round = widget.rounds[index];
+                final isSelected = widget.selectedRound?.id == round.id;
+                final isHovered = _isDragging && _dragHoverIndex == index;
 
-              return _AnimatedRoundItem(
-                index: index,
-                animation: animation,
-                round: round,
-                isSelected: isSelected,
-                onTap: () => onSelect(round),
-              );
-            },
+                return _DraggableRoundItem(
+                  index: index,
+                  animation: widget.animation,
+                  round: round,
+                  isSelected: isSelected,
+                  isHovered: isHovered,
+                  isDragging: _isDragging,
+                  onTap: () => widget.onSelect(round),
+                  onLongPressStart: (details) => _handleLongPressStart(index, details),
+                  onLongPressMoveUpdate: _handleLongPressMoveUpdate,
+                  onLongPressEnd: _handleLongPressEnd,
+                );
+              },
+            ),
           ),
         ),
       ],
@@ -760,34 +1084,56 @@ class _RoundsColumn extends StatelessWidget {
   }
 }
 
-/// Animated round item with stagger effect
-class _AnimatedRoundItem extends StatelessWidget {
+/// Draggable round item - long press to grab and drag for selection
+class _DraggableRoundItem extends StatefulWidget {
   final int index;
   final Animation<double> animation;
   final GamesAppBarModel round;
   final bool isSelected;
+  final bool isHovered;
+  final bool isDragging;
   final VoidCallback onTap;
+  final ValueChanged<LongPressStartDetails> onLongPressStart;
+  final ValueChanged<LongPressMoveUpdateDetails> onLongPressMoveUpdate;
+  final ValueChanged<LongPressEndDetails> onLongPressEnd;
 
-  const _AnimatedRoundItem({
+  const _DraggableRoundItem({
     required this.index,
     required this.animation,
     required this.round,
     required this.isSelected,
+    required this.isHovered,
+    required this.isDragging,
     required this.onTap,
+    required this.onLongPressStart,
+    required this.onLongPressMoveUpdate,
+    required this.onLongPressEnd,
   });
 
   @override
+  State<_DraggableRoundItem> createState() => _DraggableRoundItemState();
+}
+
+class _DraggableRoundItemState extends State<_DraggableRoundItem> {
+  bool _isPressed = false;
+
+  @override
   Widget build(BuildContext context) {
-    // Staggered delay for each item
-    final itemDelay = index * 0.06;
+    final isLive = widget.round.roundStatus == RoundStatus.live;
+
+    // Staggered animation for entrance
+    final itemDelay = widget.index * 0.06;
     final itemAnimation = CurvedAnimation(
-      parent: animation,
+      parent: widget.animation,
       curve: Interval(
         itemDelay.clamp(0.0, 0.4),
         (itemDelay + 0.5).clamp(0.0, 1.0),
         curve: Curves.easeOutCubic,
       ),
     );
+
+    // Bubbly scale when hovered during drag
+    final scale = widget.isHovered && widget.isDragging ? 1.05 : 1.0;
 
     return AnimatedBuilder(
       animation: itemAnimation,
@@ -801,97 +1147,88 @@ class _AnimatedRoundItem extends StatelessWidget {
           ),
         );
       },
-      child: _RoundItem(
-        round: round,
-        isSelected: isSelected,
-        onTap: onTap,
-      ),
-    );
-  }
-}
-
-/// Individual round item with datetime and status
-class _RoundItem extends StatefulWidget {
-  final GamesAppBarModel round;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _RoundItem({
-    required this.round,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  State<_RoundItem> createState() => _RoundItemState();
-}
-
-class _RoundItemState extends State<_RoundItem> {
-  bool _isPressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final isLive = widget.round.roundStatus == RoundStatus.live;
-
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _isPressed = true),
-      onTapUp: (_) => setState(() => _isPressed = false),
-      onTapCancel: () => setState(() => _isPressed = false),
-      onTap: widget.onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        margin: EdgeInsets.symmetric(horizontal: 6.sp, vertical: 2.sp),
-        padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 10.sp),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(10.br),
-          color: widget.isSelected
-              ? kPrimaryColor.withValues(alpha: 0.15)
-              : _isPressed
-                  ? kWhiteColor.withValues(alpha: 0.05)
-                  : Colors.transparent,
-          border: widget.isSelected
-              ? Border.all(
-                  color: kPrimaryColor.withValues(alpha: 0.3),
-                  width: 1,
-                )
-              : null,
-        ),
-        child: Row(
-          children: [
-            // Round info
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.round.name,
-                    style: AppTypography.textXsMedium.copyWith(
-                      color: widget.isSelected ? kPrimaryColor : kWhiteColor,
-                      fontWeight: widget.isSelected
-                          ? FontWeight.w600
-                          : FontWeight.w500,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  SizedBox(height: 2.sp),
-                  Text(
-                    widget.round.formattedStartDate,
-                    style: AppTypography.textXxsRegular.copyWith(
-                      color: kWhiteColor.withValues(alpha: 0.5),
-                    ),
-                    maxLines: 1,
-                  ),
-                ],
-              ),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => setState(() => _isPressed = true),
+        onTapUp: (_) => setState(() => _isPressed = false),
+        onTapCancel: () => setState(() => _isPressed = false),
+        onTap: widget.onTap,
+        onLongPressStart: widget.onLongPressStart,
+        onLongPressMoveUpdate: widget.onLongPressMoveUpdate,
+        onLongPressEnd: widget.onLongPressEnd,
+        child: AnimatedScale(
+          scale: scale,
+          duration: const Duration(milliseconds: 150),
+          curve: Sprung.custom(damping: 15, stiffness: 300),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            margin: EdgeInsets.symmetric(horizontal: 6.sp, vertical: 2.sp),
+            padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 10.sp),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10.br),
+              color: widget.isSelected
+                  ? kPrimaryColor.withValues(alpha: 0.15)
+                  : widget.isHovered
+                      ? kPrimaryColor.withValues(alpha: 0.20)
+                      : _isPressed
+                          ? kWhiteColor.withValues(alpha: 0.05)
+                          : Colors.transparent,
+              border: (widget.isSelected || widget.isHovered)
+                  ? Border.all(
+                      color: kPrimaryColor.withValues(alpha: widget.isHovered ? 0.5 : 0.3),
+                      width: widget.isHovered ? 1.5 : 1,
+                    )
+                  : null,
+              boxShadow: widget.isHovered && widget.isDragging
+                  ? [
+                      BoxShadow(
+                        color: kPrimaryColor.withValues(alpha: 0.3),
+                        blurRadius: 12,
+                        spreadRadius: 1,
+                      ),
+                    ]
+                  : null,
             ),
-            SizedBox(width: 6.sp),
-            // Status icon
-            _RoundStatusIcon(
-              status: widget.round.roundStatus,
-              showLive: isLive,
+            child: Row(
+              children: [
+                // Round info
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.round.name,
+                        style: AppTypography.textXsMedium.copyWith(
+                          color: (widget.isSelected || widget.isHovered)
+                              ? kPrimaryColor
+                              : kWhiteColor,
+                          fontWeight: (widget.isSelected || widget.isHovered)
+                              ? FontWeight.w600
+                              : FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      SizedBox(height: 2.sp),
+                      Text(
+                        widget.round.formattedStartDate,
+                        style: AppTypography.textXxsRegular.copyWith(
+                          color: kWhiteColor.withValues(alpha: 0.5),
+                        ),
+                        maxLines: 1,
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(width: 6.sp),
+                // Status icon
+                _RoundStatusIcon(
+                  status: widget.round.roundStatus,
+                  showLive: isLive,
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -938,28 +1275,47 @@ class _RoundStatusIcon extends StatelessWidget {
   }
 }
 
-/// Staggered animated category item
-class _AnimatedCategoryItem extends StatelessWidget {
+/// Draggable category item - long press to grab and drag for selection
+class _DraggableCategoryItem extends StatefulWidget {
   final int index;
   final Animation<double> animation;
   final TourModel category;
   final bool isSelected;
+  final bool isHovered;
+  final bool isDragging;
   final VoidCallback onTap;
+  final ValueChanged<LongPressStartDetails> onLongPressStart;
+  final ValueChanged<LongPressMoveUpdateDetails> onLongPressMoveUpdate;
+  final ValueChanged<LongPressEndDetails> onLongPressEnd;
 
-  const _AnimatedCategoryItem({
+  const _DraggableCategoryItem({
     required this.index,
     required this.animation,
     required this.category,
     required this.isSelected,
+    required this.isHovered,
+    required this.isDragging,
     required this.onTap,
+    required this.onLongPressStart,
+    required this.onLongPressMoveUpdate,
+    required this.onLongPressEnd,
   });
 
   @override
+  State<_DraggableCategoryItem> createState() => _DraggableCategoryItemState();
+}
+
+class _DraggableCategoryItemState extends State<_DraggableCategoryItem> {
+  bool _isPressed = false;
+
+  @override
   Widget build(BuildContext context) {
-    // Staggered delay for each item
-    final itemDelay = index * 0.08;
+    final isLive = widget.category.roundStatus == RoundStatus.live;
+
+    // Staggered animation for entrance
+    final itemDelay = widget.index * 0.08;
     final itemAnimation = CurvedAnimation(
-      parent: animation,
+      parent: widget.animation,
       curve: Interval(
         itemDelay.clamp(0.0, 0.5),
         (itemDelay + 0.5).clamp(0.0, 1.0),
@@ -967,128 +1323,122 @@ class _AnimatedCategoryItem extends StatelessWidget {
       ),
     );
 
+    // Bubbly scale when hovered during drag
+    final scale = widget.isHovered && widget.isDragging ? 1.05 : 1.0;
+
     return AnimatedBuilder(
       animation: itemAnimation,
       builder: (context, child) {
+        final clampedValue = itemAnimation.value.clamp(0.0, 1.0);
         return Transform.translate(
-          offset: Offset(0, 10 * (1 - itemAnimation.value.clamp(0.0, 1.0))),
+          offset: Offset(0, 10 * (1 - clampedValue)),
           child: Opacity(
-            opacity: itemAnimation.value.clamp(0.0, 1.0),
+            opacity: clampedValue,
             child: child,
           ),
         );
       },
-      child: _CategoryItem(
-        category: category,
-        isSelected: isSelected,
-        onTap: onTap,
-      ),
-    );
-  }
-}
-
-/// Individual category item with hover/selection effects
-class _CategoryItem extends StatefulWidget {
-  final TourModel category;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _CategoryItem({
-    required this.category,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  State<_CategoryItem> createState() => _CategoryItemState();
-}
-
-class _CategoryItemState extends State<_CategoryItem> {
-  bool _isPressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final isLive = widget.category.roundStatus == RoundStatus.live;
-
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _isPressed = true),
-      onTapUp: (_) => setState(() => _isPressed = false),
-      onTapCancel: () => setState(() => _isPressed = false),
-      onTap: widget.onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        margin: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 2.sp),
-        padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 12.sp),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12.br),
-          color: widget.isSelected
-              ? kPrimaryColor.withValues(alpha: 0.15)
-              : _isPressed
-                  ? kWhiteColor.withValues(alpha: 0.05)
-                  : Colors.transparent,
-          border: widget.isSelected
-              ? Border.all(
-                  color: kPrimaryColor.withValues(alpha: 0.3),
-                  width: 1,
-                )
-              : null,
-        ),
-        child: Row(
-          children: [
-            // Status indicator
-            if (isLive) ...[
-              _StatusDot(status: widget.category.roundStatus),
-              SizedBox(width: 12.sp),
-            ],
-            // Category info
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _extractDisplayName(widget.category.tour.name),
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: widget.isSelected ? kPrimaryColor : kWhiteColor,
-                      fontWeight: widget.isSelected
-                          ? FontWeight.w600
-                          : FontWeight.w500,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  SizedBox(height: 2.sp),
-                  Text(
-                    _getStatusText(widget.category.roundStatus),
-                    style: AppTypography.textXxsRegular.copyWith(
-                      color: _getStatusTextColor(widget.category.roundStatus),
-                    ),
-                  ),
-                ],
-              ),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => setState(() => _isPressed = true),
+        onTapUp: (_) => setState(() => _isPressed = false),
+        onTapCancel: () => setState(() => _isPressed = false),
+        onTap: widget.onTap,
+        onLongPressStart: widget.onLongPressStart,
+        onLongPressMoveUpdate: widget.onLongPressMoveUpdate,
+        onLongPressEnd: widget.onLongPressEnd,
+        child: AnimatedScale(
+          scale: scale,
+          duration: const Duration(milliseconds: 150),
+          curve: Sprung.custom(damping: 15, stiffness: 300),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            margin: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 2.sp),
+            padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 12.sp),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12.br),
+              color: widget.isSelected
+                  ? kPrimaryColor.withValues(alpha: 0.15)
+                  : widget.isHovered
+                      ? kPrimaryColor.withValues(alpha: 0.20)
+                      : _isPressed
+                          ? kWhiteColor.withValues(alpha: 0.05)
+                          : Colors.transparent,
+              border: (widget.isSelected || widget.isHovered)
+                  ? Border.all(
+                      color: kPrimaryColor.withValues(alpha: widget.isHovered ? 0.5 : 0.3),
+                      width: widget.isHovered ? 1.5 : 1,
+                    )
+                  : null,
+              boxShadow: widget.isHovered && widget.isDragging
+                  ? [
+                      BoxShadow(
+                        color: kPrimaryColor.withValues(alpha: 0.3),
+                        blurRadius: 12,
+                        spreadRadius: 1,
+                      ),
+                    ]
+                  : null,
             ),
-            // Selection checkmark
-            if (widget.isSelected)
-              Container(
-                width: 20.sp,
-                height: 20.sp,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: kPrimaryColor,
+            child: Row(
+              children: [
+                // Status indicator
+                if (isLive) ...[
+                  _StatusDot(status: widget.category.roundStatus),
+                  SizedBox(width: 12.sp),
+                ],
+                // Category info
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _extractDisplayName(widget.category.tour.name),
+                        style: AppTypography.textSmMedium.copyWith(
+                          color: (widget.isSelected || widget.isHovered)
+                              ? kPrimaryColor
+                              : kWhiteColor,
+                          fontWeight: (widget.isSelected || widget.isHovered)
+                              ? FontWeight.w600
+                              : FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      SizedBox(height: 2.sp),
+                      Text(
+                        _getStatusText(widget.category.roundStatus),
+                        style: AppTypography.textXxsRegular.copyWith(
+                          color: _getStatusTextColor(widget.category.roundStatus),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                child: Icon(
-                  Icons.check_rounded,
-                  color: kWhiteColor,
-                  size: 12.ic,
-                ),
-              ),
-          ],
+                // Selection checkmark
+                if (widget.isSelected)
+                  Container(
+                    width: 20.sp,
+                    height: 20.sp,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: kPrimaryColor,
+                    ),
+                    child: Icon(
+                      Icons.check_rounded,
+                      color: kWhiteColor,
+                      size: 12.ic,
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 
   String _extractDisplayName(String fullName) {
-    // Extract meaningful category name
     if (fullName.contains('|')) {
       return fullName.split('|').last.trim();
     }
@@ -1124,3 +1474,4 @@ class _CategoryItemState extends State<_CategoryItem> {
     }
   }
 }
+
