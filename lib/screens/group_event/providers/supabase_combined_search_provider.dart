@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
@@ -8,6 +6,7 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_tour_reposi
 import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
 import 'package:chessever2/widgets/search/search_result_model.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 final supabaseCombinedSearchProvider =
     AutoDisposeFutureProvider.family<EnhancedSearchResult, String>(
@@ -104,47 +103,147 @@ final supabaseCombinedSearchProvider =
         }
 
         final qLower = query.trim().toLowerCase();
-        final int minMatchLen = (qLower.length * 0.7).ceil();
+
+        // Smart matching function that handles word reordering
+        bool matchesFlexibly(String query, String playerName) {
+          // Normalize: remove commas, extra spaces, convert to lowercase
+          String normalize(String s) => s
+              .toLowerCase()
+              .replaceAll(',', ' ')
+              .replaceAll(RegExp(r'\s+'), ' ')
+              .trim();
+
+          final normalizedQuery = normalize(query);
+          final normalizedName = normalize(playerName);
+
+          // Split into words
+          final queryWords = normalizedQuery.split(' ').where((w) => w.isNotEmpty).toList();
+          final nameWords = normalizedName.split(' ').where((w) => w.isNotEmpty).toList();
+
+          if (queryWords.isEmpty) return false;
+
+          // Check if ALL query words match ANY name word (prefix match)
+          for (final qWord in queryWords) {
+            bool found = false;
+            for (final nWord in nameWords) {
+              // Exact match or prefix match (e.g., "gir" matches "giri")
+              if (nWord == qWord || nWord.startsWith(qWord) || qWord.startsWith(nWord)) {
+                found = true;
+                break;
+              }
+            }
+            if (!found) return false;
+          }
+          return true;
+        }
 
         playerResults.retainWhere((r) {
-          final mLower = r.matchedText.toLowerCase();
-          int lcs(String a, String b) {
-            if (a.isEmpty || b.isEmpty) return 0;
-            final List<int> prev = List.filled(b.length + 1, 0),
-                curr = List.filled(b.length + 1, 0);
-            int best = 0;
-            for (int i = 1; i <= a.length; i++) {
-              for (int j = 1; j <= b.length; j++) {
-                if (a[i - 1] == b[j - 1]) {
-                  curr[j] = prev[j - 1] + 1;
-                  best = math.max(best, curr[j]);
-                } else {
-                  curr[j] = 0;
-                }
-              }
-              prev.setAll(0, curr);
-            }
-            return best;
-          }
-
-          final common = lcs(qLower, mLower);
-          return common >= minMatchLen;
+          return matchesFlexibly(qLower, r.matchedText);
         });
 
+        // Fetch player ELOs from chess_players table
+        final playerNames = playerResults
+            .where((r) => r.player != null)
+            .map((r) => r.player!.name)
+            .toSet()
+            .toList();
+
+        final playerEloMap = <String, int>{};
+        if (playerNames.isNotEmpty) {
+          try {
+            final supabase = Supabase.instance.client;
+            // Fetch ELO for all matching player names
+            final response = await supabase
+                .from('chess_players')
+                .select('name, rating')
+                .filter('name', 'in', '(${playerNames.map((n) => '"$n"').join(',')})');
+
+            for (final row in response as List) {
+              final name = row['name'] as String?;
+              final rating = row['rating'] as int?;
+              if (name != null && rating != null) {
+                playerEloMap[name.toLowerCase()] = rating;
+              }
+            }
+          } catch (e) {
+            // Ignore ELO fetch errors, continue with default sorting
+          }
+        }
+
+        // Update player results with ELO ratings
+        for (final result in playerResults) {
+          if (result.player != null) {
+            final elo = playerEloMap[result.player!.name.toLowerCase()];
+            if (elo != null) {
+              // Create updated player with rating
+              final updatedPlayer = SearchPlayer(
+                id: result.player!.id,
+                name: result.player!.name,
+                rating: elo,
+                tournamentId: result.player!.tournamentId,
+                tournamentName: result.player!.tournamentName,
+                fideId: result.player!.fideId,
+                fed: result.player!.fed,
+                title: result.player!.title,
+                gameId: result.player!.gameId,
+                roundId: result.player!.roundId,
+                isWhitePlayer: result.player!.isWhitePlayer,
+              );
+              // Update the result's player reference
+              playerResults[playerResults.indexOf(result)] = SearchResult(
+                tournament: result.tournament,
+                score: result.score,
+                matchedText: result.matchedText,
+                type: result.type,
+                player: updatedPlayer,
+              );
+            }
+          }
+        }
+
+        // Score how well a player name matches the query
+        int matchScore(String playerName, String query) {
+          String normalize(String s) => s
+              .toLowerCase()
+              .replaceAll(',', ' ')
+              .replaceAll(RegExp(r'\s+'), ' ')
+              .trim();
+
+          final nQuery = normalize(query);
+          final nName = normalize(playerName);
+
+          // Exact match (normalized) = highest score
+          if (nName == nQuery) return 100;
+
+          // Check if name starts with query (e.g., "giri" matches "Giri, Anish")
+          if (nName.startsWith(nQuery)) return 90;
+
+          // Check if any word in name starts with query
+          final nameWords = nName.split(' ');
+          if (nameWords.any((w) => w.startsWith(nQuery))) return 85;
+
+          // All query words match name words exactly
+          final queryWords = nQuery.split(' ').where((w) => w.isNotEmpty).toList();
+          int exactWordMatches = 0;
+          for (final qw in queryWords) {
+            if (nameWords.contains(qw)) exactWordMatches++;
+          }
+          if (exactWordMatches == queryWords.length) return 80;
+
+          // Partial word matches
+          return 50;
+        }
+
         playerResults.sort((a, b) {
-          final qLower = query.trim().toLowerCase();
+          // 1. Match score (higher = better match)
+          final aScore = matchScore(a.matchedText, query);
+          final bScore = matchScore(b.matchedText, query);
+          if (aScore != bScore) return bScore.compareTo(aScore);
 
-          // 1. exact match
-          final aExact = a.matchedText.toLowerCase() == qLower;
-          final bExact = b.matchedText.toLowerCase() == qLower;
-          if (aExact && !bExact) return -1;
-          if (!aExact && bExact) return 1;
-
-          // 2. starts-with
-          final aStart = a.matchedText.toLowerCase().startsWith(qLower);
-          final bStart = b.matchedText.toLowerCase().startsWith(qLower);
-          if (aStart && !bStart) return -1;
-          if (!aStart && bStart) return 1;
+          // 2. ELO (higher first)
+          final aElo = a.player?.rating ?? 0;
+          final bElo = b.player?.rating ?? 0;
+          if (aElo != bElo) return bElo.compareTo(aElo);
 
           // 3. nearest tournament date
           final d = deltaPlayer(a).compareTo(deltaPlayer(b));

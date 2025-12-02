@@ -69,7 +69,7 @@ class StandingScoreCard extends ConsumerWidget {
       child: Container(
         alignment: Alignment.center,
         height: 49.h,
-        padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 4.sp),
+        padding: EdgeInsets.symmetric(horizontal: 4.sp, vertical: 4.sp),
         decoration: BoxDecoration(
           color: backgroundColor,
           borderRadius: borderRadius,
@@ -95,7 +95,7 @@ class StandingScoreCard extends ConsumerWidget {
                         cacheHeight: 36,
                       ),
                     ),
-                    SizedBox(width: 4.w),
+                    SizedBox(width: 2.w),
                   ] else if (validCountryCode.isNotEmpty) ...[
                     SizedBox(
                       width: 16.w,
@@ -106,7 +106,7 @@ class StandingScoreCard extends ConsumerWidget {
                         width: 16.w,
                       ),
                     ),
-                    SizedBox(width: 4.w),
+                    SizedBox(width: 2.w),
                   ],
                   Flexible(
                     child: Padding(

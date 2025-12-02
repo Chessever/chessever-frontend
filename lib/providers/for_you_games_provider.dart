@@ -162,7 +162,8 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   DateTime? _lastFetchAt;
   static const int _pageSize = 30; // Increased for better pagination
 
-  /// Standard number of games to show per tournament in the For You feed
+  /// Minimum number of games to show per tournament in the For You feed
+  /// (tournaments may have more if the algorithm's criteria bring more games)
   static const int _gamesPerTournament = 4;
   int _emptyFetchCount = 0; // Track consecutive empty fetches
   int _favoritePlayersOffset = 0;
@@ -594,10 +595,10 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     _lastFetchAt = DateTime.now();
   }
 
-  /// Enforces the standard of exactly 4 games per tournament
+  /// Enforces the standard of at least 4 games per tournament
   ///
   /// For each tournament in the feed:
-  /// - If it has more than 4 games, trim to 4 (keeping highest priority/ELO)
+  /// - If it has 4 or more games, keep all of them (don't limit the algorithm's natural selection)
   /// - If it has fewer than 4 games, fill up with top board games (highest ELO)
   Future<void> _enforceGamesPerTournamentStandard() async {
     if (_allGames.isEmpty) return;
@@ -630,16 +631,17 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       final currentCount = tourGames.length;
 
       if (currentCount >= _gamesPerTournament) {
-        // Take only the first 4 games (already sorted by priority)
-        standardizedGames.addAll(tourGames.take(_gamesPerTournament));
+        // Keep all games - don't limit the algorithm's natural selection
+        // (favorite players, favorite events, countrymen, high elo may bring more than minimum)
+        standardizedGames.addAll(tourGames);
         debugPrint(
-          '[ForYouGames] Tournament $tourId: trimmed from $currentCount to $_gamesPerTournament games',
+          '[ForYouGames] Tournament $tourId: keeping all $currentCount games (meets minimum)',
         );
       } else {
-        // Need to fill up with top board games
+        // Need to fill up with top board games to reach minimum of $_gamesPerTournament
         final neededGames = _gamesPerTournament - currentCount;
         debugPrint(
-          '[ForYouGames] Tournament $tourId: has $currentCount games, need $neededGames more',
+          '[ForYouGames] Tournament $tourId: has $currentCount games, need $neededGames more to reach minimum',
         );
 
         // Add existing games first

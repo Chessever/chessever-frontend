@@ -1,3 +1,4 @@
+import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/chess_progress_bar.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
@@ -203,25 +204,44 @@ class _TopSection extends ConsumerWidget {
   }
 }
 
-class _CenterContent extends StatelessWidget {
+class _CenterContent extends ConsumerWidget {
   const _CenterContent({required this.matchWithComparison});
 
   final MatchWithComparison matchWithComparison;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     // Use effectiveGameStatus to handle DB update lag
     final effectiveStatus = matchWithComparison.game.effectiveGameStatus;
 
+    // Check if engine gauge is enabled in settings
+    final showEngineGauge = ref.watch(
+      engineSettingsProviderNew.select(
+        (state) => state.valueOrNull?.showEngineGauge ?? true,
+      ),
+    );
+
+    // If game is not ongoing, show result text
+    if (effectiveStatus != GameStatus.ongoing) {
+      return Center(
+        child: StatusText(status: _displayTextSupporter(matchWithComparison)),
+      );
+    }
+
+    // If engine gauge is disabled, show "LIVE" indicator instead of progress bar
+    if (!showEngineGauge) {
+      return Center(
+        child: StatusText(status: 'LIVE', color: kPrimaryColor),
+      );
+    }
+
+    // Show the eval progress bar
     return Center(
-      child:
-          effectiveStatus == GameStatus.ongoing
-              ? matchWithComparison.comparison == MatchComparison.sameOrder
-                  ? ChessProgressBar(gamesTourModel: matchWithComparison.game)
-                  : ChessProgressBar.reversedMode(
-                    gamesTourModel: matchWithComparison.game,
-                  )
-              : StatusText(status: _displayTextSupporter(matchWithComparison)),
+      child: matchWithComparison.comparison == MatchComparison.sameOrder
+          ? ChessProgressBar(gamesTourModel: matchWithComparison.game)
+          : ChessProgressBar.reversedMode(
+              gamesTourModel: matchWithComparison.game,
+            ),
     );
   }
 }
