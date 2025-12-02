@@ -1779,13 +1779,12 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
         games: widget.games,
         currentGameIndex: widget.currentGameIndex,
         isLoading: widget.isLoading,
-        onSelect: (gameId) {
+        onSelect: (selectedIndex) {
           HapticFeedback.selectionClick();
-          // Find the correct index in the current games list by gameId
-          // This ensures we navigate to the right game even if the list order changed
-          final currentIndex = widget.games.indexWhere((g) => g.gameId == gameId);
-          if (currentIndex != -1 && currentIndex != widget.currentGameIndex) {
-            widget.onGameChanged(currentIndex);
+          if (selectedIndex >= 0 &&
+              selectedIndex < widget.games.length &&
+              selectedIndex != widget.currentGameIndex) {
+            widget.onGameChanged(selectedIndex);
           }
           _closeDropdown();
         },
@@ -2038,7 +2037,7 @@ class _GameDropdownOverlay extends StatelessWidget {
   final List<GamesTourModel> games;
   final int currentGameIndex;
   final bool isLoading;
-  final ValueChanged<String> onSelect; // Uses gameId for reliable selection
+  final ValueChanged<int> onSelect; // Provides the tapped game index directly
   final VoidCallback onDismiss;
 
   const _GameDropdownOverlay({
@@ -2112,7 +2111,7 @@ class _GameDropdownContent extends StatelessWidget {
   final List<GamesTourModel> games;
   final int currentGameIndex;
   final bool isLoading;
-  final ValueChanged<String> onSelect; // Uses gameId for reliable selection
+  final ValueChanged<int> onSelect; // Uses index for reliable selection
 
   const _GameDropdownContent({
     required this.dropdownWidth,
@@ -2157,7 +2156,7 @@ class _GameDropdownContent extends StatelessWidget {
           gameIndex: i,
           isSelected: isSelected,
           isLoading: isLoading && isSelected,
-          onTap: () => onSelect(game.gameId), // Pass gameId instead of index
+          onTap: () => onSelect(i), // Pass index directly
         ),
       );
       animationIndex++;
