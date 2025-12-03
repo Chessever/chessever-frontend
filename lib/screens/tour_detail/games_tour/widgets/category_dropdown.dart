@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:sprung/sprung.dart';
@@ -7,12 +8,15 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_ba
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/droplet_animation_curves.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/droplet_dropdown/droplet_dropdown.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:motor/motor.dart';
 
 /// A beautiful stadium-chip style combo dropdown with glass morphism effects
 /// combining Categories and Rounds in a side-by-side layout.
@@ -113,15 +117,15 @@ class _CategoryDropdownContent extends HookConsumerWidget {
     final layerLink = useMemoized(() => LayerLink());
     final isOpen = useState(false);
     final animationController = useAnimationController(
-      duration: const Duration(milliseconds: 350),
+      duration: const Duration(milliseconds: 200), // Faster for snappy feel
     );
 
-    // Smooth deceleration curve - snappy entrance, elegant exit
+    // Droplet-style spring curves for snappy, bubbly feel
     final animation = useMemoized(
       () => CurvedAnimation(
         parent: animationController,
-        curve: Curves.easeOutQuart,
-        reverseCurve: Curves.easeInCubic,
+        curve: DropletCurves.openPop,
+        reverseCurve: DropletCurves.close,
       ),
       [animationController],
     );
@@ -281,8 +285,8 @@ class _CategoryDropdownContent extends HookConsumerWidget {
 }
 
 /// Stadium-shaped chip button that triggers the dropdown
-/// Width can be constrained or allowed to grow with its content
-class _StadiumChipButton extends StatelessWidget {
+/// Features a subtle "fluid shimmer" animation hinting at long-press interaction
+class _StadiumChipButton extends HookWidget {
   final String label;
   final RoundStatus? status;
   final bool isOpen;
@@ -301,82 +305,92 @@ class _StadiumChipButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final button = AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeOutCubic,
-      padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
-      decoration: BoxDecoration(
-        // Stadium shape (fully rounded ends)
-        borderRadius: BorderRadius.circular(100.br),
-        // Subtle gradient background
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: isOpen
-              ? [
-                  kPrimaryColor.withValues(alpha: 0.2),
-                  kPrimaryColor.withValues(alpha: 0.08),
-                ]
-              : [
-                  kWhiteColor.withValues(alpha: 0.08),
-                  kWhiteColor.withValues(alpha: 0.04),
-                ],
-        ),
-        // Glowing border effect
-        border: Border.all(
-          color: isOpen
-              ? kPrimaryColor.withValues(alpha: 0.5)
-              : kWhiteColor.withValues(alpha: 0.15),
-          width: 1.2,
-        ),
-        // Subtle shadow for depth
-        boxShadow: isOpen
-            ? [
-                BoxShadow(
-                  color: kPrimaryColor.withValues(alpha: 0.2),
-                  blurRadius: 12.sp,
-                  spreadRadius: 0,
-                ),
-              ]
-            : null,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Status indicator dot
-          if (status == RoundStatus.live) ...[
-            _StatusDot(status: status!),
-            SizedBox(width: 8.sp),
-          ],
-          // Category label only
-          Flexible(
-            child: Text(
-              label,
-              style: AppTypography.textXsMedium.copyWith(
-                color: isOpen ? kPrimaryColor : kWhiteColor,
-                letterSpacing: 0.3,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+    // Shimmer animation that hints at long-press interactivity
+    final shimmerController = useAnimationController(
+      duration: const Duration(milliseconds: 3000),
+    );
+
+    // Start the shimmer loop when not open
+    useEffect(() {
+      if (!isOpen) {
+        shimmerController.repeat();
+      } else {
+        shimmerController.stop();
+      }
+      return null;
+    }, [isOpen]);
+
+    final shimmerValue = useAnimation(shimmerController);
+
+    final button = AnimatedBuilder(
+      animation: shimmerController,
+      builder: (context, child) {
+        return CustomPaint(
+          painter: isOpen ? null : _FluidShimmerPainter(
+            progress: shimmerValue,
+            shimmerColor: kPrimaryColor.withValues(alpha: 0.4),
+            borderRadius: 100.br,
           ),
-          // Chevron
-          if (showChevron) ...[
-            SizedBox(width: 6.sp),
-            AnimatedRotation(
-              turns: isOpen ? 0.5 : 0,
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.easeOutCubic,
-              child: Icon(
-                Icons.keyboard_arrow_down_rounded,
-                color: isOpen
-                    ? kPrimaryColor
-                    : kWhiteColor.withValues(alpha: 0.7),
-                size: 18.ic,
+          child: child,
+        );
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+        padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
+        decoration: BoxDecoration(
+          // Stadium shape (fully rounded ends)
+          borderRadius: BorderRadius.circular(100.br),
+          // Flat solid background
+          color: isOpen
+              ? kPrimaryColor.withValues(alpha: 0.15)
+              : kWhiteColor.withValues(alpha: 0.06),
+          // Clean border
+          border: Border.all(
+            color: isOpen
+                ? kPrimaryColor.withValues(alpha: 0.4)
+                : kWhiteColor.withValues(alpha: 0.12),
+            width: 1.0,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Status indicator dot
+            if (status == RoundStatus.live) ...[
+              _StatusDot(status: status!),
+              SizedBox(width: 8.sp),
+            ],
+            // Category label only
+            Flexible(
+              child: Text(
+                label,
+                style: AppTypography.textXsMedium.copyWith(
+                  color: isOpen ? kPrimaryColor : kWhiteColor,
+                  letterSpacing: 0.3,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
+            // Chevron
+            if (showChevron) ...[
+              SizedBox(width: 6.sp),
+              AnimatedRotation(
+                turns: isOpen ? 0.5 : 0,
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOutCubic,
+                child: Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  color: isOpen
+                      ? kPrimaryColor
+                      : kWhiteColor.withValues(alpha: 0.7),
+                  size: 18.ic,
+                ),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
 
@@ -389,6 +403,54 @@ class _StadiumChipButton extends StatelessWidget {
             )
           : button,
     );
+  }
+}
+
+/// Paints a subtle shimmer that travels around the stadium border
+/// Creates a "fluid waiting" effect hinting at long-press interactivity
+class _FluidShimmerPainter extends CustomPainter {
+  final double progress;
+  final Color shimmerColor;
+  final double borderRadius;
+
+  _FluidShimmerPainter({
+    required this.progress,
+    required this.shimmerColor,
+    required this.borderRadius,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
+    final rrect = RRect.fromRectAndRadius(rect, Radius.circular(borderRadius));
+
+    // Create a sweep gradient that travels around the border
+    final sweepAngle = progress * 2 * math.pi;
+
+    final gradient = SweepGradient(
+      center: Alignment.center,
+      startAngle: sweepAngle,
+      endAngle: sweepAngle + math.pi * 0.5,
+      colors: [
+        shimmerColor.withValues(alpha: 0),
+        shimmerColor,
+        shimmerColor.withValues(alpha: 0),
+      ],
+      stops: const [0.0, 0.5, 1.0],
+    );
+
+    final paint = Paint()
+      ..shader = gradient.createShader(rect)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.0);
+
+    canvas.drawRRect(rrect, paint);
+  }
+
+  @override
+  bool shouldRepaint(_FluidShimmerPainter oldDelegate) {
+    return progress != oldDelegate.progress;
   }
 }
 
@@ -415,15 +477,7 @@ class _StatusDot extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: color,
-        boxShadow: isLive
-            ? [
-                BoxShadow(
-                  color: color.withValues(alpha: 0.6),
-                  blurRadius: 8.sp,
-                  spreadRadius: 2.sp,
-                ),
-              ]
-            : null,
+        // Flat design - no glow/shadow
       ),
       child: isLive
           ? _PulsingDot(color: color)
@@ -511,24 +565,21 @@ class _DropdownOverlay extends StatelessWidget {
           // Full screen dismiss area
           Positioned.fill(child: Container(color: Colors.transparent)),
           // Dropdown positioned centered
+          // Account for AnimatedBlobContainer's internal padding (morphIntensity * 100 + 8)
           Positioned(
-            left: leftOffset,
-            top: triggerOffset.dy + triggerSize.height + 8.sp,
+            left: leftOffset - 14, // Offset for blob padding
+            top: triggerOffset.dy + triggerSize.height + 8.sp - 14,
             child: Material(
               type: MaterialType.transparency,
-              child: AnimatedBuilder(
-                animation: animation,
-                builder: (context, child) {
-                  final clampedValue = animation.value.clamp(0.0, 1.0);
-                  return Transform.scale(
-                    scale: 0.9 + (clampedValue * 0.1),
-                    alignment: Alignment.topCenter,
-                    child: Opacity(
-                      opacity: clampedValue,
-                      child: child,
-                    ),
-                  );
-                },
+              // Water droplet morphing container with snappy animation
+              child: AnimatedBlobContainer(
+                isExpanded: animation.status != AnimationStatus.dismissed,
+                borderRadius: 20.br,
+                borderColor: kPrimaryColor.withValues(alpha: 0.25),
+                backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+                borderWidth: 1.0,
+                morphIntensity: 0.055,
+                enableHaptics: false, // Already handled in openDropdown
                 child: _DropdownContent(
                   width: dropdownWidth,
                   availableHeight: availableHeight,
@@ -618,157 +669,120 @@ class _DropdownContentState extends State<_DropdownContent> {
     final hasCategories = widget.categories.length > 1;
     final hasRounds = widget.rounds.isNotEmpty;
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20.br),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
-          width: widget.width,
-          constraints: BoxConstraints(
-            maxHeight: widget.availableHeight.clamp(200.h, 380.h),
-          ),
-          decoration: BoxDecoration(
-            // Glass effect background
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                kBlack2Color.withValues(alpha: 0.95),
-                kBlack2Color.withValues(alpha: 0.85),
-              ],
-            ),
-            borderRadius: BorderRadius.circular(20.br),
-            border: Border.all(
-              color: kWhiteColor.withValues(alpha: 0.1),
-              width: 1,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.5),
-                blurRadius: 24.sp,
-                offset: Offset(0, 8.sp),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Header with Save button
-              Padding(
-                padding: EdgeInsets.fromLTRB(16.sp, 12.sp, 12.sp, 4.sp),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    // Title hint
-                    Text(
-                      'Select',
-                      style: AppTypography.textXsMedium.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.4),
-                        letterSpacing: 0.5,
-                      ),
+    // Note: Border, clipping, and background are handled by parent AnimatedBlobContainer
+    // We only add the backdrop blur and content here
+    return BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+      child: Container(
+        width: widget.width,
+        constraints: BoxConstraints(
+          maxHeight: widget.availableHeight.clamp(200.h, 380.h),
+        ),
+        // Flat design - no gradient, transparent container
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header with Save button
+            Padding(
+              padding: EdgeInsets.fromLTRB(16.sp, 12.sp, 12.sp, 4.sp),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Title hint
+                  Text(
+                    'Select',
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: kWhiteColor.withValues(alpha: 0.4),
+                      letterSpacing: 0.5,
                     ),
-                    // Save button - glowing when changes pending
-                    GestureDetector(
-                      onTap: _handleSave,
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 8.sp),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(20.br),
-                          gradient: _hasChanges
-                              ? LinearGradient(
-                                  colors: [
-                                    kPrimaryColor,
-                                    kPrimaryColor.withValues(alpha: 0.8),
-                                  ],
-                                )
-                              : null,
-                          color: _hasChanges ? null : kWhiteColor.withValues(alpha: 0.08),
-                          boxShadow: _hasChanges
-                              ? [
-                                  BoxShadow(
-                                    color: kPrimaryColor.withValues(alpha: 0.4),
-                                    blurRadius: 12,
-                                    spreadRadius: 1,
-                                  ),
-                                ]
-                              : null,
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.check_rounded,
-                              size: 16.ic,
+                  ),
+                  // Save button - flat design
+                  GestureDetector(
+                    onTap: _handleSave,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 8.sp),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(20.br),
+                        // Flat solid color - no gradient or shadow
+                        color: _hasChanges
+                            ? kPrimaryColor
+                            : kWhiteColor.withValues(alpha: 0.08),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.check_rounded,
+                            size: 16.ic,
+                            color: _hasChanges
+                                ? kWhiteColor
+                                : kWhiteColor.withValues(alpha: 0.5),
+                          ),
+                          SizedBox(width: 4.sp),
+                          Text(
+                            'Save',
+                            style: AppTypography.textXsMedium.copyWith(
                               color: _hasChanges
                                   ? kWhiteColor
                                   : kWhiteColor.withValues(alpha: 0.5),
+                              fontWeight: _hasChanges ? FontWeight.w600 : FontWeight.w500,
                             ),
-                            SizedBox(width: 4.sp),
-                            Text(
-                              'Save',
-                              style: AppTypography.textXsMedium.copyWith(
-                                color: _hasChanges
-                                    ? kWhiteColor
-                                    : kWhiteColor.withValues(alpha: 0.5),
-                                fontWeight: _hasChanges ? FontWeight.w600 : FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              // Content columns
-              Flexible(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Categories Column
-                    if (hasCategories)
-                      Expanded(
-                        child: _CategoriesColumn(
-                          animation: widget.animation,
-                          categories: widget.categories,
-                          selectedCategory: _pendingCategory, // Use pending
-                          onSelect: (category) {
-                            setState(() => _pendingCategory = category);
-                          },
-                        ),
+            ),
+            // Content columns
+            Flexible(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Categories Column
+                  if (hasCategories)
+                    Expanded(
+                      child: _CategoriesColumn(
+                        animation: widget.animation,
+                        categories: widget.categories,
+                        selectedCategory: _pendingCategory,
+                        onSelect: (category) {
+                          setState(() => _pendingCategory = category);
+                        },
                       ),
-                    // Divider between columns
-                    if (hasCategories && hasRounds)
-                      Container(
-                        width: 1,
-                        color: kWhiteColor.withValues(alpha: 0.1),
-                        margin: EdgeInsets.symmetric(vertical: 12.h),
+                    ),
+                  // Divider between columns
+                  if (hasCategories && hasRounds)
+                    Container(
+                      width: 1,
+                      color: kWhiteColor.withValues(alpha: 0.1),
+                      margin: EdgeInsets.symmetric(vertical: 12.h),
+                    ),
+                  // Rounds Column
+                  if (hasRounds)
+                    Expanded(
+                      child: _RoundsColumn(
+                        animation: widget.animation,
+                        rounds: widget.rounds,
+                        selectedRound: _pendingRound,
+                        onSelect: (round) {
+                          setState(() => _pendingRound = round);
+                        },
                       ),
-                    // Rounds Column
-                    if (hasRounds)
-                      Expanded(
-                        child: _RoundsColumn(
-                          animation: widget.animation,
-                          rounds: widget.rounds,
-                          selectedRound: _pendingRound, // Use pending
-                          onSelect: (round) {
-                            setState(() => _pendingRound = round);
-                          },
-                        ),
-                      ),
-                  ],
-                ),
+                    ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-/// Categories column with section header - items are draggable for selection
+/// Categories column with floating liquid selection indicator
 class _CategoriesColumn extends StatefulWidget {
   final Animation<double> animation;
   final List<TourModel> categories;
@@ -789,12 +803,91 @@ class _CategoriesColumn extends StatefulWidget {
 class _CategoriesColumnState extends State<_CategoriesColumn> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _listKey = GlobalKey();
+  final List<GlobalKey> _itemKeys = [];
 
   bool _isDragging = false;
-  int _dragHoverIndex = -1;
+  int _currentIndex = 0;
   Timer? _scrollTimer;
 
-  static const double _itemHeight = 56.0;
+  // Target Y position for motor spring animation
+  double _targetY = 0.0;
+
+  // Measured dimensions - total item height (including margin) and selector height (excluding margin)
+  double _measuredTotalItemHeight = 60.0; // Fallback
+  double _measuredSelectorHeight = 56.0;  // Fallback (total - margin)
+
+  // Measured vertical margin (updated after first measurement)
+  double _verticalMargin = 4.0; // Fallback: 2.sp * 2 ≈ 4
+
+  double get _totalItemHeight => _measuredTotalItemHeight;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Create keys for each item
+    _itemKeys.clear();
+    for (var i = 0; i < widget.categories.length; i++) {
+      _itemKeys.add(GlobalKey());
+    }
+
+    // Find initial selected index
+    _currentIndex = widget.categories.indexWhere(
+      (c) => c.tour.id == widget.selectedCategory.tour.id,
+    );
+    if (_currentIndex < 0) _currentIndex = 0;
+
+    _targetY = _currentIndex * _measuredTotalItemHeight;
+
+    // Measure actual item height after first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _measureItemHeight();
+    });
+  }
+
+  void _measureItemHeight() {
+    if (_itemKeys.isNotEmpty && _itemKeys.first.currentContext != null) {
+      final box = _itemKeys.first.currentContext!.findRenderObject() as RenderBox?;
+      if (box != null && box.hasSize) {
+        final totalHeight = box.size.height;
+        // Calculate actual vertical margin in current context
+        final actualVerticalMargin = 2.sp * 2;
+        // The selector should cover the content area (total height minus vertical margin)
+        final selectorHeight = totalHeight - actualVerticalMargin;
+
+        if ((totalHeight - _measuredTotalItemHeight).abs() > 1) {
+          setState(() {
+            _measuredTotalItemHeight = totalHeight;
+            _measuredSelectorHeight = selectorHeight;
+            _verticalMargin = actualVerticalMargin;
+            _targetY = _currentIndex * totalHeight;
+          });
+        }
+      }
+    }
+  }
+
+  @override
+  void didUpdateWidget(_CategoriesColumn oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.selectedCategory.tour.id != oldWidget.selectedCategory.tour.id) {
+      final newIndex = widget.categories.indexWhere(
+        (c) => c.tour.id == widget.selectedCategory.tour.id,
+      );
+      if (newIndex >= 0) {
+        _animateToIndex(newIndex);
+      }
+    }
+  }
+
+  void _animateToIndex(int index) {
+    if (index == _currentIndex && !_isDragging) return;
+
+    setState(() {
+      _currentIndex = index;
+      _targetY = index * _totalItemHeight;
+    });
+  }
 
   @override
   void dispose() {
@@ -807,8 +900,8 @@ class _CategoriesColumnState extends State<_CategoriesColumn> {
     HapticFeedbackService.heavy();
     setState(() {
       _isDragging = true;
-      _dragHoverIndex = index;
     });
+    _animateToIndex(index);
   }
 
   void _handleLongPressMoveUpdate(LongPressMoveUpdateDetails details) {
@@ -820,13 +913,13 @@ class _CategoriesColumnState extends State<_CategoriesColumn> {
     final localPos = listBox.globalToLocal(details.globalPosition);
     final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
 
-    // Calculate which item we're hovering over
+    // Calculate which item we're hovering over - direct position tracking
     final adjustedY = localPos.dy + scrollOffset;
-    final newIndex = (adjustedY / _itemHeight).floor().clamp(0, widget.categories.length - 1);
+    final newIndex = (adjustedY / _totalItemHeight).floor().clamp(0, widget.categories.length - 1);
 
-    if (newIndex != _dragHoverIndex) {
+    if (newIndex != _currentIndex) {
       HapticFeedbackService.selection();
-      setState(() => _dragHoverIndex = newIndex);
+      _animateToIndex(newIndex);
     }
 
     // Auto-scroll when near edges
@@ -839,21 +932,18 @@ class _CategoriesColumnState extends State<_CategoriesColumn> {
     if (!_scrollController.hasClients) return;
 
     final maxScroll = _scrollController.position.maxScrollExtent;
-    final edgeThreshold = 50.0;
+    const edgeThreshold = 50.0;
 
-    // Near top - scroll up
     if (localY < edgeThreshold && _scrollController.offset > 0) {
-      final speed = ((edgeThreshold - localY) / edgeThreshold) * _itemHeight * 0.4;
-      _scrollTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+      final speed = ((edgeThreshold - localY) / edgeThreshold) * _totalItemHeight * 0.5;
+      _scrollTimer = Timer.periodic(const Duration(milliseconds: 40), (_) {
         if (!_scrollController.hasClients) return;
         final newScroll = (_scrollController.offset - speed).clamp(0.0, maxScroll);
         _scrollController.jumpTo(newScroll);
       });
-    }
-    // Near bottom - scroll down
-    else if (localY > listHeight - edgeThreshold && _scrollController.offset < maxScroll) {
-      final speed = ((localY - (listHeight - edgeThreshold)) / edgeThreshold) * _itemHeight * 0.4;
-      _scrollTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+    } else if (localY > listHeight - edgeThreshold && _scrollController.offset < maxScroll) {
+      final speed = ((localY - (listHeight - edgeThreshold)) / edgeThreshold) * _totalItemHeight * 0.5;
+      _scrollTimer = Timer.periodic(const Duration(milliseconds: 40), (_) {
         if (!_scrollController.hasClients) return;
         final newScroll = (_scrollController.offset + speed).clamp(0.0, maxScroll);
         _scrollController.jumpTo(newScroll);
@@ -864,14 +954,13 @@ class _CategoriesColumnState extends State<_CategoriesColumn> {
   void _handleLongPressEnd(LongPressEndDetails details) {
     _scrollTimer?.cancel();
 
-    if (_isDragging && _dragHoverIndex >= 0 && _dragHoverIndex < widget.categories.length) {
+    if (_isDragging && _currentIndex >= 0 && _currentIndex < widget.categories.length) {
       HapticFeedbackService.medium();
-      widget.onSelect(widget.categories[_dragHoverIndex]);
+      widget.onSelect(widget.categories[_currentIndex]);
     }
 
     setState(() {
       _isDragging = false;
-      _dragHoverIndex = -1;
     });
   }
 
@@ -891,34 +980,81 @@ class _CategoriesColumnState extends State<_CategoriesColumn> {
             ),
           ),
         ),
-        // Categories list - drag on items to select
+        // Stack for list + floating selection overlay
         Expanded(
-          child: ScrollConfiguration(
-            behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
-            child: ListView.builder(
-              key: _listKey,
-              controller: _scrollController,
-              padding: EdgeInsets.only(bottom: 8.sp),
-              itemCount: widget.categories.length,
-              itemBuilder: (context, index) {
-                final category = widget.categories[index];
-                final isSelected = category.tour.id == widget.selectedCategory.tour.id;
-                final isHovered = _isDragging && _dragHoverIndex == index;
+          child: Stack(
+            children: [
+              // List of items
+              ScrollConfiguration(
+                behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+                child: ListView.builder(
+                  key: _listKey,
+                  controller: _scrollController,
+                  padding: EdgeInsets.only(bottom: 8.sp),
+                  itemCount: widget.categories.length,
+                  itemBuilder: (context, index) {
+                    final category = widget.categories[index];
+                    final isSelected = index == _currentIndex;
 
-                return _DraggableCategoryItem(
-                  index: index,
-                  animation: widget.animation,
-                  category: category,
-                  isSelected: isSelected,
-                  isHovered: isHovered,
-                  isDragging: _isDragging,
-                  onTap: () => widget.onSelect(category),
-                  onLongPressStart: (details) => _handleLongPressStart(index, details),
-                  onLongPressMoveUpdate: _handleLongPressMoveUpdate,
-                  onLongPressEnd: _handleLongPressEnd,
-                );
-              },
-            ),
+                    // Ensure we have a key for this index
+                    while (_itemKeys.length <= index) {
+                      _itemKeys.add(GlobalKey());
+                    }
+
+                    return KeyedSubtree(
+                      key: _itemKeys[index],
+                      child: _CategoryItem(
+                        index: index,
+                        animation: widget.animation,
+                        category: category,
+                        isSelected: isSelected,
+                        isDragging: _isDragging,
+                        onTap: () {
+                          _animateToIndex(index);
+                          widget.onSelect(category);
+                        },
+                        onLongPressStart: (details) => _handleLongPressStart(index, details),
+                        onLongPressMoveUpdate: _handleLongPressMoveUpdate,
+                        onLongPressEnd: _handleLongPressEnd,
+                      ),
+                    );
+                  },
+                ),
+              ),
+              // Floating water droplet selection indicator with Motor spring physics
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: ListenableBuilder(
+                    listenable: _scrollController,
+                    builder: (context, _) {
+                      final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+
+                      return SingleMotionBuilder(
+                        motion: _isDragging
+                            ? CupertinoMotion.snappy() // Faster when dragging
+                            : CupertinoMotion.bouncy(), // Bouncier on tap selection
+                        value: _targetY - scrollOffset,
+                        builder: (context, animatedY, _) {
+                          // Add top margin offset so selector starts at content, not at margin
+                          // Item margin is 2.sp on top, so we offset by half the total vertical margin
+                          final selectorY = animatedY + (_verticalMargin / 2);
+                          return CustomPaint(
+                            painter: _DropletSelectionPainter(
+                              y: selectorY,
+                              height: _measuredSelectorHeight,
+                              morphProgress: _isDragging ? 0.5 : 0.0,
+                              isDragging: _isDragging,
+                              baseColor: kPrimaryColor,
+                              horizontalMargin: 8.sp,
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ],
@@ -926,7 +1062,7 @@ class _CategoriesColumnState extends State<_CategoriesColumn> {
   }
 }
 
-/// Rounds column with section header - items are draggable for selection
+/// Rounds column with floating liquid selection indicator
 class _RoundsColumn extends StatefulWidget {
   final Animation<double> animation;
   final List<GamesAppBarModel> rounds;
@@ -947,12 +1083,91 @@ class _RoundsColumn extends StatefulWidget {
 class _RoundsColumnState extends State<_RoundsColumn> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _listKey = GlobalKey();
+  final List<GlobalKey> _itemKeys = [];
 
   bool _isDragging = false;
-  int _dragHoverIndex = -1;
+  int _currentIndex = 0;
   Timer? _scrollTimer;
 
-  static const double _itemHeight = 52.0;
+  // Target Y position for motor spring animation
+  double _targetY = 0.0;
+
+  // Measured dimensions - total item height (including margin) and selector height (excluding margin)
+  double _measuredTotalItemHeight = 52.0; // Fallback
+  double _measuredSelectorHeight = 48.0;  // Fallback (total - margin)
+
+  // Measured vertical margin (updated after first measurement)
+  double _verticalMargin = 4.0; // Fallback: 2.sp * 2 ≈ 4
+
+  double get _totalItemHeight => _measuredTotalItemHeight;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Create keys for each item
+    _itemKeys.clear();
+    for (var i = 0; i < widget.rounds.length; i++) {
+      _itemKeys.add(GlobalKey());
+    }
+
+    // Find initial selected index
+    _currentIndex = widget.rounds.indexWhere(
+      (r) => r.id == widget.selectedRound?.id,
+    );
+    if (_currentIndex < 0) _currentIndex = 0;
+
+    _targetY = _currentIndex * _measuredTotalItemHeight;
+
+    // Measure actual item height after first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _measureItemHeight();
+    });
+  }
+
+  void _measureItemHeight() {
+    if (_itemKeys.isNotEmpty && _itemKeys.first.currentContext != null) {
+      final box = _itemKeys.first.currentContext!.findRenderObject() as RenderBox?;
+      if (box != null && box.hasSize) {
+        final totalHeight = box.size.height;
+        // Calculate actual vertical margin in current context
+        final actualVerticalMargin = 2.sp * 2;
+        // The selector should cover the content area (total height minus vertical margin)
+        final selectorHeight = totalHeight - actualVerticalMargin;
+
+        if ((totalHeight - _measuredTotalItemHeight).abs() > 1) {
+          setState(() {
+            _measuredTotalItemHeight = totalHeight;
+            _measuredSelectorHeight = selectorHeight;
+            _verticalMargin = actualVerticalMargin;
+            _targetY = _currentIndex * totalHeight;
+          });
+        }
+      }
+    }
+  }
+
+  @override
+  void didUpdateWidget(_RoundsColumn oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.selectedRound?.id != oldWidget.selectedRound?.id) {
+      final newIndex = widget.rounds.indexWhere(
+        (r) => r.id == widget.selectedRound?.id,
+      );
+      if (newIndex >= 0) {
+        _animateToIndex(newIndex);
+      }
+    }
+  }
+
+  void _animateToIndex(int index) {
+    if (index == _currentIndex && !_isDragging) return;
+
+    setState(() {
+      _currentIndex = index;
+      _targetY = index * _totalItemHeight;
+    });
+  }
 
   @override
   void dispose() {
@@ -965,8 +1180,8 @@ class _RoundsColumnState extends State<_RoundsColumn> {
     HapticFeedbackService.heavy();
     setState(() {
       _isDragging = true;
-      _dragHoverIndex = index;
     });
+    _animateToIndex(index);
   }
 
   void _handleLongPressMoveUpdate(LongPressMoveUpdateDetails details) {
@@ -978,16 +1193,14 @@ class _RoundsColumnState extends State<_RoundsColumn> {
     final localPos = listBox.globalToLocal(details.globalPosition);
     final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
 
-    // Calculate which item we're hovering over
     final adjustedY = localPos.dy + scrollOffset;
-    final newIndex = (adjustedY / _itemHeight).floor().clamp(0, widget.rounds.length - 1);
+    final newIndex = (adjustedY / _totalItemHeight).floor().clamp(0, widget.rounds.length - 1);
 
-    if (newIndex != _dragHoverIndex) {
+    if (newIndex != _currentIndex) {
       HapticFeedbackService.selection();
-      setState(() => _dragHoverIndex = newIndex);
+      _animateToIndex(newIndex);
     }
 
-    // Auto-scroll when near edges
     _handleEdgeScroll(localPos.dy, listBox.size.height);
   }
 
@@ -997,21 +1210,18 @@ class _RoundsColumnState extends State<_RoundsColumn> {
     if (!_scrollController.hasClients) return;
 
     final maxScroll = _scrollController.position.maxScrollExtent;
-    final edgeThreshold = 50.0;
+    const edgeThreshold = 50.0;
 
-    // Near top - scroll up
     if (localY < edgeThreshold && _scrollController.offset > 0) {
-      final speed = ((edgeThreshold - localY) / edgeThreshold) * _itemHeight * 0.4;
-      _scrollTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+      final speed = ((edgeThreshold - localY) / edgeThreshold) * _totalItemHeight * 0.5;
+      _scrollTimer = Timer.periodic(const Duration(milliseconds: 40), (_) {
         if (!_scrollController.hasClients) return;
         final newScroll = (_scrollController.offset - speed).clamp(0.0, maxScroll);
         _scrollController.jumpTo(newScroll);
       });
-    }
-    // Near bottom - scroll down
-    else if (localY > listHeight - edgeThreshold && _scrollController.offset < maxScroll) {
-      final speed = ((localY - (listHeight - edgeThreshold)) / edgeThreshold) * _itemHeight * 0.4;
-      _scrollTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+    } else if (localY > listHeight - edgeThreshold && _scrollController.offset < maxScroll) {
+      final speed = ((localY - (listHeight - edgeThreshold)) / edgeThreshold) * _totalItemHeight * 0.5;
+      _scrollTimer = Timer.periodic(const Duration(milliseconds: 40), (_) {
         if (!_scrollController.hasClients) return;
         final newScroll = (_scrollController.offset + speed).clamp(0.0, maxScroll);
         _scrollController.jumpTo(newScroll);
@@ -1022,14 +1232,13 @@ class _RoundsColumnState extends State<_RoundsColumn> {
   void _handleLongPressEnd(LongPressEndDetails details) {
     _scrollTimer?.cancel();
 
-    if (_isDragging && _dragHoverIndex >= 0 && _dragHoverIndex < widget.rounds.length) {
+    if (_isDragging && _currentIndex >= 0 && _currentIndex < widget.rounds.length) {
       HapticFeedbackService.medium();
-      widget.onSelect(widget.rounds[_dragHoverIndex]);
+      widget.onSelect(widget.rounds[_currentIndex]);
     }
 
     setState(() {
       _isDragging = false;
-      _dragHoverIndex = -1;
     });
   }
 
@@ -1049,34 +1258,81 @@ class _RoundsColumnState extends State<_RoundsColumn> {
             ),
           ),
         ),
-        // Rounds list - drag on items to select
+        // Stack for list + floating selection overlay
         Expanded(
-          child: ScrollConfiguration(
-            behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
-            child: ListView.builder(
-              key: _listKey,
-              controller: _scrollController,
-              padding: EdgeInsets.only(bottom: 8.sp),
-              itemCount: widget.rounds.length,
-              itemBuilder: (context, index) {
-                final round = widget.rounds[index];
-                final isSelected = widget.selectedRound?.id == round.id;
-                final isHovered = _isDragging && _dragHoverIndex == index;
+          child: Stack(
+            children: [
+              // List of items
+              ScrollConfiguration(
+                behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+                child: ListView.builder(
+                  key: _listKey,
+                  controller: _scrollController,
+                  padding: EdgeInsets.only(bottom: 8.sp),
+                  itemCount: widget.rounds.length,
+                  itemBuilder: (context, index) {
+                    final round = widget.rounds[index];
+                    final isSelected = index == _currentIndex;
 
-                return _DraggableRoundItem(
-                  index: index,
-                  animation: widget.animation,
-                  round: round,
-                  isSelected: isSelected,
-                  isHovered: isHovered,
-                  isDragging: _isDragging,
-                  onTap: () => widget.onSelect(round),
-                  onLongPressStart: (details) => _handleLongPressStart(index, details),
-                  onLongPressMoveUpdate: _handleLongPressMoveUpdate,
-                  onLongPressEnd: _handleLongPressEnd,
-                );
-              },
-            ),
+                    // Ensure we have a key for this index
+                    while (_itemKeys.length <= index) {
+                      _itemKeys.add(GlobalKey());
+                    }
+
+                    return KeyedSubtree(
+                      key: _itemKeys[index],
+                      child: _RoundItem(
+                        index: index,
+                        animation: widget.animation,
+                        round: round,
+                        isSelected: isSelected,
+                        isDragging: _isDragging,
+                        onTap: () {
+                          _animateToIndex(index);
+                          widget.onSelect(round);
+                        },
+                        onLongPressStart: (details) => _handleLongPressStart(index, details),
+                        onLongPressMoveUpdate: _handleLongPressMoveUpdate,
+                        onLongPressEnd: _handleLongPressEnd,
+                      ),
+                    );
+                  },
+                ),
+              ),
+              // Floating water droplet selection indicator with Motor spring physics
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: ListenableBuilder(
+                    listenable: _scrollController,
+                    builder: (context, _) {
+                      final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+
+                      return SingleMotionBuilder(
+                        motion: _isDragging
+                            ? CupertinoMotion.snappy() // Faster when dragging
+                            : CupertinoMotion.bouncy(), // Bouncier on tap selection
+                        value: _targetY - scrollOffset,
+                        builder: (context, animatedY, _) {
+                          // Add top margin offset so selector starts at content, not at margin
+                          // Item margin is 2.sp on top, so we offset by half the total vertical margin
+                          final selectorY = animatedY + (_verticalMargin / 2);
+                          return CustomPaint(
+                            painter: _DropletSelectionPainter(
+                              y: selectorY,
+                              height: _measuredSelectorHeight,
+                              morphProgress: _isDragging ? 0.5 : 0.0,
+                              isDragging: _isDragging,
+                              baseColor: kPrimaryColor,
+                              horizontalMargin: 6.sp,
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ],
@@ -1084,7 +1340,114 @@ class _RoundsColumnState extends State<_RoundsColumn> {
   }
 }
 
-/// Draggable round item - long press to grab and drag for selection
+/// Simplified round item - just content, selection handled by overlay
+class _RoundItem extends StatefulWidget {
+  final int index;
+  final Animation<double> animation;
+  final GamesAppBarModel round;
+  final bool isSelected;
+  final bool isDragging;
+  final VoidCallback onTap;
+  final ValueChanged<LongPressStartDetails> onLongPressStart;
+  final ValueChanged<LongPressMoveUpdateDetails> onLongPressMoveUpdate;
+  final ValueChanged<LongPressEndDetails> onLongPressEnd;
+
+  const _RoundItem({
+    required this.index,
+    required this.animation,
+    required this.round,
+    required this.isSelected,
+    required this.isDragging,
+    required this.onTap,
+    required this.onLongPressStart,
+    required this.onLongPressMoveUpdate,
+    required this.onLongPressEnd,
+  });
+
+  @override
+  State<_RoundItem> createState() => _RoundItemState();
+}
+
+class _RoundItemState extends State<_RoundItem> {
+  @override
+  Widget build(BuildContext context) {
+    final isLive = widget.round.roundStatus == RoundStatus.live;
+
+    // Staggered animation for entrance
+    final itemDelay = widget.index * 0.06;
+    final itemAnimation = CurvedAnimation(
+      parent: widget.animation,
+      curve: Interval(
+        itemDelay.clamp(0.0, 0.4),
+        (itemDelay + 0.5).clamp(0.0, 1.0),
+        curve: Curves.easeOutCubic,
+      ),
+    );
+
+    return AnimatedBuilder(
+      animation: itemAnimation,
+      builder: (context, child) {
+        final clampedValue = itemAnimation.value.clamp(0.0, 1.0);
+        return Transform.translate(
+          offset: Offset(0, 10 * (1 - clampedValue)),
+          child: Opacity(
+            opacity: clampedValue,
+            child: child,
+          ),
+        );
+      },
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        onLongPressStart: widget.onLongPressStart,
+        onLongPressMoveUpdate: widget.onLongPressMoveUpdate,
+        onLongPressEnd: widget.onLongPressEnd,
+        child: Container(
+          margin: EdgeInsets.symmetric(horizontal: 6.sp, vertical: 2.sp),
+          padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 10.sp),
+          color: Colors.transparent,
+          child: Row(
+            children: [
+              // Round info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.round.name,
+                      style: AppTypography.textXsMedium.copyWith(
+                        color: widget.isSelected ? kPrimaryColor : kWhiteColor,
+                        fontWeight: widget.isSelected ? FontWeight.w600 : FontWeight.w500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    SizedBox(height: 2.sp),
+                    Text(
+                      widget.round.formattedStartDate,
+                      style: AppTypography.textXxsRegular.copyWith(
+                        color: kWhiteColor.withValues(alpha: 0.5),
+                      ),
+                      maxLines: 1,
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(width: 6.sp),
+              // Status icon
+              _RoundStatusIcon(
+                status: widget.round.roundStatus,
+                showLive: isLive,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Draggable round item - long press to grab and drag for selection (legacy)
 class _DraggableRoundItem extends StatefulWidget {
   final int index;
   final Animation<double> animation;
@@ -1175,19 +1538,11 @@ class _DraggableRoundItemState extends State<_DraggableRoundItem> {
                           : Colors.transparent,
               border: (widget.isSelected || widget.isHovered)
                   ? Border.all(
-                      color: kPrimaryColor.withValues(alpha: widget.isHovered ? 0.5 : 0.3),
-                      width: widget.isHovered ? 1.5 : 1,
+                      color: kPrimaryColor.withValues(alpha: widget.isHovered ? 0.4 : 0.25),
+                      width: 1.0,
                     )
                   : null,
-              boxShadow: widget.isHovered && widget.isDragging
-                  ? [
-                      BoxShadow(
-                        color: kPrimaryColor.withValues(alpha: 0.3),
-                        blurRadius: 12,
-                        spreadRadius: 1,
-                      ),
-                    ]
-                  : null,
+              // Flat design - no shadow
             ),
             child: Row(
               children: [
@@ -1366,19 +1721,11 @@ class _DraggableCategoryItemState extends State<_DraggableCategoryItem> {
                           : Colors.transparent,
               border: (widget.isSelected || widget.isHovered)
                   ? Border.all(
-                      color: kPrimaryColor.withValues(alpha: widget.isHovered ? 0.5 : 0.3),
-                      width: widget.isHovered ? 1.5 : 1,
+                      color: kPrimaryColor.withValues(alpha: widget.isHovered ? 0.4 : 0.25),
+                      width: 1.0,
                     )
                   : null,
-              boxShadow: widget.isHovered && widget.isDragging
-                  ? [
-                      BoxShadow(
-                        color: kPrimaryColor.withValues(alpha: 0.3),
-                        blurRadius: 12,
-                        spreadRadius: 1,
-                      ),
-                    ]
-                  : null,
+              // Flat design - no shadow
             ),
             child: Row(
               children: [
@@ -1432,6 +1779,299 @@ class _DraggableCategoryItemState extends State<_DraggableCategoryItem> {
                   ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _extractDisplayName(String fullName) {
+    if (fullName.contains('|')) {
+      return fullName.split('|').last.trim();
+    }
+    if (fullName.contains(':')) {
+      return fullName.split(':').last.trim();
+    }
+    return fullName;
+  }
+
+  String _getStatusText(RoundStatus status) {
+    switch (status) {
+      case RoundStatus.live:
+        return 'LIVE NOW';
+      case RoundStatus.ongoing:
+        return 'In progress';
+      case RoundStatus.upcoming:
+        return 'Coming soon';
+      case RoundStatus.completed:
+        return 'Completed';
+    }
+  }
+
+  Color _getStatusTextColor(RoundStatus status) {
+    switch (status) {
+      case RoundStatus.live:
+        return kPrimaryColor;
+      case RoundStatus.ongoing:
+        return kWhiteColor70;
+      case RoundStatus.upcoming:
+        return kWhiteColor70;
+      case RoundStatus.completed:
+        return kWhiteColor70;
+    }
+  }
+}
+
+/// Liquid/water droplet selection indicator painter
+/// Creates a morphing rectangle with organic blob-like borders
+class _DropletSelectionPainter extends CustomPainter {
+  final double y;
+  final double height;
+  final double morphProgress;
+  final bool isDragging;
+  final Color baseColor;
+  final double horizontalMargin;
+
+  _DropletSelectionPainter({
+    required this.y,
+    required this.height,
+    required this.morphProgress,
+    required this.isDragging,
+    required this.baseColor,
+    required this.horizontalMargin,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width - (horizontalMargin * 2);
+    final h = height;
+    final x = horizontalMargin;
+    final baseRadius = 12.0;
+
+    // Calculate morph distortion
+    final distortionEnvelope = math.sin(morphProgress * math.pi);
+    final distortion = distortionEnvelope * 0.6; // Reduce overall distortion
+    final maxBulge = math.min(w, h) * 0.06;
+    final bulge = distortion * maxBulge;
+
+    // Phase offset for wobble effect
+    final phaseOffset = morphProgress * math.pi * 2.5;
+
+    // Build the blob path
+    final path = Path();
+    final r = baseRadius.clamp(0.0, math.min(w, h) / 2);
+
+    if (bulge.abs() < 0.5) {
+      // Simple rounded rect when no distortion
+      path.addRRect(RRect.fromRectAndRadius(
+        Rect.fromLTWH(x, y, w, h),
+        Radius.circular(r),
+      ));
+    } else {
+      // Morphing blob shape
+      final topBulge = bulge * math.sin(phaseOffset) * 0.7;
+      final rightBulge = bulge * math.sin(phaseOffset + math.pi * 0.5) * 0.5;
+      final bottomBulge = bulge * math.sin(phaseOffset + math.pi) * 0.8;
+      final leftBulge = bulge * math.sin(phaseOffset + math.pi * 1.5) * 0.5;
+      final cornerExpand = bulge * 0.4 * math.cos(phaseOffset * 0.8);
+
+      path.moveTo(x + r + cornerExpand, y);
+
+      // Top edge
+      path.quadraticBezierTo(
+        x + w / 2, y - topBulge,
+        x + w - r - cornerExpand, y,
+      );
+
+      // Top-right corner
+      final trCornerOffset = cornerExpand * 0.7;
+      path.quadraticBezierTo(
+        x + w + trCornerOffset, y - trCornerOffset,
+        x + w, y + r + cornerExpand,
+      );
+
+      // Right edge
+      path.quadraticBezierTo(
+        x + w + rightBulge, y + h / 2,
+        x + w, y + h - r - cornerExpand,
+      );
+
+      // Bottom-right corner
+      final brCornerOffset = cornerExpand * 0.7;
+      path.quadraticBezierTo(
+        x + w + brCornerOffset, y + h + brCornerOffset,
+        x + w - r - cornerExpand, y + h,
+      );
+
+      // Bottom edge
+      path.quadraticBezierTo(
+        x + w / 2, y + h + bottomBulge,
+        x + r + cornerExpand, y + h,
+      );
+
+      // Bottom-left corner
+      final blCornerOffset = cornerExpand * 0.7;
+      path.quadraticBezierTo(
+        x - blCornerOffset, y + h + blCornerOffset,
+        x, y + h - r - cornerExpand,
+      );
+
+      // Left edge
+      path.quadraticBezierTo(
+        x - leftBulge, y + h / 2,
+        x, y + r + cornerExpand,
+      );
+
+      // Top-left corner
+      final tlCornerOffset = cornerExpand * 0.7;
+      path.quadraticBezierTo(
+        x - tlCornerOffset, y - tlCornerOffset,
+        x + r + cornerExpand, y,
+      );
+
+      path.close();
+    }
+
+    // Flat solid fill - no gradient
+    final fillPaint = Paint()
+      ..color = baseColor.withValues(alpha: isDragging ? 0.20 : 0.12)
+      ..style = PaintingStyle.fill;
+    canvas.drawPath(path, fillPaint);
+
+    // Clean border stroke - no glow
+    final borderPaint = Paint()
+      ..color = baseColor.withValues(alpha: isDragging ? 0.5 : 0.35)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = isDragging ? 1.5 : 1.0
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(path, borderPaint);
+  }
+
+  @override
+  bool shouldRepaint(_DropletSelectionPainter oldDelegate) {
+    return y != oldDelegate.y ||
+        height != oldDelegate.height ||
+        morphProgress != oldDelegate.morphProgress ||
+        isDragging != oldDelegate.isDragging ||
+        baseColor != oldDelegate.baseColor;
+  }
+}
+
+/// Simplified category item - just content, no selection styling (handled by overlay)
+class _CategoryItem extends StatefulWidget {
+  final int index;
+  final Animation<double> animation;
+  final TourModel category;
+  final bool isSelected;
+  final bool isDragging;
+  final VoidCallback onTap;
+  final ValueChanged<LongPressStartDetails> onLongPressStart;
+  final ValueChanged<LongPressMoveUpdateDetails> onLongPressMoveUpdate;
+  final ValueChanged<LongPressEndDetails> onLongPressEnd;
+
+  const _CategoryItem({
+    required this.index,
+    required this.animation,
+    required this.category,
+    required this.isSelected,
+    required this.isDragging,
+    required this.onTap,
+    required this.onLongPressStart,
+    required this.onLongPressMoveUpdate,
+    required this.onLongPressEnd,
+  });
+
+  @override
+  State<_CategoryItem> createState() => _CategoryItemState();
+}
+
+class _CategoryItemState extends State<_CategoryItem> {
+  @override
+  Widget build(BuildContext context) {
+    final isLive = widget.category.roundStatus == RoundStatus.live;
+
+    // Staggered animation for entrance
+    final itemDelay = widget.index * 0.08;
+    final itemAnimation = CurvedAnimation(
+      parent: widget.animation,
+      curve: Interval(
+        itemDelay.clamp(0.0, 0.5),
+        (itemDelay + 0.5).clamp(0.0, 1.0),
+        curve: Curves.easeOutCubic,
+      ),
+    );
+
+    return AnimatedBuilder(
+      animation: itemAnimation,
+      builder: (context, child) {
+        final clampedValue = itemAnimation.value.clamp(0.0, 1.0);
+        return Transform.translate(
+          offset: Offset(0, 10 * (1 - clampedValue)),
+          child: Opacity(
+            opacity: clampedValue,
+            child: child,
+          ),
+        );
+      },
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        onLongPressStart: widget.onLongPressStart,
+        onLongPressMoveUpdate: widget.onLongPressMoveUpdate,
+        onLongPressEnd: widget.onLongPressEnd,
+        child: Container(
+          margin: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 2.sp),
+          padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 12.sp),
+          // Transparent - selection is drawn by CustomPainter overlay
+          color: Colors.transparent,
+          child: Row(
+            children: [
+              // Status indicator
+              if (isLive) ...[
+                _StatusDot(status: widget.category.roundStatus),
+                SizedBox(width: 12.sp),
+              ],
+              // Category info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _extractDisplayName(widget.category.tour.name),
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: widget.isSelected ? kPrimaryColor : kWhiteColor,
+                        fontWeight: widget.isSelected ? FontWeight.w600 : FontWeight.w500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    SizedBox(height: 2.sp),
+                    Text(
+                      _getStatusText(widget.category.roundStatus),
+                      style: AppTypography.textXxsRegular.copyWith(
+                        color: _getStatusTextColor(widget.category.roundStatus),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Selection checkmark
+              if (widget.isSelected)
+                Container(
+                  width: 20.sp,
+                  height: 20.sp,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: kPrimaryColor,
+                  ),
+                  child: Icon(
+                    Icons.check_rounded,
+                    color: kWhiteColor,
+                    size: 12.ic,
+                  ),
+                ),
+            ],
           ),
         ),
       ),

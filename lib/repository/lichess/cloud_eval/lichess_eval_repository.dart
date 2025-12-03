@@ -10,6 +10,10 @@ final lichessEvalRepoProvider = AutoDisposeProvider<_LichessEvalRepository>(
   (ref) => _LichessEvalRepository(),
 );
 
+/// User-Agent header for Lichess API requests
+/// Required by Lichess to identify API consumers and coordinate breaking changes
+const _lichessUserAgent = 'chessever.com';
+
 class _LichessEvalRepository {
   final String baseUrl = 'https://lichess.org/api/cloud-eval';
 
@@ -18,7 +22,10 @@ class _LichessEvalRepository {
       final uri = Uri.parse('$baseUrl?fen=${Uri.encodeComponent(fen)}&multiPv=$multiPv');
       print('🌐 Lichess: Requesting eval from $uri');
 
-      final resp = await http.get(uri).timeout(
+      final resp = await http.get(
+        uri,
+        headers: {'User-Agent': _lichessUserAgent},
+      ).timeout(
         const Duration(seconds: 8),
         onTimeout: () {
           print('⏱️ Lichess: Request timeout after 8 seconds for $fen');
