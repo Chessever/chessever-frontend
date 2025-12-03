@@ -53,6 +53,7 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provi
 import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
+import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/url_launcher_provider.dart';
 import 'package:motor/motor.dart';
 
@@ -2132,11 +2133,38 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
   static const double _verticalMargin = 2.0;
   double get _totalItemHeight => _itemHeight + _verticalMargin;
 
+  // Track if pointer started on the selector
+  bool _pointerStartedOnSelector = false;
+  Offset? _lastPointerPosition;
+
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.currentGameIndex;
     _targetY = _currentIndex * _totalItemHeight;
+
+    // Scroll to center the current game after the widget is built
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToCenter();
+    });
+  }
+
+  /// Scrolls the list to center the current game in the visible area
+  void _scrollToCenter() {
+    if (!_scrollController.hasClients) return;
+
+    final viewportHeight = _scrollController.position.viewportDimension;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+
+    // Calculate the scroll offset to center the current item
+    // Item's center position minus half the viewport height
+    final itemCenter = _targetY + (_itemHeight / 2);
+    final targetScroll = itemCenter - (viewportHeight / 2);
+
+    // Clamp to valid scroll range
+    final clampedScroll = targetScroll.clamp(0.0, maxScroll);
+
+    _scrollController.jumpTo(clampedScroll);
   }
 
   @override
@@ -2145,15 +2173,93 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
     super.dispose();
   }
 
-  void _handleDragStart(DragStartDetails details) {
-    HapticFeedback.heavyImpact();
-    setState(() => _isDragging = true);
-    _updateIndexFromPosition(details.globalPosition);
+  /// Check if a global position is within the current selector bounds
+  bool _isOnSelector(Offset globalPosition) {
+    final listBox = _listKey.currentContext?.findRenderObject() as RenderBox?;
+    if (listBox == null) return false;
+
+    final localPos = listBox.globalToLocal(globalPosition);
+    final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+
+    // Calculate selector's current visual position (accounting for scroll and padding)
+    final selectorVisualTop = _targetY - scrollOffset + 6; // 6 = top padding
+    final selectorVisualBottom = selectorVisualTop + _itemHeight;
+
+    // Add some tolerance for easier grabbing
+    const tolerance = 8.0;
+    return localPos.dy >= (selectorVisualTop - tolerance) &&
+           localPos.dy <= (selectorVisualBottom + tolerance);
   }
 
-  void _handleDragUpdate(DragUpdateDetails details) {
-    if (!_isDragging) return;
-    _updateIndexFromPosition(details.globalPosition);
+  void _handlePointerDown(PointerDownEvent event) {
+    _lastPointerPosition = event.position;
+    _pointerStartedOnSelector = _isOnSelector(event.position);
+  }
+
+  void _handlePointerMove(PointerMoveEvent event) {
+    if (_lastPointerPosition == null) return;
+
+    _lastPointerPosition = event.position;
+
+    // Only start dragging if pointer started on the selector
+    if (!_isDragging && _pointerStartedOnSelector) {
+      HapticFeedback.heavyImpact();
+      setState(() => _isDragging = true);
+    }
+
+    if (_isDragging) {
+      // Update selector position based on current pointer position
+      _updateIndexFromPosition(event.position);
+
+      // Auto-scroll when near edges
+      _handleEdgeScroll(event.position);
+    }
+  }
+
+  void _handleEdgeScroll(Offset globalPosition) {
+    final listBox = _listKey.currentContext?.findRenderObject() as RenderBox?;
+    if (listBox == null || !_scrollController.hasClients) return;
+
+    final localPos = listBox.globalToLocal(globalPosition);
+    final listHeight = listBox.size.height;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+
+    const edgeThreshold = 60.0;
+    const scrollSpeed = 8.0;
+
+    if (localPos.dy < edgeThreshold && _scrollController.offset > 0) {
+      // Near top edge - scroll up
+      final intensity = 1.0 - (localPos.dy / edgeThreshold);
+      final scrollAmount = scrollSpeed * intensity;
+      final newScroll = (_scrollController.offset - scrollAmount).clamp(0.0, maxScroll);
+      _scrollController.jumpTo(newScroll);
+      // Update index after scroll
+      _updateIndexFromPosition(globalPosition);
+    } else if (localPos.dy > listHeight - edgeThreshold && _scrollController.offset < maxScroll) {
+      // Near bottom edge - scroll down
+      final intensity = 1.0 - ((listHeight - localPos.dy) / edgeThreshold);
+      final scrollAmount = scrollSpeed * intensity;
+      final newScroll = (_scrollController.offset + scrollAmount).clamp(0.0, maxScroll);
+      _scrollController.jumpTo(newScroll);
+      // Update index after scroll
+      _updateIndexFromPosition(globalPosition);
+    }
+  }
+
+  void _handlePointerUp(PointerUpEvent event) {
+    if (_isDragging && _currentIndex >= 0 && _currentIndex < widget.games.length) {
+      HapticFeedback.mediumImpact();
+      widget.onSelect(_currentIndex);
+    }
+    setState(() => _isDragging = false);
+    _lastPointerPosition = null;
+    _pointerStartedOnSelector = false;
+  }
+
+  void _handlePointerCancel(PointerCancelEvent event) {
+    setState(() => _isDragging = false);
+    _lastPointerPosition = null;
+    _pointerStartedOnSelector = false;
   }
 
   void _updateIndexFromPosition(Offset globalPosition) {
@@ -2169,8 +2275,6 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
       HapticFeedback.selectionClick();
       _animateToIndex(newIndex);
     }
-
-    _handleEdgeScroll(localPos.dy, listBox.size.height);
   }
 
   void _animateToIndex(int index) {
@@ -2180,42 +2284,6 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
     });
   }
 
-  Timer? _scrollTimer;
-  void _handleEdgeScroll(double localY, double listHeight) {
-    _scrollTimer?.cancel();
-
-    if (!_scrollController.hasClients) return;
-
-    final maxScroll = _scrollController.position.maxScrollExtent;
-    const edgeThreshold = 50.0;
-
-    if (localY < edgeThreshold && _scrollController.offset > 0) {
-      // Variable speed based on distance from edge
-      final speed = ((edgeThreshold - localY) / edgeThreshold) * _totalItemHeight * 0.5;
-      _scrollTimer = Timer.periodic(const Duration(milliseconds: 40), (_) {
-        if (!_scrollController.hasClients) return;
-        final newScroll = (_scrollController.offset - speed).clamp(0.0, maxScroll);
-        _scrollController.jumpTo(newScroll);
-      });
-    } else if (localY > listHeight - edgeThreshold && _scrollController.offset < maxScroll) {
-      final speed = ((localY - (listHeight - edgeThreshold)) / edgeThreshold) * _totalItemHeight * 0.5;
-      _scrollTimer = Timer.periodic(const Duration(milliseconds: 40), (_) {
-        if (!_scrollController.hasClients) return;
-        final newScroll = (_scrollController.offset + speed).clamp(0.0, maxScroll);
-        _scrollController.jumpTo(newScroll);
-      });
-    }
-  }
-
-  void _handleDragEnd(DragEndDetails details) {
-    _scrollTimer?.cancel();
-    if (_isDragging && _currentIndex >= 0 && _currentIndex < widget.games.length) {
-      HapticFeedback.mediumImpact();
-      widget.onSelect(_currentIndex);
-    }
-    setState(() => _isDragging = false);
-  }
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -2223,14 +2291,14 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
       constraints: BoxConstraints(
         maxHeight: widget.availableHeight.clamp(180.h, 380.h),
       ),
-      child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onVerticalDragStart: _handleDragStart,
-        onVerticalDragUpdate: _handleDragUpdate,
-        onVerticalDragEnd: _handleDragEnd,
+      child: Listener(
+        onPointerDown: _handlePointerDown,
+        onPointerMove: _handlePointerMove,
+        onPointerUp: _handlePointerUp,
+        onPointerCancel: _handlePointerCancel,
         child: Stack(
           children: [
-            // List of games
+            // List of games - physics disabled only when dragging selector
             ScrollConfiguration(
               behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
               child: ListView.builder(
@@ -7901,7 +7969,7 @@ class _EventInfoSheet extends ConsumerWidget {
                       ),
                     )
                   : aboutModel == null
-                      ? _buildFallbackContent(context, scrollController)
+                      ? _buildFallbackContent(context, scrollController, locationService)
                       : _buildTourContent(context, scrollController, aboutModel, locationService, urlLauncher),
             ),
           ],
@@ -7911,7 +7979,7 @@ class _EventInfoSheet extends ConsumerWidget {
   }
 
   /// Fallback content when tour info is not available - shows game info from GamesTourModel
-  Widget _buildFallbackContent(BuildContext context, ScrollController scrollController) {
+  Widget _buildFallbackContent(BuildContext context, ScrollController scrollController, LocationService locationService) {
     return ListView(
       controller: scrollController,
       padding: EdgeInsets.symmetric(horizontal: 20.sp),
@@ -7952,16 +8020,19 @@ class _EventInfoSheet extends ConsumerWidget {
         ),
         SizedBox(height: 12.h),
         // White player
-        _buildPlayerRow(game.whitePlayer, 'White'),
+        _buildPlayerRow(game.whitePlayer, 'White', locationService),
         SizedBox(height: 8.h),
         // Black player
-        _buildPlayerRow(game.blackPlayer, 'Black'),
+        _buildPlayerRow(game.blackPlayer, 'Black', locationService),
         SizedBox(height: MediaQuery.of(context).viewPadding.bottom + 16.h),
       ],
     );
   }
 
-  Widget _buildPlayerRow(PlayerCard player, String side) {
+  Widget _buildPlayerRow(PlayerCard player, String side, LocationService locationService) {
+    // Use the same validation as PlayerFirstRowDetailWidget
+    final validCountryCode = locationService.getValidCountryCode(player.countryCode);
+
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 10.sp),
       decoration: BoxDecoration(
@@ -7981,9 +8052,23 @@ class _EventInfoSheet extends ConsumerWidget {
             ),
           ),
           SizedBox(width: 10.w),
-          // Country flag
-          if (player.countryCode.isNotEmpty) ...[
-            _buildCountryFlag(player.countryCode) ?? const SizedBox.shrink(),
+          // Country flag - handle FID (FIDE) specially like PlayerFirstRowDetailWidget
+          if (player.countryCode.toUpperCase() == 'FID') ...[
+            Image.asset(
+              PngAsset.fideLogo,
+              height: 14.h,
+              width: 20.w,
+              fit: BoxFit.cover,
+              cacheWidth: 48,
+              cacheHeight: 36,
+            ),
+            SizedBox(width: 8.w),
+          ] else if (validCountryCode.isNotEmpty) ...[
+            CountryFlag.fromCountryCode(
+              validCountryCode,
+              width: 20.w,
+              height: 14.h,
+            ),
             SizedBox(width: 8.w),
           ],
           // Title
@@ -8136,10 +8221,10 @@ class _EventInfoSheet extends ConsumerWidget {
         ),
         SizedBox(height: 8.h),
         // White player
-        _buildPlayerRow(game.whitePlayer, 'White'),
+        _buildPlayerRow(game.whitePlayer, 'White', locationService),
         SizedBox(height: 8.h),
         // Black player
-        _buildPlayerRow(game.blackPlayer, 'Black'),
+        _buildPlayerRow(game.blackPlayer, 'Black', locationService),
         // Top players from tournament
         if (aboutModel.players.isNotEmpty) ...[
           SizedBox(height: 16.h),

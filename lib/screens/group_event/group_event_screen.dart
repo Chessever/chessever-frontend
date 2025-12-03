@@ -455,6 +455,51 @@ class _SegmentedSwitcher extends ConsumerWidget {
   final List<GroupEventCategory> visibleCategories;
   final ValueChanged<int> onSelectedChanged;
 
+  /// Formats search query for tab display with title casing and smart truncation.
+  /// Examples:
+  ///   "magnus carlsen" -> "Magnus Carlsen"
+  ///   "world championship 2024" -> "World Cham…" (truncated gracefully)
+  ///   "HIKARU" -> "Hikaru"
+  String _formatSearchTabTitle(String query, {int maxLength = 12}) {
+    if (query.isEmpty) return query;
+
+    // Apply title case: capitalize first letter of each word
+    final titleCased = query.split(' ').map((word) {
+      if (word.isEmpty) return word;
+      return word[0].toUpperCase() + word.substring(1).toLowerCase();
+    }).join(' ');
+
+    // If it fits, return as-is
+    if (titleCased.length <= maxLength) {
+      return titleCased;
+    }
+
+    // Smart truncation: try to break at word boundary
+    final words = titleCased.split(' ');
+    final buffer = StringBuffer();
+
+    for (int i = 0; i < words.length; i++) {
+      final word = words[i];
+      final separator = i > 0 ? ' ' : '';
+      final potentialLength = buffer.length + separator.length + word.length;
+
+      // If adding this word would exceed limit (leaving room for ellipsis)
+      if (potentialLength > maxLength - 1) {
+        // If we have at least one word, truncate at word boundary
+        if (buffer.isNotEmpty) {
+          return '${buffer.toString().trim()}…';
+        }
+        // First word is too long, truncate mid-word
+        return '${word.substring(0, maxLength - 1)}…';
+      }
+
+      if (i > 0) buffer.write(' ');
+      buffer.write(word);
+    }
+
+    return buffer.toString();
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(searchQueryProvider);  // Watch to trigger rebuilds
@@ -463,11 +508,7 @@ class _SegmentedSwitcher extends ConsumerWidget {
 
     final options = visibleCategories.map((category) {
       if (category == GroupEventCategory.search && searchTabQuery.isNotEmpty) {
-        // Truncate long search queries for tab display
-        final displayQuery = searchTabQuery.length > 12
-            ? '${searchTabQuery.substring(0, 12)}...'
-            : searchTabQuery;
-        return displayQuery;
+        return _formatSearchTabTitle(searchTabQuery);
       }
       return _mappedName[category]!;
     }).toList();
@@ -475,9 +516,7 @@ class _SegmentedSwitcher extends ConsumerWidget {
     final optionLabels = visibleCategories.map((category) {
       String baseLabel;
       if (category == GroupEventCategory.search && searchTabQuery.isNotEmpty) {
-        baseLabel = searchTabQuery.length > 12
-            ? '${searchTabQuery.substring(0, 12)}...'
-            : searchTabQuery;
+        baseLabel = _formatSearchTabTitle(searchTabQuery);
       } else {
         baseLabel = _mappedName[category]!;
       }

@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math' as math;
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:sprung/sprung.dart';
@@ -816,10 +815,13 @@ class _CategoriesColumnState extends State<_CategoriesColumn> {
 
   bool _isDragging = false;
   int _currentIndex = 0;
-  Timer? _scrollTimer;
 
   // Target Y position for motor spring animation
   double _targetY = 0.0;
+
+  // Track if pointer started on the selector
+  bool _pointerStartedOnSelector = false;
+  Offset? _lastPointerPosition;
 
   // Measured dimensions - total item height (including margin) and selector height (excluding margin)
   double _measuredTotalItemHeight = 60.0; // Fallback
@@ -901,21 +903,94 @@ class _CategoriesColumnState extends State<_CategoriesColumn> {
   @override
   void dispose() {
     _scrollController.dispose();
-    _scrollTimer?.cancel();
     super.dispose();
   }
 
-  void _handleDragStart(DragStartDetails details) {
-    HapticFeedbackService.heavy();
-    setState(() {
-      _isDragging = true;
-    });
-    _updateIndexFromPosition(details.globalPosition);
+  /// Check if a global position is within the current selector bounds
+  bool _isOnSelector(Offset globalPosition) {
+    final listBox = _listKey.currentContext?.findRenderObject() as RenderBox?;
+    if (listBox == null) return false;
+
+    final localPos = listBox.globalToLocal(globalPosition);
+    final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+
+    // Calculate selector's current visual position (accounting for scroll)
+    final selectorVisualTop = _targetY - scrollOffset + (_verticalMargin / 2);
+    final selectorVisualBottom = selectorVisualTop + _measuredSelectorHeight;
+
+    // Add some tolerance for easier grabbing
+    const tolerance = 8.0;
+    return localPos.dy >= (selectorVisualTop - tolerance) &&
+           localPos.dy <= (selectorVisualBottom + tolerance);
   }
 
-  void _handleDragUpdate(DragUpdateDetails details) {
-    if (!_isDragging) return;
-    _updateIndexFromPosition(details.globalPosition);
+  void _handlePointerDown(PointerDownEvent event) {
+    _lastPointerPosition = event.position;
+    _pointerStartedOnSelector = _isOnSelector(event.position);
+  }
+
+  void _handlePointerMove(PointerMoveEvent event) {
+    if (_lastPointerPosition == null) return;
+
+    _lastPointerPosition = event.position;
+
+    // Only start dragging if pointer started on the selector
+    if (!_isDragging && _pointerStartedOnSelector) {
+      HapticFeedbackService.heavy();
+      setState(() => _isDragging = true);
+    }
+
+    if (_isDragging) {
+      // Update selector position
+      _updateIndexFromPosition(event.position);
+
+      // Auto-scroll when near edges
+      _handleEdgeScroll(event.position);
+    }
+  }
+
+  void _handleEdgeScroll(Offset globalPosition) {
+    final listBox = _listKey.currentContext?.findRenderObject() as RenderBox?;
+    if (listBox == null || !_scrollController.hasClients) return;
+
+    final localPos = listBox.globalToLocal(globalPosition);
+    final listHeight = listBox.size.height;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+
+    const edgeThreshold = 60.0;
+    const scrollSpeed = 8.0;
+
+    if (localPos.dy < edgeThreshold && _scrollController.offset > 0) {
+      // Near top edge - scroll up
+      final intensity = 1.0 - (localPos.dy / edgeThreshold);
+      final scrollAmount = scrollSpeed * intensity;
+      final newScroll = (_scrollController.offset - scrollAmount).clamp(0.0, maxScroll);
+      _scrollController.jumpTo(newScroll);
+      _updateIndexFromPosition(globalPosition);
+    } else if (localPos.dy > listHeight - edgeThreshold && _scrollController.offset < maxScroll) {
+      // Near bottom edge - scroll down
+      final intensity = 1.0 - ((listHeight - localPos.dy) / edgeThreshold);
+      final scrollAmount = scrollSpeed * intensity;
+      final newScroll = (_scrollController.offset + scrollAmount).clamp(0.0, maxScroll);
+      _scrollController.jumpTo(newScroll);
+      _updateIndexFromPosition(globalPosition);
+    }
+  }
+
+  void _handlePointerUp(PointerUpEvent event) {
+    if (_isDragging && _currentIndex >= 0 && _currentIndex < widget.categories.length) {
+      HapticFeedbackService.medium();
+      widget.onSelect(widget.categories[_currentIndex]);
+    }
+    setState(() => _isDragging = false);
+    _lastPointerPosition = null;
+    _pointerStartedOnSelector = false;
+  }
+
+  void _handlePointerCancel(PointerCancelEvent event) {
+    setState(() => _isDragging = false);
+    _lastPointerPosition = null;
+    _pointerStartedOnSelector = false;
   }
 
   void _updateIndexFromPosition(Offset globalPosition) {
@@ -933,47 +1008,6 @@ class _CategoriesColumnState extends State<_CategoriesColumn> {
       HapticFeedbackService.selection();
       _animateToIndex(newIndex);
     }
-
-    // Auto-scroll when near edges
-    _handleEdgeScroll(localPos.dy, listBox.size.height);
-  }
-
-  void _handleEdgeScroll(double localY, double listHeight) {
-    _scrollTimer?.cancel();
-
-    if (!_scrollController.hasClients) return;
-
-    final maxScroll = _scrollController.position.maxScrollExtent;
-    const edgeThreshold = 50.0;
-
-    if (localY < edgeThreshold && _scrollController.offset > 0) {
-      final speed = ((edgeThreshold - localY) / edgeThreshold) * _totalItemHeight * 0.5;
-      _scrollTimer = Timer.periodic(const Duration(milliseconds: 40), (_) {
-        if (!_scrollController.hasClients) return;
-        final newScroll = (_scrollController.offset - speed).clamp(0.0, maxScroll);
-        _scrollController.jumpTo(newScroll);
-      });
-    } else if (localY > listHeight - edgeThreshold && _scrollController.offset < maxScroll) {
-      final speed = ((localY - (listHeight - edgeThreshold)) / edgeThreshold) * _totalItemHeight * 0.5;
-      _scrollTimer = Timer.periodic(const Duration(milliseconds: 40), (_) {
-        if (!_scrollController.hasClients) return;
-        final newScroll = (_scrollController.offset + speed).clamp(0.0, maxScroll);
-        _scrollController.jumpTo(newScroll);
-      });
-    }
-  }
-
-  void _handleDragEnd(DragEndDetails details) {
-    _scrollTimer?.cancel();
-
-    if (_isDragging && _currentIndex >= 0 && _currentIndex < widget.categories.length) {
-      HapticFeedbackService.medium();
-      widget.onSelect(widget.categories[_currentIndex]);
-    }
-
-    setState(() {
-      _isDragging = false;
-    });
   }
 
   @override
@@ -992,16 +1026,16 @@ class _CategoriesColumnState extends State<_CategoriesColumn> {
             ),
           ),
         ),
-        // Stack for list + floating selection overlay + drag gesture
+        // Stack for list + floating selection overlay - using Listener for raw pointer events
         Expanded(
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onVerticalDragStart: _handleDragStart,
-            onVerticalDragUpdate: _handleDragUpdate,
-            onVerticalDragEnd: _handleDragEnd,
+          child: Listener(
+            onPointerDown: _handlePointerDown,
+            onPointerMove: _handlePointerMove,
+            onPointerUp: _handlePointerUp,
+            onPointerCancel: _handlePointerCancel,
             child: Stack(
               children: [
-                // List of items
+                // List of items - physics disabled only when dragging selector
                 ScrollConfiguration(
                   behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
                   child: ListView.builder(
@@ -1036,39 +1070,39 @@ class _CategoriesColumnState extends State<_CategoriesColumn> {
                     },
                   ),
                 ),
-              // Floating water droplet selection indicator with Motor spring physics
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: ListenableBuilder(
-                    listenable: _scrollController,
-                    builder: (context, _) {
-                      final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+                // Floating water droplet selection indicator with Motor spring physics
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: ListenableBuilder(
+                      listenable: _scrollController,
+                      builder: (context, _) {
+                        final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
 
-                      return SingleMotionBuilder(
-                        motion: _isDragging
-                            ? CupertinoMotion.snappy() // Faster when dragging
-                            : CupertinoMotion.bouncy(), // Bouncier on tap selection
-                        value: _targetY - scrollOffset,
-                        builder: (context, animatedY, _) {
-                          // Add top margin offset so selector starts at content, not at margin
-                          // Item margin is 2.sp on top, so we offset by half the total vertical margin
-                          final selectorY = animatedY + (_verticalMargin / 2);
-                          return CustomPaint(
-                            painter: _DropletSelectionPainter(
-                              y: selectorY,
-                              height: _measuredSelectorHeight,
-                              morphProgress: _isDragging ? 0.5 : 0.0,
-                              isDragging: _isDragging,
-                              baseColor: kPrimaryColor,
-                              horizontalMargin: 8.sp,
-                            ),
-                          );
-                        },
-                      );
-                    },
+                        return SingleMotionBuilder(
+                          motion: _isDragging
+                              ? CupertinoMotion.snappy() // Faster when dragging
+                              : CupertinoMotion.bouncy(), // Bouncier on tap selection
+                          value: _targetY - scrollOffset,
+                          builder: (context, animatedY, _) {
+                            // Add top margin offset so selector starts at content, not at margin
+                            // Item margin is 2.sp on top, so we offset by half the total vertical margin
+                            final selectorY = animatedY + (_verticalMargin / 2);
+                            return CustomPaint(
+                              painter: _DropletSelectionPainter(
+                                y: selectorY,
+                                height: _measuredSelectorHeight,
+                                morphProgress: _isDragging ? 0.5 : 0.0,
+                                isDragging: _isDragging,
+                                baseColor: kPrimaryColor,
+                                horizontalMargin: 8.sp,
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
                   ),
                 ),
-              ),
               ],
             ),
           ),
@@ -1192,10 +1226,13 @@ class _RoundsColumnState extends State<_RoundsColumn> {
 
   bool _isDragging = false;
   int _currentIndex = 0;
-  Timer? _scrollTimer;
 
   // Target Y position for motor spring animation
   double _targetY = 0.0;
+
+  // Track if pointer started on the selector
+  bool _pointerStartedOnSelector = false;
+  Offset? _lastPointerPosition;
 
   // Measured dimensions - total item height (including margin) and selector height (excluding margin)
   double _measuredTotalItemHeight = 52.0; // Fallback
@@ -1277,21 +1314,94 @@ class _RoundsColumnState extends State<_RoundsColumn> {
   @override
   void dispose() {
     _scrollController.dispose();
-    _scrollTimer?.cancel();
     super.dispose();
   }
 
-  void _handleDragStart(DragStartDetails details) {
-    HapticFeedbackService.heavy();
-    setState(() {
-      _isDragging = true;
-    });
-    _updateIndexFromPosition(details.globalPosition);
+  /// Check if a global position is within the current selector bounds
+  bool _isOnSelector(Offset globalPosition) {
+    final listBox = _listKey.currentContext?.findRenderObject() as RenderBox?;
+    if (listBox == null) return false;
+
+    final localPos = listBox.globalToLocal(globalPosition);
+    final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+
+    // Calculate selector's current visual position (accounting for scroll)
+    final selectorVisualTop = _targetY - scrollOffset + (_verticalMargin / 2);
+    final selectorVisualBottom = selectorVisualTop + _measuredSelectorHeight;
+
+    // Add some tolerance for easier grabbing
+    const tolerance = 8.0;
+    return localPos.dy >= (selectorVisualTop - tolerance) &&
+           localPos.dy <= (selectorVisualBottom + tolerance);
   }
 
-  void _handleDragUpdate(DragUpdateDetails details) {
-    if (!_isDragging) return;
-    _updateIndexFromPosition(details.globalPosition);
+  void _handlePointerDown(PointerDownEvent event) {
+    _lastPointerPosition = event.position;
+    _pointerStartedOnSelector = _isOnSelector(event.position);
+  }
+
+  void _handlePointerMove(PointerMoveEvent event) {
+    if (_lastPointerPosition == null) return;
+
+    _lastPointerPosition = event.position;
+
+    // Only start dragging if pointer started on the selector
+    if (!_isDragging && _pointerStartedOnSelector) {
+      HapticFeedbackService.heavy();
+      setState(() => _isDragging = true);
+    }
+
+    if (_isDragging) {
+      // Update selector position
+      _updateIndexFromPosition(event.position);
+
+      // Auto-scroll when near edges
+      _handleEdgeScroll(event.position);
+    }
+  }
+
+  void _handleEdgeScroll(Offset globalPosition) {
+    final listBox = _listKey.currentContext?.findRenderObject() as RenderBox?;
+    if (listBox == null || !_scrollController.hasClients) return;
+
+    final localPos = listBox.globalToLocal(globalPosition);
+    final listHeight = listBox.size.height;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+
+    const edgeThreshold = 60.0;
+    const scrollSpeed = 8.0;
+
+    if (localPos.dy < edgeThreshold && _scrollController.offset > 0) {
+      // Near top edge - scroll up
+      final intensity = 1.0 - (localPos.dy / edgeThreshold);
+      final scrollAmount = scrollSpeed * intensity;
+      final newScroll = (_scrollController.offset - scrollAmount).clamp(0.0, maxScroll);
+      _scrollController.jumpTo(newScroll);
+      _updateIndexFromPosition(globalPosition);
+    } else if (localPos.dy > listHeight - edgeThreshold && _scrollController.offset < maxScroll) {
+      // Near bottom edge - scroll down
+      final intensity = 1.0 - ((listHeight - localPos.dy) / edgeThreshold);
+      final scrollAmount = scrollSpeed * intensity;
+      final newScroll = (_scrollController.offset + scrollAmount).clamp(0.0, maxScroll);
+      _scrollController.jumpTo(newScroll);
+      _updateIndexFromPosition(globalPosition);
+    }
+  }
+
+  void _handlePointerUp(PointerUpEvent event) {
+    if (_isDragging && _currentIndex >= 0 && _currentIndex < widget.rounds.length) {
+      HapticFeedbackService.medium();
+      widget.onSelect(widget.rounds[_currentIndex]);
+    }
+    setState(() => _isDragging = false);
+    _lastPointerPosition = null;
+    _pointerStartedOnSelector = false;
+  }
+
+  void _handlePointerCancel(PointerCancelEvent event) {
+    setState(() => _isDragging = false);
+    _lastPointerPosition = null;
+    _pointerStartedOnSelector = false;
   }
 
   void _updateIndexFromPosition(Offset globalPosition) {
@@ -1309,47 +1419,6 @@ class _RoundsColumnState extends State<_RoundsColumn> {
       HapticFeedbackService.selection();
       _animateToIndex(newIndex);
     }
-
-    // Auto-scroll when near edges
-    _handleEdgeScroll(localPos.dy, listBox.size.height);
-  }
-
-  void _handleEdgeScroll(double localY, double listHeight) {
-    _scrollTimer?.cancel();
-
-    if (!_scrollController.hasClients) return;
-
-    final maxScroll = _scrollController.position.maxScrollExtent;
-    const edgeThreshold = 50.0;
-
-    if (localY < edgeThreshold && _scrollController.offset > 0) {
-      final speed = ((edgeThreshold - localY) / edgeThreshold) * _totalItemHeight * 0.5;
-      _scrollTimer = Timer.periodic(const Duration(milliseconds: 40), (_) {
-        if (!_scrollController.hasClients) return;
-        final newScroll = (_scrollController.offset - speed).clamp(0.0, maxScroll);
-        _scrollController.jumpTo(newScroll);
-      });
-    } else if (localY > listHeight - edgeThreshold && _scrollController.offset < maxScroll) {
-      final speed = ((localY - (listHeight - edgeThreshold)) / edgeThreshold) * _totalItemHeight * 0.5;
-      _scrollTimer = Timer.periodic(const Duration(milliseconds: 40), (_) {
-        if (!_scrollController.hasClients) return;
-        final newScroll = (_scrollController.offset + speed).clamp(0.0, maxScroll);
-        _scrollController.jumpTo(newScroll);
-      });
-    }
-  }
-
-  void _handleDragEnd(DragEndDetails details) {
-    _scrollTimer?.cancel();
-
-    if (_isDragging && _currentIndex >= 0 && _currentIndex < widget.rounds.length) {
-      HapticFeedbackService.medium();
-      widget.onSelect(widget.rounds[_currentIndex]);
-    }
-
-    setState(() {
-      _isDragging = false;
-    });
   }
 
   @override
@@ -1368,16 +1437,16 @@ class _RoundsColumnState extends State<_RoundsColumn> {
             ),
           ),
         ),
-        // Stack for list + floating selection overlay + drag gesture
+        // Stack for list + floating selection overlay - using Listener for raw pointer events
         Expanded(
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onVerticalDragStart: _handleDragStart,
-            onVerticalDragUpdate: _handleDragUpdate,
-            onVerticalDragEnd: _handleDragEnd,
+          child: Listener(
+            onPointerDown: _handlePointerDown,
+            onPointerMove: _handlePointerMove,
+            onPointerUp: _handlePointerUp,
+            onPointerCancel: _handlePointerCancel,
             child: Stack(
               children: [
-                // List of items
+                // List of items - physics disabled only when dragging selector
                 ScrollConfiguration(
                   behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
                   child: ListView.builder(
@@ -1412,39 +1481,39 @@ class _RoundsColumnState extends State<_RoundsColumn> {
                     },
                   ),
                 ),
-              // Floating water droplet selection indicator with Motor spring physics
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: ListenableBuilder(
-                    listenable: _scrollController,
-                    builder: (context, _) {
-                      final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+                // Floating water droplet selection indicator with Motor spring physics
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: ListenableBuilder(
+                      listenable: _scrollController,
+                      builder: (context, _) {
+                        final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
 
-                      return SingleMotionBuilder(
-                        motion: _isDragging
-                            ? CupertinoMotion.snappy() // Faster when dragging
-                            : CupertinoMotion.bouncy(), // Bouncier on tap selection
-                        value: _targetY - scrollOffset,
-                        builder: (context, animatedY, _) {
-                          // Add top margin offset so selector starts at content, not at margin
-                          // Item margin is 2.sp on top, so we offset by half the total vertical margin
-                          final selectorY = animatedY + (_verticalMargin / 2);
-                          return CustomPaint(
-                            painter: _DropletSelectionPainter(
-                              y: selectorY,
-                              height: _measuredSelectorHeight,
-                              morphProgress: _isDragging ? 0.5 : 0.0,
-                              isDragging: _isDragging,
-                              baseColor: kPrimaryColor,
-                              horizontalMargin: 6.sp,
-                            ),
-                          );
-                        },
-                      );
-                    },
+                        return SingleMotionBuilder(
+                          motion: _isDragging
+                              ? CupertinoMotion.snappy() // Faster when dragging
+                              : CupertinoMotion.bouncy(), // Bouncier on tap selection
+                          value: _targetY - scrollOffset,
+                          builder: (context, animatedY, _) {
+                            // Add top margin offset so selector starts at content, not at margin
+                            // Item margin is 2.sp on top, so we offset by half the total vertical margin
+                            final selectorY = animatedY + (_verticalMargin / 2);
+                            return CustomPaint(
+                              painter: _DropletSelectionPainter(
+                                y: selectorY,
+                                height: _measuredSelectorHeight,
+                                morphProgress: _isDragging ? 0.5 : 0.0,
+                                isDragging: _isDragging,
+                                baseColor: kPrimaryColor,
+                                horizontalMargin: 6.sp,
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
                   ),
                 ),
-              ),
               ],
             ),
           ),
