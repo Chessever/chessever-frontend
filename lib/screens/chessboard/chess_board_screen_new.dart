@@ -2183,20 +2183,26 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
   Timer? _scrollTimer;
   void _handleEdgeScroll(double localY, double listHeight) {
     _scrollTimer?.cancel();
-    const edgeThreshold = 40.0;
-    const scrollSpeed = 3.0;
 
-    if (localY < edgeThreshold && _scrollController.hasClients) {
-      _scrollTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
-        if (_scrollController.offset > 0) {
-          _scrollController.jumpTo((_scrollController.offset - scrollSpeed).clamp(0.0, _scrollController.position.maxScrollExtent));
-        }
+    if (!_scrollController.hasClients) return;
+
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    const edgeThreshold = 50.0;
+
+    if (localY < edgeThreshold && _scrollController.offset > 0) {
+      // Variable speed based on distance from edge
+      final speed = ((edgeThreshold - localY) / edgeThreshold) * _totalItemHeight * 0.5;
+      _scrollTimer = Timer.periodic(const Duration(milliseconds: 40), (_) {
+        if (!_scrollController.hasClients) return;
+        final newScroll = (_scrollController.offset - speed).clamp(0.0, maxScroll);
+        _scrollController.jumpTo(newScroll);
       });
-    } else if (localY > listHeight - edgeThreshold && _scrollController.hasClients) {
-      _scrollTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
-        if (_scrollController.offset < _scrollController.position.maxScrollExtent) {
-          _scrollController.jumpTo((_scrollController.offset + scrollSpeed).clamp(0.0, _scrollController.position.maxScrollExtent));
-        }
+    } else if (localY > listHeight - edgeThreshold && _scrollController.offset < maxScroll) {
+      final speed = ((localY - (listHeight - edgeThreshold)) / edgeThreshold) * _totalItemHeight * 0.5;
+      _scrollTimer = Timer.periodic(const Duration(milliseconds: 40), (_) {
+        if (!_scrollController.hasClients) return;
+        final newScroll = (_scrollController.offset + speed).clamp(0.0, maxScroll);
+        _scrollController.jumpTo(newScroll);
       });
     }
   }
