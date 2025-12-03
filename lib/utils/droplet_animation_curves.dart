@@ -67,7 +67,7 @@ class DropletCurves {
 
 /// Physics-based spring curve for droplet animations
 /// Simulates real spring behavior with stiffness, damping, and mass
-/// Enhanced for smoother sub-1.0 and overshooting behavior
+/// Output is clamped to [0, 1] for compatibility with Flutter's animation system
 class _DropletSpringCurve extends Curve {
   final double stiffness;
   final double damping;
@@ -88,16 +88,17 @@ class _DropletSpringCurve extends Curve {
     final omega = math.sqrt(stiffness / mass);
     final zeta = damping / (2 * mass * omega);
 
+    double result;
     if (zeta < 1.0) {
       // Underdamped: creates bounce/overshoot (the droplet effect)
       final omegaD = omega * math.sqrt(1.0 - zeta * zeta);
       final envelope = math.exp(-zeta * omega * t);
       final phase = math.atan2(zeta * omega, omegaD);
-      return 1.0 - envelope * math.cos(omegaD * t + phase) / math.cos(phase);
+      result = 1.0 - envelope * math.cos(omegaD * t + phase) / math.cos(phase);
     } else if (zeta == 1.0) {
       // Critically damped: fastest without overshoot
       final r = omega;
-      return 1.0 - math.exp(-r * t) * (1.0 + r * t);
+      result = 1.0 - math.exp(-r * t) * (1.0 + r * t);
     } else {
       // Overdamped: smooth approach
       final sqrtTerm = math.sqrt(zeta * zeta - 1.0);
@@ -105,8 +106,11 @@ class _DropletSpringCurve extends Curve {
       final r2 = omega * (zeta + sqrtTerm);
       final c1 = r2 / (r2 - r1);
       final c2 = -r1 / (r2 - r1);
-      return 1.0 - (c1 * math.exp(-r1 * t) + c2 * math.exp(-r2 * t));
+      result = 1.0 - (c1 * math.exp(-r1 * t) + c2 * math.exp(-r2 * t));
     }
+
+    // Clamp to [0, 1] to prevent Flutter assertion errors when used with Interval
+    return result.clamp(0.0, 1.0);
   }
 }
 

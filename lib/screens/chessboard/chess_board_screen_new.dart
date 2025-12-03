@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import 'dart:ui';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:skeletonizer/skeletonizer.dart';
-import 'package:chessever2/providers/board_settings_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
@@ -55,7 +54,7 @@ import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/url_launcher_provider.dart';
-import 'package:chessever2/widgets/droplet_dropdown/droplet_dropdown.dart';
+import 'package:motor/motor.dart';
 
 /// Spring-based curve that mimics iOS snappy motion
 /// Quick, precise animation with subtle natural settling
@@ -1486,8 +1485,10 @@ class _AppBarState extends ConsumerState<_AppBar> {
   Widget build(BuildContext context) {
     return AppBar(
       elevation: 0,
+      leadingWidth: 44.sp,
+      titleSpacing: 4.sp,
       leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new, color: kWhiteColor),
+        icon: Icon(Icons.arrow_back_ios_new, color: kWhiteColor, size: 20.sp),
         onPressed: () => Navigator.pop(context, widget.lastViewedIndex),
       ),
       title: _GameSelectionDropdown(
@@ -1497,127 +1498,124 @@ class _AppBarState extends ConsumerState<_AppBar> {
         isLoading: widget.isLoading,
       ),
       actions: [
-        // Event info button - shows event details sheet
+        SizedBox(width: 4.sp),
+        // Event info button
         IconButton(
           icon: Icon(
             Icons.info_outline_rounded,
-            color: kWhiteColor.withValues(alpha: 0.7),
-            size: 22.sp,
+            color: kWhiteColor,
+            size: 20.sp,
           ),
-          padding: EdgeInsets.all(8.sp),
           tooltip: 'Event info',
           onPressed: widget.isLoading ? null : () => _showEventInfoSheet(context, ref),
         ),
-        SizedBox(width: 4.w),
         // Save Analysis button
         IconButton(
           icon: Icon(
             Icons.save_outlined,
             color: kWhiteColor,
-            size: 22.sp,
+            size: 20.sp,
           ),
-          padding: EdgeInsets.all(8.sp),
           tooltip: 'Save analysis',
           onPressed: widget.isLoading ? null : _showSaveAnalysisDialog,
         ),
-        SizedBox(width: 4.w),
-        // Existing 3-dot menu
+        // 3-dot menu
         PopupMenuButton<String>(
-          icon: const Icon(Icons.more_vert, color: kWhiteColor),
+          icon: Icon(Icons.more_vert, color: kWhiteColor, size: 22.sp),
           enabled: !widget.isLoading,
           onSelected: (value) async {
-            if (value == 'share') {
-              shareGameBtnClicked();
-            } else if (value == 'board_settings') {
-              final allowed = await requireFullAuthGuard(context);
-              if (!allowed) return;
-              if (!context.mounted) return;
-              Navigator.of(context).push(ChessBoardSettingsPage.route());
-            } else if (value == 'clear_analysis') {
-              final params = ChessBoardProviderParams(
-                game: widget.game,
-                index: widget.currentGameIndex,
-              );
-              final boardState = ref.read(chessBoardScreenProviderNew(params));
-              final analysisGame = boardState.valueOrNull?.analysisState.game;
-              final hasCustomAnalysis = _gameHasCustomVariations(analysisGame);
-
-              if (!hasCustomAnalysis) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('No custom analysis to clear'),
-                    backgroundColor: Colors.orange,
-                    behavior: SnackBarBehavior.floating,
-                  ),
+              if (value == 'share') {
+                shareGameBtnClicked();
+              } else if (value == 'board_settings') {
+                final allowed = await requireFullAuthGuard(context);
+                if (!allowed) return;
+                if (!context.mounted) return;
+                Navigator.of(context).push(ChessBoardSettingsPage.route());
+              } else if (value == 'clear_analysis') {
+                final params = ChessBoardProviderParams(
+                  game: widget.game,
+                  index: widget.currentGameIndex,
                 );
-                return;
-              }
+                final boardState = ref.read(chessBoardScreenProviderNew(params));
+                final analysisGame = boardState.valueOrNull?.analysisState.game;
+                final hasCustomAnalysis = _gameHasCustomVariations(analysisGame);
 
-              HapticFeedback.selectionClick();
-              final confirmed =
-                  await _showAnalysisConfirmationDialog(
-                    context: context,
-                    title: 'Clear analysis?',
-                    message:
-                        'This will remove every custom branch, including nested subvariants. This action cannot be undone.',
-                    confirmLabel: 'Clear',
-                    confirmColor: kRedColor,
-                  ) ??
-                  false;
-              if (!confirmed) return;
-              HapticFeedback.heavyImpact();
-              final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
-              await notifier.clearUserAnalysis();
-            }
-          },
-          itemBuilder:
-              (context) => [
-                PopupMenuItem(
-                  value: 'board_settings',
-                  child: Row(
-                    children: [
-                      Icon(Icons.settings, color: kWhiteColor),
-                      SizedBox(width: 8.w),
-                      const Text('Board Settings'),
-                    ],
-                  ),
+                if (!hasCustomAnalysis) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('No custom analysis to clear'),
+                      backgroundColor: Colors.orange,
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                  return;
+                }
+
+                HapticFeedback.selectionClick();
+                final confirmed =
+                    await _showAnalysisConfirmationDialog(
+                      context: context,
+                      title: 'Clear analysis?',
+                      message:
+                          'This will remove every custom branch, including nested subvariants. This action cannot be undone.',
+                      confirmLabel: 'Clear',
+                      confirmColor: kRedColor,
+                    ) ??
+                    false;
+                if (!confirmed) return;
+                HapticFeedback.heavyImpact();
+                final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+                await notifier.clearUserAnalysis();
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'board_settings',
+                child: Row(
+                  children: [
+                    Icon(Icons.settings, color: kWhiteColor),
+                    SizedBox(width: 8.w),
+                    const Text('Board Settings'),
+                  ],
                 ),
-                PopupMenuItem(
-                  value: 'share',
-                  child: Row(
-                    children: [
-                      Icon(Icons.share, color: kWhiteColor),
-                      SizedBox(width: 8.w),
-                      const Text('Share Game'),
-                    ],
-                  ),
+              ),
+              PopupMenuItem(
+                value: 'share',
+                child: Row(
+                  children: [
+                    Icon(Icons.share, color: kWhiteColor),
+                    SizedBox(width: 8.w),
+                    const Text('Share Game'),
+                  ],
                 ),
-                PopupMenuItem(
-                  onTap: () {
-                    copyPgnBtnClicked();
-                  },
-                  value: 'copy_pgn',
-                  child: Row(
-                    children: [
-                      Icon(Icons.copy, color: kWhiteColor),
-                      SizedBox(width: 8.w),
-                      const Text('Copy PGN'),
-                    ],
-                  ),
+              ),
+              PopupMenuItem(
+                onTap: () {
+                  copyPgnBtnClicked();
+                },
+                value: 'copy_pgn',
+                child: Row(
+                  children: [
+                    Icon(Icons.copy, color: kWhiteColor),
+                    SizedBox(width: 8.w),
+                    const Text('Copy PGN'),
+                  ],
                 ),
-                const PopupMenuDivider(),
-                PopupMenuItem(
-                  value: 'clear_analysis',
-                  child: Row(
-                    children: [
-                      Icon(Icons.auto_delete_outlined, color: kRedColor),
-                      SizedBox(width: 8.w),
-                      const Text('Clear Analysis', style: TextStyle(color: kRedColor)),
-                    ],
-                  ),
+              ),
+              const PopupMenuDivider(),
+              PopupMenuItem(
+                value: 'clear_analysis',
+                child: Row(
+                  children: [
+                    Icon(Icons.auto_delete_outlined, color: kRedColor),
+                    SizedBox(width: 8.w),
+                    const Text('Clear Analysis', style: TextStyle(color: kRedColor)),
+                  ],
                 ),
-              ],
-        ),
+              ),
+            ],
+          ),
+        SizedBox(width: 4.sp),
       ],
     );
   }
@@ -1655,12 +1653,11 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
     super.initState();
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 350),
+      duration: const Duration(milliseconds: 250),
     );
-    // Smooth deceleration curve - snappy entrance, elegant exit
     _animation = CurvedAnimation(
       parent: _animationController,
-      curve: Curves.easeOutQuart,
+      curve: Curves.easeOutCubic,
       reverseCurve: Curves.easeInCubic,
     );
   }
@@ -1674,12 +1671,8 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
 
   void _removeOverlay() {
     try {
-      if (_overlayEntry?.mounted == true) {
-        _overlayEntry?.remove();
-      }
-    } catch (e) {
-      _overlayEntry?.dispose();
-    }
+      _overlayEntry?.remove();
+    } catch (_) {}
     _overlayEntry = null;
   }
 
@@ -1742,15 +1735,17 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
   }
 
   void _openDropdown() {
-    if (widget.games.length <= 1 || widget.isLoading) return;
+    if (widget.games.length <= 1 || widget.isLoading || _isOpen) return;
 
     HapticFeedback.selectionClick();
     setState(() => _isOpen = true);
-    _animationController.forward();
     _showOverlay();
+    _animationController.forward();
   }
 
   void _closeDropdown() {
+    if (!_isOpen) return;
+
     _animationController.reverse().then((_) {
       if (mounted) {
         setState(() => _isOpen = false);
@@ -1836,13 +1831,13 @@ class _GameChipButton extends StatelessWidget {
   final bool isOpen;
   final bool isLoading;
   final bool showChevron;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   const _GameChipButton({
     required this.label,
     required this.gameStatus,
     required this.isOpen,
-    required this.onTap,
+    this.onTap,
     this.isLoading = false,
     this.showChevron = true,
   });
@@ -1850,18 +1845,17 @@ class _GameChipButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOutCubic,
-        padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 8.sp),
+        padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 6.sp),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(100.br),
-          // Flat solid background
           color: isOpen
               ? kPrimaryColor.withValues(alpha: 0.15)
               : kWhiteColor.withValues(alpha: 0.06),
-          // Clean border
           border: Border.all(
             color: isOpen
                 ? kPrimaryColor.withValues(alpha: 0.4)
@@ -1870,26 +1864,27 @@ class _GameChipButton extends StatelessWidget {
           ),
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisSize: MainAxisSize.max,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             // Status indicator
             _GameStatusIndicator(status: gameStatus, isLoading: isLoading),
-            SizedBox(width: 8.sp),
-            // Game label
+            SizedBox(width: 6.sp),
+            // Game label - centered, flexible to allow truncation
             Flexible(
               child: Text(
                 label,
                 style: AppTypography.textXsMedium.copyWith(
                   color: isOpen ? kPrimaryColor : kWhiteColor,
-                  letterSpacing: 0.2,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
               ),
             ),
             // Chevron
             if (showChevron) ...[
-              SizedBox(width: 6.sp),
+              SizedBox(width: 4.sp),
               AnimatedRotation(
                 turns: isOpen ? 0.5 : 0,
                 duration: const Duration(milliseconds: 250),
@@ -1899,7 +1894,7 @@ class _GameChipButton extends StatelessWidget {
                   color: isOpen
                       ? kPrimaryColor
                       : kWhiteColor.withValues(alpha: 0.7),
-                  size: 18.ic,
+                  size: 16.ic,
                 ),
               ),
             ],
@@ -2048,28 +2043,47 @@ class _GameDropdownOverlay extends StatelessWidget {
       child: Stack(
         children: [
           Positioned.fill(child: Container(color: Colors.transparent)),
-          // Account for AnimatedBlobContainer's internal padding (morphIntensity * 100 + 8)
           Positioned(
-            left: leftOffset - 13, // Offset for blob padding
-            top: triggerOffset.dy + triggerSize.height + 8.sp - 13,
+            left: leftOffset,
+            top: triggerOffset.dy + triggerSize.height + 8.sp,
             child: Material(
               type: MaterialType.transparency,
-              child: AnimatedBlobContainer(
-                isExpanded: animation.value > 0.5,
-                borderRadius: 12.0,
-                borderColor: const Color(0x400FB4E5),
-                backgroundColor: const Color(0xF51A1A1C),
-                borderWidth: 1.0,
-                morphIntensity: 0.05,
-                enableHaptics: false, // Parent handles haptics
-                child: _GameDropdownContent(
-                  dropdownWidth: dropdownWidth,
-                  availableHeight: availableHeight,
-                  animation: animation,
-                  games: games,
-                  currentGameIndex: currentGameIndex,
-                  isLoading: isLoading,
-                  onSelect: onSelect,
+              child: AnimatedBuilder(
+                animation: animation,
+                builder: (context, child) {
+                  final progress = animation.value.clamp(0.0, 1.0);
+                  return Transform.scale(
+                    scale: 0.92 + (progress * 0.08),
+                    alignment: Alignment.topCenter,
+                    child: Opacity(
+                      opacity: progress,
+                      child: child,
+                    ),
+                  );
+                },
+                child: Container(
+                  width: dropdownWidth,
+                  constraints: BoxConstraints(maxHeight: availableHeight.clamp(180.0, 380.0)),
+                  decoration: BoxDecoration(
+                    color: const Color(0xF51A1A1C),
+                    borderRadius: BorderRadius.circular(16.br),
+                    border: Border.all(
+                      color: kPrimaryColor.withValues(alpha: 0.25),
+                      width: 1.0,
+                    ),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16.br),
+                    child: _GameDropdownContent(
+                      dropdownWidth: dropdownWidth,
+                      availableHeight: availableHeight,
+                      animation: animation,
+                      games: games,
+                      currentGameIndex: currentGameIndex,
+                      isLoading: isLoading,
+                      onSelect: onSelect,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -2081,14 +2095,14 @@ class _GameDropdownOverlay extends StatelessWidget {
 }
 
 /// Minimal dropdown content with round section separators
-class _GameDropdownContent extends StatelessWidget {
+class _GameDropdownContent extends StatefulWidget {
   final double dropdownWidth;
   final double availableHeight;
   final Animation<double> animation;
   final List<GamesTourModel> games;
   final int currentGameIndex;
   final bool isLoading;
-  final ValueChanged<int> onSelect; // Uses index for reliable selection
+  final ValueChanged<int> onSelect;
 
   const _GameDropdownContent({
     required this.dropdownWidth,
@@ -2100,73 +2114,373 @@ class _GameDropdownContent extends StatelessWidget {
     required this.onSelect,
   });
 
-  /// Group games by round and build list items with separators
-  List<Widget> _buildGroupedItems() {
-    final items = <Widget>[];
-    String? lastRoundSlug;
-    int animationIndex = 0;
+  @override
+  State<_GameDropdownContent> createState() => _GameDropdownContentState();
+}
 
-    for (int i = 0; i < games.length; i++) {
-      final game = games[i];
-      final roundSlug = game.roundSlug;
+class _GameDropdownContentState extends State<_GameDropdownContent> {
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _listKey = GlobalKey();
+  final List<GlobalKey> _itemKeys = [];
 
-      // Add round separator when round changes
-      if (roundSlug != null && roundSlug != lastRoundSlug) {
-        items.add(
-          _RoundSeparator(
-            roundSlug: roundSlug,
-            isFirst: lastRoundSlug == null,
-            animationIndex: animationIndex,
-            animation: animation,
-          ),
-        );
-        animationIndex++;
-        lastRoundSlug = roundSlug;
-      }
+  bool _isDragging = false;
+  int _currentIndex = 0;
+  double _targetY = 0.0;
 
-      final isSelected = i == currentGameIndex;
-      final capturedIndex = i; // Capture index explicitly for closure
-      items.add(
-        _AnimatedGameItem(
-          index: animationIndex,
-          animation: animation,
-          game: game,
-          gameIndex: capturedIndex,
-          isSelected: isSelected,
-          isLoading: isLoading && isSelected,
-          onTap: () {
-            debugPrint('🎯 Game item tapped: capturedIndex=$capturedIndex, game=${game.whitePlayer.displayName} vs ${game.blackPlayer.displayName}');
-            onSelect(capturedIndex);
-          },
-        ),
-      );
-      animationIndex++;
+  // Item height constants
+  static const double _itemHeight = 36.0;
+  static const double _verticalMargin = 2.0;
+  double get _totalItemHeight => _itemHeight + _verticalMargin;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.currentGameIndex;
+    _targetY = _currentIndex * _totalItemHeight;
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _handleDragStart(DragStartDetails details) {
+    HapticFeedback.heavyImpact();
+    setState(() => _isDragging = true);
+    _updateIndexFromPosition(details.globalPosition);
+  }
+
+  void _handleDragUpdate(DragUpdateDetails details) {
+    if (!_isDragging) return;
+    _updateIndexFromPosition(details.globalPosition);
+  }
+
+  void _updateIndexFromPosition(Offset globalPosition) {
+    final listBox = _listKey.currentContext?.findRenderObject() as RenderBox?;
+    if (listBox == null) return;
+
+    final localPos = listBox.globalToLocal(globalPosition);
+    final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+    final adjustedY = localPos.dy + scrollOffset;
+    final newIndex = (adjustedY / _totalItemHeight).floor().clamp(0, widget.games.length - 1);
+
+    if (newIndex != _currentIndex) {
+      HapticFeedback.selectionClick();
+      _animateToIndex(newIndex);
     }
 
-    return items;
+    _handleEdgeScroll(localPos.dy, listBox.size.height);
+  }
+
+  void _animateToIndex(int index) {
+    setState(() {
+      _currentIndex = index;
+      _targetY = index * _totalItemHeight;
+    });
+  }
+
+  Timer? _scrollTimer;
+  void _handleEdgeScroll(double localY, double listHeight) {
+    _scrollTimer?.cancel();
+    const edgeThreshold = 40.0;
+    const scrollSpeed = 3.0;
+
+    if (localY < edgeThreshold && _scrollController.hasClients) {
+      _scrollTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
+        if (_scrollController.offset > 0) {
+          _scrollController.jumpTo((_scrollController.offset - scrollSpeed).clamp(0.0, _scrollController.position.maxScrollExtent));
+        }
+      });
+    } else if (localY > listHeight - edgeThreshold && _scrollController.hasClients) {
+      _scrollTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
+        if (_scrollController.offset < _scrollController.position.maxScrollExtent) {
+          _scrollController.jumpTo((_scrollController.offset + scrollSpeed).clamp(0.0, _scrollController.position.maxScrollExtent));
+        }
+      });
+    }
+  }
+
+  void _handleDragEnd(DragEndDetails details) {
+    _scrollTimer?.cancel();
+    if (_isDragging && _currentIndex >= 0 && _currentIndex < widget.games.length) {
+      HapticFeedback.mediumImpact();
+      widget.onSelect(_currentIndex);
+    }
+    setState(() => _isDragging = false);
   }
 
   @override
   Widget build(BuildContext context) {
-    final groupedItems = _buildGroupedItems();
+    return Container(
+      width: widget.dropdownWidth,
+      constraints: BoxConstraints(
+        maxHeight: widget.availableHeight.clamp(180.h, 380.h),
+      ),
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onVerticalDragStart: _handleDragStart,
+        onVerticalDragUpdate: _handleDragUpdate,
+        onVerticalDragEnd: _handleDragEnd,
+        child: Stack(
+          children: [
+            // List of games
+            ScrollConfiguration(
+              behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+              child: ListView.builder(
+                key: _listKey,
+                controller: _scrollController,
+                physics: _isDragging ? const NeverScrollableScrollPhysics() : null,
+                padding: EdgeInsets.symmetric(vertical: 6.h),
+                itemCount: widget.games.length,
+                itemBuilder: (context, index) {
+                  final game = widget.games[index];
+                  final isSelected = index == _currentIndex;
 
-    // Note: Border, clipping, and background are handled by parent AnimatedBlobContainer
-    // We only add the backdrop blur and content here
-    return BackdropFilter(
-      filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-      child: Container(
-        width: dropdownWidth,
-        constraints: BoxConstraints(
-          maxHeight: availableHeight.clamp(180.h, 380.h),
-        ),
-        // Flat design - no gradient, transparent container
-        child: ListView(
-          padding: EdgeInsets.symmetric(vertical: 6.h),
-          shrinkWrap: true,
-          children: groupedItems,
+                  while (_itemKeys.length <= index) {
+                    _itemKeys.add(GlobalKey());
+                  }
+
+                  return KeyedSubtree(
+                    key: _itemKeys[index],
+                    child: _GameItemSimple(
+                      index: index,
+                      animation: widget.animation,
+                      game: game,
+                      isSelected: isSelected,
+                      isDragging: _isDragging,
+                      onTap: () {
+                        _animateToIndex(index);
+                        widget.onSelect(index);
+                      },
+                    ),
+                  );
+                },
+              ),
+            ),
+            // Floating water droplet selector
+            Positioned.fill(
+              child: IgnorePointer(
+                child: ListenableBuilder(
+                  listenable: _scrollController,
+                  builder: (context, _) {
+                    final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+
+                    return SingleMotionBuilder(
+                      motion: _isDragging ? CupertinoMotion.snappy() : CupertinoMotion.bouncy(),
+                      value: _targetY - scrollOffset + 6.h, // Account for top padding
+                      builder: (context, animatedY, _) {
+                        return CustomPaint(
+                          painter: _GameSelectorPainter(
+                            y: animatedY,
+                            height: _itemHeight,
+                            isDragging: _isDragging,
+                            baseColor: kPrimaryColor,
+                            horizontalMargin: 6.w,
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
+  }
+}
+
+/// Simple game item - tap handled here, drag handled at list level
+class _GameItemSimple extends StatelessWidget {
+  final int index;
+  final Animation<double> animation;
+  final GamesTourModel game;
+  final bool isSelected;
+  final bool isDragging;
+  final VoidCallback onTap;
+
+  const _GameItemSimple({
+    required this.index,
+    required this.animation,
+    required this.game,
+    required this.isSelected,
+    required this.isDragging,
+    required this.onTap,
+  });
+
+  String _extractLastName(String fullName) {
+    final name = fullName.trim();
+    if (name.isEmpty) return fullName;
+    if (name.contains(',')) {
+      final lastName = name.split(',').first.trim();
+      if (lastName.isNotEmpty) return lastName;
+    }
+    const suffixes = {'jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv', 'v', '2nd', '3rd', '4th', '5th'};
+    final parts = name.split(' ').where((p) => p.isNotEmpty).toList();
+    if (parts.isEmpty) return fullName;
+    if (parts.length == 1) return parts.first;
+    for (int i = parts.length - 1; i >= 0; i--) {
+      if (!suffixes.contains(parts[i].toLowerCase())) return parts[i];
+    }
+    return parts.last;
+  }
+
+  String _getResultText() {
+    switch (game.gameStatus) {
+      case GameStatus.whiteWins: return '1–0';
+      case GameStatus.blackWins: return '0–1';
+      case GameStatus.draw: return '½–½';
+      case GameStatus.ongoing: return '';
+      case GameStatus.unknown: return '';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final itemDelay = index * 0.05;
+    final itemAnimation = CurvedAnimation(
+      parent: animation,
+      curve: Interval(
+        itemDelay.clamp(0.0, 0.4),
+        (itemDelay + 0.5).clamp(0.0, 1.0),
+        curve: Curves.easeOutCubic,
+      ),
+    );
+
+    final isLive = game.gameStatus == GameStatus.ongoing;
+    final resultText = _getResultText();
+    final whiteName = _extractLastName(game.whitePlayer.displayName);
+    final blackName = _extractLastName(game.blackPlayer.displayName);
+
+    return AnimatedBuilder(
+      animation: itemAnimation,
+      builder: (context, child) {
+        final clampedValue = itemAnimation.value.clamp(0.0, 1.0);
+        return Transform.translate(
+          offset: Offset(0, 10 * (1 - clampedValue)),
+          child: Opacity(opacity: clampedValue, child: child),
+        );
+      },
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          height: 36.0,
+          margin: EdgeInsets.symmetric(horizontal: 6.w, vertical: 1.h),
+          padding: EdgeInsets.symmetric(horizontal: 10.w),
+          child: Row(
+          children: [
+            // Live indicator
+            SizedBox(
+              width: 14.w,
+              child: isLive
+                  ? Container(
+                      width: 6.w,
+                      height: 6.h,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: kPrimaryColor,
+                      ),
+                    )
+                  : null,
+            ),
+            // White player
+            Expanded(
+              child: Text(
+                whiteName,
+                style: AppTypography.textXsMedium.copyWith(
+                  color: isSelected ? kPrimaryColor : kWhiteColor.withValues(alpha: 0.9),
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            // Result
+            Container(
+              width: 36.w,
+              alignment: Alignment.center,
+              child: resultText.isNotEmpty
+                  ? Text(
+                      resultText,
+                      style: AppTypography.textXxsMedium.copyWith(
+                        color: kWhiteColor.withValues(alpha: 0.5),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    )
+                  : Text(
+                      'vs',
+                      style: AppTypography.textXxsRegular.copyWith(
+                        color: kWhiteColor.withValues(alpha: 0.35),
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+            ),
+            // Black player
+            Expanded(
+              child: Text(
+                blackName,
+                style: AppTypography.textXsMedium.copyWith(
+                  color: isSelected ? kPrimaryColor : kWhiteColor.withValues(alpha: 0.9),
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                ),
+                textAlign: TextAlign.right,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Painter for the floating game selector
+class _GameSelectorPainter extends CustomPainter {
+  final double y;
+  final double height;
+  final bool isDragging;
+  final Color baseColor;
+  final double horizontalMargin;
+
+  _GameSelectorPainter({
+    required this.y,
+    required this.height,
+    required this.isDragging,
+    required this.baseColor,
+    required this.horizontalMargin,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(horizontalMargin, y, size.width - horizontalMargin * 2, height),
+      const Radius.circular(8),
+    );
+
+    // Fill
+    final fillPaint = Paint()
+      ..color = baseColor.withValues(alpha: isDragging ? 0.15 : 0.1)
+      ..style = PaintingStyle.fill;
+    canvas.drawRRect(rect, fillPaint);
+
+    // Border
+    final borderPaint = Paint()
+      ..color = baseColor.withValues(alpha: isDragging ? 0.4 : 0.25)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+    canvas.drawRRect(rect, borderPaint);
+  }
+
+  @override
+  bool shouldRepaint(_GameSelectorPainter oldDelegate) {
+    return y != oldDelegate.y ||
+        height != oldDelegate.height ||
+        isDragging != oldDelegate.isDragging;
   }
 }
 
@@ -7608,7 +7922,9 @@ class _EventInfoSheet extends ConsumerWidget {
         _EventInfoRow(
           icon: Icons.format_list_numbered_rounded,
           label: 'Round',
-          value: game.roundSlug ?? game.roundDisplayName,
+          value: game.roundSlug != null
+              ? StringUtils.formatRoundLabel(game.roundSlug)
+              : game.roundDisplayName,
         ),
         SizedBox(height: 12.h),
         // Board number
@@ -7754,7 +8070,9 @@ class _EventInfoSheet extends ConsumerWidget {
         _EventInfoRow(
           icon: Icons.format_list_numbered_rounded,
           label: 'Round',
-          value: game.roundSlug ?? game.roundDisplayName,
+          value: game.roundSlug != null
+              ? StringUtils.formatRoundLabel(game.roundSlug)
+              : game.roundDisplayName,
         ),
         SizedBox(height: 12.h),
         // Board number
@@ -7781,7 +8099,7 @@ class _EventInfoSheet extends ConsumerWidget {
           _EventInfoRow(
             icon: Icons.access_time_rounded,
             label: 'Time Control',
-            value: aboutModel.timeControl,
+            value: StringUtils.capitalizeWords(aboutModel.timeControl),
           ),
           SizedBox(height: 12.h),
         ],
