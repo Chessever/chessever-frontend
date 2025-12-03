@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:screenshot/screenshot.dart';
@@ -108,6 +109,8 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     }
   }
 
+  String get _gameUrl => 'https://chessever.com/games/${widget.gameId}';
+
   Future<void> _shareImage() async {
     final imageBytes = await _captureCard();
     if (imageBytes == null) {
@@ -124,12 +127,36 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       // Use minimal rect instead of calculating from context
       await Share.shareXFiles(
         [XFile(file.path)],
-        text: 'Check out this chess game on ChessEver!',
+        text: 'Check out this chess game on ChessEver!\n$_gameUrl',
         sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
       );
     } catch (e) {
       debugPrint('Error sharing: $e');
       _showMessage('Failed to share image', isError: true);
+    }
+  }
+
+  Future<void> _shareLink() async {
+    try {
+      await Share.share(
+        _gameUrl,
+        subject: 'Check out this chess game on ChessEver!',
+        sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+      );
+    } catch (e) {
+      debugPrint('Error sharing link: $e');
+      _showMessage('Failed to share link', isError: true);
+    }
+  }
+
+  Future<void> _copyLink() async {
+    try {
+      await Clipboard.setData(ClipboardData(text: _gameUrl));
+      HapticFeedback.lightImpact();
+      _showMessage('Link copied to clipboard!', isError: false);
+    } catch (e) {
+      debugPrint('Error copying link: $e');
+      _showMessage('Failed to copy link', isError: true);
     }
   }
 
@@ -279,63 +306,121 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                       strokeWidth: 2,
                     )
                   else
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          child: Padding(
-                            padding: EdgeInsets.only(left: 40.w),
-                            child: ElevatedButton.icon(
-                              onPressed: _downloadImage,
-                              icon: Icon(Icons.download, size: 20.sp),
-                              label: Text(
-                                'Download',
-                                style: TextStyle(
-                                  fontSize: 14.sp,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: kBlack2Color,
-                                foregroundColor: kWhiteColor,
-                                padding: EdgeInsets.symmetric(vertical: 12.h),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10.br),
-                                  side: BorderSide(
-                                    color: kWhiteColor70,
-                                    width: 1,
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 40.w),
+                      child: Column(
+                        children: [
+                          // First row: Share Image + Download
+                          Row(
+                            children: [
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: _shareImage,
+                                  icon: Icon(Icons.image, size: 18.sp),
+                                  label: Text(
+                                    'Share Image',
+                                    style: TextStyle(
+                                      fontSize: 13.sp,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: kPrimaryColor,
+                                    foregroundColor: kWhiteColor,
+                                    padding: EdgeInsets.symmetric(vertical: 12.h),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10.br),
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ),
-                        ),
-                        SizedBox(width: 16.w),
-                        Expanded(
-                          child: Padding(
-                            padding: EdgeInsets.only(right: 40.w),
-                            child: ElevatedButton.icon(
-                              onPressed: _shareImage,
-                              icon: Icon(Icons.share, size: 20.sp),
-                              label: Text(
-                                'Share',
-                                style: TextStyle(
-                                  fontSize: 14.sp,
-                                  fontWeight: FontWeight.w600,
+                              SizedBox(width: 12.w),
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: _downloadImage,
+                                  icon: Icon(Icons.download, size: 18.sp),
+                                  label: Text(
+                                    'Download',
+                                    style: TextStyle(
+                                      fontSize: 13.sp,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: kBlack2Color,
+                                    foregroundColor: kWhiteColor,
+                                    padding: EdgeInsets.symmetric(vertical: 12.h),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10.br),
+                                      side: BorderSide(
+                                        color: kWhiteColor70,
+                                        width: 1,
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: kPrimaryColor,
-                                foregroundColor: kWhiteColor,
-                                padding: EdgeInsets.symmetric(vertical: 12.h),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10.br),
+                            ],
+                          ),
+                          SizedBox(height: 10.h),
+                          // Second row: Share Link + Copy Link
+                          Row(
+                            children: [
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: _shareLink,
+                                  icon: Icon(Icons.link, size: 18.sp),
+                                  label: Text(
+                                    'Share Link',
+                                    style: TextStyle(
+                                      fontSize: 13.sp,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: kBlack2Color,
+                                    foregroundColor: kWhiteColor,
+                                    padding: EdgeInsets.symmetric(vertical: 12.h),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10.br),
+                                      side: BorderSide(
+                                        color: kWhiteColor70,
+                                        width: 1,
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
+                              SizedBox(width: 12.w),
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: _copyLink,
+                                  icon: Icon(Icons.copy, size: 18.sp),
+                                  label: Text(
+                                    'Copy Link',
+                                    style: TextStyle(
+                                      fontSize: 13.sp,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: kBlack2Color,
+                                    foregroundColor: kWhiteColor,
+                                    padding: EdgeInsets.symmetric(vertical: 12.h),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10.br),
+                                      side: BorderSide(
+                                        color: kWhiteColor70,
+                                        width: 1,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ).animate().fadeIn(delay: 200.ms, duration: 300.ms),
                 ],
               ),

@@ -103,6 +103,12 @@ class SearchGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       return;
     }
 
+    // Immediately show loading state to avoid "No Games Found" flash
+    // This prevents the empty state from showing during debounce
+    if (!state.isLoading) {
+      state = const AsyncValue.loading();
+    }
+
     // Debounce rapid typing
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 400), () async {

@@ -8,6 +8,10 @@ final lichessFideRepoProvider = Provider<LichessFideRepository>(
   (ref) => LichessFideRepository(),
 );
 
+/// User-Agent header for Lichess API requests
+/// Required by Lichess to identify API consumers and coordinate breaking changes
+const _lichessUserAgent = 'chessever.com';
+
 class LichessFideRepository {
   final String baseUrl = 'https://lichess.org/api/fide';
 
@@ -18,7 +22,10 @@ class LichessFideRepository {
       final uri = Uri.parse('$baseUrl/player/$fideId');
       print('🌐 Lichess FIDE: Requesting player $fideId from $uri');
 
-      final resp = await http.get(uri).timeout(
+      final resp = await http.get(
+        uri,
+        headers: {'User-Agent': _lichessUserAgent},
+      ).timeout(
         const Duration(seconds: 5),
         onTimeout: () {
           print('⏱️ Lichess FIDE: Request timeout after 5 seconds');
@@ -58,7 +65,10 @@ class LichessFideRepository {
       final uri = Uri.parse('$baseUrl/player?q=${Uri.encodeComponent(name)}');
       print('🌐 Lichess FIDE: Searching players matching "$name"');
 
-      final resp = await http.get(uri).timeout(
+      final resp = await http.get(
+        uri,
+        headers: {'User-Agent': _lichessUserAgent},
+      ).timeout(
         const Duration(seconds: 5),
         onTimeout: () {
           print('⏱️ Lichess FIDE: Search timeout after 5 seconds');

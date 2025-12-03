@@ -48,7 +48,14 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 // import 'package:chessever2/widgets/smooth_dialog.dart'; // UNUSED: Removed with old dialog
 import 'package:smooth_sheets/smooth_sheets.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:country_flags/country_flags.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
+import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
+import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
+import 'package:chessever2/utils/location_service_provider.dart';
+import 'package:chessever2/utils/url_launcher_provider.dart';
+import 'package:chessever2/widgets/droplet_dropdown/droplet_dropdown.dart';
 
 /// Spring-based curve that mimics iOS snappy motion
 /// Quick, precise animation with subtle natural settling
@@ -1466,6 +1473,15 @@ class _AppBarState extends ConsumerState<_AppBar> {
     }
   }
 
+  void _showEventInfoSheet(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _EventInfoSheet(game: widget.game),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AppBar(
@@ -1481,37 +1497,16 @@ class _AppBarState extends ConsumerState<_AppBar> {
         isLoading: widget.isLoading,
       ),
       actions: [
-        // Show Threats toggle button - reads state from provider
-        Builder(
-          builder: (context) {
-            final params = ChessBoardProviderParams(
-              game: widget.game,
-              index: widget.currentGameIndex,
-            );
-            final isThreatsMode = ref.watch(
-              chessBoardScreenProviderNew(params).select(
-                (state) => state.value?.isThreatsMode ?? false,
-              ),
-            );
-            return IconButton(
-              icon: Icon(
-                Icons.gps_fixed,
-                color: isThreatsMode
-                    ? Colors.red
-                    : kWhiteColor.withValues(alpha: 0.5),
-                size: 22.sp,
-              ),
-              padding: EdgeInsets.all(8.sp),
-              tooltip: isThreatsMode ? 'Hide threats' : 'Show threats',
-              onPressed: widget.isLoading
-                  ? null
-                  : () {
-                      ref
-                          .read(chessBoardScreenProviderNew(params).notifier)
-                          .toggleThreatsMode();
-                    },
-            );
-          },
+        // Event info button - shows event details sheet
+        IconButton(
+          icon: Icon(
+            Icons.info_outline_rounded,
+            color: kWhiteColor.withValues(alpha: 0.7),
+            size: 22.sp,
+          ),
+          padding: EdgeInsets.all(8.sp),
+          tooltip: 'Event info',
+          onPressed: widget.isLoading ? null : () => _showEventInfoSheet(context, ref),
         ),
         SizedBox(width: 4.w),
         // Save Analysis button
@@ -1533,10 +1528,6 @@ class _AppBarState extends ConsumerState<_AppBar> {
           onSelected: (value) async {
             if (value == 'share') {
               shareGameBtnClicked();
-            } else if (value == 'share_link') {
-              final gameId = widget.game.gameId;
-              final url = 'https://chessever.com/games/$gameId';
-              await Share.share(url, subject: 'Check out this chess game on ChessEver!');
             } else if (value == 'board_settings') {
               final allowed = await requireFullAuthGuard(context);
               if (!allowed) return;
@@ -1598,16 +1589,6 @@ class _AppBarState extends ConsumerState<_AppBar> {
                       Icon(Icons.share, color: kWhiteColor),
                       SizedBox(width: 8.w),
                       const Text('Share Game'),
-                    ],
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'share_link',
-                  child: Row(
-                    children: [
-                      Icon(Icons.link, color: kWhiteColor),
-                      SizedBox(width: 8.w),
-                      const Text('Share Link'),
                     ],
                   ),
                 ),
@@ -1876,34 +1857,17 @@ class _GameChipButton extends StatelessWidget {
         padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 8.sp),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(100.br),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: isOpen
-                ? [
-                    kPrimaryColor.withValues(alpha: 0.2),
-                    kPrimaryColor.withValues(alpha: 0.08),
-                  ]
-                : [
-                    kWhiteColor.withValues(alpha: 0.08),
-                    kWhiteColor.withValues(alpha: 0.04),
-                  ],
-          ),
+          // Flat solid background
+          color: isOpen
+              ? kPrimaryColor.withValues(alpha: 0.15)
+              : kWhiteColor.withValues(alpha: 0.06),
+          // Clean border
           border: Border.all(
             color: isOpen
-                ? kPrimaryColor.withValues(alpha: 0.5)
-                : kWhiteColor.withValues(alpha: 0.15),
-            width: 1.2,
+                ? kPrimaryColor.withValues(alpha: 0.4)
+                : kWhiteColor.withValues(alpha: 0.12),
+            width: 1.0,
           ),
-          boxShadow: isOpen
-              ? [
-                  BoxShadow(
-                    color: kPrimaryColor.withValues(alpha: 0.2),
-                    blurRadius: 12.sp,
-                    spreadRadius: 0,
-                  ),
-                ]
-              : null,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1978,15 +1942,7 @@ class _GameStatusIndicator extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: color,
-        boxShadow: isLive
-            ? [
-                BoxShadow(
-                  color: color.withValues(alpha: 0.6),
-                  blurRadius: 6.sp,
-                  spreadRadius: 1.sp,
-                ),
-              ]
-            : null,
+        // Flat design - no glow/shadow
       ),
       child: isLive ? _LivePulsingDot(color: color) : null,
     );
@@ -2092,24 +2048,20 @@ class _GameDropdownOverlay extends StatelessWidget {
       child: Stack(
         children: [
           Positioned.fill(child: Container(color: Colors.transparent)),
+          // Account for AnimatedBlobContainer's internal padding (morphIntensity * 100 + 8)
           Positioned(
-            left: leftOffset,
-            top: triggerOffset.dy + triggerSize.height + 8.sp,
+            left: leftOffset - 13, // Offset for blob padding
+            top: triggerOffset.dy + triggerSize.height + 8.sp - 13,
             child: Material(
               type: MaterialType.transparency,
-              child: AnimatedBuilder(
-                animation: animation,
-                builder: (context, child) {
-                  final clampedValue = animation.value.clamp(0.0, 1.0);
-                  return Transform.scale(
-                    scale: 0.92 + (clampedValue * 0.08),
-                    alignment: Alignment.topCenter,
-                    child: Opacity(
-                      opacity: clampedValue,
-                      child: child,
-                    ),
-                  );
-                },
+              child: AnimatedBlobContainer(
+                isExpanded: animation.value > 0.5,
+                borderRadius: 12.0,
+                borderColor: const Color(0x400FB4E5),
+                backgroundColor: const Color(0xF51A1A1C),
+                borderWidth: 1.0,
+                morphIntensity: 0.05,
+                enableHaptics: false, // Parent handles haptics
                 child: _GameDropdownContent(
                   dropdownWidth: dropdownWidth,
                   availableHeight: availableHeight,
@@ -2198,40 +2150,20 @@ class _GameDropdownContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final groupedItems = _buildGroupedItems();
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12.br),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          width: dropdownWidth,
-          constraints: BoxConstraints(
-            maxHeight: availableHeight.clamp(180.h, 380.h),
-          ),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1A1A1A).withValues(alpha: 0.95),
-            borderRadius: BorderRadius.circular(12.br),
-            border: Border.all(
-              color: kWhiteColor.withValues(alpha: 0.06),
-              width: 0.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.4),
-                blurRadius: 24,
-                offset: const Offset(0, 8),
-              ),
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.2),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: ListView(
-            padding: EdgeInsets.symmetric(vertical: 6.h),
-            shrinkWrap: true,
-            children: groupedItems,
-          ),
+    // Note: Border, clipping, and background are handled by parent AnimatedBlobContainer
+    // We only add the backdrop blur and content here
+    return BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+      child: Container(
+        width: dropdownWidth,
+        constraints: BoxConstraints(
+          maxHeight: availableHeight.clamp(180.h, 380.h),
+        ),
+        // Flat design - no gradient, transparent container
+        child: ListView(
+          padding: EdgeInsets.symmetric(vertical: 6.h),
+          shrinkWrap: true,
+          children: groupedItems,
         ),
       ),
     );
@@ -3640,6 +3572,42 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           ),
         ),
       );
+    } else if (token.type == _NotationTokenType.openParen && token.variation != null) {
+      // Opening paren with +/- toggle button
+      final isCollapsed = token.isCollapsed;
+      child = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Minimal +/- toggle button
+          Container(
+            width: 14.sp,
+            height: 14.sp,
+            margin: EdgeInsets.only(right: 2.sp),
+            decoration: BoxDecoration(
+              color: depthColor.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(3.sp),
+            ),
+            child: Center(
+              child: Text(
+                isCollapsed ? '+' : '−',
+                style: TextStyle(
+                  fontSize: 11.sp,
+                  fontWeight: FontWeight.w600,
+                  color: depthColor.withValues(alpha: 0.8),
+                  height: 1,
+                ),
+              ),
+            ),
+          ),
+          Text(
+            token.text,
+            style: AppTypography.textXsMedium.copyWith(
+              color: depthColor.withValues(alpha: 0.85),
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
+      );
     } else {
       child = Text(
         token.text,
@@ -3678,6 +3646,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     );
   }
 
+  /// Compact inline comment display - italic text with accent color
   Widget _buildVariationCommentChip(
     _NotationDisplayToken token,
     ChessBoardProviderParams params,
@@ -3695,7 +3664,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
     final displayText =
         (isLong && !isExpanded)
-            ? '${fullText.substring(0, _variationCommentPreviewChars).trimRight()}...'
+            ? '${fullText.substring(0, _variationCommentPreviewChars).trimRight()}…'
             : fullText;
 
     final depth = token.depth;
@@ -3704,106 +3673,40 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       seed: token.variationColorKey ?? token.variation?.id,
     );
 
-    return Container(
-      margin: EdgeInsets.symmetric(vertical: 4.sp, horizontal: 2.sp),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8.sp),
-        boxShadow: [
-          BoxShadow(
-            color: accentColor.withValues(alpha: 0.15),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Material(
-        color: kBlack2Color.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(8.sp),
-        child: InkWell(
-          onTap: () {
-            HapticFeedback.lightImpact();
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 4.sp, vertical: 2.sp),
+      child: GestureDetector(
+        onTap: () {
+          HapticFeedback.lightImpact();
+          if (isLong) {
+            _toggleCommentExpansion(id, isExpanded);
+          } else {
             _editNotationComment(token, params, fullText);
-          },
-          onLongPress: () {
-            HapticFeedback.mediumImpact();
-            _editNotationComment(token, params, fullText);
-          },
-          borderRadius: BorderRadius.circular(8.sp),
-          splashColor: accentColor.withValues(alpha: 0.15),
-          highlightColor: accentColor.withValues(alpha: 0.08),
-          child: Container(
-            width: double.infinity,
-            padding: EdgeInsets.all(8.sp),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8.sp),
-              border: Border.all(
-                color: accentColor.withValues(alpha: 0.3),
-                width: 1,
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        displayText,
-                        style: AppTypography.textSmRegular.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.9),
-                          height: 1.4,
-                        ),
-                      ),
-                    ),
-                    Icon(
-                      Icons.edit_note_rounded,
-                      size: 16.sp,
-                      color: accentColor.withValues(alpha: 0.5),
-                    ),
-                  ],
+          }
+        },
+        onLongPress: () {
+          HapticFeedback.mediumImpact();
+          _editNotationComment(token, params, fullText);
+        },
+        child: Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(
+                text: displayText,
+                style: AppTypography.textSmRegular.copyWith(
+                  color: accentColor.withValues(alpha: 0.7),
+                  fontStyle: FontStyle.italic,
+                  height: 1.4,
                 ),
-                if (isLong)
-                  Padding(
-                    padding: EdgeInsets.only(top: 6.sp),
-                    child: InkWell(
-                      onTap: () {
-                        HapticFeedback.selectionClick();
-                        _toggleCommentExpansion(id, isExpanded);
-                      },
-                      borderRadius: BorderRadius.circular(4.sp),
-                      child: Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 6.sp,
-                          vertical: 2.sp,
-                        ),
-                        decoration: BoxDecoration(
-                          color: accentColor.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(4.sp),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              isExpanded ? 'Show less' : 'Read more',
-                              style: AppTypography.textXsMedium.copyWith(
-                                color: accentColor,
-                              ),
-                            ),
-                            SizedBox(width: 4.w),
-                            Icon(
-                              isExpanded
-                                  ? Icons.expand_less_rounded
-                                  : Icons.expand_more_rounded,
-                              size: 14.sp,
-                              color: accentColor,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+              ),
+              if (isLong)
+                TextSpan(
+                  text: isExpanded ? ' ▲' : ' ▼',
+                  style: AppTypography.textXsRegular.copyWith(
+                    color: accentColor.withValues(alpha: 0.5),
                   ),
-              ],
-            ),
+                ),
+            ],
           ),
         ),
       ),
@@ -4870,19 +4773,18 @@ class _AnalysisActionButtons extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(chessBoardScreenProviderNew(params)).valueOrNull;
-    final analysisGame = state?.analysisState.game;
-    final canInsertNullMove = analysisGame != null;
+    final isThreatsMode = state?.isThreatsMode ?? false;
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
+        // Add comment button
         _RibbonAnalysisButton(
           icon: Icons.add_comment_outlined,
           color: kWhiteColor,
           enabled: true,
-          iconAlpha: 0.9,
           onPressed: () async {
             final pointer = state?.analysisState.movePointer;
             if (pointer == null || pointer.isEmpty) {
@@ -4926,21 +4828,16 @@ class _AnalysisActionButtons extends ConsumerWidget {
           },
         ),
         SizedBox(height: 12.sp),
+        // Show Threats toggle button - greyish when inactive, red when active
         _RibbonAnalysisButton(
-          icon: Icons.filter_center_focus_rounded,
-          color: kPrimaryColor,
-          alphaTop: 0.20,
-          alphaBottom: 0.15,
-          shadowAlpha: 0.12,
-          iconAlpha: 0.7,
-          enabled: canInsertNullMove,
-          onPressed:
-              canInsertNullMove
-                  ? () {
-                    HapticFeedback.mediumImpact();
-                    notifier.insertNullMoveAfterCurrent();
-                  }
-                  : null,
+          icon: Icons.gps_fixed,
+          color: isThreatsMode ? Colors.red : kWhiteColor,
+          isActive: isThreatsMode,
+          enabled: true,
+          onPressed: () {
+            HapticFeedback.mediumImpact();
+            notifier.toggleThreatsMode();
+          },
         ),
       ],
     );
@@ -4952,20 +4849,14 @@ class _RibbonAnalysisButton extends StatefulWidget {
   final IconData icon;
   final Color color;
   final bool enabled;
-  final double? alphaTop;
-  final double? alphaBottom;
-  final double? shadowAlpha;
-  final double? iconAlpha;
+  final bool isActive;
 
   const _RibbonAnalysisButton({
     required this.icon,
     required this.color,
     this.onPressed,
     this.enabled = true,
-    this.alphaTop,
-    this.alphaBottom,
-    this.shadowAlpha,
-    this.iconAlpha,
+    this.isActive = false,
   });
 
   @override
@@ -4979,14 +4870,9 @@ class _RibbonAnalysisButtonState extends State<_RibbonAnalysisButton> {
   Widget build(BuildContext context) {
     final effectiveOnTap = widget.enabled ? widget.onPressed : null;
 
-    // Use provided alpha or defaults
-    final alphaTop = widget.alphaTop ?? 0.35;
-    final alphaBottom = widget.alphaBottom ?? 0.25;
-    final shadowAlpha = widget.shadowAlpha ?? 0.2;
-    final iconAlpha = widget.iconAlpha ?? 0.7;
-
-    // Brighten when pressed
-    final pressMultiplier = _isPressed ? 1.5 : 1.0;
+    // Simple greyish style - no gradients, minimal shadows
+    final bgAlpha = _isPressed ? 0.25 : 0.15;
+    final iconAlpha = widget.isActive ? 1.0 : (_isPressed ? 0.8 : 0.6);
 
     return GestureDetector(
       onTapDown:
@@ -5015,44 +4901,22 @@ class _RibbonAnalysisButtonState extends State<_RibbonAnalysisButton> {
           alignment: Alignment.center,
           padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 9.sp),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                widget.color.withValues(
-                  alpha: (alphaTop * pressMultiplier).clamp(0.0, 1.0),
-                ),
-                widget.color.withValues(
-                  alpha: (alphaBottom * pressMultiplier).clamp(0.0, 1.0),
-                ),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+            color: kWhiteColor.withValues(alpha: bgAlpha),
             borderRadius: BorderRadius.only(
               topLeft: Radius.circular(14.sp),
               bottomLeft: Radius.circular(14.sp),
               topRight: Radius.circular(6.sp),
               bottomRight: Radius.circular(6.sp),
             ),
-            boxShadow: [
-              BoxShadow(
-                color: widget.color.withValues(
-                  alpha: (shadowAlpha * pressMultiplier).clamp(0.0, 1.0),
-                ),
-                blurRadius: 12,
-                offset: const Offset(0, 6),
-              ),
-            ],
             border: Border.all(
-              color: kWhiteColor.withValues(alpha: 0.25),
-              width: 0.8,
+              color: kWhiteColor.withValues(alpha: 0.1),
+              width: 0.5,
             ),
           ),
           child: Icon(
             widget.icon,
             size: 18.sp,
-            color: kWhiteColor.withValues(
-              alpha: (iconAlpha * pressMultiplier).clamp(0.0, 1.0),
-            ),
+            color: widget.color.withValues(alpha: iconAlpha),
           ),
         ),
       ),
@@ -7643,3 +7507,443 @@ class _CommentDialogState extends ConsumerState<_CommentDialog>
 }
 */
 // End of deprecated _CommentDialog class
+
+/// Provider to fetch tour info by tour ID - used by the event info sheet
+final _tourInfoByIdProvider = FutureProvider.autoDispose.family<AboutTourModel?, String>((ref, tourId) async {
+  if (tourId.isEmpty) return null;
+
+  try {
+    final tours = await ref.read(tourRepositoryProvider).getToursByIds([tourId]);
+    if (tours.isNotEmpty) {
+      return AboutTourModel.fromTour(tours.first);
+    }
+  } catch (e) {
+    debugPrint('Failed to fetch tour info for $tourId: $e');
+  }
+  return null;
+});
+
+/// Event info sheet - displays tournament/event details
+class _EventInfoSheet extends ConsumerWidget {
+  final GamesTourModel game;
+
+  const _EventInfoSheet({required this.game});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // First try tourDetailScreenProvider (works when navigating from tour detail)
+    final tourDetail = ref.watch(tourDetailScreenProvider);
+    final tourDetailAboutModel = tourDetail.valueOrNull?.aboutTourModel;
+
+    // If tourDetailScreenProvider doesn't have data, fetch independently by tourId
+    final tourInfoAsync = ref.watch(_tourInfoByIdProvider(game.tourId));
+
+    // Use tourDetailAboutModel if available, otherwise use fetched tourInfo
+    final aboutModel = tourDetailAboutModel?.id.isNotEmpty == true
+        ? tourDetailAboutModel
+        : tourInfoAsync.valueOrNull;
+
+    // Check if we're still loading
+    final isLoading = (tourDetailAboutModel == null || tourDetailAboutModel.id.isEmpty) &&
+                      tourInfoAsync.isLoading;
+
+    final locationService = ref.read(locationServiceProvider);
+    final urlLauncher = ref.read(urlLauncherProvider);
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.55,
+      minChildSize: 0.35,
+      maxChildSize: 0.85,
+      builder: (context, scrollController) => Container(
+        decoration: BoxDecoration(
+          color: kBlack2Color,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16.sp)),
+        ),
+        child: Column(
+          children: [
+            // Drag handle
+            Container(
+              width: 40.sp,
+              height: 4.sp,
+              margin: EdgeInsets.symmetric(vertical: 12.sp),
+              decoration: BoxDecoration(
+                color: kWhiteColor.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(2.sp),
+              ),
+            ),
+            // Content
+            Expanded(
+              child: isLoading
+                  ? Center(
+                      child: CircularProgressIndicator(
+                        color: kPrimaryColor,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : aboutModel == null
+                      ? _buildFallbackContent(context, scrollController)
+                      : _buildTourContent(context, scrollController, aboutModel, locationService, urlLauncher),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Fallback content when tour info is not available - shows game info from GamesTourModel
+  Widget _buildFallbackContent(BuildContext context, ScrollController scrollController) {
+    return ListView(
+      controller: scrollController,
+      padding: EdgeInsets.symmetric(horizontal: 20.sp),
+      children: [
+        // Game header
+        Text(
+          'Game Info',
+          style: AppTypography.textLgBold.copyWith(
+            color: kWhiteColor,
+          ),
+        ),
+        SizedBox(height: 16.h),
+        // Round info
+        _EventInfoRow(
+          icon: Icons.format_list_numbered_rounded,
+          label: 'Round',
+          value: game.roundSlug ?? game.roundDisplayName,
+        ),
+        SizedBox(height: 12.h),
+        // Board number
+        if (game.boardNr != null) ...[
+          _EventInfoRow(
+            icon: Icons.grid_on_rounded,
+            label: 'Board',
+            value: 'Board ${game.boardNr}',
+          ),
+          SizedBox(height: 12.h),
+        ],
+        // Players section
+        SizedBox(height: 8.h),
+        Text(
+          'Players',
+          style: AppTypography.textSmMedium.copyWith(
+            color: kWhiteColor.withValues(alpha: 0.6),
+          ),
+        ),
+        SizedBox(height: 12.h),
+        // White player
+        _buildPlayerRow(game.whitePlayer, 'White'),
+        SizedBox(height: 8.h),
+        // Black player
+        _buildPlayerRow(game.blackPlayer, 'Black'),
+        SizedBox(height: MediaQuery.of(context).viewPadding.bottom + 16.h),
+      ],
+    );
+  }
+
+  Widget _buildPlayerRow(PlayerCard player, String side) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 10.sp),
+      decoration: BoxDecoration(
+        color: kLightBlack.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(8.sp),
+      ),
+      child: Row(
+        children: [
+          // Side indicator
+          Container(
+            width: 8.sp,
+            height: 8.sp,
+            decoration: BoxDecoration(
+              color: side == 'White' ? kWhiteColor : kBlack2Color,
+              border: Border.all(color: kWhiteColor.withValues(alpha: 0.3)),
+              borderRadius: BorderRadius.circular(2.sp),
+            ),
+          ),
+          SizedBox(width: 10.w),
+          // Country flag
+          if (player.countryCode.isNotEmpty) ...[
+            _buildCountryFlag(player.countryCode) ?? const SizedBox.shrink(),
+            SizedBox(width: 8.w),
+          ],
+          // Title
+          if (player.title.isNotEmpty) ...[
+            Text(
+              player.title,
+              style: AppTypography.textSmMedium.copyWith(
+                color: kPrimaryColor,
+              ),
+            ),
+            SizedBox(width: 6.w),
+          ],
+          // Name
+          Expanded(
+            child: Text(
+              player.name,
+              style: AppTypography.textSmMedium.copyWith(
+                color: kWhiteColor,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          // Rating
+          Text(
+            player.displayRating,
+            style: AppTypography.textSmRegular.copyWith(
+              color: kWhiteColor.withValues(alpha: 0.7),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTourContent(
+    BuildContext context,
+    ScrollController scrollController,
+    AboutTourModel aboutModel,
+    dynamic locationService,
+    dynamic urlLauncher,
+  ) {
+    return ListView(
+      controller: scrollController,
+      padding: EdgeInsets.symmetric(horizontal: 20.sp),
+      children: [
+        // Event image
+        if (aboutModel.imageUrl.isNotEmpty)
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12.sp),
+            child: SizedBox(
+              height: 140.h,
+              width: double.infinity,
+              child: CachedNetworkImage(
+                imageUrl: aboutModel.imageUrl,
+                fit: BoxFit.cover,
+                alignment: Alignment.topCenter,
+                placeholder: (_, __) => Container(
+                  color: kLightBlack,
+                  child: Center(
+                    child: Icon(
+                      Icons.image,
+                      color: kWhiteColor.withValues(alpha: 0.3),
+                      size: 40.sp,
+                    ),
+                  ),
+                ),
+                errorWidget: (_, __, ___) => Container(
+                  color: kLightBlack,
+                  child: Center(
+                    child: Icon(
+                      Icons.image_not_supported,
+                      color: kWhiteColor.withValues(alpha: 0.3),
+                      size: 40.sp,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        SizedBox(height: 16.h),
+        // Event name
+        Text(
+          aboutModel.name,
+          style: AppTypography.textLgBold.copyWith(
+            color: kWhiteColor,
+          ),
+        ),
+        SizedBox(height: 12.h),
+        // Round info from game
+        _EventInfoRow(
+          icon: Icons.format_list_numbered_rounded,
+          label: 'Round',
+          value: game.roundSlug ?? game.roundDisplayName,
+        ),
+        SizedBox(height: 12.h),
+        // Board number
+        if (game.boardNr != null) ...[
+          _EventInfoRow(
+            icon: Icons.grid_on_rounded,
+            label: 'Board',
+            value: 'Board ${game.boardNr}',
+          ),
+          SizedBox(height: 12.h),
+        ],
+        // Description
+        if (aboutModel.description.isNotEmpty) ...[
+          Text(
+            aboutModel.description,
+            style: AppTypography.textSmRegular.copyWith(
+              color: kWhiteColor.withValues(alpha: 0.7),
+            ),
+          ),
+          SizedBox(height: 16.h),
+        ],
+        // Info rows
+        if (aboutModel.timeControl.isNotEmpty) ...[
+          _EventInfoRow(
+            icon: Icons.access_time_rounded,
+            label: 'Time Control',
+            value: aboutModel.timeControl,
+          ),
+          SizedBox(height: 12.h),
+        ],
+        if (aboutModel.date.isNotEmpty) ...[
+          _EventInfoRow(
+            icon: Icons.calendar_today_rounded,
+            label: 'Date',
+            value: aboutModel.date,
+          ),
+          SizedBox(height: 12.h),
+        ],
+        if (aboutModel.location.isNotEmpty)
+          _EventInfoRow(
+            icon: Icons.location_on_rounded,
+            label: 'Location',
+            value: aboutModel.location,
+            trailing: _buildCountryFlag(
+              locationService.getCountryCode(aboutModel.location),
+            ),
+          ),
+        // Players section with game players highlighted
+        SizedBox(height: 16.h),
+        Text(
+          'Players',
+          style: AppTypography.textSmMedium.copyWith(
+            color: kWhiteColor.withValues(alpha: 0.6),
+          ),
+        ),
+        SizedBox(height: 8.h),
+        // White player
+        _buildPlayerRow(game.whitePlayer, 'White'),
+        SizedBox(height: 8.h),
+        // Black player
+        _buildPlayerRow(game.blackPlayer, 'Black'),
+        // Top players from tournament
+        if (aboutModel.players.isNotEmpty) ...[
+          SizedBox(height: 16.h),
+          Text(
+            'Top Players in Event',
+            style: AppTypography.textSmMedium.copyWith(
+              color: kWhiteColor.withValues(alpha: 0.6),
+            ),
+          ),
+          SizedBox(height: 8.h),
+          Text(
+            aboutModel.players
+                .where((p) => p.rating != null)
+                .take(4)
+                .map((p) => p.displayName)
+                .join(', '),
+            style: AppTypography.textSmRegular.copyWith(
+              color: kWhiteColor,
+            ),
+          ),
+        ],
+        // Website button
+        if (aboutModel.websiteUrl.isNotEmpty) ...[
+          SizedBox(height: 20.h),
+          GestureDetector(
+            onTap: () => urlLauncher.launchCustomUrl(aboutModel.websiteUrl),
+            child: Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: 16.sp,
+                vertical: 12.sp,
+              ),
+              decoration: BoxDecoration(
+                color: kPrimaryColor.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8.sp),
+                border: Border.all(
+                  color: kPrimaryColor.withValues(alpha: 0.3),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.language_rounded,
+                    color: kPrimaryColor,
+                    size: 18.sp,
+                  ),
+                  SizedBox(width: 8.w),
+                  Text(
+                    aboutModel.extractDomain(),
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: kPrimaryColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+        SizedBox(height: MediaQuery.of(context).viewPadding.bottom + 16.h),
+      ],
+    );
+  }
+
+  Widget? _buildCountryFlag(String countryCode) {
+    if (countryCode.isEmpty) return null;
+    return CountryFlag.fromCountryCode(
+      countryCode,
+      width: 20.w,
+      height: 14.h,
+    );
+  }
+}
+
+class _EventInfoRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Widget? trailing;
+
+  const _EventInfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          icon,
+          color: kWhiteColor.withValues(alpha: 0.5),
+          size: 18.sp,
+        ),
+        SizedBox(width: 10.w),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: AppTypography.textXsRegular.copyWith(
+                  color: kWhiteColor.withValues(alpha: 0.5),
+                ),
+              ),
+              SizedBox(height: 2.h),
+              Row(
+                children: [
+                  if (trailing != null) ...[
+                    trailing!,
+                    SizedBox(width: 6.w),
+                  ],
+                  Expanded(
+                    child: Text(
+                      value,
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: kWhiteColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
