@@ -78,6 +78,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         builder: (_) => ChessBoardScreenNew(
           currentIndex: 0,
           games: [emptyGame],
+          hideEventInfo: true,
         ),
       ),
     );

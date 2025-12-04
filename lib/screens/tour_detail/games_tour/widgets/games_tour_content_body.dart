@@ -45,6 +45,27 @@ class GamesTourContentBody extends ConsumerWidget {
     final displayMode = gamesScreenModel.gameDisplayMode;
     final isSearchMode = gamesScreenModel.isSearchMode;
 
+    // IMPORTANT: Watch gamesTourProvider to ensure we have the latest games data
+    // This fixes a race condition where gamesScreenModel might have stale data
+    // while rounds have already loaded, causing some rounds to appear empty
+    final gamesAsync = ref.watch(gamesTourProvider(tourId ?? ''));
+
+    // If games are still loading, show loading widget to prevent rounds from
+    // appearing empty due to timing issues
+    if (gamesAsync.isLoading && allGames.isEmpty) {
+      return const TourLoadingWidget();
+    }
+
+    // Additional safeguard: If the provider has significantly more games than
+    // gamesScreenModel, it means gamesScreenModel hasn't synced yet.
+    // This can cause rounds to appear empty and get filtered out.
+    final providerGameCount = gamesAsync.valueOrNull?.length ?? 0;
+    final modelGameCount = allGames.length;
+    if (!isSearchMode && providerGameCount > 0 && modelGameCount == 0) {
+      // Provider has games but model doesn't - wait for sync
+      return const TourLoadingWidget();
+    }
+
     // Group games by round while preserving the original sorting within each round
     final gamesByRound = <String, List<GamesTourModel>>{};
     final roundLookup = <String, GamesAppBarModel>{
@@ -189,6 +210,20 @@ class GamesTourContentBody extends ConsumerWidget {
     // 3. If all rounds are upcoming → show all upcoming rounds
 
     final sourceRounds = isSearchMode ? effectiveRounds : rounds;
+
+    // Debug: Log rounds with empty games to help diagnose timing issues
+    if (!isSearchMode && !isMultiStageKnockout) {
+      for (final round in sourceRounds) {
+        final gamesInRound = gamesByRound[round.id]?.length ?? 0;
+        if (gamesInRound == 0) {
+          debugPrint(
+            '⚠️ GamesTourContentBody: Round "${round.name}" (${round.id}) has 0 games. '
+            'Total allGames: ${allGames.length}, Provider games: $providerGameCount',
+          );
+        }
+      }
+    }
+
     final visibleRounds = sourceRounds.where((round) {
       final roundGames = gamesByRound[round.id] ?? [];
       if (roundGames.isEmpty) {

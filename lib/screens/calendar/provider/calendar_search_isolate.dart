@@ -160,9 +160,17 @@ CalendarSearchResult filterCalendarEventsIsolate(CalendarSearchParams params) {
   // Build summaries - use date-only sorting for favorites/upcoming modes
   final useDateOnlySort = params.filterMode == 'favorites' ||
                           params.filterMode == 'upcoming';
+  // Pass favoritePlayersMap only for favorites mode to enable heart bubbling
+  final favMapForSort = params.filterMode == 'favorites'
+      ? params.favoritePlayersMap
+      : null;
   final summaries = <MonthEventsData>[];
   for (int i = 1; i <= 12; i++) {
-    final sorted = _sortEvents(monthEvents[i]!, dateOnlySort: useDateOnlySort);
+    final sorted = _sortEvents(
+      monthEvents[i]!,
+      dateOnlySort: useDateOnlySort,
+      favoritePlayersMap: favMapForSort,
+    );
     summaries.add(MonthEventsData(
       monthName: params.monthNames[i - 1],
       monthNumber: i,
@@ -298,24 +306,49 @@ void _addDateTokens(Set<String> tokens, DateTime date) {
 List<CalendarEventData> _sortEvents(
   List<CalendarEventData> events, {
   bool dateOnlySort = false,
+  Map<String, bool>? favoritePlayersMap,
 }) {
   if (events.isEmpty) return events;
 
   final sorted = List<CalendarEventData>.from(events);
 
   if (dateOnlySort) {
-    // Pure date-based sorting for favorites/upcoming - earliest date first
-    sorted.sort((a, b) {
-      final dateA = a.startDate ?? a.endDate;
-      final dateB = b.startDate ?? b.endDate;
+    // For favorites mode with favoritePlayersMap, bubble "heart events" to top
+    // Heart events = events containing favorite players
+    if (favoritePlayersMap != null && favoritePlayersMap.isNotEmpty) {
+      sorted.sort((a, b) {
+        final aHasHearts = favoritePlayersMap[a.id] ?? false;
+        final bHasHearts = favoritePlayersMap[b.id] ?? false;
 
-      if (dateA != null && dateB != null) {
-        return dateA.compareTo(dateB);
-      }
-      if (dateA != null) return -1;
-      if (dateB != null) return 1;
-      return 0;
-    });
+        // Heart events bubble to top
+        if (aHasHearts && !bHasHearts) return -1;
+        if (!aHasHearts && bHasHearts) return 1;
+
+        // Within same category (both hearts or both non-hearts), sort by date
+        final dateA = a.startDate ?? a.endDate;
+        final dateB = b.startDate ?? b.endDate;
+
+        if (dateA != null && dateB != null) {
+          return dateA.compareTo(dateB);
+        }
+        if (dateA != null) return -1;
+        if (dateB != null) return 1;
+        return 0;
+      });
+    } else {
+      // Pure date-based sorting for upcoming mode - earliest date first
+      sorted.sort((a, b) {
+        final dateA = a.startDate ?? a.endDate;
+        final dateB = b.startDate ?? b.endDate;
+
+        if (dateA != null && dateB != null) {
+          return dateA.compareTo(dateB);
+        }
+        if (dateA != null) return -1;
+        if (dateB != null) return 1;
+        return 0;
+      });
+    }
   } else {
     // Category-based sorting for regular view
     const categoryOrder = {
@@ -441,9 +474,17 @@ DetailSearchResult filterDetailEventsIsolate(DetailSearchParams params) {
   // Use date-only sorting for favorites/upcoming modes
   final useDateOnlySort = params.filterMode == 'favorites' ||
                           params.filterMode == 'upcoming';
+  // Pass favoritePlayersMap only for favorites mode to enable heart bubbling
+  final favMapForSort = params.filterMode == 'favorites'
+      ? params.favoritePlayersMap
+      : null;
 
   return DetailSearchResult(
-    events: _sortEvents(filteredEvents, dateOnlySort: useDateOnlySort),
+    events: _sortEvents(
+      filteredEvents,
+      dateOnlySort: useDateOnlySort,
+      favoritePlayersMap: favMapForSort,
+    ),
     eventsToPrime: eventsToPrime,
   );
 }

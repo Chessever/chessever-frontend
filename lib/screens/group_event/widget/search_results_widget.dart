@@ -13,8 +13,8 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// Widget for displaying search results in a format identical to "For You" tab
-/// Shows tournament headers followed by game cards
+/// Widget for displaying search results as a list of events with their games
+/// Shows tournament cards followed by game cards (similar to ForYou tab)
 class SearchResultsWidget extends HookConsumerWidget {
   const SearchResultsWidget({
     super.key,
@@ -28,7 +28,7 @@ class SearchResultsWidget extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final gamesAsync = ref.watch(searchGamesProvider);
-    final groupedGames = ref.watch(groupedSearchGamesProvider);
+    final groupedGamesAsync = ref.watch(groupedSearchGamesProvider);
     final convertedGames = ref.watch(convertedSearchGamesProvider);
 
     // Track mounted state
@@ -50,33 +50,40 @@ class SearchResultsWidget extends HookConsumerWidget {
       return null;
     }, [searchQuery]);
 
-    // Cache the flattened items list
+    // Build flattened list of items (headers + games)
     final items = useMemoized(() {
-      final result = <_ListItem>[];
+      final groupedGames = groupedGamesAsync.valueOrNull ?? [];
+      final result = <_SearchListItem>[];
+
       for (final group in groupedGames) {
+        // Add event header
         result.add(
-          _ListItem.header(
+          _SearchListItem.header(
             tourId: group.tourId,
             tourName: group.tourName,
             hasLiveGames: group.hasLiveGames,
             gameCount: group.games.length,
           ),
         );
+
+        // Add game cards for this event
         for (final game in group.games) {
-          final gameIndex = convertedGames.indexWhere(
-            (g) => g.gameId == game.id,
-          );
+          final gameIndex = convertedGames.indexWhere((g) => g.gameId == game.id);
           if (gameIndex != -1) {
             result.add(
-              _ListItem.game(gameIndex: gameIndex, isLive: game.status == '*'),
+              _SearchListItem.game(
+                gameIndex: gameIndex,
+                isLive: game.status == '*',
+              ),
             );
           }
         }
       }
-      return result;
-    }, [groupedGames, convertedGames]);
 
-    // Cache GamesScreenModel
+      return result;
+    }, [groupedGamesAsync, convertedGames]);
+
+    // Build GamesScreenModel for game card navigation
     final gamesData = useMemoized(
       () => GamesScreenModel(
         gamesTourModels: convertedGames,
@@ -95,12 +102,25 @@ class SearchResultsWidget extends HookConsumerWidget {
           return _buildInitialState(context);
         }
 
-        return _SearchResultsListView(
-          scrollController: scrollController,
-          items: items,
-          gamesData: gamesData,
-          allGames: convertedGames,
-          searchQuery: searchQuery,
+        // Wait for grouped games to be ready (async lookup of group_broadcast_ids)
+        return groupedGamesAsync.when(
+          data: (groupedGames) {
+            if (groupedGames.isEmpty) {
+              return _buildEmptyState(context, searchQuery);
+            }
+            return _SearchResultsListView(
+              scrollController: scrollController,
+              items: items,
+              gamesData: gamesData,
+              allGames: convertedGames,
+              searchQuery: searchQuery,
+            );
+          },
+          loading: () => _buildLoadingState(),
+          error: (error, stackTrace) {
+            debugPrint('[SearchResultsWidget] Grouping error: $error');
+            return const GenericErrorWidget();
+          },
         );
       },
       loading: () => _buildLoadingState(),
@@ -181,12 +201,13 @@ class SearchResultsWidget extends HookConsumerWidget {
   }
 }
 
-/// Skeleton loader that mimics the search results structure
+/// Skeleton loader that mimics the search results structure (events + games)
 class _SearchResultsSkeletonLoader extends StatelessWidget {
   const _SearchResultsSkeletonLoader();
 
   @override
   Widget build(BuildContext context) {
+    // Create mock player data for skeleton
     final mockPlayer = PlayerCard(
       name: 'Player Name Here',
       federation: 'Federation',
@@ -213,23 +234,26 @@ class _SearchResultsSkeletonLoader extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 16.sp),
       physics: const NeverScrollableScrollPhysics(),
       children: [
-        _SkeletonTournamentHeader(isFirst: true),
-        ...List.generate(
-          3,
-          (index) => _SkeletonGameCard(mockGame: mockGame, index: index),
-        ),
-        _SkeletonTournamentHeader(isFirst: false),
+        // First tournament group
+        _SkeletonEventCard(isFirst: true),
         ...List.generate(
           2,
-          (index) => _SkeletonGameCard(mockGame: mockGame, index: index + 3),
+          (index) => _SkeletonGameCard(mockGame: mockGame, index: index),
+        ),
+
+        // Second tournament group
+        _SkeletonEventCard(isFirst: false),
+        ...List.generate(
+          2,
+          (index) => _SkeletonGameCard(mockGame: mockGame, index: index + 2),
         ),
       ],
     );
   }
 }
 
-class _SkeletonTournamentHeader extends StatelessWidget {
-  const _SkeletonTournamentHeader({required this.isFirst});
+class _SkeletonEventCard extends StatelessWidget {
+  const _SkeletonEventCard({required this.isFirst});
 
   final bool isFirst;
 
@@ -238,58 +262,11 @@ class _SkeletonTournamentHeader extends StatelessWidget {
     return SkeletonWidget(
       child: Container(
         margin: EdgeInsets.only(top: isFirst ? 0 : 16.sp, bottom: 12.sp),
+        height: 80.sp,
         decoration: BoxDecoration(
           color: kBlack2Color,
-          borderRadius: BorderRadius.circular(8.br),
+          borderRadius: BorderRadius.circular(12.br),
           border: Border.all(color: kDarkGreyColor.withValues(alpha: 0.3)),
-        ),
-        padding: EdgeInsets.all(12.sp),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    height: 16.sp,
-                    decoration: BoxDecoration(
-                      color: kDarkGreyColor,
-                      borderRadius: BorderRadius.circular(4.br),
-                    ),
-                  ),
-                ),
-                SizedBox(width: 12.sp),
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 3.sp),
-                  decoration: BoxDecoration(
-                    color: kDarkGreyColor.withValues(alpha: 0.5),
-                    borderRadius: BorderRadius.circular(4.br),
-                  ),
-                  child: Text(
-                    '3 games',
-                    style: TextStyle(
-                      fontSize: 11.sp,
-                      fontWeight: FontWeight.w500,
-                      color: kWhiteColor70,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 6.sp),
-            Row(
-              children: [
-                Container(
-                  width: 80.sp,
-                  height: 12.sp,
-                  decoration: BoxDecoration(
-                    color: kDarkGreyColor.withValues(alpha: 0.5),
-                    borderRadius: BorderRadius.circular(4.br),
-                  ),
-                ),
-              ],
-            ),
-          ],
         ),
       ),
     );
@@ -322,7 +299,7 @@ class _SkeletonGameCard extends StatelessWidget {
   }
 }
 
-/// List view for search results
+/// List view showing event cards followed by their game cards
 class _SearchResultsListView extends ConsumerWidget {
   const _SearchResultsListView({
     required this.scrollController,
@@ -333,7 +310,7 @@ class _SearchResultsListView extends ConsumerWidget {
   });
 
   final ScrollController scrollController;
-  final List<_ListItem> items;
+  final List<_SearchListItem> items;
   final GamesScreenModel gamesData;
   final List<GamesTourModel> allGames;
   final String searchQuery;
@@ -349,7 +326,7 @@ class _SearchResultsListView extends ConsumerWidget {
       displacement: 60.h,
       strokeWidth: 3.w,
       child: ListView.builder(
-        key: PageStorageKey<String>('search_results_list_$searchQuery'),
+        key: PageStorageKey<String>('search_results_$searchQuery'),
         controller: scrollController,
         padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 16.sp),
         itemCount: items.length,
@@ -373,15 +350,14 @@ class _SearchResultsListView extends ConsumerWidget {
             );
           }
 
+          // Game card
           final gamesTourModel = allGames[item.gameIndex!];
-
-          return _KeepAliveSearchGameCard(
+          return _SearchGameCard(
             key: ValueKey('search_game_${gamesTourModel.gameId}'),
             game: gamesTourModel,
             gamesData: gamesData,
             gameIndex: item.gameIndex!,
             listIndex: index,
-            allGames: allGames,
           );
         },
       ),
@@ -389,29 +365,26 @@ class _SearchResultsListView extends ConsumerWidget {
   }
 }
 
-/// Game card with keep alive
-class _KeepAliveSearchGameCard extends StatefulWidget {
-  const _KeepAliveSearchGameCard({
+/// Game card widget with keep-alive and animation support
+class _SearchGameCard extends StatefulWidget {
+  const _SearchGameCard({
     super.key,
     required this.game,
     required this.gamesData,
     required this.gameIndex,
     required this.listIndex,
-    required this.allGames,
   });
 
   final GamesTourModel game;
   final GamesScreenModel gamesData;
   final int gameIndex;
   final int listIndex;
-  final List<GamesTourModel> allGames;
 
   @override
-  State<_KeepAliveSearchGameCard> createState() =>
-      _KeepAliveSearchGameCardState();
+  State<_SearchGameCard> createState() => _SearchGameCardState();
 }
 
-class _KeepAliveSearchGameCardState extends State<_KeepAliveSearchGameCard>
+class _SearchGameCardState extends State<_SearchGameCard>
     with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
@@ -428,10 +401,13 @@ class _KeepAliveSearchGameCardState extends State<_KeepAliveSearchGameCard>
         gamesData: widget.gamesData,
         gameIndex: widget.gameIndex,
         isChessBoardVisible: false,
-        onReturnFromChessboard: (returnedIndex) {},
+        onReturnFromChessboard: (returnedIndex) {
+          // Handle returning from chess board if needed
+        },
       ),
     );
 
+    // Use global set to track animations - survives tab switches and rebuilds
     if (!searchAnimatedGameIds.contains(gameId)) {
       searchAnimatedGameIds.add(gameId);
       return card
@@ -447,8 +423,8 @@ class _KeepAliveSearchGameCardState extends State<_KeepAliveSearchGameCard>
   }
 }
 
-/// Helper class for list items
-class _ListItem {
+/// Helper class for list items (either header or game)
+class _SearchListItem {
   final bool isHeader;
   final String? tourId;
   final String? tourName;
@@ -457,7 +433,7 @@ class _ListItem {
   final int? gameIndex;
   final bool? isLive;
 
-  const _ListItem._({
+  const _SearchListItem._({
     required this.isHeader,
     this.tourId,
     this.tourName,
@@ -467,13 +443,13 @@ class _ListItem {
     this.isLive,
   });
 
-  factory _ListItem.header({
+  factory _SearchListItem.header({
     required String tourId,
     required String tourName,
     required bool hasLiveGames,
     required int gameCount,
   }) {
-    return _ListItem._(
+    return _SearchListItem._(
       isHeader: true,
       tourId: tourId,
       tourName: tourName,
@@ -482,7 +458,7 @@ class _ListItem {
     );
   }
 
-  factory _ListItem.game({required int gameIndex, required bool isLive}) {
-    return _ListItem._(isHeader: false, gameIndex: gameIndex, isLive: isLive);
+  factory _SearchListItem.game({required int gameIndex, required bool isLive}) {
+    return _SearchListItem._(isHeader: false, gameIndex: gameIndex, isLive: isLive);
   }
 }
